@@ -39,6 +39,7 @@ const COST_DATA = [
   /clickhouse\/network-flow-readers/,
   /credits\/feed/,
   /commitments\/feed/,
+  /savings\/realized/,
   /network-flow\/feed/,
   /backups\/feed/,
   /schedules\/feed/,

@@ -247,4 +247,5 @@
 // 1.69.0: business-metric calculations. Unit-cost modes `usage_unit_cost` and `raw_metric`, `scale`, label filters and `groupByLabel`, `absoluteMargin` on margin points, multi-dimensional `labels` on values (beside the single `label`), `labelMappings`/`thresholds` on metrics, `GET /business-metrics/{id}/labels`, `GET /business-metrics/usage-units`, `POST /business-metrics/usage-unit-costs`, the unit-cost fields on CostGraphConfig, and the `unit_cost_threshold` efficiency-alert kind. `UnitCostQueryResponse.metric` is now nullable (null only for the new usage mode). Additive.
 // 1.70.0: `remediation` (ready-to-run commands + Terraform hint) on orphan, oversized,
 //         sleep-schedule and idle-commitment findings. Additive.
-export const API_VERSION = "1.70.0";
+// 1.71.0: realized savings. `GET /savings/realized`, `/savings/events` CRUD, `GET`/`PUT /savings/settings`, and the `realized_savings` dashboard widget kind. Additive.
+export const API_VERSION = "1.71.0";

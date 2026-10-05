@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.70.0",
+    "version": "1.71.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2792,9 +2792,10 @@
           "cost_report",
           "budget",
           "custom_graph",
-          "cost_canvas"
+          "cost_canvas",
+          "realized_savings"
         ],
-        "description": "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it. `cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way."
+        "description": "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it. `cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way. `realized_savings` shows the org's realized savings report; its config is only a view choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36)."
       },
       "DashboardWidget": {
         "type": "object",
@@ -16910,7 +16911,8 @@
                   "cost_report",
                   "budget",
                   "custom_graph",
-                  "cost_canvas"
+                  "cost_canvas",
+                  "realized_savings"
                 ]
               },
               "title": {
@@ -31341,6 +31343,763 @@
           "utilizationWindowDays",
           "plannerWindowDays"
         ],
+        "additionalProperties": false
+      },
+      "RealizedSavingsSettings": {
+        "type": "object",
+        "properties": {
+          "horizonMonths": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 36,
+            "description": "How long a one-off action keeps accruing, in months. Default 12."
+          },
+          "shortfallThresholdPercent": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 100,
+            "description": "Below this share of the projected rate an action is flagged short. Default 70."
+          },
+          "baselineWindowDays": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 30,
+            "description": "Days before the action whose spend makes up the baseline. Default 14."
+          }
+        },
+        "required": [
+          "horizonMonths",
+          "shortfallThresholdPercent",
+          "baselineWindowDays"
+        ],
+        "additionalProperties": false
+      },
+      "RealizedSavingsTotal": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "realized": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "projected": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          }
+        },
+        "required": [
+          "currency",
+          "realized",
+          "projected"
+        ],
+        "additionalProperties": false
+      },
+      "RealizedSavingsMonth": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "realized": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "projected": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          }
+        },
+        "required": [
+          "month",
+          "currency",
+          "realized",
+          "projected"
+        ],
+        "additionalProperties": false
+      },
+      "RealizedSavingsBucket": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "realized": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "projected": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "events": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "currency",
+          "realized",
+          "projected",
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsEventKind": {
+        "type": "string",
+        "enum": [
+          "rightsizing",
+          "orphan_deletion",
+          "sleep_schedule",
+          "commitment",
+          "manual"
+        ],
+        "description": "`rightsizing` — a resize to a smaller size; `orphan_deletion` — a resource the orphan finder flags was deleted; `sleep_schedule` — a stretch of a sleep/wake schedule in force; `commitment` — reservation and savings-plan discounts, derived from billing; `manual` — logged by a person."
+      },
+      "SavingsEventSource": {
+        "type": "string",
+        "enum": [
+          "in_app",
+          "detected",
+          "manual",
+          "derived"
+        ],
+        "description": "`in_app` — recorded when Infrawrench performed the action; `detected` — inferred from an inventory diff on sync (the action was taken in the provider's console); `manual`; `derived` — computed from billing with no stored event (commitments)."
+      },
+      "RealizedSavingsBasis": {
+        "type": "string",
+        "enum": [
+          "billing",
+          "estimate",
+          "manual",
+          "unmeasured"
+        ],
+        "description": "`billing` — baseline and post-action spend both read from this resource's cost rows; `estimate` — no per-resource billing, so the list-price estimate is accrued over elapsed days; `manual` — the logged amount accrued; `unmeasured` — nothing to measure against (never summed as zero)."
+      },
+      "SavingsShortfall": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "below_projection",
+              "grew_back"
+            ],
+            "description": "`below_projection` — the trailing realized rate is under the org's threshold share of the projected rate; `grew_back` — post-action spend is above the pre-action baseline."
+          },
+          "realizedPerDay": {
+            "type": "number",
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "projectedPerDay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Currency units (not cents), in the row's currency."
+          }
+        },
+        "required": [
+          "kind",
+          "realizedPerDay",
+          "projectedPerDay"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsEventResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A UUID for stored events; `commitment:<accountId>:<currency>` for derived rows."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SavingsEventKind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SavingsEventSource"
+          },
+          "title": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurredOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day the action took effect (UTC).",
+            "example": "2026-07-15"
+          },
+          "endedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day in force, inclusive; null while it still is.",
+            "example": "2026-07-15"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kept after the resource is deleted."
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explicit attribution; null means attributed by the allocation rules."
+          },
+          "projectedMonthlyAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "What the action was projected to save per month."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "horizonMonths": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Per-entry horizon override; null uses the org setting."
+          },
+          "costAnnotationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cost annotation marking the action on charts."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/RealizedSavingsBasis"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accruing",
+              "complete",
+              "ended"
+            ]
+          },
+          "realizedCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baselinePerDay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Spend per day before the action."
+          },
+          "currentPerDay": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Spend per day over the trailing measured days since."
+          },
+          "realizedToDate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "realizedInRange": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Currency units (not cents), in the row's currency."
+          },
+          "projectedInRange": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Projected over the same accrued days in the range."
+          },
+          "accruedDays": {
+            "type": "integer"
+          },
+          "horizonEndsOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day a one-off action accrues on; null for recurring ones.",
+            "example": "2026-07-15"
+          },
+          "attributedCostCentreId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attributedCostCentreName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shortfall": {
+            "$ref": "#/components/schemas/SavingsShortfall"
+          },
+          "editable": {
+            "type": "string",
+            "enum": [
+              "full",
+              "annotate",
+              "none"
+            ],
+            "description": "`full` — a manual entry (PUT); `annotate` — an automatic event takes a note, a cost centre, a horizon and an end date (PATCH); `none` — derived rows."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "title",
+          "note",
+          "occurredOn",
+          "endedOn",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "resourceTypeId",
+          "resourceId",
+          "resourceName",
+          "costCentreId",
+          "projectedMonthlyAmount",
+          "currency",
+          "horizonMonths",
+          "costAnnotationId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt",
+          "basis",
+          "status",
+          "realizedCurrency",
+          "baselinePerDay",
+          "currentPerDay",
+          "realizedToDate",
+          "realizedInRange",
+          "projectedInRange",
+          "accruedDays",
+          "horizonEndsOn",
+          "attributedCostCentreId",
+          "attributedCostCentreName",
+          "shortfall",
+          "editable"
+        ],
+        "additionalProperties": false
+      },
+      "RealizedSavingsReport": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-15"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-15"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RealizedSavingsSettings"
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealizedSavingsTotal"
+            }
+          },
+          "byMonth": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealizedSavingsMonth"
+            }
+          },
+          "byKind": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealizedSavingsBucket"
+            }
+          },
+          "byCostCentre": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealizedSavingsBucket"
+            }
+          },
+          "byAccount": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealizedSavingsBucket"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavingsEventResult"
+            }
+          },
+          "shortfallCount": {
+            "type": "integer"
+          },
+          "unmeasuredCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "settings",
+          "totals",
+          "byMonth",
+          "byKind",
+          "byCostCentre",
+          "byAccount",
+          "events",
+          "shortfallCount",
+          "unmeasuredCount"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A UUID for stored events; `commitment:<accountId>:<currency>` for derived rows."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SavingsEventKind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SavingsEventSource"
+          },
+          "title": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurredOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day the action took effect (UTC).",
+            "example": "2026-07-15"
+          },
+          "endedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day in force, inclusive; null while it still is.",
+            "example": "2026-07-15"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kept after the resource is deleted."
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explicit attribution; null means attributed by the allocation rules."
+          },
+          "projectedMonthlyAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "What the action was projected to save per month."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "horizonMonths": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Per-entry horizon override; null uses the org setting."
+          },
+          "costAnnotationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cost annotation marking the action on charts."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "title",
+          "note",
+          "occurredOn",
+          "endedOn",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "resourceTypeId",
+          "resourceId",
+          "resourceName",
+          "costCentreId",
+          "projectedMonthlyAmount",
+          "currency",
+          "horizonMonths",
+          "costAnnotationId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsEventInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "occurredOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-15"
+          },
+          "endedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-15"
+          },
+          "projectedMonthlyAmount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100000000
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Link a resource: the realized figure is then measured from its billing."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "horizonMonths": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 36
+          }
+        },
+        "required": [
+          "title",
+          "occurredOn",
+          "projectedMonthlyAmount",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsEventAnnotation": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "costCentreId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "horizonMonths": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 36
+          },
+          "endedOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-15"
+          }
+        },
         "additionalProperties": false
       },
       "NetworkFlowScopeSummary": {
@@ -71367,6 +72126,417 @@
         },
         "operationId": "getOrgOrgIdCommitments",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/savings/realized": {
+      "get": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Realized savings report",
+        "description": "What the actions taken actually saved, against each resource's own trailing daily spend before the action, accrued day by day (one-off actions up to the horizon). Recomputed on every read, so figures improve as restated billing lands. Days collection has not covered are not accrued. Per-currency throughout; never converted or merged.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive first day. Defaults to the first of the month 11 months back.",
+              "example": "2026-07-15"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive last day. Defaults to yesterday.",
+              "example": "2026-07-15"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealizedSavingsReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavingsRealized"
+      }
+    },
+    "/api/org/{orgId}/savings/events": {
+      "post": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Log a saving",
+        "description": "Record a saving by hand, with the monthly amount and the day it began. Leaves an org-wide cost annotation on that day. Requires `costs:write`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsEventInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSavingsEvents"
+      }
+    },
+    "/api/org/{orgId}/savings/events/{id}": {
+      "put": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Rewrite a manual saving",
+        "description": "Full replace of a manual entry. Automatic events are a 400; use PATCH.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsEventInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSavingsEventsId"
+      },
+      "patch": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Annotate a saving",
+        "description": "Add context to any event: a note, an explicit cost centre, a horizon override, or an end date. The facts of an automatic event (what was done, when, the projection) stay as observed.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsEventAnnotation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdSavingsEventsId"
+      },
+      "delete": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Remove a saving",
+        "description": "Hard delete, together with the cost annotation the event left on the charts.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSavingsEventsId"
+      }
+    },
+    "/api/org/{orgId}/savings/settings": {
+      "get": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Get realized savings settings",
+        "description": "The org's horizon, shortfall threshold and baseline window; defaults when never saved.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealizedSavingsSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavingsSettings"
+      },
+      "put": {
+        "tags": [
+          "Realized savings"
+        ],
+        "summary": "Update realized savings settings",
+        "description": "Requires `costs:write`. Changes every figure in the report, retroactively.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealizedSavingsSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealizedSavingsSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSavingsSettings"
       }
     },
     "/api/org/{orgId}/network-flows": {

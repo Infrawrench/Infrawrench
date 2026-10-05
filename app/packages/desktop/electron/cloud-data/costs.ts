@@ -361,6 +361,76 @@ ipcMain.handle(
     );
   },
 );
+/* ------------------------------------------------------------------ *
+ * Realized savings. Cloud-only: the events are recorded server-side
+ * (resizes, deletions, schedules, the sync diff) and measured against
+ * server-side billing.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle(
+  "cloud_realized_savings",
+  async (_e, { orgId, from, to }: { orgId: string; from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return cloudFetch(orgId, `/savings/realized${qs ? `?${qs}` : ""}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_savings_event",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/savings/events", { method: "POST", body: JSON.stringify(input) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_savings_event",
+  async (_e, { orgId, eventId, input }: { orgId: string; eventId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/savings/events/${encodeURIComponent(eventId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_annotate_savings_event",
+  async (_e, { orgId, eventId, input }: { orgId: string; eventId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/savings/events/${encodeURIComponent(eventId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_savings_event",
+  async (_e, { orgId, eventId }: { orgId: string; eventId: string }) => {
+    return cloudFetch(orgId, `/savings/events/${encodeURIComponent(eventId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_savings_settings",
+  async (_e, { orgId, settings }: { orgId: string; settings: unknown }) => {
+    return cloudFetch(orgId, "/savings/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+  },
+);
+
+/** The manual-entry resource picker: the org's spotlight index, resources only. */
+ipcMain.handle(
+  "cloud_savings_search_resources",
+  async (_e, { orgId, query }: { orgId: string; query: string }) => {
+    return (await cloudFetch(orgId, `/search?q=${encodeURIComponent(query)}`)) ?? [];
+  },
+);
 
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];

@@ -13,6 +13,10 @@ import { upsertCreatedResource } from "@infrawrench/server-core/created-resource
 import { resourceIdBelongsToAccount } from "@infrawrench/server-core/resource-ids";
 import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import {
+  captureDeletionSaving,
+  captureResizeSaving,
+} from "@infrawrench/server-core/savings/capture";
+import {
   carbonHintFor,
   getConfigCarbon,
   getResourceCarbon,
@@ -62,6 +66,22 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (frozen) return frozen;
 
     await ctx.client.deleteResource(resourceTypeId, resourceId, accountId);
+    // Deleting something the orphan finder flags is a realized saving. Only
+    // for the account's own plugin (a peer resource is not in our inventory),
+    // and never awaited into the response: it reads billing, and the delete
+    // has already succeeded whatever it finds. Never throws.
+    if (ctx.account.pluginId === pluginId) {
+      void captureDeletionSaving({
+        organizationId,
+        accountId,
+        resourceId,
+        resourceTypeId,
+        pluginId,
+        source: "in_app",
+        userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
+        ctx: { client: ctx.client, plugin: ctx.plugin },
+      });
+    }
     return c.json({ ok: true });
   });
 
@@ -313,6 +333,28 @@ export function registerLifecycleRoutes(app: Hono): void {
     });
     if (frozen) return frozen;
 
+    // The stored fields before the edit: a resize to a smaller size is a
+    // realized saving, and the mirror below overwrites the old size.
+    // Best-effort: a failed read costs the saving, never the edit.
+    let prior: { fieldsJson: unknown; externalId: string | null } | undefined;
+    if (ctx.account.pluginId === input.pluginId) {
+      try {
+        [prior] = await db
+          .select({ fieldsJson: resources.fieldsJson, externalId: resources.externalId })
+          .from(resources)
+          .where(
+            and(
+              eq(resources.id, input.resourceId),
+              eq(resources.organizationId, organizationId),
+              eq(resources.accountId, input.accountId),
+            ),
+          )
+          .limit(1);
+      } catch (err) {
+        console.warn("[resource-detail] Could not read fields before update:", err);
+      }
+    }
+
     let updated;
     try {
       updated = await ctx.client.updateResource(
@@ -366,6 +408,30 @@ export function registerLifecycleRoutes(app: Hono): void {
       } catch (err) {
         console.error("[resource-detail] Failed to persist updated resource:", err);
       }
+    }
+
+    // A downsize of a right-sizing type (the Oversized section's Apply button
+    // rides this route) is recorded as a saving. Not awaited: it prices sizes
+    // against the provider's catalogue, and the edit has already succeeded.
+    if (prior) {
+      void captureResizeSaving({
+        organizationId,
+        accountId: input.accountId,
+        resourceId: input.resourceId,
+        resourceTypeId: input.resourceTypeId,
+        pluginId: input.pluginId,
+        source: "in_app",
+        priorFields: prior.fieldsJson,
+        nextFields: {
+          ...((prior.fieldsJson ?? {}) as Record<string, unknown>),
+          ...input.fields,
+          ...(updated.fields ?? {}),
+        },
+        displayName: updated.displayName,
+        externalId: prior.externalId ?? null,
+        userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
+        ctx: { client: ctx.client, plugin: ctx.plugin },
+      });
     }
 
     return c.json({

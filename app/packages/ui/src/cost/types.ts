@@ -29,6 +29,12 @@ import type {
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
+  CostCentre,
+  RealizedSavingsReport,
+  RealizedSavingsSettings,
+  SavingsEvent,
+  SavingsEventAnnotationInput,
+  SavingsEventInput,
 } from "@infrawrench/client-core";
 import type {
   BudgetInput,
@@ -175,6 +181,21 @@ export interface CostApi {
   listUsageUnits?(): Promise<Array<{ unit: string; usage: number; services: string[] }>>;
   /** A metric's label keys, values and mappings, for the label filter and group-by pickers. */
   listBusinessMetricLabels?(metricId: string): Promise<BusinessMetricLabelSummary[]>;
+  /**
+   * The realized savings report. On the base `CostApi` because the
+   * `realized_savings` dashboard card renders through it as well as the Costs
+   * panel. Optional on the usual rule: unwired, neither renders.
+   */
+  getRealizedSavings?(range?: { from?: string; to?: string }): Promise<RealizedSavingsReport>;
+}
+
+/** One hit in the manual-entry resource picker. */
+export interface SavingsResourceOption {
+  id: string;
+  displayName: string;
+  accountId: string;
+  accountName: string;
+  resourceTypeLabel: string;
 }
 
 /** A dashboard a budget card can be added to, for the Costs panel's picker. */
@@ -194,6 +215,19 @@ export interface CostsPanelDashboard {
  */
 export interface CostsClient extends CostApi {
   listBudgets(): Promise<BudgetWithStatus[]>;
+  /**
+   * The realized savings management calls. Omitted, the section renders
+   * read-only (no Log, Edit or Remove), the budget-half rule.
+   */
+  createSavingsEvent?(input: SavingsEventInput): Promise<SavingsEvent>;
+  updateSavingsEvent?(eventId: string, input: SavingsEventInput): Promise<SavingsEvent>;
+  annotateSavingsEvent?(eventId: string, input: SavingsEventAnnotationInput): Promise<SavingsEvent>;
+  deleteSavingsEvent?(eventId: string): Promise<void>;
+  updateSavingsSettings?(settings: RealizedSavingsSettings): Promise<RealizedSavingsSettings>;
+  /** Cost centres for the attribution picker; omitted, the picker is hidden. */
+  listSavingsCostCentres?(): Promise<CostCentre[]>;
+  /** Live resources by name, for linking a manual entry to its billing. */
+  searchSavingsResources?(query: string): Promise<SavingsResourceOption[]>;
   /**
    * Spend anomalies detected over the last `days` days (default 30). Optional
    * the way the mutating half is: a host that hasn't wired the endpoint yet

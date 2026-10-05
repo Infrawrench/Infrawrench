@@ -13,6 +13,7 @@ import {
   loadCloudCostDimensionValues,
   loadCloudCarbonEstimate,
   loadCloudCostStatus,
+  loadCloudRealizedSavings,
   queryCloudCosts,
   queryCloudUnitCosts,
   queryCloudUsageUnitCosts,
@@ -113,5 +114,9 @@ export function createDesktopCostApi(): CostApi {
     listUsageUnits: async () => listCloudUsageUnits(requireCloudOrgId()),
     listBusinessMetricLabels: async (metricId) =>
       listCloudBusinessMetricLabels(requireCloudOrgId(), metricId),
+    // Realized savings ride the base cost API because the `realized_savings`
+    // dashboard card renders through it as well as the Costs panel. `async`
+    // so local mode rejects rather than throwing synchronously.
+    getRealizedSavings: async (range) => loadCloudRealizedSavings(requireCloudOrgId(), range),
   };
 }

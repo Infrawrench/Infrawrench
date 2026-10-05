@@ -22,6 +22,7 @@ import { db } from "../db/client";
 import { isUniqueViolation } from "../db/errors";
 import { resourceSchedules, resources } from "../db/schema";
 import { getPlugin } from "../plugin-loader";
+import { captureScheduleSaving, endScheduleSaving } from "../savings/capture";
 
 export interface ScheduleRecord {
   id: string;
@@ -229,7 +230,10 @@ export async function createScheduleRecord(
     }
     throw error;
   }
-  return (await getScheduleRecord(organizationId, row.id))!;
+  const created = (await getScheduleRecord(organizationId, row.id))!;
+  // A schedule in force is a recurring saving; never throws.
+  await captureScheduleSaving(created, createdByUserId ?? null);
+  return created;
 }
 
 /**
@@ -280,7 +284,24 @@ export async function updateScheduleRecord(
         eq(resourceSchedules.id, scheduleId),
       ),
     );
-  return (await getScheduleRecord(organizationId, scheduleId))!;
+  const updated = (await getScheduleRecord(organizationId, scheduleId))!;
+
+  // Realized savings: a stretch of the schedule in force is one event. A
+  // pause or a retime ends the open stretch; a resume or a retime opens the
+  // next one, so each stretch's estimate describes the timing actually run.
+  const retimed =
+    timingChanged &&
+    (updated.stopTime !== existing.stopTime ||
+      updated.startTime !== existing.startTime ||
+      updated.timezone !== existing.timezone ||
+      updated.daysOfWeek.join(",") !== existing.daysOfWeek.join(","));
+  if (paused && !existing.paused) {
+    await endScheduleSaving(organizationId, scheduleId);
+  } else if (!paused && (existing.paused || retimed)) {
+    if (retimed) await endScheduleSaving(organizationId, scheduleId);
+    await captureScheduleSaving(updated);
+  }
+  return updated;
 }
 
 export async function deleteScheduleRecord(
@@ -297,6 +318,8 @@ export async function deleteScheduleRecord(
         eq(resourceSchedules.id, scheduleId),
       ),
     );
+  // The saving it delivered while it ran stays on the books; it stops here.
+  await endScheduleSaving(organizationId, scheduleId);
   return existing;
 }
 

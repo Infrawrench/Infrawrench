@@ -13,6 +13,7 @@ vi.mock("../unit-cost-query", () => ({ runUnitCostQuery: vi.fn() }));
 vi.mock("../budgets", () => ({ getBudgetWithStatus: vi.fn() }));
 vi.mock("../cost-reports", () => ({ getCostReport: vi.fn() }));
 vi.mock("../custom-graphs", () => ({ renderOrgCustomGraph: vi.fn() }));
+vi.mock("@infrawrench/server-core/savings/realized", () => ({ getRealizedSavingsReport: vi.fn() }));
 vi.mock("../../plugins/loader", () => ({ getPlugin: vi.fn() }));
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   getOrgCurrencySettings: vi.fn(),

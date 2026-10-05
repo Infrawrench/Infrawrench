@@ -81,6 +81,14 @@ import type {
   CostAnomalySuppression,
   CostAnomalySuppressionInput,
 } from "@infrawrench/client-core";
+import type {
+  RealizedSavingsReport,
+  RealizedSavingsSettings,
+  SavingsEvent,
+  SavingsEventAnnotationInput,
+  SavingsEventInput,
+} from "@infrawrench/client-core";
+import type { SavingsResourceOption } from "@infrawrench/ui/cost";
 import { invoke } from "./invoke";
 
 export async function queryCloudCosts(
@@ -310,6 +318,59 @@ export async function saveCloudKubernetesNetworkSettings(
   settings: { billedQuery: string | null },
 ): Promise<KubernetesNetworkSettings> {
   return invoke("cloud_kubernetes_network_settings_update", { orgId, accountId, settings });
+}
+
+export async function loadCloudRealizedSavings(
+  orgId: string,
+  range: { from?: string; to?: string } = {},
+): Promise<RealizedSavingsReport> {
+  return invoke("cloud_realized_savings", { orgId, ...range });
+}
+
+export async function createCloudSavingsEvent(
+  orgId: string,
+  input: SavingsEventInput,
+): Promise<SavingsEvent> {
+  return invoke("cloud_create_savings_event", { orgId, input });
+}
+
+export async function updateCloudSavingsEvent(
+  orgId: string,
+  eventId: string,
+  input: SavingsEventInput,
+): Promise<SavingsEvent> {
+  return invoke("cloud_update_savings_event", { orgId, eventId, input });
+}
+
+export async function annotateCloudSavingsEvent(
+  orgId: string,
+  eventId: string,
+  input: SavingsEventAnnotationInput,
+): Promise<SavingsEvent> {
+  return invoke("cloud_annotate_savings_event", { orgId, eventId, input });
+}
+
+export async function deleteCloudSavingsEvent(orgId: string, eventId: string): Promise<void> {
+  await invoke("cloud_delete_savings_event", { orgId, eventId });
+}
+
+export async function saveCloudSavingsSettings(
+  orgId: string,
+  settings: RealizedSavingsSettings,
+): Promise<RealizedSavingsSettings> {
+  return invoke("cloud_update_savings_settings", { orgId, settings });
+}
+
+export async function searchCloudSavingsResources(
+  orgId: string,
+  query: string,
+): Promise<SavingsResourceOption[]> {
+  const rows = await invoke<Array<SavingsResourceOption & { pluginId: string }>>(
+    "cloud_savings_search_resources",
+    { orgId, query },
+  );
+  // The spotlight index also returns workflows; only resources can be linked.
+  return (rows ?? []).filter((r) => r.pluginId !== "__workflows__");
 }
 
 export async function loadCloudEfficiencyAlerts(

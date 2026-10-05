@@ -1252,3 +1252,21 @@ func (c *Client) UpdateAIAttributionDimension(ctx context.Context, id string, in
 func (c *Client) DeleteAIAttributionDimension(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/ai-attribution/dimensions/"+seg(id))
 }
+
+/* ---------------------------- realized savings ----------------------------- */
+
+func (c *Client) GetRealizedSavingsSettings(ctx context.Context) (*RealizedSavingsSettings, error) {
+	var out RealizedSavingsSettings
+	if err := c.Get(ctx, "/savings/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutRealizedSavingsSettings(ctx context.Context, in RealizedSavingsSettings) (*RealizedSavingsSettings, error) {
+	var out RealizedSavingsSettings
+	if err := c.Put(ctx, "/savings/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

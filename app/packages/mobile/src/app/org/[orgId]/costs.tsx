@@ -28,6 +28,7 @@ import { useCostStatus } from "@/features/dashboard/useCostStatus";
 import { OversizedSection } from "@/features/savings/OversizedSection";
 import { SavingsSection } from "@/features/savings/SavingsSection";
 import { SchedulesSection } from "@/features/schedules/SchedulesSection";
+import { RealizedSavingsSection } from "@/features/savings/RealizedSavingsSection";
 
 /**
  * The org's spend, budgets, anomalies, and potential savings; the Costs panel
@@ -86,6 +87,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["rightsizing"] });
         void queryClient.invalidateQueries({ queryKey: ["schedules"] });
         void queryClient.invalidateQueries({ queryKey: ["carbon"] });
+        void queryClient.invalidateQueries({ queryKey: ["realized-savings"] });
       }}
       refreshing={budgets.isRefetching}
     >
@@ -148,6 +150,9 @@ export default function CostsScreen() {
       <OversizedSection />
 
       <SchedulesSection />
+
+      {/* After the finders, as on web/desktop: the receipt for what was saved. */}
+      <RealizedSavingsSection />
 
       {/* A whole-estate figure beside spend, like the web/desktop section. */}
       <CarbonSection />

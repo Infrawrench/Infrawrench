@@ -330,6 +330,8 @@ export interface ParsedCli {
   apps: AppsFlags;
   diff: DiffFlags;
   config: ConfigFlags;
+  /** `savings log`: the monthly amount (validated by the command) and a note. */
+  savings: { amount: string | undefined; note: string | undefined };
   positionals: string[];
   version: boolean;
   /** `costs --anomalies`: the spend-spike list instead of the spend chart. */
@@ -501,6 +503,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // feedback`: each command reads it into its own flag group.
         folder: { type: "string" },
         event: { type: "string" },
+        // `savings log`: a manual saving's monthly amount (`--note` is the shared one).
+        amount: { type: "string" },
       },
     });
   } catch (e) {
@@ -687,6 +691,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       sort: str("sort"),
       desc: values.desc === true,
     },
+    savings: { amount: str("amount"), note: str("note") },
     positionals: parsed.positionals,
     version: values.version === true,
     anomalies: values.anomalies === true,

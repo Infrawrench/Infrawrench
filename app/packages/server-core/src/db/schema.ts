@@ -5078,6 +5078,101 @@ export const businessMetricImportRuns = pgTable(
   }),
 );
 
+/**
+ * Realized savings: one row per action that was expected to save money.
+ *
+ * The *realized* figure is never stored. Provider billing restates for days or
+ * weeks, so it is recomputed on every read from `cost_daily` (see
+ * `savings/realized.ts`); this row is only the fact of the action: what was
+ * done, when, to which resource, and what it was projected to save.
+ *
+ * Resource identity is **snapshotted** (`external_id`, `plugin_id`,
+ * `resource_name`) rather than joined, because the commonest event (an orphan
+ * deletion) is about a resource that no longer exists: the `resources` row
+ * gets soft-deleted, and the saving must outlive it.
+ */
+export const savingsEvents = pgTable(
+  "savings_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** rightsizing | orphan_deletion | sleep_schedule | manual */
+    kind: text("kind").notNull(),
+    /** in_app | detected | manual */
+    source: text("source").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    /** First day the action was in effect (UTC). */
+    occurredOn: date("occurred_on").notNull(),
+    /** Last day in force, inclusive; null while it still is. */
+    endedOn: date("ended_on"),
+    /** No FK: a deleted account's history stays readable, attributed by snapshot. */
+    accountId: text("account_id"),
+    pluginId: text("plugin_id"),
+    resourceTypeId: text("resource_type_id"),
+    /** `resources.id`, deliberately without an FK (see above). */
+    resourceId: text("resource_id"),
+    /** Provider-native id: the join against `cost_daily.resource_id`. */
+    externalId: text("external_id"),
+    resourceName: text("resource_name"),
+    /** Tags at the time of the action, for cost-centre attribution by rule. */
+    tags: jsonb("tags").$type<Record<string, string>>(),
+    /** Explicit attribution; null means "resolve from the allocation rules". */
+    costCentreId: text("cost_centre_id").references(() => costCentres.id, {
+      onDelete: "set null",
+    }),
+    projectedMonthlyAmount: doublePrecision("projected_monthly_amount"),
+    currency: text("currency"),
+    /**
+     * Price-table estimate of the resource's daily cost before the action:
+     * the baseline used when the provider has no per-resource billing.
+     */
+    baselineDailyEstimate: doublePrecision("baseline_daily_estimate"),
+    /** Price-table estimate after the action (a resize's new size). */
+    postDailyEstimate: doublePrecision("post_daily_estimate"),
+    /** Sleep schedules: the weekly off fraction the schedule was set to. */
+    offFraction: doublePrecision("off_fraction"),
+    scheduleId: text("schedule_id"),
+    horizonMonths: integer("horizon_months"),
+    /**
+     * Idempotency key for automatic events, so an in-app action and the sync
+     * that later observes the same change record one saving, not two.
+     */
+    dedupeKey: text("dedupe_key"),
+    costAnnotationId: text("cost_annotation_id").references(() => costAnnotations.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgOccurredIdx: index("savings_events_org_occurred_idx").on(t.organizationId, t.occurredOn),
+    orgDedupeUnique: uniqueIndex("savings_events_org_dedupe_unique")
+      .on(t.organizationId, t.dedupeKey)
+      .where(sql`${t.dedupeKey} IS NOT NULL`),
+    orgScheduleIdx: index("savings_events_org_schedule_idx").on(t.organizationId, t.scheduleId),
+  }),
+);
+
+/**
+ * Per-org tuning for realized savings. No row means the shipped defaults: the
+ * `org_cost_efficiency_settings` protocol.
+ */
+export const orgSavingsSettings = pgTable("org_savings_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  horizonMonths: integer("horizon_months").notNull().default(12),
+  shortfallThresholdPercent: integer("shortfall_threshold_percent").notNull().default(70),
+  baselineWindowDays: integer("baseline_window_days").notNull().default(14),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";

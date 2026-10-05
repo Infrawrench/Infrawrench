@@ -35,6 +35,8 @@ import {
   DEFAULT_BUDGET_INPUT,
   budgetWithStatusToInput,
   DEFAULT_COST_GRAPH_CONFIG,
+  RealizedSavingsCard,
+  RealizedSavingsWidgetConfigModal,
   type BudgetInput,
   type BudgetWithStatus,
   type CostAccountStatus,
@@ -64,7 +66,12 @@ import {
   type CustomGraphsClient,
   useStableGT,
 } from "@infrawrench/ui";
-import type { DashboardPin, DashboardWorkflowPin } from "@infrawrench/client-core";
+import {
+  DEFAULT_REALIZED_SAVINGS_WIDGET_CONFIG,
+  type DashboardPin,
+  type DashboardWorkflowPin,
+  type RealizedSavingsWidgetConfig,
+} from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { createWebCostApi } from "@/lib/cost-client";
 import { createWebDashboardExportClient } from "@/lib/dashboard-export-client";
@@ -137,6 +144,7 @@ export function DashboardView({
   const [spotlightMode, setSpotlightMode] = useState<"pin" | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [savingsModal, setSavingsModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
   const [reportPickerOpen, setReportPickerOpen] = useState(false);
@@ -339,6 +347,34 @@ export function DashboardView({
       });
       setWidgets((prev) => [...prev, created]);
     }
+  }
+
+  /** A realized savings card holds only a view choice; the report is the org's. */
+  async function saveSavingsWidget(
+    widget: DashboardWidget | null,
+    value: { title: string; grouping: RealizedSavingsWidgetConfig["grouping"]; months: number },
+  ) {
+    const config: RealizedSavingsWidgetConfig = {
+      version: 1,
+      grouping: value.grouping,
+      months: value.months,
+    };
+    if (widget) {
+      const updated = await apiPatch<DashboardWidget>(
+        `/api/org/${orgId}/dashboards/widgets/${widget.id}`,
+        { title: value.title, config },
+      );
+      setWidgets((prev) => prev.map((w) => (w.id === widget.id ? { ...w, ...updated } : w)));
+    } else {
+      const created = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+        dashboardId,
+        kind: "realized_savings",
+        title: value.title,
+        config,
+      });
+      setWidgets((prev) => [...prev, created]);
+    }
+    setSavingsModal(null);
   }
 
   async function saveBudgetWidget(widget: DashboardWidget | null, input: BudgetInput) {
@@ -622,6 +658,14 @@ export function DashboardView({
                     setAddMenuOpen(false);
                     setGraphPickerOpen(true);
                   }}
+                  onPickRealizedSavings={
+                    costApi.getRealizedSavings
+                      ? () => {
+                          setAddMenuOpen(false);
+                          setSavingsModal({ widget: null });
+                        }
+                      : undefined
+                  }
                   onClose={() => setAddMenuOpen(false)}
                 />
               )}
@@ -646,7 +690,8 @@ export function DashboardView({
                       (card.widget.kind === "cost_graph" ||
                         card.widget.kind === "cost_report" ||
                         card.widget.kind === "custom_graph" ||
-                        card.widget.kind === "cost_canvas")
+                        card.widget.kind === "cost_canvas" ||
+                        card.widget.kind === "realized_savings")
                         ? "col-span-2"
                         : undefined
                     }
@@ -726,6 +771,14 @@ export function DashboardView({
                         }
                         onRemove={() => void handleRemoveWidget(card.widget.id)}
                       />
+                    ) : card.widget.kind === "realized_savings" ? (
+                      <RealizedSavingsCard
+                        title={card.widget.title}
+                        config={card.widget.config as RealizedSavingsWidgetConfig}
+                        api={costApi}
+                        onEdit={() => setSavingsModal({ widget: card.widget })}
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
                     ) : (
                       <BudgetWidgetCard
                         budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
@@ -772,6 +825,14 @@ export function DashboardView({
                         setAddMenuOpen(false);
                         setGraphPickerOpen(true);
                       }}
+                      onPickRealizedSavings={
+                        costApi.getRealizedSavings
+                          ? () => {
+                              setAddMenuOpen(false);
+                              setSavingsModal({ widget: null });
+                            }
+                          : undefined
+                      }
                       onClose={() => setAddMenuOpen(false)}
                     />
                   )}
@@ -804,6 +865,22 @@ export function DashboardView({
             api={costApi}
             onSave={(title, config) => saveCostWidget(costModal.widget, title, config)}
             onClose={() => setCostModal(null)}
+          />
+        )}
+
+        {savingsModal && (
+          <RealizedSavingsWidgetConfigModal
+            initial={{
+              title: savingsModal.widget?.title ?? "",
+              grouping: savingsModal.widget
+                ? (savingsModal.widget.config as RealizedSavingsWidgetConfig).grouping
+                : DEFAULT_REALIZED_SAVINGS_WIDGET_CONFIG.grouping,
+              months: savingsModal.widget
+                ? (savingsModal.widget.config as RealizedSavingsWidgetConfig).months
+                : DEFAULT_REALIZED_SAVINGS_WIDGET_CONFIG.months,
+            }}
+            onSave={(value) => saveSavingsWidget(savingsModal.widget, value)}
+            onClose={() => setSavingsModal(null)}
           />
         )}
 
