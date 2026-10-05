@@ -109,6 +109,59 @@ describe("collectOrphanGroups", () => {
         cost: null,
         owner: null,
         lastSyncedAt: null,
+        // No `remediationCommands` on this plugin: the field is still present,
+        // with nothing in it.
+        remediation: { commands: [], placeholders: [], iac: null },
+      },
+    ]);
+  });
+
+  it("asks the owning plugin for remediation commands, with the row's fields", () => {
+    const seen: unknown[] = [];
+    const withCommands: OrphanScanPlugin = {
+      ...hetzner,
+      remediationCommands: (finding) => {
+        seen.push(finding);
+        return [
+          {
+            tool: "hcloud",
+            command: "hcloud volume delete 1001",
+            description: "Delete the volume.",
+            destructive: true,
+          },
+        ];
+      },
+    };
+    const groups = collectOrphanGroups({
+      plugins: [withCommands],
+      accounts,
+      resources: [
+        resource({
+          id: "vol-1",
+          displayName: "backups",
+          externalId: "1001",
+          fields: { serverId: "", location: "fsn1" },
+        }),
+      ],
+    });
+    expect(seen).toEqual([
+      {
+        kind: "orphan",
+        reason: "Volume is not attached to any server",
+        resource: {
+          resourceTypeId: "volume",
+          displayName: "backups",
+          externalId: "1001",
+          fields: { serverId: "", location: "fsn1" },
+        },
+      },
+    ]);
+    expect(groups[0]!.resources[0]!.remediation?.commands).toEqual([
+      {
+        tool: "hcloud",
+        command: "hcloud volume delete 1001",
+        description: "Delete the volume.",
+        destructive: true,
       },
     ]);
   });

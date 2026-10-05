@@ -4,6 +4,7 @@ import { AzureClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { azureTerraformExport } from "./terraform.js";
+import { azureRemediationCommands } from "./remediation.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
@@ -174,4 +175,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   fetchPriceCatalog,
   terraformExport: azureTerraformExport,
+  remediationCommands: azureRemediationCommands,
 };

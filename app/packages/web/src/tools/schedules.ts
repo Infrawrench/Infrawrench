@@ -39,7 +39,9 @@ export function scheduleTools(): ToolDefinition[] {
       description:
         "Every sleep/wake schedule in the organization: the weekly off/on window, next due " +
         "transition, last run outcome (including freeze skips and failures), and the " +
-        "projected monthly saving computed from trailing per-resource spend. Purely a read.",
+        "projected monthly saving computed from trailing per-resource spend, and " +
+        "`remediation.commands`: the provider CLI stop/start commands for doing the same by hand. " +
+        "Purely a read.",
       inputSchema: {},
       risk: "read",
       permission: "resources:read",

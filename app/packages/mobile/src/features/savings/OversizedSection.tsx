@@ -4,6 +4,7 @@ import { formatCo2e, formatMoney, type OversizedResource } from "@infrawrench/cl
 import { Card, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
+import { RemediationCommands } from "./RemediationCommands";
 import { useRightsizing } from "./useRightsizing";
 
 /**
@@ -64,7 +65,10 @@ export function OversizedSection() {
             </View>
             <Card list>
               {group.resources.map((r) => (
-                <OversizedRow key={r.id} resource={r} onPress={() => openResource(r)} />
+                <View key={r.id}>
+                  <OversizedRow resource={r} onPress={() => openResource(r)} />
+                  <RemediationCommands remediation={r.remediation} />
+                </View>
               ))}
             </Card>
           </View>
@@ -74,8 +78,8 @@ export function OversizedSection() {
       {data !== null && data.accounts.length > 0 && (
         <Text style={styles.footnote}>
           Savings are quoted from each provider&apos;s live size catalog over {data.windowDays} days
-          of stored metrics. Apply a resize from the web or desktop app — most providers require the
-          machine to be stopped first.
+          of stored metrics. Apply a resize from the web or desktop app, or copy a row&apos;s
+          commands and run them yourself. Most providers require the machine to be stopped first.
         </Text>
       )}
     </>

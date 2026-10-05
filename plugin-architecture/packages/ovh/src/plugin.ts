@@ -15,6 +15,7 @@ import { OctaviaLoadBalancerResourceType } from "./resources/octavia-load-balanc
 import { VolumeSnapshotResourceType } from "./resources/volume-snapshot.js";
 import { ContainerRegistryResourceType } from "./resources/container-registry.js";
 import { ovhTerraformExport } from "./terraform.js";
+import { ovhRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "ovh",
@@ -105,4 +106,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new OvhClient(credentials, resourceTypes, services),
   terraformExport: ovhTerraformExport,
+  remediationCommands: ovhRemediationCommands,
 };

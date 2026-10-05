@@ -18,6 +18,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { snowflakeTerraformExport } from "./terraform.js";
 import { SNOWFLAKE_WAREHOUSE_SINK } from "./warehouse-sink.js";
+import { snowflakeRemediationCommands } from "./remediation.js";
 
 const PRICING_LINK = {
   label: "Snowflake pricing",
@@ -207,4 +208,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: snowflakeTerraformExport,
   listCredentialOptions,
+  remediationCommands: snowflakeRemediationCommands,
 };

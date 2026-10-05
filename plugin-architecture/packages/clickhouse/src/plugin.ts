@@ -11,6 +11,7 @@ import { ApiKeyResourceType } from "./resources/api-key.js";
 import { MemberResourceType } from "./resources/member.js";
 import { PostgresResourceType } from "./resources/postgres.js";
 import { clickhouseTerraformExport } from "./terraform.js";
+import { clickhouseRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "clickhouse",
@@ -127,4 +128,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new ClickHouseClient(credentials, services),
   parseStatusFeed,
   terraformExport: clickhouseTerraformExport,
+  remediationCommands: clickhouseRemediationCommands,
 };

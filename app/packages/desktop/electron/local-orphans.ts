@@ -81,6 +81,9 @@ export async function listLocalOrphans(): Promise<OrphanListResponse> {
       id: plugin.manifest.id,
       displayName: plugin.manifest.displayName,
       resourceTypes: plugin.resourceTypes,
+      // Commands are pure string work over the stored fields, so local mode
+      // gets them too; only the Terraform hint (cloud IaC state) is absent.
+      remediationCommands: plugin.remediationCommands?.bind(plugin),
     })),
     accounts: accountRows.map((a) => ({
       id: a.id,

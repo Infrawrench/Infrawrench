@@ -258,9 +258,10 @@ export function issueBrowseUrl(siteUrl: string, issueKey: string): string {
 
 // --- ADF ---
 
-/** An Atlassian Document Format node. Loose by design: we only emit three kinds. */
+/** An Atlassian Document Format node. Loose by design: we only emit four kinds. */
 export interface AdfNode {
   type: string;
+  attrs?: Record<string, string>;
   text?: string;
   content?: AdfNode[];
 }
@@ -279,7 +280,9 @@ export interface AdfDocument {
  * text but loses every line break, and a JSON-shaped string would be displayed
  * as JSON. We compose descriptions ourselves from finding data, so plain text
  * in, structured document out, is the whole contract: blank lines separate
- * paragraphs, single newlines become hard breaks.
+ * paragraphs, single newlines become hard breaks, and a block fenced with
+ * three backticks (the remediation commands) becomes a `codeBlock`, so a
+ * command stays one copyable unit instead of a paragraph with stray fences.
  *
  * Returns `null` for text with no content: a `doc` with an empty `content`
  * array is not valid ADF, so callers omit the field entirely instead.
@@ -294,6 +297,16 @@ export function toAdf(text: string): AdfDocument | null {
     // sole text node is spaces: visually empty, but enough to make the
     // "no content" check below think there is content.
     if (block.trim().length === 0) continue;
+
+    const fence = /^```([A-Za-z0-9_+-]*)\n([\s\S]*?)\n```$/.exec(block.trim());
+    if (fence) {
+      content.push({
+        type: "codeBlock",
+        ...(fence[1] ? { attrs: { language: fence[1] } } : {}),
+        content: fence[2] ? [{ type: "text", text: fence[2] }] : [],
+      });
+      continue;
+    }
 
     const lines = block.split("\n");
     const inline: AdfNode[] = [];

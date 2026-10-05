@@ -28,8 +28,11 @@ import {
   type EfficiencyAlertEvent,
   type EfficiencyAlertKind,
 } from "@infrawrench/client-core";
+import { resolveRemediationCommands, type CommitmentKind } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
+import { loadPlugins } from "../plugins/loader";
 import {
+  accountCommitments,
   accounts,
   businessMetrics,
   commitmentExpiryEvents,
@@ -87,7 +90,12 @@ export async function listEfficiencyAlerts(
           .select({
             id: commitmentIdleEvents.id,
             accountId: commitmentIdleEvents.accountId,
+            commitmentId: commitmentIdleEvents.commitmentId,
             accountName: accounts.displayName,
+            pluginId: accountCommitments.pluginId,
+            commitmentKind: accountCommitments.kind,
+            commitmentScope: accountCommitments.scope,
+            commitmentRegion: accountCommitments.region,
             description: commitmentIdleEvents.description,
             periodKey: commitmentIdleEvents.periodKey,
             windowFrom: commitmentIdleEvents.windowFrom,
@@ -103,6 +111,13 @@ export async function listEfficiencyAlerts(
           })
           .from(commitmentIdleEvents)
           .leftJoin(accounts, eq(accounts.id, commitmentIdleEvents.accountId))
+          .leftJoin(
+            accountCommitments,
+            and(
+              eq(accountCommitments.accountId, commitmentIdleEvents.accountId),
+              eq(accountCommitments.commitmentId, commitmentIdleEvents.commitmentId),
+            ),
+          )
           .where(eq(commitmentIdleEvents.organizationId, organizationId))
           .orderBy(desc(commitmentIdleEvents.firedAt))
           .limit(limit)
@@ -159,6 +174,13 @@ export async function listEfficiencyAlerts(
       : Promise.resolve([]),
   ]);
 
+  // Idle commitments carry the owning plugin's commitment commands (inspect,
+  // exchange, list for sale, change scope: whatever that provider offers).
+  const pluginById =
+    idle.length > 0
+      ? new Map((await loadPlugins()).map(({ plugin }) => [plugin.manifest.id, plugin]))
+      : new Map();
+
   const events: EfficiencyAlertEvent[] = [
     ...expiry.map((r) => ({
       id: r.id,
@@ -201,6 +223,19 @@ export async function listEfficiencyAlerts(
       },
       firedAt: r.firedAt.toISOString(),
       notifiedAt: r.notifiedAt?.toISOString() ?? null,
+      remediation:
+        r.pluginId && r.commitmentKind
+          ? resolveRemediationCommands(pluginById.get(r.pluginId), {
+              kind: "idle-commitment",
+              commitment: {
+                id: r.commitmentId,
+                kind: r.commitmentKind as CommitmentKind,
+                description: r.description,
+                scope: r.commitmentScope,
+                region: r.commitmentRegion,
+              },
+            })
+          : null,
     })),
     ...regression.map((r) => ({
       id: r.id,

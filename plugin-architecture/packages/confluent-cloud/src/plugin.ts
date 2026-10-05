@@ -6,6 +6,7 @@ import { CONFLUENT_PREFLIGHT, confluentPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { confluentTerraformExport } from "./terraform.js";
+import { confluentRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "confluent-cloud",
@@ -60,4 +61,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   policyTemplate: confluentPolicyTemplate,
   terraformExport: confluentTerraformExport,
+  remediationCommands: confluentRemediationCommands,
 };

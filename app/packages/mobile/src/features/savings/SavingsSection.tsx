@@ -4,6 +4,7 @@ import { formatMoney, type OrphanedResource } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
+import { RemediationCommands } from "./RemediationCommands";
 import { useOrphans } from "./useOrphans";
 
 /**
@@ -73,14 +74,16 @@ export function SavingsSection() {
             </View>
             <Card list>
               {group.resources.map((r) => (
-                <OrphanRow
-                  key={r.id}
-                  resource={r}
-                  showCost={showCost}
-                  showOwner={showOwner}
-                  costWindowDays={data.costWindowDays}
-                  onPress={() => openResource(r)}
-                />
+                <View key={r.id}>
+                  <OrphanRow
+                    resource={r}
+                    showCost={showCost}
+                    showOwner={showOwner}
+                    costWindowDays={data.costWindowDays}
+                    onPress={() => openResource(r)}
+                  />
+                  <RemediationCommands remediation={r.remediation} />
+                </View>
               ))}
             </Card>
           </View>

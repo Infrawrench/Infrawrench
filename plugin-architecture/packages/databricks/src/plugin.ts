@@ -28,6 +28,7 @@ import {
 import { LakebaseBranchResourceType, LakebaseProjectResourceType } from "./resources/lakebase.js";
 import { databricksTerraformExport } from "./terraform.js";
 import { DATABRICKS_WAREHOUSE_SINK } from "./warehouse-sink.js";
+import { databricksRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "databricks",
@@ -106,4 +107,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new DatabricksClient(credentials, resourceTypes, services),
   terraformExport: databricksTerraformExport,
+  remediationCommands: databricksRemediationCommands,
 };

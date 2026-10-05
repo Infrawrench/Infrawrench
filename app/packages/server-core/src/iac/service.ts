@@ -330,3 +330,95 @@ export async function getIacResourceStatus(
     driftFieldCount: entry.drift.length,
   };
 }
+
+/** Where Terraform tracks one resource, for the remediation hint. */
+export interface IacManagedAddress {
+  address: string;
+  stateLabel: string | null;
+}
+
+/**
+ * Terraform addresses for a batch of resources, keyed by resource id: the
+ * remediation panel's "this is IaC-managed, edit the code instead" signal.
+ *
+ * Same scoping rule as {@link getIacResourceStatus}: each resource is
+ * reconciled against the newest document for its own account, else the
+ * newest org-wide one, never another account's. Only `managed` and `drifted`
+ * rows come back; an org that has uploaded no state gets an empty map, which
+ * surfaces read as "not known to be managed", not "unmanaged". Callers treat
+ * a throw as an empty map: the hint is an annotation, never a reason to fail
+ * the finding list.
+ */
+export async function lookupIacManagedAddresses(
+  organizationId: string,
+  resourceIds: readonly string[],
+): Promise<Map<string, IacManagedAddress>> {
+  const out = new Map<string, IacManagedAddress>();
+  const unique = [...new Set(resourceIds)].filter(Boolean);
+  if (unique.length === 0) return out;
+
+  const orgWide = await getLatestIacState(organizationId, null);
+  const rows: InventoryRow[] = [];
+  const CHUNK = 500;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    rows.push(
+      ...(await db
+        .select({
+          id: resources.id,
+          pluginId: resources.pluginId,
+          resourceTypeId: resources.resourceTypeId,
+          accountId: resources.accountId,
+          displayName: resources.displayName,
+          externalId: resources.externalId,
+          fieldsJson: resources.fieldsJson,
+          outputsJson: resources.outputsJson,
+          parentResourceId: resources.parentResourceId,
+        })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            inArray(resources.id, unique.slice(i, i + CHUNK)),
+          ),
+        )),
+    );
+  }
+
+  const byAccount = new Map<string, InventoryRow[]>();
+  for (const row of rows) {
+    const list = byAccount.get(row.accountId);
+    if (list) list.push(row);
+    else byAccount.set(row.accountId, [row]);
+  }
+
+  const { capabilityFor, typeMap } = await loadCapabilities();
+  const entriesByState = new Map<string, Awaited<ReturnType<typeof loadIacStateResources>>>();
+  for (const [accountId, accountRows] of byAccount) {
+    const state = (await getLatestIacState(organizationId, accountId)) ?? orgWide;
+    if (!state) continue;
+    let entries = entriesByState.get(state.id);
+    if (!entries) {
+      entries = await loadIacStateResources(state.id);
+      entriesByState.set(state.id, entries);
+    }
+    const result = reconcileTerraformState({
+      stateResources: entries,
+      inventory: accountRows.map(toResourceInstance),
+      capabilityFor,
+      typeMap,
+    });
+    for (const entry of result.resources) {
+      if (entry.status === "unmanaged" || !entry.terraformAddress) continue;
+      out.set(entry.resourceId, { address: entry.terraformAddress, stateLabel: state.label });
+    }
+  }
+  return out;
+}
+
+/** The plugin's export capability, for deriving the Terraform attribute edit. */
+export async function terraformCapabilityFor(
+  pluginId: string,
+): Promise<TerraformExportCapability | undefined> {
+  const { capabilityFor } = await loadCapabilities();
+  return capabilityFor(pluginId);
+}

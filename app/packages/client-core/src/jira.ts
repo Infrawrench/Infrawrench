@@ -1,4 +1,5 @@
 import type { CloudFetch } from "./fetch";
+import { remediationIssueText, type FindingRemediation } from "./remediation";
 
 /**
  * Jira issue tracking for findings. Server contract: org-scoped
@@ -255,6 +256,11 @@ export interface BuildJiraIssueDraftArgs {
   note?: string;
   /** Deep link back into Infrawrench, appended last. */
   appUrl?: string;
+  /**
+   * The finding's remediation commands, rendered as a "Remediation" section
+   * after the note (see `remediationIssueText`).
+   */
+  remediation?: FindingRemediation | null | undefined;
 }
 
 /**
@@ -275,6 +281,8 @@ export function buildJiraIssueDraft(args: BuildJiraIssueDraftArgs): JiraIssueDra
   const blocks: string[] = [];
   if (lines.length > 0) blocks.push(lines.join("\n"));
   if (args.note) blocks.push(args.note);
+  const remediation = remediationIssueText(args.remediation);
+  if (remediation) blocks.push(remediation);
   if (args.appUrl) blocks.push(`View in Infrawrench: ${args.appUrl}`);
   blocks.push("Filed from Infrawrench.");
 

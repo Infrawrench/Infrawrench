@@ -18,6 +18,7 @@ import type { RightsizingListResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { c, formatCo2e, formatMoney, printJson, println, printTable, type Column } from "../output";
+import { printRemediation } from "../remediation";
 
 type Oversized = RightsizingListResponse["accounts"][number]["resources"][number];
 
@@ -81,10 +82,12 @@ export async function cmdOversized(ctx: CliContext): Promise<void> {
     printTable(group.resources, columns);
   }
 
+  printRemediation(response.accounts.flatMap((g) => g.resources));
+
   println();
   println(
     c.dim(
-      "Savings are quoted from each provider's live size catalog; CO2e is estimated from published grid figures (see `infrawrench carbon`). Apply a resize from the web or desktop Costs panel — it goes through the normal resource update (change freezes and audit logging apply), and most providers require the machine to be stopped first.",
+      "Savings are quoted from each provider's live size catalog; CO2e is estimated from published grid figures (see `infrawrench carbon`). Apply a resize from the web or desktop Costs panel, or run the commands above yourself. The Apply button goes through the normal resource update (change freezes and audit logging apply), and most providers require the machine to be stopped first.",
     ),
   );
 }

@@ -15,6 +15,12 @@
  * by hosts that have billing data (see `costBasis`).
  */
 import { evaluateOrphanRule, type OrphanRule } from "./resource.js";
+import {
+  resolveRemediationCommands,
+  type FindingRemediation,
+  type RemediationFinding,
+  type RemediationCommand,
+} from "./remediation.js";
 
 /** Best-effort spend attributed to one flagged resource. */
 export interface OrphanCostAnnotation {
@@ -81,6 +87,13 @@ export interface OrphanedResource {
   owner: ResourceOwnerAnnotation | null;
   /** Last time this resource's state was synced from the provider, if ever. */
   lastSyncedAt: string | null;
+  /**
+   * Ready-to-run commands from the owning plugin's `remediationCommands`,
+   * plus a Terraform hint when a host knows the resource is IaC-managed.
+   * Optional only for responses from hosts that predate it; every current
+   * host sets it, with empty `commands` when the plugin has none.
+   */
+  remediation?: FindingRemediation;
 }
 
 export interface OrphanAccountGroup {
@@ -140,6 +153,8 @@ export interface OrphanScanPlugin {
   id: string;
   displayName: string;
   resourceTypes: readonly OrphanScanResourceType[];
+  /** The plugin's remediation generator, when it has one. */
+  remediationCommands?: ((finding: RemediationFinding) => RemediationCommand[]) | undefined;
 }
 
 /** The part of an account row the scan reads. */
@@ -190,7 +205,11 @@ export function collectOrphanGroups({
   // pluginId → { pluginName, rules: typeId → { rule, typeName } }
   const ruleIndex = new Map<
     string,
-    { pluginName: string; rules: Map<string, { rule: OrphanRule; typeName: string }> }
+    {
+      pluginName: string;
+      plugin: OrphanScanPlugin;
+      rules: Map<string, { rule: OrphanRule; typeName: string }>;
+    }
   >();
   for (const plugin of plugins) {
     const rules = new Map<string, { rule: OrphanRule; typeName: string }>();
@@ -198,7 +217,7 @@ export function collectOrphanGroups({
       if (type.orphanRule)
         rules.set(type.id, { rule: type.orphanRule, typeName: type.displayName });
     }
-    if (rules.size > 0) ruleIndex.set(plugin.id, { pluginName: plugin.displayName, rules });
+    if (rules.size > 0) ruleIndex.set(plugin.id, { pluginName: plugin.displayName, plugin, rules });
   }
   if (ruleIndex.size === 0) return [];
 
@@ -209,7 +228,8 @@ export function collectOrphanGroups({
     const pluginEntry = ruleIndex.get(r.pluginId);
     const typeEntry = pluginEntry?.rules.get(r.resourceTypeId);
     if (!pluginEntry || !typeEntry) continue;
-    const reason = evaluateOrphanRule(typeEntry.rule, asFields(r.fields));
+    const fields = asFields(r.fields);
+    const reason = evaluateOrphanRule(typeEntry.rule, fields);
     if (reason === null) continue;
     const account = accountMap.get(r.accountId);
     if (!account) continue;
@@ -238,6 +258,16 @@ export function collectOrphanGroups({
       // billing nor ownership.
       owner: null,
       lastSyncedAt: r.lastSyncedAt,
+      remediation: resolveRemediationCommands(pluginEntry.plugin, {
+        kind: "orphan",
+        reason,
+        resource: {
+          resourceTypeId: r.resourceTypeId,
+          displayName: r.displayName,
+          externalId: r.externalId,
+          fields: primitiveFields(fields),
+        },
+      }),
     });
   }
 
@@ -279,4 +309,16 @@ export function countUnownedOrphans(groups: readonly OrphanAccountGroup[]): numb
 function asFields(raw: unknown): Record<string, string | number | boolean> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   return raw as Record<string, string | number | boolean>;
+}
+
+/** The primitive entries of a fields bag: what remediation generators read. */
+export function primitiveFields(raw: unknown): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+    }
+  }
+  return out;
 }

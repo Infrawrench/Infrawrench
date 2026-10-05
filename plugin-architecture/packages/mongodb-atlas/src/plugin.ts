@@ -11,6 +11,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { mongodbAtlasTerraformExport } from "./terraform.js";
+import { mongodbAtlasRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "mongodb-atlas",
@@ -102,4 +103,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: mongodbAtlasTerraformExport,
   listCredentialOptions,
+  remediationCommands: mongodbAtlasRemediationCommands,
 };

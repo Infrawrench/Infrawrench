@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { T, Var, t, useGT } from "gt-react";
 import { formatCo2e, formatMoney } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { OpenPullRequestButton } from "../issue-filing/OpenPullRequestButton.js";
+import { RemediateToggle, RemediationPanel } from "./RemediationPanel.js";
 import type { OversizedResource, RightsizingClient, RightsizingListResponse } from "./types.js";
 
 export interface OversizedSectionProps {
@@ -76,6 +77,16 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   /** resource id → applied size *label* (what the row displays). */
   const [applied, setApplied] = useState<Record<string, string>>({});
+  /** Rows whose Remediate panel is expanded. */
+  const [openRemediation, setOpenRemediation] = useState<ReadonlySet<string>>(new Set());
+  const toggleRemediation = useCallback((id: string) => {
+    setOpenRemediation((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const requestSeq = useRef(0);
 
   const refresh = useCallback(
@@ -182,136 +193,158 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
             <table className="w-full text-sm">
               <tbody>
                 {group.resources.map((r) => (
-                  <tr key={r.id} className="border-b border-border last:border-b-0 align-top">
-                    <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
-                      {onOpenResource ? (
-                        <button
-                          type="button"
-                          className="hover:underline"
-                          onClick={() => onOpenResource(r, group.accountId)}
-                        >
-                          {r.displayName}
-                        </button>
-                      ) : (
-                        r.displayName
-                      )}
-                      <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-xs font-normal text-on-surface-tertiary">
-                        {r.resourceTypeName}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
-                      {r.currentSize.label}
-                      <span className="mx-1 text-on-surface-faint">→</span>
-                      <span className="text-on-surface">{r.recommendedSize.label}</span>
-                    </td>
-                    <td className="px-3 py-2.5 w-full text-on-surface-secondary">
-                      {gt("p95 CPU {cpu}%", { cpu: r.cpuP95 })}
-                      {r.memoryMeasured && r.memoryP95 !== null ? (
-                        <> · {gt("p95 memory {pct}%", { pct: r.memoryP95 })}</>
-                      ) : (
-                        <> · {gt("memory not measured")}</>
-                      )}
-                      {rowErrors[r.id] && (
-                        <div role="alert" className="mt-1 text-xs text-danger">
-                          {rowErrors[r.id]}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-right text-on-surface">
-                      {r.monthlySaving !== null ? (
-                        <>
-                          {formatMoney(r.monthlySaving, r.currency)}
-                          <span className="ml-1 text-xs text-on-surface-faint">/mo</span>
-                        </>
-                      ) : (
-                        <span className="text-on-surface-faint">—</span>
-                      )}
-                      {r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0 && (
-                        <div
-                          className="text-xs text-on-surface-faint"
-                          title={gt("Estimated, not measured")}
-                        >
-                          {gt("~{amount} CO2e/mo", { amount: formatCo2e(r.monthlyKgCo2eSaving) })}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-right">
-                      {applied[r.id] ? (
-                        <span className="text-xs text-on-surface-faint">
-                          {gt("Applied {size}", { size: applied[r.id] })}
+                  <Fragment key={r.id}>
+                    <tr
+                      className={`border-border align-top ${
+                        openRemediation.has(r.id) ? "" : "border-b last:border-b-0"
+                      }`}
+                    >
+                      <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
+                        {onOpenResource ? (
+                          <button
+                            type="button"
+                            className="hover:underline"
+                            onClick={() => onOpenResource(r, group.accountId)}
+                          >
+                            {r.displayName}
+                          </button>
+                        ) : (
+                          r.displayName
+                        )}
+                        <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-xs font-normal text-on-surface-tertiary">
+                          {r.resourceTypeName}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={applying.has(r.id)}
-                          onClick={() => void apply(r, group.accountId)}
-                          className="rounded-lg border border-border bg-surface-raised px-3 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
-                        >
-                          {applying.has(r.id) ? gt("Applying…") : gt("Apply resize")}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-right">
-                      <span className="inline-flex items-center gap-3">
-                        <OpenPullRequestButton
-                          sourceKind="oversized"
-                          sourceId={r.id}
-                          resourceId={r.id}
-                          change={{ kind: "resize", recommendedSizeId: r.recommendedSize.id }}
-                        />
-                        <FileIssueButton
-                          sourceKind="oversized"
-                          sourceId={r.id}
-                          resourceId={r.id}
-                          monthlyCost={
-                            r.monthlySaving !== null
-                              ? { amount: r.monthlySaving, currency: r.currency }
-                              : undefined
-                          }
-                          draft={{
-                            title: gt("Right-size {name} from {from} to {to}", {
-                              name: r.displayName,
-                              from: r.currentSize.label,
-                              to: r.recommendedSize.label,
-                            }),
-                            details: [
-                              { label: gt("Resource"), value: r.displayName },
-                              { label: gt("Type"), value: r.resourceTypeName },
-                              { label: gt("Provider"), value: group.pluginName },
-                              { label: gt("Account"), value: group.accountName },
-                              { label: gt("Current size"), value: r.currentSize.label },
-                              { label: gt("Recommended size"), value: r.recommendedSize.label },
-                              { label: gt("p95 CPU"), value: `${r.cpuP95}%` },
-                              {
-                                label: gt("p95 memory"),
-                                value:
-                                  r.memoryMeasured && r.memoryP95 !== null
-                                    ? `${r.memoryP95}%`
-                                    : gt("not measured"),
-                              },
-                              {
-                                label: gt("Estimated saving"),
-                                value:
-                                  r.monthlySaving !== null
-                                    ? `${formatMoney(r.monthlySaving, r.currency)}/mo`
-                                    : undefined,
-                              },
-                              {
-                                label: gt("Estimated carbon saving"),
-                                value:
-                                  r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0
-                                    ? `${formatCo2e(r.monthlyKgCo2eSaving)} CO2e/mo`
-                                    : undefined,
-                              },
-                            ],
-                            note: gt(
-                              "Infrawrench can apply this resize from the Savings view once the change is approved.",
-                            ),
-                          }}
-                        />
-                      </span>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
+                        {r.currentSize.label}
+                        <span className="mx-1 text-on-surface-faint">→</span>
+                        <span className="text-on-surface">{r.recommendedSize.label}</span>
+                      </td>
+                      <td className="px-3 py-2.5 w-full text-on-surface-secondary">
+                        {gt("p95 CPU {cpu}%", { cpu: r.cpuP95 })}
+                        {r.memoryMeasured && r.memoryP95 !== null ? (
+                          <> · {gt("p95 memory {pct}%", { pct: r.memoryP95 })}</>
+                        ) : (
+                          <> · {gt("memory not measured")}</>
+                        )}
+                        {rowErrors[r.id] && (
+                          <div role="alert" className="mt-1 text-xs text-danger">
+                            {rowErrors[r.id]}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-right text-on-surface">
+                        {r.monthlySaving !== null ? (
+                          <>
+                            {formatMoney(r.monthlySaving, r.currency)}
+                            <span className="ml-1 text-xs text-on-surface-faint">/mo</span>
+                          </>
+                        ) : (
+                          <span className="text-on-surface-faint">—</span>
+                        )}
+                        {r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0 && (
+                          <div
+                            className="text-xs text-on-surface-faint"
+                            title={gt("Estimated, not measured")}
+                          >
+                            {gt("~{amount} CO2e/mo", { amount: formatCo2e(r.monthlyKgCo2eSaving) })}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-right">
+                        {applied[r.id] ? (
+                          <span className="text-xs text-on-surface-faint">
+                            {gt("Applied {size}", { size: applied[r.id] })}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={applying.has(r.id)}
+                            onClick={() => void apply(r, group.accountId)}
+                            className="rounded-lg border border-border bg-surface-raised px-3 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
+                          >
+                            {applying.has(r.id) ? gt("Applying…") : gt("Apply resize")}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                        <span className="inline-flex items-center gap-3">
+                          <RemediateToggle
+                            remediation={r.remediation}
+                            open={openRemediation.has(r.id)}
+                            onToggle={() => toggleRemediation(r.id)}
+                          />
+                          <OpenPullRequestButton
+                            sourceKind="oversized"
+                            sourceId={r.id}
+                            resourceId={r.id}
+                            change={{ kind: "resize", recommendedSizeId: r.recommendedSize.id }}
+                          />
+                          <FileIssueButton
+                            sourceKind="oversized"
+                            sourceId={r.id}
+                            resourceId={r.id}
+                            monthlyCost={
+                              r.monthlySaving !== null
+                                ? { amount: r.monthlySaving, currency: r.currency }
+                                : undefined
+                            }
+                            draft={{
+                              title: gt("Right-size {name} from {from} to {to}", {
+                                name: r.displayName,
+                                from: r.currentSize.label,
+                                to: r.recommendedSize.label,
+                              }),
+                              details: [
+                                { label: gt("Resource"), value: r.displayName },
+                                { label: gt("Type"), value: r.resourceTypeName },
+                                { label: gt("Provider"), value: group.pluginName },
+                                { label: gt("Account"), value: group.accountName },
+                                { label: gt("Current size"), value: r.currentSize.label },
+                                { label: gt("Recommended size"), value: r.recommendedSize.label },
+                                { label: gt("p95 CPU"), value: `${r.cpuP95}%` },
+                                {
+                                  label: gt("p95 memory"),
+                                  value:
+                                    r.memoryMeasured && r.memoryP95 !== null
+                                      ? `${r.memoryP95}%`
+                                      : gt("not measured"),
+                                },
+                                {
+                                  label: gt("Estimated saving"),
+                                  value:
+                                    r.monthlySaving !== null
+                                      ? `${formatMoney(r.monthlySaving, r.currency)}/mo`
+                                      : undefined,
+                                },
+                                {
+                                  label: gt("Estimated carbon saving"),
+                                  value:
+                                    r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0
+                                      ? `${formatCo2e(r.monthlyKgCo2eSaving)} CO2e/mo`
+                                      : undefined,
+                                },
+                              ],
+                              note: gt(
+                                "Infrawrench can apply this resize from the Savings view once the change is approved.",
+                              ),
+                              remediation: r.remediation,
+                            }}
+                          />
+                        </span>
+                      </td>
+                    </tr>
+                    {openRemediation.has(r.id) && r.remediation && (
+                      <tr className="border-b border-border last:border-b-0">
+                        <td colSpan={6} className="px-4 pb-3">
+                          <RemediationPanel
+                            remediation={r.remediation}
+                            oneClickLabel={gt("Apply resize")}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

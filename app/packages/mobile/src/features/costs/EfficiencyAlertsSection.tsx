@@ -7,6 +7,7 @@ import {
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
+import { RemediationCommands } from "@/features/savings/RemediationCommands";
 import { useEfficiencyAlerts } from "./useEfficiencyAlerts";
 
 /**
@@ -48,7 +49,10 @@ export function EfficiencyAlertsSection() {
       ) : (
         <Card list>
           {rows.map((event) => (
-            <EventRow key={event.id} event={event} />
+            <View key={event.id}>
+              <EventRow event={event} />
+              <RemediationCommands remediation={event.remediation} />
+            </View>
           ))}
         </Card>
       )}

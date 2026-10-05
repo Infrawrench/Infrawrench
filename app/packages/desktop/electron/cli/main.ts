@@ -244,9 +244,10 @@ COMMANDS
   unit-costs --usage-unit <unit>
                       cost per provider usage unit, no business metric needed [--scale 1m]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
-                      (--local scans this machine's workspace; no cost column without the cloud)
+                      and ready-to-run remediation commands (--local scans this machine's
+                      workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
-                      recommended smaller size and monthly saving (cloud only)
+                      recommended smaller size, monthly saving and resize commands (cloud only)
   prices search [q]   providers' list prices, filtered and sorted by monthly price (cloud only)
                       [--provider aws,gcp] [--area europe] [--region <id>] [--min-vcpus 4]
                       [--max-vcpus 8] [--min-memory 16] [--max-memory 64] [--gpu required|none]

@@ -5,6 +5,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { crusoeTerraformExport } from "./terraform.js";
+import { crusoeRemediationCommands } from "./remediation.js";
 
 const API_KEYS_HELP = {
   label: "Manage Crusoe API keys",
@@ -82,5 +83,6 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CrusoeClient(credentials, RESOURCE_TYPES, services),
   terraformExport: crusoeTerraformExport,
+  remediationCommands: crusoeRemediationCommands,
   parseStatusFeed,
 };

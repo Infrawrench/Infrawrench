@@ -21,7 +21,13 @@ import {
   type SleepSchedule,
   type SleepScheduleListResponse,
 } from "@infrawrench/client-core";
+import {
+  primitiveFields,
+  resolveRemediationCommands,
+  type FindingRemediation,
+} from "@infrawrench/plugin-base";
 import { db } from "../db/client";
+import { loadPlugins } from "../plugin-loader";
 import { accounts, resources } from "../db/schema";
 import { getResourceCostTotals } from "../clickhouse/cost-readers";
 import { addDays, isoDay } from "../cost/dates";
@@ -74,6 +80,7 @@ function toWire(
     externalId: string | null;
   },
   cost: CostTotalEntry | null,
+  remediation: FindingRemediation,
 ): SleepSchedule {
   const timing = {
     daysOfWeek: row.daysOfWeek,
@@ -109,6 +116,7 @@ function toWire(
     currency: saving !== null && cost ? cost.currency : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    remediation,
   };
 }
 
@@ -125,6 +133,7 @@ export async function listSchedules(organizationId: string): Promise<SleepSchedu
         id: resources.id,
         displayName: resources.displayName,
         externalId: resources.externalId,
+        fieldsJson: resources.fieldsJson,
       })
       .from(resources)
       .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, resourceIds))),
@@ -134,6 +143,7 @@ export async function listSchedules(organizationId: string): Promise<SleepSchedu
       .where(and(eq(accounts.organizationId, organizationId), inArray(accounts.id, accountIds))),
     loadCostTotals(organizationId),
   ]);
+  const pluginById = new Map((await loadPlugins()).map((p) => [p.plugin.manifest.id, p.plugin]));
   const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
   const accountById = new Map(accountRows.map((a) => [a.id, a]));
 
@@ -153,6 +163,17 @@ export async function listSchedules(organizationId: string): Promise<SleepSchedu
           externalId,
         },
         cost,
+        // Manual stop/start commands for the same resource: what to run when
+        // the schedule is paused, or to reproduce it from cron elsewhere.
+        resolveRemediationCommands(pluginById.get(row.pluginId), {
+          kind: "sleep-schedule",
+          resource: {
+            resourceTypeId: row.resourceTypeId,
+            displayName: resource?.displayName ?? row.resourceId,
+            externalId,
+            fields: primitiveFields(resource?.fieldsJson),
+          },
+        }),
       );
     }),
   };

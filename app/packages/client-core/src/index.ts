@@ -926,6 +926,7 @@ export * from "./metric-alerts";
 export * from "./query-monitors";
 export * from "./org-config";
 export * from "./rightsizing";
+export * from "./remediation";
 export * from "./session-recordings";
 export * from "./shared-console";
 export * from "./access-requests";

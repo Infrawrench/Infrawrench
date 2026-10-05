@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import {
   GithubPermissionRequiredClientError,
+  remediationCommandLines,
   type BuildJiraIssueDraftArgs,
   type FileGithubIssueResult,
   type GithubIssueRouteResolution,
@@ -239,6 +240,9 @@ export function FileIssueModal({
             ...(githubNote.trim() ? { note: githubNote } : {}),
             ...(finding?.resourceId ? { resourceId: finding.resourceId } : {}),
             ...(finding?.monthlyCost ? { monthlyCost: finding.monthlyCost } : {}),
+            ...(remediationCommandLines(finding?.remediation).length > 0
+              ? { remediation: remediationCommandLines(finding?.remediation) }
+              : {}),
             ...(finding?.appUrl ? { appUrl: finding.appUrl } : {}),
             ...(githubRepo ? { repo: githubRepo } : {}),
             labels: githubLabels,

@@ -10,6 +10,7 @@ import { IpAllocationResourceType } from "./resources/ip-allocation.js";
 import { AppSecretResourceType } from "./resources/app-secret.js";
 import { PostgresClusterResourceType } from "./resources/postgres-cluster.js";
 import { flyTerraformExport } from "./terraform.js";
+import { flyRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "fly",
@@ -64,4 +65,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new FlyClient(credentials, resourceTypes, services),
   parseStatusFeed,
   terraformExport: flyTerraformExport,
+  remediationCommands: flyRemediationCommands,
 };

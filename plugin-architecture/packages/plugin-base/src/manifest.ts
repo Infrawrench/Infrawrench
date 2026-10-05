@@ -1172,6 +1172,17 @@ export interface Plugin {
    */
   terraformExport?: TerraformExportCapability;
   /**
+   * Ready-to-run remediation commands for a savings finding (orphan, oversized,
+   * sleep schedule, idle commitment) on this plugin's resources: provider CLI
+   * lines filled with the stored ids, region and target size. Pure string work
+   * over synced fields, so it lives on the Plugin (no credentials, no API
+   * calls) and runs on every host. Return `[]` for finding kinds or types the
+   * plugin has nothing to say about; precede a destructive command with a
+   * snapshot/backup command where the provider offers one. Hosts call it
+   * through `resolveRemediationCommands`, which catches and validates.
+   */
+  remediationCommands?(finding: RemediationFinding): RemediationCommand[];
+  /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
    * Plugin (not the client) because it needs no credentials: the feed is
@@ -1229,6 +1240,7 @@ export interface Plugin {
 }
 
 // Forward declarations: defined in their own modules but used here
+import type { RemediationCommand, RemediationFinding } from "./remediation.js";
 import type {
   BusinessMetricSourceDeclaration,
   BusinessMetricSourceDryRun,

@@ -1,5 +1,12 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import {
+  strict,
+  ErrorResponses,
+  OrgIdParam,
+  Uuid,
+  IsoDateTime,
+  FindingRemediation,
+} from "../common";
 import type { BuildContext } from "../context";
 // One definition of the shape that keeps the collected figure visible: see
 // `paths/billing-rules.ts`.
@@ -665,6 +672,12 @@ const EfficiencyAlertEvent = strict({
     "When the alert reached its routed destinations, or null when nothing was routed (or the " +
       "routing rule held it for quiet hours and the follow-up pass has not run yet).",
   ),
+  remediation: FindingRemediation.nullable()
+    .optional()
+    .describe(
+      "Idle commitments only: the provider's commands for inspecting and acting on the " +
+        "commitment. Null for the other kinds.",
+    ),
 }).openapi("EfficiencyAlertEvent");
 
 const PushedCostRow = strict({

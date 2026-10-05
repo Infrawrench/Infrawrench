@@ -18,6 +18,8 @@ Flagged resources are grouped by account, each row showing the resource, its typ
 
 Each resource name is a button — activate it to jump to that resource's detail page, where you can confirm it really is unused and delete it in place. It is an ordinary tab stop, so you can reach every flagged resource from the keyboard.
 
+Prefer the terminal? **Remediate** on a row opens the provider CLI commands that clean it up, filled in with the resource's id and region, with a snapshot first where the provider supports one. See [Remediation commands](./remediation-commands.md). They are generated from the synced state, so local mode has them too.
+
 The **mobile app** has the same section at the bottom of its **Costs** tab, grouped by account the same way, and tapping a row opens that resource. It reads your organization's synced resources, so it needs you signed in — there is no local mode on a phone.
 
 <insert [Mobile app Costs tab scrolled to Potential savings, showing two account groups with flagged resources — name, type and reason, and a 30-day cost figure on the right] here>

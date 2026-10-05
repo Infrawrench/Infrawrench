@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.69.0",
+    "version": "1.70.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4377,6 +4377,153 @@
           }
         ]
       },
+      "RemediationPlaceholder": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Shell variable, without the $.",
+            "example": "AWS_PROFILE"
+          },
+          "description": {
+            "type": "string",
+            "example": "AWS CLI profile for this account"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "RemediationCommand": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "CLI the command is written for: aws-cli, gcloud, az, doctl, hcloud, scw, linode-cli, oci, kubectl, terraform, confluent, atlas, gh, twilio, snowflake-sql, curl, or a plugin's own.",
+            "example": "aws-cli"
+          },
+          "command": {
+            "type": "string",
+            "description": "The command line, values already shell-quoted.",
+            "example": "aws ec2 delete-volume --volume-id vol-0a1b2c3d4e5f67890 --region eu-west-1 --profile \"$AWS_PROFILE\""
+          },
+          "description": {
+            "type": "string",
+            "description": "What the command does."
+          },
+          "destructive": {
+            "type": "boolean",
+            "description": "True when it deletes data or releases something that cannot be got back."
+          },
+          "placeholders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemediationPlaceholder"
+            }
+          }
+        },
+        "required": [
+          "tool",
+          "command",
+          "description",
+          "destructive"
+        ],
+        "additionalProperties": false
+      },
+      "FindingRemediation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "commands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemediationCommand"
+            },
+            "description": "In run order; empty when the plugin has nothing to offer for this finding."
+          },
+          "placeholders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemediationPlaceholder"
+            },
+            "description": "Every shell variable the commands reference, deduplicated."
+          },
+          "iac": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "address": {
+                "type": "string",
+                "example": "aws_instance.api"
+              },
+              "stateLabel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attributeChanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "attribute": {
+                      "type": "string"
+                    },
+                    "from": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "HCL rendering of the current value."
+                    },
+                    "to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "HCL rendering of the target value."
+                    }
+                  },
+                  "required": [
+                    "attribute",
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "commands": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RemediationCommand"
+                }
+              }
+            },
+            "required": [
+              "address",
+              "stateLabel",
+              "attributeChanges",
+              "commands"
+            ],
+            "additionalProperties": false,
+            "description": "Set when IaC reconciliation says Terraform manages the resource: edit the named block instead of running the CLI commands, which the next apply would revert."
+          }
+        },
+        "required": [
+          "commands",
+          "placeholders",
+          "iac"
+        ],
+        "additionalProperties": false,
+        "description": "Idle commitments only: the provider's commands for inspecting and acting on the commitment. Null for the other kinds."
+      },
       "EfficiencyAlertEvent": {
         "type": "object",
         "properties": {
@@ -4459,6 +4606,9 @@
             ],
             "format": "date-time",
             "description": "When the alert reached its routed destinations, or null when nothing was routed (or the routing rule held it for quiet hours and the follow-up pass has not run yet)."
+          },
+          "remediation": {
+            "$ref": "#/components/schemas/FindingRemediation"
           }
         },
         "required": [
@@ -10603,6 +10753,17 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "remediation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FindingRemediation"
+              },
+              {
+                "type": "object",
+                "description": "Ready-to-run commands to clean this resource up (snapshot first where it applies)."
+              }
+            ]
           }
         },
         "required": [
@@ -10824,6 +10985,17 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "remediation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FindingRemediation"
+              },
+              {
+                "type": "object",
+                "description": "Ready-to-run commands that perform the same resize from a terminal."
+              }
+            ]
           }
         },
         "required": [
@@ -27803,6 +27975,17 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "remediation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FindingRemediation"
+              },
+              {
+                "type": "object",
+                "description": "Provider CLI stop/start commands for the resource, for doing it by hand."
+              }
+            ]
           }
         },
         "required": [

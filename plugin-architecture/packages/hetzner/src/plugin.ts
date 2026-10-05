@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HetznerClient } from "./client.js";
 import { hetznerTerraformExport } from "./terraform.js";
+import { hetznerRemediationCommands } from "./remediation.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { hetznerPriceCatalog } from "./price-catalog.js";
 import { ServerResourceType } from "./resources/server.js";
@@ -98,5 +99,6 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new HetznerClient(credentials, resourceTypes, services),
   terraformExport: hetznerTerraformExport,
+  remediationCommands: hetznerRemediationCommands,
   parseStatusFeed,
 };

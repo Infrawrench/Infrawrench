@@ -15444,5 +15444,38 @@
   },
   "1baaa179e60cfa8c": "Label-Spalten",
   "9d455f854586b5ca": "Jede markierte Spalte wird zu einem Label mit dem Namen ihrer Kopfzeile, sodass sich Werte danach aufteilen und filtern lassen. Eine leere Zelle lässt dieses Label in der Zeile weg.",
-  "c5c7acdf98ddac33": "Diese Kopfzeile kann nicht als Label-Name verwendet werden: Nutze Buchstaben, Ziffern, - und _."
+  "c5c7acdf98ddac33": "Diese Kopfzeile kann nicht als Label-Name verwendet werden: Nutze Buchstaben, Ziffern, - und _.",
+  "5604337d61ba1ad7": "Befehle ausblenden",
+  "8cbe4fa1223cba39": "Beheben",
+  "8afe69c2a5e0f1cd": "Sofort ausführbare Befehle, für diese Ressource ausgefüllt. Führen Sie sie der Reihe nach aus.",
+  "1fc80d6d7d6424bf": "Alle kopieren",
+  "218882de57951d0a": "Aus dem State-Dokument {label}",
+  "4f2893c5b56cddf5": "(entfernen)",
+  "d4ab36e87ba2a47c": "bisher {value}",
+  "9954411e0bbf09e8": "Zuerst festlegen",
+  "80da0971adf59055": "Destruktiv",
+  "bc83218cb323efa7": [
+    "Lieber im Terminal? Diese Befehle bewirken dasselbe wie",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ". Führen Sie sie der Reihe nach aus."
+  ],
+  "0d6de75082879e65": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Von Terraform verwaltet unter",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Ändern Sie stattdessen die Konfiguration: Das nächste Apply macht eine CLI-Änderung rückgängig."
+    ]
+  }
 }

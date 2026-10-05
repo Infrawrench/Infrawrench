@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import {
   formatMoney,
@@ -7,6 +7,7 @@ import {
 } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { OpenPullRequestButton } from "../issue-filing/OpenPullRequestButton.js";
+import { RemediateToggle, RemediationPanel } from "./RemediationPanel.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
@@ -85,6 +86,16 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
   const gtData = useDataString();
   const [data, setData] = useState<OrphanListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Rows whose Remediate panel is expanded. */
+  const [openRemediation, setOpenRemediation] = useState<ReadonlySet<string>>(new Set());
+  const toggleRemediation = useCallback((id: string) => {
+    setOpenRemediation((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   // Bumped per request so a slow response can't overwrite the result of a
   // later refresh that already landed.
   const requestSeq = useRef(0);
@@ -179,98 +190,117 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
             <table className="w-full text-sm">
               <tbody>
                 {group.resources.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-border last:border-b-0 hover:bg-surface-raised"
-                  >
-                    <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
-                      {/* The name is the navigation control, not the row: a
+                  <Fragment key={r.id}>
+                    <tr
+                      className={`border-border hover:bg-surface-raised ${
+                        openRemediation.has(r.id) ? "" : "border-b last:border-b-0"
+                      }`}
+                    >
+                      <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
+                        {/* The name is the navigation control, not the row: a
                           <tr> has no role a screen reader announces as
                           activatable. */}
-                      {onOpenResource ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenResource(r, group.accountId)}
-                          className="cursor-pointer text-left font-medium text-on-surface hover:underline"
-                        >
-                          {r.displayName}
-                        </button>
-                      ) : (
-                        r.displayName
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                        {gtData(r.resourceTypeName)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 w-full text-on-surface-secondary">
-                      {gtData(r.reason)}
-                    </td>
-                    {showOwner && (
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <OwnerCell owner={r.owner} />
-                      </td>
-                    )}
-                    {showCost && (
-                      <td className="px-4 py-2.5 whitespace-nowrap text-right text-on-surface">
-                        {r.cost ? (
-                          <>
-                            {formatMoney(r.cost.amount, r.cost.currency)}
-                            <span className="ml-1 text-xs text-on-surface-faint">
-                              {gt("/ {days}d", { days: data.costWindowDays })}
-                            </span>
-                          </>
+                        {onOpenResource ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenResource(r, group.accountId)}
+                            className="cursor-pointer text-left font-medium text-on-surface hover:underline"
+                          >
+                            {r.displayName}
+                          </button>
                         ) : (
-                          <span className="text-on-surface-faint">—</span>
+                          r.displayName
                         )}
                       </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                          {gtData(r.resourceTypeName)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 w-full text-on-surface-secondary">
+                        {gtData(r.reason)}
+                      </td>
+                      {showOwner && (
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <OwnerCell owner={r.owner} />
+                        </td>
+                      )}
+                      {showCost && (
+                        <td className="px-4 py-2.5 whitespace-nowrap text-right text-on-surface">
+                          {r.cost ? (
+                            <>
+                              {formatMoney(r.cost.amount, r.cost.currency)}
+                              <span className="ml-1 text-xs text-on-surface-faint">
+                                {gt("/ {days}d", { days: data.costWindowDays })}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-on-surface-faint">—</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                        <span className="inline-flex items-center gap-3">
+                          <RemediateToggle
+                            remediation={r.remediation}
+                            open={openRemediation.has(r.id)}
+                            onToggle={() => toggleRemediation(r.id)}
+                          />
+                          <OpenPullRequestButton
+                            sourceKind="orphan"
+                            sourceId={r.id}
+                            resourceId={r.id}
+                            change={{ kind: "remove" }}
+                          />
+                          <FileIssueButton
+                            sourceKind="orphan"
+                            sourceId={r.id}
+                            resourceId={r.id}
+                            monthlyCost={
+                              r.cost
+                                ? {
+                                    amount: (r.cost.amount * 30) / data.costWindowDays,
+                                    currency: r.cost.currency,
+                                  }
+                                : undefined
+                            }
+                            draft={{
+                              title: gt("{name} ({type}) looks orphaned", {
+                                name: r.displayName,
+                                type: gtData(r.resourceTypeName),
+                              }),
+                              details: [
+                                { label: gt("Resource"), value: r.displayName },
+                                { label: gt("Type"), value: gtData(r.resourceTypeName) },
+                                { label: gt("Provider"), value: gtData(group.pluginName) },
+                                { label: gt("Account"), value: group.accountName },
+                                { label: gt("Provider id"), value: r.externalId },
+                                {
+                                  label: gt("Spend / {days}d", { days: data.costWindowDays }),
+                                  value: r.cost
+                                    ? formatMoney(r.cost.amount, r.cost.currency)
+                                    : undefined,
+                                },
+                                { label: gt("Last synced"), value: r.lastSyncedAt },
+                              ],
+                              note: r.reason,
+                              remediation: r.remediation,
+                            }}
+                          />
+                        </span>
+                      </td>
+                    </tr>
+                    {openRemediation.has(r.id) && r.remediation && (
+                      <tr className="border-b border-border last:border-b-0">
+                        <td
+                          colSpan={4 + (showOwner ? 1 : 0) + (showCost ? 1 : 0)}
+                          className="px-4 pb-3"
+                        >
+                          <RemediationPanel remediation={r.remediation} />
+                        </td>
+                      </tr>
                     )}
-                    <td className="px-3 py-2.5 whitespace-nowrap text-right">
-                      <span className="inline-flex items-center gap-3">
-                        <OpenPullRequestButton
-                          sourceKind="orphan"
-                          sourceId={r.id}
-                          resourceId={r.id}
-                          change={{ kind: "remove" }}
-                        />
-                        <FileIssueButton
-                          sourceKind="orphan"
-                          sourceId={r.id}
-                          resourceId={r.id}
-                          monthlyCost={
-                            r.cost
-                              ? {
-                                  amount: (r.cost.amount * 30) / data.costWindowDays,
-                                  currency: r.cost.currency,
-                                }
-                              : undefined
-                          }
-                          draft={{
-                            title: gt("{name} ({type}) looks orphaned", {
-                              name: r.displayName,
-                              type: gtData(r.resourceTypeName),
-                            }),
-                            details: [
-                              { label: gt("Resource"), value: r.displayName },
-                              { label: gt("Type"), value: gtData(r.resourceTypeName) },
-                              { label: gt("Provider"), value: gtData(group.pluginName) },
-                              { label: gt("Account"), value: group.accountName },
-                              { label: gt("Provider id"), value: r.externalId },
-                              {
-                                label: gt("Spend / {days}d", { days: data.costWindowDays }),
-                                value: r.cost
-                                  ? formatMoney(r.cost.amount, r.cost.currency)
-                                  : undefined,
-                              },
-                              { label: gt("Last synced"), value: r.lastSyncedAt },
-                            ],
-                            note: r.reason,
-                          }}
-                        />
-                      </span>
-                    </td>
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

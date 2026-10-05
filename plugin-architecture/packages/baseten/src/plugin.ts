@@ -4,6 +4,7 @@ import { BasetenClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { basetenRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "baseten",
@@ -54,4 +55,5 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BasetenClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
+  remediationCommands: basetenRemediationCommands,
 };
