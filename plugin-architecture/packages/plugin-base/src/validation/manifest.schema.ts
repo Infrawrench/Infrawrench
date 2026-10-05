@@ -81,6 +81,7 @@ export const pluginManifestSchema = z.object({
           .object({
             dependsOn: z.array(z.string().min(1)),
             emptyLabel: z.string().optional(),
+            multiple: z.boolean().optional(),
           })
           .optional(),
         optional: z.boolean().optional(),

@@ -448,6 +448,19 @@ describe("parseGroupByFlag", () => {
     expect(parseGroupByFlag('tag["env"]', plain)).toEqual({ groupBy: "tag", tagKey: "env" });
   });
 
+  it("reads a Kubernetes label prefix as a grouping on that tag", () => {
+    expect(parseGroupByFlag("k8s_node_label:team", plain)).toEqual({
+      groupBy: "tag",
+      tagKey: "k8s_node_label:team",
+    });
+    expect(parseGroupByFlag("k8s_pvc_label['app.kubernetes.io/name']", plain)).toEqual({
+      groupBy: "tag",
+      tagKey: "k8s_pvc_label:app.kubernetes.io/name",
+    });
+    const bare = parseGroupByFlag("k8s_node_label", plain);
+    expect("error" in bare && bare.error).toContain("infrawrench costs tag-keys");
+  });
+
   it("refuses a keyed dimension without a key, pointing at where keys are listed", () => {
     const result = parseGroupByFlag("virtual_tag", plain);
     expect("error" in result && result.error).toContain("infrawrench virtual-tags");

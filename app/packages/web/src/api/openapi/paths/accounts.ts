@@ -31,6 +31,9 @@ const CredentialField = strict({
   providerOptions: strict({
     dependsOn: z.array(z.string()),
     emptyLabel: z.string().optional(),
+    multiple: z.boolean().optional().openapi({
+      description: "Several options may be picked; the stored value is their ids joined with `, `.",
+    }),
   })
     .optional()
     .openapi({

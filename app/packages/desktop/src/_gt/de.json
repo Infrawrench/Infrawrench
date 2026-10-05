@@ -15112,5 +15112,15 @@
       },
       " ausgegeben. Ihre Antwort passt die Erkennung für diese Organisation an."
     ]
-  }
+  },
+  "b9e2d9e6b16b7efc": "Keine Auswahl verfügbar",
+  "be8e7324e334c8f2": "Kubernetes-Knotenlabel: {name}",
+  "3ea4424cf122ad23": "Kubernetes-Volume-Label: {name}",
+  "31361ebd5d1a3b9f": "Kubernetes-Knotenlabels",
+  "f6fa7e3ef0383a9e": "Kubernetes-Volume-Labels",
+  "6e8499fc487098ac": "Knotenlabels für Kosten",
+  "ac1a25a2a9421d70": "Optional. Welche Knotenlabels zu Kostendimensionen werden, damit Ausgaben danach gruppiert und gefiltert werden können (zum Beispiel nach Team oder nach einem Label, das Ihr Autoscaler setzt). Instanztyp, Zone, Knotenpool und Spot- oder On-Demand-Kapazität werden immer erfasst. Leer gelassen werden die Standard-Topologielabels sowie team, owner, environment und cost-center verwendet, sofern Ihre Knoten sie haben. Wählen Sie bis zu 20; wählen Sie none, um keine zusätzlichen Labels zu erfassen.",
+  "7d07b9d37fa2d034": "Optional. Welche PersistentVolumeClaim-Labels bei Volume-Kosten zu Kostendimensionen werden. Die Storage-Klasse wird immer erfasst. Leer gelassen werden die Standardlabels app.kubernetes.io sowie team, owner, environment und cost-center verwendet, sofern Ihre Claims sie haben. Wählen Sie bis zu 20; wählen Sie none, um keine zusätzlichen Labels zu erfassen.",
+  "d3263a3a61f06b42": "Volume-Labels für Kosten",
+  "dd536b6a6759a3df": "{key} (bevorzugt)"
 }

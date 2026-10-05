@@ -119,6 +119,8 @@ export function CostFilterRows({
   // Load each row's options as soon as the row exists: waiting for focus
   // leaves the values box looking dead right after "+ Add filter".
   useEffect(() => {
+    // The tag-key suggestions, once any row is a tag row.
+    if (filters.some((f) => f.dimension === "tag")) loadOptions("tag-keys");
     for (const f of filters) {
       if (isKeyedCostDimension(f.dimension)) {
         // A tag row's key field suggests the org's tag keys, preferred first
@@ -144,6 +146,8 @@ export function CostFilterRows({
       loadOptions(filter.dimension);
     }
   };
+
+  const tagKeys = Array.isArray(optionsByKey["tag-keys"]) ? optionsByKey["tag-keys"] : [];
 
   return (
     <div className="space-y-2">

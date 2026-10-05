@@ -15301,5 +15301,15 @@
       },
       "。您的回答将用于调整此组织的检测。"
     ]
-  }
+  },
+  "b9e2d9e6b16b7efc": "没有可选项",
+  "be8e7324e334c8f2": "Kubernetes 节点标签：{name}",
+  "3ea4424cf122ad23": "Kubernetes 卷标签：{name}",
+  "31361ebd5d1a3b9f": "Kubernetes 节点标签",
+  "f6fa7e3ef0383a9e": "Kubernetes 卷标签",
+  "6e8499fc487098ac": "用于成本的节点标签",
+  "ac1a25a2a9421d70": "可选。选择哪些节点标签成为成本维度，以便按其对支出进行分组和筛选（例如按团队，或按自动扩缩器设置的标签）。实例类型、可用区、节点池以及竞价或按需容量始终会被记录。留空时，如果节点带有这些标签，将使用标准拓扑标签以及 team、owner、environment 和 cost-center。最多选择 20 个；选择 none 则不记录额外标签。",
+  "7d07b9d37fa2d034": "可选。选择哪些 PersistentVolumeClaim 标签成为卷成本的成本维度。存储类始终会被记录。留空时，如果声明带有这些标签，将使用标准的 app.kubernetes.io 标签以及 team、owner、environment 和 cost-center。最多选择 20 个；选择 none 则不记录额外标签。",
+  "d3263a3a61f06b42": "用于成本的卷标签",
+  "dd536b6a6759a3df": "{key}（首选）"
 }

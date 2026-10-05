@@ -103,6 +103,13 @@ export function costTools(): ToolDefinition[] {
         "whether consumption is growing underneath a credit that is masking it. Note that " +
         "commitment-covered usage is priced at zero on the cash basis by both AWS and Azure, " +
         "so pair it with costBasis 'amortized' to see what those hours are worth." +
+        "\n\nKubernetes allocation rows carry their dimensions as tags: namespace, workload, " +
+        "workload_kind, and on node-derived rows (workload compute, idle, system-reserved) " +
+        "node_pool, capacity_type (spot/on-demand/reserved), instance_type and zone, plus node " +
+        "labels as `k8s_node_label:<label key>`; volume rows carry storage_class and claim labels " +
+        "as `k8s_pvc_label:<label key>`. Group by one with groupBy 'tag' and that groupByTagKey " +
+        "(e.g. 'capacity_type' or 'k8s_node_label:team'); list the keys present with " +
+        "list_cost_dimension_values dimension=tag-keys." +
         "\n\nThe filter can also be written as text in the cost query language via `query`, " +
         "which is usually easier than assembling `filters` by hand: " +
         "`provider = 'aws' AND service IN ('AmazonEC2','AmazonS3') AND tag['env'] != 'dev'`. " +
@@ -251,7 +258,8 @@ export function costTools(): ToolDefinition[] {
         "calling query_costs. Tag keys follow the organization's tag key settings: keys flagged " +
         "preferred are the ones it reports on and come first; keys it hides as noise are omitted " +
         "unless includeHidden is true. Hidden keys are still queryable, so a user naming one " +
-        "explicitly can still be answered.",
+        "explicitly can still be answered. Tag keys prefixed `k8s_node_label:` and " +
+        "`k8s_pvc_label:` are Kubernetes node and PersistentVolumeClaim labels.",
       inputSchema: {
         dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units", "virtual-tag-keys"]),
         tagKey: z

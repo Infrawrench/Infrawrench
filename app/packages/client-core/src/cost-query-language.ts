@@ -35,6 +35,10 @@ import {
   type CostDimensionId,
   type CostFilter,
 } from "./costs";
+import { COST_TAG_ALIASES, costTagAliasFor, type CostTagAlias } from "./cost-tag-keys";
+
+/** Every name that can start a term: the dimensions plus the tag aliases. */
+const DIMENSION_NAMES: readonly string[] = [...COST_DIMENSIONS, ...Object.keys(COST_TAG_ALIASES)];
 
 /* ------------------------------------------------------------------ *
  * Errors
@@ -276,10 +280,10 @@ function editDistance(a: string, b: string): number {
 }
 
 /** The closest dimension name, when one is close enough to be worth naming. */
-function suggestDimension(name: string): CostDimensionId | null {
-  let best: CostDimensionId | null = null;
+function suggestDimension(name: string): string | null {
+  let best: string | null = null;
   let bestDistance = Infinity;
-  for (const dimension of COST_DIMENSIONS) {
+  for (const dimension of DIMENSION_NAMES) {
     const distance = editDistance(name.toLowerCase(), dimension);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -300,6 +304,7 @@ function suggestDimension(name: string): CostDimensionId | null {
  *   query      := ε | term ( AND term )*
  *   term       := dimension operator value
  *   dimension  := IDENT | ("tag" | "virtual_tag") "[" string "]"
+ *              |  ("k8s_node_label" | "k8s_pvc_label") "[" string "]"
  *   operator   := "=" | "!=" | IN | NOT IN
  *   value      := string                            (for "=" and "!=")
  *              |  "(" string ( "," string )* ")"    (for IN and NOT IN)
@@ -309,7 +314,7 @@ function suggestDimension(name: string): CostDimensionId | null {
 export const COST_QUERY_GRAMMAR = [
   "query     := ε | term (AND term)*",
   "term      := dimension operator value",
-  "dimension := name | tag['key'] | virtual_tag['key']",
+  "dimension := name | tag['key'] | virtual_tag['key'] | k8s_node_label['key'] | k8s_pvc_label['key']",
   "operator  := = | != | IN | NOT IN",
   "value     := 'text' | ('a', 'b', …)",
 ].join("\n");
@@ -331,7 +336,10 @@ export const COST_QUERY_LANGUAGE_SUMMARY =
   "Supported forms are `dimension = 'value'`, `dimension != 'value'`, " +
   "`dimension IN ('a','b')`, `dimension NOT IN ('a','b')`, `tag['owner'] = 'platform'` and " +
   "`virtual_tag['team'] = 'payments'` (one of the organization's virtual tags, by key), " +
-  "joined by AND. Keywords are case-insensitive. OR is not supported — the filter is a " +
+  "joined by AND. Kubernetes node and PersistentVolumeClaim labels are tags too, with " +
+  "shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team']` and " +
+  "`k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` means " +
+  "`tag['k8s_pvc_label:app.kubernetes.io/name']`. Keywords are case-insensitive. OR is not supported — the filter is a " +
   "conjunction, so use IN ('a','b') to accept several values of one dimension.";
 
 class Parser {
@@ -427,19 +435,29 @@ class Parser {
       throw this.fail(
         `Expected a dimension name, found ${this.describe(token)}.`,
         token,
-        COST_DIMENSIONS,
+        DIMENSION_NAMES,
       );
     }
     const name = token.value.toLowerCase();
 
-    if (isKeyedCostDimension(name)) {
-      const label = name === "tag" ? "tag" : "virtual tag";
+    const alias = name in COST_TAG_ALIASES;
+    if (isKeyedCostDimension(name) || alias) {
+      // `k8s_node_label['team']` is shorthand for `tag['k8s_node_label:team']`:
+      // same filter, same execution path, friendlier to type.
+      const prefix = alias ? COST_TAG_ALIASES[name as CostTagAlias] : "";
+      const label = name === "tag" ? "tag" : name === "virtual_tag" ? "virtual tag" : "label";
       const example =
-        name === "tag" ? "tag['owner'] = 'platform'" : "virtual_tag['team'] = 'payments'";
+        name === "tag"
+          ? "tag['owner'] = 'platform'"
+          : name === "virtual_tag"
+            ? "virtual_tag['team'] = 'payments'"
+            : `${name}['team'] = 'payments'`;
       const bracket = this.peek();
       if (bracket.kind !== "punct" || bracket.text !== "[") {
         throw this.fail(
-          `The ${label} dimension needs a key: write ${example}.`,
+          alias
+            ? `${name} needs a label key: write ${example}.`
+            : `The ${label} dimension needs a key: write ${example}.`,
           bracket.kind === "eof" ? token : bracket,
           ["["],
         );
@@ -463,7 +481,9 @@ class Parser {
           ["]"],
         );
       }
-      return { dimension: name, tagKey: key.value };
+      return alias
+        ? { dimension: "tag", tagKey: `${prefix}${key.value}` }
+        : { dimension: name as CostDimensionId, tagKey: key.value };
     }
 
     const match = COST_DIMENSIONS.find((d) => d === name);
@@ -471,9 +491,9 @@ class Parser {
       const suggestion = suggestDimension(name);
       throw this.fail(
         `Unknown dimension "${token.text}".${suggestion ? ` Did you mean "${suggestion}"?` : ""} ` +
-          `Valid dimensions are ${COST_DIMENSIONS.join(", ")}.`,
+          `Valid dimensions are ${DIMENSION_NAMES.join(", ")}.`,
         token,
-        COST_DIMENSIONS,
+        DIMENSION_NAMES,
       );
     }
     return { dimension: match };
@@ -636,7 +656,14 @@ export function formatCostQuery(filters: readonly CostFilter[]): string {
           index,
         );
       }
-      name = `${filter.dimension}[${quote(filter.tagKey)}]`;
+      if (filter.dimension === "tag") {
+        const tagAlias = costTagAliasFor(filter.tagKey);
+        name = tagAlias
+          ? `${tagAlias.alias}[${quote(tagAlias.name)}]`
+          : `tag[${quote(filter.tagKey)}]`;
+      } else {
+        name = `${filter.dimension}[${quote(filter.tagKey)}]`;
+      }
     } else {
       name = filter.dimension;
     }

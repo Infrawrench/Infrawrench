@@ -145,6 +145,30 @@ describe("parseCostQuery — strings and escapes", () => {
   });
 });
 
+describe("parseCostQuery — Kubernetes label shorthands", () => {
+  it("compiles k8s_node_label['key'] to a prefixed tag filter", () => {
+    expect(parseCostQuery("k8s_node_label['team'] IN ('a', 'b')")).toEqual([
+      { dimension: "tag", op: "in", values: ["a", "b"], tagKey: "k8s_node_label:team" },
+    ]);
+  });
+
+  it("compiles k8s_pvc_label['key'] to a prefixed tag filter", () => {
+    expect(parseCostQuery("K8S_PVC_LABEL['app'] != 'pg'")).toEqual([
+      { dimension: "tag", op: "not_in", values: ["pg"], tagKey: "k8s_pvc_label:app" },
+    ]);
+  });
+
+  it("accepts the long form too", () => {
+    expect(parseCostQuery("tag['k8s_node_label:team'] = 'a'")).toEqual(
+      parseCostQuery("k8s_node_label['team'] = 'a'"),
+    );
+  });
+
+  it("asks for a key when the bracket is missing", () => {
+    expect(() => parseCostQuery("k8s_node_label = 'a'")).toThrow(/needs a label key/);
+  });
+});
+
 describe("parseCostQuery — errors are useful", () => {
   it("names the valid dimensions and suggests the nearest on a typo", () => {
     const error = parseError("provder = 'aws'");
@@ -153,7 +177,7 @@ describe("parseCostQuery — errors are useful", () => {
     expect(error.message).toContain('Unknown dimension "provder"');
     expect(error.message).toContain('Did you mean "provider"');
     for (const dimension of COST_DIMENSIONS) expect(error.message).toContain(dimension);
-    expect(error.expected).toEqual([...COST_DIMENSIONS]);
+    expect(error.expected).toEqual([...COST_DIMENSIONS, "k8s_node_label", "k8s_pvc_label"]);
   });
 
   it("still lists the dimensions when nothing is close enough to suggest", () => {
@@ -278,6 +302,22 @@ describe("formatCostQuery", () => {
     ).toBe("tag['owner'] = 'platform'");
   });
 
+  it("renders Kubernetes label tags with their shorthand", () => {
+    expect(
+      formatCostQuery([
+        { dimension: "tag", op: "in", values: ["payments"], tagKey: "k8s_node_label:team" },
+        {
+          dimension: "tag",
+          op: "not_in",
+          values: ["gp2"],
+          tagKey: "k8s_pvc_label:app.kubernetes.io/name",
+        },
+      ]),
+    ).toBe(
+      "k8s_node_label['team'] = 'payments' AND k8s_pvc_label['app.kubernetes.io/name'] != 'gp2'",
+    );
+  });
+
   it("joins terms with AND", () => {
     expect(
       formatCostQuery([
@@ -372,7 +412,19 @@ const VALUE_FRAGMENTS = [
   "0",
 ];
 
-const TAG_KEYS = ["owner", "env", "cost centre", "it's", "a\\b", '"q"', "team.name"];
+const TAG_KEYS = [
+  "owner",
+  "env",
+  "cost centre",
+  "it's",
+  "a\\b",
+  '"q"',
+  "team.name",
+  "k8s_node_label:team",
+  "k8s_node_label:topology.kubernetes.io/zone",
+  "k8s_pvc_label:it's",
+  "k8s_node_label:",
+];
 
 function randomFilter(random: () => number): CostFilter {
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;

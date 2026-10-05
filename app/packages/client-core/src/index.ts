@@ -290,6 +290,19 @@ export {
   COST_QUERY_MAX_LENGTH,
 } from "./cost-query-language";
 export {
+  K8S_NODE_LABEL_TAG_PREFIX,
+  K8S_PVC_LABEL_TAG_PREFIX,
+  K8S_NODE_ATTRIBUTE_TAG_KEYS,
+  COST_TAG_ALIASES,
+  costTagAliasFor,
+  describeCostTagKey,
+  groupCostTagKeys,
+  tagKeyFromGroupBySpec,
+  type CostTagAlias,
+  type CostTagKeyGroup,
+  type CostTagKeyDescription,
+} from "./cost-tag-keys";
+export {
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
   normalizeCurrencyCode,

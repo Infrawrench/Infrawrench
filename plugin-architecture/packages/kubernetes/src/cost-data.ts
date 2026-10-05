@@ -25,6 +25,14 @@
  *    workload, a claim or a Service) which the cost model already guarantees
  *    is stable across runs.
  *
+ * Node and claim labels (see `cost-labels.ts`) also ride along as tags when
+ * the caller passes a {@link CostRowLabelContext}. Node labels *split* rows: a
+ * workload whose pods run on spot and on-demand nodes writes one compute row
+ * per distinct node-tag set, under the same `resourceId`, and idle and
+ * system-reserved capacity are written per node-tag set too, so "idle spot
+ * capacity in pool gpu-a" is a query rather than a guess. The money is
+ * unchanged: the rows still partition the cluster's bill exactly.
+ *
  * Re-running a day must reproduce identical dimension keys or the host's
  * ReplacingMergeTree dedupe inserts duplicates instead of replacing. Every key
  * component here is derived from cluster state and a fixed label set: no
@@ -35,8 +43,28 @@
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 
-import { HOURS_PER_DAY, type ClusterAllocation } from "./cost-model.js";
+import { HOURS_PER_DAY, workloadKey, type ClusterAllocation } from "./cost-model.js";
 import { SYSTEM_NAMESPACES } from "./resource-listers.js";
+import { namespacedKey } from "./attribution.js";
+import { nodeCostTags, pvcCostTags } from "./cost-labels.js";
+
+/**
+ * Labels to attach to the rows, and which keys of them are allowed through.
+ * Optional: without it the rows carry the namespace/workload tags only.
+ */
+export interface CostRowLabelContext {
+  /** Node name → labels. */
+  nodeLabels: Map<string, Record<string, string>>;
+  /** `namespace/claim` → labels. */
+  claimLabels: Map<string, Record<string, string>>;
+  nodeLabelKeys: readonly string[];
+  pvcLabelKeys: readonly string[];
+}
+
+/** A stable string for a tag map, independent of insertion order. */
+function canonicalTags(tags: Record<string, string>): string {
+  return JSON.stringify(Object.entries(tags).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
 
 /** Stable service labels. Changing one of these re-keys history: don't. */
 export const SERVICE_WORKLOAD = "kubernetes-workload";
@@ -93,6 +121,10 @@ function tagsFor(
   };
 }
 
+function scaleDay(hourly: number | null): number | null {
+  return hourly == null ? null : hourly * HOURS_PER_DAY;
+}
+
 /**
  * Turn one cluster allocation into cost rows for a single day.
  *
@@ -103,12 +135,14 @@ function tagsFor(
 export function allocationToCostRows(
   allocation: ClusterAllocation,
   range: CostFetchRange,
+  labels?: CostRowLabelContext,
 ): CostRow[] {
   const date = snapshotDay(range);
   const currency = allocation.currency;
 
   // Aggregate by (service, resourceId, tag set) so re-running reproduces the
-  // same keys regardless of pod churn within a workload.
+  // same keys regardless of pod churn within a workload. The tag set is part
+  // of the key because node labels split one workload into several rows.
   const buckets = new Map<
     string,
     { service: string; resourceId: string; tags: Record<string, string>; amount: number }
@@ -121,7 +155,7 @@ export function allocationToCostRows(
     amount: number | null,
   ) => {
     if (amount == null || !Number.isFinite(amount) || amount === 0) return;
-    const key = `${service}|${resourceId}`;
+    const key = `${service}|${resourceId}|${canonicalTags(tags)}`;
     const existing = buckets.get(key);
     if (existing) existing.amount += amount;
     else buckets.set(key, { service, resourceId, tags, amount });
@@ -137,17 +171,51 @@ export function allocationToCostRows(
     gpuModels.set(key, set);
   }
 
+  // Node tags, computed once per node rather than once per pod.
+  const nodeTagCache = new Map<string, Record<string, string>>();
+  const tagsForNode = (nodeName: string): Record<string, string> => {
+    if (!labels) return {};
+    let tags = nodeTagCache.get(nodeName);
+    if (!tags) {
+      tags = nodeCostTags(labels.nodeLabels.get(nodeName) ?? {}, labels.nodeLabelKeys);
+      nodeTagCache.set(nodeName, tags);
+    }
+    return tags;
+  };
+
+  // Deliberately the CPU/memory COMPUTE share, not the workload's total: its
+  // GPUs, volumes and load balancers get their own service rows below, and
+  // adding them here as well would double-count the same money under two
+  // service labels.
+  if (labels) {
+    // Per pod, so each share of compute carries the shape of the node it was
+    // bought from. A pod's `dailyCost` is CPU + memory + GPU, so its GPU part
+    // comes off here (it is the GPU row's); summing a workload's pods then
+    // reproduces its `computeDailyCost` exactly. Unplaced pods are unpriced
+    // and contribute nothing either way.
+    for (const pod of allocation.pods) {
+      push(
+        SERVICE_WORKLOAD,
+        workloadKey(pod.namespace, pod.workloadKind, pod.workload),
+        {
+          ...tagsFor(pod.namespace, pod.workload, pod.workloadKind),
+          ...tagsForNode(pod.nodeName),
+        },
+        pod.dailyCost == null ? null : pod.dailyCost - (pod.gpuDailyCost ?? 0),
+      );
+    }
+  } else {
+    for (const workload of allocation.workloads) {
+      push(
+        SERVICE_WORKLOAD,
+        workload.key,
+        tagsFor(workload.namespace, workload.workload, workload.workloadKind),
+        workload.computeDailyCost,
+      );
+    }
+  }
+
   for (const workload of allocation.workloads) {
-    // Deliberately the CPU/memory COMPUTE share, not the workload's total: its
-    // GPUs, volumes and load balancers get their own service rows below, and
-    // adding them here as well would double-count the same money under two
-    // service labels.
-    push(
-      SERVICE_WORKLOAD,
-      workload.key,
-      tagsFor(workload.namespace, workload.workload, workload.workloadKind),
-      workload.computeDailyCost,
-    );
     if (workload.gpus > 0) {
       push(
         SERVICE_GPU,
@@ -164,6 +232,7 @@ export function allocationToCostRows(
   // Idle GPUs, per node: a GPU node is the unit someone scales down, and its
   // model is the dimension worth grouping by ("how much idle A100 do we pay
   // for"). Never spread over the namespaces, for the same reason as idle CPU.
+  // Node-derived, so it carries the node's tags like idle CPU does.
   for (const node of allocation.nodes) {
     if (!node.gpu) continue;
     push(
@@ -175,6 +244,7 @@ export function allocationToCostRows(
         workload_kind: "ClusterCapacity",
         system: "false",
         gpu_model: node.gpu.inventory.model,
+        ...tagsForNode(node.name),
       },
       node.gpu.hourlyIdleCost == null ? null : node.gpu.hourlyIdleCost * HOURS_PER_DAY,
     );
@@ -187,6 +257,13 @@ export function allocationToCostRows(
   for (const volume of allocation.storage.volumes) {
     if (volume.unbound) continue;
     const resourceId = `${volume.namespace}/PersistentVolumeClaim/${volume.name}`;
+    const claimTags = labels
+      ? pvcCostTags(
+          labels.claimLabels.get(namespacedKey(volume.namespace, volume.name)) ?? {},
+          volume.storageClass,
+          labels.pvcLabelKeys,
+        )
+      : {};
     if (volume.unattached) {
       // Its own service, so it never inflates a tenant's namespace total, but
       // the namespace tag is kept, because whoever has to run `kubectl delete
@@ -194,7 +271,7 @@ export function allocationToCostRows(
       push(
         SERVICE_STORAGE_IDLE,
         resourceId,
-        tagsFor(volume.namespace, "", "PersistentVolumeClaim"),
+        { ...tagsFor(volume.namespace, "", "PersistentVolumeClaim"), ...claimTags },
         volume.dailyCost,
       );
       continue;
@@ -202,7 +279,10 @@ export function allocationToCostRows(
     push(
       SERVICE_STORAGE,
       resourceId,
-      tagsFor(volume.namespace, volume.workload ?? "", volume.workloadKind ?? ""),
+      {
+        ...tagsFor(volume.namespace, volume.workload ?? "", volume.workloadKind ?? ""),
+        ...claimTags,
+      },
       volume.dailyCost,
     );
   }
@@ -223,23 +303,41 @@ export function allocationToCostRows(
   // overcharges the tenant and hides the real finding, which is that the
   // cluster is oversized. The control-plane fee goes further: there is no
   // per-workload quantity to apportion a flat per-cluster charge by at all.
-  push(
-    SERVICE_IDLE,
-    "cluster/idle",
-    { namespace: "", workload: "idle", workload_kind: "ClusterCapacity", system: "false" },
-    allocation.dailyIdleCost,
-  );
-  push(
-    SERVICE_SYSTEM_RESERVED,
-    "cluster/system-reserved",
-    {
-      namespace: "",
-      workload: "system-reserved",
-      workload_kind: "ClusterCapacity",
-      system: "true",
-    },
-    allocation.dailySystemReservedCost,
-  );
+  const idleTags = {
+    namespace: "",
+    workload: "idle",
+    workload_kind: "ClusterCapacity",
+    system: "false",
+  };
+  const systemReservedTags = {
+    namespace: "",
+    workload: "system-reserved",
+    workload_kind: "ClusterCapacity",
+    system: "true",
+  };
+  if (labels) {
+    // Per node, carrying the node's tags: idle capacity is a property of a
+    // node pool (and of spot versus on-demand), which is exactly the axis
+    // someone resizes along. Same `resourceId` as the cluster-wide row.
+    for (const node of allocation.nodes) {
+      const tags = tagsForNode(node.name);
+      push(SERVICE_IDLE, "cluster/idle", { ...idleTags, ...tags }, scaleDay(node.hourlyIdleCost));
+      push(
+        SERVICE_SYSTEM_RESERVED,
+        "cluster/system-reserved",
+        { ...systemReservedTags, ...tags },
+        scaleDay(node.hourlySystemReservedCost),
+      );
+    }
+  } else {
+    push(SERVICE_IDLE, "cluster/idle", idleTags, allocation.dailyIdleCost);
+    push(
+      SERVICE_SYSTEM_RESERVED,
+      "cluster/system-reserved",
+      systemReservedTags,
+      allocation.dailySystemReservedCost,
+    );
+  }
   push(
     SERVICE_CONTROL_PLANE,
     "cluster/control-plane",

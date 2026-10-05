@@ -44,8 +44,10 @@ export interface CredentialField {
    * picker loads once every `dependsOn` field has a value and falls back to a
    * plain text input if loading fails, so a key that cannot list still works.
    * `emptyLabel` adds a leading option for an empty value on optional fields.
+   * `multiple` lets the user pick several options; the stored value is their
+   * ids joined with `, ` (empty when none are picked).
    */
-  providerOptions?: { dependsOn: string[]; emptyLabel?: string };
+  providerOptions?: { dependsOn: string[]; emptyLabel?: string; multiple?: boolean };
   /** Field is optional: the modal accepts an empty value and skips validation. */
   optional?: boolean;
   /**

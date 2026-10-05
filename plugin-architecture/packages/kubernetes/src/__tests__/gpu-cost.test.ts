@@ -305,6 +305,28 @@ describe("GPU cost rows and report", () => {
     expect(sum).toBeCloseTo(32 * 24, 6);
   });
 
+  it("keeps the partition with node labels on: a pod row is compute only", () => {
+    // With a label context, workload compute is written per pod. A pod's
+    // `dailyCost` includes its GPU share, which is the GPU row's; counting it
+    // on the compute row as well would bill the GPUs twice.
+    const rows = allocationToCostRows(
+      allocation,
+      { fromDate: "2026-10-04", toDate: "2026-10-04" },
+      {
+        nodeLabels: new Map([["gpu-1", { "karpenter.sh/nodepool": "gpu" }]]),
+        claimLabels: new Map(),
+        nodeLabelKeys: [],
+        pvcLabelKeys: [],
+      },
+    );
+    const gpu = rows.find((r) => r.service === SERVICE_GPU)!;
+    expect(gpu.amount).toBeCloseTo(6 * 24, 8);
+    const idle = rows.find((r) => r.service === SERVICE_GPU_IDLE)!;
+    expect(idle.tags?.["node_pool"]).toBe("gpu");
+    const sum = rows.reduce((acc, r) => acc + r.amount, 0);
+    expect(sum).toBeCloseTo(32 * 24, 6);
+  });
+
   it("puts GPU columns and totals in the efficiency report and its shared text", () => {
     const report = buildEfficiencyReport(allocation, "2026-10-04T00:00:00Z");
     expect(report.hasGpus).toBe(true);

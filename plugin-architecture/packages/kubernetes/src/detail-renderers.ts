@@ -31,10 +31,12 @@ import {
   formatGpuUtilizationCell,
   totalWaste,
   formatEfficiencyReportText,
+  formatCapacityType,
   formatPair,
   RIGHTSIZING_NOTE,
   type EfficiencyReport,
   type EfficiencyRow,
+  type NodeGroupRow,
 } from "./efficiency-report.js";
 import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
 import { describeRateSource } from "./node-rates.js";
@@ -691,6 +693,36 @@ function typeIdForWorkloadKind(kind: string): string | null {
   }
 }
 
+/** Capacity by node group: pool × capacity type, most idle money first. */
+function nodeGroupTable(rows: NodeGroupRow[], currency: string): TableNode {
+  return {
+    kind: "table",
+    emphasizeFirstColumn: true,
+    columns: [
+      { key: "name", label: "Node group" },
+      { key: "capacity", label: "Capacity", width: "narrow" as const },
+      { key: "types", label: "Instance type", width: "narrow" as const },
+      { key: "nodes", label: "Nodes", width: "narrow" as const },
+      { key: "idleShare", label: "Idle", width: "narrow" as const },
+      { key: "idle", label: "Idle cost", width: "narrow" as const },
+      { key: "wasted", label: "Unused requests", width: "narrow" as const },
+      { key: "cost", label: "Node cost", width: "narrow" as const },
+    ],
+    rows: rows.map((row) => ({
+      cells: {
+        name: row.label,
+        capacity: formatCapacityType(row.capacityType),
+        types: row.instanceTypes,
+        nodes: String(row.nodeCount),
+        idleShare: row.idleShare == null ? "—" : `${Math.round(row.idleShare * 100)}%`,
+        idle: formatDaily(row.dailyIdleCost, currency),
+        wasted: formatDaily(row.wastedDailyCost, currency),
+        cost: formatDaily(row.dailyNodeCost, currency),
+      },
+    })),
+  };
+}
+
 /** One efficiency table: namespaces or workloads, same columns. */
 function efficiencyTable(
   rows: EfficiencyRow[],
@@ -776,6 +808,7 @@ function efficiencyTab(
     costs.cluster,
     generatedAt,
     namespaceFilter,
+    costs.nodeAttributes,
   );
   if (report.namespaces.length === 0 && report.workloads.length === 0) return [];
 
@@ -875,6 +908,15 @@ function efficiencyTab(
       children: [efficiencyTable(report.workloads, currency, accountId, true, report.hasGpus)],
     },
     ...gpuRightsizingSection(report),
+    ...(report.nodeGroups.length > 0
+      ? [
+          {
+            kind: "section" as const,
+            title: "By node group — most idle first",
+            children: [nodeGroupTable(report.nodeGroups, currency)],
+          },
+        ]
+      : []),
     {
       kind: "section",
       title: "How to read this",

@@ -15117,5 +15117,15 @@
       },
       ". Su respuesta ajusta la detección para esta organización."
     ]
-  }
+  },
+  "b9e2d9e6b16b7efc": "No hay nada que elegir",
+  "be8e7324e334c8f2": "Etiqueta de nodo de Kubernetes: {name}",
+  "3ea4424cf122ad23": "Etiqueta de volumen de Kubernetes: {name}",
+  "31361ebd5d1a3b9f": "Etiquetas de nodo de Kubernetes",
+  "f6fa7e3ef0383a9e": "Etiquetas de volumen de Kubernetes",
+  "6e8499fc487098ac": "Etiquetas de nodo para costes",
+  "ac1a25a2a9421d70": "Opcional. Qué etiquetas de nodo se convierten en dimensiones de coste, para poder agrupar y filtrar el gasto por ellas (por ejemplo por equipo, o por una etiqueta que establezca tu escalador automático). El tipo de instancia, la zona, el grupo de nodos y la capacidad spot o bajo demanda se registran siempre. Si se deja en blanco, se usan las etiquetas de topología estándar más team, owner, environment y cost-center cuando tus nodos las tienen. Elige hasta 20; elige none para no registrar etiquetas adicionales.",
+  "7d07b9d37fa2d034": "Opcional. Qué etiquetas de PersistentVolumeClaim se convierten en dimensiones de coste en el coste de volúmenes. La clase de almacenamiento se registra siempre. Si se deja en blanco, se usan las etiquetas estándar app.kubernetes.io más team, owner, environment y cost-center cuando tus claims las tienen. Elige hasta 20; elige none para no registrar etiquetas adicionales.",
+  "d3263a3a61f06b42": "Etiquetas de volumen para costes",
+  "dd536b6a6759a3df": "{key} (preferida)"
 }

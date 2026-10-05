@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { KubernetesClient } from "./client.js";
+import { MAX_LABEL_KEYS } from "./cost-labels.js";
 import { serverKubeconfigError } from "./kubeconfig-policy.js";
 import { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 import { NamespaceResourceType } from "./resources/namespace.js";
@@ -74,6 +75,39 @@ const manifest: PluginManifest = {
       optional: true,
       placeholder: "monitoring/prometheus-operated:9090",
     },
+    {
+      key: "costNodeLabelKeys",
+      label: "Node labels for cost",
+      description:
+        "Optional. Which node labels become cost dimensions, so spend can be grouped and " +
+        "filtered by them (for example by team, or by a label your autoscaler sets). Instance " +
+        "type, zone, node pool and spot or on-demand capacity are always recorded. Left blank, " +
+        "the standard topology labels plus team, owner, environment and cost-center are used " +
+        "where your nodes have them. Pick up to 20; choose none to record no extra labels.",
+      sensitive: false,
+      optional: true,
+      providerOptions: {
+        dependsOn: ["kubeconfig"],
+        multiple: true,
+        emptyLabel: "Default labels",
+      },
+    },
+    {
+      key: "costPvcLabelKeys",
+      label: "Volume labels for cost",
+      description:
+        "Optional. Which PersistentVolumeClaim labels become cost dimensions on volume cost. " +
+        "Storage class is always recorded. Left blank, the standard app.kubernetes.io labels " +
+        "plus team, owner, environment and cost-center are used where your claims have them. " +
+        "Pick up to 20; choose none to record no extra labels.",
+      sensitive: false,
+      optional: true,
+      providerOptions: {
+        dependsOn: ["kubeconfig"],
+        multiple: true,
+        emptyLabel: "Default labels",
+      },
+    },
   ],
   /**
    * Kubernetes has no billing API. What this reports is a DERIVED allocation:
@@ -136,6 +170,29 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new KubernetesClient(credentials, services),
+  /**
+   * The cost label-key pickers: the label keys actually present on the
+   * cluster's nodes or claims, most common first, so nobody has to run
+   * `kubectl get nodes --show-labels` to fill the field in.
+   */
+  async listCredentialOptions(fieldKey, credentials, services) {
+    if (fieldKey !== "costNodeLabelKeys" && fieldKey !== "costPvcLabelKeys") {
+      throw new Error(`Kubernetes plugin: no options for "${fieldKey}"`);
+    }
+    if (!credentials["kubeconfig"]) throw new Error("Paste the kubeconfig first.");
+    const client = new KubernetesClient(credentials, services);
+    const options = await client.listLabelKeyOptions(
+      fieldKey === "costNodeLabelKeys" ? "node" : "pvc",
+    );
+    return [
+      {
+        id: "none",
+        label: "none",
+        description: `Record no extra labels (up to ${MAX_LABEL_KEYS} may be picked otherwise)`,
+      },
+      ...options,
+    ];
+  },
   validateServerCredentials: (credentials) => {
     const kubeconfig = credentials["kubeconfig"];
     return kubeconfig ? serverKubeconfigError(kubeconfig) : null;

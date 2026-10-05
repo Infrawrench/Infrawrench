@@ -15315,5 +15315,15 @@
       },
       ". Votre réponse ajuste la détection pour cette organisation."
     ]
-  }
+  },
+  "b9e2d9e6b16b7efc": "Rien à choisir",
+  "be8e7324e334c8f2": "Label de nœud Kubernetes : {name}",
+  "3ea4424cf122ad23": "Label de volume Kubernetes : {name}",
+  "31361ebd5d1a3b9f": "Labels de nœud Kubernetes",
+  "f6fa7e3ef0383a9e": "Labels de volume Kubernetes",
+  "6e8499fc487098ac": "Labels de nœud pour les coûts",
+  "ac1a25a2a9421d70": "Facultatif. Les labels de nœud qui deviennent des dimensions de coût, pour regrouper et filtrer les dépenses selon eux (par exemple par équipe, ou par un label posé par votre autoscaler). Le type d'instance, la zone, le pool de nœuds et la capacité spot ou à la demande sont toujours enregistrés. Laissé vide, les labels de topologie standard ainsi que team, owner, environment et cost-center sont utilisés lorsque vos nœuds les portent. Choisissez-en jusqu'à 20 ; choisissez none pour n'enregistrer aucun label supplémentaire.",
+  "7d07b9d37fa2d034": "Facultatif. Les labels de PersistentVolumeClaim qui deviennent des dimensions de coût sur le coût des volumes. La classe de stockage est toujours enregistrée. Laissé vide, les labels standard app.kubernetes.io ainsi que team, owner, environment et cost-center sont utilisés lorsque vos claims les portent. Choisissez-en jusqu'à 20 ; choisissez none pour n'enregistrer aucun label supplémentaire.",
+  "d3263a3a61f06b42": "Labels de volume pour les coûts",
+  "dd536b6a6759a3df": "{key} (préférée)"
 }

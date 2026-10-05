@@ -40,8 +40,9 @@ import type {
   WorkloadAllocation,
 } from "./cost-model.js";
 import { formatGpus } from "./gpu.js";
-import { formatMoney } from "./cost-model.js";
+import { HOURS_PER_DAY, formatMoney } from "./cost-model.js";
 import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
+import type { NodeAttributes } from "./cost-labels.js";
 
 /**
  * Why there is no Kubernetes entry in the "Oversized" right-sizing list, and
@@ -119,6 +120,30 @@ export interface EfficiencyRow {
   gpuUnknown: boolean;
 }
 
+/**
+ * One node group: the nodes sharing a pool (or, unpooled, an instance type)
+ * and a capacity type. Idle capacity is a property of a group, not of a
+ * workload, and the group is the unit someone actually resizes, so this is
+ * where "the spot pool is 40% idle" gets said.
+ */
+export interface NodeGroupRow {
+  key: string;
+  /** Pool name, or the instance type for nodes with no pool label. */
+  label: string;
+  nodePool: string;
+  capacityType: NodeAttributes["capacityType"];
+  /** One instance type, or a count when the group mixes several. */
+  instanceTypes: string;
+  nodeCount: number;
+  /** What the group's machines cost per day. Null when none had a rate. */
+  dailyNodeCost: number | null;
+  dailyIdleCost: number | null;
+  /** Idle ÷ node cost, 0..1. Null without money. */
+  idleShare: number | null;
+  /** Requested-but-unused compute held by pods on these nodes. */
+  wastedDailyCost: number | null;
+}
+
 export interface EfficiencyReport {
   /** ISO timestamp, supplied by the caller: this module owns no clock. */
   generatedAt: string;
@@ -159,6 +184,12 @@ export interface EfficiencyReport {
   gpuRightsizing: GpuRightsizingFinding[];
   /** True when any GPU is in scope: decides whether GPU columns appear at all. */
   hasGpus: boolean;
+  /**
+   * Capacity by node group, most idle money first. Empty for a
+   * namespace-scoped report (idle is a cluster fact) and when the caller has
+   * no node labels to group by.
+   */
+  nodeGroups: NodeGroupRow[];
 }
 
 function rowFrom(
@@ -231,6 +262,7 @@ export function buildEfficiencyReport(
   cluster: ClusterAllocation,
   generatedAt: string,
   namespaceFilter?: string,
+  nodeAttributes?: Map<string, NodeAttributes>,
 ): EfficiencyReport {
   const namespaces = cluster.namespaces
     .filter((ns) => namespaceFilter == null || ns.namespace === namespaceFilter)
@@ -322,7 +354,90 @@ export function buildEfficiencyReport(
     workloads,
     gpuRightsizing,
     hasGpus: gpus > 0 || (scoped && cluster.gpu.nodeCount > 0),
+    nodeGroups: scoped && nodeAttributes ? buildNodeGroups(cluster, nodeAttributes) : [],
   };
+}
+
+/** Group the cluster's nodes by pool and capacity type. */
+export function buildNodeGroups(
+  cluster: ClusterAllocation,
+  nodeAttributes: Map<string, NodeAttributes>,
+): NodeGroupRow[] {
+  const wastedByNode = new Map<string, Array<number | null>>();
+  for (const pod of cluster.pods) {
+    const list = wastedByNode.get(pod.nodeName) ?? [];
+    list.push(pod.wastedDailyCost);
+    wastedByNode.set(pod.nodeName, list);
+  }
+
+  const groups = new Map<
+    string,
+    {
+      label: string;
+      nodePool: string;
+      capacityType: NodeAttributes["capacityType"];
+      instanceTypes: Set<string>;
+      nodeCount: number;
+      nodeCost: Array<number | null>;
+      idle: Array<number | null>;
+      wasted: Array<number | null>;
+    }
+  >();
+  for (const node of cluster.nodes) {
+    const attrs = nodeAttributes.get(node.name);
+    const instanceType = attrs?.instanceType || node.instanceType;
+    const label = attrs?.nodePool || instanceType || "unlabelled";
+    const capacityType = attrs?.capacityType ?? "";
+    const key = `${label}|${capacityType}`;
+    const group = groups.get(key) ?? {
+      label,
+      nodePool: attrs?.nodePool ?? "",
+      capacityType,
+      instanceTypes: new Set<string>(),
+      nodeCount: 0,
+      nodeCost: [],
+      idle: [],
+      wasted: [],
+    };
+    if (instanceType) group.instanceTypes.add(instanceType);
+    group.nodeCount += 1;
+    group.nodeCost.push(node.hourlyRate == null ? null : node.hourlyRate * HOURS_PER_DAY);
+    group.idle.push(node.hourlyIdleCost == null ? null : node.hourlyIdleCost * HOURS_PER_DAY);
+    group.wasted.push(...(wastedByNode.get(node.name) ?? []));
+    groups.set(key, group);
+  }
+
+  const rows: NodeGroupRow[] = [...groups.entries()].map(([key, g]) => {
+    const dailyNodeCost = sumOrNull(g.nodeCost);
+    const dailyIdleCost = sumOrNull(g.idle);
+    const types = [...g.instanceTypes].sort();
+    return {
+      key,
+      label: g.label,
+      nodePool: g.nodePool,
+      capacityType: g.capacityType,
+      instanceTypes: types.length <= 1 ? (types[0] ?? "") : `${types.length} types`,
+      nodeCount: g.nodeCount,
+      dailyNodeCost,
+      dailyIdleCost,
+      idleShare:
+        dailyIdleCost != null && dailyNodeCost != null && dailyNodeCost > 0
+          ? dailyIdleCost / dailyNodeCost
+          : null,
+      wastedDailyCost: sumOrNull(g.wasted),
+    };
+  });
+  return rows.sort(
+    (a, b) =>
+      (b.dailyIdleCost ?? -1) - (a.dailyIdleCost ?? -1) ||
+      b.nodeCount - a.nodeCount ||
+      a.key.localeCompare(b.key),
+  );
+}
+
+/** `on-demand`, `spot`, `reserved`, or `unknown` where no label said. */
+export function formatCapacityType(value: NodeAttributes["capacityType"]): string {
+  return value || "unknown";
 }
 
 function sumOrNull(values: Array<number | null>): number | null {
@@ -460,6 +575,21 @@ export function formatEfficiencyReportText(report: EfficiencyReport, title: stri
     for (const finding of report.gpuRightsizing) {
       lines.push(`  ${finding.namespace}/${finding.workload} (${finding.workloadKind})`);
       lines.push(`    ${describeGpuFinding(finding, report.currency)}`);
+    }
+    lines.push("");
+  }
+  if (report.nodeGroups.length > 0) {
+    lines.push("BY NODE GROUP (most idle first)");
+    lines.push(
+      `  ${pad("POOL", 26)}${pad("CAPACITY", 11)}${pad("NODES", 7)}${pad("IDLE", 7)}${pad("IDLE/DAY", 13)}NODES/DAY`,
+    );
+    for (const group of report.nodeGroups) {
+      lines.push(
+        `  ${pad(group.label, 26)}${pad(formatCapacityType(group.capacityType), 11)}` +
+          `${pad(String(group.nodeCount), 7)}` +
+          `${pad(group.idleShare == null ? "—" : `${Math.round(group.idleShare * 100)}%`, 7)}` +
+          `${pad(money(group.dailyIdleCost), 13)}${money(group.dailyNodeCost)}`,
+      );
     }
     lines.push("");
   }

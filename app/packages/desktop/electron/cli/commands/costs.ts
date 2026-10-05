@@ -316,6 +316,72 @@ export async function parseWhere(where: string | undefined): Promise<CostFilter[
 }
 
 /**
+ * `infrawrench costs tag-keys`: every tag key in the org's cost data, grouped
+ * so Kubernetes node and volume labels read as labels. The values are what
+ * `--group-by` and `--where` accept.
+ */
+export async function cmdCostTagKeys(ctx: CliContext): Promise<void> {
+  if (ctx.flags.local) {
+    throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
+  }
+  const org = await resolveOrg(ctx);
+  const res = await orgFetch<{ values: Array<string | { value: string }> }>(
+    org.id,
+    "/costs/dimensions?dimension=tag-keys",
+  );
+  const keys = (res.values ?? []).map((v) => (typeof v === "string" ? v : v.value));
+  const { groupCostTagKeys, costTagAliasFor } = await import("@infrawrench/client-core");
+  const groups = groupCostTagKeys(keys);
+
+  if (ctx.flags.output === "json") {
+    printJson({
+      org: org.id,
+      groups: groups.map((g) => ({
+        group: g.group,
+        keys: g.keys.map((k) => {
+          const alias = costTagAliasFor(k.key);
+          return {
+            key: k.key,
+            name: k.name,
+            groupBy: alias ? `${alias.alias}:${alias.name}` : `tag:${k.key}`,
+          };
+        }),
+      })),
+    });
+    return;
+  }
+
+  if (groups.length === 0) {
+    println(c.dim("No tagged spend yet."));
+    return;
+  }
+  const headings: Record<string, string> = {
+    tag: "Tags",
+    k8s: "Kubernetes",
+    k8s_node_label: "Kubernetes node labels",
+    k8s_pvc_label: "Kubernetes volume labels",
+  };
+  for (const g of groups) {
+    println(c.bold(headings[g.group] ?? g.group));
+    printTable(
+      g.keys,
+      [
+        { header: "name", value: (k) => k.name },
+        {
+          header: "--group-by",
+          value: (k) => {
+            const alias = costTagAliasFor(k.key);
+            return c.dim(alias ? `${alias.alias}:${alias.name}` : `tag:${k.key}`);
+          },
+        },
+      ],
+      { indent: 2 },
+    );
+    println();
+  }
+}
+
+/**
  * `--filter <name|id>` → the saved filter it names, or null when the flag is
  * absent.
  *

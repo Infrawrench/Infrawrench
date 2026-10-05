@@ -78,6 +78,14 @@ export interface ClusterCostResult {
    * a GPU, because nothing was looked up there.
    */
   gpuMetrics: GpuMetricsSource | null;
+  /**
+   * Each node's labels, by node name, and each claim's, by `namespace/name`.
+   * Carried beside the allocation rather than inside it so the pure cost model
+   * stays label-free; `cost-data.ts` turns them into row tags and the
+   * efficiency report into node groups.
+   */
+  nodeLabels: Map<string, Record<string, string>>;
+  claimLabels: Map<string, Record<string, string>>;
 }
 
 /** Optional inputs beyond the API: the text fetcher and account settings. */
@@ -123,8 +131,10 @@ export async function computeClusterCost(
     k8sFetch<K8sList<K8sService>>("/api/v1/services").catch(() => null),
   ]);
 
+  const nodeLabels = new Map<string, Record<string, string>>();
   const nodes: CostModelNode[] = (nodeList.items ?? []).map((n) => {
     const labels = n.metadata.labels ?? {};
+    nodeLabels.set(n.metadata.name, labels);
     const instanceType =
       labels["node.kubernetes.io/instance-type"] ??
       labels["beta.kubernetes.io/instance-type"] ??
@@ -233,6 +243,14 @@ export async function computeClusterCost(
       : {}),
   });
 
+  const claimLabels = new Map<string, Record<string, string>>();
+  for (const pvc of claimResult?.items ?? []) {
+    claimLabels.set(
+      namespacedKey(pvc.metadata.namespace ?? "default", pvc.metadata.name),
+      pvc.metadata.labels ?? {},
+    );
+  }
+
   return {
     allocation,
     utilization,
@@ -240,6 +258,8 @@ export async function computeClusterCost(
     unpriced: allocation.pricedNodeCount === 0,
     extrasUnavailable: claimResult == null || serviceResult == null,
     gpuMetrics,
+    nodeLabels,
+    claimLabels,
   };
 }
 

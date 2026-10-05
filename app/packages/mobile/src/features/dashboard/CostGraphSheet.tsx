@@ -15,8 +15,20 @@ import {
   COST_RANGE_PRESET_LABELS,
   COST_RANGE_PRESETS,
   DEFAULT_COST_GRAPH_CONFIG,
+  describeCostTagKey,
   type CostGraphConfig,
 } from "@infrawrench/client-core";
+
+/**
+ * A tag key as a chip label. Kubernetes node and volume labels are stored as
+ * prefixed tags; the chip shows what they are rather than the prefix.
+ */
+function tagKeyChipLabel(key: string): string {
+  const d = describeCostTagKey(key);
+  if (d.group === "k8s_node_label") return `node label: ${d.name}`;
+  if (d.group === "k8s_pvc_label") return `volume label: ${d.name}`;
+  return d.name;
+}
 import {
   BareInput,
   ChipRow,
@@ -261,7 +273,10 @@ export function CostGraphSheet({
           label="Tag key"
           {...(tagKeys.isLoading ? { hint: "Loading tag keys…" } : {})}
           // A star marks the org's preferred keys; hidden ones never arrive.
-          options={tagKeyChipOptions(tagKeys.data ?? [], config.groupByTagKey)}
+          options={tagKeyChipOptions(
+            (tagKeys.data ?? []).map((k) => ({ ...k, label: tagKeyChipLabel(k.value) })),
+            config.groupByTagKey,
+          )}
           value={config.groupByTagKey ?? null}
           onChange={(groupByTagKey) => set({ groupByTagKey })}
         />

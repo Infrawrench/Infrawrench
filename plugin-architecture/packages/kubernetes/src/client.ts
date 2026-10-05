@@ -14,9 +14,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
   CreateResourceConfig,
+  CredentialFieldOption,
 } from "@infrawrench/plugin-base";
 
-import type { K8sList, K8sNamespace, ParsedKubeconfig } from "./types.js";
+import type {
+  K8sList,
+  K8sNamespace,
+  K8sNode,
+  K8sPersistentVolumeClaim,
+  ParsedKubeconfig,
+} from "./types.js";
 import { parseKubeconfig } from "./types.js";
 
 import {
@@ -49,6 +56,13 @@ import { computeClusterCost, type ClusterCostResult } from "./cluster-cost.js";
 import { buildCostIndex, type CostIndex } from "./cost-surface.js";
 import { parseNodeRates, type NodeRateTable } from "./node-rates.js";
 import { allocationToCostRows } from "./cost-data.js";
+import {
+  DEFAULT_NODE_LABEL_KEYS,
+  DEFAULT_PVC_LABEL_KEYS,
+  discoverLabelKeys,
+  nodeAttributes,
+  parseLabelKeySetting,
+} from "./cost-labels.js";
 import { fetchK8sQuotas } from "./quotas.js";
 import { buildCostMetricSeries } from "./metric-series.js";
 
@@ -75,6 +89,9 @@ export class KubernetesClient implements PluginClient {
   private readonly rates: NodeRateTable;
   /** The account's optional "GPU metrics source" (a Prometheus Service, or `none`). */
   private readonly gpuMetricsSetting: string | undefined;
+  /** Node and PVC label keys written onto cost rows as tags (`cost-labels.ts`). */
+  private readonly nodeLabelKeys: string[];
+  private readonly pvcLabelKeys: string[];
   private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
   /**
    * The most recent successful cost index. `renderDetail` is synchronous (it
@@ -93,6 +110,16 @@ export class KubernetesClient implements PluginClient {
     // standalone Kubernetes account. Absent means "no money", not "free".
     this.rates = parseNodeRates(credentials["nodeHourlyRates"]);
     this.gpuMetricsSetting = credentials["gpuMetricsSource"];
+    this.nodeLabelKeys = parseLabelKeySetting(
+      credentials["costNodeLabelKeys"],
+      DEFAULT_NODE_LABEL_KEYS,
+      "node",
+    );
+    this.pvcLabelKeys = parseLabelKeySetting(
+      credentials["costPvcLabelKeys"],
+      DEFAULT_PVC_LABEL_KEYS,
+      "pvc",
+    );
     if (services) this.services = services;
     // When the host k8s driver is available it owns all auth via the
     // official SDK, so the hand-rolled parser's output is unused. Wrap the
@@ -113,6 +140,18 @@ export class KubernetesClient implements PluginClient {
 
   private get listerCtx(): ListerContext {
     return { k8sFetch: this.k8sFetch };
+  }
+
+  /**
+   * Label keys present on the cluster's nodes or PersistentVolumeClaims, for
+   * the cost label-key pickers on the account form.
+   */
+  async listLabelKeyOptions(kind: "node" | "pvc"): Promise<CredentialFieldOption[]> {
+    const list =
+      kind === "node"
+        ? await this.k8sFetch<K8sList<K8sNode>>("/api/v1/nodes")
+        : await this.k8sFetch<K8sList<K8sPersistentVolumeClaim>>("/api/v1/persistentvolumeclaims");
+    return discoverLabelKeys(list.items ?? [], kind);
   }
 
   /** Cost allocation, cached briefly and shared by every surface. */
@@ -141,6 +180,11 @@ export class KubernetesClient implements PluginClient {
         result.utilization.status,
         new Date().toISOString(),
         result.gpuMetrics,
+      );
+      // Node shapes ride beside the index (not through `buildCostIndex`) so the
+      // efficiency report can group capacity by node pool and capacity type.
+      index.nodeAttributes = new Map(
+        [...result.nodeLabels].map(([name, labels]) => [name, nodeAttributes(labels)]),
       );
       this.lastCostIndex = index;
       return index;
@@ -283,7 +327,12 @@ export class KubernetesClient implements PluginClient {
    */
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     const result = await this.clusterCost();
-    return allocationToCostRows(result.allocation, range);
+    return allocationToCostRows(result.allocation, range, {
+      nodeLabels: result.nodeLabels,
+      claimLabels: result.claimLabels,
+      nodeLabelKeys: this.nodeLabelKeys,
+      pvcLabelKeys: this.pvcLabelKeys,
+    });
   }
 
   /**

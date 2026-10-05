@@ -15,7 +15,7 @@ import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/list
 import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
-import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
+import { cmdCosts, cmdCostAnomalies, cmdCostAlerts, cmdCostTagKeys } from "./commands/costs";
 import {
   cmdAnomalyFeedback,
   cmdAnomalyPrecision,
@@ -121,7 +121,8 @@ COMMANDS
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
-                      [--group-by tag:<key> | virtual_tag:<key>  group by a provider tag or a virtual tag]
+                      [--group-by tag:<key> | virtual_tag:<key> | k8s_node_label:<key> | k8s_pvc_label:<key>
+                       group by a provider tag, a virtual tag or a Kubernetes label]
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency (stated rates, then
                       automatic ECB rates if on)]
@@ -143,6 +144,7 @@ COMMANDS
     sensitivity       providers/services whose threshold feedback has raised, and why
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period" — distinct from budgets and anomalies)   [--limit 20]
+  costs tag-keys      the tag keys in your cost data, Kubernetes node and volume labels grouped   [--json]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
                       into a custom source: --format csv|focus [--map date=Day --map tag=Team]
                       [--currency USD] [--date-format mdy|dmy] [--replace | --append]
@@ -351,7 +353,8 @@ FLAGS
   --months <n>        costs --anomalies precision: months to report (default 6, max 24)
   --where <query>     costs: filter in the cost query language — terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
-                      tag['key'] = 'v'. Dimensions: provider, account, service, region,
+                      tag['key'] = 'v', k8s_node_label['key'] = 'v', k8s_pvc_label['key'] = 'v'.
+                      Dimensions: provider, account, service, region,
                       resource, tag, charge_type, commitment. OR is not supported (the filter
                       is a conjunction) — use IN ('a','b') for several values of one dimension
   --filter <name|id>  costs: apply a saved cost filter by reference — resolved on the server
@@ -554,6 +557,10 @@ export async function runCli(): Promise<void> {
         }
         if (rest[0] === "sources") {
           await cmdCostSources(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        if (rest[0] === "tag-keys") {
+          await cmdCostTagKeys(ctx);
           break;
         }
         if (parsed.anomalies) {
