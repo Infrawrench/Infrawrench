@@ -20,11 +20,13 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
 import { costQueryForConfig, type CostGraphConfig } from "@infrawrench/ui/cost/config";
-import type {
-  CostReport,
-  CostReportInput,
-  CostReportPlacement,
-  CostReportRunResult,
+import {
+  applyCostReportRunOverrides,
+  type CostReport,
+  type CostReportInput,
+  type CostReportPlacement,
+  type CostReportRunOverrides,
+  type CostReportRunResult,
 } from "@infrawrench/client-core";
 
 import { disableReportNotificationsForReport } from "@infrawrench/server-core/report-delivery/store";
@@ -298,11 +300,15 @@ export async function runCostReport(
   organizationId: string,
   reportId: string,
   today = new Date(),
+  overrides: CostReportRunOverrides = {},
 ): Promise<CostReportRunResult | null> {
   const row = await loadReportRow(organizationId, reportId);
   if (!row) return null;
 
-  const request = costQueryForConfig(row.config as CostGraphConfig, today);
+  // One-off display overrides (CLI `--measure`/`--bin`, the MCP tool's
+  // parameters) shape this run only; the saved config is never rewritten.
+  const config = applyCostReportRunOverrides(row.config as CostGraphConfig, overrides);
+  const request = costQueryForConfig(config, today);
   const result = await runCostQuery(organizationId, request);
   return {
     reportId: row.id,

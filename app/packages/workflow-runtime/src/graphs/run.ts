@@ -168,6 +168,12 @@ function costQuery(raw: unknown): GraphCostQuery {
   if (!COST_BINNING_SET.has(binning)) {
     fail(`graph.costs.query: unknown binning ${JSON.stringify(binning)}.`);
   }
+  // In the shared enum, but there are no hourly cost rows to bin: every
+  // provider's spend is stored per day. Refused here with the reason rather
+  // than after a host round trip.
+  if (binning === "hourly") {
+    fail("graph.costs.query: hourly binning is unavailable; cost rows are stored per day.");
+  }
 
   const groupBy = String(q["groupBy"] ?? "none");
   if (groupBy !== "none" && !COST_DIMENSION_SET.has(groupBy)) {

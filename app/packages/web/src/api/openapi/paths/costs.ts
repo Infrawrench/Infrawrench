@@ -57,10 +57,55 @@ const CostFilter = strict({
   tagKey: z.string().optional(),
 }).openapi("CostFilter");
 
+/**
+ * Shared by the query, the saved graph config and the report-run override, so
+ * the three cannot disagree about what a bin or a measure is.
+ */
+export const CostBinning = z
+  .enum(["hourly", "daily", "weekly", "monthly", "quarterly", "cumulative"])
+  .describe(
+    "Time bucket of the x axis. Weeks start on Monday and quarters on the first of January, " +
+      "April, July and October (UTC). `cumulative` is the older spelling of daily bins with " +
+      "`cumulative: true`, kept so stored configs and existing clients keep working. `hourly` " +
+      "is refused with a 400 while no connected account stores hourly cost rows: every " +
+      "provider's spend is collected per UTC day today (see `granularity` on /costs/status).",
+  )
+  .openapi("CostBinning");
+
+export const CostMeasure = z
+  .enum(["cost", "usage", "count"])
+  .describe(
+    "What the Y axis sums. `cost` (the default) is money per currency. `usage` sums the usage " +
+      "quantity providers report beside the money and requires `usageUnit`, because quantities " +
+      "in different units cannot be added. `count` is how many distinct values of the `groupBy` " +
+      "dimension had nonzero cost in each bin (how many services were billed each day) and " +
+      "requires a `groupBy`; its range total is a distinct count, not a sum of the bins. " +
+      "`usage` and `count` cannot carry a forecast, a scenario or billing rules (a 400), " +
+      "`count` cannot be cumulative, and a display currency is ignored for both.",
+  )
+  .openapi("CostMeasure");
+
+export const CostUsageUnit = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe(
+    "The usage unit a `usage` measure sums, exactly as the provider spells it (`Hrs`, " +
+      "`GB-Mo`). List them with GET /costs/dimensions?dimension=usage-units. Required for " +
+      "`usage`, refused for any other measure.",
+  );
+
+export const CostCumulative = z
+  .boolean()
+  .describe(
+    "Running totals from the start of the range, at any bin size. Omitted is off. Totals " +
+      "then report the last point rather than the sum.",
+  );
+
 const CostQueryRequest = strict({
   from: IsoDate,
   to: IsoDate,
-  binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),
+  binning: CostBinning,
   groupBy: z.enum([
     "none",
     "provider",
@@ -140,6 +185,9 @@ const CostQueryRequest = strict({
         "organization with no rules, because the absence of that field is the only signal that " +
         "a figure is unadjusted.",
     ),
+  measure: CostMeasure.optional(),
+  usageUnit: CostUsageUnit.optional(),
+  cumulative: CostCumulative.optional(),
 }).openapi("CostQueryRequest");
 
 const CostSeriesPoint = strict({
@@ -215,6 +263,15 @@ export const CostQueryResponse = strict({
     ),
   previousTotals: z.record(z.number()).optional(),
   adjustment: CostAdjustmentSummary.optional(),
+  measure: z
+    .enum(["usage", "count"])
+    .optional()
+    .describe(
+      "Set when the request measured something other than money; absent means every amount " +
+        'is money in its series\' currency. For both, series carry `currency: ""` and the ' +
+        'totals are keyed by `""`.',
+    ),
+  usageUnit: z.string().optional().describe("The unit a `usage` response is in."),
 }).openapi("CostQueryResponse");
 
 const CostDimensionValues = strict({
@@ -249,6 +306,12 @@ const CostAccountStatus = strict({
         "billed spend. True means the series cannot be reconciled against an invoice: resources " +
         "deleted part-way through a period are no longer in inventory to be priced, all rates " +
         "are list rather than negotiated, and credits, tax and refunds never appear.",
+    ),
+  granularity: z
+    .enum(["daily", "hourly"])
+    .describe(
+      "The granularity this account's cost rows are stored at. `daily` for every provider " +
+        "today; hourly bins are offered only once some account reports `hourly`.",
     ),
   costLastPolledAt: IsoDateTime.nullable(),
   costBackfilledAt: IsoDateTime.nullable(),
@@ -686,7 +749,8 @@ export function registerCostPaths(ctx: BuildContext) {
       "dimension=usage-units for the usage units providers report (a usage budget's unit); " +
       "dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge " +
       "types rather than from the stored data, so the picker is populated before any " +
-      "provider has reported one.",
+      "provider has reported one. `usage-units` lists the usage units present in the cost " +
+      "data, most common first, for the `usage` measure's unit picker.",
     request: {
       params: OrgIdParam,
       query: strict({

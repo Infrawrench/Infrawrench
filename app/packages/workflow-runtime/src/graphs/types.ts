@@ -29,7 +29,7 @@ export interface GraphCostQuery {
   /** Inclusive ISO dates, resolved from `days` when the guest passed one. */
   from: string;
   to: string;
-  binning: "daily" | "weekly" | "monthly" | "cumulative";
+  binning: "daily" | "weekly" | "monthly" | "quarterly" | "cumulative";
   groupBy: "none" | "provider" | "account" | "service" | "region" | "resource" | "tag";
   groupByTagKey?: string | undefined;
   filters: Array<{

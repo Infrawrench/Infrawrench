@@ -200,4 +200,10 @@
 // usage figures; `GET /costs/dimensions` accepts `dimension=usage-units`; and
 // `GET /budgets/{id}` is documented as the `BudgetWithStatus` it always
 // returned. All additive.
-export const API_VERSION = "1.57.0";
+// 1.58.0: cost display options. `measure` (cost/usage/count), `usageUnit` and
+// `cumulative` on CostQueryRequest and CostGraphConfig; `hourly` and
+// `quarterly` binnings; `donut` and `table` chart types; `measure`/`usageUnit`
+// on CostQueryResponse; `granularity` on CostAccountStatus;
+// `dimension=usage-units`; an optional overrides body on
+// POST /cost-reports/{id}/run. Additive.
+export const API_VERSION = "1.58.0";

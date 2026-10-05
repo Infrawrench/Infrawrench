@@ -74,6 +74,12 @@ export interface CostAccountStatus {
    * are absent entirely.
    */
   estimated: boolean;
+  /**
+   * The granularity this account's cost rows are stored at. Optional so a
+   * client a release ahead of its server still renders the row; absent reads
+   * as `daily`, which is what every server has stored.
+   */
+  granularity?: CostGranularity | undefined;
   costLastPolledAt: string | null;
   costBackfilledAt: string | null;
   costPollFailureCount: number;
@@ -230,11 +236,95 @@ export type CostRangePreset = (typeof COST_RANGE_PRESETS)[number];
 export type CostDateRange =
   { kind: "relative"; preset: CostRangePreset } | { kind: "absolute"; from: string; to: string };
 
-export const COST_CHART_TYPES = ["stacked_bar", "multi_bar", "line", "area", "pie"] as const;
+/**
+ * How a cost card draws its series.
+ *
+ * `pie` and `donut` draw period totals per group (no time axis); `table` draws
+ * the same buckets as the time charts as rows, with a column per series and a
+ * total, for the reader who wants the numbers rather than the shape.
+ */
+export const COST_CHART_TYPES = [
+  "stacked_bar",
+  "multi_bar",
+  "line",
+  "area",
+  "pie",
+  "donut",
+  "table",
+] as const;
 export type CostChartType = (typeof COST_CHART_TYPES)[number];
 
-export const COST_BINNINGS = ["daily", "weekly", "monthly", "cumulative"] as const;
+/** Chart types that draw period totals per group rather than a time axis. */
+export function isCostTotalsChart(chartType: CostChartType): chartType is "pie" | "donut" {
+  return chartType === "pie" || chartType === "donut";
+}
+
+/**
+ * The x-axis bucket a query bins by.
+ *
+ * `cumulative` predates the separate {@link CostGraphConfig.cumulative} toggle
+ * and still means what it always meant (a running sum over daily buckets), so
+ * every config and API client that sends it keeps working. New editors write
+ * a bin size plus the toggle instead; {@link effectiveCostBinning} folds the
+ * two spellings into one.
+ *
+ * `hourly` is part of the contract but only usable where the underlying cost
+ * rows are hourly. Every provider's rows are stored per UTC day today (the
+ * plugin contract's `CostRow.date` is a day), so the server refuses it and the
+ * editors show it disabled with the reason; see {@link hourlyCostBinningAvailable}.
+ */
+export const COST_BINNINGS = [
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+  "cumulative",
+] as const;
 export type CostBinningId = (typeof COST_BINNINGS)[number];
+
+/** The bin sizes an editor offers: every binning except the legacy `cumulative`. */
+export const COST_BIN_SIZES = [
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+] as const satisfies readonly CostBinningId[];
+export type CostBinSize = (typeof COST_BIN_SIZES)[number];
+
+/**
+ * What a cost card measures on its Y axis.
+ *
+ * - `cost`: money, per currency. The default, and what every card drew before
+ *   this existed.
+ * - `usage`: the summed usage quantity providers report beside the money
+ *   (hours, GB-months, requests). Quantities in different units cannot be
+ *   added, so a usage card names exactly one `usageUnit` and only rows in that
+ *   unit count.
+ * - `count`: how many distinct values of the group-by dimension had nonzero
+ *   cost in each bin ("how many services were billed each day"). Needs a
+ *   group-by: there is nothing to count without one.
+ */
+export const COST_MEASURES = ["cost", "usage", "count"] as const;
+export type CostMeasure = (typeof COST_MEASURES)[number];
+
+export const COST_MEASURE_LABELS: Record<CostMeasure, string> = {
+  cost: "Cost",
+  usage: "Usage quantity",
+  count: "Count",
+};
+
+/**
+ * The granularity cost rows are stored at, per account (GET /costs/status).
+ *
+ * `daily` for every provider today: the plugin contract's `CostRow.date` is a
+ * UTC day and ClickHouse keys `cost_daily` by day. Spelled out as a field so a
+ * future hourly store can switch hourly bins on per account without another
+ * contract change.
+ */
+export const COST_GRANULARITIES = ["daily", "hourly"] as const;
+export type CostGranularity = (typeof COST_GRANULARITIES)[number];
 
 export interface CostGraphConfig {
   version: 1;
@@ -312,6 +402,24 @@ export interface CostGraphConfig {
    * `CostGraphCard` renders that caption unconditionally.
    */
   adjusted?: boolean | undefined;
+  /**
+   * The Y measure. Absent is `cost`, so every config written before this
+   * existed draws exactly what it drew. See {@link COST_MEASURES} for what each
+   * measure means and {@link costDisplayProblem} for the rules they carry.
+   */
+  measure?: CostMeasure | undefined;
+  /**
+   * The single usage unit a `usage` card sums (`"Hrs"`, `"GB-Mo"`), as the
+   * provider spelled it. Required for `usage` and refused otherwise: adding
+   * hours to gigabytes is the wrong answer this field exists to prevent.
+   */
+  usageUnit?: string | undefined;
+  /**
+   * Draw a running total from the start of the range instead of per-bin
+   * values. Works with any bin size; the legacy `binning: "cumulative"` is the
+   * daily case of the same thing. Absent is off.
+   */
+  cumulative?: boolean | undefined;
 }
 
 /**
@@ -450,16 +558,20 @@ export const DEFAULT_BUDGET_INPUT: BudgetInput = {
 
 export const COST_CHART_TYPE_LABELS: Record<CostChartType, string> = {
   stacked_bar: "Stacked bar",
-  multi_bar: "Multi bar",
+  multi_bar: "Bar",
   line: "Line",
   area: "Area",
   pie: "Pie",
+  donut: "Donut",
+  table: "Table",
 };
 
 export const COST_BINNING_LABELS: Record<CostBinningId, string> = {
+  hourly: "Hourly",
   daily: "Daily",
   weekly: "Weekly",
   monthly: "Monthly",
+  quarterly: "Quarterly",
   cumulative: "Cumulative",
 };
 
@@ -717,6 +829,21 @@ export interface CostQueryRequest {
    * org has no rules: its absence must mean "unadjusted" and nothing else.
    */
   adjusted?: boolean | undefined;
+  /**
+   * What to sum. Absent is `cost`, byte-identical to what a server that never
+   * heard of measures returns. `usage` needs `usageUnit`; `count` needs a
+   * `groupBy`. Neither can carry a forecast, a scenario or billing rules, and
+   * the server refuses those combinations rather than silently dropping half
+   * the request. A `displayCurrency` is ignored: a quantity has no currency.
+   */
+  measure?: CostMeasure | undefined;
+  /** The usage unit a `usage` query sums; required for it, refused otherwise. */
+  usageUnit?: string | undefined;
+  /**
+   * Running totals from the start of the range, at any bin size. Absent is
+   * off; `binning: "cumulative"` is the older spelling of daily + this.
+   */
+  cumulative?: boolean | undefined;
 }
 
 export interface CostSeriesPoint {
@@ -822,6 +949,19 @@ export interface CostQueryResponse {
    * figure without being handed what it needs to label it.
    */
   adjustment?: CostAdjustmentSummary;
+  /**
+   * Set when the request measured something other than money. Absent means
+   * every amount above is money in its series' currency.
+   *
+   * For `usage` and `count` the series carry `currency: ""` (a quantity has
+   * none) and `totals`/`previousTotals` are keyed by `""`. For `count`, a
+   * total is the number of distinct values across the whole range, not the
+   * sum of the per-bin counts: a service billed on all thirty days is one
+   * service, not thirty.
+   */
+  measure?: Exclude<CostMeasure, "cost">;
+  /** The unit a `usage` response is in, echoed so a client can label it. */
+  usageUnit?: string;
 }
 
 /** Sentinel group key for the folded "Other" series. */
@@ -901,7 +1041,124 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     // asked for adjustments issues byte-identical requests to the ones it
     // always has.
     ...(config.adjusted ? { adjusted: true } : {}),
+    // The display options follow the same omit-when-default rule: a card that
+    // draws cost per bin sends exactly the request it always sent.
+    ...(config.measure && config.measure !== "cost" ? { measure: config.measure } : {}),
+    ...(config.measure === "usage" && config.usageUnit ? { usageUnit: config.usageUnit } : {}),
+    ...(config.cumulative ? { cumulative: true } : {}),
   };
+}
+
+/**
+ * The bin size and running-total flag a config or request actually means.
+ *
+ * Folds the legacy `binning: "cumulative"` (daily running sum) into the newer
+ * spelling, so every reader asks one question instead of two.
+ */
+export function effectiveCostBinning(q: {
+  binning: CostBinningId;
+  cumulative?: boolean | undefined;
+}): { bin: CostBinSize; cumulative: boolean } {
+  if (q.binning === "cumulative") return { bin: "daily", cumulative: true };
+  return { bin: q.binning, cumulative: q.cumulative === true };
+}
+
+/**
+ * Whether hourly bins can be drawn: true once some cost-capable account stores
+ * hourly rows. False everywhere today; see {@link COST_GRANULARITIES}.
+ */
+export function hourlyCostBinningAvailable(statuses: readonly CostAccountStatus[]): boolean {
+  return statuses.some((s) => s.supportsCosts && s.granularity === "hourly");
+}
+
+/** Why hourly bins are refused, in the same words on every surface. */
+export const HOURLY_BINNING_UNAVAILABLE_REASON =
+  "Hourly bins need hourly cost rows, and every connected provider's spend is collected per day.";
+
+/**
+ * The first rule a display configuration breaks, as a sentence, or null when
+ * it is drawable. One function for the server (which refuses the query), the
+ * editors (which block the save) and the CLI (which refuses the flags), so the
+ * three can never disagree about what is allowed.
+ *
+ * Hourly availability is not checked here: it depends on the org's accounts,
+ * not on the config, and is answered by {@link hourlyCostBinningAvailable}.
+ */
+export function costDisplayProblem(q: {
+  measure?: CostMeasure | undefined;
+  usageUnit?: string | undefined;
+  groupBy: "none" | CostDimensionId;
+  binning: CostBinningId;
+  cumulative?: boolean | undefined;
+  forecast?: boolean | undefined;
+  scenarioModelId?: string | undefined;
+  adjusted?: boolean | undefined;
+  unitCostMetricId?: string | undefined;
+}): string | null {
+  const measure = q.measure ?? "cost";
+  if (measure === "cost") {
+    if (q.usageUnit) return "A usage unit only applies to the usage measure.";
+    // The legacy `binning: "cumulative"` stays valid for a unit-cost chart
+    // (it divides running totals by running totals); the toggle is not
+    // offered there because a running ratio at weekly or quarterly bins has
+    // no denominator series to match it.
+    if (q.unitCostMetricId && q.cumulative) {
+      return "Unit costs are a ratio per bin, so the cumulative toggle does not apply to them.";
+    }
+    return null;
+  }
+  if (measure === "usage" && !q.usageUnit?.trim()) {
+    return "Pick a usage unit: quantities in different units (hours, gigabytes, requests) cannot be added together.";
+  }
+  if (measure === "count") {
+    if (q.usageUnit) return "A usage unit only applies to the usage measure.";
+    if (q.groupBy === "none") {
+      return "Count needs a group-by: it counts the distinct values of that dimension with nonzero cost in each bin.";
+    }
+    if (effectiveCostBinning(q).cumulative) {
+      return "Count cannot be cumulative: adding up per-bin counts would count the same value once per bin.";
+    }
+  }
+  if (q.forecast) return "Forecasts project spend, so they only apply to the cost measure.";
+  if (q.scenarioModelId) {
+    return "Scenarios adjust a spend forecast, so they only apply to the cost measure.";
+  }
+  if (q.adjusted) return "Billing rules adjust money, so they only apply to the cost measure.";
+  if (q.unitCostMetricId) return "Unit costs divide spend, so they only apply to the cost measure.";
+  return null;
+}
+
+/**
+ * Format one value on a cost card's axis, tooltip, legend or table, for
+ * whichever measure the response carries.
+ */
+export function formatCostMeasureValue(
+  value: number,
+  opts: {
+    measure?: CostMeasure | undefined;
+    currency?: string | undefined;
+    usageUnit?: string | undefined;
+  },
+): string {
+  const measure = opts.measure ?? "cost";
+  if (measure === "cost") return formatMoney(value, opts.currency || "USD");
+  if (measure === "count") {
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+  }
+  const n = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: Math.abs(value) < 10 ? 2 : 0,
+  }).format(value);
+  return opts.usageUnit ? `${n} ${opts.usageUnit}` : n;
+}
+
+/**
+ * A series' period total: the last point when the points are running sums,
+ * their sum otherwise. Summing a cumulative series would count day one thirty
+ * times.
+ */
+export function costSeriesTotal(points: readonly CostSeriesPoint[], cumulative: boolean): number {
+  if (cumulative) return points[points.length - 1]?.amount ?? 0;
+  return points.reduce((sum, p) => sum + p.amount, 0);
 }
 
 /** Sum every series in a response bucket-wise into one total-per-bucket list. */
@@ -926,10 +1183,17 @@ export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
  * differently would divide one week's spend by another week's volume and the
  * quotient would look entirely plausible.
  *
- * `cumulative` shares daily buckets: it is a running sum over them.
+ * `cumulative` shares daily buckets: it is a running sum over them. `hourly`
+ * maps a day to itself, because a day-keyed row has no hour to place it in.
  */
 export function costBucketStart(day: string, binning: CostBinningId): string {
   if (binning === "monthly") return `${day.slice(0, 7)}-01`;
+  if (binning === "quarterly") {
+    // `toStartOfQuarter`: the first of January, April, July or October.
+    const month = Number(day.slice(5, 7));
+    const start = Math.floor((month - 1) / 3) * 3 + 1;
+    return `${day.slice(0, 4)}-${String(start).padStart(2, "0")}-01`;
+  }
   if (binning === "weekly") {
     const d = new Date(`${day}T00:00:00.000Z`);
     const dow = (d.getUTCDay() + 6) % 7;
@@ -944,22 +1208,26 @@ export function binForecast(
   forecast: CostSeriesPoint[],
   binning: CostBinningId,
   lastActualCumulative?: number,
+  cumulative = binning === "cumulative",
 ): CostSeriesPoint[] {
-  if (binning === "daily") return forecast;
-  if (binning === "cumulative") {
-    let running = lastActualCumulative ?? 0;
-    return forecast.map((p) => {
-      running += p.amount;
-      return { bucket: p.bucket, amount: running };
-    });
+  const { bin } = effectiveCostBinning({ binning });
+  let binned = forecast;
+  if (bin !== "daily" && bin !== "hourly") {
+    const map = new Map<string, number>();
+    for (const p of forecast) {
+      const key = costBucketStart(p.bucket, bin);
+      map.set(key, (map.get(key) ?? 0) + p.amount);
+    }
+    binned = [...map.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([bucket, amount]) => ({ bucket, amount }));
   }
-  const bucketOf = (day: string): string => costBucketStart(day, binning);
-  const map = new Map<string, number>();
-  for (const p of forecast)
-    map.set(bucketOf(p.bucket), (map.get(bucketOf(p.bucket)) ?? 0) + p.amount);
-  return [...map.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([bucket, amount]) => ({ bucket, amount }));
+  if (!cumulative) return binned;
+  let running = lastActualCumulative ?? 0;
+  return binned.map((p) => {
+    running += p.amount;
+    return { bucket: p.bucket, amount: running };
+  });
 }
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
@@ -982,10 +1250,26 @@ export function formatMoney(amount: number, currency: string): string {
   return fmt.format(amount);
 }
 
-/** Short bucket label for axes: "Jul 5", "Jul 2026" for monthly bins. */
+/**
+ * Short bucket label for axes: "Jul 5", "Jul 2026" for monthly bins, "Q3 2026"
+ * for quarterly ones, "Jul 5 14:00" for an hourly `YYYY-MM-DDTHH:MM` bucket.
+ */
 export function formatBucketLabel(bucket: string, binning: CostBinningId): string {
+  if (bucket.length > 10 && bucket[10] === "T") {
+    const h = new Date(`${bucket.slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(h.getTime())) return bucket;
+    const day = h.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+    return `${day} ${bucket.slice(11, 16)}`;
+  }
   const d = new Date(`${bucket}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return bucket;
+  if (binning === "quarterly") {
+    return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}`;
+  }
   if (binning === "monthly") {
     return d.toLocaleDateString(undefined, { month: "short", year: "numeric", timeZone: "UTC" });
   }

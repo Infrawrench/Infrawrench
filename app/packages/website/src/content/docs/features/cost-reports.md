@@ -19,7 +19,7 @@ A **cost report** is the same graph as an object. It has a name, its own page, a
 ## Create a report
 
 1. Open **Reports** and click **New report**.
-2. Give it a name and configure the graph — the same editor a dashboard [cost graph](./cloud-costs.md#add-a-cost-graph) uses, with the same chart types, binning, date ranges, group-by, filters, cost basis, comparison and forecast options.
+2. Give it a name and configure the graph — the same editor a dashboard [cost graph](./cloud-costs.md#add-a-cost-graph) uses, with the same chart types (including donut and table), measures (cost, usage quantity, count), binning (daily to quarterly), cumulative toggle, date ranges, group-by, filters, cost basis, comparison and forecast options. See [display options](./cloud-costs.md#display-options).
 3. **Save**. You land on the report's own page.
 
 ![The cost graph editor opened from the Reports page, with a name field filled in as "Monthly spend by service"](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-editor-name.png)
@@ -130,7 +130,7 @@ Org-wide is the default on purpose. "We changed instance types" is not a fact ab
 
 ### How markers land on the chart
 
-A note is dated to a day, but a chart bins by day, week, month, or cumulatively. The marker lands on **whichever bucket holds that day** at the binning the chart is using — the same bucketing the spend itself went through, so a marker is never one bar away from the money it explains. Switch a chart from daily to monthly and a note dated the 14th moves onto that month's bar.
+A note is dated to a day, but a chart bins by day, week, month or quarter. The marker lands on **whichever bucket holds that day** at the binning the chart is using — the same bucketing the spend itself went through, so a marker is never one bar away from the money it explains. Switch a chart from daily to monthly and a note dated the 14th moves onto that month's bar.
 
 Three consequences follow:
 
@@ -164,7 +164,11 @@ infrawrench reports "Monthly spend"     # run it and chart it in the terminal
 infrawrench reports "Monthly spend" --json
 infrawrench reports send "Monthly spend"  # deliver it to its schedules right now
 infrawrench reports "Monthly spend" --format pdf  # write monthly-spend.pdf (or --out <path>)
+infrawrench reports "Monthly spend" --bin quarter --cumulative   # a one-off view, nothing saved
+infrawrench reports "Monthly spend" --measure count --json       # how many services were billed per bin
 ```
+
+`--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour` and `--cumulative` change how this one run is measured and binned without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
 
 The `delivery` column shows each report's schedules and calls out failing ones; `reports send` is behind an explicit verb because it posts into channels and inboxes.
 
@@ -172,19 +176,19 @@ The name is matched exactly first, then as a substring; an ambiguous query lists
 
 ## From chat and MCP
 
-Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
+Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning` and `cumulative` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
 
 Reads need `costs:read` and writes need `costs:write`; see [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
 
 ## On your phone
 
-The [mobile app](./mobile-app.md) lists your saved reports — grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path — and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too.
+The [mobile app](./mobile-app.md) lists your saved reports — grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path — and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too, honouring the saved display options: a table report draws as rows, a donut as a ring with its total, and a usage or count report prints quantities and counts rather than money.
 
 Creating or editing a delivery schedule stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses — org-egress decisions that belong next to the pickers that make them safe.
 
 Annotation markers are drawn on the phone's charts too, with the note text a tap away. Writing one stays on web and desktop with everything else: a note's scope choice can change what every chart in the org shows, and that is not a decision to make on a bus.
 
-Creating and editing a report stays on web and desktop, and so does managing folders — the phone reads the filing, it doesn't refile. Choosing choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
+Creating and editing a report stays on web and desktop, and so does managing folders — the phone reads the filing, it doesn't refile. Choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
 
 ## When a report is worth making
 

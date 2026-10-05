@@ -72,6 +72,17 @@ export interface RangeFlags {
   customer?: string | undefined;
   /** `billing-rules preview --month YYYY-MM`: which month to price. */
   month?: string | undefined;
+  /**
+   * `costs`/`reports --measure cost|usage|count`: what the Y axis sums. Left a
+   * raw string so the command validates it and names the valid values.
+   */
+  measure?: string | undefined;
+  /** `costs`/`reports --bin hour|day|week|month|quarter`: the bin size. */
+  bin?: string | undefined;
+  /** `costs`/`reports --unit <unit>`: the usage unit `--measure usage` sums. */
+  unit?: string | undefined;
+  /** `costs`/`reports --cumulative`: running totals instead of per-bin values. */
+  cumulative?: boolean | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -301,6 +312,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // `billing-rules preview`: whose invoice, and which month.
         customer: { type: "string" },
         month: { type: "string" },
+        // `costs`/`reports` display options: what to sum, the bin, the unit.
+        measure: { type: "string" },
+        bin: { type: "string" },
+        unit: { type: "string" },
+        cumulative: { type: "boolean", default: false },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies`: same command, different question.
@@ -480,6 +496,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       filter: str("filter"),
       customer: str("customer"),
       month: str("month"),
+      measure: str("measure"),
+      bin: str("bin"),
+      unit: str("unit"),
+      cumulative: values.cumulative === true,
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   costQueryForConfig,
   describeCostConversion,
+  formatCostMeasureValue,
   formatMoney,
   type CostGraphConfig,
   type CostQueryResponse,
@@ -53,9 +54,17 @@ export function CostGraphCard({
   const currency = response?.currencies[0] ?? "USD";
   const mixedCurrency = (response?.currencies.length ?? 0) > 1;
   const conversionNote = describeCostConversion(response?.conversion);
+  // Money, a quantity in its unit, or a whole count: whatever the response
+  // says it measured, so a count never wears a currency sign.
+  const fmt = (value: number, cur: string = currency) =>
+    formatCostMeasureValue(value, {
+      measure: response?.measure,
+      currency: cur,
+      usageUnit: response?.usageUnit,
+    });
   const total = response
     ? Object.entries(response.totals)
-        .map(([cur, amt]) => formatMoney(amt, cur))
+        .map(([cur, amt]) => fmt(amt, cur))
         .join(" + ")
     : null;
 
@@ -79,6 +88,14 @@ export function CostGraphCard({
           </Text>
         )}
       </View>
+      {response?.measure === "usage" && (
+        <Text style={styles.note}>Usage quantity in {response.usageUnit ?? "?"}.</Text>
+      )}
+      {response?.measure === "count" && (
+        <Text style={styles.note}>
+          Distinct values with nonzero cost per bin; the total counts each value once.
+        </Text>
+      )}
       {mixedCurrency && (
         <Text style={styles.note}>Mixed currencies — series are shown per currency.</Text>
       )}
@@ -118,7 +135,8 @@ export function CostGraphCard({
           response={response}
           chartType={config.chartType}
           binning={config.binning}
-          currency={currency}
+          cumulative={config.cumulative}
+          format={(v) => fmt(v)}
           annotations={annotations.data ?? []}
         />
       ) : (

@@ -97,7 +97,12 @@ infrawrench costs                        # last 30 days, grouped by provider
 infrawrench costs --last 90d --group-by service
 infrawrench costs --group-by account --json
 infrawrench costs --group-by tag:team    # one tag's values, e.g. a Kubernetes namespace or gpu_model
+infrawrench costs --last 12m --bin quarter --cumulative          # running quarterly totals
+infrawrench costs --measure count --group-by service              # how many services were billed each day
+infrawrench costs --measure usage --unit Hrs --group-by service   # summed usage quantity in one unit
 ```
+
+`--measure` picks what is summed: `cost` (the default, money), `usage` (the usage quantity providers report, in the one unit `--unit` names; without `--unit` the command lists the units your cost data has) or `count` (how many distinct `--group-by` values had nonzero cost per bin; the headline total counts each value once over the whole range). `--bin day|week|month|quarter` sets the bin, and `--bin hour` is refused with the reason while every provider reports daily rows. `--cumulative` draws running totals. `--json` echoes `measure`, `usageUnit`, `binning` and `cumulative` beside the response, whose `measure` field says when the amounts are not money. See [display options](./cloud-costs.md#display-options).
 
 <insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>
 

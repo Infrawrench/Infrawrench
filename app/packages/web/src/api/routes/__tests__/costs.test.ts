@@ -332,7 +332,7 @@ describe("POST /query", () => {
   it("rejects malformed bodies with 400", async () => {
     const res = await buildApp().request("/query", {
       method: "POST",
-      body: JSON.stringify({ ...validQuery, binning: "hourly" }),
+      body: JSON.stringify({ ...validQuery, binning: "fortnightly" }),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(400);

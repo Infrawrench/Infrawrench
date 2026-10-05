@@ -25,6 +25,8 @@ import {
   COST_CHARGE_TYPES,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
+  COST_MEASURES,
+  costDisplayProblem,
   COST_QUERY_MAX_LENGTH,
   COST_RANGE_PRESETS,
   COST_REPORT_LIMITS,
@@ -45,6 +47,7 @@ import {
   type CostGraphConfig,
   type CostQueryRequest,
   type CostReportInput,
+  type CostReportRunOverrides,
   type CostReportWidgetConfig,
   type CustomGraphWidgetConfig,
   type DashboardWidgetKind,
@@ -116,6 +119,20 @@ export {
   COST_RANGE_PRESETS,
   COST_CHART_TYPES,
   COST_BINNINGS,
+  COST_BIN_SIZES,
+  COST_MEASURES,
+  COST_MEASURE_LABELS,
+  COST_GRANULARITIES,
+  effectiveCostBinning,
+  hourlyCostBinningAvailable,
+  HOURLY_BINNING_UNAVAILABLE_REASON,
+  costDisplayProblem,
+  formatCostMeasureValue,
+  costSeriesTotal,
+  isCostTotalsChart,
+  type CostBinSize,
+  type CostMeasure,
+  type CostGranularity,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
   COST_EFFICIENCY_LIMITS,
@@ -375,7 +392,7 @@ export const costDateRangeSchema = z.union([
   z.object({ kind: z.literal("absolute"), from: isoDate, to: isoDate }),
 ]);
 
-export const costGraphConfigSchema = z.object({
+const costGraphConfigObjectSchema = z.object({
   version: z.literal(1),
   chartType: z.enum(COST_CHART_TYPES),
   binning: z.enum(COST_BINNINGS),
@@ -420,6 +437,41 @@ export const costGraphConfigSchema = z.object({
    * `adjustment` field whenever this is on.
    */
   adjusted: z.boolean().optional(),
+  /**
+   * The display options. All optional, never defaulted, for the same reason as
+   * everything above: absent draws cost per bin, which is what every stored
+   * config already draws, and defaulting them would rewrite those configs on
+   * their next save for no change on screen.
+   */
+  measure: z.enum(COST_MEASURES).optional(),
+  usageUnit: z.string().min(1).max(64).optional(),
+  cumulative: z.boolean().optional(),
+});
+
+/**
+ * The stored-config schema: the shape above plus the cross-field rules
+ * {@link costDisplayProblem} states (a usage card names its unit, a count card
+ * has a group-by, neither carries a forecast). Checked here so every write path
+ * (reports, widgets, org config as code, the MCP tools) refuses a config that
+ * the query would refuse anyway, instead of storing a card that can only ever
+ * render an error.
+ */
+function refineCostGraphConfig(
+  config: z.infer<typeof costGraphConfigObjectSchema>,
+  ctx: z.RefinementCtx,
+): void {
+  const problem = costDisplayProblem({ ...config, forecast: config.showForecast });
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["measure"] });
+}
+
+export const costGraphConfigSchema = costGraphConfigObjectSchema.superRefine(refineCostGraphConfig);
+
+/** Body of `POST /cost-reports/:id/run`: one-off display overrides, never saved. */
+export const costReportRunOverridesSchema = z.object({
+  measure: z.enum(COST_MEASURES).optional(),
+  usageUnit: z.string().min(1).max(64).optional(),
+  binning: z.enum(COST_BINNINGS).optional(),
+  cumulative: z.boolean().optional(),
 });
 
 /** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
@@ -861,6 +913,15 @@ export const costQueryRequestSchema = z.object({
    * needs to label it.
    */
   adjusted: z.boolean().optional(),
+  /**
+   * What to sum: absent is cost. The cross-field rules (a usage query names
+   * its unit, a count query has a group-by, neither carries a forecast) are
+   * enforced by the service rather than here, so this stays a plain object
+   * whose `.shape` the MCP tools can spread.
+   */
+  measure: z.enum(COST_MEASURES).optional(),
+  usageUnit: z.string().min(1).max(64).optional(),
+  cumulative: z.boolean().optional(),
 });
 
 /**
@@ -1122,6 +1183,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetWidgetConfigSchema>, BudgetWidgetConfig>,
   Exact<z.infer<typeof costReportWidgetConfigSchema>, CostReportWidgetConfig>,
   Exact<z.infer<typeof costReportInputSchema>, CostReportInput>,
+  Exact<z.infer<typeof costReportRunOverridesSchema>, CostReportRunOverrides>,
   Exact<z.infer<typeof costReportFolderInputSchema>, CostReportFolderInput>,
   Exact<z.infer<typeof costAnnotationInputSchema>, CostAnnotationInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
@@ -1413,7 +1475,9 @@ export const costCanvasBlockSchema = z.discriminatedUnion("kind", [
       id: canvasId,
       kind: z.literal("chart"),
       title: canvasTitle,
-      config: costGraphConfigSchema.strict(),
+      // Strict like every canvas object, and held to the same display rules
+      // as a stored card (a usage chart names its unit, and so on).
+      config: costGraphConfigObjectSchema.strict().superRefine(refineCostGraphConfig),
     })
     .strict(),
   z

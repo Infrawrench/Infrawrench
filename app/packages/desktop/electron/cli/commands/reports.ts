@@ -13,6 +13,7 @@ import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   CostReport,
   CostReportFolder,
+  CostReportRunOverrides,
   CostReportRunResult,
   ReportNotification,
   ReportNotificationSendResult,
@@ -20,9 +21,11 @@ import type {
   "resolution-mode": "import",
 };
 import { matchCostReport } from "../format";
-import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
+import { c, printJson, println, printTable, seriesColor } from "../output";
 import { barChart, sparkline } from "../charts";
 import { exportPdf, wantsPdf, type PdfExportFlags } from "../pdf-export";
+import type { RangeFlags } from "../args";
+import { checkDisplayFlags, formatMeasureValue, parseDisplayFlags, seriesTotal } from "./costs";
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
@@ -278,6 +281,7 @@ export async function cmdRunReport(
   ctx: CliContext,
   query: string,
   pdfFlags: PdfExportFlags = {},
+  range: RangeFlags = {},
 ): Promise<void> {
   requireCloud(ctx);
   const pdf = wantsPdf(pdfFlags, "reports");
@@ -309,21 +313,43 @@ export async function cmdRunReport(
     return;
   }
 
+  // One-off display overrides (`--measure`, `--bin`, `--unit`,
+  // `--cumulative`): sent as the run's body and applied server-side to this
+  // run only. The saved report is never edited from here.
+  const display = parseDisplayFlags(range);
+  const overrides: CostReportRunOverrides = { ...display };
+  const hasOverrides = Object.keys(overrides).length > 0;
+  if (hasOverrides) {
+    // Checked against the config the server will run: the override wins and,
+    // for usage/count, the money-only overlays are dropped the same way.
+    const measure = display.measure ?? report.config.measure ?? "cost";
+    await checkDisplayFlags(org.id, {
+      measure,
+      usageUnit: display.usageUnit ?? (measure === "usage" ? report.config.usageUnit : undefined),
+      groupBy: report.config.groupBy,
+      binning: display.binning ?? report.config.binning,
+      cumulative: display.cumulative ?? report.config.cumulative,
+    });
+  }
+
   // Run server-side by id: the report is the query, so the CLI never
   // reassembles its config and can never drift from what the dashboard draws.
   const run = await orgFetch<CostReportRunResult>(
     org.id,
     `/cost-reports/${encodeURIComponent(report.id)}/run`,
-    { method: "POST" },
+    { method: "POST", ...(hasOverrides ? { body: JSON.stringify(overrides) } : {}) },
   );
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, report, ...run });
+    printJson({ org: org.id, report, ...(hasOverrides ? { overrides } : {}), ...run });
     return;
   }
 
+  const binning = display.binning ?? report.config.binning;
+  const cumulative =
+    binning === "cumulative" || (display.cumulative ?? report.config.cumulative) === true;
   const totalLine = Object.entries(run.result.totals)
-    .map(([currency, amount]) => formatMoney(amount, currency))
+    .map(([currency, amount]) => formatMeasureValue(amount, currency, run.result))
     .join(" + ");
   println(`${c.bold(run.name)} ${c.dim(`· ${run.from} → ${run.to}`)}  ${c.bold(totalLine || "—")}`);
   if (report.description) println(c.dim(report.description));
@@ -343,15 +369,23 @@ export async function cmdRunReport(
   const buckets = [...byBucket.keys()].sort();
   const totals = buckets.map((b) => byBucket.get(b)!);
   const sparkWidth = Math.min(60, Math.max(20, buckets.length));
-  println(`${c.dim(report.config.binning)} ${seriesColor(0)(sparkline(totals, sparkWidth))}`);
+  const measureNote =
+    run.result.measure === "usage"
+      ? ` · usage in ${run.result.usageUnit ?? "?"}`
+      : run.result.measure === "count"
+        ? ` · distinct ${report.config.groupBy} count`
+        : "";
+  println(
+    `${c.dim(`${binning}${cumulative && binning !== "cumulative" ? " cumulative" : ""}${measureNote}`)} ${seriesColor(0)(sparkline(totals, sparkWidth))}`,
+  );
   println();
 
   const items = series.map((s, idx) => {
-    const total = s.points.reduce((sum, p) => sum + p.amount, 0);
+    const total = seriesTotal(s.points, cumulative);
     return {
       label: s.key === "__other__" ? c.dim("other") : s.label,
       value: total,
-      display: formatMoney(total, s.currency),
+      display: formatMeasureValue(total, s.currency, run.result),
       colorIndex: idx,
     };
   });

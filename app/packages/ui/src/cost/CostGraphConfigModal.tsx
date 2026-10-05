@@ -5,7 +5,13 @@ import {
   COST_BASES,
   COST_BASIS_LABELS,
   COST_BINNING_LABELS as BINNING_LABELS,
-  COST_BINNINGS,
+  COST_BIN_SIZES,
+  COST_MEASURES,
+  COST_MEASURE_LABELS,
+  effectiveCostBinning,
+  hourlyCostBinningAvailable,
+  isCostTotalsChart,
+  type CostMeasure,
   COST_CHART_TYPE_LABELS as CHART_TYPE_LABELS,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
@@ -119,6 +125,42 @@ export const COST_BASIS_UNAVAILABLE_HINT = msg(
   "No connected provider reports amortized cost, so every amount here is what was charged.",
 );
 
+/**
+ * Whether hourly bins can be offered: true once some account stores hourly
+ * cost rows (`granularity` on GET /costs/status). Every provider's rows are
+ * daily today, so the option shows disabled with the reason; reading it from
+ * the status rather than hard-coding it is what lets an hourly store switch
+ * it on without touching the editors.
+ */
+export function useHourlyBinningAvailable(api: CostApi): boolean {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .loadCostStatus()
+      .then((statuses) => {
+        if (!cancelled) setAvailable(hourlyCostBinningAvailable(statuses));
+      })
+      .catch(() => {
+        if (!cancelled) setAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+  return available;
+}
+
+/**
+ * Fold the legacy `binning: "cumulative"` into a bin size plus the toggle, so
+ * the editor shows one control per idea. Saving writes the new spelling; the
+ * graph it draws is identical.
+ */
+function normalizeDisplayConfig(config: CostGraphConfig): CostGraphConfig {
+  if (config.binning !== "cumulative") return config;
+  return { ...config, binning: "daily", cumulative: true };
+}
+
 export interface CostGraphConfigModalProps {
   /** Initial values; pass DEFAULT_COST_GRAPH_CONFIG for a new widget. */
   initialConfig: CostGraphConfig;
@@ -140,7 +182,9 @@ export function CostGraphConfigModal({
   const m = useMessages();
   const uid = useId();
   const [title, setTitle] = useState(initialTitle);
-  const [config, setConfig] = useState<CostGraphConfig>(initialConfig);
+  const [config, setConfig] = useState<CostGraphConfig>(() =>
+    normalizeDisplayConfig(initialConfig),
+  );
   const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +218,55 @@ export function CostGraphConfigModal({
   }, [loadMetrics]);
 
   const unitCostMetric = metrics?.find((m) => m.id === config.unitCostMetricId) ?? null;
+  const hourlyAvailable = useHourlyBinningAvailable(api);
+  const measure: CostMeasure = config.measure ?? "cost";
+  const { cumulative } = effectiveCostBinning(config);
+
+  /**
+   * The usage units present in the org's cost data, for the unit picker: the
+   * provider's own spellings ("Hrs", "GB-Mo"), so nobody has to know them.
+   * Loaded only once the usage measure is picked.
+   */
+  const [usageUnits, setUsageUnits] = useState<CostDimensionOption[] | null>(null);
+  useEffect(() => {
+    if (measure !== "usage" || usageUnits !== null) return;
+    let cancelled = false;
+    api
+      .loadDimensionValues("usage-units")
+      .then((next) => {
+        if (!cancelled) setUsageUnits(next);
+      })
+      .catch(() => {
+        if (!cancelled) setUsageUnits([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, measure, usageUnits]);
+
+  /**
+   * Switching measure clears whatever only applies to money (forecast,
+   * scenario, billing rules, unit costs) and whatever only applies to usage
+   * (the unit), so the stored config never carries a setting the card would
+   * refuse to draw.
+   */
+  const setMeasure = (next: CostMeasure) =>
+    setConfig((prev) => {
+      const updated: CostGraphConfig = { ...prev, measure: next === "cost" ? undefined : next };
+      if (next !== "usage") delete updated.usageUnit;
+      if (next !== "cost") {
+        updated.showForecast = false;
+        delete updated.scenarioModelId;
+        delete updated.adjusted;
+        delete updated.unitCostMetricId;
+        delete updated.unitCostMode;
+        if (isCostTotalsChart(updated.chartType) && next === "count") {
+          updated.chartType = "line";
+        }
+      }
+      if (next === "count") delete updated.cumulative;
+      return updated;
+    });
 
   useEffect(() => {
     if (config.groupBy === "tag" && tagKeys.length === 0) {
@@ -195,6 +288,9 @@ export function CostGraphConfigModal({
     const cleaned = {
       ...config,
       filters: config.filters.filter((f) => f.values.length > 0),
+      // `false` is the absence of the toggle: stored as absent, like every
+      // other display option, so an untouched card's config stays byte-stable.
+      ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),
     };
     const parsed = costGraphConfigSchema.safeParse(cleaned);
     if (!parsed.success) {
@@ -248,7 +344,12 @@ export function CostGraphConfigModal({
                 onChange={(e) => set({ chartType: e.target.value as CostGraphConfig["chartType"] })}
               >
                 {COST_CHART_TYPES.map((t) => (
-                  <option key={t} value={t}>
+                  <option
+                    key={t}
+                    value={t}
+                    // A count is one series: a pie of it is a single slice.
+                    disabled={measure === "count" && isCostTotalsChart(t)}
+                  >
                     {gtData(CHART_TYPE_LABELS[t])}
                   </option>
                 ))}
@@ -261,16 +362,66 @@ export function CostGraphConfigModal({
               <select
                 id={`${uid}-binning`}
                 className={selectClass}
-                value={config.binning}
+                value={effectiveCostBinning(config).bin}
+                aria-describedby={hourlyAvailable ? undefined : `${uid}-binning-hint`}
                 onChange={(e) => set({ binning: e.target.value as CostGraphConfig["binning"] })}
               >
-                {COST_BINNINGS.map((b) => (
-                  <option key={b} value={b}>
+                {COST_BIN_SIZES.map((b) => (
+                  <option key={b} value={b} disabled={b === "hourly" && !hourlyAvailable}>
                     {gtData(BINNING_LABELS[b])}
                   </option>
                 ))}
               </select>
+              {!hourlyAvailable && (
+                <p id={`${uid}-binning-hint`} className="mt-1 text-[11px] text-on-surface-faint">
+                  {gt(
+                    "Hourly is unavailable: every connected provider reports spend per day, so there are no hourly rows to bin.",
+                  )}
+                </p>
+              )}
             </div>
+            <div>
+              <label htmlFor={`${uid}-measure`} className={labelClass}>
+                {gt("Measure")}
+              </label>
+              <select
+                id={`${uid}-measure`}
+                className={selectClass}
+                value={measure}
+                onChange={(e) => setMeasure(e.target.value as CostMeasure)}
+              >
+                {COST_MEASURES.map((m) => (
+                  <option key={m} value={m}>
+                    {gtData(COST_MEASURE_LABELS[m])}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {measure === "usage" && (
+              <div>
+                <label htmlFor={`${uid}-usage-unit`} className={labelClass}>
+                  {gt("Usage unit")}
+                </label>
+                <select
+                  id={`${uid}-usage-unit`}
+                  className={selectClass}
+                  value={config.usageUnit ?? ""}
+                  onChange={(e) => set({ usageUnit: e.target.value || undefined })}
+                >
+                  <option value="">{gt("Choose a unit…")}</option>
+                  {/* A unit saved before it vanished from the data stays selectable. */}
+                  {config.usageUnit &&
+                    !(usageUnits ?? []).some((u) => u.value === config.usageUnit) && (
+                      <option value={config.usageUnit}>{config.usageUnit}</option>
+                    )}
+                  {(usageUnits ?? []).map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label htmlFor={`${uid}-date-range`} className={labelClass}>
                 {gt("Date range")}
@@ -329,6 +480,26 @@ export function CostGraphConfigModal({
             />
           </div>
 
+          {measure !== "cost" && (
+            <p className="text-[11px] text-on-surface-faint -mt-2">
+              {measure === "usage"
+                ? usageUnits !== null && usageUnits.length === 0
+                  ? gt(
+                      "No connected provider reports usage quantities yet, so there is no unit to pick.",
+                    )
+                  : gt(
+                      "Sums the usage quantity providers report beside the money. Quantities in different units can't be added, so only rows in the chosen unit count.",
+                    )
+                : config.groupBy === "none"
+                  ? gt(
+                      "Count needs a group-by: pick what to count (services, accounts, resources…) under Group by.",
+                    )
+                  : gt(
+                      "Counts how many distinct values of the group-by had nonzero cost in each bin. Forecast, scenarios and cumulative don't apply.",
+                    )}
+            </p>
+          )}
+
           {/*
             Unit costs are a *mode* of this graph, not a second chart type: the
             date range, binning, filters and cost basis above all still describe
@@ -336,7 +507,7 @@ export function CostGraphConfigModal({
             series stop applying, and the note below says so rather than leaving
             a user to wonder why Group by did nothing.
           */}
-          {metrics !== null && metrics.length > 0 && (
+          {metrics !== null && metrics.length > 0 && measure === "cost" && (
             <div className="rounded-lg border border-border p-3">
               <label htmlFor={`${uid}-unit-metric`} className={labelClass}>
                 {gt("Divide by a business metric")}
@@ -349,7 +520,8 @@ export function CostGraphConfigModal({
                   onChange={(e) =>
                     set(
                       e.target.value
-                        ? { unitCostMetricId: e.target.value }
+                        ? // The toggle has no unit-cost meaning; see costDisplayProblem.
+                          { unitCostMetricId: e.target.value, cumulative: undefined }
                         : // Clear the mode with the metric: a stored `margin`
                           // with no metric would be meaningless, and would come
                           // back the moment a metric was picked again.
@@ -530,9 +702,22 @@ export function CostGraphConfigModal({
               <input
                 type="checkbox"
                 checked={config.showForecast}
+                // A forecast projects spend; usage and count have no trend to fit.
+                disabled={measure !== "cost"}
                 onChange={(e) => set({ showForecast: e.target.checked })}
               />
               {gt("Forecast")}
+            </label>
+            <label className="flex items-center gap-2 text-xs text-on-surface-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={cumulative}
+                // Summing per-bin counts would count one service once per bin,
+                // and a unit cost is a ratio per bin.
+                disabled={measure === "count" || Boolean(config.unitCostMetricId)}
+                onChange={(e) => set({ cumulative: e.target.checked || undefined })}
+              />
+              {gt("Cumulative")}
             </label>
           </div>
 

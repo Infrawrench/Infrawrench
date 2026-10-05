@@ -14,7 +14,7 @@
  */
 import { Hono } from "hono";
 
-import { costReportInputSchema } from "@infrawrench/ui/cost/config";
+import { costReportInputSchema, costReportRunOverridesSchema } from "@infrawrench/ui/cost/config";
 import {
   createCostReport,
   getCostReport,
@@ -138,13 +138,33 @@ app.delete("/:id", async (c) => {
  * POST /api/org/:orgId/cost-reports/:id/run: execute the report and return the
  * series, with the window its relative preset resolved to.
  *
- * A read despite the method: there is no body and nothing is written; POST is
- * only because this is a query execution, like `POST /costs/query`.
+ * A read despite the method: nothing is written; POST is only because this is
+ * a query execution, like `POST /costs/query`. The body is optional and may
+ * carry one-off display overrides (measure, unit, bin, cumulative) for this run.
  */
 app.post("/:id/run", async (c) => {
   requirePermission(c, "costs:read");
+  // An empty or absent body is the ordinary case: run the report as saved.
+  const text = await c.req.text();
+  let body: unknown = {};
+  if (text.trim()) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+  }
+  const overrides = costReportRunOverridesSchema.safeParse(body);
+  if (!overrides.success) {
+    return c.json({ error: "Invalid overrides", issues: overrides.error.issues }, 400);
+  }
   try {
-    const result = await runCostReport(c.get("organizationId"), c.req.param("id"));
+    const result = await runCostReport(
+      c.get("organizationId"),
+      c.req.param("id"),
+      new Date(),
+      overrides.data,
+    );
     if (!result) return c.json({ error: "Not found" }, 404);
     return c.json(result);
   } catch (e) {

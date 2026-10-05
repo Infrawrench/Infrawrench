@@ -22,15 +22,20 @@ import {
   COST_BASIS_LABELS,
   COST_BINNING_LABELS,
   COST_DIMENSION_LABELS,
+  COST_MEASURE_LABELS,
   COST_RANGE_PRESET_LABELS,
   FORECAST_COLOR,
   OTHER_GROUP_KEY,
   OTHER_SERIES_COLOR,
   SCENARIO_COLOR,
   costQueryForConfig,
+  costSeriesTotal,
+  effectiveCostBinning,
+  isCostTotalsChart,
   orderDashboardCards,
   unitCostQueryForConfig,
   type BudgetWidgetConfig,
+  type CostBinSize,
   type CostDimensionId,
   type CostGraphConfig,
   type CostQueryResponse,
@@ -48,6 +53,7 @@ import {
   type PdfChartSeries,
   type PdfReportModel,
   type PdfSection,
+  type PdfValueFormat,
 } from "@infrawrench/server-core/pdf";
 import { getOrgCurrencySettings } from "@infrawrench/server-core/cost/currency-settings";
 import { orgAppUrl } from "@infrawrench/server-core/app-url";
@@ -103,7 +109,14 @@ function rangeLabel(config: CostGraphConfig, from: string, to: string): string {
 }
 
 export function describeConfig(config: CostGraphConfig, from: string, to: string): string {
-  const parts = [rangeLabel(config, from, to), COST_BINNING_LABELS[config.binning].toLowerCase()];
+  const { bin, cumulative } = effectiveCostBinning(config);
+  const parts = [rangeLabel(config, from, to), COST_BINNING_LABELS[bin].toLowerCase()];
+  if (cumulative) parts.push("cumulative");
+  if (config.measure === "usage") {
+    parts.push(`usage${config.usageUnit ? ` in ${config.usageUnit}` : ""}`);
+  } else if (config.measure === "count") {
+    parts.push(COST_MEASURE_LABELS.count.toLowerCase());
+  }
   if (config.groupBy !== "none") {
     parts.push(
       `by ${
@@ -119,9 +132,13 @@ export function describeConfig(config: CostGraphConfig, from: string, to: string
   return parts.join(" · ");
 }
 
-export function shortDate(bucket: string): string {
+export function shortDate(bucket: string, bin: CostBinSize = "daily"): string {
   const d = new Date(`${bucket}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return bucket;
+  if (bin === "quarterly") return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}`;
+  if (bin === "monthly") {
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  }
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
@@ -139,7 +156,24 @@ export function costResponseBlocks(
   const blocks: PdfBlock[] = [];
   const currencies = response.currencies;
   const primary = currencies[0];
-  const format = primary ? { currency: primary } : {};
+  const { bin, cumulative } = effectiveCostBinning(config);
+  // A quantity or a count has no currency: its series carry `""`, and the
+  // values print as plain numbers (with the unit, for usage).
+  const format: PdfValueFormat = response.measure
+    ? response.usageUnit
+      ? { unit: response.usageUnit }
+      : {}
+    : primary
+      ? { currency: primary }
+      : {};
+  const valueFormat = (currency: string): PdfValueFormat =>
+    response.measure ? format : { currency };
+  const measureHeader =
+    response.measure === "usage"
+      ? `Usage${response.usageUnit ? ` (${response.usageUnit})` : ""}`
+      : response.measure === "count"
+        ? "Count"
+        : "Spend";
 
   // Mixed currencies cannot share an axis: chart the primary one and list
   // every currency's total below, which is what the card itself says too.
@@ -153,15 +187,43 @@ export function costResponseBlocks(
 
   const label = (key: string, l: string) => (key === OTHER_GROUP_KEY ? "Other" : l || "Total");
 
-  if (config.chartType === "pie") {
+  if (isCostTotalsChart(config.chartType)) {
     blocks.push({
       kind: "pie",
       slices: series.map((s) => ({
         label: label(s.key, s.label),
-        value: s.points.reduce((sum, p) => sum + p.amount, 0),
+        value: costSeriesTotal(s.points, cumulative),
         ...(s.key === OTHER_GROUP_KEY ? { color: OTHER_SERIES_COLOR } : {}),
       })),
       format,
+    });
+  } else if (config.chartType === "table") {
+    // The table view: one row per bucket, a column per drawn series (capped so
+    // the page stays readable) and the bucket total. The per-group totals
+    // table below follows as on every other card.
+    const shown = series.slice(0, 5);
+    const index = new Map(buckets.map((b, i) => [b, i]));
+    const grid = shown.map((s) => {
+      const values = new Array<number | null>(buckets.length).fill(null);
+      for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.amount;
+      return values;
+    });
+    const tableRows = buckets.map((b, i) => {
+      const cells = grid.map((values) => {
+        const v = values[i];
+        return v === null || v === undefined ? "-" : formatPdfValue(v, format);
+      });
+      const total = series.reduce(
+        (sum, s) => sum + (s.points.find((p) => p.bucket === b)?.amount ?? 0),
+        0,
+      );
+      return [shortDate(b, bin), ...cells, formatPdfValue(total, format)];
+    });
+    blocks.push({
+      kind: "table",
+      columns: ["Period", ...shown.map((s) => label(s.key, s.label)), "Total"],
+      rows: tableRows.slice(-MAX_TABLE_ROWS),
+      align: ["left", ...shown.map(() => "right" as const), "right"],
     });
   } else {
     const index = new Map(buckets.map((b, i) => [b, i]));
@@ -202,7 +264,7 @@ export function costResponseBlocks(
     blocks.push({
       kind: "chart",
       chartType: config.chartType,
-      categories: buckets.map(shortDate),
+      categories: buckets.map((b) => shortDate(b, bin)),
       series: chartSeries,
       format,
     });
@@ -210,19 +272,25 @@ export function costResponseBlocks(
 
   // Totals table: one row per series (the top groups), then the total.
   const rows: string[][] = series
-    .map((s) => ({
-      label: label(s.key, s.label),
-      amount: s.points.reduce((sum, p) => sum + p.amount, 0),
-      prev: response.comparison
-        ?.find((c) => c.key === s.key && c.currency === s.currency)
-        ?.points.reduce((sum, p) => sum + p.amount, 0),
-      currency: s.currency,
-    }))
+    .map((s) => {
+      const prevPoints = response.comparison?.find(
+        (c) => c.key === s.key && c.currency === s.currency,
+      )?.points;
+      return {
+        label: label(s.key, s.label),
+        amount: costSeriesTotal(s.points, cumulative),
+        prev: prevPoints ? costSeriesTotal(prevPoints, cumulative) : undefined,
+        currency: s.currency,
+      };
+    })
+    // A count series has one row, and its range total is a distinct count the
+    // totals row below states; repeating it as a "group" would be noise.
+    .filter(() => response.measure !== "count")
     .sort((a, b) => b.amount - a.amount)
     .map((r) => {
-      const row = [r.label, formatPdfValue(r.amount, { currency: r.currency })];
+      const row = [r.label, formatPdfValue(r.amount, valueFormat(r.currency))];
       if (response.comparison) {
-        row.push(r.prev === undefined ? "-" : formatPdfValue(r.prev, { currency: r.currency }));
+        row.push(r.prev === undefined ? "-" : formatPdfValue(r.prev, valueFormat(r.currency)));
         row.push(r.prev === undefined ? "-" : pctChange(r.amount, r.prev));
       }
       return row;
@@ -232,10 +300,10 @@ export function costResponseBlocks(
     const prev = response.previousTotals?.[currency];
     const row = [
       currencies.length > 1 ? `Total (${currency})` : "Total",
-      formatPdfValue(total, { currency }),
+      formatPdfValue(total, valueFormat(currency)),
     ];
     if (response.comparison) {
-      row.push(prev === undefined ? "-" : formatPdfValue(prev, { currency }));
+      row.push(prev === undefined ? "-" : formatPdfValue(prev, valueFormat(currency)));
       row.push(prev === undefined ? "-" : pctChange(total, prev));
     }
     rows.push(row);
@@ -244,8 +312,13 @@ export function costResponseBlocks(
     blocks.push({
       kind: "table",
       columns: response.comparison
-        ? [config.groupBy === "none" ? "Series" : "Group", "Spend", "Previous period", "Change"]
-        : [config.groupBy === "none" ? "Series" : "Group", "Spend"],
+        ? [
+            config.groupBy === "none" ? "Series" : "Group",
+            measureHeader,
+            "Previous period",
+            "Change",
+          ]
+        : [config.groupBy === "none" ? "Series" : "Group", measureHeader],
       rows: rows.slice(-MAX_TABLE_ROWS),
       align: ["left", "right", "right", "right"],
     });
@@ -262,6 +335,11 @@ export function costResponseBlocks(
       "Billing rules applied: these are adjusted figures, not what the providers charged.",
     );
   }
+  if (response.measure === "count") {
+    notes.push(
+      "The total is the number of distinct values across the whole period, not the sum of the per-period counts.",
+    );
+  }
   if (currencies.length > 1) {
     notes.push(
       `Charted in ${primary}; spend in ${currencies.slice(1).join(", ")} is listed above.`,
@@ -269,12 +347,14 @@ export function costResponseBlocks(
   }
   for (const note of notes) blocks.push({ kind: "text", text: note, tone: "muted" });
 
-  const primaryTotal = primary ? (response.totals[primary] ?? 0) : null;
-  const prevTotal = primary ? response.previousTotals?.[primary] : undefined;
+  const primaryTotal = primary !== undefined ? (response.totals[primary] ?? 0) : null;
+  const prevTotal = primary !== undefined ? response.previousTotals?.[primary] : undefined;
   return {
     blocks,
     total:
-      primary && primaryTotal !== null ? formatPdfValue(primaryTotal, { currency: primary }) : null,
+      primary !== undefined && primaryTotal !== null
+        ? formatPdfValue(primaryTotal, valueFormat(primary))
+        : null,
     totalChange:
       primaryTotal !== null && prevTotal !== undefined ? pctChange(primaryTotal, prevTotal) : null,
   };
@@ -297,7 +377,7 @@ export function unitCostResponseBlocks(response: UnitCostQueryResponse): {
     {
       kind: "chart",
       chartType: "line",
-      categories: buckets.map(shortDate),
+      categories: buckets.map((b) => shortDate(b)),
       series: response.series.map((s) => {
         const values = new Array<number | null>(buckets.length).fill(null);
         for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.value;

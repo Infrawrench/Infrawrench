@@ -12,8 +12,11 @@ import type {
   CostAlertEvent,
   CostAnomaly,
   CostBasis,
+  CostBinningId,
   CostChargeType,
   CostConversion,
+  CostDimensionOption,
+  CostMeasure,
   CostFilter,
   CostQueryRequest,
   CostQueryResponse,
@@ -56,6 +59,122 @@ const CHARGE_TYPES: readonly CostChargeType[] = [
   "support",
   "other",
 ];
+
+/** The measures, restated for the same zero-runtime-dependency reason. */
+const MEASURES: readonly CostMeasure[] = ["cost", "usage", "count"];
+
+/**
+ * `--bin` spellings: the short noun (`quarter`, the one people type) or the
+ * API's own adjective (`quarterly`), both accepted.
+ */
+const BINS: Record<string, CostBinningId> = {
+  hour: "hourly",
+  hourly: "hourly",
+  day: "daily",
+  daily: "daily",
+  week: "weekly",
+  weekly: "weekly",
+  month: "monthly",
+  monthly: "monthly",
+  quarter: "quarterly",
+  quarterly: "quarterly",
+};
+
+/** The display options `costs` and `reports` share, parsed and checked. */
+export interface DisplayFlags {
+  measure?: CostMeasure;
+  binning?: CostBinningId;
+  usageUnit?: string;
+  cumulative?: boolean;
+}
+
+/**
+ * `--measure`, `--bin`, `--unit`, `--cumulative` → the request fields, each
+ * omitted when not given so an older server answers the request it always
+ * did. Shape errors are caught here; the cross-field rules (a usage query
+ * needs a unit, a count needs a group-by) are the shared `costDisplayProblem`,
+ * checked by the caller once it knows the group-by.
+ */
+export function parseDisplayFlags(range: RangeFlags): DisplayFlags {
+  const flags: DisplayFlags = {};
+  if (range.measure !== undefined) {
+    const measure = MEASURES.find((m) => m === range.measure);
+    if (!measure) {
+      throw new CliError(
+        `--measure must be one of ${MEASURES.join(", ")} — got "${range.measure}".`,
+        2,
+      );
+    }
+    flags.measure = measure;
+  }
+  if (range.bin !== undefined) {
+    const binning = BINS[range.bin.toLowerCase()];
+    if (!binning) {
+      throw new CliError(
+        `--bin must be one of hour, day, week, month, quarter — got "${range.bin}".`,
+        2,
+      );
+    }
+    flags.binning = binning;
+  }
+  const unit = range.unit?.trim();
+  if (unit) flags.usageUnit = unit;
+  if (range.cumulative) flags.cumulative = true;
+  return flags;
+}
+
+/**
+ * Refuse a combination the server would refuse, before the round trip, in the
+ * server's own words (the rule is client-core's `costDisplayProblem`). A usage
+ * query without a unit gets the units the org actually has listed, so the fix
+ * is in the error message.
+ */
+export async function checkDisplayFlags(
+  orgId: string,
+  q: {
+    measure?: CostMeasure | undefined;
+    usageUnit?: string | undefined;
+    groupBy: CostQueryRequest["groupBy"];
+    binning: CostBinningId;
+    cumulative?: boolean | undefined;
+  },
+): Promise<void> {
+  if (q.measure === "usage" && !q.usageUnit) {
+    const res = await orgFetch<{ values: CostDimensionOption[] }>(
+      orgId,
+      "/costs/dimensions?dimension=usage-units",
+    );
+    const units = (res.values ?? []).map((u) => u.value);
+    throw new CliError(
+      units.length > 0
+        ? `--measure usage needs --unit: quantities in different units cannot be added. Units in your cost data: ${units.slice(0, 20).join(", ")}.`
+        : "--measure usage needs --unit, and no connected provider reports usage quantities yet.",
+      2,
+    );
+  }
+  const { costDisplayProblem } = await import("@infrawrench/client-core");
+  const problem = costDisplayProblem(q);
+  if (problem) throw new CliError(problem, 2);
+}
+
+/** One value as text, for whichever measure the response carries. */
+export function formatMeasureValue(
+  amount: number,
+  currency: string,
+  response: Pick<CostQueryResponse, "measure" | "usageUnit">,
+): string {
+  if (!response.measure) return formatMoney(amount, currency);
+  const n = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: response.measure === "count" ? 0 : Math.abs(amount) < 10 ? 2 : 0,
+  }).format(amount);
+  return response.measure === "usage" && response.usageUnit ? `${n} ${response.usageUnit}` : n;
+}
+
+/** A series' period total: the last point of a running sum, else the sum. */
+export function seriesTotal(points: Array<{ amount: number }>, cumulative: boolean): number {
+  if (cumulative) return points[points.length - 1]?.amount ?? 0;
+  return points.reduce((sum, p) => sum + p.amount, 0);
+}
 
 /**
  * `--currency USD`: the display currency to convert into.
@@ -274,13 +393,21 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const displayCurrency = parseCurrency(range.currency);
   const filters = await parseWhere(range.where);
   const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
+  const display = parseDisplayFlags(range);
+  const binning = display.binning ?? "daily";
+  const cumulative = display.cumulative === true;
+  await checkDisplayFlags(org.id, {
+    ...display,
+    binning,
+    groupBy: groupBy as CostQueryRequest["groupBy"],
+  });
 
   const { from, to } = resolveDateRange(range);
 
   const query: CostQueryRequest = {
     from,
     to,
-    binning: "daily",
+    binning,
     groupBy: groupBy as CostQueryRequest["groupBy"],
     ...(tagKey ? { groupByTagKey: tagKey } : {}),
     filters,
@@ -299,6 +426,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // pointing at this filter gets, so `--filter prod-only` cannot drift from
     // what "prod-only" means everywhere else.
     ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
+    // The display options, each omitted unless given: same rule as above.
+    ...(display.measure && display.measure !== "cost" ? { measure: display.measure } : {}),
+    ...(display.usageUnit ? { usageUnit: display.usageUnit } : {}),
+    ...(cumulative ? { cumulative: true } : {}),
   };
 
   const [response, collection] = await Promise.all([
@@ -332,6 +463,12 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       // carries the rates applied and, crucially, the currencies that could
       // not be converted and are therefore outside the headline totals.
       displayCurrency: displayCurrency ?? null,
+      // Echoed so a script knows whether the amounts below are money, a
+      // quantity (and in which unit) or a count, and how they were binned.
+      measure: display.measure ?? "cost",
+      usageUnit: display.usageUnit ?? null,
+      binning,
+      cumulative,
       ...response,
       collectionFailures: collection.failing,
       awaitingData: collection.empty,
@@ -352,7 +489,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   }
 
   const totalLine = Object.entries(totals)
-    .map(([currency, amount]) => formatMoney(amount, currency))
+    .map(([currency, amount]) => formatMeasureValue(amount, currency, response))
     .join(" + ");
   // The basis and any charge-type narrowing go in the header: a total that is
   // not the whole net bill must say so on the same line as the number, or it
@@ -373,6 +510,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     ...(response.conversion && response.conversion.converted.length > 0
       ? [`converted to ${response.conversion.displayCurrency}`]
       : []),
+    // A number with no currency sign must say what it is counting.
+    ...(response.measure === "usage" ? [`usage in ${response.usageUnit ?? "?"}`] : []),
+    ...(response.measure === "count" ? [`distinct ${groupBy} count`] : []),
+    ...(cumulative ? ["cumulative"] : []),
   ].join(" · ");
   println(`${c.bold(org.displayName)} ${c.dim(`· ${scope}`)}  ${c.bold(totalLine)}`);
   if (basis === "amortized" && !collection.amortizing) {
@@ -392,15 +533,15 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const buckets = [...byBucket.keys()].sort();
   const dailyTotals = buckets.map((b) => byBucket.get(b)!);
   const sparkWidth = Math.min(60, Math.max(20, buckets.length));
-  println(`${c.dim("daily")} ${seriesColor(0)(sparkline(dailyTotals, sparkWidth))}`);
+  println(`${c.dim(binning)} ${seriesColor(0)(sparkline(dailyTotals, sparkWidth))}`);
   println();
 
   const items = series.map((s, idx) => {
-    const total = s.points.reduce((sum, p) => sum + p.amount, 0);
+    const total = seriesTotal(s.points, cumulative);
     return {
       label: s.key === "__other__" ? c.dim("other") : s.label,
       value: total,
-      display: formatMoney(total, s.currency),
+      display: formatMeasureValue(total, s.currency, response),
       colorIndex: idx,
     };
   });

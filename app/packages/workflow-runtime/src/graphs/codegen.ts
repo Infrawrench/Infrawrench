@@ -72,7 +72,7 @@ interface GraphCostQueryOptions {
   from?: string;
   to?: string;
   /** Bucket size (default "daily"). "cumulative" is a running total. */
-  binning?: "daily" | "weekly" | "monthly" | "cumulative";
+  binning?: "daily" | "weekly" | "monthly" | "quarterly" | "cumulative";
   /** Split spend into one series per value of this dimension. */
   groupBy?: "none" | "provider" | "account" | "service" | "region" | "resource" | "tag";
   /** Required when groupBy is "tag". */

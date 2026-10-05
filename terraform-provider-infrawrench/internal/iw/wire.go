@@ -296,6 +296,12 @@ type CostGraphConfig struct {
 	UnitCostMetricID      *string       `json:"unitCostMetricId,omitempty"`
 	UnitCostMode          *string       `json:"unitCostMode,omitempty"`
 	Adjusted              *bool         `json:"adjusted,omitempty"`
+	// The display options. All omitempty: the server omits each when it holds
+	// its default (cost, no unit, not cumulative), and sending them only when
+	// set keeps a config that never mentions them byte-identical on the wire.
+	Measure    *string `json:"measure,omitempty"`
+	UsageUnit  *string `json:"usageUnit,omitempty"`
+	Cumulative *bool   `json:"cumulative,omitempty"`
 }
 
 // CostReportInput is the POST/PUT body. FolderID is nullable so that moving a

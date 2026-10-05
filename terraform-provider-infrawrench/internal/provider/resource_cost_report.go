@@ -34,9 +34,15 @@ type costReportResource struct{ client *iw.Client }
 
 // costReportChartTypes and costReportBinnings are the closed enums the graph
 // config accepts.
+//
+// `hourly` is in the server's enum but deliberately not here: the server
+// refuses to run an hourly report while no connected account stores hourly
+// cost rows, and every provider's rows are daily today. Accepting it would let
+// a plan succeed for a report that can only ever render an error.
 var (
-	costReportChartTypes = []string{"stacked_bar", "multi_bar", "line", "area", "pie"}
-	costReportBinnings   = []string{"daily", "weekly", "monthly", "cumulative"}
+	costReportChartTypes = []string{"stacked_bar", "multi_bar", "line", "area", "pie", "donut", "table"}
+	costReportBinnings   = []string{"daily", "weekly", "monthly", "quarterly", "cumulative"}
+	costReportMeasures   = []string{"cost", "usage", "count"}
 
 	// costReportGroupBy is the filter dimensions plus the explicit "no grouping"
 	// option, which the server spells `none` rather than omitting the key.
@@ -65,6 +71,9 @@ type costReportConfigModel struct {
 	UnitCostMetricID      types.String `tfsdk:"unit_cost_metric_id"`
 	UnitCostMode          types.String `tfsdk:"unit_cost_mode"`
 	Adjusted              types.Bool   `tfsdk:"adjusted"`
+	Measure               types.String `tfsdk:"measure"`
+	UsageUnit             types.String `tfsdk:"usage_unit"`
+	Cumulative            types.Bool   `tfsdk:"cumulative"`
 	DateRange             types.Object `tfsdk:"date_range"`
 	Filter                types.List   `tfsdk:"filter"`
 }
@@ -103,6 +112,9 @@ var costReportConfigAttrTypes = map[string]attr.Type{
 	"unit_cost_metric_id":     types.StringType,
 	"unit_cost_mode":          types.StringType,
 	"adjusted":                types.BoolType,
+	"measure":                 types.StringType,
+	"usage_unit":              types.StringType,
+	"cumulative":              types.BoolType,
 	"date_range":              costReportDateRangeObjectType,
 	"filter":                  types.ListType{ElemType: costFilterObjectType},
 }
@@ -164,8 +176,11 @@ func (r *costReportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"binning": schema.StringAttribute{
 						Required: true,
 						MarkdownDescription: "Time bucketing of the x axis. One of `" +
-							joinBackticked(costReportBinnings) + "`. `cumulative` accumulates spend from the " +
-							"start of the range rather than bucketing it.",
+							joinBackticked(costReportBinnings) + "`. Weeks start on Monday and quarters on " +
+							"the first of January, April, July and October (UTC). `cumulative` is the older " +
+							"spelling of `daily` with `cumulative = true`. Hourly bins are not accepted: " +
+							"every provider's cost rows are stored per day, and the server refuses to run " +
+							"an hourly report.",
 						Validators: []validator.String{oneOfValidator(costReportBinnings...)},
 					},
 					"group_by": schema.StringAttribute{
@@ -230,6 +245,29 @@ func (r *costReportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 						Optional: true,
 						MarkdownDescription: "Apply billing rules to the figures, charting spend as " +
 							"restated by your `infrawrench_billing_rule`s rather than as invoiced.",
+					},
+					"measure": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "What the Y axis sums. One of `" + joinBackticked(costReportMeasures) +
+							"`; omitted is `cost`. `usage` sums the usage quantity providers report and " +
+							"requires `usage_unit`. `count` is how many distinct values of `group_by` had " +
+							"nonzero cost in each bin and requires a `group_by` other than `none`. Neither " +
+							"`usage` nor `count` can be combined with `show_forecast`, `scenario_model_id`, " +
+							"`adjusted` or `unit_cost_metric_id`, and `count` cannot be `cumulative`; the " +
+							"server rejects those combinations.",
+						Validators: []validator.String{oneOfValidator(costReportMeasures...)},
+					},
+					"usage_unit": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "The usage unit a `usage` measure sums, exactly as the " +
+							"provider spells it (for example `Hrs` or `GB-Mo`), 1–64 characters. Required " +
+							"when `measure` is `usage` and rejected otherwise.",
+						Validators: []validator.String{stringvalidator.LengthBetween(1, 64)},
+					},
+					"cumulative": schema.BoolAttribute{
+						Optional: true,
+						MarkdownDescription: "Draw running totals from the start of the range instead of " +
+							"per-bin values, at any bin size. Omitted is off.",
 					},
 				},
 				Blocks: map[string]schema.Block{
@@ -461,6 +499,9 @@ func costReportInputFrom(ctx context.Context, model costReportResourceModel) (iw
 			UnitCostMetricID:      stringPtr(cfg.UnitCostMetricID),
 			UnitCostMode:          stringPtr(cfg.UnitCostMode),
 			Adjusted:              boolPtr(cfg.Adjusted),
+			Measure:               stringPtr(cfg.Measure),
+			UsageUnit:             stringPtr(cfg.UsageUnit),
+			Cumulative:            boolPtr(cfg.Cumulative),
 		},
 	}, diags
 }
@@ -508,6 +549,21 @@ func costReportStateFrom(ctx context.Context, remote *iw.CostReport, prior costR
 	if adjusted.IsNull() {
 		adjusted = priorConfig.Adjusted
 	}
+	// Same omitted-default rule for the display options: the server leaves out
+	// `measure`, `usageUnit` and `cumulative` when they hold their defaults, so a
+	// config spelling `measure = "cost"` or `cumulative = false` keeps its value.
+	measure := stringValue(remote.Config.Measure)
+	if measure.IsNull() {
+		measure = priorConfig.Measure
+	}
+	usageUnit := stringValue(remote.Config.UsageUnit)
+	if usageUnit.IsNull() {
+		usageUnit = priorConfig.UsageUnit
+	}
+	cumulative := boolValue(remote.Config.Cumulative)
+	if cumulative.IsNull() {
+		cumulative = priorConfig.Cumulative
+	}
 
 	config, d := types.ObjectValueFrom(ctx, costReportConfigAttrTypes, costReportConfigModel{
 		ChartType:             types.StringValue(remote.Config.ChartType),
@@ -523,6 +579,9 @@ func costReportStateFrom(ctx context.Context, remote *iw.CostReport, prior costR
 		UnitCostMetricID:      stringValue(remote.Config.UnitCostMetricID),
 		UnitCostMode:          stringValue(remote.Config.UnitCostMode),
 		Adjusted:              adjusted,
+		Measure:               measure,
+		UsageUnit:             usageUnit,
+		Cumulative:            cumulative,
 		DateRange:             dateRange,
 		Filter:                filters,
 	})

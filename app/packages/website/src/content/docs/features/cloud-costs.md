@@ -36,8 +36,10 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 
 | Option     | Choices                                                                                                   |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
-| Chart type | Stacked bar, multi bar, line, area, pie                                                                   |
-| Binning    | Daily, weekly, monthly, cumulative                                                                        |
+| Chart type | Stacked bar, bar, line, area, pie, donut, or a table — see [display options](#display-options)            |
+| Measure    | **Cost** (money), **Usage quantity** in one unit, or **Count** of distinct group values billed per bin    |
+| Binning    | Daily, weekly, monthly, quarterly (hourly shows disabled — see below)                                     |
+| Cumulative | Running totals from the start of the range, at any bin size                                               |
 | Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                |
 | Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                             |
 | Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)      |
@@ -49,6 +51,25 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 ![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-service-forecast.png)
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
+
+### Display options
+
+The same spend can answer different questions depending on how it is drawn. These options live in the graph editor on web, desktop and mobile, and are saved with the card or [report](./cost-reports.md):
+
+- **Measure** is what the Y axis sums.
+  - **Cost** is money, per currency. It is the default, and what every card drew before the option existed.
+  - **Usage quantity** sums the usage amounts providers report beside the money: instance hours, GB-months, requests. Hours and gigabytes cannot be added together, so a usage chart sums exactly one unit. Pick it from the **Usage unit** list, which shows the units your providers actually report, spelled the way they spell them. Only rows in that unit count. If no connected provider reports usage quantities, the editor says so.
+  - **Count** shows how many distinct values of the **Group by** dimension had nonzero cost in each bin: how many services were billed each day, how many accounts spent anything each week, how many resources ran up a bill each month. It needs a group-by, because that is what it counts. The headline total counts each value **once over the whole range**, so a service billed on all thirty days is one service, not thirty. Empty values (rows with no resource id, untagged rows) are not counted.
+- **Chart type**: **Stacked bar**, **Bar** (side by side), **Line** and **Area** draw a time axis. **Pie** and **Donut** draw each group's total for the period, and the donut carries the total in its hole. **Table** lists every bin as a row with a column per series, the bin's total and, with **Compare previous period** on, the previous period's figure. Count is a single series, so pie and donut are not offered for it.
+- **Binning**: daily, weekly (Monday start), monthly or quarterly (quarters start on 1 January, April, July and October, UTC). **Hourly** is listed but disabled with an explanation: every provider's cost rows are collected per day, so there is no hour to put a day's spend in. The option switches on by itself if an account ever reports hourly rows.
+- **Cumulative** turns per-bin values into running totals from the start of the range, at any bin size. Totals then read the last point instead of adding up the running sums. Count cannot be cumulative: adding up per-bin counts would count the same service once per bin.
+- **Compare previous period** overlays the same span shifted back one period, for every measure.
+
+Forecasts, scenarios, billing rules and unit costs only mean anything for money, so they are switched off (and the server refuses them) for the usage and count measures. A usage or count card says under its title what it is measuring, so a number with no currency sign is never read as dollars.
+
+<insert [Cost graph editor with Measure set to Usage quantity, the Usage unit list open showing provider units such as Hrs and GB-Mo, Binning set to Quarterly with the disabled Hourly option and its explanation visible] here>
+
+<insert [A dashboard cost card in Table view, quarterly bins, grouped by service with Count as the measure, showing the "Distinct values with nonzero cost per bin" caption under the title] here>
 
 ### Annotations
 
