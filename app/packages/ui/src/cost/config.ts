@@ -94,9 +94,14 @@ import {
   type BusinessMetricImportPreviewRequest,
   type BusinessMetricImportRunRequest,
   type BusinessMetricSourceOptionsRequest,
+  UNIT_COST_SCALES,
+  UNIT_COST_THRESHOLD_MODES,
+  UNIT_COST_THRESHOLD_DIRECTIONS,
   type BusinessMetricInput,
+  type BusinessMetricLabelMapping,
   type BusinessMetricValueInput,
   type UnitCostQueryRequest,
+  type UnitCostThreshold,
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,
   type ManagedInvoiceUpdate,
@@ -405,18 +410,33 @@ export {
   describeBusinessMetricImporter,
   parseMetricCsv,
   guessCsvMapping,
+  csvLabelColumnKey,
   csvRowsToMetricValues,
   CSV_DATE_FORMATS,
   CSV_DATE_FORMAT_LABELS,
   type MetricCsvColumnMapping,
   type CsvDateFormat,
+  normalizeBusinessMetricLabelKey,
+  formatBusinessMetricLabels,
+  costDimensionNeedsKey,
   unitCostQueryForConfig,
+  isUnitCostConfig,
+  unitCostModeNeedsMetric,
   UNIT_COST_MODES,
   UNIT_COST_MODE_LABELS,
+  UNIT_COST_MODE_DESCRIPTIONS,
+  UNIT_COST_SCALES,
+  UNIT_COST_SCALE_LABELS,
+  toUnitCostScale,
   UNIT_COST_GAP_REASONS,
   UNIT_COST_GAP_REASON_LABELS,
+  UNIT_COST_THRESHOLD_MODES,
+  UNIT_COST_THRESHOLD_DIRECTIONS,
+  DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS,
+  describeUnitCostThreshold,
   isPartialUnitCostPoint,
   unitCostUnitLabel,
+  unitCostSeriesLabel,
   formatUnitCostValue,
   describeUnitCostCaveats,
   type BusinessMetric,
@@ -436,16 +456,25 @@ export {
   type BusinessMetricSourceOptionsRequest,
   type BusinessMetricInput,
   type BusinessMetricKind,
+  type BusinessMetricLabelMapping,
+  type BusinessMetricLabelSummary,
+  type BusinessMetricLabelTarget,
+  type BusinessMetricLabels,
   type BusinessMetricValue,
   type BusinessMetricValueInput,
   type BusinessMetricValueSource,
   type BusinessMetricWriteResult,
   type UnitCostGapReason,
+  type UnitCostLabelFilter,
   type UnitCostMode,
   type UnitCostPoint,
   type UnitCostQueryRequest,
   type UnitCostQueryResponse,
+  type UnitCostScale,
   type UnitCostSeries,
+  type UnitCostThreshold,
+  type UnitCostThresholdDirection,
+  type UnitCostThresholdMode,
 } from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
@@ -457,6 +486,35 @@ export const costFilterSchema = z.object({
 });
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+
+/** A business-metric label key: normalised, then the metric-key slug rule. */
+const businessMetricLabelKey = z
+  .string()
+  .transform((v) => v.trim().toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(BUSINESS_METRIC_LIMITS.maxLabelKeyLength)
+      .regex(BUSINESS_METRIC_KEY_PATTERN, "expected a lowercase slug, e.g. customer"),
+  );
+
+const unitCostScaleSchema = z.union([
+  z.literal(UNIT_COST_SCALES[0]),
+  z.literal(UNIT_COST_SCALES[1]),
+  z.literal(UNIT_COST_SCALES[2]),
+  z.literal(UNIT_COST_SCALES[3]),
+  z.literal(UNIT_COST_SCALES[4]),
+]);
+
+const unitCostLabelFilterSchema = z.object({
+  key: businessMetricLabelKey,
+  op: z.enum(["in", "not_in"]),
+  values: z
+    .array(z.string().min(1).max(BUSINESS_METRIC_LIMITS.maxLabelValueLength))
+    .min(1)
+    .max(200),
+});
 
 export const costDateRangeSchema = z.union([
   z.object({ kind: z.literal("relative"), preset: z.enum(COST_RANGE_PRESETS) }),
@@ -501,6 +559,11 @@ const costGraphConfigObjectSchema = z.object({
    */
   unitCostMetricId: z.string().min(1).optional(),
   unitCostMode: z.enum(UNIT_COST_MODES).optional(),
+  /** All optional for the same reason: absent is what older cards always drew. */
+  unitCostScale: unitCostScaleSchema.optional(),
+  unitCostUsageUnit: z.string().min(1).max(120).optional(),
+  unitCostLabelFilters: z.array(unitCostLabelFilterSchema).max(10).optional(),
+  unitCostGroupByLabel: businessMetricLabelKey.optional(),
   /**
    * Draw the org's billing rules applied. Optional, never defaulted: absent
    * means collected spend, which is what every card written before billing
@@ -1489,6 +1552,34 @@ const businessMetricKey = z
       .regex(BUSINESS_METRIC_KEY_PATTERN, "expected a lowercase slug, e.g. active-customers"),
   );
 
+/** Where a label's values live on the cost side. */
+const businessMetricLabelMappingSchema = z.object({
+  label: businessMetricLabelKey,
+  target: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("dimension"),
+      dimension: z.enum(COST_DIMENSIONS),
+      tagKey: z.string().min(1).max(200).optional(),
+    }),
+    z.object({ kind: z.literal("cost_centre") }),
+  ]),
+});
+
+/** A standing limit on a metric's unit cost or margin. */
+const unitCostThresholdSchema = z.object({
+  mode: z.enum(UNIT_COST_THRESHOLD_MODES),
+  direction: z.enum(UNIT_COST_THRESHOLD_DIRECTIONS),
+  value: z.number().finite(),
+  scale: unitCostScaleSchema.optional(),
+  groupByLabel: businessMetricLabelKey.optional(),
+  windowDays: z
+    .number()
+    .int()
+    .min(BUSINESS_METRIC_LIMITS.minThresholdWindowDays)
+    .max(BUSINESS_METRIC_LIMITS.maxThresholdWindowDays)
+    .optional(),
+});
+
 /**
  * Create/update body for a business metric.
  *
@@ -1509,18 +1600,27 @@ export const businessMetricInputSchema = z.object({
   currency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
   costScope: z.array(costFilterSchema).max(BUSINESS_METRIC_LIMITS.maxScopeFilters).optional(),
   savedFilterId: z.string().min(1).optional(),
+  labelMappings: z
+    .array(businessMetricLabelMappingSchema)
+    .max(BUSINESS_METRIC_LIMITS.maxLabelMappings)
+    .optional(),
+  thresholds: z.array(unitCostThresholdSchema).max(BUSINESS_METRIC_LIMITS.maxThresholds).optional(),
 });
 
 /**
  * One reported day. Re-reporting a day restates it rather than accumulating:
  * see `server-core/cost/metric-ingest.ts` for why that is the only ingest
  * semantics an unattended nightly job can safely retry.
+ *
+ * Label keys and values are checked (and canonicalised) by the ingest itself,
+ * so a workflow write and an API write fail with the same message.
  */
 export const businessMetricValueInputSchema = z.object({
   date: isoDate,
   value: z.number().finite(),
-  /** Optional breakdown label; `(date, label)` is what a write restates. */
-  label: z.string().max(BUSINESS_METRIC_LIMITS.maxLabelLength).optional(),
+  /** A single breakdown label, stored as `{ label: <value> }`. */
+  label: z.string().max(BUSINESS_METRIC_LIMITS.maxLabelValueLength).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
 });
 
 /** The batch envelope for `POST /business-metrics/{id}/values`. */
@@ -1531,18 +1631,21 @@ export const businessMetricValuesBodySchema = z.object({
 /**
  * The unit-cost query.
  *
- * There is no `groupBy` and no `topN`, and their absence is the contract: a
- * per-group ratio needs a per-group denominator, and the org has declared one
- * series of values. Offering the field would let a caller divide each service's
- * spend by the *whole* customer count and get numbers that do not sum to the
- * real one.
+ * There is no spend `groupBy` and no `topN`, and their absence is the
+ * contract: a per-group ratio needs a per-group denominator. Grouping is by a
+ * metric *label* instead (`groupByLabel`), which splits both halves at once,
+ * and only through a label mapped to a cost dimension for a ratio mode.
  */
 export const unitCostQueryRequestSchema = z.object({
   from: isoDate,
   to: isoDate,
   binning: z.enum(COST_BINNINGS),
-  /** Absent is "unit_cost". */
+  /** Absent is "unit_cost" (or "usage_unit_cost" on the usage route). */
   mode: z.enum(UNIT_COST_MODES).optional(),
+  scale: unitCostScaleSchema.optional(),
+  labelFilters: z.array(unitCostLabelFilterSchema).max(10).optional(),
+  groupByLabel: businessMetricLabelKey.optional(),
+  usageUnit: z.string().min(1).max(120).optional(),
   /** Narrowing on top of the metric's own scope, never a replacement for it. */
   filters: z.array(costFilterSchema).optional(),
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
@@ -1623,6 +1726,8 @@ export type SchemasMatchBusinessMetricContract = [
     z.infer<typeof businessMetricSourceOptionsRequestSchema>,
     BusinessMetricSourceOptionsRequest
   >,
+  Exact<z.infer<typeof businessMetricLabelMappingSchema>, BusinessMetricLabelMapping>,
+  Exact<z.infer<typeof unitCostThresholdSchema>, UnitCostThreshold>,
 ];
 
 /* ------------------------------------------------------------------ *

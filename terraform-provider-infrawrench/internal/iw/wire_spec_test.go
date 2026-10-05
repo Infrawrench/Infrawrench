@@ -131,6 +131,8 @@ func specChecks() []specCheck {
 		},
 		{schema: "BusinessMetricImporterInput", value: BusinessMetricImporterInput{}},
 		{schema: "BusinessMetricImporter", value: BusinessMetricImporter{}},
+		{schema: "BusinessMetricLabelMapping", value: BusinessMetricLabelMapping{}},
+		{schema: "UnitCostThreshold", value: UnitCostThreshold{}},
 
 		{schema: "CostAnnotation", value: CostAnnotation{}},
 		{schema: "CostAnnotationInput", value: CostAnnotationInput{}},

@@ -31,6 +31,7 @@ export const EFFICIENCY_ALERT_KINDS = [
   "commitment_expiry",
   "commitment_idle",
   "unit_cost_regression",
+  "unit_cost_threshold",
 ] as const;
 export type EfficiencyAlertKind = (typeof EFFICIENCY_ALERT_KINDS)[number];
 
@@ -38,6 +39,7 @@ export const EFFICIENCY_ALERT_KIND_LABELS: Record<EfficiencyAlertKind, string> =
   commitment_expiry: "Commitment expiry",
   commitment_idle: "Idle commitment",
   unit_cost_regression: "Unit-cost regression",
+  unit_cost_threshold: "Unit-cost threshold",
 };
 
 /**

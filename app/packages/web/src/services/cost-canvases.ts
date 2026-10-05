@@ -27,6 +27,7 @@ import {
   primaryCostCurrency,
   renderCostCanvasText,
   resolveCostDateRange,
+  isUnitCostConfig,
   unitCostQueryForConfig,
   type CostCanvas,
   type CostCanvasBlock,
@@ -52,7 +53,7 @@ import {
   requireObjectAccess,
 } from "./object-sharing";
 import { runCostQuery } from "./cost-query";
-import { runUnitCostQuery } from "./unit-cost-query";
+import { runUnitCostQuery, runUsageUnitCostQuery } from "./unit-cost-query";
 import { listBudgetsWithStatus, getBudgetWithStatus } from "./budgets";
 import { listRecentCostAnomalies } from "./cost-anomalies";
 import { withholdOrgWideFindings } from "./cost-visibility-filter";
@@ -565,17 +566,18 @@ async function unitCostKpi(
     previous = prev.series.find((s) => s.currency === first?.currency)?.overallValue ?? null;
   }
   const value = first?.overallValue ?? null;
+  // Always set on the metric route this KPI calls; null only for the
+  // metric-free usage mode, which a KPI never runs.
+  const metricName = response.metric?.name ?? m.businessMetricId;
   return {
     value,
     unit: "money_per_unit",
     ...(first ? { currency: first.currency } : {}),
-    perUnit: response.metric.unit || response.metric.name,
+    perUnit: response.metric?.unit || metricName,
     ...(compare ? { previous, changePercent: costCanvasChangePercent(value, previous) } : {}),
     from,
     to,
-    ...(value === null
-      ? { note: `No ${response.metric.name} values reported for this window.` }
-      : {}),
+    ...(value === null ? { note: `No ${metricName} values reported for this window.` } : {}),
     ...(response.series.length > 1
       ? { note: `Spend in ${response.series.length} currencies; showing ${first?.currency}.` }
       : {}),
@@ -676,12 +678,17 @@ async function chartData(
 ): Promise<
   Pick<Extract<CostCanvasBlockResult, { kind: "chart" }>, "from" | "to" | "cost" | "unitCost">
 > {
-  if (config.unitCostMetricId) {
-    const request = unitCostQueryForConfig(config, now);
-    const unitCost = await runUnitCostQuery(organizationId, config.unitCostMetricId, {
-      ...request,
+  if (isUnitCostConfig(config)) {
+    const request = {
+      ...unitCostQueryForConfig(config, now),
       ...(displayCurrency ? { displayCurrency } : {}),
-    });
+    };
+    // Cost per usage unit has no metric behind it: the same split the
+    // dashboard PDF and the cards make.
+    const unitCost =
+      config.unitCostMode === "usage_unit_cost"
+        ? await runUsageUnitCostQuery(organizationId, request)
+        : await runUnitCostQuery(organizationId, config.unitCostMetricId!, request);
     return { from: request.from, to: request.to, unitCost };
   }
   const request = costQueryForConfig(config, now);

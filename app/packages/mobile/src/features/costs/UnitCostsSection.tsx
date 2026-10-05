@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
   describeUnitCostCaveats,
+  formatMoney,
   formatUnitCostValue,
   unitCostUnitLabel,
   type BusinessMetric,
@@ -175,7 +176,12 @@ function UnitCostCard({
         </Text>
         <Text style={styles.headline}>
           {response.series
-            .map((s) => formatUnitCostValue(s.overallValue, response.mode))
+            .map((s) => {
+              const value = formatUnitCostValue(s.overallValue, response.mode);
+              return s.overallAbsoluteMargin !== undefined && s.overallAbsoluteMargin !== null
+                ? `${value} (${formatMoney(s.overallAbsoluteMargin, s.currency)})`
+                : value;
+            })
             .join(" · ") || "—"}
         </Text>
       </View>

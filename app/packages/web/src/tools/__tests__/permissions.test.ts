@@ -157,6 +157,8 @@ describe("tool registry permission declarations", () => {
     // writes costs:write, matching saved filters and the cost push endpoint.
     ["list_business_metrics", "costs:read"],
     ["query_unit_costs", "costs:read"],
+    ["list_business_metric_labels", "costs:read"],
+    ["list_usage_units", "costs:read"],
     ["create_business_metric", "costs:write"],
     ["write_business_metric_values", "costs:write"],
     ["delete_business_metric", "costs:write"],

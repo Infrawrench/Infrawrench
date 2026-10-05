@@ -1091,3 +1091,29 @@ ipcMain.handle(
     });
   },
 );
+
+ipcMain.handle(
+  "cloud_query_usage_unit_costs",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetch(orgId, "/business-metrics/usage-unit-costs", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+);
+
+ipcMain.handle("cloud_list_usage_units", async (_e, { orgId }: { orgId: string }) => {
+  const res = await cloudFetch<{ units: unknown[] }>(orgId, "/business-metrics/usage-units");
+  return res?.units ?? [];
+});
+
+ipcMain.handle(
+  "cloud_list_business_metric_labels",
+  async (_e, { orgId, metricId }: { orgId: string; metricId: string }) => {
+    const res = await cloudFetch<{ labels: unknown[] }>(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/labels`,
+    );
+    return res?.labels ?? [];
+  },
+);

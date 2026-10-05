@@ -30,7 +30,9 @@ This resource manages the metric's **definition** only. Its values are a time se
 - `cost_scope` (Block List) The spend this metric divides, in the same vocabulary cost graphs and budgets use. Omit it for all of the organization's spend. A unit-cost query may narrow this further but can never widen it: the scope is part of what the metric means, and a caller who could drop it would be answering a different question under the same name. (see [below for nested schema](#nestedblock--cost_scope))
 - `currency` (String) ISO-4217 code. **Required when `kind` is `currency`, and rejected otherwise** — a revenue metric with no currency cannot have margin computed against it, and a count metric carrying one would suggest its numbers are money when they are requests.
 - `description` (String) Free-text description, up to 2000 characters.
+- `label_mapping` (Block List) Joins a label the metric's values carry (for example `customer`) to where its values live on the cost side, so unit cost and margin can be computed per label value (cost per customer, margin per customer). Unit-cost queries refuse to split or filter a ratio by an unmapped label, because without a per-value numerator the only spend available is the whole scope's. At most 8, one per label. (see [below for nested schema](#nestedblock--label_mapping))
 - `saved_filter_id` (String) A saved cost filter AND-composed with `cost_scope`, resolved server-side at query time. A reference that fails to resolve errors the unit-cost query rather than silently widening the numerator to all spend.
+- `threshold` (Block List) A standing limit on this metric's unit cost or margin, evaluated daily on the summed ratio over the trailing window and routed through alert routing under the `unitCostRegressionAlerts` trigger. A window with fewer than half its days reported is not judged. At most 10. (see [below for nested schema](#nestedblock--threshold))
 
 ### Read-Only
 
@@ -48,6 +50,36 @@ Required:
 Optional:
 
 - `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
+
+
+<a id="nestedblock--label_mapping"></a>
+### Nested Schema for `label_mapping`
+
+Required:
+
+- `label` (String) The label key, a lowercase slug of 1–64 characters (letters, digits, `_ . -`).
+- `target` (String) `dimension` to match label values to a cost dimension's values exactly, or `cost_centre` to match them to cost centres by id or, case-insensitively, by name.
+
+Optional:
+
+- `dimension` (String) With `target = "dimension"` only: the cost dimension, one of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
+- `tag_key` (String) The tag key, required when `dimension` is `tag` and omitted otherwise.
+
+
+<a id="nestedblock--threshold"></a>
+### Nested Schema for `threshold`
+
+Required:
+
+- `direction` (String) `above` or `below`: which side of `value` fires.
+- `mode` (String) `unit_cost` (spend ÷ metric) or `margin` (`(revenue − spend) ÷ revenue`, which needs `kind = "currency"`).
+- `value` (Number) The limit: currency units per `scale` metric units for `unit_cost`, and a percentage (`30` for 30%) for `margin`.
+
+Optional:
+
+- `group_by_label` (String) Evaluate the limit separately for each value of this label (each customer). The label must have a `label_mapping`.
+- `scale` (Number) "Per N units" for a `unit_cost` limit: `1`, `100`, `1000`, `1000000` or `1000000000`. Ignored for `margin`. Defaults to `1`.
+- `window_days` (Number) Trailing complete days the ratio is summed over, 1–90. Defaults to `7`.
 
 ## Import
 

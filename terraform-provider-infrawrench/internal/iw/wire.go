@@ -294,22 +294,26 @@ func (r CostDateRange) MarshalJSON() ([]byte, error) {
 // CostGraphConfig is the chart definition shared by reports and dashboard
 // cards.
 type CostGraphConfig struct {
-	Version               int64         `json:"version"`
-	ChartType             string        `json:"chartType"`
-	Binning               string        `json:"binning"`
-	DateRange             CostDateRange `json:"dateRange"`
-	GroupBy               string        `json:"groupBy"`
-	GroupByTagKey         *string       `json:"groupByTagKey,omitempty"`
-	Filters               []CostFilter  `json:"filters"`
-	SavedFilterID         *string       `json:"savedFilterId,omitempty"`
-	TopN                  int64         `json:"topN"`
-	ComparePreviousPeriod bool          `json:"comparePreviousPeriod"`
-	ShowForecast          bool          `json:"showForecast"`
-	ScenarioModelID       *string       `json:"scenarioModelId,omitempty"`
-	CostBasis             *string       `json:"costBasis,omitempty"`
-	UnitCostMetricID      *string       `json:"unitCostMetricId,omitempty"`
-	UnitCostMode          *string       `json:"unitCostMode,omitempty"`
-	Adjusted              *bool         `json:"adjusted,omitempty"`
+	Version               int64                 `json:"version"`
+	ChartType             string                `json:"chartType"`
+	Binning               string                `json:"binning"`
+	DateRange             CostDateRange         `json:"dateRange"`
+	GroupBy               string                `json:"groupBy"`
+	GroupByTagKey         *string               `json:"groupByTagKey,omitempty"`
+	Filters               []CostFilter          `json:"filters"`
+	SavedFilterID         *string               `json:"savedFilterId,omitempty"`
+	TopN                  int64                 `json:"topN"`
+	ComparePreviousPeriod bool                  `json:"comparePreviousPeriod"`
+	ShowForecast          bool                  `json:"showForecast"`
+	ScenarioModelID       *string               `json:"scenarioModelId,omitempty"`
+	CostBasis             *string               `json:"costBasis,omitempty"`
+	UnitCostMetricID      *string               `json:"unitCostMetricId,omitempty"`
+	UnitCostMode          *string               `json:"unitCostMode,omitempty"`
+	UnitCostScale         *int64                `json:"unitCostScale,omitempty"`
+	UnitCostUsageUnit     *string               `json:"unitCostUsageUnit,omitempty"`
+	UnitCostLabelFilters  []UnitCostLabelFilter `json:"unitCostLabelFilters,omitempty"`
+	UnitCostGroupByLabel  *string               `json:"unitCostGroupByLabel,omitempty"`
+	Adjusted              *bool                 `json:"adjusted,omitempty"`
 	// The display options. All omitempty: the server omits each when it holds
 	// its default (cost, no unit, not cumulative), and sending them only when
 	// set keeps a config that never mentions them byte-identical on the wire.
@@ -739,6 +743,46 @@ type BusinessMetricInput struct {
 	Currency      *string      `json:"currency,omitempty"`
 	CostScope     []CostFilter `json:"costScope"`
 	SavedFilterID *string      `json:"savedFilterId,omitempty"`
+	// Sent as [] rather than omitted when empty: PUT is a full replace, so an
+	// omitted list would leave the server's previous mappings in place.
+	LabelMappings []BusinessMetricLabelMapping `json:"labelMappings"`
+	Thresholds    []UnitCostThreshold          `json:"thresholds"`
+}
+
+// UnitCostLabelFilter narrows a unit-cost graph to some values of a metric
+// label: `in` keeps them, `not_in` drops them.
+type UnitCostLabelFilter struct {
+	Key    string   `json:"key"`
+	Op     string   `json:"op"`
+	Values []string `json:"values"`
+}
+
+// BusinessMetricLabelTarget names where a label's values live on the cost
+// side: a cost dimension (Dimension, plus TagKey for keyed dimensions), or the
+// cost centres (Kind "cost_centre", no other fields).
+type BusinessMetricLabelTarget struct {
+	Kind      string  `json:"kind"`
+	Dimension *string `json:"dimension,omitempty"`
+	TagKey    *string `json:"tagKey,omitempty"`
+}
+
+// BusinessMetricLabelMapping joins a value label to a cost dimension, so unit
+// cost and margin can be computed per label value.
+type BusinessMetricLabelMapping struct {
+	Label  string                    `json:"label"`
+	Target BusinessMetricLabelTarget `json:"target"`
+}
+
+// UnitCostThreshold is a standing limit on a metric's unit cost or margin.
+// The server always returns WindowDays (defaulting it to 7) and omits Scale
+// when it is 1.
+type UnitCostThreshold struct {
+	Mode         string  `json:"mode"`
+	Direction    string  `json:"direction"`
+	Value        float64 `json:"value"`
+	Scale        *int64  `json:"scale,omitempty"`
+	GroupByLabel *string `json:"groupByLabel,omitempty"`
+	WindowDays   *int64  `json:"windowDays,omitempty"`
 }
 
 // BusinessMetricCoverage summarises which days carry a reported value. Read
@@ -756,19 +800,21 @@ type BusinessMetricCoverage struct {
 // time series pushed continuously by a job, not configuration, and a Terraform
 // resource that owned them would plan a diff every time the business changed.
 type BusinessMetric struct {
-	ID              string                  `json:"id"`
-	Key             string                  `json:"key"`
-	Name            string                  `json:"name"`
-	Unit            string                  `json:"unit"`
-	Description     *string                 `json:"description"`
-	Kind            string                  `json:"kind"`
-	Currency        *string                 `json:"currency"`
-	CostScope       []CostFilter            `json:"costScope"`
-	SavedFilterID   *string                 `json:"savedFilterId"`
-	CreatedByUserID *string                 `json:"createdByUserId"`
-	CreatedAt       string                  `json:"createdAt"`
-	UpdatedAt       string                  `json:"updatedAt"`
-	Coverage        *BusinessMetricCoverage `json:"coverage"`
+	ID              string                       `json:"id"`
+	Key             string                       `json:"key"`
+	Name            string                       `json:"name"`
+	Unit            string                       `json:"unit"`
+	Description     *string                      `json:"description"`
+	Kind            string                       `json:"kind"`
+	Currency        *string                      `json:"currency"`
+	CostScope       []CostFilter                 `json:"costScope"`
+	SavedFilterID   *string                      `json:"savedFilterId"`
+	LabelMappings   []BusinessMetricLabelMapping `json:"labelMappings"`
+	Thresholds      []UnitCostThreshold          `json:"thresholds"`
+	CreatedByUserID *string                      `json:"createdByUserId"`
+	CreatedAt       string                       `json:"createdAt"`
+	UpdatedAt       string                       `json:"updatedAt"`
+	Coverage        *BusinessMetricCoverage      `json:"coverage"`
 }
 
 /* ------------------------- business metric importers ----------------------- */

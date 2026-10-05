@@ -21,7 +21,13 @@
  */
 import { withholdOrgWideFindings } from "./cost-visibility-filter";
 import { and, desc, eq } from "drizzle-orm";
-import type { EfficiencyAlertEvent, EfficiencyAlertKind } from "@infrawrench/client-core";
+import {
+  formatUnitCostValue,
+  toUnitCostScale,
+  unitCostUnitLabel,
+  type EfficiencyAlertEvent,
+  type EfficiencyAlertKind,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
 import {
   accounts,
@@ -29,6 +35,7 @@ import {
   commitmentExpiryEvents,
   commitmentIdleEvents,
   unitCostRegressionEvents,
+  unitCostThresholdEvents,
 } from "../db/schema";
 
 export interface ListEfficiencyAlertsOptions {
@@ -53,7 +60,7 @@ export async function listEfficiencyAlerts(
   const { kind, limit } = options;
   const wants = (k: EfficiencyAlertKind): boolean => kind === undefined || kind === k;
 
-  const [expiry, idle, regression] = await Promise.all([
+  const [expiry, idle, regression, threshold] = await Promise.all([
     wants("commitment_expiry")
       ? db
           .select({
@@ -122,6 +129,32 @@ export async function listEfficiencyAlerts(
           .leftJoin(businessMetrics, eq(businessMetrics.id, unitCostRegressionEvents.metricId))
           .where(and(eq(unitCostRegressionEvents.organizationId, organizationId)))
           .orderBy(desc(unitCostRegressionEvents.firedAt))
+          .limit(limit)
+      : Promise.resolve([]),
+    wants("unit_cost_threshold")
+      ? db
+          .select({
+            id: unitCostThresholdEvents.id,
+            metricName: businessMetrics.name,
+            metricUnit: businessMetrics.unit,
+            mode: unitCostThresholdEvents.mode,
+            direction: unitCostThresholdEvents.direction,
+            thresholdValue: unitCostThresholdEvents.thresholdValue,
+            scale: unitCostThresholdEvents.scale,
+            labelKey: unitCostThresholdEvents.labelKey,
+            labelValue: unitCostThresholdEvents.labelValue,
+            currency: unitCostThresholdEvents.currency,
+            windowFrom: unitCostThresholdEvents.windowFrom,
+            windowTo: unitCostThresholdEvents.windowTo,
+            observedValue: unitCostThresholdEvents.observedValue,
+            windowSpend: unitCostThresholdEvents.windowSpend,
+            firedAt: unitCostThresholdEvents.firedAt,
+            notifiedAt: unitCostThresholdEvents.notifiedAt,
+          })
+          .from(unitCostThresholdEvents)
+          .leftJoin(businessMetrics, eq(businessMetrics.id, unitCostThresholdEvents.metricId))
+          .where(eq(unitCostThresholdEvents.organizationId, organizationId))
+          .orderBy(desc(unitCostThresholdEvents.firedAt))
           .limit(limit)
       : Promise.resolve([]),
   ]);
@@ -193,6 +226,42 @@ export async function listEfficiencyAlerts(
       firedAt: r.firedAt.toISOString(),
       notifiedAt: r.notifiedAt?.toISOString() ?? null,
     })),
+    ...threshold.map((r) => {
+      const unit = r.metricUnit || "unit";
+      const scale = toUnitCostScale(r.scale);
+      const isMargin = r.mode === "margin";
+      const display = (value: number): string =>
+        isMargin
+          ? `${value.toFixed(1)}%`
+          : `${formatUnitCostValue(value, "unit_cost")} ${unitCostUnitLabel({ unit }, "unit_cost", r.currency, scale)}`;
+      return {
+        id: r.id,
+        kind: "unit_cost_threshold" as const,
+        subject: r.metricName ?? "(deleted metric)",
+        accountId: null,
+        accountName: null,
+        currency: r.currency,
+        amount: r.windowSpend,
+        detail: {
+          mode: r.mode,
+          direction: r.direction,
+          unit,
+          scale,
+          thresholdValue: r.thresholdValue,
+          observedValue: r.observedValue,
+          // Pre-formatted so every surface (web, desktop, mobile, CLI) states the
+          // limit and the reading in the same words and the same precision.
+          thresholdDisplay: display(r.thresholdValue),
+          observedDisplay: display(r.observedValue),
+          labelKey: r.labelKey || null,
+          labelValue: r.labelKey ? r.labelValue : null,
+          windowFrom: r.windowFrom,
+          windowTo: r.windowTo,
+        },
+        firedAt: r.firedAt.toISOString(),
+        notifiedAt: r.notifiedAt?.toISOString() ?? null,
+      };
+    }),
   ];
 
   events.sort((a, b) => b.firedAt.localeCompare(a.firedAt) || a.id.localeCompare(b.id));

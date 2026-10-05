@@ -328,24 +328,105 @@ export function formatMetricAlertSelector(rule: {
  * significant digits rather than rounding a real number to `0.00`, which is
  * the same lie by a different route.
  */
-export function formatUnitCostRatio(value: number | null, mode: "unit_cost" | "margin"): string {
+export function formatUnitCostRatio(value: number | null, mode: CliUnitCostMode): string {
   if (value === null || !Number.isFinite(value)) return "—";
   if (mode === "margin") return `${(value * 100).toFixed(1)}%`;
   const magnitude = Math.abs(value);
   if (magnitude === 0) return "0";
+  if (mode === "raw_metric") {
+    return magnitude >= 100
+      ? Math.round(value).toLocaleString("en-US")
+      : String(Math.round(value * 100) / 100);
+  }
   if (magnitude >= 100) return value.toFixed(0);
   if (magnitude >= 1) return value.toFixed(2);
   if (magnitude >= 0.01) return value.toFixed(4);
   return value.toPrecision(3);
 }
 
-/** The column header a ratio belongs under: "USD/customer", or "margin". */
+/** The calculations `unit-costs` can draw; mirrors client-core's `UnitCostMode`. */
+export type CliUnitCostMode = "unit_cost" | "margin" | "usage_unit_cost" | "raw_metric";
+
+const SCALE_PREFIX: Record<number, string> = {
+  1: "",
+  100: "100 ",
+  1000: "1K ",
+  1000000: "1M ",
+  1000000000: "1B ",
+};
+
+/**
+ * The column header a value belongs under: "USD/customer", "USD/1K request",
+ * "margin", or for a raw metric the (scaled) unit itself.
+ */
 export function unitCostRatioLabel(
-  mode: "unit_cost" | "margin",
+  mode: CliUnitCostMode,
   currency: string,
   unit: string,
+  scale = 1,
 ): string {
-  return mode === "margin" ? "margin" : `${currency}/${unit || "unit"}`;
+  if (mode === "margin") return "margin";
+  const prefix = SCALE_PREFIX[scale] ?? "";
+  if (mode === "raw_metric") return `${prefix}${unit || "unit"}`.trim();
+  return `${currency}/${prefix}${unit || "unit"}`;
+}
+
+/** `--mode`: short and long names, or null for absent. */
+export function parseUnitCostModeFlag(raw: string | undefined): CliUnitCostMode | null {
+  if (raw === undefined) return null;
+  const map: Record<string, CliUnitCostMode> = {
+    unit: "unit_cost",
+    unit_cost: "unit_cost",
+    "unit-cost": "unit_cost",
+    margin: "margin",
+    usage: "usage_unit_cost",
+    usage_unit_cost: "usage_unit_cost",
+    "usage-unit-cost": "usage_unit_cost",
+    raw: "raw_metric",
+    raw_metric: "raw_metric",
+    "raw-metric": "raw_metric",
+  };
+  const mode = map[raw.trim().toLowerCase()];
+  if (!mode) throw new Error(`--mode must be one of unit, margin, usage, raw — got "${raw}".`);
+  return mode;
+}
+
+/** `--scale 1|100|1k|1m|1b` (or the plain numbers), or null for absent. */
+export function parseUnitCostScaleFlag(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const map: Record<string, number> = {
+    "1": 1,
+    "100": 100,
+    "1k": 1000,
+    "1000": 1000,
+    "1m": 1000000,
+    "1000000": 1000000,
+    "1b": 1000000000,
+    "1000000000": 1000000000,
+  };
+  const scale = map[raw.trim().toLowerCase()];
+  if (scale === undefined)
+    throw new Error(`--scale must be one of 1, 100, 1k, 1m, 1b — got "${raw}".`);
+  return scale;
+}
+
+/**
+ * `--label customer=acme,globex` → `{key, op: "in", values}`;
+ * `--label plan!=free` → `op: "not_in"`.
+ */
+export function parseUnitCostLabelFlag(raw: string): {
+  key: string;
+  op: "in" | "not_in";
+  values: string[];
+} {
+  const match = /^\s*([^=!\s]+)\s*(!=|=)\s*(.+)$/.exec(raw);
+  if (!match) throw new Error(`--label must look like key=value or key!=value — got "${raw}".`);
+  const values = match[3]!
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (values.length === 0) throw new Error(`--label "${raw}" names no values.`);
+  return { key: match[1]!.trim().toLowerCase(), op: match[2] === "!=" ? "not_in" : "in", values };
 }
 
 /**

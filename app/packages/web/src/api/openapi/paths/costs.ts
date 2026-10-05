@@ -642,7 +642,7 @@ const CostEfficiencySettings = strict({
 const EfficiencyAlertEvent = strict({
   id: Uuid,
   kind: z
-    .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression"])
+    .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression", "unit_cost_threshold"])
     .describe("Which detector produced it."),
   subject: z.string().describe("The commitment's description, or the business metric's name."),
   accountId: Uuid.nullable().describe("The account, for commitment kinds; null otherwise."),
@@ -1003,7 +1003,12 @@ export function registerCostPaths(ctx: BuildContext) {
       params: OrgIdParam,
       query: strict({
         kind: z
-          .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression"])
+          .enum([
+            "commitment_expiry",
+            "commitment_idle",
+            "unit_cost_regression",
+            "unit_cost_threshold",
+          ])
           .optional()
           .describe("Restrict to one detector. Omitted returns all three, interleaved by time."),
         limit: z.coerce

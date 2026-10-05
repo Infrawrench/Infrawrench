@@ -21,14 +21,30 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
 import {
+  BUSINESS_METRIC_KEY_HELP,
+  BUSINESS_METRIC_LABEL_KEY_PATTERN,
   BUSINESS_METRIC_LIMITS,
+  COST_DIMENSIONS,
+  DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS,
+  UNIT_COST_SCALES,
+  costDimensionNeedsKey,
   normalizeBusinessMetricKey,
+  normalizeBusinessMetricLabelKey,
   type BusinessMetric,
   type BusinessMetricInput,
+  type BusinessMetricLabelMapping,
+  type BusinessMetricLabelSummary,
+  type BusinessMetricLabels,
+  BUSINESS_METRIC_DEFAULT_LABEL_KEY,
   type BusinessMetricValue,
   type CostFilter,
+  type UnitCostThreshold,
 } from "@infrawrench/client-core";
-import { getMetricCoverage } from "@infrawrench/server-core/cost/metric-ingest";
+import {
+  getMetricCoverage,
+  getMetricLabelSummary,
+  storedLabels,
+} from "@infrawrench/server-core/cost/metric-ingest";
 import {
   getBusinessMetricImporter,
   getBusinessMetricImporterSummaries,
@@ -38,6 +54,15 @@ import { db } from "../db/client";
 import { businessMetricValues, businessMetrics } from "../db/schema";
 
 type BusinessMetricRow = typeof businessMetrics.$inferSelect;
+
+/** Static routes under `/business-metrics/` that a metric key would shadow. */
+const RESERVED_METRIC_KEYS = new Set([
+  "importer-sources",
+  "importer-options",
+  "importer-preview",
+  "usage-units",
+  "usage-unit-costs",
+]);
 
 /** A create/update whose key is already taken by a live metric. 409. */
 export class BusinessMetricKeyConflictError extends Error {
@@ -71,6 +96,8 @@ function toBusinessMetric(
     currency: row.currency,
     costScope: (row.costScope ?? []) as CostFilter[],
     savedFilterId: row.savedFilterId,
+    labelMappings: (row.labelMappings ?? []) as BusinessMetricLabelMapping[],
+    thresholds: (row.thresholds ?? []) as UnitCostThreshold[],
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -116,8 +143,16 @@ function normalizeInput(input: BusinessMetricInput): {
   currency: string | null;
   costScope: CostFilter[];
   savedFilterId: string | null;
+  labelMappings: BusinessMetricLabelMapping[];
+  thresholds: UnitCostThreshold[];
 } {
   const key = normalizeBusinessMetricKey(input.key);
+  if (RESERVED_METRIC_KEYS.has(key)) {
+    throw new BusinessMetricInputError(
+      `"${key}" is reserved: it is the path of a route beside the metrics, so a metric with ` +
+        "that key could never be addressed by it.",
+    );
+  }
   const kind = input.kind;
   const currency = input.currency?.trim().toUpperCase() || null;
 
@@ -149,7 +184,124 @@ function normalizeInput(input: BusinessMetricInput): {
     currency,
     costScope,
     savedFilterId: input.savedFilterId?.trim() || null,
+    ...withThresholds(normalizeLabelMappings(input.labelMappings ?? []), input.thresholds, kind),
   };
+}
+
+/**
+ * Label mappings: one per label, each naming a real cost dimension (with a key
+ * where the dimension needs one). A mapping to a nonexistent dimension would be
+ * accepted today and fail every query that used it, so it is refused here.
+ */
+function normalizeLabelMappings(raw: BusinessMetricLabelMapping[]): BusinessMetricLabelMapping[] {
+  if (raw.length > BUSINESS_METRIC_LIMITS.maxLabelMappings) {
+    throw new BusinessMetricInputError(
+      `A metric accepts at most ${BUSINESS_METRIC_LIMITS.maxLabelMappings} label mappings.`,
+    );
+  }
+  const seen = new Set<string>();
+  return raw.map((mapping) => {
+    const label = normalizeBusinessMetricLabelKey(mapping.label);
+    if (!label || !BUSINESS_METRIC_LABEL_KEY_PATTERN.test(label)) {
+      throw new BusinessMetricInputError(
+        `"${mapping.label}" is not a valid label key. ${BUSINESS_METRIC_KEY_HELP}`,
+      );
+    }
+    if (seen.has(label)) {
+      throw new BusinessMetricInputError(
+        `The label "${label}" is mapped twice. A label's values live in one place on the cost side.`,
+      );
+    }
+    seen.add(label);
+    const target = mapping.target;
+    if (target.kind === "cost_centre") return { label, target: { kind: "cost_centre" } };
+    if (!(COST_DIMENSIONS as readonly string[]).includes(target.dimension)) {
+      throw new BusinessMetricInputError(`"${target.dimension}" is not a cost dimension.`);
+    }
+    const tagKey = target.tagKey?.trim();
+    if (costDimensionNeedsKey(target.dimension) && !tagKey) {
+      throw new BusinessMetricInputError(
+        `The label "${label}" maps to a ${target.dimension.replace("_", " ")}, which needs a key.`,
+      );
+    }
+    return {
+      label,
+      target: {
+        kind: "dimension",
+        dimension: target.dimension,
+        ...(costDimensionNeedsKey(target.dimension) && tagKey ? { tagKey } : {}),
+      },
+    };
+  });
+}
+
+/**
+ * Thresholds: bounded in number and window, margin only on a revenue metric
+ * (the same refusal the query makes), and a margin limit stated as a percent.
+ */
+function withThresholds(
+  labelMappings: BusinessMetricLabelMapping[],
+  thresholds: UnitCostThreshold[] | undefined,
+  kind: "count" | "currency",
+): { labelMappings: BusinessMetricLabelMapping[]; thresholds: UnitCostThreshold[] } {
+  const mapped = new Set(labelMappings.map((m) => m.label));
+  const normalized = normalizeThresholds(thresholds ?? [], kind);
+  for (const t of normalized) {
+    if (t.groupByLabel && !mapped.has(t.groupByLabel)) {
+      throw new BusinessMetricInputError(
+        `A threshold per "${t.groupByLabel}" needs that label mapped to a cost dimension, so ` +
+          "each value's spend can be divided by its own volume.",
+      );
+    }
+  }
+  return { labelMappings, thresholds: normalized };
+}
+
+function normalizeThresholds(
+  raw: UnitCostThreshold[],
+  kind: "count" | "currency",
+): UnitCostThreshold[] {
+  if (raw.length > BUSINESS_METRIC_LIMITS.maxThresholds) {
+    throw new BusinessMetricInputError(
+      `A metric accepts at most ${BUSINESS_METRIC_LIMITS.maxThresholds} thresholds.`,
+    );
+  }
+  return raw.map((t) => {
+    if (t.mode === "margin" && kind !== "currency") {
+      throw new BusinessMetricInputError(
+        "A margin threshold needs a revenue metric: margin against a count means nothing.",
+      );
+    }
+    if (!Number.isFinite(t.value)) {
+      throw new BusinessMetricInputError("A threshold needs a finite value.");
+    }
+    const windowDays = t.windowDays ?? DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS;
+    if (
+      !Number.isInteger(windowDays) ||
+      windowDays < BUSINESS_METRIC_LIMITS.minThresholdWindowDays ||
+      windowDays > BUSINESS_METRIC_LIMITS.maxThresholdWindowDays
+    ) {
+      throw new BusinessMetricInputError(
+        `A threshold window is ${BUSINESS_METRIC_LIMITS.minThresholdWindowDays}–` +
+          `${BUSINESS_METRIC_LIMITS.maxThresholdWindowDays} days.`,
+      );
+    }
+    const scale = t.scale ?? 1;
+    if (!(UNIT_COST_SCALES as readonly number[]).includes(scale)) {
+      throw new BusinessMetricInputError("A threshold scale is 1, 100, 1000, 1e6 or 1e9.");
+    }
+    const groupByLabel = t.groupByLabel ? normalizeBusinessMetricLabelKey(t.groupByLabel) : "";
+    return {
+      mode: t.mode,
+      direction: t.direction,
+      value: t.value,
+      // Kept as given even on a margin threshold (which ignores it), so a
+      // declarative client reads back exactly what it wrote.
+      ...(scale !== 1 ? { scale } : {}),
+      ...(groupByLabel ? { groupByLabel } : {}),
+      windowDays,
+    };
+  });
 }
 
 /** Whether a live metric other than `excludeId` already uses `key`. */
@@ -304,6 +456,18 @@ export async function softDeleteBusinessMetric(
   return !!deleted;
 }
 
+/**
+ * A stored row's labels, plus the single `label` the API has carried since the
+ * importers (1.60.0): that key of `labels`, or null.
+ */
+function valueLabels(
+  labels: unknown,
+  label: string,
+): Pick<BusinessMetricValue, "label" | "labels"> {
+  const all = storedLabels(labels, label);
+  return { label: all[BUSINESS_METRIC_DEFAULT_LABEL_KEY] ?? null, labels: all };
+}
+
 /** A metric's reported values, newest day first, capped by `limit`. */
 export async function listBusinessMetricValues(
   metricId: string,
@@ -318,8 +482,30 @@ export async function listBusinessMetricValues(
   return rows.map((r) => ({
     day: r.day,
     value: Number(r.value),
-    label: r.label ? r.label : null,
+    ...valueLabels(r.labels, r.label),
     source: r.source === "workflow" || r.source === "import" ? r.source : "api",
     updatedAt: r.updatedAt.toISOString(),
   }));
+}
+
+/**
+ * The label keys a metric's values carry, each with its values and its
+ * mapping, for the label pickers. A mapped label nobody has reported yet is
+ * listed too (with no values), so the editor can show the mapping exists.
+ */
+export async function listBusinessMetricLabels(
+  metric: Pick<BusinessMetric, "id" | "labelMappings">,
+): Promise<BusinessMetricLabelSummary[]> {
+  const summary = await getMetricLabelSummary(metric.id);
+  const mappings = new Map(metric.labelMappings.map((m) => [m.label, m.target]));
+  const out: BusinessMetricLabelSummary[] = summary.map((s) => ({
+    ...s,
+    mapping: mappings.get(s.key) ?? null,
+  }));
+  for (const [label, target] of mappings) {
+    if (!out.some((s) => s.key === label)) {
+      out.push({ key: label, values: [], truncated: false, mapping: target });
+    }
+  }
+  return out.sort((a, b) => (a.key < b.key ? -1 : 1));
 }

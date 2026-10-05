@@ -42,6 +42,7 @@ import {
   type CostAnnotationMarker,
   type CostGraphConfig,
   type CostQueryResponse,
+  isUnitCostConfig,
 } from "./config.js";
 import {
   alignComparison,
@@ -1026,7 +1027,7 @@ function SpendGraphCard({
  * existed, so an old card draws exactly what it always drew.
  */
 export function CostGraphCard(props: CostGraphCardProps) {
-  if (props.config.unitCostMetricId) {
+  if (isUnitCostConfig(props.config)) {
     return (
       <UnitCostCard
         title={props.title}

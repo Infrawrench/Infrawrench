@@ -244,4 +244,5 @@
 // `GET /network-flows` totals unless that account is asked about by
 // `accountId`. `recut` on NetworkFlowAccountStatus. Additive.
 // 1.68.0: `blended` cost basis (commitment discounts spread evenly over eligible usage) on every costBasis/basis enum, and an optional `blending` capability flag on cost status. Additive.
-export const API_VERSION = "1.68.0";
+// 1.69.0: business-metric calculations. Unit-cost modes `usage_unit_cost` and `raw_metric`, `scale`, label filters and `groupByLabel`, `absoluteMargin` on margin points, multi-dimensional `labels` on values (beside the single `label`), `labelMappings`/`thresholds` on metrics, `GET /business-metrics/{id}/labels`, `GET /business-metrics/usage-units`, `POST /business-metrics/usage-unit-costs`, the unit-cost fields on CostGraphConfig, and the `unit_cost_threshold` efficiency-alert kind. `UnitCostQueryResponse.metric` is now nullable (null only for the new usage mode). Additive.
+export const API_VERSION = "1.69.0";

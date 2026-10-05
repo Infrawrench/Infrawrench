@@ -48,7 +48,15 @@ export function useUnitCostSeries(metrics: BusinessMetric[]) {
       queryFn: () =>
         api.org<UnitCostQueryResponse>(orgId, `/business-metrics/${metric.id}/unit-costs`, {
           method: "POST",
-          body: JSON.stringify({ from, to, binning: "daily" as const }),
+          // A revenue metric reads as gross margin (with the absolute margin
+          // beside it): "what are we keeping" is the glance question for revenue,
+          // and cost per dollar of revenue is the same fact stated less usefully.
+          body: JSON.stringify({
+            from,
+            to,
+            binning: "daily" as const,
+            ...(metric.kind === "currency" ? { mode: "margin" as const } : {}),
+          }),
         }),
     })),
   });

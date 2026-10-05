@@ -6,6 +6,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
 import { BusinessMetricImporterModal } from "./BusinessMetricImporterModal.js";
 import { MetricCsvImportModal } from "./MetricCsvImportModal.js";
+import { LabelMappingsEditor, ThresholdsEditor } from "./BusinessMetricLabelEditors.js";
 import {
   BUSINESS_METRIC_KEY_HELP,
   BUSINESS_METRIC_KINDS,
@@ -14,6 +15,8 @@ import {
   BUSINESS_METRIC_LIMITS,
   DEFAULT_BUSINESS_METRIC_INPUT,
   normalizeBusinessMetricKey,
+  normalizeBusinessMetricLabelKey,
+  formatBusinessMetricLabels,
   type BusinessMetric,
   type BusinessMetricInput,
   type BusinessMetricKind,
@@ -38,6 +41,9 @@ function metricToInput(metric: BusinessMetric): BusinessMetricInput {
     // Round-tripped, or renaming a metric would quietly detach the saved filter
     // scoping its numerator: updates are full replaces.
     ...(metric.savedFilterId ? { savedFilterId: metric.savedFilterId } : {}),
+    // Same reason: a rename must not drop the mappings or the alerts.
+    labelMappings: metric.labelMappings,
+    thresholds: metric.thresholds,
   };
 }
 
@@ -233,6 +239,14 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                         filterLabel: metric.costScope.length === 1 ? gt("filter") : gt("filters"),
                       })
                     : gt(" · all spend")}
+                  {metric.labelMappings.length > 0
+                    ? gt(" · per {labels}", {
+                        labels: metric.labelMappings.map((m) => m.label).join(", "),
+                      })
+                    : ""}
+                  {metric.thresholds.length > 0
+                    ? gt(" · {count} alert thresholds", { count: metric.thresholds.length })
+                    : ""}
                 </span>
                 <span
                   className={`block text-xs mt-0.5 ${metric.coverage ? "text-on-surface-faint" : "text-warning"}`}
@@ -314,6 +328,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
           initialInput={
             editing.metric ? metricToInput(editing.metric) : DEFAULT_BUSINESS_METRIC_INPUT
           }
+          metricId={editing.metric?.id ?? null}
           isNew={!editing.metric}
           api={client}
           onSave={save}
@@ -354,12 +369,14 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
 /** Create/edit a metric definition. */
 function BusinessMetricModal({
   initialInput,
+  metricId,
   isNew,
   api,
   onSave,
   onClose,
 }: {
   initialInput: BusinessMetricInput;
+  metricId: string | null;
   isNew: boolean;
   api: CostsClient;
   onSave: (input: BusinessMetricInput) => Promise<void>;
@@ -371,6 +388,20 @@ function BusinessMetricModal({
   const [input, setInput] = useState<BusinessMetricInput>(initialInput);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [knownLabels, setKnownLabels] = useState<string[]>([]);
+  const loadLabels = api.listBusinessMetricLabels;
+  useEffect(() => {
+    if (!metricId || !loadLabels) return;
+    let cancelled = false;
+    loadLabels(metricId)
+      .then((labels) => {
+        if (!cancelled) setKnownLabels(labels.map((l) => l.key));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [metricId, loadLabels]);
 
   const set = <K extends keyof BusinessMetricInput>(key: K, value: BusinessMetricInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }));
@@ -391,7 +422,12 @@ function BusinessMetricModal({
     setBusy(true);
     setError(null);
     try {
-      await onSave(input);
+      // A mapping row with no label typed yet maps nothing; drop it rather
+      // than have the save refused for a row the user abandoned.
+      await onSave({
+        ...input,
+        labelMappings: (input.labelMappings ?? []).filter((m) => m.label.trim() !== ""),
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -544,6 +580,22 @@ function BusinessMetricModal({
               api={api}
             />
           </div>
+
+          <LabelMappingsEditor
+            api={api}
+            mappings={input.labelMappings ?? []}
+            onChange={(next) => set("labelMappings", next)}
+            knownLabels={knownLabels}
+          />
+
+          <ThresholdsEditor
+            thresholds={input.thresholds ?? []}
+            onChange={(next) => set("thresholds", next)}
+            kind={input.kind}
+            currency={input.currency}
+            unit={input.unit}
+            mappedLabels={(input.labelMappings ?? []).map((m) => m.label).filter(Boolean)}
+          />
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
@@ -594,11 +646,25 @@ function MetricValuesModal({
     new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
   );
   const [amount, setAmount] = useState("");
+  const [labelText, setLabelText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = client.listBusinessMetricValues;
   const write = client.writeBusinessMetricValues;
+
+  /** `customer=acme, plan=pro` → `{customer: "acme", plan: "pro"}`; null when malformed. */
+  function parseLabelText(text: string): Record<string, string> | null {
+    const labels: Record<string, string> = {};
+    for (const part of text.split(",")) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) return null;
+      labels[normalizeBusinessMetricLabelKey(trimmed.slice(0, eq))] = trimmed.slice(eq + 1).trim();
+    }
+    return labels;
+  }
 
   const refresh = useCallback(async () => {
     if (!load) return;
@@ -620,10 +686,19 @@ function MetricValuesModal({
       setError(gt("Enter a number."));
       return;
     }
+    const labels = parseLabelText(labelText);
+    if (labels === null) {
+      setError(gt("Write labels as key=value pairs separated by commas."));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await write?.(metric.id, [{ date: day, value: parsed }]);
+      await write?.(metric.id, [
+        Object.keys(labels).length > 0
+          ? { date: day, value: parsed, labels }
+          : { date: day, value: parsed },
+      ]);
       setAmount("");
       await refresh();
       await onChanged();
@@ -688,6 +763,23 @@ function MetricValuesModal({
             </button>
           </div>
         )}
+        {write && (
+          <div className="mb-4 flex flex-col gap-2">
+            <div>
+              <label className={labelClass} htmlFor={`${uid}-labels`}>
+                {gt("Labels (optional)")}
+              </label>
+              <input
+                id={`${uid}-labels`}
+                className={inputClass}
+                value={labelText}
+                onChange={(e) => setLabelText(e.target.value)}
+                // i18n-ignore: syntax example of key=value label pairs
+                placeholder="customer=acme, plan=pro"
+              />
+            </div>
+          </div>
+        )}
 
         {values === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
@@ -705,14 +797,12 @@ function MetricValuesModal({
         <ul className="flex flex-col">
           {(values ?? []).map((value) => (
             <li
-              key={`${value.day}-${value.label ?? ""}`}
+              key={`${value.day}-${formatBusinessMetricLabels(value.labels)}`}
               className="flex items-center justify-between gap-3 border-b border-border py-1.5 text-sm last:border-0"
             >
-              <span className="text-on-surface-secondary">
-                {value.day}
-                {value.label ? (
-                  <span className="ml-2 text-xs text-on-surface-faint">{value.label}</span>
-                ) : null}
+              <span className="text-on-surface-secondary">{value.day}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-on-surface-faint">
+                {formatBusinessMetricLabels(value.labels)}
               </span>
               <span className="text-on-surface tabular-nums">{value.value}</span>
               <span className="text-xs text-on-surface-faint">{value.source}</span>

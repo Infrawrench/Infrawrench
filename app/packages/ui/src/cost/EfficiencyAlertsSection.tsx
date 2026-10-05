@@ -29,6 +29,7 @@ const KIND_TONE: Record<EfficiencyAlertKind, string> = {
   commitment_expiry: "text-warning",
   commitment_idle: "text-info",
   unit_cost_regression: "text-danger",
+  unit_cost_threshold: "text-warning",
 };
 
 /**
@@ -93,6 +94,17 @@ function describeEvent(
         percent: percent ?? "?",
         move,
       });
+    }
+    case "unit_cost_threshold": {
+      const observed = typeof d["observedDisplay"] === "string" ? d["observedDisplay"] : "?";
+      const threshold = typeof d["thresholdDisplay"] === "string" ? d["thresholdDisplay"] : "?";
+      const label =
+        typeof d["labelKey"] === "string" && typeof d["labelValue"] === "string" && d["labelKey"]
+          ? ` · ${d["labelKey"]}=${d["labelValue"] || gt("(no label)")}`
+          : "";
+      return d["direction"] === "below"
+        ? gt("{observed}, below the {threshold} limit{label}", { observed, threshold, label })
+        : gt("{observed}, above the {threshold} limit{label}", { observed, threshold, label });
     }
     default:
       // A row written by a newer build naming a fourth detector. Rendering the

@@ -23,7 +23,7 @@ import {
   cmdAnomalySuppressions,
   cmdDeleteAnomalySuppression,
 } from "./commands/anomaly-feedback";
-import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
+import { cmdBusinessMetrics, cmdUnitCosts, cmdUsageUnits } from "./commands/unit-costs";
 import {
   cmdBusinessMetricImporter,
   cmdBusinessMetricSources,
@@ -235,6 +235,14 @@ COMMANDS
                       value prints as "—", never as 0   [--last 30d]
                       [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized|blended]
                       [--currency USD] [--where "…"] [--margin  revenue metrics only]
+                      [--mode unit|margin|raw] [--scale 1|100|1k|1m|1b]
+                      [--label customer=acme,globex] [--label plan!=free] [--split customer]
+  unit-costs <key> --labels
+                      the metric's labels, their values, and which cost dimension each maps to
+  unit-costs --usage-units
+                      the usage units your cost rows carry (GB-Mo, Hrs, Requests…)
+  unit-costs --usage-unit <unit>
+                      cost per provider usage unit, no business metric needed [--scale 1m]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
@@ -821,7 +829,16 @@ export async function runCli(): Promise<void> {
           break;
         }
         if (rest[0]) {
-          await cmdUnitCosts(ctx, rest.join(" "), parsed.range, parsed.margin);
+          await cmdUnitCosts(ctx, rest.join(" "), parsed.range, parsed.margin, parsed.unitCost);
+          break;
+        }
+        // Metric-free forms: list the usage units, or divide by one.
+        if (parsed.unitCost.listUsageUnits) {
+          await cmdUsageUnits(ctx);
+          break;
+        }
+        if (parsed.unitCost.usageUnit) {
+          await cmdUnitCosts(ctx, null, parsed.range, false, parsed.unitCost);
           break;
         }
         await cmdBusinessMetrics(ctx);

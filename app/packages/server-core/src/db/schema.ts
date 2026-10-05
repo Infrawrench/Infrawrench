@@ -3065,6 +3065,62 @@ export const unitCostRegressionEvents = pgTable(
 );
 
 /**
+ * Fired unit-cost thresholds: one row per (metric, threshold, label value,
+ * currency, window end). The regression table's protocol exactly: insert with
+ * `onConflictDoNothing`, only a fresh insert may notify, and a cross-day
+ * cooldown over *notified* rows keeps a persisting breach from re-paging every
+ * morning as the window slides.
+ *
+ * `threshold_key` is a hash of the threshold's own fields rather than an id,
+ * because thresholds live in a jsonb column on the metric with no identity of
+ * their own. Editing a threshold therefore makes it a new one, which is the
+ * right reading: a limit someone just moved should be able to fire at once.
+ */
+export const unitCostThresholdEvents = pgTable(
+  "unit_cost_threshold_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => businessMetrics.id, { onDelete: "cascade" }),
+    thresholdKey: text("threshold_key").notNull(),
+    /** "unit_cost" | "margin". */
+    mode: text("mode").notNull(),
+    /** "above" | "below". */
+    direction: text("direction").notNull(),
+    /** The limit, in the threshold's own terms (percent for margin). */
+    thresholdValue: doublePrecision("threshold_value").notNull(),
+    scale: integer("scale").notNull().default(1),
+    /** The label grouped by, or '' when the threshold is not per label. */
+    labelKey: text("label_key").notNull().default(""),
+    /** The label value this row is about; '' for ungrouped or "(no label)". */
+    labelValue: text("label_value").notNull().default(""),
+    currency: text("currency").notNull(),
+    windowFrom: text("window_from").notNull(),
+    windowTo: text("window_to").notNull(),
+    /** The observed value, in the threshold's terms (percent for margin). */
+    observedValue: doublePrecision("observed_value").notNull(),
+    /** Window spend, in currency units. */
+    windowSpend: doublePrecision("window_spend").notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at"),
+  },
+  (t) => ({
+    onceUnique: uniqueIndex("unit_cost_threshold_once_unique").on(
+      t.metricId,
+      t.thresholdKey,
+      t.labelValue,
+      t.currency,
+      t.windowTo,
+    ),
+    orgFiredIdx: index("unit_cost_threshold_events_org_fired_idx").on(t.organizationId, t.firedAt),
+  }),
+);
+
+/**
  * Per-org filtering and throttling for resource-drift alerts, plus the claim
  * column that makes the throttle exactly-once across poller replicas. One row
  * per org that has either tuned the settings or been alerted; no row means the
@@ -4802,6 +4858,21 @@ export const businessMetrics = pgTable(
      * rather than silently widening the numerator to all spend.
      */
     savedFilterId: text("saved_filter_id"),
+    /**
+     * `BusinessMetricLabelMapping[]`: which value labels name a cost dimension
+     * (a tag, a virtual tag, a cost centre), so unit costs can be split per
+     * label value with a matching per-value numerator. Validated in
+     * `services/business-metrics.ts`; a column rather than a table because it
+     * is part of the definition, replaced whole on every PUT like `cost_scope`.
+     */
+    labelMappings: jsonb("label_mappings").notNull().default([]),
+    /**
+     * `UnitCostThreshold[]`: standing limits on this metric's unit cost or
+     * margin, evaluated daily by `cost/unit-cost-threshold-eval.ts`. Identity
+     * for dedup is a hash of the threshold's own fields, so editing a threshold
+     * makes it a new one rather than inheriting the old one's cooldown.
+     */
+    thresholds: jsonb("thresholds").notNull().default([]),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -4867,10 +4938,21 @@ export const businessMetricValues = pgTable(
     day: date("day").notNull(),
     value: doublePrecision("value").notNull(),
     /**
-     * Optional breakdown label (a customer, a region); `''` for a plain daily
-     * total. Not nullable on purpose: it is part of the restatement key, and a
-     * NULL in a unique index never collides, so two unlabeled writes of one
-     * day would both land instead of the second restating the first.
+     * `BusinessMetricLabels`: `{ customer: "acme", plan: "pro" }`, canonical
+     * (normalised keys, trimmed values, no empties). `{}` is an unlabelled
+     * value, which every row written before labels existed is. Rows partition
+     * the metric: a day's total is the sum of all its rows.
+     */
+    labels: jsonb("labels").notNull().default({}),
+    /**
+     * The canonical label set as one string (`businessMetricLabelsKey`), `''`
+     * for none: part of the restatement key, since a unique index needs a
+     * scalar and deriving it in one shared function is what makes `{plan,
+     * customer}` and `{customer, plan}` the same row. A value carrying only a
+     * `label` key stores its bare value (`acme`), which is exactly the single
+     * breakdown label the scheduled importers write; anything richer stores
+     * the canonical JSON. Not nullable: a NULL in a unique index never
+     * collides, so two unlabelled writes of one day would both land.
      */
     label: text("label").notNull().default(""),
     /** "api" | "workflow" | "import": who wrote it, for reading a surprising point. */
@@ -4883,9 +4965,11 @@ export const businessMetricValues = pgTable(
   },
   (t) => ({
     /**
-     * The restatement key. Re-reporting a day updates it in place rather than
-     * appending, which is what makes a nightly job safe to retry: an ingest
-     * that accumulated would double every number the first time it re-ran.
+     * The restatement key. Re-reporting a day with the same labels updates it
+     * in place rather than appending, which is what makes a nightly job safe to
+     * retry: an ingest that accumulated would double every number the first
+     * time it re-ran. Unlabelled values all share `label = ''`, so for a
+     * metric that never uses labels this is exactly the old `(metric, day)` key.
      */
     metricDayUnique: uniqueIndex("business_metric_values_metric_day_label_unique").on(
       t.metricId,

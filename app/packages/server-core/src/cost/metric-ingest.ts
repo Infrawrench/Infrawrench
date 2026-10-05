@@ -24,15 +24,31 @@
  *   HTTP client unchanged.
  *
  * There is no reserved-tag equivalent here, and none is needed: a value's
- * identity is `(metric, day)` and a metric belongs to exactly one org, so there
- * is no shared key space for two sources to collide in. When two sources write
- * the same metric they are, by construction, making claims about the same
- * number, and the last claim wins, which is what restatement means.
+ * identity is `(metric, day, labels)` and a metric belongs to exactly one org,
+ * so there is no shared key space for two sources to collide in. When two
+ * sources write the same metric they are, by construction, making claims about
+ * the same number, and the last claim wins, which is what restatement means.
+ *
+ * Labels are canonicalised here, once, by the same client-core function every
+ * reader uses (`canonicalBusinessMetricLabels` / `businessMetricLabelsKey`), so
+ * `{Plan: "pro", customer: "acme"}` from a CSV and `{customer: "acme", plan:
+ * "pro"}` from a workflow land on one row.
  */
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
-import type { BusinessMetricValueSource } from "@infrawrench/client-core";
+import {
+  BUSINESS_METRIC_KEY_HELP,
+  BUSINESS_METRIC_LABEL_KEY_PATTERN,
+  BUSINESS_METRIC_DEFAULT_LABEL_KEY,
+  BUSINESS_METRIC_LIMITS,
+  businessMetricLabelsFromKey,
+  businessMetricLabelsKey,
+  canonicalBusinessMetricLabels,
+  normalizeBusinessMetricLabelKey,
+  type BusinessMetricLabels,
+  type BusinessMetricValueSource,
+} from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import { businessMetricValues, businessMetrics } from "../db/schema";
@@ -41,7 +57,8 @@ import { businessMetricValues, businessMetrics } from "../db/schema";
 export interface IngestMetricValue {
   date: string;
   value: number;
-  /** Optional breakdown label; absent or empty is the day's plain total. */
+  labels?: BusinessMetricLabels | undefined;
+  /** A single unnamed breakdown label; stored as `{ label: <value> }`. */
   label?: string | undefined;
 }
 
@@ -64,14 +81,44 @@ export class BusinessMetricIngestError extends Error {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Longest breakdown label kept; matches `BUSINESS_METRIC_LIMITS.maxLabelLength`. */
-const MAX_LABEL_LENGTH = 120;
-
 /** True for a `YYYY-MM-DD` string that is also a real calendar date. */
 function isRealDay(day: string): boolean {
   if (!ISO_DAY.test(day)) return false;
   const parsed = new Date(`${day}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day;
+}
+
+/**
+ * Check a value's labels and return them canonical. Absent or `{}` is no
+ * labels. Keys are normalised (trimmed, lowercased) before the slug check so a
+ * capitalised CSV header is accepted rather than refused for its case.
+ */
+function validateLabels(raw: unknown, fail: (detail: string) => never): BusinessMetricLabels {
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw))
+    return fail("has labels that are not an object.");
+  const entries = Object.entries(raw as Record<string, unknown>);
+  for (const [rawKey, rawValue] of entries) {
+    const key = normalizeBusinessMetricLabelKey(rawKey);
+    if (
+      !key ||
+      key.length > BUSINESS_METRIC_LIMITS.maxLabelKeyLength ||
+      !BUSINESS_METRIC_LABEL_KEY_PATTERN.test(key)
+    ) {
+      fail(`has an invalid label key "${rawKey}". ${BUSINESS_METRIC_KEY_HELP}`);
+    }
+    if (typeof rawValue !== "string") fail(`has a non-string value for label "${key}".`);
+    if ((rawValue as string).trim().length > BUSINESS_METRIC_LIMITS.maxLabelValueLength) {
+      fail(
+        `has a "${key}" label longer than ${BUSINESS_METRIC_LIMITS.maxLabelValueLength} characters.`,
+      );
+    }
+  }
+  const labels = canonicalBusinessMetricLabels(raw as BusinessMetricLabels);
+  if (Object.keys(labels).length > BUSINESS_METRIC_LIMITS.maxLabelsPerValue) {
+    fail(`carries more than ${BUSINESS_METRIC_LIMITS.maxLabelsPerValue} labels.`);
+  }
+  return labels;
 }
 
 /** A live metric in this org, by id or by key. Null when there is none. */
@@ -133,7 +180,10 @@ export async function ingestMetricValues(opts: {
    * *within* a batch that restatement applies *between* batches, which is the
    * only reading that is consistent.
    */
-  const byDay = new Map<string, { day: string; label: string; value: number }>();
+  const byIdentity = new Map<
+    string,
+    { day: string; value: number; labels: BusinessMetricLabels; label: string }
+  >();
   values.forEach((entry, index) => {
     const fail = (detail: string): never => {
       throw new BusinessMetricIngestError(`${source.errorPrefix}: value ${index} ${detail}`);
@@ -145,24 +195,33 @@ export async function ingestMetricValues(opts: {
     if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
       fail("has a non-finite value.");
     }
-    if (entry.label !== undefined && entry.label !== null && typeof entry.label !== "string") {
-      fail("has a label that is not a string.");
-    }
-    const label = (entry.label ?? "").trim();
-    if (label.length > MAX_LABEL_LENGTH) {
-      fail(`has a label longer than ${MAX_LABEL_LENGTH} characters.`);
-    }
-    byDay.set(`${entry.date}\u0000${label}`, { day: entry.date, label, value: entry.value });
+    // A bare breakdown `label` (the importers' single-label shape) is the label
+    // set `{ label: <value> }`; `labels` wins when both are sent.
+    const labels = validateLabels(
+      entry.labels ??
+        (typeof entry.label === "string" && entry.label.trim()
+          ? { [BUSINESS_METRIC_DEFAULT_LABEL_KEY]: entry.label }
+          : undefined),
+      fail,
+    );
+    const label = businessMetricLabelsKey(labels);
+    byIdentity.set(`${entry.date}\u0000${label}`, {
+      day: entry.date,
+      value: entry.value,
+      labels,
+      label,
+    });
   });
 
   const now = new Date();
-  const rows = [...byDay.values()].map(({ day, label, value }) => ({
+  const rows = [...byIdentity.values()].map(({ day, value, labels, label }) => ({
     id: randomUUID(),
     organizationId,
     metricId,
     day,
-    label,
     value,
+    labels,
+    label,
     source: source.source,
     updatedByUserId: source.userId,
     updatedAt: now,
@@ -188,11 +247,15 @@ export async function ingestMetricValues(opts: {
  * Restate whole days from an importer run: every label a day carried before is
  * replaced by exactly what the source returned for it, in one transaction.
  *
- * Unlike {@link ingestMetricValues}, which restates `(day, label)` pairs, an
+ * Unlike {@link ingestMetricValues}, which restates `(day, labels)` pairs, an
  * import owns the whole day: a customer that dropped out of the source's
  * answer must drop out of the stored breakdown too, or the day's total would
  * keep counting it. Days the source returned nothing for are left alone, so a
  * gap stays a gap rather than becoming a zero.
+ *
+ * An importer's single breakdown label is stored exactly as a written
+ * `{ label: <value> }` would be, so imported and pushed values of one metric
+ * filter, split and restate on the same label key.
  */
 export async function restateImportedDays(opts: {
   organizationId: string;
@@ -208,17 +271,24 @@ export async function restateImportedDays(opts: {
       throw new BusinessMetricIngestError(`Invalid day "${day}" from the source.`);
   }
   const now = new Date();
-  const rows = values.map((v) => ({
-    id: randomUUID(),
-    organizationId,
-    metricId,
-    day: v.date,
-    label: (v.label ?? "").slice(0, MAX_LABEL_LENGTH),
-    value: v.value,
-    source: "import" as const,
-    updatedByUserId: userId,
-    updatedAt: now,
-  }));
+  const rows = values.map((v) => {
+    const raw = (v.label ?? "").trim().slice(0, BUSINESS_METRIC_LIMITS.maxLabelValueLength);
+    const labels = canonicalBusinessMetricLabels(
+      raw ? { [BUSINESS_METRIC_DEFAULT_LABEL_KEY]: raw } : {},
+    );
+    return {
+      id: randomUUID(),
+      organizationId,
+      metricId,
+      day: v.date,
+      value: v.value,
+      labels,
+      label: businessMetricLabelsKey(labels),
+      source: "import" as const,
+      updatedByUserId: userId,
+      updatedAt: now,
+    };
+  });
   await db.transaction(async (tx) => {
     // Chunked so a two-year backfill stays well inside the parameter limit.
     for (let i = 0; i < days.length; i += 500) {
@@ -258,8 +328,10 @@ export async function getMetricValues(
   from: string,
   to: string,
 ): Promise<StoredMetricValue[]> {
-  // A labeled day is a breakdown; its total (what a unit cost divides by) is
-  // the sum across labels, so the read collapses labels here.
+  // One number per day: the sum of every row for it, labelled or not. Rows
+  // partition the metric (see `BusinessMetricLabels`), so the day total is
+  // their sum, and summing in SQL keeps every pre-label caller reading exactly
+  // the series it always read.
   const rows = await db
     .select({
       day: businessMetricValues.day,
@@ -276,6 +348,100 @@ export async function getMetricValues(
     .groupBy(businessMetricValues.day)
     .orderBy(asc(businessMetricValues.day));
   return rows.map((r) => ({ day: r.day, value: Number(r.value) }));
+}
+
+/** One stored row with its labels, for label-aware readers. */
+export interface StoredLabeledMetricValue extends StoredMetricValue {
+  labels: BusinessMetricLabels;
+}
+
+/**
+ * A metric's rows across an inclusive day range, labels included, in day order.
+ * The label-aware sibling of {@link getMetricValues}: the unit-cost query
+ * filters and groups these in application code, which is cheap for the same
+ * reason the bucket join is (a metric's rows over a range are at most a few
+ * thousand).
+ */
+export async function getLabeledMetricValues(
+  metricId: string,
+  from: string,
+  to: string,
+): Promise<StoredLabeledMetricValue[]> {
+  const rows = await db
+    .select({
+      day: businessMetricValues.day,
+      value: businessMetricValues.value,
+      labels: businessMetricValues.labels,
+      label: businessMetricValues.label,
+    })
+    .from(businessMetricValues)
+    .where(
+      and(
+        eq(businessMetricValues.metricId, metricId),
+        gte(businessMetricValues.day, from),
+        lte(businessMetricValues.day, to),
+      ),
+    )
+    .orderBy(asc(businessMetricValues.day));
+  return rows.map((r) => ({
+    day: r.day,
+    value: Number(r.value),
+    labels: storedLabels(r.labels, r.label),
+  }));
+}
+
+/**
+ * A row's labels: the jsonb when it carries any, else the ones its `label`
+ * column encodes. The fallback covers rows written by a path that only knows
+ * the single breakdown label (the scheduled importers), so they read as
+ * `{ label: "<value>" }` everywhere.
+ */
+export function storedLabels(labels: unknown, label: string): BusinessMetricLabels {
+  const parsed = (labels ?? {}) as BusinessMetricLabels;
+  if (Object.keys(parsed).length > 0) return parsed;
+  return businessMetricLabelsFromKey(label);
+}
+
+/**
+ * The label keys a metric's values carry, each with its distinct values.
+ * Feeds the label pickers; capped per key so a label with a value per request
+ * cannot turn a picker into a megabyte.
+ */
+export async function getMetricLabelSummary(
+  metricId: string,
+): Promise<Array<{ key: string; values: string[]; truncated: boolean }>> {
+  const cap = BUSINESS_METRIC_LIMITS.maxLabelValuesListed;
+  // Ranked per key so one high-cardinality label cannot crowd the others out
+  // of a shared LIMIT; cap + 1 rows per key is what tells "exactly cap" from
+  // "more than cap".
+  const rows = await db.execute<{ key: string; value: string }>(sql`
+    SELECT key, value FROM (
+      SELECT d.key, d.value, row_number() OVER (PARTITION BY d.key ORDER BY d.value) AS rn
+      FROM (
+        SELECT DISTINCT kv.key AS key, kv.value AS value
+        FROM ${businessMetricValues}, jsonb_each_text(
+          CASE WHEN ${businessMetricValues.labels} = '{}'::jsonb
+               THEN jsonb_build_object(${BUSINESS_METRIC_DEFAULT_LABEL_KEY}::text, ${businessMetricValues.label})
+               ELSE ${businessMetricValues.labels} END
+        ) AS kv
+        WHERE ${businessMetricValues.metricId} = ${metricId}
+          AND ${businessMetricValues.label} <> ''
+      ) d
+    ) ranked
+    WHERE rn <= ${cap + 1}
+    ORDER BY key, value
+  `);
+  const byKey = new Map<string, string[]>();
+  for (const raw of [...rows]) {
+    const values = byKey.get(raw.key) ?? [];
+    values.push(raw.value);
+    byKey.set(raw.key, values);
+  }
+  return [...byKey.entries()].map(([key, values]) => ({
+    key,
+    values: values.slice(0, cap),
+    truncated: values.length > cap,
+  }));
 }
 
 /** What days a metric has numbers for at all, or null when it has none. */

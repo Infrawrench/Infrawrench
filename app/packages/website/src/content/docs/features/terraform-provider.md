@@ -383,37 +383,37 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Cost allocation and reporting
 
-| Resource                                | Manages                                                                                |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets): spend or usage, any period, nested                |
-| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                           |
-| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                             |
-| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                    |
-| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                 |
-| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                      |
-| `infrawrench_cost_report_folder`        | Report folders                                                                         |
-| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                |
-| `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email  |
-| `infrawrench_cost_canvas`               | Cost canvases: report pages of text, KPIs, charts and tables, kept in code once vetted |
-| `infrawrench_cost_canvas_notification`  | Scheduled delivery of a cost canvas as a PDF to Slack, Teams or email                  |
-| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                          |
-| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                                  |
-| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                                |
-| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                    |
-| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                            |
-| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values             |
-| `infrawrench_business_metric_importer`  | A metric's [scheduled importer](./unit-costs.md#import-on-a-schedule) from an account  |
-| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                 |
-| `infrawrench_currency_settings`         | The organization's display currency, automatic ECB rates and their basis               |
-| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                  |
-| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                               |
-| `infrawrench_anomaly_suppression`       | Expected-spend windows that keep known patterns from raising anomaly alerts            |
-| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds      |
-| `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                          |
-| `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by            |
-| `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend       |
-| `infrawrench_virtual_tag`               | [Virtual tags](./virtual-tags.md) and their ordered rules                              |
-| `infrawrench_tag_key_settings`          | [Hidden and preferred tag keys](./tag-keys.md) across every tag picker                 |
+| Resource                                | Manages                                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets): spend or usage, any period, nested                        |
+| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                                   |
+| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                                     |
+| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                            |
+| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                         |
+| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                              |
+| `infrawrench_cost_report_folder`        | Report folders                                                                                 |
+| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                        |
+| `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email          |
+| `infrawrench_cost_canvas`               | Cost canvases: report pages of text, KPIs, charts and tables, kept in code once vetted         |
+| `infrawrench_cost_canvas_notification`  | Scheduled delivery of a cost canvas as a PDF to Slack, Teams or email                          |
+| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                                  |
+| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                                          |
+| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                                        |
+| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                            |
+| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                                    |
+| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators, label mappings and alert thresholds; not the values |
+| `infrawrench_business_metric_importer`  | A metric's [scheduled importer](./unit-costs.md#import-on-a-schedule) from an account          |
+| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                         |
+| `infrawrench_currency_settings`         | The organization's display currency, automatic ECB rates and their basis                       |
+| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                          |
+| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                                       |
+| `infrawrench_anomaly_suppression`       | Expected-spend windows that keep known patterns from raising anomaly alerts                    |
+| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds              |
+| `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                                  |
+| `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by                    |
+| `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend               |
+| `infrawrench_virtual_tag`               | [Virtual tags](./virtual-tags.md) and their ordered rules                                      |
+| `infrawrench_tag_key_settings`          | [Hidden and preferred tag keys](./tag-keys.md) across every tag picker                         |
 
 ### Monitoring
 

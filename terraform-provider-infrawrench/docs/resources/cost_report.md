@@ -105,8 +105,12 @@ Optional:
 - `scenario_model_id` (String) Id of an `infrawrench_scenario_model` whose what-if adjustments are layered onto the forecast.
 - `show_forecast` (Boolean) Extend the series with a projection to the end of the period. Defaults to `false`.
 - `top_n` (Number) How many series to draw before the rest are folded into an "other" series, 1–15. Defaults to `5`.
+- `unit_cost_group_by_label` (String) One line per value of this business-metric label. In a ratio mode the label must be mapped on the metric (`label_mapping`).
+- `unit_cost_label_filter` (Block List) Keep only business-metric values carrying these labels, for a unit-cost report. At most 10. In a ratio mode each label must be mapped on the metric. (see [below for nested schema](#nestedblock--config--unit_cost_label_filter))
 - `unit_cost_metric_id` (String) Business metric to divide spend by, turning the chart into cost per unit.
-- `unit_cost_mode` (String) How the unit cost is presented when `unit_cost_metric_id` is set.
+- `unit_cost_mode` (String) The calculation: `unit_cost` (spend ÷ metric, the default when `unit_cost_metric_id` is set), `margin` (revenue metrics only), `raw_metric` (the metric beside spend), or `usage_unit_cost` (spend ÷ provider usage in `unit_cost_usage_unit`, no metric needed).
+- `unit_cost_scale` (Number) "Per N units" for a ratio, or the unit a raw metric is shown in: `1`, `100`, `1000`, `1000000` or `1000000000`.
+- `unit_cost_usage_unit` (String) With `unit_cost_mode = "usage_unit_cost"`: the provider usage unit to divide by, as the cost data spells it (`GB-Mo`, `Hrs`).
 - `usage_unit` (String) The usage unit a `usage` measure sums, exactly as the provider spells it (for example `Hrs` or `GB-Mo`), 1–64 characters. Required when `measure` is `usage` and rejected otherwise.
 
 <a id="nestedblock--config--date_range"></a>
@@ -135,6 +139,16 @@ Required:
 Optional:
 
 - `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
+
+
+<a id="nestedblock--config--unit_cost_label_filter"></a>
+### Nested Schema for `config.unit_cost_label_filter`
+
+Required:
+
+- `key` (String) The label key, e.g. `customer`.
+- `op` (String) `in` keeps the listed values, `not_in` drops them.
+- `values` (List of String) Label values to match. Must not be empty.
 
 ## Import
 

@@ -17,7 +17,12 @@ import type {
 } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
-import { matchCostReport } from "../format";
+import {
+  formatUnitCostRatio,
+  matchCostReport,
+  unitCostRatioLabel,
+  type CliUnitCostMode,
+} from "../format";
 import { c, formatMoney, printJson, println, printKeyValues, printTable } from "../output";
 import { sparkline } from "../charts";
 import { exportPdf, wantsPdf, type PdfExportFlags } from "../pdf-export";
@@ -226,10 +231,17 @@ function printBlockResult(block: CostCanvasBlock, r: CostCanvasBlockResult): voi
           `${c.bold(name)}  ${formatMoney(r.cost.totals[currency] ?? 0, currency)}  ${c.cyan(sparkline(values, Math.min(40, values.length)))}${c.dim(`  (${r.from} → ${r.to})`)}`,
         );
       } else if (r.unitCost) {
-        const s = r.unitCost.series[0];
-        println(
-          `${c.bold(name)}  ${s && s.overallValue !== null ? `${formatMoney(s.overallValue, s.currency)} per ${r.unitCost.metric.unit || r.unitCost.metric.name}` : "-"}${c.dim(`  (${r.from} → ${r.to})`)}`,
-        );
+        const u = r.unitCost;
+        const s = u.series[0];
+        const mode = u.mode as CliUnitCostMode;
+        // Cost per usage unit has no metric: its unit is the usage unit.
+        const unit =
+          mode === "usage_unit_cost" ? (u.usageUnit ?? "unit") : (u.metric?.unit ?? "unit");
+        const value =
+          s && s.overallValue !== null
+            ? `${formatUnitCostRatio(s.overallValue, mode)} ${unitCostRatioLabel(mode, s.currency, unit, u.scale)}`
+            : "-";
+        println(`${c.bold(name)}  ${value}${c.dim(`  (${r.from} → ${r.to})`)}`);
       } else {
         println(`${c.bold(name)}  ${c.dim("(chart)")}`);
       }

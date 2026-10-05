@@ -53,6 +53,7 @@ import {
   BusinessMetricKeyConflictError,
   createBusinessMetric,
   getBusinessMetric,
+  listBusinessMetricLabels,
   listBusinessMetricValues,
   listBusinessMetrics,
   softDeleteBusinessMetric,
@@ -61,7 +62,9 @@ import {
 import {
   BusinessMetricNotFoundError,
   CostQueryError,
+  listUsageUnits,
   runUnitCostQuery,
+  runUsageUnitCostQuery,
 } from "../../services/unit-cost-query";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -172,6 +175,43 @@ app.post("/importer-preview", async (c) => {
   }
 });
 
+/**
+ * GET /api/org/:orgId/business-metrics/usage-units: the provider usage units
+ * the org's cost rows carry, most spend first. Backs the per-usage-unit picker,
+ * so nobody has to know that a provider spells it `GB-Mo`.
+ *
+ * Registered before `/:id`, which would otherwise read "usage-units" as a
+ * metric key; the key is reserved for the same reason.
+ */
+app.get("/usage-units", async (c) => {
+  requirePermission(c, "costs:read");
+  return c.json({ units: await listUsageUnits(c.get("organizationId")) });
+});
+
+/**
+ * POST /api/org/:orgId/business-metrics/usage-unit-costs: spend ÷ the usage
+ * quantity providers report in one unit. No business metric involved; both
+ * halves come from the same cost rows.
+ */
+app.post("/usage-unit-costs", async (c) => {
+  requirePermission(c, "costs:read");
+  const parsed = unitCostQueryRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid unit-cost query", issues: parsed.error.issues }, 400);
+  }
+  try {
+    return c.json(await runUsageUnitCostQuery(c.get("organizationId"), parsed.data));
+  } catch (e) {
+    if (e instanceof CostQueryError) {
+      return c.json(
+        { error: e.message, ...(e.queryError ? { queryError: e.queryError } : {}) },
+        400,
+      );
+    }
+    throw e;
+  }
+});
+
 /** GET /api/org/:orgId/business-metrics/:id: by id **or** key. */
 app.get("/:id", async (c) => {
   requirePermission(c, "costs:read");
@@ -266,6 +306,18 @@ app.get("/:id/values", async (c) => {
     );
   }
   return c.json({ values: await listBusinessMetricValues(metric.id, limit) });
+});
+
+/**
+ * GET /api/org/:orgId/business-metrics/:id/labels: the label keys this
+ * metric's values carry, each with its distinct values and its mapping. Backs
+ * the label filter, group-by and mapping pickers.
+ */
+app.get("/:id/labels", async (c) => {
+  requirePermission(c, "costs:read");
+  const metric = await getBusinessMetric(c.get("organizationId"), c.req.param("id"));
+  if (!metric) return c.json({ error: "Not found" }, 404);
+  return c.json({ labels: await listBusinessMetricLabels(metric) });
 });
 
 /**

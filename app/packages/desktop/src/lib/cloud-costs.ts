@@ -19,6 +19,7 @@ import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
+  BusinessMetricLabelSummary,
   BusinessMetricValue,
   BusinessMetricValueInput,
   BusinessMetricWriteResult,
@@ -866,4 +867,29 @@ export async function queryCloudUnitCosts(
   request: UnitCostQueryRequest,
 ): Promise<UnitCostQueryResponse> {
   return invoke("cloud_query_unit_costs", { orgId, metricId, request });
+}
+
+export async function queryCloudUsageUnitCosts(
+  orgId: string,
+  request: UnitCostQueryRequest,
+): Promise<UnitCostQueryResponse> {
+  return invoke("cloud_query_usage_unit_costs", { orgId, request });
+}
+
+export async function listCloudUsageUnits(
+  orgId: string,
+): Promise<Array<{ unit: string; usage: number; services: string[] }>> {
+  return (await invoke("cloud_list_usage_units", { orgId })) ?? [];
+}
+
+export async function listCloudBusinessMetricLabels(
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricLabelSummary[]> {
+  return (
+    (await invoke<BusinessMetricLabelSummary[]>("cloud_list_business_metric_labels", {
+      orgId,
+      metricId,
+    })) ?? []
+  );
 }

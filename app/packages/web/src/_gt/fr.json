@@ -15352,5 +15352,101 @@
   "5548b423974f922d": "Amorti, avec la remise de chaque engagement répartie équitablement sur toute l'utilisation qu'il pouvait couvrir, afin que chaque équipe paie le même tarif effectif.",
   "5d1b74089c746f62": "La remise de chaque engagement répartie équitablement sur toute l'utilisation qu'il pouvait couvrir, afin que la facture d'un client ne dépende pas du compte auquel le fournisseur a appliqué un engagement partagé.",
   "9684755144a7f7a9": "Ce que les fournisseurs ont facturé, le jour où ils l'ont facturé.",
-  "cd24262b5635925f": "Mutualisé"
+  "cd24262b5635925f": "Mutualisé",
+  "d846533943110eec": "Correspondances d'étiquettes",
+  "24d58ecbc434c8ad": "Correspond à",
+  "05206ec8e67e1ae3": "Choisissez une clé",
+  "8197e6172fa9af0b": "Correspondance par nom ou identifiant du centre",
+  "ea794c049cfb14b7": "Correspondance par valeur",
+  "c7128dc116fba704": "Ajouter une correspondance",
+  "d1f49fa9daea3fa2": "Calcul",
+  "98c3189c2692e7d4": "Coût par {unit}",
+  "c03093720c3d57af": "Marge",
+  "f855345b0a8c3994": "au-dessus de",
+  "85fdddebfa0ebfcb": "en dessous de",
+  "4807335287591bcf": "Limite",
+  "96279b22aeb9def8": "dans la devise des dépenses",
+  "8791ba6c4d118513": "Échelle",
+  "6ab770d6fc341b1e": "sur",
+  "026a5f6f5c759676": "Fenêtre en jours",
+  "4c6102a2a70ebcd6": "Par étiquette",
+  "f235a89dd31768a3": "pour l'ensemble de la métrique",
+  "fe338f998336324a": "par {label}",
+  "2644b2ba9ca6e905": "Ajouter un seuil",
+  "cb4b3e95afb88748": "(aucune étiquette)",
+  "eb9a84309dbc539f": "{observed}, en dessous de la limite de {threshold}{label}",
+  "86ce5c9bd7b64fb1": "{observed}, au-dessus de la limite de {threshold}{label}",
+  "1244bed923533432": "Choisissez une unité d'utilisation pour cette carte.",
+  "8951b6a547320c74": "utilisation",
+  "cdc6e620f779d1aa": "{count} valeurs de {label}",
+  "cffa9adaac7bcaab": "Dépenses {series}",
+  "f6d2228cda96b3d0": "{shown} affichés sur {total}",
+  "59edfec882661adf": "Aucune — afficher les dépenses",
+  "12c5672fe353a8fc": "Chargement des unités…",
+  "7bc0fe802a8617df": "Afficher en",
+  "59a4243dceb07b37": "Répartir par étiquette",
+  "2a209ffd482d7009": "Aucune répartition",
+  "31e76fdf1e19b42a": "{label} (non associé aux dépenses)",
+  "8cd33ee64000b84e": "Étiquette uniquement",
+  "fe5ed420df9a4cfd": "Toutes les valeurs",
+  "b4fb3e830192c4e3": "Opérateur du filtre d'étiquettes",
+  "69c7bb6eb67b7d04": "Valeurs de l'étiquette",
+  "e1626cbb4d12d2b1": "Affichage des {count} premières valeurs.",
+  "e47bb715822a285c": "Les étiquettes non associées à une dimension de coût ne peuvent être utilisées qu'avec la métrique brute : associez-les sur la métrique pour calculer un ratio par valeur.",
+  "3004c94a23b0e264": "La marge nécessite une métrique de revenus.",
+  "573b76fbc25336e0": " · par {labels}",
+  "d022ace63308f75b": " · {count} seuils d'alerte",
+  "8359de618a549eb5": "{count} lignes importées avec les étiquettes {labels}.",
+  "23642ac520a4952f": "{count} lignes importées.",
+  "e8abd5d2c0129c37": "Écrivez les étiquettes sous forme de paires key=value séparées par des virgules.",
+  "8f17177652f48b4b": "Étiquettes (facultatif)",
+  "3ffafa1bbe87ea40": "Importer un CSV",
+  "bc251212c2f2f226": {
+    "t": "p",
+    "i": 1,
+    "c": "Associez une étiquette portée par vos valeurs à l'endroit où ses valeurs se trouvent côté coûts, et le coût unitaire et la marge pourront être calculés par valeur : associez customer à la balise customer pour obtenir un coût par client. Les étiquettes non associées peuvent toujours être filtrées et réparties lors du tracé de la métrique brute."
+  },
+  "a85d077a98a32e03": {
+    "t": "p",
+    "i": 1,
+    "c": "Alertez lorsque le coût unitaire ou la marge cumulé sur une fenêtre glissante franchit une limite, via le même routage d'alertes que toutes les autres alertes de coûts. Une fenêtre dont moins de la moitié des jours sont renseignés n'est pas évaluée."
+  },
+  "9469faf0f1e03841": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " n'a aucune valeur sur cette période, il n'y a donc rien à afficher."
+    ]
+  },
+  "c66cbfd2d9856a0e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Le regroupement, les groupes principaux, la comparaison et la prévision ne s'appliquent pas à un calcul, et une période sans rien à diviser est tracée comme un vide plutôt que comme zéro.",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "05f097af197dec2e": {
+    "t": "p",
+    "i": 1,
+    "c": "Une ligne d'en-tête avec une colonne de date, une colonne de valeur et toutes les autres colonnes comme étiquettes (customer, plan, region). Les lignes d'un jour et d'un ensemble d'étiquettes déjà existants sont remplacées."
+  },
+  "1baaa179e60cfa8c": "Colonnes d'étiquettes",
+  "9d455f854586b5ca": "Chaque colonne cochée devient une étiquette portant le nom de son en-tête, ce qui permet de répartir et de filtrer les valeurs selon celle-ci. Une cellule vide omet cette étiquette sur la ligne.",
+  "c5c7acdf98ddac33": "Cet en-tête ne peut pas servir de nom d'étiquette : utilisez des lettres, des chiffres, - et _."
 }

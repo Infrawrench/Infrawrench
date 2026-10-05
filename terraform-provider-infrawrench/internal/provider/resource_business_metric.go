@@ -3,12 +3,16 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
@@ -35,7 +39,44 @@ type businessMetricResourceModel struct {
 	Currency      types.String `tfsdk:"currency"`
 	SavedFilterID types.String `tfsdk:"saved_filter_id"`
 	CostScope     types.List   `tfsdk:"cost_scope"`
+	LabelMapping  types.List   `tfsdk:"label_mapping"`
+	Threshold     types.List   `tfsdk:"threshold"`
 }
+
+type businessMetricLabelMappingModel struct {
+	Label     types.String `tfsdk:"label"`
+	Target    types.String `tfsdk:"target"`
+	Dimension types.String `tfsdk:"dimension"`
+	TagKey    types.String `tfsdk:"tag_key"`
+}
+
+var businessMetricLabelMappingObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
+	"label":     types.StringType,
+	"target":    types.StringType,
+	"dimension": types.StringType,
+	"tag_key":   types.StringType,
+}}
+
+type unitCostThresholdModel struct {
+	Mode         types.String  `tfsdk:"mode"`
+	Direction    types.String  `tfsdk:"direction"`
+	Value        types.Float64 `tfsdk:"value"`
+	Scale        types.Int64   `tfsdk:"scale"`
+	GroupByLabel types.String  `tfsdk:"group_by_label"`
+	WindowDays   types.Int64   `tfsdk:"window_days"`
+}
+
+var unitCostThresholdObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
+	"mode":           types.StringType,
+	"direction":      types.StringType,
+	"value":          types.Float64Type,
+	"scale":          types.Int64Type,
+	"group_by_label": types.StringType,
+	"window_days":    types.Int64Type,
+}}
+
+// unitCostScales is the closed set of "per N units" the API accepts.
+var unitCostScales = []int64{1, 100, 1000, 1000000, 1000000000}
 
 var businessMetricKinds = []string{"count", "currency"}
 
@@ -100,6 +141,89 @@ func (r *businessMetricResource) Schema(_ context.Context, _ resource.SchemaRequ
 					"Omit it for all of the organization's spend. A unit-cost query may narrow this further " +
 					"but can never widen it: the scope is part of what the metric means, and a caller who " +
 					"could drop it would be answering a different question under the same name."),
+			"label_mapping": schema.ListNestedBlock{
+				MarkdownDescription: "Joins a label the metric's values carry (for example `customer`) to where " +
+					"its values live on the cost side, so unit cost and margin can be computed per label value " +
+					"(cost per customer, margin per customer). Unit-cost queries refuse to split or filter a " +
+					"ratio by an unmapped label, because without a per-value numerator the only spend available " +
+					"is the whole scope's. At most 8, one per label.",
+				Validators: []validator.List{sizeAtMost(8)},
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"label": schema.StringAttribute{
+							Required: true,
+							MarkdownDescription: "The label key, a lowercase slug of 1–64 characters (letters, " +
+								"digits, `_ . -`).",
+							Validators: []validatorString{stringvalidator.LengthBetween(1, 64)},
+						},
+						"target": schema.StringAttribute{
+							Required: true,
+							MarkdownDescription: "`dimension` to match label values to a cost dimension's values " +
+								"exactly, or `cost_centre` to match them to cost centres by id or, " +
+								"case-insensitively, by name.",
+							Validators: []validatorString{oneOfValidator("dimension", "cost_centre")},
+						},
+						"dimension": schema.StringAttribute{
+							Optional: true,
+							MarkdownDescription: "With `target = \"dimension\"` only: the cost dimension, one of `" +
+								joinBackticked(costDimensions) + "`.",
+							Validators: []validatorString{oneOfValidator(costDimensions...)},
+						},
+						"tag_key": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "The tag key, required when `dimension` is `tag` and omitted otherwise.",
+						},
+					},
+				},
+			},
+			"threshold": schema.ListNestedBlock{
+				MarkdownDescription: "A standing limit on this metric's unit cost or margin, evaluated daily on the " +
+					"summed ratio over the trailing window and routed through alert routing under the " +
+					"`unitCostRegressionAlerts` trigger. A window with fewer than half its days reported is not " +
+					"judged. At most 10.",
+				Validators: []validator.List{sizeAtMost(10)},
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"mode": schema.StringAttribute{
+							Required: true,
+							MarkdownDescription: "`unit_cost` (spend ÷ metric) or `margin` (`(revenue − spend) ÷ " +
+								"revenue`, which needs `kind = \"currency\"`).",
+							Validators: []validatorString{oneOfValidator("unit_cost", "margin")},
+						},
+						"direction": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "`above` or `below`: which side of `value` fires.",
+							Validators:          []validatorString{oneOfValidator("above", "below")},
+						},
+						"value": schema.Float64Attribute{
+							Required: true,
+							MarkdownDescription: "The limit: currency units per `scale` metric units for " +
+								"`unit_cost`, and a percentage (`30` for 30%) for `margin`.",
+						},
+						"scale": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+							Default:  int64default.StaticInt64(1),
+							MarkdownDescription: "\"Per N units\" for a `unit_cost` limit: `1`, `100`, `1000`, " +
+								"`1000000` or `1000000000`. Ignored for `margin`. Defaults to `1`.",
+							Validators: []validator.Int64{int64validator.OneOf(unitCostScales...)},
+						},
+						"group_by_label": schema.StringAttribute{
+							Optional: true,
+							MarkdownDescription: "Evaluate the limit separately for each value of this label " +
+								"(each customer). The label must have a `label_mapping`.",
+						},
+						"window_days": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+							Default:  int64default.StaticInt64(7),
+							MarkdownDescription: "Trailing complete days the ratio is summed over, 1–90. " +
+								"Defaults to `7`.",
+							Validators: []validator.Int64{between(1, 90)},
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -235,6 +359,39 @@ func businessMetricInputFrom(ctx context.Context, model businessMetricResourceMo
 		return iw.BusinessMetricInput{}, diags
 	}
 
+	mappings := []iw.BusinessMetricLabelMapping{}
+	if !model.LabelMapping.IsNull() && !model.LabelMapping.IsUnknown() {
+		var models []businessMetricLabelMappingModel
+		diags.Append(model.LabelMapping.ElementsAs(ctx, &models, false)...)
+		for _, m := range models {
+			target := iw.BusinessMetricLabelTarget{Kind: m.Target.ValueString()}
+			if target.Kind == "dimension" {
+				target.Dimension = stringPtr(m.Dimension)
+				target.TagKey = stringPtr(m.TagKey)
+			}
+			mappings = append(mappings, iw.BusinessMetricLabelMapping{Label: m.Label.ValueString(), Target: target})
+		}
+	}
+
+	thresholds := []iw.UnitCostThreshold{}
+	if !model.Threshold.IsNull() && !model.Threshold.IsUnknown() {
+		var models []unitCostThresholdModel
+		diags.Append(model.Threshold.ElementsAs(ctx, &models, false)...)
+		for _, m := range models {
+			thresholds = append(thresholds, iw.UnitCostThreshold{
+				Mode:         m.Mode.ValueString(),
+				Direction:    m.Direction.ValueString(),
+				Value:        m.Value.ValueFloat64(),
+				Scale:        int64Ptr(m.Scale),
+				GroupByLabel: stringPtr(m.GroupByLabel),
+				WindowDays:   int64Ptr(m.WindowDays),
+			})
+		}
+	}
+	if diags.HasError() {
+		return iw.BusinessMetricInput{}, diags
+	}
+
 	return iw.BusinessMetricInput{
 		Key:           model.Key.ValueString(),
 		Name:          model.Name.ValueString(),
@@ -244,7 +401,47 @@ func businessMetricInputFrom(ctx context.Context, model businessMetricResourceMo
 		Currency:      stringPtr(model.Currency),
 		CostScope:     scope,
 		SavedFilterID: stringPtr(model.SavedFilterID),
+		LabelMappings: mappings,
+		Thresholds:    thresholds,
 	}, diags
+}
+
+func businessMetricLabelMappingsTo(ctx context.Context, remote []iw.BusinessMetricLabelMapping) (types.List, diag.Diagnostics) {
+	models := make([]businessMetricLabelMappingModel, 0, len(remote))
+	for _, m := range remote {
+		models = append(models, businessMetricLabelMappingModel{
+			Label:     types.StringValue(m.Label),
+			Target:    types.StringValue(m.Target.Kind),
+			Dimension: stringValue(m.Target.Dimension),
+			TagKey:    stringValue(m.Target.TagKey),
+		})
+	}
+	return types.ListValueFrom(ctx, businessMetricLabelMappingObjectType, models)
+}
+
+func unitCostThresholdsTo(ctx context.Context, remote []iw.UnitCostThreshold) (types.List, diag.Diagnostics) {
+	models := make([]unitCostThresholdModel, 0, len(remote))
+	for _, t := range remote {
+		// The server omits a scale of 1 and always states the window, so both
+		// read back as concrete values matching their schema defaults.
+		scale := int64(1)
+		if t.Scale != nil {
+			scale = *t.Scale
+		}
+		window := int64(7)
+		if t.WindowDays != nil {
+			window = *t.WindowDays
+		}
+		models = append(models, unitCostThresholdModel{
+			Mode:         types.StringValue(t.Mode),
+			Direction:    types.StringValue(t.Direction),
+			Value:        types.Float64Value(t.Value),
+			Scale:        types.Int64Value(scale),
+			GroupByLabel: stringValue(t.GroupByLabel),
+			WindowDays:   types.Int64Value(window),
+		})
+	}
+	return types.ListValueFrom(ctx, unitCostThresholdObjectType, models)
 }
 
 func businessMetricStateFrom(ctx context.Context, remote *iw.BusinessMetric) (businessMetricResourceModel, diag.Diagnostics) {
@@ -252,8 +449,14 @@ func businessMetricStateFrom(ctx context.Context, remote *iw.BusinessMetric) (bu
 
 	scope, d := costFiltersTo(ctx, remote.CostScope)
 	diags.Append(d...)
+	mappings, d := businessMetricLabelMappingsTo(ctx, remote.LabelMappings)
+	diags.Append(d...)
+	thresholds, d := unitCostThresholdsTo(ctx, remote.Thresholds)
+	diags.Append(d...)
 
 	return businessMetricResourceModel{
+		LabelMapping:  mappings,
+		Threshold:     thresholds,
 		ID:            types.StringValue(remote.ID),
 		Key:           types.StringValue(remote.Key),
 		Name:          types.StringValue(remote.Name),

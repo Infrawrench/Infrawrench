@@ -15348,5 +15348,101 @@
   "5548b423974f922d": "Amortisiert, wobei der Rabatt jeder Verpflichtung gleichmäßig auf die gesamte Nutzung verteilt wird, die sie abdecken konnte, sodass jedes Team denselben effektiven Satz zahlt.",
   "5d1b74089c746f62": "Der Rabatt jeder Verpflichtung, gleichmäßig auf die gesamte Nutzung verteilt, die sie abdecken konnte, sodass die Rechnung eines Kunden nicht davon abhängt, auf welches Konto der Anbieter eine gemeinsame Verpflichtung angewendet hat.",
   "9684755144a7f7a9": "Was die Anbieter berechnet haben, an dem Tag, an dem sie es berechnet haben.",
-  "cd24262b5635925f": "Gemischt"
+  "cd24262b5635925f": "Gemischt",
+  "d846533943110eec": "Label-Zuordnungen",
+  "24d58ecbc434c8ad": "Zugeordnet zu",
+  "05206ec8e67e1ae3": "Schlüssel auswählen",
+  "8197e6172fa9af0b": "Abgleich über Name oder ID der Kostenstelle",
+  "ea794c049cfb14b7": "Abgleich über den Wert",
+  "c7128dc116fba704": "Zuordnung hinzufügen",
+  "d1f49fa9daea3fa2": "Berechnung",
+  "98c3189c2692e7d4": "Kosten pro {unit}",
+  "c03093720c3d57af": "Marge",
+  "f855345b0a8c3994": "über",
+  "85fdddebfa0ebfcb": "unter",
+  "4807335287591bcf": "Grenzwert",
+  "96279b22aeb9def8": "in der Währung der Ausgaben",
+  "8791ba6c4d118513": "Skalierung",
+  "6ab770d6fc341b1e": "über",
+  "026a5f6f5c759676": "Zeitfenster in Tagen",
+  "4c6102a2a70ebcd6": "Pro Label",
+  "f235a89dd31768a3": "für die gesamte Metrik",
+  "fe338f998336324a": "pro {label}",
+  "2644b2ba9ca6e905": "Schwellenwert hinzufügen",
+  "cb4b3e95afb88748": "(kein Label)",
+  "eb9a84309dbc539f": "{observed}, unter dem Grenzwert von {threshold}{label}",
+  "86ce5c9bd7b64fb1": "{observed}, über dem Grenzwert von {threshold}{label}",
+  "1244bed923533432": "Wählen Sie eine Nutzungseinheit für diese Karte.",
+  "8951b6a547320c74": "Nutzung",
+  "cdc6e620f779d1aa": "{count} Werte von {label}",
+  "cffa9adaac7bcaab": "Ausgaben für {series}",
+  "f6d2228cda96b3d0": "{shown} von {total} angezeigt",
+  "59edfec882661adf": "Keine — Ausgaben anzeigen",
+  "12c5672fe353a8fc": "Einheiten werden geladen…",
+  "7bc0fe802a8617df": "Anzeigen in",
+  "59a4243dceb07b37": "Nach Label aufteilen",
+  "2a209ffd482d7009": "Keine Aufteilung",
+  "31e76fdf1e19b42a": "{label} (nicht den Ausgaben zugeordnet)",
+  "8cd33ee64000b84e": "Nur Label",
+  "fe5ed420df9a4cfd": "Alle Werte",
+  "b4fb3e830192c4e3": "Operator des Label-Filters",
+  "69c7bb6eb67b7d04": "Label-Werte",
+  "e1626cbb4d12d2b1": "Die ersten {count} Werte werden angezeigt.",
+  "e47bb715822a285c": "Labels, die keiner Kostendimension zugeordnet sind, lassen sich nur mit der Rohmetrik verwenden: Ordnen Sie sie in der Metrik zu, um ein Verhältnis pro Wert zu berechnen.",
+  "3004c94a23b0e264": "Für die Marge ist eine Umsatzmetrik erforderlich.",
+  "573b76fbc25336e0": " · pro {labels}",
+  "d022ace63308f75b": " · {count} Alarm-Schwellenwerte",
+  "8359de618a549eb5": "{count} Zeilen mit den Labels {labels} importiert.",
+  "23642ac520a4952f": "{count} Zeilen importiert.",
+  "e8abd5d2c0129c37": "Schreiben Sie Labels als key=value-Paare, durch Kommas getrennt.",
+  "8f17177652f48b4b": "Labels (optional)",
+  "3ffafa1bbe87ea40": "CSV importieren",
+  "bc251212c2f2f226": {
+    "t": "p",
+    "i": 1,
+    "c": "Ordnen Sie ein Label, das Ihre Werte tragen, der Stelle auf der Kostenseite zu, an der seine Werte liegen, und Stückkosten und Marge lassen sich pro Wert berechnen: Ordnen Sie customer dem Tag customer zu, um Kosten pro Kunde zu erhalten. Nicht zugeordnete Labels können beim Darstellen der Rohmetrik weiterhin gefiltert und aufgeteilt werden."
+  },
+  "a85d077a98a32e03": {
+    "t": "p",
+    "i": 1,
+    "c": "Lösen Sie einen Alarm aus, wenn die summierten Stückkosten oder die Marge über ein gleitendes Zeitfenster einen Grenzwert überschreiten, über dasselbe Alarm-Routing wie alle anderen Kostenalarme. Ein Zeitfenster, für das weniger als die Hälfte der Tage gemeldet wurde, wird nicht bewertet."
+  },
+  "9469faf0f1e03841": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " hat in diesem Zeitraum keine Werte, daher gibt es nichts anzuzeigen."
+    ]
+  },
+  "c66cbfd2d9856a0e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Gruppieren nach, Top-Gruppen, Vergleich und Prognose gelten nicht für eine Berechnung, und ein Zeitraum ohne Divisor wird als Lücke statt als Null dargestellt.",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "05f097af197dec2e": {
+    "t": "p",
+    "i": 1,
+    "c": "Eine Kopfzeile mit einer Datumsspalte, einer Wertespalte und beliebigen weiteren Spalten als Labels (customer, plan, region). Zeilen für einen Tag und eine Label-Kombination, die bereits existieren, werden ersetzt."
+  },
+  "1baaa179e60cfa8c": "Label-Spalten",
+  "9d455f854586b5ca": "Jede markierte Spalte wird zu einem Label mit dem Namen ihrer Kopfzeile, sodass sich Werte danach aufteilen und filtern lassen. Eine leere Zelle lässt dieses Label in der Zeile weg.",
+  "c5c7acdf98ddac33": "Diese Kopfzeile kann nicht als Label-Name verwendet werden: Nutze Buchstaben, Ziffern, - und _."
 }

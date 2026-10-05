@@ -21,10 +21,9 @@ import {
   type CostBasis,
   type BusinessMetric,
   type CostGraphConfig,
-  UNIT_COST_MODES,
-  UNIT_COST_MODE_LABELS,
   type CostScenarioModel,
 } from "./config.js";
+import { UnitCostConfigFields } from "./UnitCostConfigFields.js";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";
 
@@ -258,7 +257,6 @@ export function CostGraphConfigModal({
     };
   }, [loadMetrics]);
 
-  const unitCostMetric = metrics?.find((m) => m.id === config.unitCostMetricId) ?? null;
   const hourlyAvailable = useHourlyBinningAvailable(api);
   const measure: CostMeasure = config.measure ?? "cost";
   const { cumulative } = effectiveCostBinning(config);
@@ -301,6 +299,10 @@ export function CostGraphConfigModal({
         delete updated.adjusted;
         delete updated.unitCostMetricId;
         delete updated.unitCostMode;
+        delete updated.unitCostScale;
+        delete updated.unitCostUsageUnit;
+        delete updated.unitCostLabelFilters;
+        delete updated.unitCostGroupByLabel;
         if (isCostTotalsChart(updated.chartType) && next === "count") {
           updated.chartType = "line";
         }
@@ -326,12 +328,16 @@ export function CostGraphConfigModal({
       setError(gt("Fix the filter query before saving."));
       return;
     }
+    // A label filter with no values ticked yet narrows nothing: drop it rather
+    // than store a filter the server would refuse.
+    const labelFilters = (config.unitCostLabelFilters ?? []).filter((f) => f.values.length > 0);
     const cleaned = {
       ...config,
       filters: config.filters.filter((f) => f.values.length > 0),
       // `false` is the absence of the toggle: stored as absent, like every
       // other display option, so an untouched card's config stays byte-stable.
       ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),
+      unitCostLabelFilters: labelFilters.length > 0 ? labelFilters : undefined,
     };
     const parsed = costGraphConfigSchema.safeParse(cleaned);
     if (!parsed.success) {
@@ -553,91 +559,8 @@ export function CostGraphConfigModal({
             </p>
           )}
 
-          {/*
-            Unit costs are a *mode* of this graph, not a second chart type: the
-            date range, binning, filters and cost basis above all still describe
-            the numerator. Only the four options that presuppose a stack of
-            series stop applying, and the note below says so rather than leaving
-            a user to wonder why Group by did nothing.
-          */}
-          {metrics !== null && metrics.length > 0 && measure === "cost" && (
-            <div className="rounded-lg border border-border p-3">
-              <label htmlFor={`${uid}-unit-metric`} className={labelClass}>
-                {gt("Divide by a business metric")}
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  id={`${uid}-unit-metric`}
-                  className={selectClass}
-                  value={config.unitCostMetricId ?? ""}
-                  onChange={(e) =>
-                    set(
-                      e.target.value
-                        ? // The toggle has no unit-cost meaning; see costDisplayProblem.
-                          { unitCostMetricId: e.target.value, cumulative: undefined }
-                        : // Clear the mode with the metric: a stored `margin`
-                          // with no metric would be meaningless, and would come
-                          // back the moment a metric was picked again.
-                          { unitCostMetricId: undefined, unitCostMode: undefined },
-                    )
-                  }
-                >
-                  <option value="">{gt("No — show spend")}</option>
-                  {metrics.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {gt("{name} (per {unit})", { name: gtData(m.name), unit: gtData(m.unit) })}
-                    </option>
-                  ))}
-                </select>
-                {config.unitCostMetricId && (
-                  <select
-                    className={selectClass}
-                    aria-label={gt("Unit cost mode")}
-                    value={config.unitCostMode ?? "unit_cost"}
-                    onChange={(e) =>
-                      set({ unitCostMode: e.target.value as CostGraphConfig["unitCostMode"] })
-                    }
-                  >
-                    {UNIT_COST_MODES.map((mode) => (
-                      <option
-                        key={mode}
-                        value={mode}
-                        // Margin subtracts money from money. Offering it for a
-                        // count metric would produce a plausible-looking number
-                        // that means nothing, so the option is disabled here and
-                        // refused by the server as well.
-                        disabled={mode === "margin" && unitCostMetric?.kind !== "currency"}
-                      >
-                        {gtData(UNIT_COST_MODE_LABELS[mode])}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              {config.unitCostMetricId && (
-                <T>
-                  <p className="mt-2 text-[11px] text-on-surface-faint">
-                    The chart shows{" "}
-                    <Var>
-                      {config.unitCostMode === "margin"
-                        ? gt("margin against this metric")
-                        : gt("cost per {unit}", { unit: gtData(unitCostMetric?.unit ?? "unit") })}
-                    </Var>
-                    . Group by, top groups, comparison and forecast don&rsquo;t apply — a per-group
-                    ratio would need a per-group metric, and a period with no reported value is
-                    drawn as a gap rather than as zero.
-                    <Var>
-                      {unitCostMetric && unitCostMetric.kind !== "currency" ? (
-                        <>
-                          {" "}
-                          {gt("Margin needs a revenue metric, so it is unavailable for this one.")}
-                        </>
-                      ) : null}
-                    </Var>
-                  </p>
-                </T>
-              )}
-            </div>
+          {measure === "cost" && (
+            <UnitCostConfigFields api={api} config={config} set={set} metrics={metrics} />
           )}
 
           {config.dateRange.kind === "absolute" && (

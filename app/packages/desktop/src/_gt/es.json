@@ -15154,5 +15154,101 @@
   "5548b423974f922d": "Amortizado, con el descuento de cada compromiso repartido por igual entre todo el uso que podía cubrir, para que cada equipo pague la misma tarifa efectiva.",
   "5d1b74089c746f62": "El descuento de cada compromiso repartido por igual entre todo el uso que podía cubrir, para que la factura de un cliente no dependa de la cuenta a la que el proveedor aplicó un compromiso compartido.",
   "9684755144a7f7a9": "Lo que cobraron los proveedores, el día en que lo cobraron.",
-  "cd24262b5635925f": "Combinado"
+  "cd24262b5635925f": "Combinado",
+  "d846533943110eec": "Asignaciones de etiquetas",
+  "24d58ecbc434c8ad": "Se asigna a",
+  "05206ec8e67e1ae3": "Elija una clave",
+  "8197e6172fa9af0b": "Coincide por nombre o id del centro",
+  "ea794c049cfb14b7": "Coincide por valor",
+  "c7128dc116fba704": "Añadir una asignación",
+  "d1f49fa9daea3fa2": "Cálculo",
+  "98c3189c2692e7d4": "Coste por {unit}",
+  "c03093720c3d57af": "Margen",
+  "f855345b0a8c3994": "por encima de",
+  "85fdddebfa0ebfcb": "por debajo de",
+  "4807335287591bcf": "Límite",
+  "96279b22aeb9def8": "en la moneda del gasto",
+  "8791ba6c4d118513": "Escala",
+  "6ab770d6fc341b1e": "durante",
+  "026a5f6f5c759676": "Ventana en días",
+  "4c6102a2a70ebcd6": "Por etiqueta",
+  "f235a89dd31768a3": "para toda la métrica",
+  "fe338f998336324a": "por {label}",
+  "2644b2ba9ca6e905": "Añadir un umbral",
+  "cb4b3e95afb88748": "(sin etiqueta)",
+  "eb9a84309dbc539f": "{observed}, por debajo del límite de {threshold}{label}",
+  "86ce5c9bd7b64fb1": "{observed}, por encima del límite de {threshold}{label}",
+  "1244bed923533432": "Elija una unidad de uso para esta tarjeta.",
+  "8951b6a547320c74": "uso",
+  "cdc6e620f779d1aa": "{count} valores de {label}",
+  "cffa9adaac7bcaab": "Gasto de {series}",
+  "f6d2228cda96b3d0": "mostrando {shown} de {total}",
+  "59edfec882661adf": "Ninguna — mostrar gasto",
+  "12c5672fe353a8fc": "Cargando unidades…",
+  "7bc0fe802a8617df": "Mostrar en",
+  "59a4243dceb07b37": "Dividir por etiqueta",
+  "2a209ffd482d7009": "Sin división",
+  "31e76fdf1e19b42a": "{label} (sin asignar al gasto)",
+  "8cd33ee64000b84e": "Solo la etiqueta",
+  "fe5ed420df9a4cfd": "Todos los valores",
+  "b4fb3e830192c4e3": "Operador del filtro de etiquetas",
+  "69c7bb6eb67b7d04": "Valores de la etiqueta",
+  "e1626cbb4d12d2b1": "Se muestran los primeros {count} valores.",
+  "e47bb715822a285c": "Las etiquetas no asignadas a una dimensión de coste solo se pueden usar con la métrica sin procesar: asígnelas en la métrica para calcular una proporción por valor.",
+  "3004c94a23b0e264": "El margen requiere una métrica de ingresos.",
+  "573b76fbc25336e0": " · por {labels}",
+  "d022ace63308f75b": " · {count} umbrales de alerta",
+  "8359de618a549eb5": "Se importaron {count} filas con las etiquetas {labels}.",
+  "23642ac520a4952f": "Se importaron {count} filas.",
+  "e8abd5d2c0129c37": "Escriba las etiquetas como pares key=value separados por comas.",
+  "8f17177652f48b4b": "Etiquetas (opcional)",
+  "3ffafa1bbe87ea40": "Importar un CSV",
+  "bc251212c2f2f226": {
+    "t": "p",
+    "i": 1,
+    "c": "Asigne una etiqueta que lleven sus valores al lugar del lado de costes donde residen sus valores, y el coste unitario y el margen se podrán calcular por valor: asigne customer a la etiqueta customer para obtener un coste por cliente. Las etiquetas sin asignar todavía se pueden filtrar y dividir al representar la métrica sin procesar."
+  },
+  "a85d077a98a32e03": {
+    "t": "p",
+    "i": 1,
+    "c": "Avise cuando el coste unitario o el margen sumado durante una ventana móvil cruce un límite, mediante el mismo enrutamiento de alertas que el resto de las alertas de costes. No se evalúa una ventana en la que se hayan informado menos de la mitad de sus días."
+  },
+  "9469faf0f1e03841": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " no tiene valores en este período, así que no hay nada que mostrar."
+    ]
+  },
+  "c66cbfd2d9856a0e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Agrupar por, grupos principales, comparación y previsión no se aplican a un cálculo, y un período sin nada que dividir se dibuja como un hueco en lugar de como cero.",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "05f097af197dec2e": {
+    "t": "p",
+    "i": 1,
+    "c": "Una fila de encabezado con una columna de fecha, una columna de valor y cualquier otra columna como etiquetas (customer, plan, region). Las filas de un día y un conjunto de etiquetas que ya existen se reemplazan."
+  },
+  "1baaa179e60cfa8c": "Columnas de etiquetas",
+  "9d455f854586b5ca": "Cada columna marcada se convierte en una etiqueta con el nombre de su encabezado, para poder dividir y filtrar los valores por ella. Una celda vacía omite esa etiqueta en la fila.",
+  "c5c7acdf98ddac33": "Este encabezado no puede ser un nombre de etiqueta: usa letras, dígitos, - y _."
 }

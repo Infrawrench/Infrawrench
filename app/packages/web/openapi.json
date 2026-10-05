@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.68.0",
+    "version": "1.69.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4390,7 +4390,8 @@
             "enum": [
               "commitment_expiry",
               "commitment_idle",
-              "unit_cost_regression"
+              "unit_cost_regression",
+              "unit_cost_threshold"
             ],
             "description": "Which detector produced it."
           },
@@ -5378,6 +5379,100 @@
           "cumulative": {
             "type": "boolean",
             "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
+          },
+          "unitCostMetricId": {
+            "type": "string",
+            "description": "Divide spend by this business metric (an id, so a key rename never re-points the graph)."
+          },
+          "unitCostMode": {
+            "type": "string",
+            "enum": [
+              "unit_cost",
+              "margin",
+              "usage_unit_cost",
+              "raw_metric"
+            ],
+            "description": "The calculation. `usage_unit_cost` needs `unitCostUsageUnit` instead of a metric; the others need `unitCostMetricId`."
+          },
+          "unitCostScale": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  100
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  1000
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  1000000
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  1000000000
+                ]
+              }
+            ],
+            "description": "\"Per N units\" for a ratio, or the unit a raw metric is shown in. Absent is 1."
+          },
+          "unitCostUsageUnit": {
+            "type": "string",
+            "description": "`usage_unit_cost` only: the provider usage unit to divide by."
+          },
+          "unitCostLabelFilters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "in",
+                    "not_in"
+                  ]
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "key",
+                "op",
+                "values"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 10,
+            "description": "Keep only metric values carrying these labels."
+          },
+          "unitCostGroupByLabel": {
+            "type": "string",
+            "description": "One line per value of this metric label."
+          },
+          "adjusted": {
+            "type": "boolean",
+            "description": "Draw the org's billing rules applied."
           }
         },
         "required": [
@@ -8842,6 +8937,162 @@
         ],
         "additionalProperties": false
       },
+      "BusinessMetricLabelTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "dimension"
+                ]
+              },
+              "dimension": {
+                "type": "string",
+                "enum": [
+                  "provider",
+                  "account",
+                  "service",
+                  "region",
+                  "resource",
+                  "tag",
+                  "charge_type",
+                  "commitment",
+                  "virtual_tag"
+                ]
+              },
+              "tagKey": {
+                "type": "string",
+                "description": "Required for keyed dimensions (tags)."
+              }
+            },
+            "required": [
+              "kind",
+              "dimension"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cost_centre"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "Where a label's values live on the cost side. A `dimension` target matches label values to dimension values exactly; `cost_centre` matches a centre by id or, case-insensitively, by name."
+      },
+      "BusinessMetricLabelMapping": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "A label key: a lowercase slug, normalised (trimmed, lowercased) on write.",
+            "example": "customer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/BusinessMetricLabelTarget"
+          }
+        },
+        "required": [
+          "label",
+          "target"
+        ],
+        "additionalProperties": false,
+        "description": "Joins a label to a cost dimension so unit cost and margin can be computed per label value (cost per customer). Ratio modes refuse an unmapped label: without a per-value numerator the only spend available is the whole scope's."
+      },
+      "UnitCostScale": {
+        "anyOf": [
+          {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          {
+            "type": "number",
+            "enum": [
+              100
+            ]
+          },
+          {
+            "type": "number",
+            "enum": [
+              1000
+            ]
+          },
+          {
+            "type": "number",
+            "enum": [
+              1000000
+            ]
+          },
+          {
+            "type": "number",
+            "enum": [
+              1000000000
+            ]
+          }
+        ],
+        "description": "\"Per N units\": multiplies a ratio (cost per 1,000 requests) and divides a raw metric. Margin ignores it. Absent is 1."
+      },
+      "UnitCostThreshold": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "unit_cost",
+              "margin"
+            ]
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "above",
+              "below"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "description": "Currency units per `scale` metric units for `unit_cost`; a percentage (30 for 30%) for `margin`."
+          },
+          "scale": {
+            "$ref": "#/components/schemas/UnitCostScale"
+          },
+          "groupByLabel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Evaluate per value of this label. The label must be mapped.",
+            "example": "customer"
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Trailing complete days the ratio is summed over. Default 7."
+          }
+        },
+        "required": [
+          "mode",
+          "direction",
+          "value"
+        ],
+        "additionalProperties": false,
+        "description": "A standing limit, evaluated daily on the summed ratio over the trailing window and routed under the unit-cost alert trigger. A window with fewer than half its days reported is not judged."
+      },
       "BusinessMetricCoverage": {
         "type": [
           "object",
@@ -8982,6 +9233,18 @@
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
+          "labelMappings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessMetricLabelMapping"
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitCostThreshold"
+            }
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -9013,6 +9276,8 @@
           "currency",
           "costScope",
           "savedFilterId",
+          "labelMappings",
+          "thresholds",
           "createdByUserId",
           "createdAt",
           "updatedAt",
@@ -9069,6 +9334,22 @@
             "format": "uuid",
             "description": "A saved cost filter AND-composed with `costScope`, resolved server-side at query time. A reference that fails to resolve errors the unit-cost query rather than silently widening the numerator to all spend.",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "labelMappings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessMetricLabelMapping"
+            },
+            "maxItems": 8,
+            "description": "Which value labels name a cost dimension. One mapping per label."
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitCostThreshold"
+            },
+            "maxItems": 10,
+            "description": "Standing unit-cost or margin limits. Margin thresholds need a `currency` metric."
           }
         },
         "required": [
@@ -9078,6 +9359,13 @@
           "kind"
         ],
         "additionalProperties": false
+      },
+      "BusinessMetricLabels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "A value's labels, e.g. `{ \"customer\": \"acme\", \"plan\": \"pro\" }`. At most 8, keys are slugs, values up to 200 characters. Rows partition the metric: a day's total is the sum of every row for it, so report a breakdown or a total, never both. The same day with the same labels restates; different labels are a different row."
       },
       "BusinessMetricValue": {
         "type": "object",
@@ -9094,7 +9382,10 @@
               "string",
               "null"
             ],
-            "description": "Optional breakdown label; a day's total is the sum across its labels."
+            "description": "The single breakdown label: the `label` key of `labels`, or null. Kept for clients that predate multi-dimensional labels."
+          },
+          "labels": {
+            "$ref": "#/components/schemas/BusinessMetricLabels"
           },
           "source": {
             "type": "string",
@@ -9113,6 +9404,7 @@
           "day",
           "value",
           "label",
+          "labels",
           "source",
           "updatedAt"
         ],
@@ -9134,7 +9426,11 @@
                 },
                 "label": {
                   "type": "string",
-                  "maxLength": 120
+                  "maxLength": 200,
+                  "description": "A single breakdown label, stored as `{ label: <value> }`; `labels` wins."
+                },
+                "labels": {
+                  "$ref": "#/components/schemas/BusinessMetricLabels"
                 }
               },
               "required": [
@@ -9144,7 +9440,7 @@
               "additionalProperties": false
             },
             "maxItems": 5000,
-            "description": "Days to report. **Re-reporting a day restates it rather than adding to it**, so an unattended nightly job is safe to retry — an accumulating write would double every number the first time the job re-ran. A batch naming the same day twice keeps the last value, applying the same rule within a batch that restatement applies between them."
+            "description": "Days to report. **Re-reporting a day (with the same labels) restates it rather than adding to it**, so an unattended nightly job is safe to retry — an accumulating write would double every number the first time the job re-ran. A batch naming the same day and labels twice keeps the last value, applying the same rule within a batch that restatement applies between them."
           }
         },
         "required": [
@@ -9692,6 +9988,16 @@
         ],
         "additionalProperties": false
       },
+      "UnitCostMode": {
+        "type": "string",
+        "enum": [
+          "unit_cost",
+          "margin",
+          "usage_unit_cost",
+          "raw_metric"
+        ],
+        "description": "`unit_cost` is spend ÷ metric value. `margin` is `(revenue − spend) ÷ revenue` as a fraction, with the absolute margin beside it, and needs a `currency` metric. `usage_unit_cost` is spend ÷ the usage quantity providers report in one `usageUnit`, and needs no metric (use `POST /business-metrics/usage-unit-costs`). `raw_metric` plots the metric itself beside spend, where zero and negative values are real points."
+      },
       "UnitCostPoint": {
         "type": "object",
         "properties": {
@@ -9715,14 +10021,22 @@
               "number",
               "null"
             ],
-            "description": "Metric value summed over the bucket, or null when nothing was reported."
+            "description": "The denominator summed over the bucket (the metric, or usage for `usage_unit_cost`), unscaled, or null when nothing was reported."
+          },
+          "absoluteMargin": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`margin` only: revenue − spend in the series currency; null on a gap."
           },
           "gap": {
             "type": "string",
             "enum": [
               "no_metric_value",
               "non_positive_metric_value",
-              "unconvertible_currency"
+              "unconvertible_currency",
+              "no_usage"
             ],
             "description": "Set exactly when `value` is null."
           },
@@ -9750,6 +10064,31 @@
           "currency": {
             "type": "string"
           },
+          "label": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Null for values carrying no such label, or for `Other`."
+              },
+              "other": {
+                "type": "boolean",
+                "description": "True for the fold of values past the group cap."
+              }
+            },
+            "required": [
+              "key",
+              "value"
+            ],
+            "additionalProperties": false,
+            "description": "Set when the query grouped by a label."
+          },
           "points": {
             "type": "array",
             "items": {
@@ -9771,6 +10110,12 @@
               "number",
               "null"
             ]
+          },
+          "overallAbsoluteMargin": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -9786,7 +10131,10 @@
         "type": "object",
         "properties": {
           "metric": {
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -9820,14 +10168,11 @@
               "kind",
               "currency"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Null for `usage_unit_cost`, which divides by provider usage instead."
           },
           "mode": {
-            "type": "string",
-            "enum": [
-              "unit_cost",
-              "margin"
-            ]
+            "$ref": "#/components/schemas/UnitCostMode"
           },
           "binning": {
             "type": "string",
@@ -9839,6 +10184,19 @@
               "quarterly",
               "cumulative"
             ]
+          },
+          "scale": {
+            "$ref": "#/components/schemas/UnitCostScale"
+          },
+          "usageUnit": {
+            "type": "string"
+          },
+          "groupByLabel": {
+            "type": "string"
+          },
+          "costPerLabel": {
+            "type": "boolean",
+            "description": "Set when grouped. False means every label series carries the whole scope's spend (a raw metric grouped by an unmapped label), so draw that spend once."
           },
           "series": {
             "type": "array",
@@ -9913,9 +10271,43 @@
           "metric",
           "mode",
           "binning",
+          "scale",
           "series",
           "gapBuckets",
           "partialBuckets"
+        ],
+        "additionalProperties": false
+      },
+      "UnitCostLabelFilter": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "A label key: a lowercase slug, normalised (trimmed, lowercased) on write.",
+            "example": "customer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "key",
+          "op",
+          "values"
         ],
         "additionalProperties": false
       },
@@ -9941,12 +10333,30 @@
             ]
           },
           "mode": {
+            "$ref": "#/components/schemas/UnitCostMode"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/UnitCostScale"
+          },
+          "labelFilters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitCostLabelFilter"
+            },
+            "maxItems": 10,
+            "description": "Keep only values carrying these labels. In a ratio mode each label must be mapped, and the spend is narrowed to the same values on the mapped dimension."
+          },
+          "groupByLabel": {
             "type": "string",
-            "enum": [
-              "unit_cost",
-              "margin"
-            ],
-            "description": "Absent is `unit_cost` (spend ÷ metric value). `margin` is `(revenue − spend) ÷ revenue` as a fraction, and is a 400 for a metric whose `kind` is not `currency`."
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "One series per value of this label (the 25 largest by metric total; the rest fold into `Other`). In a ratio mode the label must be mapped.",
+            "example": "customer"
+          },
+          "usageUnit": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "`usage_unit_cost` only, and required there: the provider usage unit to divide by. See `GET /business-metrics/usage-units`."
           },
           "filters": {
             "type": "array",
@@ -9990,6 +10400,94 @@
           "from",
           "to",
           "binning"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricLabelSummary": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Distinct values, alphabetical, at most 500."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "mapping": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BusinessMetricLabelTarget"
+              },
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "dimension"
+                        ]
+                      },
+                      "dimension": {
+                        "type": "string",
+                        "enum": [
+                          "provider",
+                          "account",
+                          "service",
+                          "region",
+                          "resource",
+                          "tag",
+                          "charge_type",
+                          "commitment",
+                          "virtual_tag"
+                        ]
+                      },
+                      "tagKey": {
+                        "type": "string",
+                        "description": "Required for keyed dimensions (tags)."
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "dimension"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "cost_centre"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "values",
+          "truncated",
+          "mapping"
         ],
         "additionalProperties": false
       },
@@ -45501,7 +45999,8 @@
               "enum": [
                 "commitment_expiry",
                 "commitment_idle",
-                "unit_cost_regression"
+                "unit_cost_regression",
+                "unit_cost_threshold"
               ],
               "description": "Restrict to one detector. Omitted returns all three, interleaved by time."
             },
@@ -52047,7 +52546,7 @@
           "Business metrics"
         ],
         "summary": "Query unit costs or margin",
-        "description": "Divide spend by the metric, bucketed as asked. Three properties of the answer are worth knowing before reading it:\n\n- **The ratio is computed at the requested bucket**, from a summed numerator and a summed denominator — never a mean of daily ratios, which weights a quiet day as heavily as a peak one. The same holds for `overallValue`.\n- **A missing or non-positive denominator is a gap** (`value: null` with a `gap` reason), never 0 and never infinite.\n- **Currencies are never merged.** Spend in a currency with no stated rate keeps its own series rather than being dropped or added to another.\n\nThere is no `groupBy`: a per-group ratio would need a per-group denominator, and dividing each service's spend by the whole customer count produces numbers that do not sum to the real one.\n\n_Requires permission: `costs:read`._",
+        "description": "Divide spend by the metric, bucketed as asked. Three properties of the answer are worth knowing before reading it:\n\n- **The ratio is computed at the requested bucket**, from a summed numerator and a summed denominator — never a mean of daily ratios, which weights a quiet day as heavily as a peak one. The same holds for `overallValue`.\n- **A missing or non-positive denominator is a gap** (`value: null` with a `gap` reason), never 0 and never infinite.\n- **Currencies are never merged.** Spend in a currency with no stated rate keeps its own series rather than being dropped or added to another.\n\nThere is no spend `groupBy`: a per-group ratio needs a per-group denominator. Split by a metric label with `groupByLabel` instead; in a ratio mode the label must be mapped to the cost dimension its values name (`labelMappings` on the metric), so each label value's spend is divided by its own volume.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -52114,6 +52613,194 @@
         },
         "operationId": "postOrgOrgIdBusinessMetricsIdUnitCosts",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/{id}/labels": {
+      "get": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "List a metric's labels",
+        "description": "The label keys the metric's values carry, each with its distinct values (at most 500) and its cost mapping. A mapped label nobody has reported yet is listed with no values.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Labels, by key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessMetricLabelSummary"
+                      }
+                    }
+                  },
+                  "required": [
+                    "labels"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBusinessMetricsIdLabels"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/usage-units": {
+      "get": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "List usage units",
+        "description": "The provider usage units the organization's cost rows carry over the last 90 days, most spend first, with a few of the services reporting each. Backs the per-usage-unit picker.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage units",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "units": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "unit": {
+                            "type": "string"
+                          },
+                          "usage": {
+                            "type": "number"
+                          },
+                          "services": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "unit",
+                          "usage",
+                          "services"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "units"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBusinessMetricsUsageUnits"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/usage-unit-costs": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Query cost per usage unit",
+        "description": "Spend divided by the usage quantity providers report in one `usageUnit`, with no business metric involved. Both halves come from the same cost rows (those reported in that unit), so the numerator is exactly the spend that bought the denominator. A bucket with no usage is a gap (`no_usage`), never 0. Labels do not apply.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitCostQueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unit-cost series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCostQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsUsageUnitCosts"
       }
     },
     "/api/org/{orgId}/orphans": {

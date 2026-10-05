@@ -17,6 +17,12 @@ import type {
   BusinessMetricSourceOption,
 } from "@infrawrench/plugin-base";
 
+import {
+  BUSINESS_METRIC_LABEL_KEY_PATTERN,
+  BUSINESS_METRIC_LIMITS,
+  normalizeBusinessMetricLabelKey,
+  type BusinessMetricLabels,
+} from "./business-metrics";
 import type { CloudFetch } from "./fetch";
 
 /** How often a scheduled importer runs. */
@@ -392,28 +398,63 @@ export function parseCsvNumber(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-/** Which columns hold what. Indexes into each row; `label` is optional. */
+/** Which columns hold what. Indexes into each row; the label columns are optional. */
 export interface MetricCsvColumnMapping {
   date: number;
   value: number;
+  /** A single unnamed breakdown label, stored as `{ label: <cell> }`. */
   label?: number | undefined;
+  /**
+   * Columns stored as named labels (`customer`, `plan`), keyed by their
+   * header. Only offered for a file with a header, since the header is the key.
+   */
+  labelColumns?: Array<{ column: number; key: string }> | undefined;
 }
 
-/** Guess the mapping from a header row: `day`/`date`, `value`/`count`/`amount`, `label`. */
+const CSV_DATE_HEADERS = ["day", "date", "ds", "timestamp"];
+const CSV_VALUE_HEADERS = ["value", "count", "amount", "total", "quantity", "revenue"];
+
+/**
+ * The label key a header cell names, or null when it cannot be one. Keys are
+ * normalised the way the API normalises them, so `Customer` is `customer`.
+ */
+export function csvLabelColumnKey(header: string): string | null {
+  const key = normalizeBusinessMetricLabelKey(header);
+  return key &&
+    key.length <= BUSINESS_METRIC_LIMITS.maxLabelKeyLength &&
+    BUSINESS_METRIC_LABEL_KEY_PATTERN.test(key)
+    ? key
+    : null;
+}
+
+/**
+ * Guess the mapping from a header row: `day`/`date`, `value`/`count`/`amount`,
+ * and every other column whose header is a valid label key as a named label
+ * (`customer`, `plan`, `region`), up to the per-value label limit.
+ */
 export function guessCsvMapping(header: string[]): MetricCsvColumnMapping | null {
   const lower = header.map((h) => h.trim().toLowerCase());
-  const date = lower.findIndex((h) => ["day", "date", "ds", "timestamp"].includes(h));
-  const value = lower.findIndex((h) =>
-    ["value", "count", "amount", "total", "quantity", "revenue"].includes(h),
-  );
-  const label = lower.findIndex((h) => ["label", "customer", "segment", "group"].includes(h));
+  const date = lower.findIndex((h) => CSV_DATE_HEADERS.includes(h));
+  const value = lower.findIndex((h) => CSV_VALUE_HEADERS.includes(h));
   if (date < 0 || value < 0) return null;
-  return label >= 0 ? { date, value, label } : { date, value };
+  const labelColumns = header
+    .map((h, column) => ({ column, key: csvLabelColumnKey(h) }))
+    .filter(
+      (c): c is { column: number; key: string } =>
+        c.column !== date && c.column !== value && c.key !== null,
+    )
+    .slice(0, BUSINESS_METRIC_LIMITS.maxLabelsPerValue);
+  return labelColumns.length > 0 ? { date, value, labelColumns } : { date, value };
 }
 
 /** The result of mapping CSV rows to values: what will be written, and every row that will not. */
 export interface CsvMappingResult {
-  values: Array<{ date: string; value: number; label?: string }>;
+  values: Array<{
+    date: string;
+    value: number;
+    label?: string;
+    labels?: BusinessMetricLabels;
+  }>;
   errors: Array<{ row: number; message: string }>;
 }
 
@@ -442,9 +483,21 @@ export function csvRowsToMetricValues(
       errors.push({ row: line, message: `"${row[mapping.value] ?? ""}" is not a number` });
       return;
     }
+    const max = BUSINESS_METRIC_LIMITS.maxLabelValueLength;
     const label =
-      mapping.label !== undefined ? (row[mapping.label] ?? "").trim().slice(0, 120) : "";
-    values.push(label ? { date: day, value, label } : { date: day, value });
+      mapping.label !== undefined ? (row[mapping.label] ?? "").trim().slice(0, max) : "";
+    // An empty cell in a label column leaves that label off the row rather
+    // than writing an empty one.
+    const labels: BusinessMetricLabels = {};
+    for (const { column, key } of mapping.labelColumns ?? []) {
+      const cell = (row[column] ?? "").trim().slice(0, max);
+      if (cell) labels[key] = cell;
+    }
+    if (Object.keys(labels).length > 0) {
+      values.push({ date: day, value, labels: label ? { label, ...labels } : labels });
+    } else {
+      values.push(label ? { date: day, value, label } : { date: day, value });
+    }
   });
   return { values, errors };
 }
