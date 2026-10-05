@@ -96,6 +96,7 @@ Cost graphs use the same data as the dashboard cost widgets:
 infrawrench costs                        # last 30 days, grouped by provider
 infrawrench costs --last 90d --group-by service
 infrawrench costs --group-by account --json
+infrawrench costs --group-by tag:team    # one tag's values, e.g. a Kubernetes namespace or gpu_model
 ```
 
 <insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>

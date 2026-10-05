@@ -92,7 +92,7 @@ COMMANDS
                       own range and filters, range flags override the range
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
-  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
+  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment|tag:<key>]
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency at its stated rates]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]

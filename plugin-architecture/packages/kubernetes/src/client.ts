@@ -73,6 +73,8 @@ export class KubernetesClient implements PluginClient {
   private readonly services?: HostServices;
   private readonly fetcher: K8sFetcher;
   private readonly rates: NodeRateTable;
+  /** The account's optional "GPU metrics source" (a Prometheus Service, or `none`). */
+  private readonly gpuMetricsSetting: string | undefined;
   private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
   /**
    * The most recent successful cost index. `renderDetail` is synchronous (it
@@ -90,6 +92,7 @@ export class KubernetesClient implements PluginClient {
     // integration's credentialMappings, or from the optional field on a
     // standalone Kubernetes account. Absent means "no money", not "free".
     this.rates = parseNodeRates(credentials["nodeHourlyRates"]);
+    this.gpuMetricsSetting = credentials["gpuMetricsSource"];
     if (services) this.services = services;
     // When the host k8s driver is available it owns all auth via the
     // official SDK, so the hand-rolled parser's output is unused. Wrap the
@@ -116,7 +119,10 @@ export class KubernetesClient implements PluginClient {
   private clusterCost(): Promise<ClusterCostResult> {
     const now = Date.now();
     if (this.costCache && now - this.costCache.at < COST_CACHE_MS) return this.costCache.promise;
-    const promise = computeClusterCost(this.k8sFetch, this.rates);
+    const promise = computeClusterCost(this.k8sFetch, this.rates, {
+      fetchText: (path) => this.fetcher.fetchText(path),
+      gpuMetricsSetting: this.gpuMetricsSetting,
+    });
     this.costCache = { at: now, promise };
     return promise;
   }
@@ -134,6 +140,7 @@ export class KubernetesClient implements PluginClient {
         result.rateSource,
         result.utilization.status,
         new Date().toISOString(),
+        result.gpuMetrics,
       );
       this.lastCostIndex = index;
       return index;

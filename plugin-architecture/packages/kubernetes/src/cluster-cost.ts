@@ -11,6 +11,11 @@
  * kubeconfig allowed to list pods but not PVCs still produces the whole compute
  * allocation, with storage reported as unavailable rather than as zero.
  *
+ * GPU nodes add two more things: each node's accelerators are read off its
+ * labels and extended-resource capacity (`gpu.ts`), and, only when some pod
+ * actually requests a GPU, utilization is read from the DCGM / AMD exporter
+ * metrics (`gpu-metrics.ts`). A cluster with no GPUs pays for neither.
+ *
  * The result is cached briefly, because a single peer-pane render asks for it
  * from several places (pill subtitles, dashboard stats, the namespace table)
  * and each call is a handful of cluster-wide list requests.
@@ -30,7 +35,10 @@ import {
   podUtilizationKey,
   type ClusterUtilization,
 } from "./metrics-api.js";
+import { podAcceleratorRequests, readNodeGpus } from "./gpu.js";
+import { fetchGpuUtilization, type GpuMetricsSource, type PodGpuUsage } from "./gpu-metrics.js";
 import {
+  gpuRateFor,
   loadBalancerRate,
   rateForNode,
   storageRate,
@@ -65,6 +73,21 @@ export interface ClusterCostResult {
    * surfaces say so instead of claiming the cluster has no disks.
    */
   extrasUnavailable: boolean;
+  /**
+   * Where GPU utilization came from. `null` on a cluster where no pod requests
+   * a GPU, because nothing was looked up there.
+   */
+  gpuMetrics: GpuMetricsSource | null;
+}
+
+/** Optional inputs beyond the API: the text fetcher and account settings. */
+export interface ClusterCostOptions {
+  /** Plain-text fetch, used to scrape exporter pods directly. */
+  fetchText?: ((path: string) => Promise<string>) | undefined;
+  /** The account's "GPU metrics source" field, verbatim. */
+  gpuMetricsSetting?: string | undefined;
+  /** Clock, for pod age. Injected so tests are deterministic. */
+  now?: () => number;
 }
 
 function pairFrom(map: Record<string, string> | undefined): ResourcePair {
@@ -86,7 +109,9 @@ function pairFrom(map: Record<string, string> | undefined): ResourcePair {
 export async function computeClusterCost(
   k8sFetch: K8sFetch,
   rates: NodeRateTable,
+  options: ClusterCostOptions = {},
 ): Promise<ClusterCostResult> {
+  const now = options.now ?? Date.now;
   const [nodeList, podList, utilization, claimResult, serviceResult] = await Promise.all([
     k8sFetch<K8sList<K8sNode>>("/api/v1/nodes"),
     k8sFetch<K8sList<K8sPod>>("/api/v1/pods"),
@@ -111,7 +136,9 @@ export async function computeClusterCost(
     // nothing. Fall back to allocatable so the money still lands somewhere.
     const effectiveCapacity =
       capacity.cpuCores > 0 || capacity.memoryBytes > 0 ? capacity : allocatableRaw;
-    const rate = rateForNode(rates, n.metadata.name, instanceType);
+    const rate = rateForNode(rates, n.metadata.name, instanceType, labels);
+    const gpus = readNodeGpus(labels, n.status?.capacity, n.status?.allocatable, instanceType);
+    const perGpu = gpus ? gpuRateFor(rates, gpus) : undefined;
     return {
       name: n.metadata.name,
       capacity: effectiveCapacity,
@@ -123,6 +150,8 @@ export async function computeClusterCost(
       ...(utilization.nodes.get(n.metadata.name)
         ? { usage: utilization.nodes.get(n.metadata.name)! }
         : {}),
+      ...(gpus ? { gpus } : {}),
+      ...(perGpu !== undefined ? { perGpuHourlyRate: perGpu } : {}),
     };
   });
 
@@ -143,6 +172,8 @@ export async function computeClusterCost(
       pod.metadata.name,
     );
     const usage = utilization.pods.get(podUtilizationKey(namespace, pod.metadata.name));
+    const acceleratorRequests = podAcceleratorRequests(pod.spec);
+    const startedMs = pod.status?.startTime ? Date.parse(pod.status.startTime) : NaN;
     pods.push({
       name: pod.metadata.name,
       namespace,
@@ -152,6 +183,8 @@ export async function computeClusterCost(
       requests,
       limits,
       ...(usage ? { usage } : {}),
+      ...(Object.keys(acceleratorRequests).length > 0 ? { acceleratorRequests } : {}),
+      ...(Number.isFinite(startedMs) ? { ageHours: (now() - startedMs) / 3_600_000 } : {}),
     });
     attributable.push({
       namespace,
@@ -162,6 +195,26 @@ export async function computeClusterCost(
         .map((v) => v.persistentVolumeClaim?.claimName ?? "")
         .filter(Boolean),
     });
+  }
+
+  // GPU utilization: only worth the proxied queries when a GPU is requested.
+  const wantsGpu = nodes.some((n) => n.gpus) && pods.some((p) => p.acceleratorRequests != null);
+  let gpuMetrics: GpuMetricsSource | null = null;
+  if (wantsGpu) {
+    const gpuUtilization = await fetchGpuUtilization(k8sFetch, {
+      setting: options.gpuMetricsSetting,
+      services: serviceResult?.items ?? null,
+      pods: podList.items ?? [],
+      fetchText: options.fetchText,
+    });
+    gpuMetrics = gpuUtilization.source;
+    for (const pod of pods) {
+      if (!pod.acceleratorRequests) continue;
+      const usage: PodGpuUsage | undefined = gpuUtilization.pods.get(
+        `${pod.namespace}/${pod.name}`,
+      );
+      if (usage) pod.gpuUsage = usage;
+    }
   }
 
   const volumes = claimResult ? buildVolumes(claimResult, attributable, rates) : undefined;
@@ -186,6 +239,7 @@ export async function computeClusterCost(
     rateSource: rates.source,
     unpriced: allocation.pricedNodeCount === 0,
     extrasUnavailable: claimResult == null || serviceResult == null,
+    gpuMetrics,
   };
 }
 

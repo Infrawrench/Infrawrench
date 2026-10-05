@@ -14,8 +14,9 @@
  *    ride along as **tags**. The declaration lists `tag` for exactly this.
  *  - `service` is a small stable set: `kubernetes-workload`, `kubernetes-idle`,
  *    `kubernetes-system-reserved`, `kubernetes-control-plane`,
- *    `kubernetes-storage`, `kubernetes-storage-idle` and
- *    `kubernetes-load-balancer`, rather than one value per namespace, so the
+ *    `kubernetes-storage`, `kubernetes-storage-idle`,
+ *    `kubernetes-load-balancer`, `kubernetes-gpu` and `kubernetes-gpu-idle`,
+ *    rather than one value per namespace, so the
  *    service breakdown stays a legible partition of the cluster's bill. The
  *    labels **partition**: every unit of money appears under exactly one, which
  *    is why a workload's row carries its compute share only and its disks and
@@ -34,7 +35,7 @@
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 
-import type { ClusterAllocation } from "./cost-model.js";
+import { HOURS_PER_DAY, type ClusterAllocation } from "./cost-model.js";
 import { SYSTEM_NAMESPACES } from "./resource-listers.js";
 
 /** Stable service labels. Changing one of these re-keys history: don't. */
@@ -49,6 +50,16 @@ export const SERVICE_STORAGE_IDLE = "kubernetes-storage-idle";
 export const SERVICE_LOAD_BALANCER = "kubernetes-load-balancer";
 /** The flat managed-cluster fee. Never divided across tenants. */
 export const SERVICE_CONTROL_PLANE = "kubernetes-control-plane";
+/** A workload's share of GPU node price, charged by GPU requests. */
+export const SERVICE_GPU = "kubernetes-gpu";
+/** GPUs no pod requested, one row per GPU node. Its own bucket, like idle. */
+export const SERVICE_GPU_IDLE = "kubernetes-gpu-idle";
+
+/** A row's GPU model tag: one model, or `mixed` across several. */
+function modelTag(models: Set<string>): string {
+  if (models.size === 0) return "";
+  return models.size === 1 ? [...models][0]! : "mixed";
+}
 
 /**
  * Which day a snapshot describes.
@@ -116,15 +127,56 @@ export function allocationToCostRows(
     else buckets.set(key, { service, resourceId, tags, amount });
   };
 
+  // GPU model per workload, from the nodes its GPU pods landed on.
+  const gpuModels = new Map<string, Set<string>>();
+  for (const pod of allocation.pods) {
+    if (pod.gpus <= 0) continue;
+    const key = `${pod.namespace}/${pod.workloadKind}/${pod.workload}`;
+    const set = gpuModels.get(key) ?? new Set<string>();
+    if (pod.gpuModel) set.add(pod.gpuModel);
+    gpuModels.set(key, set);
+  }
+
   for (const workload of allocation.workloads) {
-    // Deliberately the COMPUTE share, not the workload's total: its volumes and
-    // load balancers get their own service rows below, and adding them here as
-    // well would double-count the same money under two service labels.
+    // Deliberately the CPU/memory COMPUTE share, not the workload's total: its
+    // GPUs, volumes and load balancers get their own service rows below, and
+    // adding them here as well would double-count the same money under two
+    // service labels.
     push(
       SERVICE_WORKLOAD,
       workload.key,
       tagsFor(workload.namespace, workload.workload, workload.workloadKind),
       workload.computeDailyCost,
+    );
+    if (workload.gpus > 0) {
+      push(
+        SERVICE_GPU,
+        workload.key,
+        {
+          ...tagsFor(workload.namespace, workload.workload, workload.workloadKind),
+          gpu_model: modelTag(gpuModels.get(workload.key) ?? new Set()),
+        },
+        workload.gpuDailyCost,
+      );
+    }
+  }
+
+  // Idle GPUs, per node: a GPU node is the unit someone scales down, and its
+  // model is the dimension worth grouping by ("how much idle A100 do we pay
+  // for"). Never spread over the namespaces, for the same reason as idle CPU.
+  for (const node of allocation.nodes) {
+    if (!node.gpu) continue;
+    push(
+      SERVICE_GPU_IDLE,
+      `node/${node.name}/gpu-idle`,
+      {
+        namespace: "",
+        workload: "gpu-idle",
+        workload_kind: "ClusterCapacity",
+        system: "false",
+        gpu_model: node.gpu.inventory.model,
+      },
+      node.gpu.hourlyIdleCost == null ? null : node.gpu.hourlyIdleCost * HOURS_PER_DAY,
     );
   }
 

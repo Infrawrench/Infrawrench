@@ -57,6 +57,12 @@ import {
 } from "./pricing.js";
 import type { PriceCatalogRequest, PriceCatalogResult } from "@infrawrench/plugin-base";
 import { fetchGcpPriceCatalog } from "./price-catalog.js";
+import {
+  buildGkeNodeRates,
+  poolZone,
+  type GkeCluster,
+  type MachineSpec,
+} from "./gke-node-rates.js";
 
 /**
  * A `sizeGb × per-GB-month` disk line, or null when either half is unusable.
@@ -163,7 +169,7 @@ export class GcpClient implements PluginClient {
   private machineTypeFamilyRateCache = new Map<string, PricingCacheEntry>();
   private pricingRatesInFlightByGeo = new Map<string, Promise<PricingRates>>();
   /** Cached machine type specs (vcpus + memoryMb) keyed by machine type name, populated during getCreateConfig. */
-  private machineTypeSpecCache = new Map<string, { guestCpus: number; memoryMb: number }>();
+  private machineTypeSpecCache = new Map<string, MachineSpec>();
 
   constructor(
     credentials: Record<string, string>,
@@ -469,16 +475,13 @@ export class GcpClient implements PluginClient {
     if (outputKey === "nodeHourlyRates") {
       // The Kubernetes peer asks every managed-cluster type what its nodes
       // cost per hour, so it can derive per-namespace and per-workload spend.
-      // GCP's Cloud Billing SKUs price vCPU-hours and GiB-hours
-      // separately rather than per machine type, so turning them into a
-      // per-node hourly rate needs a machine-type -> (vCPU, GiB) lookup this
-      // plugin does not yet have.
-      // Returning "" is the honest answer and makes the peer show capacity and
-      // efficiency without money rather than inventing a price. It must return
-      // rather than fall through: the host resolves every credentialMapping
-      // before building the peer client, so a throw here would take the whole
-      // Kubernetes tab down.
-      return "";
+      // Priced per node pool (machine cores + RAM at family rates, plus each
+      // attached GPU's own SKU): see gke-node-rates.ts. Must never throw: the
+      // host resolves every credentialMapping before building the peer
+      // client, so a throw here would take the whole Kubernetes tab down. ""
+      // makes the peer show capacity and efficiency without money.
+      if (typeId !== "gke-cluster") return "";
+      return this.gkeNodeHourlyRates(resourceId).catch(() => "");
     }
 
     return runResolveOutput(this.sharedCtx, typeId, resourceId, outputKey, accountId);
@@ -502,12 +505,51 @@ export class GcpClient implements PluginClient {
     );
   }
 
+  /** A machine type's vCPUs, memory and built-in GPUs, cached per process. */
+  private async machineSpec(machineType: string, zone: string): Promise<MachineSpec | null> {
+    const cached = this.machineTypeSpecCache.get(machineType);
+    if (cached && cached.accelerators !== undefined) return cached;
+    const fetched = await this.get<MachineSpec>(
+      `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
+    ).catch(() => null);
+    if (!fetched) return cached ?? null;
+    const spec: MachineSpec = {
+      guestCpus: fetched.guestCpus,
+      memoryMb: fetched.memoryMb,
+      accelerators: fetched.accelerators ?? [],
+    };
+    this.machineTypeSpecCache.set(machineType, spec);
+    return spec;
+  }
+
+  private async gkeNodeHourlyRates(resourceId: string): Promise<string> {
+    // `{accountId}:gke-cluster:{project}/{location}/{name}`.
+    const match = /gke-cluster:([^/]+)\/([^/]+)\/([^/]+)$/.exec(resourceId);
+    if (!match) return "";
+    const [, project, location, name] = match;
+    const cluster = await this.get<GkeCluster>(
+      `https://container.googleapis.com/v1/projects/${project}/locations/${location}/clusters/${name}`,
+    );
+    const specs = new Map<string, MachineSpec>();
+    for (const pool of cluster.nodePools ?? []) {
+      const machineType = pool.config?.machineType;
+      const zone = poolZone(cluster, pool);
+      if (!machineType || !zone || specs.has(machineType)) continue;
+      const spec = await this.machineSpec(machineType, zone);
+      if (spec) specs.set(machineType, spec);
+    }
+    const geo = geoFromRegion(regionFromZone(location!));
+    const rates = await this.getPricingRatesForGeo(geo);
+    return buildGkeNodeRates(cluster, specs, rates);
+  }
+
   private async getPricingRatesForGeo(geo: GeoRegion): Promise<PricingRates> {
     const cached = this.machineTypeFamilyRateCache.get(geo);
     if (cached && cached.expiresAt > Date.now())
       return {
         machineRates: cached.machineRates,
         diskGbMonthUsd: cached.diskGbMonthUsd,
+        ...(cached.gpuHourlyUsd ? { gpuHourlyUsd: cached.gpuHourlyUsd } : {}),
       };
     const inFlight = this.pricingRatesInFlightByGeo.get(geo);
     if (inFlight) return inFlight;

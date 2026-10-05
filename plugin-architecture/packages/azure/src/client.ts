@@ -416,18 +416,27 @@ export class AzureClient implements PluginClient {
    */
   private async aksNodeHourlyRates(resourceId: string, accountId: string): Promise<string> {
     const cluster = await this.getResource("azure-aks-cluster", resourceId, accountId);
-    const vmSize = String(cluster.fields["vmSize"] ?? "").trim();
+    // Every agent pool, not just the first: GPU node pools are almost always
+    // separate user pools, and pricing only the system pool left them unpriced.
+    const sizes = String(cluster.fields["vmSizes"] ?? cluster.fields["vmSize"] ?? "")
+      .split(",")
+      .map((size) => size.trim())
+      .filter(Boolean);
     const location = String(cluster.fields["location"] ?? "").trim();
-    if (!vmSize || !location) return "";
+    if (sizes.length === 0 || !location) return "";
 
     const rates = await this.getPricingRatesForRegion(location);
-    const hourly = rates.vmHourlyUsd[vmSize];
-    if (hourly == null || !(hourly > 0)) return "";
+    const byInstanceType: Record<string, number> = {};
+    for (const size of sizes) {
+      const hourly = rates.vmHourlyUsd[size];
+      if (hourly != null && hourly > 0) byInstanceType[size] = hourly;
+    }
+    if (Object.keys(byInstanceType).length === 0) return "";
 
     return JSON.stringify({
       currency: "USD",
       source: "list-price",
-      byInstanceType: { [vmSize]: hourly },
+      byInstanceType,
       byNodeName: {},
     });
   }

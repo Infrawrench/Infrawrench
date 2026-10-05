@@ -71,7 +71,7 @@ export const GkeClusterResourceType = rt({
     o("nodeHourlyRates", "Node Hourly Rates", {
       hidden: true,
       description:
-        "JSON map of node instance type to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost. Empty when no price is available.",
+        "JSON hourly price per node pool (machine plus attached GPUs) and per GPU, handed to the Kubernetes peer so it can derive per-namespace, per-workload and per-GPU cost. Empty when no price is available.",
     }),
   ],
   supportsCreate: true,

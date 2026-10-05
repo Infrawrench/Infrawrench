@@ -15,6 +15,7 @@ import { formatDailyCost, formatEfficiency, formatMoney } from "./cost-model.js"
 import type { CostIndex } from "./cost-surface.js";
 import {
   CONTROL_PLANE_BUCKET_LABEL,
+  GPU_IDLE_BUCKET_LABEL,
   IDLE_BUCKET_LABEL,
   SYSTEM_RESERVED_BUCKET_LABEL,
   UNATTACHED_STORAGE_BUCKET_LABEL,
@@ -23,8 +24,12 @@ import {
 } from "./cost-surface.js";
 import {
   buildEfficiencyReport,
+  describeGpuFinding,
   formatDaily,
   formatEfficiencyCell,
+  formatGpuCell,
+  formatGpuUtilizationCell,
+  totalWaste,
   formatEfficiencyReportText,
   formatPair,
   RIGHTSIZING_NOTE,
@@ -33,6 +38,30 @@ import {
 } from "./efficiency-report.js";
 import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
 import { describeRateSource } from "./node-rates.js";
+import { describeNodeGpus, formatGpus, type GpuPriceBasis } from "./gpu.js";
+import { describeGpuMetricsSource } from "./gpu-metrics.js";
+
+/** `2 GPU · 41% busy`, `0.5 GPU · unknown`, or a dash for no GPUs. */
+function gpuText(gpus: number, utilization: number | null, unknown: boolean): string {
+  if (!(gpus > 0)) return "—";
+  const busy =
+    utilization != null ? `${Math.round(utilization * 100)}% busy` : unknown ? "unknown" : "";
+  return busy ? `${formatGpus(gpus)} · ${busy}` : formatGpus(gpus);
+}
+
+/** How the GPU share of a node's price was set, in words. */
+export function describeGpuPriceBasis(basis: GpuPriceBasis | null): string {
+  switch (basis) {
+    case "per-gpu-price":
+      return "per-GPU price";
+    case "reference":
+      return "published per-GPU reference ratio";
+    case "remainder":
+      return "node price less CPU and memory at reference rates";
+    default:
+      return "no node price";
+  }
+}
 
 /** Standard manifest editor capability for all namespaced K8s resources */
 const K8S_MANIFEST_EDITOR: ManifestEditorCapability = {
@@ -93,6 +122,10 @@ function costSection(
         requests: ResourcePair;
         usage: ResourcePair | null;
         efficiency: Efficiency;
+        gpus: number;
+        gpuDailyCost: number | null;
+        gpuUtilization: number | null;
+        gpuWastedDailyCost: number | null;
       }
     | undefined,
   costs: CostIndex | undefined,
@@ -112,6 +145,25 @@ function costSection(
             { key: "Requests", value: pairText(entry.requests) },
             ...(entry.usage ? [{ key: "Actual usage", value: pairText(entry.usage) }] : []),
             ...(efficiency ? [{ key: "Efficiency (used ÷ requested)", value: efficiency }] : []),
+            ...(entry.gpus > 0
+              ? [
+                  {
+                    key: "GPUs",
+                    value: gpuText(entry.gpus, entry.gpuUtilization, entry.gpuUtilization == null),
+                  },
+                  ...(entry.gpuDailyCost != null
+                    ? [{ key: "GPU cost", value: moneyCell(entry.gpuDailyCost, costs.currency) }]
+                    : []),
+                  ...(entry.gpuWastedDailyCost != null
+                    ? [
+                        {
+                          key: "Requested GPU idle",
+                          value: moneyCell(entry.gpuWastedDailyCost, costs.currency),
+                        },
+                      ]
+                    : []),
+                ]
+              : []),
             {
               key: "Basis",
               value: money
@@ -138,12 +190,14 @@ function namespaceCostTable(namespace: string, costs: CostIndex | undefined): Se
   const workloads = costs.cluster.workloads.filter((w) => w.namespace === namespace);
   if (workloads.length === 0) return [];
 
+  const showGpu = costs.cluster.gpu.nodeCount > 0;
   const rows: TableRow[] = workloads.map((w) => ({
     cells: {
       workload: w.workload,
       kind: w.workloadKind,
       pods: String(w.podCount),
       requests: pairText(w.requests),
+      ...(showGpu ? { gpu: gpuText(w.gpus, w.gpuUtilization, w.gpuUsageUnknown) } : {}),
       extras: extrasText(w.storageGib, w.loadBalancerCount),
       efficiency: w.usageUnknown ? "unknown" : formatEfficiency(w.efficiency) || "—",
       cost: moneyCell(w.dailyCost, costs.currency),
@@ -158,6 +212,7 @@ function namespaceCostTable(namespace: string, costs: CostIndex | undefined): Se
       { key: "kind", label: "Kind", width: "narrow" },
       { key: "pods", label: "Pods", width: "narrow" },
       { key: "requests", label: "Requests", mono: true },
+      ...(showGpu ? [{ key: "gpu", label: "GPU", mono: true }] : []),
       { key: "extras", label: "Storage / LB", width: "narrow", mono: true },
       { key: "efficiency", label: "Efficiency" },
       { key: "cost", label: "Derived cost", width: "narrow" },
@@ -182,11 +237,13 @@ function clusterCostTable(costs: CostIndex | undefined): SectionNode[] {
   const { cluster } = costs;
   if (cluster.namespaces.length === 0 && cluster.nodeCount === 0) return [];
 
+  const showGpu = cluster.gpu.nodeCount > 0;
   const rows: TableRow[] = cluster.namespaces.map((ns) => ({
     cells: {
       namespace: ns.namespace,
       pods: String(ns.podCount),
       requests: pairText(ns.requests),
+      ...(showGpu ? { gpu: gpuText(ns.gpus, ns.gpuUtilization, ns.gpuUsageUnknown) } : {}),
       extras: extrasText(ns.storageGib, ns.loadBalancerCount),
       efficiency: ns.usageUnknown ? "unknown" : formatEfficiency(ns.efficiency) || "—",
       cost: moneyCell(ns.dailyCost, costs.currency),
@@ -213,12 +270,13 @@ function clusterCostTable(costs: CostIndex | undefined): SectionNode[] {
   // than its workloads, system-reserved is the kubelet's tax, the control plane
   // is a fee you pay for existing, and unattached storage is disks nothing
   // mounts. Spreading any of them across the namespaces would hide all four.
-  const bucket = (label: string, capacity: string, cost: number | null) => {
+  const bucket = (label: string, capacity: string, cost: number | null, gpu = "—") => {
     rows.push({
       cells: {
         namespace: label,
         pods: "—",
         requests: capacity,
+        ...(showGpu ? { gpu } : {}),
         extras: "—",
         efficiency: "—",
         cost: moneyCell(cost, costs.currency),
@@ -228,6 +286,9 @@ function clusterCostTable(costs: CostIndex | undefined): SectionNode[] {
 
   bucket(IDLE_BUCKET_LABEL, pairText(idlePair), cluster.dailyIdleCost);
   bucket(SYSTEM_RESERVED_BUCKET_LABEL, pairText(reservedPair), cluster.dailySystemReservedCost);
+  if (showGpu) {
+    bucket(GPU_IDLE_BUCKET_LABEL, "—", cluster.gpu.dailyIdleCost, formatGpus(cluster.gpu.idle));
+  }
   if (cluster.hourlyControlPlaneCost != null) {
     bucket(CONTROL_PLANE_BUCKET_LABEL, "—", cluster.dailyControlPlaneCost);
   }
@@ -237,6 +298,7 @@ function clusterCostTable(costs: CostIndex | undefined): SectionNode[] {
         namespace: UNATTACHED_STORAGE_BUCKET_LABEL,
         pods: "—",
         requests: "—",
+        ...(showGpu ? { gpu: "—" } : {}),
         extras: gibText(cluster.storage.unattachedGib),
         efficiency: "—",
         cost: moneyCell(cluster.storage.dailyUnattachedCost, costs.currency),
@@ -251,6 +313,7 @@ function clusterCostTable(costs: CostIndex | undefined): SectionNode[] {
       { key: "namespace", label: "Namespace", width: "wide" },
       { key: "pods", label: "Pods", width: "narrow" },
       { key: "requests", label: "Requests", mono: true },
+      ...(showGpu ? [{ key: "gpu", label: "GPU", mono: true }] : []),
       { key: "extras", label: "Storage / LB", width: "narrow", mono: true },
       { key: "efficiency", label: "Efficiency" },
       { key: "cost", label: "Derived cost", width: "narrow" },
@@ -279,6 +342,13 @@ function clusterComponentSection(costs: CostIndex): SectionNode[] {
 
   const items = [
     ...line("Nodes", cluster.dailyNodeCost),
+    ...line(
+      "of which GPUs",
+      cluster.gpu.dailyCost,
+      cluster.gpu.physical > 0
+        ? ` (${formatGpus(cluster.gpu.physical)} on ${cluster.gpu.nodeCount} node${cluster.gpu.nodeCount === 1 ? "" : "s"})`
+        : "",
+    ),
     ...line("Control plane", cluster.dailyControlPlaneCost),
     ...line(
       "Persistent volumes",
@@ -414,6 +484,196 @@ function loadBalancerTable(costs: CostIndex): SectionNode[] {
   ];
 }
 
+/**
+ * The GPU tab: every GPU node with what it holds and how its price was split,
+ * then every GPU workload. Only rendered on a cluster with accelerators.
+ */
+function gpuSections(costs: CostIndex): SectionNode[] {
+  const { cluster } = costs;
+  if (cluster.gpu.nodeCount === 0) return [];
+  const currency = costs.currency;
+  const gpu = cluster.gpu;
+
+  const summary = [
+    {
+      key: "GPUs",
+      value: `${formatGpus(gpu.physical)} on ${gpu.nodeCount} node${gpu.nodeCount === 1 ? "" : "s"}, ${formatGpus(gpu.allocated)} requested`,
+    },
+    ...(gpu.dailyCost != null
+      ? [{ key: "GPU cost", value: moneyCell(gpu.dailyCost, currency) }]
+      : []),
+    ...(gpu.dailyIdleCost != null
+      ? [
+          {
+            key: "Unrequested GPUs",
+            value: `${moneyCell(gpu.dailyIdleCost, currency)} (${formatGpus(gpu.idle)}): allocatable GPUs no pod asked for`,
+          },
+        ]
+      : []),
+    ...(gpu.utilization != null
+      ? [
+          {
+            key: "GPU utilization",
+            value: `${Math.round(gpu.utilization * 100)}% busy (GPU-weighted)`,
+          },
+        ]
+      : []),
+    ...(gpu.wastedDailyCost != null
+      ? [
+          {
+            key: "Requested but idle",
+            value: `${moneyCell(gpu.wastedDailyCost, currency)}: GPU time workloads hold and do not use`,
+          },
+        ]
+      : []),
+    ...(costs.gpuMetrics
+      ? [{ key: "Utilization source", value: describeGpuMetricsSource(costs.gpuMetrics) }]
+      : []),
+  ];
+
+  const nodeRows: TableRow[] = cluster.nodes
+    .filter((n) => n.gpu)
+    .map((n) => ({
+      cells: {
+        node: n.name,
+        gpus: describeNodeGpus(n.gpu!.inventory),
+        requested: formatGpus(n.gpu!.allocated),
+        idle: formatGpus(n.gpu!.idle),
+        basis: describeGpuPriceBasis(n.gpu!.priceBasis),
+        cost: moneyCell(n.gpu!.hourlyPool == null ? null : n.gpu!.hourlyPool * 24, currency),
+        idleCost: moneyCell(
+          n.gpu!.hourlyIdleCost == null ? null : n.gpu!.hourlyIdleCost * 24,
+          currency,
+        ),
+      },
+    }));
+
+  const workloadRows: TableRow[] = cluster.workloads
+    .filter((w) => w.gpus > 0)
+    .sort((a, b) => (b.gpuDailyCost ?? -1) - (a.gpuDailyCost ?? -1) || a.key.localeCompare(b.key))
+    .map((w) => ({
+      cells: {
+        workload: `${w.namespace}/${w.workload}`,
+        kind: w.workloadKind,
+        gpus: formatGpus(w.gpus),
+        busy: w.gpuUtilization != null ? `${Math.round(w.gpuUtilization * 100)}%` : "unknown",
+        idle: moneyCell(w.gpuWastedDailyCost, currency),
+        cost: moneyCell(w.gpuDailyCost, currency),
+      },
+    }));
+
+  const sections: SectionNode[] = [
+    {
+      kind: "section",
+      title: "GPU summary",
+      children: [{ kind: "key-value-list", items: summary }],
+    },
+    {
+      kind: "section",
+      title: "GPU nodes",
+      children: [
+        {
+          kind: "table",
+          emphasizeFirstColumn: true,
+          columns: [
+            { key: "node", label: "Node", width: "wide" },
+            { key: "gpus", label: "GPUs", width: "wide" },
+            { key: "requested", label: "Requested", width: "narrow", mono: true },
+            { key: "idle", label: "Unrequested", width: "narrow", mono: true },
+            { key: "basis", label: "GPU share priced by" },
+            { key: "cost", label: "GPU cost", width: "narrow" },
+            { key: "idleCost", label: "Idle cost", width: "narrow" },
+          ],
+          rows: nodeRows,
+        },
+      ],
+    },
+  ];
+  if (workloadRows.length > 0) {
+    sections.push({
+      kind: "section",
+      title: "GPU workloads",
+      children: [
+        {
+          kind: "table",
+          emphasizeFirstColumn: true,
+          columns: [
+            { key: "workload", label: "Workload", width: "wide" },
+            { key: "kind", label: "Kind", width: "narrow" },
+            { key: "gpus", label: "GPUs", width: "narrow", mono: true },
+            { key: "busy", label: "Busy", width: "narrow" },
+            { key: "idle", label: "Requested idle", width: "narrow" },
+            { key: "cost", label: "GPU cost", width: "narrow" },
+          ],
+          rows: workloadRows,
+        },
+      ],
+    });
+  }
+  sections.push({
+    kind: "section",
+    title: "How GPU cost is worked out",
+    children: [
+      {
+        kind: "text",
+        variant: "muted",
+        content: [
+          "• A GPU node's price is split into a GPU share and a CPU/memory share before anyone is charged. The GPU share is charged by GPU requests; a CPU-only pod on a GPU node pays only for CPU and memory.",
+          "• A MIG slice pays its fraction of the card (compute slices out of 7), and a time-sliced or MPS replica pays 1/replicas.",
+          "• Unrequested GPUs are their own line, never spread across tenants. Requested-but-idle GPU time is the workload's waste, measured from DCGM or AMD exporter metrics.",
+          "• Derived from node prices, not billed amounts.",
+        ].join("\n"),
+      },
+    ],
+  });
+  return sections;
+}
+
+/** Right-sizing findings for whole-GPU workloads, for the Efficiency tab. */
+function gpuRightsizingSection(report: EfficiencyReport): SectionNode[] {
+  if (report.gpuRightsizing.length === 0) return [];
+  const rows: TableRow[] = report.gpuRightsizing.map((f) => ({
+    cells: {
+      workload: `${f.namespace}/${f.workload}`,
+      model: f.model,
+      p95: `${Math.round(f.p95Utilization * 100)}%`,
+      memory: `${(f.peakMemoryMiB / 1024).toFixed(1)} GiB`,
+      suggestion:
+        f.suggestion === "mig" && f.profile
+          ? `MIG ${f.profile.name}${f.gpusPerPod > 1 ? ` ×${f.gpusPerPod}` : ""}`
+          : "Share the GPU (time-slicing or MPS)",
+      saving: formatDaily(f.savingDailyCost, report.currency),
+    },
+  }));
+  return [
+    {
+      kind: "section",
+      title: "GPU right-sizing",
+      children: [
+        {
+          kind: "table",
+          emphasizeFirstColumn: true,
+          columns: [
+            { key: "workload", label: "Workload", width: "wide" },
+            { key: "model", label: "GPU", width: "narrow" },
+            { key: "p95", label: "p95 busy", width: "narrow" },
+            { key: "memory", label: "Peak memory", width: "narrow" },
+            { key: "suggestion", label: "Suggestion", width: "wide" },
+            { key: "saving", label: "Saving", width: "narrow" },
+          ],
+          rows,
+        },
+        {
+          kind: "text",
+          variant: "muted",
+          content:
+            "Whole GPUs whose p95 utilization and peak memory, over the metrics history, fit a smaller MIG profile with 25% headroom. Moving to MIG means repartitioning the node (the GPU operator's mig.config label) and changing the workload's request to the profile's resource. A workload is only listed when every one of its GPU pods fits and has a day of history.",
+        },
+      ],
+    },
+  ];
+}
+
 /** The resource type a workload kind lists as, for the per-row "Open" link. */
 function typeIdForWorkloadKind(kind: string): string | null {
   switch (kind) {
@@ -437,6 +697,7 @@ function efficiencyTable(
   currency: string,
   accountId: string | null,
   showKind: boolean,
+  showGpu = false,
 ): TableNode {
   const tableRows: TableRow[] = rows.map((row) => {
     const typeId = showKind ? typeIdForWorkloadKind(row.workloadKind) : null;
@@ -448,7 +709,8 @@ function efficiencyTable(
         used: formatPair(row.usage, row.unknown),
         cpu: formatEfficiencyCell(row, "cpu"),
         memory: formatEfficiencyCell(row, "memory"),
-        wasted: formatDaily(row.wastedDailyCost, currency),
+        ...(showGpu ? { gpu: formatGpuCell(row), gpuBusy: formatGpuUtilizationCell(row) } : {}),
+        wasted: formatDaily(totalWaste(row), currency),
         cost: formatDaily(row.dailyCost, currency),
         ...(typeId && accountId
           ? {
@@ -479,6 +741,12 @@ function efficiencyTable(
       { key: "used", label: "Used", mono: true },
       { key: "cpu", label: "CPU", width: "narrow" as const },
       { key: "memory", label: "Mem", width: "narrow" as const },
+      ...(showGpu
+        ? [
+            { key: "gpu", label: "GPU", width: "narrow" as const, mono: true },
+            { key: "gpuBusy", label: "GPU busy", width: "narrow" as const },
+          ]
+        : []),
       { key: "wasted", label: "Wasted", width: "narrow" as const },
       { key: "cost", label: "Cost", width: "narrow" as const },
       ...(showKind ? [{ key: "open", label: "", width: "narrow" as const }] : []),
@@ -541,6 +809,26 @@ function efficiencyTab(
           },
         ]
       : []),
+    ...(report.hasGpus
+      ? [
+          {
+            key: "GPU cost",
+            value: `${formatDaily(report.totals.gpuDailyCost, currency)} for ${formatGpus(report.totals.gpus)} requested${report.totals.gpuUtilization != null ? `, ${Math.round(report.totals.gpuUtilization * 100)}% busy` : ""}`,
+          },
+          {
+            key: "Requested GPU idle",
+            value: `${formatDaily(report.totals.gpuWastedDailyCost, currency)}: GPU time held and not used`,
+          },
+          ...(report.totals.dailyIdleGpuCost != null
+            ? [
+                {
+                  key: "Unrequested GPUs",
+                  value: `${formatDaily(report.totals.dailyIdleGpuCost, currency)} (${formatGpus(report.totals.idleGpus ?? 0)}): GPUs nobody asked for`,
+                },
+              ]
+            : []),
+        ]
+      : []),
   ];
 
   const caveats: string[] = [];
@@ -558,6 +846,16 @@ function efficiencyTab(
       "Some nodes have no hourly rate, so their workloads show a waste figure in CPU and memory but not in money.",
     );
   }
+  if (report.hasGpus) {
+    caveats.push(
+      costs.gpuMetrics
+        ? describeGpuMetricsSource(costs.gpuMetrics)
+        : "No pod in scope requests a GPU, so no GPU metrics were read.",
+    );
+    caveats.push(
+      "Wasted includes requested-but-idle GPU time wherever GPU utilization was measured. Time-sliced and MPS GPUs read “unknown”: no exporter can say which sharer is busy.",
+    );
+  }
   caveats.push(RIGHTSIZING_NOTE);
 
   const sections: SectionNode[] = [
@@ -569,13 +867,14 @@ function efficiencyTab(
     {
       kind: "section",
       title: "By namespace — worst first",
-      children: [efficiencyTable(report.namespaces, currency, null, false)],
+      children: [efficiencyTable(report.namespaces, currency, null, false, report.hasGpus)],
     },
     {
       kind: "section",
       title: "By workload — worst first",
-      children: [efficiencyTable(report.workloads, currency, accountId, true)],
+      children: [efficiencyTable(report.workloads, currency, accountId, true, report.hasGpus)],
     },
+    ...gpuRightsizingSection(report),
     {
       kind: "section",
       title: "How to read this",
@@ -620,12 +919,14 @@ export function renderClusterDetail(
   if (!costs) return { ...generic, metricsCapability: K8S_COST_METRICS };
   const storage = storageTable(costs);
   const loadBalancers = loadBalancerTable(costs);
+  const gpu = gpuSections(costs);
   return {
     ...generic,
     subtitle: "Kubernetes cluster",
     sections: [...clusterCostTable(costs), ...generic.sections],
     customTabs: [
       ...efficiencyTab(costs, resource.accountId, costs.generatedAt),
+      ...(gpu.length ? [{ id: "gpus", label: "GPUs", sections: gpu }] : []),
       // Only worth a tab when there is something in it: a cluster with no PVCs
       // and no LoadBalancer Services should not grow an empty tab.
       ...(storage.length || loadBalancers.length

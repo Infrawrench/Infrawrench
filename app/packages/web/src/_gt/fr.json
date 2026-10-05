@@ -14337,5 +14337,9 @@
   "4564b9c891efc893": "Demandez une modification, p. ex. répartir par région",
   "f062a44ecc235fd7": "Épingler à un tableau de bord",
   "31f42181d049b8f1": "Une carte est une vue de ce canevas. En retirer une laisse le canevas intact ; modifier le canevas change toutes les cartes à la fois.",
-  "ad475b46159ceafe": "canevas"
+  "ad475b46159ceafe": "canevas",
+  "924995cec49feef3": "Source des métriques GPU",
+  "44024c9a4eb4a978": "Prix horaire JSON par pool de nœuds (machine plus GPU attachés) et par GPU, transmis au pair Kubernetes pour qu’il puisse dériver le coût par namespace, par workload et par GPU. Vide lorsqu’aucun prix n’est disponible.",
+  "5b041bee093b7b32": "Facultatif. Ce que coûte ce cluster, afin de pouvoir dériver les coûts des workloads. Les clusters ouverts depuis leur compte cloud (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud, CoreWeave) reçoivent automatiquement le prix de leurs nœuds. Sinon, listez les types d'instances : s-2vcpu-4gb=0.0357, m5.large=0.096. Le même champ tarife le reste du cluster — controlPlane=0.10 pour le forfait fixe d'un cluster managé, loadBalancer=0.0149 par Service LoadBalancer, storage/*=0.10 par GiB-month provisionné (ou storage/gp3=0.08 pour une classe donnée). Sur les nœuds GPU, gpu/a100-80gb=3.93 (ou gpu/*=2.50) fixe le prix d'un GPU par heure, ce qui détermine la part du nœud facturée selon les demandes de GPU. Laissé vide, la capacité, la taille des volumes et l'efficacité restent affichées ; seul le montant est omis.",
+  "d13dc6c4ffe407c6": "Facultatif. D'où provient l'utilisation des GPU, pour le coût des GPU inactifs et le redimensionnement des GPU. Laissé vide, le Prometheus du cluster est détecté automatiquement (ou les pods de l'exporteur NVIDIA DCGM sont interrogés directement). Indiquez namespace/service:port pour désigner un Prometheus qui collecte l'exporteur DCGM ou AMD, ou none pour désactiver les métriques GPU."
 }

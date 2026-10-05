@@ -11,7 +11,11 @@
  *
  *  - **Node compute**: split into a CPU and a memory pool, charged to pods by
  *    `max(request, usage)` against node capacity. The remainder becomes the
- *    `idle` and `systemReserved` buckets.
+ *    `idle` and `systemReserved` buckets. On a node with accelerators, a GPU
+ *    pool is carved off first (see `gpu.ts` for how big it is) and charged by
+ *    GPU requests in GPU-equivalents, so a MIG slice pays its fraction of the
+ *    card and a time-sliced replica its share; GPUs nobody requested are a
+ *    `gpuIdle` bucket of their own.
  *  - **Persistent volumes**: a PVC is namespaced and is mounted by pods, so
  *    it is attributable: to the one workload that mounts it, or to its
  *    namespace when several do. A *bound* claim nothing mounts is real money
@@ -34,6 +38,17 @@
  */
 
 import type { ResourcePair } from "./quantity.js";
+import {
+  gpuEquivalents,
+  splitGpuNodeRate,
+  suggestMigProfile,
+  MIG_PROFILES,
+  type GpuPriceBasis,
+  type GpuSharing,
+  type MigProfile,
+  type NodeGpuInventory,
+} from "./gpu.js";
+import type { PodGpuUsage } from "./gpu-metrics.js";
 
 /**
  * Fraction of a node's price attributed to its CPU; the rest goes to memory.
@@ -99,6 +114,10 @@ export interface CostModelNode {
   hourlyRate?: number | undefined;
   /** Live usage from metrics.k8s.io, when metrics-server is installed. */
   usage?: ResourcePair | undefined;
+  /** Accelerators on the node, from `gpu.ts`. Absent on a CPU node. */
+  gpus?: NodeGpuInventory | null | undefined;
+  /** An explicit price per physical GPU-hour, overriding the reference split. */
+  perGpuHourlyRate?: number | undefined;
 }
 
 /** A pod, already parsed into base units. */
@@ -116,6 +135,12 @@ export interface CostModelPod {
   limits: ResourcePair;
   /** Live usage from metrics.k8s.io, when available. */
   usage?: ResourcePair | undefined;
+  /** Accelerator requests by resource name (`nvidia.com/gpu`, `nvidia.com/mig-1g.5gb`). */
+  acceleratorRequests?: Record<string, number> | undefined;
+  /** GPU utilization from DCGM / AMD exporter metrics, when available. */
+  gpuUsage?: PodGpuUsage | undefined;
+  /** Hours since the pod started. Right-sizing needs a day of history. */
+  ageHours?: number | undefined;
 }
 
 /** The workload a non-compute object was resolved to. */
@@ -226,6 +251,31 @@ export interface PodAllocation {
   /** {@link wasted}, priced through the same pools as {@link hourlyCost}. */
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
+  /** GPU-equivalents the pod is charged for (1.0 = one whole device). */
+  gpus: number;
+  /**
+   * The GPU part of {@link hourlyCost}. `hourlyCost` is CPU + memory + GPU;
+   * this is the GPU alone, so the CPU/memory part is the difference.
+   */
+  gpuHourlyCost: number | null;
+  gpuDailyCost: number | null;
+  /**
+   * Busy fraction of the GPUs it holds (0..1). `null` when nothing measured
+   * them, and always `null` on a time-sliced or MPS node, where no exporter
+   * can say which sharer is doing the work.
+   */
+  gpuUtilization: number | null;
+  /** Requested but idle: `gpuHourlyCost × (1 − gpuUtilization)`. */
+  gpuWastedHourlyCost: number | null;
+  gpuWastedDailyCost: number | null;
+  /** Utilization history, carried for right-sizing. */
+  gpuUsage: PodGpuUsage | null;
+  /** The node's GPU model and how it is shared, for labelling and right-sizing. */
+  gpuModel: string;
+  gpuSharing: GpuSharing | null;
+  /** Whole, unshared NVIDIA devices among its requests: the right-sizable kind. */
+  wholeGpus: number;
+  ageHours: number | null;
   /**
    * True when the pod names no node, or names a node that is not in the input
    * (drained, deleted, or listed between two API calls). Such a pod is still
@@ -244,9 +294,14 @@ export interface PodAllocation {
  * balancer is an ingress consolidation.
  */
 interface CostBreakdown {
-  /** Share of node price: the pods' allocation. */
+  /** Share of node price for CPU and memory: the pods' allocation. */
   computeHourlyCost: number | null;
   computeDailyCost: number | null;
+  /** Share of node price for GPUs, charged by GPU requests. */
+  gpuHourlyCost: number | null;
+  gpuDailyCost: number | null;
+  /** GPU-equivalents requested here. Shown even when unpriced. */
+  gpus: number;
   /** Attributed PersistentVolumeClaims. */
   storageHourlyCost: number | null;
   storageDailyCost: number | null;
@@ -279,6 +334,13 @@ export interface WorkloadAllocation extends CostBreakdown {
   wastedDailyCost: number | null;
   /** True when not one of its pods reported usage: "unknown", never "0%". */
   usageUnknown: boolean;
+  /** GPU-weighted busy fraction across the measured GPU pods, 0..1. */
+  gpuUtilization: number | null;
+  /** Requested-but-idle GPU cost. `null` when nothing measured the GPUs. */
+  gpuWastedHourlyCost: number | null;
+  gpuWastedDailyCost: number | null;
+  /** Holds GPUs, none of which were measured: "unknown", never "0%". */
+  gpuUsageUnknown: boolean;
 }
 
 export interface NamespaceAllocation extends CostBreakdown {
@@ -294,6 +356,13 @@ export interface NamespaceAllocation extends CostBreakdown {
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
   usageUnknown: boolean;
+  /** GPU-weighted busy fraction across the measured GPU pods, 0..1. */
+  gpuUtilization: number | null;
+  /** Requested-but-idle GPU cost. `null` when nothing measured the GPUs. */
+  gpuWastedHourlyCost: number | null;
+  gpuWastedDailyCost: number | null;
+  /** Holds GPUs, none of which were measured: "unknown", never "0%". */
+  gpuUsageUnknown: boolean;
 }
 
 /** One PersistentVolumeClaim, priced and attributed. */
@@ -392,11 +461,89 @@ interface NodeAllocation {
   /** capacity - allocatable: kubelet/system reserved. Never a tenant's fault. */
   systemReserved: ResourcePair;
   hourlyRate: number | null;
+  /** What the workloads hold: CPU/memory share plus GPU share. */
   hourlyAllocatedCost: number | null;
+  /** Unrequested CPU and memory. Unrequested GPUs are in {@link gpu}. */
   hourlyIdleCost: number | null;
   hourlySystemReservedCost: number | null;
   podCount: number;
   utilization: ResourcePair | null;
+  gpu: NodeGpuAllocation | null;
+}
+
+/** One node's accelerators, priced and split. */
+export interface NodeGpuAllocation {
+  inventory: NodeGpuInventory;
+  /** GPU-equivalents requested by its pods, clamped to the physical count. */
+  allocated: number;
+  /** Physical devices nobody requested, in GPU-equivalents. */
+  idle: number;
+  /** The GPU part of the node's rate. `null` when the node has no rate. */
+  hourlyPool: number | null;
+  hourlyAllocatedCost: number | null;
+  hourlyIdleCost: number | null;
+  priceBasis: GpuPriceBasis | null;
+}
+
+/** Cluster-wide GPU totals. All zero / null on a cluster with no accelerators. */
+export interface ClusterGpuTotals {
+  nodeCount: number;
+  physical: number;
+  allocatable: number;
+  allocated: number;
+  idle: number;
+  /** Sum of the GPU pools: what the cluster's GPUs cost. */
+  hourlyCost: number | null;
+  dailyCost: number | null;
+  hourlyAllocatedCost: number | null;
+  dailyAllocatedCost: number | null;
+  /** Allocatable GPUs no pod requested. Its own bucket, like CPU idle. */
+  hourlyIdleCost: number | null;
+  dailyIdleCost: number | null;
+  /** Requested GPUs measured idle. A tenant's waste, not the cluster's. */
+  wastedHourlyCost: number | null;
+  wastedDailyCost: number | null;
+  /** GPU-weighted busy fraction across measured GPU pods. */
+  utilization: number | null;
+  /** GPU-equivalents that were requested but never measured. */
+  unmeasured: number;
+  /** How each GPU node's GPU share was priced. */
+  priceBases: GpuPriceBasis[];
+  /** GPU nodes with no hourly rate. */
+  unpricedNodes: string[];
+  /** Whole-GPU workloads that fit a smaller MIG profile or a shared GPU. */
+  rightsizing: GpuRightsizingFinding[];
+}
+
+/**
+ * A workload holding whole GPUs it measurably does not need.
+ *
+ * Only produced from a utilization *history* (a p95 over the window, from
+ * Prometheus): an instant sample is not a basis for telling anyone to shrink
+ * a GPU. And only for whole, unshared NVIDIA devices on a MIG-capable model,
+ * because that is where a smaller discrete choice exists to recommend.
+ */
+export interface GpuRightsizingFinding {
+  key: string;
+  namespace: string;
+  workload: string;
+  workloadKind: string;
+  model: string;
+  podCount: number;
+  /** Whole GPUs per pod today. */
+  gpusPerPod: number;
+  /** Busiest device's p95 busy fraction across the workload's pods. */
+  p95Utilization: number;
+  /** Highest framebuffer used on any one device, MiB. */
+  peakMemoryMiB: number;
+  /** The suggested profile, or `null` with `suggestion: "share"`. */
+  profile: MigProfile | null;
+  /** `mig`: move to the named profile. `share`: no MIG on this model; time-slice it. */
+  suggestion: "mig" | "share";
+  currentDailyCost: number | null;
+  /** What the same pods would cost on the suggested profile. */
+  projectedDailyCost: number | null;
+  savingDailyCost: number | null;
 }
 
 export interface ClusterAllocation {
@@ -450,6 +597,7 @@ export interface ClusterAllocation {
   efficiency: Efficiency;
   storage: StorageTotals;
   loadBalancers: LoadBalancerTotals;
+  gpu: ClusterGpuTotals;
   nodes: NodeAllocation[];
   pods: PodAllocation[];
   workloads: WorkloadAllocation[];
@@ -540,8 +688,36 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
     const pods = podsByNode.get(node.name) ?? [];
     const rate =
       typeof node.hourlyRate === "number" && node.hourlyRate >= 0 ? node.hourlyRate : null;
-    const cpuPool = rate == null ? null : rate * cpuCostShare;
-    const memPool = rate == null ? null : rate * memCostShare;
+    const gpus = node.gpus ?? null;
+
+    // The GPU pool comes off the top on an accelerator node, and only the
+    // remainder is split 65/35. Charging GPU nodes purely by CPU and memory
+    // would bill a CPU-only pod that lands on an 8-GPU machine as if it held a
+    // slice of the GPUs, and let the GPU workload ride for the price of its
+    // vCPUs.
+    const gpuSplit =
+      rate != null && gpus
+        ? splitGpuNodeRate(
+            rate,
+            gpus,
+            node.capacity.cpuCores,
+            node.capacity.memoryBytes / 1024 ** 3,
+            node.perGpuHourlyRate,
+          )
+        : null;
+    const gpuPool = gpuSplit?.gpuPool ?? null;
+    const cpuMemRate = rate == null ? null : rate - (gpuPool ?? 0);
+    const cpuPool = cpuMemRate == null ? null : cpuMemRate * cpuCostShare;
+    const memPool = cpuMemRate == null ? null : cpuMemRate * memCostShare;
+
+    // GPU requests in GPU-equivalents, clamped like CPU: a node never hands
+    // out more than its devices.
+    const gpuRequested = pods.map((pod) => gpuEquivalents(pod.acceleratorRequests, gpus));
+    const gpuTotal = gpuRequested.reduce((a, b) => a + b, 0);
+    const gpuPhysical = gpus?.physicalCount ?? 0;
+    const gpuScale = gpuPhysical > 0 && gpuTotal > gpuPhysical ? gpuPhysical / gpuTotal : 1;
+    const sharedGpu = gpus?.sharing === "time-slicing" || gpus?.sharing === "mps";
+    let gpuAllocated = 0;
 
     // Rule 2: charge the greater of request and usage, per dimension.
     const charged = pods.map((pod) => ({
@@ -565,7 +741,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         : 1;
 
     let allocated: ResourcePair = ZERO;
-    for (const entry of charged) {
+    for (const [index, entry] of charged.entries()) {
       const scaled: ResourcePair = {
         cpuCores: entry.charged.cpuCores * cpuScale,
         memoryBytes: entry.charged.memoryBytes * memScale,
@@ -575,8 +751,25 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       const cpuShare = node.capacity.cpuCores > 0 ? scaled.cpuCores / node.capacity.cpuCores : 0;
       const memoryShare =
         node.capacity.memoryBytes > 0 ? scaled.memoryBytes / node.capacity.memoryBytes : 0;
-      const hourlyCost =
+      const podGpus = (gpuRequested[index] ?? 0) * gpuScale;
+      gpuAllocated += podGpus;
+      const gpuHourlyCost =
+        gpuPool == null || gpuPhysical <= 0 ? null : (gpuPool * podGpus) / gpuPhysical;
+      const cpuMemHourly =
         cpuPool == null || memPool == null ? null : cpuPool * cpuShare + memPool * memoryShare;
+      const hourlyCost = cpuMemHourly == null ? null : cpuMemHourly + (gpuHourlyCost ?? 0);
+      // A shared device's activity cannot be pinned on any one sharer, so a
+      // number here would be the device's, not the pod's.
+      const gpuUsage = podGpus > 0 ? (entry.pod.gpuUsage ?? null) : null;
+      const gpuUtilization = sharedGpu ? null : (gpuUsage?.utilization ?? null);
+      const gpuWastedHourlyCost =
+        gpuHourlyCost == null || gpuUtilization == null
+          ? null
+          : gpuHourlyCost * Math.max(0, 1 - gpuUtilization);
+      const wholeGpus =
+        gpus && gpus.sharing !== "mig-single" && !sharedGpu
+          ? (entry.pod.acceleratorRequests?.["nvidia.com/gpu"] ?? 0)
+          : 0;
 
       // Waste: what the pod is charged for, minus what it actually uses. Only
       // computable with live usage: with no metrics-server this stays null,
@@ -622,6 +815,17 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         wasted,
         wastedHourlyCost,
         wastedDailyCost: scaleToDay(wastedHourlyCost),
+        gpus: podGpus,
+        gpuHourlyCost: podGpus > 0 ? gpuHourlyCost : null,
+        gpuDailyCost: podGpus > 0 ? scaleToDay(gpuHourlyCost) : null,
+        gpuUtilization,
+        gpuWastedHourlyCost: podGpus > 0 ? gpuWastedHourlyCost : null,
+        gpuWastedDailyCost: podGpus > 0 ? scaleToDay(gpuWastedHourlyCost) : null,
+        gpuUsage,
+        gpuModel: gpus?.model ?? "",
+        gpuSharing: gpus?.sharing ?? null,
+        wholeGpus,
+        ageHours: entry.pod.ageHours ?? null,
         unplaced: false,
       });
     }
@@ -650,6 +854,22 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       return cpu + mem;
     };
 
+    const gpuIdle = Math.max(0, gpuPhysical - gpuAllocated);
+    const gpuAllocation: NodeGpuAllocation | null = gpus
+      ? {
+          inventory: gpus,
+          allocated: gpuAllocated,
+          idle: gpuIdle,
+          hourlyPool: gpuPool,
+          hourlyAllocatedCost:
+            gpuPool == null || gpuPhysical <= 0 ? null : (gpuPool * gpuAllocated) / gpuPhysical,
+          hourlyIdleCost:
+            gpuPool == null || gpuPhysical <= 0 ? null : (gpuPool * gpuIdle) / gpuPhysical,
+          priceBasis: gpuSplit?.basis ?? null,
+        }
+      : null;
+    const cpuMemAllocated = poolCost(allocated);
+
     nodeAllocations.push({
       name: node.name,
       instanceType: node.instanceType ?? "",
@@ -661,11 +881,15 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       idle,
       systemReserved,
       hourlyRate: rate,
-      hourlyAllocatedCost: poolCost(allocated),
+      hourlyAllocatedCost:
+        cpuMemAllocated == null
+          ? null
+          : cpuMemAllocated + (gpuAllocation?.hourlyAllocatedCost ?? 0),
       hourlyIdleCost: poolCost(idle),
       hourlySystemReservedCost: poolCost(systemReserved),
       podCount: pods.length,
       utilization: node.usage ?? null,
+      gpu: gpuAllocation,
     });
   }
 
@@ -700,6 +924,17 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         : null,
       wastedHourlyCost: null,
       wastedDailyCost: null,
+      gpus: 0,
+      gpuHourlyCost: null,
+      gpuDailyCost: null,
+      gpuUtilization: null,
+      gpuWastedHourlyCost: null,
+      gpuWastedDailyCost: null,
+      gpuUsage: null,
+      gpuModel: "",
+      gpuSharing: null,
+      wholeGpus: 0,
+      ageHours: pod.ageHours ?? null,
       unplaced: true,
     });
   }
@@ -744,6 +979,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
   const wastedHourlyCost = sumCosts(podAllocations.map((p) => p.wastedHourlyCost));
 
   const unpricedNodes = nodeAllocations.filter((n) => n.hourlyRate == null).map((n) => n.name);
+  const gpu = totalGpus(nodeAllocations, podAllocations, workloads);
 
   return {
     currency,
@@ -771,11 +1007,140 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
     efficiency: efficiencyOf(clusterUsage, clusterRequests),
     storage,
     loadBalancers,
+    gpu,
     nodes: nodeAllocations,
     pods: podAllocations,
     workloads,
     namespaces,
   };
+}
+
+/** GPU-weighted mean of the measured utilizations, or null when none were. */
+function weightedUtilization(
+  entries: Array<{ gpus: number; gpuUtilization: number | null }>,
+): number | null {
+  let weight = 0;
+  let total = 0;
+  for (const entry of entries) {
+    if (entry.gpuUtilization == null || !(entry.gpus > 0)) continue;
+    weight += entry.gpus;
+    total += entry.gpuUtilization * entry.gpus;
+  }
+  return weight > 0 ? total / weight : null;
+}
+
+function totalGpus(
+  nodes: NodeAllocation[],
+  pods: PodAllocation[],
+  workloads: WorkloadAllocation[],
+): ClusterGpuTotals {
+  const gpuNodes = nodes.filter((n) => n.gpu != null);
+  const hourlyCost = sumCosts(gpuNodes.map((n) => n.gpu!.hourlyPool));
+  const hourlyAllocatedCost = sumCosts(gpuNodes.map((n) => n.gpu!.hourlyAllocatedCost));
+  const hourlyIdleCost = sumCosts(gpuNodes.map((n) => n.gpu!.hourlyIdleCost));
+  const gpuPods = pods.filter((p) => p.gpus > 0);
+  const wastedHourlyCost = sumCosts(gpuPods.map((p) => p.gpuWastedHourlyCost));
+  const bases = new Set<GpuPriceBasis>();
+  for (const n of gpuNodes) if (n.gpu!.priceBasis) bases.add(n.gpu!.priceBasis);
+  return {
+    nodeCount: gpuNodes.length,
+    physical: gpuNodes.reduce((a, n) => a + n.gpu!.inventory.physicalCount, 0),
+    allocatable: gpuNodes.reduce((a, n) => a + n.gpu!.inventory.allocatable, 0),
+    allocated: gpuNodes.reduce((a, n) => a + n.gpu!.allocated, 0),
+    idle: gpuNodes.reduce((a, n) => a + n.gpu!.idle, 0),
+    hourlyCost,
+    dailyCost: scaleToDay(hourlyCost),
+    hourlyAllocatedCost,
+    dailyAllocatedCost: scaleToDay(hourlyAllocatedCost),
+    hourlyIdleCost,
+    dailyIdleCost: scaleToDay(hourlyIdleCost),
+    wastedHourlyCost,
+    wastedDailyCost: scaleToDay(wastedHourlyCost),
+    utilization: weightedUtilization(gpuPods),
+    unmeasured: gpuPods.filter((p) => p.gpuUtilization == null).reduce((a, p) => a + p.gpus, 0),
+    priceBases: [...bases].sort(),
+    unpricedNodes: gpuNodes.filter((n) => n.hourlyRate == null).map((n) => n.name),
+    rightsizing: gpuRightsizing(pods, workloads),
+  };
+}
+
+/** p95 busy fraction under which a whole, non-MIG-capable GPU is worth sharing. */
+export const GPU_SHARE_THRESHOLD = 0.3;
+/** A pod younger than this has too little history to size against. */
+export const GPU_MIN_HISTORY_HOURS = 24;
+
+/**
+ * Right-sizing for whole GPUs. Every GPU pod of the workload must qualify
+ * (whole unshared devices, a history-backed p95, a day old), so one busy
+ * replica is enough to withhold the suggestion: it has to fit them all.
+ */
+function gpuRightsizing(
+  pods: PodAllocation[],
+  workloads: WorkloadAllocation[],
+): GpuRightsizingFinding[] {
+  const byWorkload = new Map<string, PodAllocation[]>();
+  for (const pod of pods) {
+    if (pod.gpus <= 0 || pod.unplaced) continue;
+    const key = workloadKey(pod.namespace, pod.workloadKind, pod.workload);
+    const list = byWorkload.get(key);
+    if (list) list.push(pod);
+    else byWorkload.set(key, [pod]);
+  }
+  const workloadsByKey = new Map(workloads.map((w) => [w.key, w]));
+
+  const findings: GpuRightsizingFinding[] = [];
+  for (const [key, list] of byWorkload) {
+    const qualifies = list.every(
+      (p) =>
+        p.wholeGpus >= 1 &&
+        p.gpus >= p.wholeGpus &&
+        p.gpuUsage?.p95Utilization != null &&
+        p.gpuUsage.peakMemoryMiB != null &&
+        (p.ageHours ?? 0) >= GPU_MIN_HISTORY_HOURS,
+    );
+    if (!qualifies) continue;
+    const first = list[0]!;
+    const model = first.gpuModel;
+    if (!model || list.some((p) => p.gpuModel !== model)) continue;
+    const p95 = Math.max(...list.map((p) => p.gpuUsage!.p95Utilization!));
+    const peak = Math.max(...list.map((p) => p.gpuUsage!.peakMemoryMiB!));
+    const gpusPerPod = Math.max(...list.map((p) => p.wholeGpus));
+    const current = sumCosts(list.map((p) => p.gpuDailyCost));
+    const workload = workloadsByKey.get(key);
+
+    let profile: MigProfile | null = null;
+    let suggestion: "mig" | "share" | null = null;
+    if (MIG_PROFILES[model]) {
+      profile = suggestMigProfile(model, p95, peak);
+      if (profile) suggestion = "mig";
+    } else if (p95 < GPU_SHARE_THRESHOLD) {
+      suggestion = "share";
+    }
+    if (!suggestion) continue;
+
+    const slices = model === "a30" ? 4 : 7;
+    const projected =
+      profile && current != null ? current * (profile.computeSlices / slices) : null;
+    findings.push({
+      key,
+      namespace: first.namespace,
+      workload: first.workload,
+      workloadKind: first.workloadKind,
+      model,
+      podCount: workload?.podCount ?? list.length,
+      gpusPerPod,
+      p95Utilization: p95,
+      peakMemoryMiB: peak,
+      profile,
+      suggestion,
+      currentDailyCost: current,
+      projectedDailyCost: projected,
+      savingDailyCost: projected != null && current != null ? current - projected : null,
+    });
+  }
+  return findings.sort(
+    (a, b) => (b.savingDailyCost ?? -1) - (a.savingDailyCost ?? -1) || a.key.localeCompare(b.key),
+  );
 }
 
 /**
@@ -944,6 +1309,9 @@ interface RollUp extends CostBreakdown {
   charged: ResourcePair;
   wasted: ResourcePair | null;
   computeHourly: Array<number | null>;
+  gpuHourly: Array<number | null>;
+  gpuWastedHourly: Array<number | null>;
+  gpuMeasured: Array<{ gpus: number; gpuUtilization: number | null }>;
   wastedHourly: Array<number | null>;
   storageHourly: Array<number | null>;
   loadBalancerHourly: Array<number | null>;
@@ -958,6 +1326,9 @@ function newRollUp(): RollUp {
     wasted: null,
     computeHourlyCost: null,
     computeDailyCost: null,
+    gpuHourlyCost: null,
+    gpuDailyCost: null,
+    gpus: 0,
     storageHourlyCost: null,
     storageDailyCost: null,
     loadBalancerHourlyCost: null,
@@ -965,6 +1336,9 @@ function newRollUp(): RollUp {
     storageGib: 0,
     loadBalancerCount: 0,
     computeHourly: [],
+    gpuHourly: [],
+    gpuWastedHourly: [],
+    gpuMeasured: [],
     wastedHourly: [],
     storageHourly: [],
     loadBalancerHourly: [],
@@ -979,8 +1353,18 @@ function addPod(entry: RollUp, pod: PodAllocation): void {
   // Same null-preserving rule as usage: a workload whose pods were never
   // measured has unknown waste, and `null + something` must stay meaningful.
   if (pod.wasted) entry.wasted = add(entry.wasted ?? ZERO, pod.wasted);
-  entry.computeHourly.push(pod.hourlyCost);
+  // The pod's CPU/memory share and its GPU share go to separate lists, so the
+  // roll-up can report them apart and the cost rows can partition them.
+  entry.computeHourly.push(
+    pod.hourlyCost == null ? null : pod.hourlyCost - (pod.gpuHourlyCost ?? 0),
+  );
   entry.wastedHourly.push(pod.wastedHourlyCost);
+  if (pod.gpus > 0) {
+    entry.gpus += pod.gpus;
+    entry.gpuHourly.push(pod.gpuHourlyCost);
+    entry.gpuWastedHourly.push(pod.gpuWastedHourlyCost);
+    entry.gpuMeasured.push({ gpus: pod.gpus, gpuUtilization: pod.gpuUtilization });
+  }
 }
 
 function addVolume(entry: RollUp, volume: VolumeAllocation): void {
@@ -1006,12 +1390,24 @@ function finishRollUp(entry: RollUp): CostBreakdown & {
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
   usageUnknown: boolean;
+  gpuUtilization: number | null;
+  gpuWastedHourlyCost: number | null;
+  gpuWastedDailyCost: number | null;
+  gpuUsageUnknown: boolean;
 } {
   const computeHourlyCost = sumCosts(entry.computeHourly);
+  const gpuHourlyCost = sumCosts(entry.gpuHourly);
+  const gpuWastedHourlyCost = sumCosts(entry.gpuWastedHourly);
+  const gpuUtilization = weightedUtilization(entry.gpuMeasured);
   const storageHourlyCost = sumCosts(entry.storageHourly);
   const loadBalancerHourlyCost = sumCosts(entry.loadBalancerHourly);
   const wastedHourlyCost = sumCosts(entry.wastedHourly);
-  const hourlyCost = sumCosts([computeHourlyCost, storageHourlyCost, loadBalancerHourlyCost]);
+  const hourlyCost = sumCosts([
+    computeHourlyCost,
+    gpuHourlyCost,
+    storageHourlyCost,
+    loadBalancerHourlyCost,
+  ]);
 
   return {
     podCount: entry.podCount,
@@ -1020,6 +1416,9 @@ function finishRollUp(entry: RollUp): CostBreakdown & {
     charged: entry.charged,
     computeHourlyCost,
     computeDailyCost: scaleToDay(computeHourlyCost),
+    gpuHourlyCost,
+    gpuDailyCost: scaleToDay(gpuHourlyCost),
+    gpus: entry.gpus,
     storageHourlyCost,
     storageDailyCost: scaleToDay(storageHourlyCost),
     loadBalancerHourlyCost,
@@ -1036,6 +1435,10 @@ function finishRollUp(entry: RollUp): CostBreakdown & {
     // no pods at all (a scaled-to-zero StatefulSet still holding disks) is not
     // "unknown efficiency": it has nothing to be efficient about.
     usageUnknown: entry.podCount > 0 && entry.usage == null,
+    gpuUtilization,
+    gpuWastedHourlyCost,
+    gpuWastedDailyCost: scaleToDay(gpuWastedHourlyCost),
+    gpuUsageUnknown: entry.gpus > 0 && gpuUtilization == null,
   };
 }
 

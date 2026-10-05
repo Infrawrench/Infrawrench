@@ -278,6 +278,8 @@ describe("listAKSClusters", () => {
             agentPoolProfiles: [
               { count: 3, vmSize: "Standard_D2s_v5", osDiskSizeGB: 128 },
               { count: 2 },
+              { count: 1, vmSize: "Standard_NC24ads_A100_v4" },
+              { count: 1, vmSize: "Standard_D2s_v5" },
             ],
             networkProfile: { networkPlugin: "azure" },
             fqdn: "k1.hcp.eastus.azmk8s.io",
@@ -286,8 +288,10 @@ describe("listAKSClusters", () => {
       ],
     }));
     const out = await listers.listAKSClusters(ctx, ACCT);
-    expect(out[0]!.fields["nodeCount"]).toBe(5);
-    expect(out[0]!.fields["nodePoolCount"]).toBe(2);
+    expect(out[0]!.fields["nodeCount"]).toBe(7);
+    expect(out[0]!.fields["nodePoolCount"]).toBe(4);
+    // Every pool's size, deduplicated, so a GPU user pool gets a node price too.
+    expect(out[0]!.fields["vmSizes"]).toBe("Standard_D2s_v5,Standard_NC24ads_A100_v4");
     expect(out[0]!.fields["tier"]).toBe("Standard");
     expect(out[0]!.resolvedOutputs["fqdn"]).toBe("k1.hcp.eastus.azmk8s.io");
   });

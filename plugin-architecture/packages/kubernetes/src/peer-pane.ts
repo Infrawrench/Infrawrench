@@ -21,6 +21,8 @@ import type { CostIndex } from "./cost-surface.js";
 import { describeUtilizationGap } from "./metrics-api.js";
 import { describeRateSource, NO_RATE_GUIDANCE } from "./node-rates.js";
 import { formatDailyCost } from "./cost-model.js";
+import { describeGpuMetricsSource } from "./gpu-metrics.js";
+import { formatGpus } from "./gpu.js";
 
 /**
  * Build the peer pane (the side panel showing related resources). We list
@@ -120,6 +122,28 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
     suggestions.push(
       `Idle, schedulable capacity accounts for ${formatDailyCost(idle, costs.currency)} — that is the cluster being larger than its workloads, not any one team's spend.`,
     );
+  }
+
+  // GPUs nobody requested are the most expensive kind of idle capacity there is.
+  const gpu = costs.cluster.gpu;
+  if (gpu.nodeCount > 0) {
+    if (gpu.idle > 0) {
+      const money = formatDailyCost(gpu.dailyIdleCost, costs.currency);
+      suggestions.push(
+        `${formatGpus(gpu.idle)} of ${formatGpus(gpu.physical)} ${gpu.idle === 1 ? "is" : "are"} requested by no pod${money ? ` (${money})` : ""}. Unrequested GPUs are their own line, not any team's spend.`,
+      );
+    }
+    if (gpu.rightsizing.length > 0) {
+      suggestions.push(
+        `${gpu.rightsizing.length} workload${gpu.rightsizing.length === 1 ? "" : "s"} holding whole GPUs would fit a smaller MIG profile or a shared GPU; see the cluster's Efficiency tab.`,
+      );
+    }
+    if (costs.gpuMetrics) suggestions.push(describeGpuMetricsSource(costs.gpuMetrics));
+    if (gpu.priceBases.includes("remainder")) {
+      suggestions.push(
+        "Some GPU models have no published per-GPU reference price, so their GPU share is the node price less CPU and memory at reference rates. Set `gpu/<model>=<hourly price>` in the account's rates to price them exactly.",
+      );
+    }
   }
 
   // Volumes nothing mounts are the storage twin of idle capacity, and the most

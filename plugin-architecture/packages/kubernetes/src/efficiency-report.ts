@@ -35,9 +35,11 @@
 import type {
   ClusterAllocation,
   Efficiency,
+  GpuRightsizingFinding,
   NamespaceAllocation,
   WorkloadAllocation,
 } from "./cost-model.js";
+import { formatGpus } from "./gpu.js";
 import { formatMoney } from "./cost-model.js";
 import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
 
@@ -69,12 +71,19 @@ import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
  * list, and this report gives the argument rather than the answer: the money,
  * the ratio, and the worst offenders in order. Deciding a new request value is
  * the operator's call, made against a workload they know the shape of.
+ *
+ * GPUs are the exception, and the exception proves the rule: every one of the
+ * four objections above lifts for them. A MIG profile *is* a catalog (a
+ * handful of discrete sizes per model), a GPU request is one integer rather
+ * than a continuous pair, and a Prometheus scraping the DCGM exporter has the
+ * history a p95 needs. So whole-GPU workloads get a named suggestion
+ * (`gpuRightsizing`), and only when that history exists.
  */
 export const RIGHTSIZING_NOTE =
-  "This report diagnoses; it does not prescribe a new request value. Live usage is an " +
-  "instantaneous sample, and a request derived from one sample would be a guess dressed up " +
-  "as a recommendation. Use the numbers here to pick the workloads worth looking at, then " +
-  "size them against a peak you trust.";
+  "This report diagnoses CPU and memory; it does not prescribe a new request value. Live " +
+  "usage is an instantaneous sample, and a request derived from one sample would be a guess " +
+  "dressed up as a recommendation. Use the numbers here to pick the workloads worth looking " +
+  "at, then size them against a peak you trust.";
 
 /** One row of the report: a namespace or a workload, they share a shape. */
 export interface EfficiencyRow {
@@ -98,6 +107,16 @@ export interface EfficiencyRow {
   wastedDailyCost: number | null;
   /** Nothing measured this row. Renders as "unknown", not as 0%. */
   unknown: boolean;
+  /** GPU-equivalents requested. 0 for a row with no GPUs. */
+  gpus: number;
+  /** The GPU part of {@link dailyCost}. */
+  gpuDailyCost: number | null;
+  /** GPU busy fraction, 0..1. `null` when unmeasured or not a GPU row. */
+  gpuUtilization: number | null;
+  /** Requested-but-idle GPU cost. */
+  gpuWastedDailyCost: number | null;
+  /** Holds GPUs nothing measured. */
+  gpuUnknown: boolean;
 }
 
 export interface EfficiencyReport {
@@ -122,9 +141,24 @@ export interface EfficiencyReport {
     dailyIdleCost: number | null;
     /** Bound-but-unmounted storage: a third kind again. */
     dailyUnattachedStorageCost: number | null;
+    /** GPU-equivalents requested in scope. */
+    gpus: number;
+    /** What the GPUs in scope cost: the GPU share of the attributed cost. */
+    gpuDailyCost: number | null;
+    /** GPU-weighted busy fraction in scope. */
+    gpuUtilization: number | null;
+    /** Requested GPUs measured idle: a fourth kind of waste. */
+    gpuWastedDailyCost: number | null;
+    /** Allocatable GPUs nobody requested. Cluster scope only, like idle CPU. */
+    dailyIdleGpuCost: number | null;
+    idleGpus: number | null;
   };
   namespaces: EfficiencyRow[];
   workloads: EfficiencyRow[];
+  /** Whole-GPU workloads that fit a smaller MIG profile or a shared GPU. */
+  gpuRightsizing: GpuRightsizingFinding[];
+  /** True when any GPU is in scope: decides whether GPU columns appear at all. */
+  hasGpus: boolean;
 }
 
 function rowFrom(
@@ -146,7 +180,18 @@ function rowFrom(
     dailyCost: source.dailyCost,
     wastedDailyCost: source.wastedDailyCost,
     unknown: source.usageUnknown,
+    gpus: source.gpus,
+    gpuDailyCost: source.gpuDailyCost,
+    gpuUtilization: source.gpuUtilization,
+    gpuWastedDailyCost: source.gpuWastedDailyCost,
+    gpuUnknown: source.gpuUsageUnknown,
   };
+}
+
+/** CPU/memory waste plus idle-requested GPU, or null when neither is priced. */
+export function totalWaste(row: EfficiencyRow): number | null {
+  if (row.wastedDailyCost == null && row.gpuWastedDailyCost == null) return null;
+  return (row.wastedDailyCost ?? 0) + (row.gpuWastedDailyCost ?? 0);
 }
 
 /**
@@ -164,12 +209,13 @@ function rowFrom(
  *     bottom is better than ranking them among figures they do not have.
  */
 function byWasteDescending(a: EfficiencyRow, b: EfficiencyRow): number {
-  const tier = (row: EfficiencyRow) => (row.unknown ? 2 : row.wastedDailyCost != null ? 0 : 1);
+  // A GPU row whose GPUs were measured is not "unknown" even if metrics-server
+  // is missing: its biggest waste figure is known.
+  const tier = (row: EfficiencyRow) => (totalWaste(row) != null ? 0 : row.unknown ? 2 : 1);
   const ta = tier(a);
   const tb = tier(b);
   if (ta !== tb) return ta - tb;
-  if (ta === 0)
-    return (b.wastedDailyCost ?? 0) - (a.wastedDailyCost ?? 0) || a.key.localeCompare(b.key);
+  if (ta === 0) return (totalWaste(b) ?? 0) - (totalWaste(a) ?? 0) || a.key.localeCompare(b.key);
   if (ta === 1)
     return (b.wasted?.cpuCores ?? 0) - (a.wasted?.cpuCores ?? 0) || a.key.localeCompare(b.key);
   return a.key.localeCompare(b.key);
@@ -229,6 +275,19 @@ export function buildEfficiencyReport(
 
   const dailyCost = sumOrNull(namespaces.map((r) => r.dailyCost));
   const wastedDailyCost = sumOrNull(namespaces.map((r) => r.wastedDailyCost));
+  const gpus = namespaces.reduce((acc, r) => acc + r.gpus, 0);
+  const gpuDailyCost = sumOrNull(namespaces.map((r) => r.gpuDailyCost));
+  const gpuWastedDailyCost = sumOrNull(namespaces.map((r) => r.gpuWastedDailyCost));
+  let gpuWeight = 0;
+  let gpuBusy = 0;
+  for (const r of namespaces) {
+    if (r.gpuUtilization == null || !(r.gpus > 0)) continue;
+    gpuWeight += r.gpus;
+    gpuBusy += r.gpuUtilization * r.gpus;
+  }
+  const gpuRightsizing = cluster.gpu.rightsizing.filter(
+    (f) => namespaceFilter == null || f.namespace === namespaceFilter,
+  );
 
   return {
     generatedAt,
@@ -252,9 +311,17 @@ export function buildEfficiencyReport(
       // figure under one namespace's heading.
       dailyIdleCost: scoped ? cluster.dailyIdleCost : null,
       dailyUnattachedStorageCost: scoped ? cluster.storage.dailyUnattachedCost : null,
+      gpus,
+      gpuDailyCost,
+      gpuUtilization: gpuWeight > 0 ? gpuBusy / gpuWeight : null,
+      gpuWastedDailyCost,
+      dailyIdleGpuCost: scoped && cluster.gpu.nodeCount > 0 ? cluster.gpu.dailyIdleCost : null,
+      idleGpus: scoped && cluster.gpu.nodeCount > 0 ? cluster.gpu.idle : null,
     },
     namespaces,
     workloads,
+    gpuRightsizing,
+    hasGpus: gpus > 0 || (scoped && cluster.gpu.nodeCount > 0),
   };
 }
 
@@ -287,6 +354,33 @@ export function formatPair(pair: ResourcePair | null, unknown: boolean): string 
   if (unknown) return "unknown";
   if (!pair) return "—";
   return `${formatCores(pair.cpuCores)} CPU · ${formatMemory(pair.memoryBytes)}`;
+}
+
+/** `40%`, `unknown`, or a dash for a row with no GPUs. */
+export function formatGpuUtilizationCell(row: EfficiencyRow): string {
+  if (!(row.gpus > 0)) return "—";
+  if (row.gpuUtilization == null) return "unknown";
+  return `${Math.round(row.gpuUtilization * 100)}%`;
+}
+
+/** `2 GPU`, or a dash. */
+export function formatGpuCell(row: EfficiencyRow): string {
+  return row.gpus > 0 ? formatGpus(row.gpus) : "—";
+}
+
+/** One line per right-sizing finding: what, why, and what it saves. */
+export function describeGpuFinding(finding: GpuRightsizingFinding, currency: string): string {
+  const p95 = `${Math.round(finding.p95Utilization * 100)}%`;
+  const mem = `${(finding.peakMemoryMiB / 1024).toFixed(1)} GiB`;
+  const gpus = `${finding.gpusPerPod} whole GPU${finding.gpusPerPod === 1 ? "" : "s"} per pod`;
+  if (finding.suggestion === "mig" && finding.profile) {
+    const saving =
+      finding.savingDailyCost != null
+        ? `, about ${formatDaily(finding.savingDailyCost, currency)} less`
+        : "";
+    return `${gpus}, p95 busy ${p95}, peak memory ${mem}: fits MIG ${finding.profile.name}${finding.gpusPerPod > 1 ? ` (×${finding.gpusPerPod})` : ""}${saving}`;
+  }
+  return `${gpus}, p95 busy ${p95}, peak memory ${mem}: no MIG on this model; a time-sliced or MPS share would serve it`;
 }
 
 /** `$4.20/day`, or an em dash when there is no money to show. */
@@ -323,20 +417,36 @@ export function formatEfficiencyReportText(report: EfficiencyReport, title: stri
   if (report.totals.dailyUnattachedStorageCost != null) {
     lines.push(`  Unattached storage   ${money(report.totals.dailyUnattachedStorageCost)}`);
   }
+  if (report.hasGpus) {
+    const util = report.totals.gpuUtilization;
+    lines.push(
+      `  GPUs requested       ${formatGpus(report.totals.gpus)}${util != null ? ` · ${Math.round(util * 100)}% busy` : ""}`,
+    );
+    lines.push(`  GPU cost             ${money(report.totals.gpuDailyCost)}`);
+    lines.push(`  Requested GPU idle   ${money(report.totals.gpuWastedDailyCost)}`);
+    if (report.totals.dailyIdleGpuCost != null) {
+      lines.push(
+        `  Unrequested GPUs     ${money(report.totals.dailyIdleGpuCost)} (${formatGpus(report.totals.idleGpus ?? 0)})`,
+      );
+    }
+  }
   lines.push("");
 
+  const gpu = report.hasGpus;
   const section = (heading: string, rows: EfficiencyRow[], showKind: boolean) => {
     if (rows.length === 0) return;
     lines.push(heading);
     lines.push(
-      `  ${pad("NAME", 34)}${showKind ? pad("KIND", 13) : ""}${pad("CPU", 9)}${pad("MEM", 9)}${pad("WASTED/DAY", 13)}COST/DAY`,
+      `  ${pad("NAME", 34)}${showKind ? pad("KIND", 13) : ""}${pad("CPU", 9)}${pad("MEM", 9)}` +
+        `${gpu ? `${pad("GPU", 10)}${pad("GPU BUSY", 10)}` : ""}${pad("WASTED/DAY", 13)}COST/DAY`,
     );
     for (const row of rows) {
       const name = showKind ? `${row.namespace}/${row.label}` : row.label;
       lines.push(
         `  ${pad(name, 34)}${showKind ? pad(row.workloadKind, 13) : ""}` +
           `${pad(formatEfficiencyCell(row, "cpu"), 9)}${pad(formatEfficiencyCell(row, "memory"), 9)}` +
-          `${pad(money(row.wastedDailyCost), 13)}${money(row.dailyCost)}`,
+          `${gpu ? `${pad(formatGpuCell(row), 10)}${pad(formatGpuUtilizationCell(row), 10)}` : ""}` +
+          `${pad(money(totalWaste(row)), 13)}${money(row.dailyCost)}`,
       );
     }
     lines.push("");
@@ -344,6 +454,15 @@ export function formatEfficiencyReportText(report: EfficiencyReport, title: stri
 
   section("BY NAMESPACE (worst first)", report.namespaces, false);
   section("BY WORKLOAD (worst first)", report.workloads, true);
+
+  if (report.gpuRightsizing.length > 0) {
+    lines.push("GPU RIGHT-SIZING (p95 over the history window)");
+    for (const finding of report.gpuRightsizing) {
+      lines.push(`  ${finding.namespace}/${finding.workload} (${finding.workloadKind})`);
+      lines.push(`    ${describeGpuFinding(finding, report.currency)}`);
+    }
+    lines.push("");
+  }
 
   lines.push("NOTES");
   lines.push("  Derived allocation, not a billed amount. The cluster's money is invoiced to the");
@@ -358,6 +477,9 @@ export function formatEfficiencyReportText(report: EfficiencyReport, title: stri
   }
   if (report.partiallyPriced) {
     lines.push("  Some nodes have no hourly rate, so their workloads show waste without money.");
+  }
+  if (gpu) {
+    lines.push("  Wasted includes requested-but-idle GPU time where GPU utilization was measured.");
   }
   lines.push(`  ${RIGHTSIZING_NOTE}`);
 

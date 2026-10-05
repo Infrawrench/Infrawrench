@@ -14116,5 +14116,9 @@
   "f062a44ecc235fd7": "固定到仪表板",
   "31f42181d049b8f1": "卡片是此画布的视图。移除卡片不会影响画布；编辑画布会同时更改所有卡片。",
   "ad475b46159ceafe": "画布",
-  "42f6971ba1ffba7e": "画布位于 Infrawrench Cloud 中。请登录并选择一个组织以查看。"
+  "42f6971ba1ffba7e": "画布位于 Infrawrench Cloud 中。请登录并选择一个组织以查看。",
+  "924995cec49feef3": "GPU 指标来源",
+  "44024c9a4eb4a978": "每个节点池（机器加挂载的 GPU）及每个 GPU 的每小时价格 JSON，传给 Kubernetes 对等插件，用于推算每个命名空间、每个工作负载和每个 GPU 的成本。无可用价格时为空。",
+  "5b041bee093b7b32": "可选。此集群的成本，用于推算工作负载成本。从云账户（DigitalOcean、GCP、AWS、Azure、Scaleway、OVHcloud、CoreWeave）打开的集群会自动获取节点价格。否则请列出实例类型：s-2vcpu-4gb=0.0357、m5.large=0.096。同一字段也可为集群其余部分定价 — controlPlane=0.10 表示托管集群的固定费用，loadBalancer=0.0149 表示每个 LoadBalancer Service 的费用，storage/*=0.10 表示每已配置 GiB-月的费用（或 storage/gp3=0.08 表示单一类别）。在 GPU 节点上，gpu/a100-80gb=3.93（或 gpu/*=2.50）设置每个 GPU 每小时的价格，它决定节点中有多少按 GPU 请求计费。留空时仍会显示容量、卷大小和效率，仅省略费用信息。",
+  "d13dc6c4ffe407c6": "可选。GPU 利用率的来源，用于计算闲置 GPU 成本和 GPU 规格调整。留空时会自动发现集群的 Prometheus（或直接采样 NVIDIA DCGM exporter 的 Pod）。设置为 namespace/service:port 可指定抓取 DCGM 或 AMD exporter 的 Prometheus，设置为 none 可关闭 GPU 指标。"
 }
