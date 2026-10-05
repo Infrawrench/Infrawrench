@@ -110,6 +110,14 @@ func specChecks() []specCheck {
 		{schema: "BillingRuleAdjustment", value: BillingRuleAdjustment{}},
 		{schema: "BillingRuleTier", value: BillingRuleTier{}},
 
+		// VirtualTag's `status` is an inline object rather than a named schema,
+		// so the deliberately undecoded `status.stats` never reaches this check.
+		{schema: "VirtualTag", value: VirtualTag{}},
+		{schema: "VirtualTagInput", value: VirtualTagInput{}},
+		{schema: "VirtualTagRule", value: VirtualTagRule{}},
+		{schema: "VirtualTagSource", value: VirtualTagSource{}},
+		{schema: "VirtualTagAllocation", value: VirtualTagAllocation{}},
+
 		{schema: "BusinessMetricInput", value: BusinessMetricInput{}},
 		{schema: "BusinessMetricScopeTerm", value: CostFilter{}},
 		{schema: "BusinessMetricCoverage", value: BusinessMetricCoverage{}},

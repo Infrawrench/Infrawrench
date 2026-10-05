@@ -468,6 +468,16 @@ function AllocationSection({
             if (rule.match.pluginId)
               parts.push(gt("provider {name}", { name: labelFor(providers, rule.match.pluginId) }));
             if (rule.match.service) parts.push(gt("service {name}", { name: rule.match.service }));
+            if (rule.match.virtualTagKey) {
+              parts.push(
+                rule.match.virtualTagValue !== undefined
+                  ? gt("virtual tag {key}={value}", {
+                      key: rule.match.virtualTagKey,
+                      value: rule.match.virtualTagValue,
+                    })
+                  : gt("virtual tag {key} is set", { key: rule.match.virtualTagKey }),
+              );
+            }
             const ruleIndex = rules.findIndex((r) => r.id === rule.id);
             return (
               <li key={rule.id} className="flex items-center gap-3 text-sm">
@@ -559,11 +569,49 @@ function NewRuleForm({
   const [accountId, setAccountId] = useState("");
   const [pluginId, setPluginId] = useState("");
   const [service, setService] = useState("");
+  const [virtualTagKey, setVirtualTagKey] = useState("");
+  const [virtualTagValue, setVirtualTagValue] = useState("");
+  const [virtualTags, setVirtualTags] = useState<CostDimensionOption[]>([]);
+  const [virtualTagValues, setVirtualTagValues] = useState<CostDimensionOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!centres.some((c) => c.id === costCentreId)) setCostCentreId(centres[0]?.id ?? "");
   }, [centres, costCentreId]);
+
+  // Virtual tags as pickers too: route a computed value (a merged `env`, a
+  // split shared cost) to a centre without anyone typing a key or a value.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ values: CostDimensionOption[] }>(
+        `/api/org/${orgId}/costs/dimensions?dimension=virtual-tag-keys`,
+      )
+      .then((res) => {
+        if (!cancelled) setVirtualTags(Array.isArray(res?.values) ? res.values : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId]);
+  useEffect(() => {
+    setVirtualTagValue("");
+    setVirtualTagValues([]);
+    if (!virtualTagKey) return;
+    let cancelled = false;
+    api
+      .get<{ values: CostDimensionOption[] }>(
+        `/api/org/${orgId}/costs/dimensions?dimension=virtual_tag&tagKey=${encodeURIComponent(virtualTagKey)}`,
+      )
+      .then((res) => {
+        if (!cancelled) setVirtualTagValues(res.values);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId, virtualTagKey]);
 
   async function submit() {
     if (!costCentreId) return;
@@ -578,8 +626,11 @@ function NewRuleForm({
           ...(accountId ? { accountId } : {}),
           ...(pluginId ? { pluginId } : {}),
           ...(service ? { service } : {}),
+          ...(virtualTagKey ? { virtualTagKey } : {}),
+          ...(virtualTagKey && virtualTagValue ? { virtualTagValue } : {}),
         },
       });
+      setVirtualTagKey("");
       setTagKey("");
       setTagValue("");
       setAccountId("");
@@ -660,6 +711,36 @@ function NewRuleForm({
           </option>
         ))}
       </select>
+      {virtualTags.length > 0 && (
+        <select
+          value={virtualTagKey}
+          onChange={(e) => setVirtualTagKey(e.target.value)}
+          aria-label={gt("Virtual tag")}
+          className={selectClass}
+        >
+          <option value="">{gt("Any virtual tag")}</option>
+          {virtualTags.map((t) => (
+            <option key={t.value} value={t.value}>
+              {gt("virtual tag: {name}", { name: t.label })}
+            </option>
+          ))}
+        </select>
+      )}
+      {virtualTagKey && (
+        <select
+          value={virtualTagValue}
+          onChange={(e) => setVirtualTagValue(e.target.value)}
+          aria-label={gt("Virtual tag value")}
+          className={selectClass}
+        >
+          <option value="">{gt("Any value (tag is set)")}</option>
+          {virtualTagValues.map((v) => (
+            <option key={v.value} value={v.value}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+      )}
       <span className="text-on-surface-muted text-sm">→</span>
       <select
         value={costCentreId}

@@ -26,6 +26,7 @@ import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
 import { runReportDeliveryPass } from "@infrawrench/server-core/report-delivery/pass";
+import { runVirtualTagPass } from "@infrawrench/server-core/cost/virtual-tag-pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -290,6 +291,14 @@ export class PollerLoop extends TickLoop {
     // schedule shows up on the report page instead of going quiet. Defensive
     // like the others.
     await this.tickReportDeliveries();
+
+    // Fifteenth pass: virtual tag processing. Claims tags whose
+    // `next_process_at` is due (saving a tag sets it to now) and evaluates
+    // each over the org's stored history: spend per rule, unmatched spend, top
+    // values, metric-split fallbacks. Queries never wait on this (virtual tags
+    // compile into every read), it is the status Settings shows. Defensive like
+    // the others.
+    await this.tickVirtualTags();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -577,6 +586,14 @@ export class PollerLoop extends TickLoop {
   }
 
   /** Send any scheduled cost-report deliveries that have come due. */
+  private async tickVirtualTags(): Promise<void> {
+    try {
+      await runVirtualTagPass();
+    } catch (e) {
+      console.error("[virtual-tags] processing tick failed:", e);
+    }
+  }
+
   private async tickReportDeliveries(): Promise<void> {
     try {
       await runReportDeliveryPass({ limit: 4 });

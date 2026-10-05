@@ -24,6 +24,8 @@ import type {
   CostExportQuery,
   EscalationPolicy,
   QuietHours,
+  VirtualTagRule,
+  VirtualTagStats,
 } from "@infrawrench/client-core";
 
 import { accounts, dashboards, organizations, users } from "./core-schema.js";
@@ -1154,6 +1156,55 @@ export const costBillingRules = pgTable(
      * the rules that exist now, because none of it was ever stored.
      */
     orgNameUnique: uniqueIndex("cost_billing_rules_org_name_unique").on(t.organizationId, t.name),
+  }),
+);
+
+/**
+ * Virtual tags: rule-based tags the organization computes over its own spend.
+ * See `client-core/src/virtual-tags.ts` for the model.
+ *
+ * The rules are one jsonb column rather than a child table because they are an
+ * ordered list edited as a unit (first match wins, so a rule only means
+ * something in its position) and the update is a full replace. Nothing in
+ * `cost_daily` is ever written from here: the rules compile into the cost
+ * readers' SQL at query time, the billing-rules stance.
+ *
+ * The processing columns follow the claimed-pass convention (`cost_exports`,
+ * `report_notifications`): `next_process_at` doubles as the lease, null means
+ * "not due". Saving the tag sets it to now so the poller re-evaluates the
+ * history (the backfill) and refreshes `stats`; a periodic refresh keeps
+ * metric splits current as new business metric values arrive.
+ */
+export const virtualTags = pgTable(
+  "virtual_tags",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Immutable after creation: saved filters, budgets and reports store it. */
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    defaultValue: text("default_value"),
+    rules: jsonb("rules").$type<VirtualTagRule[]>().notNull().default([]),
+    /** "pending" | "processing" | "ready" | "failed". */
+    processingState: text("processing_state").notNull().default("pending"),
+    nextProcessAt: timestamp("next_process_at").defaultNow(),
+    processedAt: timestamp("processed_at"),
+    processingError: text("processing_error"),
+    stats: jsonb("stats").$type<VirtualTagStats>(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("virtual_tags_org_idx").on(t.organizationId),
+    /** A key is how every filter addresses the tag, so it is unique per org. */
+    orgKeyUnique: uniqueIndex("virtual_tags_org_key_unique").on(t.organizationId, t.key),
+    dueIdx: index("virtual_tags_next_process_idx").on(t.nextProcessAt),
   }),
 );
 

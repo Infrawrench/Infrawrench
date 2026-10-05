@@ -168,6 +168,40 @@ describe("scope SQL shape", () => {
     expect(captured[0]).toMatch(/'acct-a'.*OR.*multiIf.*AND.*'eu-west-1'/s);
   });
 
+  it("a layer that reads a virtual tag matches nothing rather than widening", async () => {
+    // Neither the saved filter's virtual tag condition nor a cost centre rule
+    // matching on one can be evaluated in the plain WHERE the scope compiles to.
+    await ctx.runWithCostVisibility(
+      scoped([
+        {
+          accountIds: ["a"],
+          filters: [{ dimension: "virtual_tag", tagKey: "team", op: "in", values: ["payments"] }],
+        },
+      ]),
+      () => readers.getCostTagKeys(ORG),
+    );
+    await ctx.runWithCostVisibility(
+      scoped([
+        {
+          costCentreIds: ["c1"],
+          rules: [
+            {
+              costCentreId: "c1",
+              match: { virtualTagKey: "team", virtualTagValue: "payments" } as never,
+            },
+          ],
+        },
+      ]),
+      () => readers.getCostTagKeys(ORG),
+    );
+    // Two reads per call (billed rows and AI caller splits); every one is narrowed.
+    expect(captured.length).toBeGreaterThanOrEqual(2);
+    for (const q of captured) {
+      expect(q).toMatch(/and 0|AND 0|\(0\)| 0\)/i);
+      expect(q).not.toContain("payments");
+    }
+  });
+
   it("an empty scope and an unresolvable saved filter match nothing", async () => {
     await ctx.runWithCostVisibility(scoped([{}]), () => readers.getCostTagKeys(ORG));
     await ctx.runWithCostVisibility(scoped([{ accountIds: ["a"], unresolvable: true }]), () =>

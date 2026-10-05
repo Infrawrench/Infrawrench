@@ -39,6 +39,8 @@ Every scope that applies to someone must match a row for them to see it. A membe
 
 Owners are never scoped: the Owner role always sees all costs, so nobody can lock the organization out of its own spend.
 
+A scope cannot be defined through a [virtual tag](../features/virtual-tags.md) yet. If a scope's saved filter, or the allocation rules of one of its cost centres, reads a virtual tag, that scope matches nothing, so the person sees no costs rather than all of them. Define such scopes by account, cost centre rules on provider tags, or a saved filter on provider tags.
+
 ### Where scopes apply
 
 Everywhere costs are read, because the scope is applied where the server builds every cost query rather than page by page:

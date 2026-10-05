@@ -36,6 +36,7 @@ import { registerCurrencyPaths } from "./paths/currency";
 import { registerCostCentrePaths } from "./paths/cost-centres";
 import { registerCustomCostSourcePaths } from "./paths/custom-cost-sources";
 import { registerBillingRulePaths } from "./paths/billing-rules";
+import { registerVirtualTagPaths } from "./paths/virtual-tags";
 import { registerInvoicePaths } from "./paths/invoices";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerOrgConfigPaths } from "./paths/org-config";
@@ -181,6 +182,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostCentrePaths(ctx);
   registerCustomCostSourcePaths(ctx);
   registerBillingRulePaths(ctx);
+  registerVirtualTagPaths(ctx);
   registerInvoicePaths(ctx);
   registerCustomGraphPaths(ctx);
   registerOrgConfigPaths(ctx);

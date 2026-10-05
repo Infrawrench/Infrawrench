@@ -11,6 +11,7 @@ import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
 import { unitCostTools } from "./unit-costs";
+import { virtualTagTools } from "./virtual-tags";
 import { costReportTools } from "./cost-reports";
 import { costCanvasTools } from "./cost-canvases";
 import { costAlertTools } from "./cost-alerts";
@@ -39,6 +40,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...connectionTools(),
     ...costTools(),
     ...unitCostTools(),
+    ...virtualTagTools(),
     ...costReportTools(),
     ...costCanvasTools(),
     ...costAlertTools(),

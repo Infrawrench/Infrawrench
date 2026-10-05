@@ -45,6 +45,19 @@ const AllocationRuleMatch = strict({
   accountId: z.string().min(1).optional(),
   pluginId: z.string().min(1).optional(),
   service: z.string().min(1).optional(),
+  virtualTagKey: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .openapi({
+      description:
+        "One of the organization's virtual tags, by key. Alone it matches rows where the tag is " +
+        "set; a split virtual tag routes each share separately.",
+    }),
+  virtualTagValue: z.string().max(256).optional().openapi({
+    description: "Only meaningful with virtualTagKey.",
+  }),
 }).openapi("AllocationRuleMatch", {
   description:
     "All set fields must match (AND). A rule with no fields is a catch-all that claims " +

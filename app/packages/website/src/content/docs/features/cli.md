@@ -100,6 +100,7 @@ infrawrench costs --group-by tag:team    # one tag's values, e.g. a Kubernetes n
 infrawrench costs --last 12m --bin quarter --cumulative          # running quarterly totals
 infrawrench costs --measure count --group-by service              # how many services were billed each day
 infrawrench costs --measure usage --unit Hrs --group-by service   # summed usage quantity in one unit
+infrawrench costs --group-by virtual_tag:team      # a virtual tag key; virtual_tag['team'] works too
 ```
 
 `--measure` picks what is summed: `cost` (the default, money), `usage` (the usage quantity providers report, in the one unit `--unit` names; without `--unit` the command lists the units your cost data has) or `count` (how many distinct `--group-by` values had nonzero cost per bin; the headline total counts each value once over the whole range). `--bin day|week|month|quarter` sets the bin, and `--bin hour` is refused with the reason while every provider reports daily rows. `--cumulative` draws running totals. `--json` echoes `measure`, `usageUnit`, `binning` and `cumulative` beside the response, whose `measure` field says when the amounts are not money. See [display options](./cloud-costs.md#display-options).
@@ -327,6 +328,17 @@ infrawrench billing-rules preview "Volume tiers" --customer northwind --month 20
 ```
 
 Read-only: writing a markup changes every figure the organization reports about itself, and rides `org:settings:write` with an audit entry behind it. `preview` is a dry run of one saved rule against a month of real spend (last month by default), with the totals without and with it and the lines it moved; `--customer` prices one managed account's invoice scope. See [Billing rules](./billing-rules.md).
+
+Virtual tags (keys your organization computes from ordered rules, like one `team` or `env` across every provider) can be listed, inspected and reprocessed:
+
+```
+infrawrench virtual-tags                   # every tag: key, rule count, status, unmatched share
+infrawrench virtual-tags show team         # rules in order, the spend each claims, top values
+infrawrench virtual-tags reprocess team    # re-run the evaluation over stored history now
+infrawrench virtual-tags show team --json
+```
+
+A tag is addressed by its key, its id, or its name. The unmatched share is the part of the evaluated spend no rule matched: it took the tag's default value, or is "not set". Use the key anywhere a cost filter or grouping is accepted: `--where "virtual_tag['team'] = 'platform'"` and `--group-by virtual_tag:team`. Editing rules stays in Settings, where the editor previews what a change would do before it re-answers every past report. See [Virtual tags](./virtual-tags.md).
 
 And, if you bill customers for the infrastructure you run for them, the documents themselves:
 

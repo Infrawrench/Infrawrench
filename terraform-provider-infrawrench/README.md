@@ -671,6 +671,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_cost_annotation`           | by id     | An end equal to the start is stored as null          |
 | `infrawrench_scenario_model`            | by id     | Adjustment `key` is caller-assigned                  |
 | `infrawrench_billing_rule`              | by id     | Query-time restatement; `amount` is a major unit     |
+| `infrawrench_virtual_tag`               | by id     | Ordered rules, first match wins; `key` is immutable  |
 | `infrawrench_cost_export`               | by id     | Credentials are write-only and never imported        |
 | `infrawrench_business_metric`           | by id     | Definition only; values are a pushed time series     |
 | `infrawrench_business_metric_importer`  | by metric | Scheduled pull; destroy stops it, values stay        |

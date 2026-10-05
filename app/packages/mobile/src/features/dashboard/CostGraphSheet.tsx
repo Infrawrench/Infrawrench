@@ -94,8 +94,14 @@ export function CostGraphSheet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Only loaded when grouping by tag; the hook stands down otherwise.
+  // Only loaded when grouping by a keyed dimension; the hook stands down
+  // otherwise. Provider tags and virtual tags list their keys separately.
   const tagKeys = useDimensionValues("tag-keys", undefined, config.groupBy === "tag");
+  const virtualTagKeys = useDimensionValues(
+    "virtual-tag-keys",
+    undefined,
+    config.groupBy === "virtual_tag",
+  );
 
   const set = (patch: Partial<CostGraphConfig>) =>
     setConfig((prev) => ({ ...prev, ...patch }) as CostGraphConfig);
@@ -129,6 +135,10 @@ export function CostGraphSheet({
     };
     if (cleaned.groupBy === "tag" && !cleaned.groupByTagKey) {
       setError("Choose a tag key to group by");
+      return;
+    }
+    if (cleaned.groupBy === "virtual_tag" && !cleaned.groupByTagKey) {
+      setError("Choose a virtual tag to group by");
       return;
     }
     // The shared rule set the API enforces, checked here so the sheet can say
@@ -239,7 +249,9 @@ export function CostGraphSheet({
         options={GROUP_BY_OPTIONS}
         value={config.groupBy}
         onChange={(groupBy) =>
-          set({ groupBy, ...(groupBy === "tag" ? {} : { groupByTagKey: undefined }) })
+          // The key belongs to the dimension it was picked for: a provider tag
+          // key is not a virtual tag key, so any change of grouping drops it.
+          set({ groupBy, groupByTagKey: undefined })
         }
       />
       <CostBasisChips value={config.costBasis} onChange={(costBasis) => set({ costBasis })} />
@@ -248,6 +260,19 @@ export function CostGraphSheet({
           label="Tag key"
           {...(tagKeys.isLoading ? { hint: "Loading tag keys…" } : {})}
           options={(tagKeys.data ?? []).map((k) => ({ value: k.value, label: k.label }))}
+          value={config.groupByTagKey ?? null}
+          onChange={(groupByTagKey) => set({ groupByTagKey })}
+        />
+      ) : null}
+      {config.groupBy === "virtual_tag" ? (
+        <ChipSelect
+          label="Virtual tag"
+          {...(virtualTagKeys.isLoading
+            ? { hint: "Loading virtual tags…" }
+            : (virtualTagKeys.data ?? []).length === 0
+              ? { hint: "No virtual tags yet. Define one in Settings on web or desktop." }
+              : {})}
+          options={(virtualTagKeys.data ?? []).map((k) => ({ value: k.value, label: k.label }))}
           value={config.groupByTagKey ?? null}
           onChange={(groupByTagKey) => set({ groupByTagKey })}
         />

@@ -15,6 +15,7 @@ import { FreezesSection } from "./FreezesSection.js";
 import { TagPolicySection } from "./TagPolicySection.js";
 import { BillingRulesSection } from "./BillingRulesSection.js";
 import { CostCentresSection } from "./CostCentresSection.js";
+import { VirtualTagsSection } from "./VirtualTagsSection.js";
 import { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 import { CurrencySection } from "./CurrencySection.js";
 import { CostExportsSection } from "./CostExportsSection.js";
@@ -67,6 +68,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <TagPolicySection />;
     case "cost-centres":
       return <CostCentresSection />;
+    case "virtual-tags":
+      return <VirtualTagsSection />;
     case "billing-rules":
       return <BillingRulesSection />;
     case "config":

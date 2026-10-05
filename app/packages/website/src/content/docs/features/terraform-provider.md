@@ -411,6 +411,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                          |
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by            |
 | `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend       |
+| `infrawrench_virtual_tag`               | [Virtual tags](./virtual-tags.md) and their ordered rules                              |
 
 ### Monitoring
 

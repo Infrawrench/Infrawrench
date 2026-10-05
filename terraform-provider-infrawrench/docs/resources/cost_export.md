@@ -88,7 +88,7 @@ Read-Only:
 
 Required:
 
-- `dimensions` (List of String) Columns to group the exported rows by, in order, at most 8. Each is one of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`. More dimensions means more rows: this is the knob that decides whether the export is a summary or a ledger.
+- `dimensions` (List of String) Columns to group the exported rows by, in order, at most 8. Each is one of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`. More dimensions means more rows: this is the knob that decides whether the export is a summary or a ledger.
 
 Optional:
 
@@ -96,19 +96,20 @@ Optional:
 - `cost_basis` (String) `cash` to export invoiced spend, `amortized` to spread commitment fees across the term they cover.
 - `filter` (Block List) Restricts the export to matching spend. Clauses are ANDed. At most 25. (see [below for nested schema](#nestedblock--query--filter))
 - `tag_keys` (List of String) Tag keys to emit as their own columns, at most 25. Only meaningful for keys your resources actually carry; see `infrawrench_tag_policy` for enforcing that.
+- `virtual_tag_keys` (List of String) Virtual tag keys to emit as their own `vtag_<key>` columns, at most 25, each 1-64 characters (see `infrawrench_virtual_tag`). A row a split rule divides is exported once per share with weighted amounts, so the file still sums to the total.
 
 <a id="nestedblock--query--filter"></a>
 ### Nested Schema for `query.filter`
 
 Required:
 
-- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`.
+- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
 - `op` (String) `in` to keep matching rows, `not_in` to exclude them.
 - `values` (List of String) Values to match. Must not be empty.
 
 Optional:
 
-- `tag_key` (String) Tag key, required when `dimension` is `tag` and rejected otherwise.
+- `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
 
 ## Import
 

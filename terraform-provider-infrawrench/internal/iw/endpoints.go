@@ -386,6 +386,36 @@ func (c *Client) DeleteBillingRule(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/billing-rules/"+seg(id))
 }
 
+/* ------------------------------- virtual tags ------------------------------ */
+
+func (c *Client) GetVirtualTag(ctx context.Context, id string) (*VirtualTag, error) {
+	var out VirtualTag
+	if err := c.Get(ctx, "/virtual-tags/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateVirtualTag(ctx context.Context, in VirtualTagInput) (*VirtualTag, error) {
+	var out VirtualTag
+	if err := c.Post(ctx, "/virtual-tags", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateVirtualTag(ctx context.Context, id string, in VirtualTagInput) (*VirtualTag, error) {
+	var out VirtualTag
+	if err := c.Put(ctx, "/virtual-tags/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteVirtualTag(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/virtual-tags/"+seg(id))
+}
+
 /* ------------------------------- cost exports ------------------------------ */
 
 func (c *Client) GetCostExport(ctx context.Context, id string) (*CostExport, error) {

@@ -26,7 +26,7 @@ import {
   type CostCentre,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { costAllocationRules, costCentres } from "../db/schema";
+import { costAllocationRules, costCentres, virtualTags } from "../db/schema";
 
 export type { AllocationRule, AllocationRuleInput, AllocationRuleMatch, CostCentre };
 export { ALLOCATION_RULE_LIMITS, COST_CENTRE_LIMITS };
@@ -72,6 +72,10 @@ export function normalizeMatch(match: AllocationRuleMatch): AllocationRuleMatch 
   if (match.accountId?.trim()) out.accountId = match.accountId.trim();
   if (match.pluginId?.trim()) out.pluginId = match.pluginId.trim();
   if (match.service?.trim()) out.service = match.service.trim();
+  if (match.virtualTagKey?.trim()) out.virtualTagKey = match.virtualTagKey.trim();
+  if (out.virtualTagKey && match.virtualTagValue?.trim()) {
+    out.virtualTagValue = match.virtualTagValue.trim();
+  }
   return out;
 }
 
@@ -212,10 +216,39 @@ export async function listAllocationRules(organizationId: string): Promise<Alloc
   return orderAllocationRules(rows.map(ruleToWire), centres);
 }
 
+/** An allocation-rule write the API should refuse with a 400 and this message. */
+export class AllocationRuleError extends Error {
+  override readonly name = "AllocationRuleError";
+}
+
+/**
+ * A rule matching on a virtual tag must name one that exists: a dangling key
+ * would make the whole showback report (and every invoice drawn from it) fail
+ * at read time instead of failing this one write.
+ */
+async function assertVirtualTagExists(
+  organizationId: string,
+  match: AllocationRuleMatch,
+): Promise<void> {
+  const key = match.virtualTagKey?.trim();
+  if (!key) return;
+  const [row] = await db
+    .select({ id: virtualTags.id })
+    .from(virtualTags)
+    .where(and(eq(virtualTags.organizationId, organizationId), eq(virtualTags.key, key)))
+    .limit(1);
+  if (!row) {
+    throw new AllocationRuleError(
+      `There is no virtual tag with the key "${key}". Create it under Settings → Virtual Tags first.`,
+    );
+  }
+}
+
 export async function createAllocationRule(
   organizationId: string,
   input: AllocationRuleInput,
 ): Promise<AllocationRule | null> {
+  await assertVirtualTagExists(organizationId, input.match);
   // The centre must belong to the same org: a cross-org centre id would
   // silently allocate someone else's spend labels.
   const [centre] = await db
@@ -253,6 +286,7 @@ export async function updateAllocationRule(
   id: string,
   input: AllocationRuleInput,
 ): Promise<AllocationRule | null> {
+  await assertVirtualTagExists(organizationId, input.match);
   const [centre] = await db
     .select({ id: costCentres.id })
     .from(costCentres)

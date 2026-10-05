@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   COST_DIMENSION_LABELS,
   COST_DIMENSIONS,
+  isKeyedCostDimension,
   type CostDimensionId,
   type CostDimensionOption,
   type CostFilter,
@@ -38,13 +39,15 @@ function mergeSelected(options: CostDimensionOption[], values: string[]): CostDi
 }
 
 /**
- * Values for one dimension, or tag values under one tag key. `dimension` also
- * accepts "tag-keys" to list the keys themselves, as the API does.
+ * Values for one dimension, or tag values under one tag key (provider or
+ * virtual). `dimension` also accepts "tag-keys" and "virtual-tag-keys" to list
+ * the keys themselves, as the API does.
  */
 export function useDimensionValues(dimension: string, tagKey?: string | undefined, enabled = true) {
   const { api, orgId } = useOrgApi();
-  // A tag filter has nothing to list until its key is typed.
-  const ready = enabled && dimension !== "" && (dimension !== "tag" || Boolean(tagKey));
+  // A keyed filter (tag, virtual tag) has nothing to list until its key is set.
+  const ready =
+    enabled && dimension !== "" && (!isKeyedCostDimension(dimension) || Boolean(tagKey));
   return useQuery({
     queryKey: ["cost-dimensions", orgId, dimension, tagKey ?? null],
     enabled: ready,
@@ -89,10 +92,11 @@ export function CostFilterEditor({
                 onPress={() =>
                   update(i, {
                     dimension: o.value as CostDimensionId,
-                    // A dimension change invalidates the chosen values, and
-                    // only a tag filter carries a key.
+                    // A dimension change invalidates the chosen values and
+                    // the key: a provider tag key means nothing to a virtual
+                    // tag, and the other dimensions carry none.
                     values: [],
-                    ...(o.value === "tag" ? {} : { tagKey: undefined }),
+                    tagKey: undefined,
                   })
                 }
               />
@@ -104,6 +108,12 @@ export function CostFilterEditor({
               placeholder="tag key"
               value={filter.tagKey ?? ""}
               onChangeText={(tagKey) => update(i, { tagKey })}
+            />
+          ) : null}
+          {filter.dimension === "virtual_tag" ? (
+            <VirtualTagKeyChips
+              value={filter.tagKey}
+              onChange={(tagKey) => update(i, { tagKey, values: [] })}
             />
           ) : null}
           <ChipRow>
@@ -147,6 +157,9 @@ function FilterValues({
   if (filter.dimension === "tag" && !filter.tagKey) {
     return <FormHint>Enter a tag key to list its values.</FormHint>;
   }
+  if (filter.dimension === "virtual_tag" && !filter.tagKey) {
+    return <FormHint>Choose a virtual tag to list its values.</FormHint>;
+  }
   if (values.isLoading) return <FormHint>Loading values…</FormHint>;
   if (values.isError) return <FormHint>Couldn&apos;t load values.</FormHint>;
 
@@ -157,5 +170,38 @@ function FilterValues({
       onChange={onChange}
       emptyMessage="No values in cost data yet"
     />
+  );
+}
+
+/**
+ * The org's virtual tag keys as chips: a virtual tag is something the org
+ * defined, so its key is picked from the list rather than typed. A saved key
+ * the list no longer returns keeps its chip so it stays visible.
+ */
+function VirtualTagKeyChips({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (key: string) => void;
+}) {
+  const keys = useDimensionValues("virtual-tag-keys");
+  if (keys.isLoading) return <FormHint>Loading virtual tags…</FormHint>;
+  if (keys.isError) return <FormHint>Couldn&apos;t load virtual tags.</FormHint>;
+  const options = mergeSelected(keys.data ?? [], value ? [value] : []);
+  if (options.length === 0) {
+    return <FormHint>No virtual tags yet. Define one in Settings on web or desktop.</FormHint>;
+  }
+  return (
+    <ChipRow>
+      {options.map((o) => (
+        <Chip
+          key={o.value}
+          label={o.label}
+          selected={o.value === value}
+          onPress={() => onChange(o.value)}
+        />
+      ))}
+    </ChipRow>
   );
 }

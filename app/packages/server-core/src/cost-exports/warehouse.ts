@@ -294,6 +294,7 @@ export function warehouseColumns(columns: CostExportColumns): WarehouseColumn[] 
     "day",
     ...columns.dimensions,
     ...columns.tagColumns,
+    ...(columns.virtualTagColumns ?? []),
     ...COST_EXPORT_BASE_COLUMNS,
     ...COST_EXPORT_PROVENANCE_COLUMNS,
   ].map((name) => ({ name, type: warehouseColumnType(name) }));

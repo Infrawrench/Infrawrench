@@ -41,6 +41,8 @@ Optional:
 - `service` (String) Match one provider service name, as it appears in the cost data.
 - `tag_key` (String) Match rows carrying this tag key. On its own it matches any value; pair it with `tag_value` to pin the value.
 - `tag_value` (String) Value the `tag_key` tag must hold. Requires `tag_key`.
+- `virtual_tag_key` (String) Match rows where one of the organization's virtual tags is set, by its key (1-64 characters; see `infrawrench_virtual_tag`). Pair it with `virtual_tag_value` to pin the value. A virtual tag that splits a row routes each share separately, so one shared row can feed several cost centres.
+- `virtual_tag_value` (String) Value the `virtual_tag_key` virtual tag must hold, up to 256 characters. Requires `virtual_tag_key`.
 
 ## Import
 

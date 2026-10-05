@@ -204,7 +204,7 @@ export async function buildReportDelivery(
   const groupLabel =
     config.groupBy === "none"
       ? null
-      : config.groupBy === "tag"
+      : config.groupBy === "tag" || config.groupBy === "virtual_tag"
         ? (config.groupByTagKey ?? "tag")
         : (
             COST_DIMENSION_LABELS[config.groupBy as CostDimensionId] ?? config.groupBy

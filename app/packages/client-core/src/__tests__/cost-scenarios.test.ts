@@ -311,6 +311,22 @@ describe("scenarioScopeExcluded", () => {
     ).toBe(false);
     expect(scenarioScopeExcluded([], [])).toBe(false);
   });
+
+  it("compares keyed dimensions only under the same key", () => {
+    const scope = [
+      { dimension: "virtual_tag" as const, op: "in" as const, values: ["a"], tagKey: "team" },
+    ];
+    expect(
+      scenarioScopeExcluded(scope, [
+        { dimension: "virtual_tag", op: "in", values: ["b"], tagKey: "team" },
+      ]),
+    ).toBe(true);
+    expect(
+      scenarioScopeExcluded(scope, [
+        { dimension: "virtual_tag", op: "in", values: ["b"], tagKey: "env" },
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("costScenarioModelInputError", () => {
@@ -328,6 +344,17 @@ describe("costScenarioModelInputError", () => {
     expect(costScenarioModelInputError({ ...valid, adjustments: [] })).toMatch(
       /at least one adjustment/,
     );
+  });
+
+  it("refuses a keyed scope term without its key", () => {
+    expect(
+      costScenarioModelInputError({
+        ...valid,
+        adjustments: [
+          adjustment({ scope: [{ dimension: "virtual_tag", op: "in", values: ["platform"] }] }),
+        ],
+      }),
+    ).toMatch(/virtual tag key/);
   });
 
   it("refuses a model that mixes currencies", () => {

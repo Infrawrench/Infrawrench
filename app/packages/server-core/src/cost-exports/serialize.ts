@@ -36,6 +36,7 @@ export function outputColumns(columns: CostExportColumns): string[] {
     "day",
     ...columns.dimensions,
     ...columns.tagColumns,
+    ...(columns.virtualTagColumns ?? []),
     ...COST_EXPORT_BASE_COLUMNS,
     ...COST_EXPORT_PROVENANCE_COLUMNS,
   ];
@@ -61,6 +62,7 @@ function rowValues(
   const out: Array<string | number> = [row["day"] ?? ""];
   for (const dim of columns.dimensions) out.push(row[dim] ?? "");
   for (const tag of columns.tagColumns) out.push(row[tag] ?? "");
+  for (const tag of columns.virtualTagColumns ?? []) out.push(row[tag] ?? "");
   out.push(row["currency"] ?? "");
   // ClickHouse returns aggregate sums as numbers in JSONEachRow, but Decimal
   // and large-UInt columns come back as strings; Number() normalises both so

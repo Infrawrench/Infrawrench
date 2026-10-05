@@ -23,6 +23,15 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/ai-attribution/dimensions/d1")).toBe(true);
   });
 
+  it("allows virtual tags and read-only business metrics", () => {
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/virtual-tags")).toBe(true);
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/virtual-tags/preview")).toBe(true);
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/virtual-tags/t1/reprocess")).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/virtual-tags/t1")).toBe(true);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/business-metrics")).toBe(true);
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/business-metrics")).toBe(false);
+  });
+
   it("refuses routes off the surface", () => {
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/resources")).toBe(false);
     expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/audit-logs")).toBe(false);

@@ -333,6 +333,16 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /billing-rules/reorder": "org:settings:write",
   "PUT /billing-rules/{id}": "org:settings:write",
   "DELETE /billing-rules/{id}": "org:settings:write",
+  // virtual tags: a way to slice spend that never changes how much there is
+  // (splits are weighted, totals conserved), so the cost-centre scope, not
+  // the billing-rule one.
+  "GET /virtual-tags": "costs:read",
+  "GET /virtual-tags/{id}": "costs:read",
+  "POST /virtual-tags/preview": "costs:read",
+  "POST /virtual-tags": "costs:write",
+  "PUT /virtual-tags/{id}": "costs:write",
+  "POST /virtual-tags/{id}/reprocess": "costs:write",
+  "DELETE /virtual-tags/{id}": "costs:write",
   // managed accounts & invoices: the managed-service-provider surface.
   //
   // Its own family rather than more `costs:*`. Every other cost surface is the

@@ -48,7 +48,8 @@ import { WarehouseDestinationFields } from "./CostExportWarehouseFields.js";
  */
 
 /** Which dimensions the column picker offers. `tag` is handled by the tag-key list. */
-const PICKABLE_DIMENSIONS = COST_DIMENSIONS.filter((d) => d !== "tag");
+// Keyed dimensions are columns per key, picked below, not one column.
+const PICKABLE_DIMENSIONS = COST_DIMENSIONS.filter((d) => d !== "tag" && d !== "virtual_tag");
 
 function statusTone(exp: CostExport): string {
   if (exp.lastStatus === "failed") return "text-danger";
@@ -756,7 +757,36 @@ function ColumnPicker({
 }) {
   const gt = useGT();
   const gtData = useDataString();
+  const { orgId, api } = useSettingsHost();
   const [tagKeyDraft, setTagKeyDraft] = useState("");
+  // The org's virtual tags, offered as toggles: a key picked from a list
+  // rather than typed, because a mistyped key would fail every run.
+  const [virtualTags, setVirtualTags] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ values: Array<{ value: string; label: string }> }>(
+        `/api/org/${orgId}/costs/dimensions?dimension=virtual-tag-keys`,
+      )
+      .then((res) => {
+        if (!cancelled) setVirtualTags(Array.isArray(res?.values) ? res.values : []);
+      })
+      .catch(() => {
+        if (!cancelled) setVirtualTags([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId]);
+  const selectedVirtualTags = query.virtualTagKeys ?? [];
+
+  function toggleVirtualTag(key: string) {
+    const next = selectedVirtualTags.includes(key)
+      ? selectedVirtualTags.filter((k) => k !== key)
+      : [...selectedVirtualTags, key];
+    const { virtualTagKeys: _drop, ...rest } = query;
+    onChange(next.length > 0 ? { ...rest, virtualTagKeys: next } : rest);
+  }
 
   function toggleDimension(dimension: CostDimensionId) {
     const selected = query.dimensions.includes(dimension);
@@ -843,6 +873,43 @@ function ColumnPicker({
           </button>
         </div>
       </div>
+
+      {(virtualTags.length > 0 || selectedVirtualTags.length > 0) && (
+        <div className="pt-2">
+          <span className={LABEL}>{gt("Virtual tag columns")}</span>
+          <T>
+            <p className="text-xs text-on-surface-muted mb-2">
+              One column per virtual tag. A row a split rule divides is written once per share, with
+              its amounts weighted, so the file still adds up to the collected total.
+            </p>
+          </T>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ...virtualTags,
+              ...selectedVirtualTags
+                .filter((k) => !virtualTags.some((t) => t.value === k))
+                .map((k) => ({ value: k, label: k })),
+            ].map((tag) => {
+              const selected = selectedVirtualTags.includes(tag.value);
+              return (
+                <button
+                  key={tag.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleVirtualTag(tag.value)}
+                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                    selected
+                      ? "border-blue-500 bg-blue-600/20 text-on-surface"
+                      : "border-border text-on-surface-muted hover:bg-surface-overlay"
+                  }`}
+                >
+                  {tag.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -88,6 +88,7 @@ import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
+import { Route as OrgOrgIdSettingsVirtualTagsRouteImport } from './routes/org.$orgId.settings.virtual-tags'
 import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -509,6 +510,12 @@ const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsVirtualTagsRoute =
+  OrgOrgIdSettingsVirtualTagsRouteImport.update({
+    id: '/virtual-tags',
+    path: '/virtual-tags',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdWorkflowsWorkflowIdRoute =
   OrgOrgIdWorkflowsWorkflowIdRouteImport.update({
     id: '/$workflowId',
@@ -600,6 +607,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -680,6 +688,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -764,6 +773,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -849,6 +859,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings/virtual-tags'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -929,6 +940,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings/virtual-tags'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
@@ -1012,6 +1024,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings/virtual-tags'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -1584,6 +1597,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/virtual-tags': {
+      id: '/org/$orgId/settings/virtual-tags'
+      path: '/virtual-tags'
+      fullPath: '/org/$orgId/settings/virtual-tags'
+      preLoaderRoute: typeof OrgOrgIdSettingsVirtualTagsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/workflows/$workflowId': {
       id: '/org/$orgId/workflows/$workflowId'
       path: '/$workflowId'
@@ -1688,6 +1708,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
+  OrgOrgIdSettingsVirtualTagsRoute: typeof OrgOrgIdSettingsVirtualTagsRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
 }
 
@@ -1723,6 +1744,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
+  OrgOrgIdSettingsVirtualTagsRoute: OrgOrgIdSettingsVirtualTagsRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
 }
 

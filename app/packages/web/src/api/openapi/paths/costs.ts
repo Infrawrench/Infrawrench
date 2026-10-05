@@ -20,6 +20,7 @@ const CostDimension = z
     "tag",
     "charge_type",
     "commitment",
+    "virtual_tag",
   ])
   .openapi("CostDimension");
 
@@ -116,6 +117,7 @@ const CostQueryRequest = strict({
     "tag",
     "charge_type",
     "commitment",
+    "virtual_tag",
   ]),
   groupByTagKey: z.string().optional(),
   filters: z.array(CostFilter).optional(),
@@ -745,9 +747,10 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "List distinct values for a cost dimension",
     description:
-      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or " +
+      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, " +
+      "dimension=virtual-tag-keys for the organization's virtual tag keys (labelled by name), or " +
       "dimension=usage-units for the usage units providers report (a usage budget's unit); " +
-      "dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge " +
+      "dimension=tag and dimension=virtual_tag require tagKey. `charge_type` answers from the fixed set of charge " +
       "types rather than from the stored data, so the picker is populated before any " +
       "provider has reported one. `usage-units` lists the usage units present in the cost " +
       "data, most common first, for the `usage` measure's unit picker.",
@@ -763,8 +766,10 @@ export function registerCostPaths(ctx: BuildContext) {
           "tag",
           "charge_type",
           "commitment",
+          "virtual_tag",
           "tag-keys",
           "usage-units",
+          "virtual-tag-keys",
         ]),
         tagKey: z.string().optional(),
       }),

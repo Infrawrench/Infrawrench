@@ -7,7 +7,7 @@ import {
   isValidCostQuery,
   parseCostQuery,
 } from "../cost-query-language";
-import { COST_DIMENSIONS, type CostFilter } from "../costs";
+import { COST_DIMENSIONS, isKeyedCostDimension, type CostFilter } from "../costs";
 
 /** Parse and assert it failed, returning the error for inspection. */
 function parseError(source: string): CostQueryParseError {
@@ -71,7 +71,9 @@ describe("parseCostQuery — the supported forms", () => {
 
   it("accepts every dimension the structured filter accepts", () => {
     for (const dimension of COST_DIMENSIONS) {
-      const source = dimension === "tag" ? "tag['k'] = 'v'" : `${dimension} = 'v'`;
+      const source = isKeyedCostDimension(dimension)
+        ? `${dimension}['k'] = 'v'`
+        : `${dimension} = 'v'`;
       expect(parseCostQuery(source)[0]!.dimension).toBe(dimension);
     }
   });
@@ -378,7 +380,7 @@ function randomFilter(random: () => number): CostFilter {
   const op = random() < 0.5 ? "in" : "not_in";
   const count = 1 + Math.floor(random() * 4);
   const values = Array.from({ length: count }, () => pick(VALUE_FRAGMENTS));
-  return dimension === "tag"
+  return isKeyedCostDimension(dimension)
     ? { dimension, op, values, tagKey: pick(TAG_KEYS) }
     : { dimension, op, values };
 }
@@ -414,6 +416,16 @@ describe("round trip", () => {
     }
   });
 
+  it("parses and renders virtual tags by key", () => {
+    expect(parseCostQuery("virtual_tag['team'] IN ('payments', 'search')")).toEqual([
+      { dimension: "virtual_tag", op: "in", values: ["payments", "search"], tagKey: "team" },
+    ]);
+    expect(
+      formatCostQuery([{ dimension: "virtual_tag", op: "not_in", values: ["x"], tagKey: "env" }]),
+    ).toBe("virtual_tag['env'] != 'x'");
+    expect(() => parseCostQuery("virtual_tag = 'x'")).toThrow(/virtual tag dimension needs a key/);
+  });
+
   it("normalises hand-written text through the structure", () => {
     // Text → structure → text is a *normalisation*, not an identity: the row
     // editor has no way to remember that the user typed `in ( 'a' )`.
@@ -427,10 +439,9 @@ describe("round trip", () => {
     for (const dimension of COST_DIMENSIONS) {
       for (const op of ["in", "not_in"] as const) {
         for (const values of [["one"], ["one", "two"], ["one", "two", "three"]]) {
-          const filter: CostFilter =
-            dimension === "tag"
-              ? { dimension, op, values, tagKey: "k" }
-              : { dimension, op, values };
+          const filter: CostFilter = isKeyedCostDimension(dimension)
+            ? { dimension, op, values, tagKey: "k" }
+            : { dimension, op, values };
           expect(parseCostQuery(formatCostQuery([filter]))).toEqual([filter]);
         }
       }

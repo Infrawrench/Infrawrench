@@ -17,6 +17,7 @@ const CostAlertFilter = strict({
     "tag",
     "charge_type",
     "commitment",
+    "virtual_tag",
   ]),
   op: z.enum(["in", "not_in"]),
   values: z.array(z.string()).min(1),
@@ -45,6 +46,7 @@ const CostAlertGroupBy = z
     "tag",
     "charge_type",
     "commitment",
+    "virtual_tag",
   ])
   .nullable()
   .describe(

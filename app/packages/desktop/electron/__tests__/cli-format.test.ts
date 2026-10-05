@@ -19,6 +19,11 @@ import {
   formatBudgetValue,
   orderBudgetTree,
   type CliBudgetRow,
+  formatGroupBy,
+  formatVirtualTagRule,
+  matchVirtualTag,
+  parseGroupByFlag,
+  shareOfTotal,
 } from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
@@ -414,5 +419,140 @@ describe("budget tree", () => {
     expect(budgetBar(50, 4)).toBe("██░░");
     expect(budgetBar(250, 4)).toBe("████");
     expect(budgetBar(null, 3)).toBe("···");
+  });
+});
+
+describe("parseGroupByFlag", () => {
+  const plain = ["provider", "service"];
+
+  it("passes plain dimensions and none through without a key", () => {
+    expect(parseGroupByFlag("service", plain)).toEqual({ groupBy: "service" });
+    expect(parseGroupByFlag("none", plain)).toEqual({ groupBy: "none" });
+  });
+
+  it("reads a key from colon, equals and the query language's bracket form", () => {
+    expect(parseGroupByFlag("virtual_tag:team", plain)).toEqual({
+      groupBy: "virtual_tag",
+      tagKey: "team",
+    });
+    expect(parseGroupByFlag("tag=env", plain)).toEqual({ groupBy: "tag", tagKey: "env" });
+    expect(parseGroupByFlag("virtual_tag['cost:centre']", plain)).toEqual({
+      groupBy: "virtual_tag",
+      tagKey: "cost:centre",
+    });
+    expect(parseGroupByFlag('tag["env"]', plain)).toEqual({ groupBy: "tag", tagKey: "env" });
+  });
+
+  it("refuses a keyed dimension without a key, pointing at where keys are listed", () => {
+    const result = parseGroupByFlag("virtual_tag", plain);
+    expect("error" in result && result.error).toContain("infrawrench virtual-tags");
+    expect("error" in parseGroupByFlag("tag:", plain)).toBe(true);
+  });
+
+  it("refuses a key on a plain dimension and an unknown dimension", () => {
+    expect("error" in parseGroupByFlag("service:ec2", plain)).toBe(true);
+    const unknown = parseGroupByFlag("colour", plain);
+    expect("error" in unknown && unknown.error).toContain("virtual_tag:<key>");
+  });
+});
+
+describe("formatGroupBy", () => {
+  it("brackets the key for keyed dimensions only", () => {
+    expect(formatGroupBy(null)).toBe("one total");
+    expect(formatGroupBy("service", "ignored")).toBe("each service");
+    expect(formatGroupBy("tag", "env")).toBe("each tag[env]");
+    expect(formatGroupBy("virtual_tag", "team")).toBe("each virtual_tag[team]");
+  });
+});
+
+describe("formatVirtualTagRule", () => {
+  const base = {
+    query: "",
+    startsOn: null,
+    endsOn: null,
+    kind: "value",
+    value: "platform",
+    sources: [],
+    valueTransform: "none",
+    allocations: [],
+  };
+
+  it("describes a fixed value over everything", () => {
+    expect(formatVirtualTagRule(base)).toBe("everything → 'platform'");
+  });
+
+  it("describes copied keys with prefixes, case fold and time bounds", () => {
+    expect(
+      formatVirtualTagRule({
+        ...base,
+        query: "provider = 'aws'",
+        kind: "tag",
+        value: null,
+        sources: [
+          { tagKey: "env", valuePrefix: null },
+          { tagKey: "Environment", valuePrefix: "aws-" },
+        ],
+        valueTransform: "lower",
+        startsOn: "2026-04-01",
+      }),
+    ).toBe(
+      "provider = 'aws' → copy of env, Environment (prefix 'aws-'), lowercase from 2026-04-01",
+    );
+  });
+
+  it("describes splits, resolving metric names", () => {
+    expect(
+      formatVirtualTagRule({
+        ...base,
+        kind: "split",
+        allocations: [
+          { value: "a", percent: 60, metricId: null },
+          { value: "b", percent: 40, metricId: null },
+        ],
+        endsOn: "2026-03-31",
+      }),
+    ).toBe("everything → 'a' 60% / 'b' 40% until 2026-03-31");
+    expect(
+      formatVirtualTagRule(
+        {
+          ...base,
+          kind: "metric_split",
+          allocations: [
+            { value: "a", percent: null, metricId: "m1" },
+            { value: "b", percent: null, metricId: null },
+          ],
+        },
+        (id) => (id === "m1" ? "Requests" : id),
+      ),
+    ).toBe("everything → 'a' by Requests / 'b' by ?");
+  });
+});
+
+describe("shareOfTotal", () => {
+  it("is a one-decimal percentage, and null with nothing to divide", () => {
+    expect(shareOfTotal(25, 200)).toBe("12.5%");
+    expect(shareOfTotal(0, 200)).toBe("0.0%");
+    expect(shareOfTotal(0, 0)).toBeNull();
+  });
+});
+
+describe("matchVirtualTag", () => {
+  const tags = [
+    { id: "t1", key: "team", name: "Team" },
+    { id: "t2", key: "env", name: "Environment" },
+    { id: "t3", key: "team-legacy", name: "Team (legacy)" },
+  ];
+
+  it("prefers id, then key, then name", () => {
+    expect(matchVirtualTag(tags, "t2").match?.key).toBe("env");
+    expect(matchVirtualTag(tags, "team").match?.id).toBe("t1");
+    expect(matchVirtualTag(tags, "TEAM").match?.id).toBe("t1");
+    expect(matchVirtualTag(tags, "environment").match?.id).toBe("t2");
+  });
+
+  it("returns candidates for an ambiguous name substring", () => {
+    const found = matchVirtualTag(tags, "tea");
+    expect(found.match).toBeNull();
+    expect(!found.match && found.candidates.map((t) => t.id)).toEqual(["t1", "t3"]);
   });
 });

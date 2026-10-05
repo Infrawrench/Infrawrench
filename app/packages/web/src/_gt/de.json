@@ -14859,5 +14859,124 @@
   "858fa003bc4e909d": "Optionaler Tag-Schlüssel. Jeder Wert wird zu einem eigenen Label der Metrik, und die Tagessumme ist die Summe über alle Werte.",
   "caf00c92d9dc527b": "Eine Datadog-Metrik lesen, etwa bediente Anfragen, aufgegebene Bestellungen oder eine benutzerdefinierte Metrik Ihrer Anwendung, und einen Wert pro Tag speichern.",
   "b38bc72b1ea1524a": "Welche Quellen einbezogen werden, als Datadog-Tags: env:prod, oder mehrere durch Kommas getrennt, die alle zutreffen müssen. * liest alle Quellen.",
-  "6b4bda4c8c687a02": "Ja, als Zählwert lesen"
+  "6b4bda4c8c687a02": "Ja, als Zählwert lesen",
+  "6f620164afb43340": "Virtueller Tag",
+  "25aff3147ee036f3": "Virtuellen Tag auswählen",
+  "ae18e28608db853e": "Virtuellen Tag zum Gruppieren auswählen",
+  "26d755fb76a0b60a": "Virtuellen Tag auswählen…",
+  "13732cf698f221ef": "Noch keine virtuellen Tags",
+  "0f08d051d828eadf": "Spalten für virtuelle Tags",
+  "78205fcd9ea2cb26": "virtueller Tag {key}={value}",
+  "98f2cdf262788590": "virtueller Tag {key} ist gesetzt",
+  "88442918400bcb3c": "Beliebiger virtueller Tag",
+  "a0c6528fd71acf24": "virtueller Tag: {name}",
+  "9ae60cdf2021d315": "Wert des virtuellen Tags",
+  "74fef1e951f8c937": "Beliebiger Wert (Tag ist gesetzt)",
+  "327fcb2077ebe133": "Virtuelle Tags konnten nicht geladen werden",
+  "0e2e515711b16dd0": "Verarbeitung konnte nicht eingereiht werden",
+  "252bbfcbee04814c": "Virtuellen Tag „{name}“ löschen?",
+  "8e98005d6dc91c9f": "Virtueller Tag konnte nicht gelöscht werden",
+  "e8844a32dadfa309": "Virtuelle Tags",
+  "e98ad2552586f7cc": "Neuer virtueller Tag",
+  "23dc85047ffe9aab": "Noch keine virtuellen Tags.",
+  "02c82d26303a3f91": "Neu verarbeiten",
+  "6999e3b5defe3c88": "Alles andere: {value}",
+  "b172ad412374a456": "Noch keine Ausgaben im ausgewerteten Zeitraum.",
+  "1b74afbf9fd8b1ec": "Ausgewertet von {from} bis {to}; {count} unterschiedliche Werte.",
+  "edf713458f15d47a": "Regel {n}: {amount}",
+  "a24271ec72a8675c": "An {days} Tagen gab es keine vollständigen Werte der Geschäftskennzahl, daher wurden für ihre Aufteilung die letzten gültigen Gewichte übernommen (oder gleichmäßig aufgeteilt).",
+  "b37afbacd61ee1fc": "Virtueller Tag konnte nicht gespeichert werden",
+  "2c084f43cb327729": "Virtuellen Tag bearbeiten",
+  "fc78183e44e21eed": "Der Schlüssel kann nicht geändert werden: Filter, Budgets und Berichte speichern ihn.",
+  "d245b61dff66ee66": "Regeln werden von oben nach unten ausgewertet; eine Zeile erhält den Wert der ersten Regel, auf die sie zutrifft.",
+  "337c353f995e503d": "+ Regel hinzufügen",
+  "1c562f7a5a86f169": "Wert für alles, worauf keine Regel zutrifft (optional)",
+  "43ae395a415ab283": "Leer lassen, um ihn nicht zu setzen",
+  "5fe13b9ec0cc3bcd": "Vorschau: letzte 30 Tage",
+  "b195cb4f1cc99c77": "Vorschau wird erstellt…",
+  "810f66dca3c055d1": "Regel {n}",
+  "7706ac9aef3ca5f3": "Regelart",
+  "152de10a84f96a9a": "Gilt für (leer = alle Ausgaben)",
+  "d5136bd2643035d7": "Ab (optional)",
+  "5de17fea68dd43e0": "zahlungen",
+  "0e914b867e17b6a4": "Tag-Schlüssel, der erste vorhandene gewinnt",
+  "b7e6df6b716b5ede": "Wertpräfix",
+  "e44141b61ea28e51": "Nur wenn (Kostenabfrage)",
+  "1ded2746f685ec28": "Nur wenn, z. B. provider = 'azure'",
+  "74a818995aaa8f2d": "+ Tag-Schlüssel hinzufügen",
+  "d40c682e5cb748cc": "Groß-/Kleinschreibung",
+  "7a76db9d2f01d720": "Anteile (Prozent)",
+  "212d45f78869d9ce": "Anteile (nach Kennzahl gewichtet)",
+  "934a6fe50f00d032": "Geschäftskennzahl",
+  "f3a13192b4dd3161": "Kennzahl auswählen…",
+  "3dc10e35924c7cb7": "+ Anteil hinzufügen",
+  "011b1207fd58411d": "Gesamt: {total} %",
+  "a9d06250777b5ae9": "Noch keine Geschäftskennzahlen: Fügen Sie zuerst eine im Kosten-Bereich hinzu.",
+  "45d489fa984d25f6": "Virtuelle Tags",
+  "f9fc579020457c0e": {
+    "t": "p",
+    "i": 1,
+    "c": "Eine Spalte pro virtuellem Tag. Eine Zeile, die eine Aufteilungsregel teilt, wird einmal pro Anteil geschrieben, mit gewichteten Beträgen, sodass die Datei weiterhin die erfasste Gesamtsumme ergibt."
+  },
+  "a7e2603e7759afbd": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Sie benötigen die Berechtigung ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:read"
+      },
+      ", um die virtuellen Tags der Organisation zu sehen."
+    ]
+  },
+  "d95c0595ead30b05": {
+    "t": "p",
+    "i": 1,
+    "c": "Tags, die die Organisation aus eigenen Regeln berechnet: Führen Sie Schreibweisen wie env, Environment und ENV zu einem Schlüssel zusammen, geben Sie Ausgaben über einen beliebigen Kostenfilter einen Wert und teilen Sie gemeinsame Kosten prozentual oder nach einer Geschäftskennzahl auf Teams auf. Regeln werden der Reihe nach ausgewertet, der erste Treffer gewinnt."
+  },
+  "0c4b6e97b931089d": {
+    "t": "p",
+    "i": 1,
+    "c": "Verwenden Sie einen virtuellen Tag überall dort, wo ein Tag funktioniert: Diagramme und Berichte, gespeicherte Filter, Budgets, Änderungsalarme, Zuordnungsregeln und Exporte. Er wird beim Ausführen eines Berichts berechnet und nie in die erfassten Ausgaben geschrieben, und eine Aufteilung verteilt Geld, statt es zu kopieren, sodass sich die Summen nie ändern."
+  },
+  "0d816d7fcd0bdd15": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Zum Ändern ist die Berechtigung ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:write"
+      },
+      " erforderlich."
+    ]
+  },
+  "9a7bb808b34d0f41": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " % von ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " entsprachen einer Regel;",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " nicht."
+    ]
+  }
 }
