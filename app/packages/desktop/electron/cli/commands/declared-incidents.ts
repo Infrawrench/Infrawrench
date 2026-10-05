@@ -97,7 +97,7 @@ function severityGlyph(severity: string): string {
 export async function cmdDeclaredIncidents(ctx: CliContext, incidentArg?: string): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Incidents live in Infrawrench Cloud — an incident is org-scoped and declaring one composes cloud features. Drop --local.",
+      "Incidents live in Infrawrench Cloud. An incident is org-scoped and declaring one composes cloud features. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -198,7 +198,7 @@ async function printIncidentDetail(
       const line = `${artifact.kind}: ${artifact.status}${artifact.label ? ` (${safe(artifact.label)})` : ""}`;
       println(
         isFailureStatus(artifact.status)
-          ? c.red(`  ✗ ${line} — ${safe(artifact.error) || "no detail recorded"}`)
+          ? c.red(`  ✗ ${line}, ${safe(artifact.error) || "no detail recorded"}`)
           : c.dim(`  · ${line}`),
       );
     }
@@ -218,7 +218,7 @@ async function printIncidentDetail(
   if (timeline.entries.length === 0) {
     println(
       c.dim(
-        "Nothing else was recorded in this window — the change feed, deploys and alerts were all quiet.",
+        "Nothing else was recorded in this window. The change feed, deploys and alerts were all quiet.",
       ),
     );
     return;
@@ -235,6 +235,6 @@ async function printIncidentDetail(
 
   if (timeline.truncated) {
     println();
-    println(c.dim("Timeline truncated — this window holds more events than one view can carry."));
+    println(c.dim("Timeline truncated. This window holds more events than one view can carry."));
   }
 }

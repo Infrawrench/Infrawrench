@@ -15,7 +15,7 @@ export function registerOwnershipPaths(ctx: BuildContext) {
       .string()
       .describe("Resource display name, denormalized so a report can name a deleted resource."),
     ownerUserId: Uuid.nullable().describe(
-      "The routable owner — an org member. Alerts about this resource reach them.",
+      "The routable owner; an org member. Alerts about this resource reach them.",
     ),
     ownerName: z.string().nullable().describe("Resolved server-side; null when unset or removed."),
     ownerEmail: z.string().nullable(),
@@ -61,7 +61,7 @@ export function registerOwnershipPaths(ctx: BuildContext) {
     tags: ["Ownership"],
     summary: "List resource ownership records",
     description:
-      "Every ownership record in the organization — owner, purpose and authorizing ticket, per " +
+      "Every ownership record in the organization; owner, purpose and authorizing ticket, per " +
       "resource. Only resources somebody has recorded something about appear; an absent record " +
       "means the resource is unowned.",
     request: { params: OrgIdParam },
@@ -116,7 +116,7 @@ export function registerOwnershipPaths(ctx: BuildContext) {
     tags: ["Ownership"],
     summary: "Set a resource's ownership",
     description:
-      "Upsert keyed by `resourceId` — ownership is a property of the resource, so there is no " +
+      "Upsert keyed by `resourceId`: ownership is a property of the resource, so there is no " +
       "separate create and update. Omitted fields keep their value and `null` clears one. " +
       "Clearing every field removes the record entirely and the response is `null`, which is " +
       "the new truth rather than an empty record. An `ownerUserId` must be a member of this " +

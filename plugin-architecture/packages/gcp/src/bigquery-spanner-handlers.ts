@@ -19,7 +19,7 @@ export function parseBigQueryDatasetExternalId(resourceId: string): {
   const colonIdx = externalId.indexOf(":");
   if (colonIdx <= 0) {
     throw new Error(
-      `BigQuery: malformed resourceId "${resourceId}" — expected externalId in "project:dataset" form, got "${externalId}"`,
+      `BigQuery: malformed resourceId "${resourceId}", expected externalId in "project:dataset" form, got "${externalId}"`,
     );
   }
   const project = externalId.slice(0, colonIdx);

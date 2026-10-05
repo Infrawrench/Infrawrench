@@ -96,7 +96,7 @@ rate for is compared **in its own currency** — it is never dropped from evalua
 
 ## Managing alerts
 
-Change alerts live on the **Costs panel**, next to the anomalies section, on both web and
+Change alerts live on the **Alerts** tab of the **Costs panel**, after the anomalies section, on both web and
 desktop. The list shows each alert's cadence, threshold, scope, and when it last fired;
 recent firings are listed underneath with the previous → current amounts and the change.
 
@@ -115,7 +115,7 @@ Reads require the `costs:read` permission; creating, editing, and deleting requi
 Fired events flow through [alert routing](./alert-routing.md) as their own trigger kind,
 **Cost changes** — routing rules, quiet hours, and escalation apply to them exactly as they do
 to budgets and anomalies, and a rule can match on the size of the movement ("cost changes over
-$500 → #incidents"). Push notifications deep-link to the Costs tab in the
+$500 → #incidents"). Push notifications deep-link to the **Alerts** tab of the Costs screen in the
 [mobile app](./mobile-app.md), where the alerts and their recent firings are listed read-only.
 
 An alert can also email people directly: the editor's **Email recipients** field takes members

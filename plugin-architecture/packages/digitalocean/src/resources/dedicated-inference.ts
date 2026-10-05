@@ -4,7 +4,7 @@ export const DedicatedInferenceResourceType = rt({
   name: "Dedicated Inference",
   id: "dedicated-inference",
   description:
-    "A DigitalOcean Dedicated Inference deployment — GPU-backed always-on model serving for steady request volume, strict latency SLOs, or bring-your-own-model. Per-GPU billing.",
+    "A DigitalOcean Dedicated Inference deployment: always-on, GPU-backed model serving. Billed per GPU.",
   fields: [
     f("name", "Name"),
     f("region", "Region"),

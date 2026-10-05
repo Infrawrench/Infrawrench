@@ -19,7 +19,7 @@ export const EKSClusterResourceType = rt({
   },
   description:
     "An Amazon Elastic Kubernetes Service cluster. Creating one also provisions a default " +
-    "managed node group once the control plane is ACTIVE (~10-15 min) — node counts show 0 " +
+    "managed node group once the control plane is ACTIVE (~10-15 min). Node counts show 0 " +
     "until then.",
   fields: [
     f("name", "Name"),

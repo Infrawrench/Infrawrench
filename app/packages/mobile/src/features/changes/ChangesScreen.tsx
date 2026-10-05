@@ -221,7 +221,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
       )}
       {windowKey === "since" && hasSince && (
         <Text style={styles.hint}>
-          Showing what the drift alert covered — changes since {new Date(since).toLocaleString()}.
+          Showing what the drift alert covered, changes since {new Date(since).toLocaleString()}.
         </Text>
       )}
     </View>
@@ -352,7 +352,7 @@ function ChangeEntryRow({
               here, and a network blip must not borrow it. Pull to refresh. */}
           {!impact && impactUnavailable && (
             <Text style={styles.costUnavailable} numberOfLines={1}>
-              Cost impact unavailable — pull to refresh
+              Cost impact unavailable, pull to refresh
             </Text>
           )}
         </View>
@@ -366,8 +366,8 @@ function ChangeEntryRow({
           )}
           {!impact && impactUnavailable && (
             <Text style={styles.hint}>
-              The cost impact for this change could not be loaded. Pull down to try again — this is
-              a failed lookup, not a finding that it cost nothing.
+              The cost impact could not be loaded (not a finding that it cost nothing). Pull down to
+              retry.
             </Text>
           )}
           {entry.origin === "schedule" && (

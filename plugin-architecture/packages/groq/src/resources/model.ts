@@ -13,7 +13,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const GroqModelResourceType = rt({
   name: "Model",
   id: "groq-model",
-  description: "A model served by GroqCloud — chat, transcription, or speech synthesis",
+  description: "A model served by GroqCloud: chat, transcription or speech synthesis",
   fields: [
     f("modelId", "Model ID"),
     f("ownedBy", "Owned By", { required: false }),

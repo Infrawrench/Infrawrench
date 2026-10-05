@@ -75,7 +75,7 @@ export function registerOnCallPaths(ctx: BuildContext) {
     enabled: z.boolean(),
     shift: OnCallShift.nullable(),
     next: OnCallParticipant.nullable().describe(
-      "The next person in the rotation — where an escalation goes. Resolved from the rotation " +
+      "The next person in the rotation, where an escalation goes. Resolved from the rotation " +
         "and never from a cover: a cover is somebody standing in for one shift.",
     ),
   }).openapi("OnCallNowEntry");
@@ -123,7 +123,7 @@ export function registerOnCallPaths(ctx: BuildContext) {
     summary: "Who is on call right now",
     description:
       "One entry per rotation: the shift in effect, and the next person in the rotation. Takes " +
-      "`team:read` — knowing who is on call is something every member needs and nobody should " +
+      "`team:read`: knowing who is on call is something every member needs and nobody should " +
       "have to ask an admin for.",
     request: { params: OrgIdParam },
     responses: {
@@ -156,7 +156,7 @@ export function registerOnCallPaths(ctx: BuildContext) {
     description:
       "Shift boundaries are calendar-day arithmetic in the rotation's own zone, not 24-hour " +
       "arithmetic: a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving " +
-      "change until the 09:00 Monday handover happens at 08:00 — or until two people each think " +
+      "change until the 09:00 Monday handover happens at 08:00; or until two people each think " +
       "the other is on call.\n\n" +
       "Writing takes `org:settings:write`: a rotation decides who gets woken up.",
     request: {
@@ -180,7 +180,7 @@ export function registerOnCallPaths(ctx: BuildContext) {
     summary: "Edit an on-call rotation",
     description:
       "Omitted fields are left alone, and the result is validated after merging. Sending " +
-      "`participantUserIds` replaces the list wholesale — position is rotation order, so " +
+      "`participantUserIds` replaces the list wholesale; position is rotation order, so " +
       "reordering re-plans the future.",
     request: {
       params: OrgIdParam.extend({ scheduleId: Uuid }),

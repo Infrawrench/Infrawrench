@@ -1539,8 +1539,7 @@ export class MistralClient implements PluginClient {
                   {
                     kind: "text" as const,
                     variant: "muted" as const,
-                    content:
-                      "Preset voices belong to Mistral — they can be used but not edited or deleted.",
+                    content: "Preset voices can be used but not edited or deleted.",
                   },
                 ]),
           ],

@@ -32,7 +32,7 @@ export function registerAccessRequestPaths(ctx: BuildContext) {
     active: z
       .boolean()
       .describe(
-        "True when this row is granting permissions right now. Evaluated, never swept — a grant " +
+        "True when this row is granting permissions right now. Evaluated, never swept; a grant " +
           "stops applying the instant it lapses.",
       ),
     createdAt: IsoDateTime,
@@ -117,7 +117,7 @@ export function registerAccessRequestPaths(ctx: BuildContext) {
     summary: "Request elevated access",
     description:
       "Ask for specific permissions, for a specific number of minutes, with a reason. Rejected " +
-      "with 400 when the caller's role already grants every permission asked for — that is " +
+      "with 400 when the caller's role already grants every permission asked for; that is " +
       "almost always a wrong permission string rather than a real request. Fans out to push, " +
       "Slack (with Approve/Deny buttons) and Microsoft Teams under the Pages opt-in. " +
       "Audit-logged.",
@@ -151,7 +151,7 @@ export function registerAccessRequestPaths(ctx: BuildContext) {
           : "Records the refusal. ") +
         "Two rules are enforced here and cannot be bypassed: you cannot decide your own request " +
         "(403 `self_approval`), and you cannot grant a permission you do not hold yourself (403 " +
-        "`exceeds_approver`) — denying something aimed higher than you is allowed. Deciding a " +
+        "`exceeds_approver`): denying something aimed higher than you is allowed. Deciding a " +
         "request that has already been decided or has timed out is a 409. Audit-logged.",
       request: {
         params: OrgIdParam.extend({ requestId: Uuid }),
@@ -186,7 +186,7 @@ export function registerAccessRequestPaths(ctx: BuildContext) {
     tags: ["Break-glass access"],
     summary: "End a live elevation early",
     description:
-      "Allowed for anyone with `access:approve` and for the holder — giving back an elevation " +
+      "Allowed for anyone with `access:approve` and for the holder; giving back an elevation " +
       "you no longer need must never require finding an approver. Applies from the next " +
       "permission resolution; nothing is cached. Audit-logged.",
     request: { params: OrgIdParam.extend({ requestId: Uuid }) },

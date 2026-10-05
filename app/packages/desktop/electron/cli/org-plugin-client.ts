@@ -58,7 +58,7 @@ export function createOrgClient(
           c.dim(
             `could not fetch credentials for the org account (${
               e instanceof Error ? e.message : e
-            }) — using the org's cached rows instead`,
+            }). Using the org's cached rows instead`,
           ),
         );
         return createOrgPluginClient(orgId, accountId, pluginId);
@@ -98,14 +98,14 @@ function ensureSynced(orgId: string, accountId: string): Promise<void> {
         if (!finished) {
           printErr(
             c.dim(
-              `sync of cloud account ${accountId} is still running after ${Math.round(SYNC_WAIT_MS / 1000)}s — using cached resources`,
+              `sync of cloud account ${accountId} is still running after ${Math.round(SYNC_WAIT_MS / 1000)}s. Using cached resources`,
             ),
           );
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         printErr(
-          c.dim(`could not sync cloud account ${accountId}: ${msg} — using cached resources`),
+          c.dim(`could not sync cloud account ${accountId}: ${msg}. Using cached resources`),
         );
       } finally {
         clearTimeout(timer);
@@ -168,7 +168,7 @@ interface SyncTypeRow {
 
 function notAvailable(what: string): CliError {
   return new CliError(
-    `${what} is not available for cloud accounts from the CLI — use the web app, or a local account.`,
+    `${what} is not available for cloud accounts from the CLI: use the web app, or a local account.`,
     2,
   );
 }
@@ -215,7 +215,7 @@ function createOrgPluginClient(orgId: string, accountId: string, pluginId: strin
       const value = outputs[outputKey];
       if (value != null && value !== "") return outputString(value);
       throw new CliError(
-        `Output "${outputKey}" of ${resourceId} is not resolvable through the org API — ` +
+        `Output "${outputKey}" of ${resourceId} is not resolvable through the org API: ` +
           `the provider's lister does not populate it.`,
         2,
       );

@@ -45,15 +45,15 @@ const MAX_LIST_PAGES = 20;
 const ADMIN_KEY_DOCS = "https://platform.claude.com/docs/en/manage-claude/admin-api-keys";
 
 const ADMIN_KEY_HINT =
-  "This section needs an Anthropic Admin API key (sk-ant-admin…). Add one to this account to enable it — a standard sk-ant-api key returns 401 on every /v1/organizations/* endpoint.";
+  "This section needs an Anthropic Admin API key (sk-ant-admin…). Add one to this account; a standard sk-ant-api key returns 401.";
 
 /** Roles the Admin API will actually accept on invite/update calls. */
 const ASSIGNABLE_ROLES: Array<{ id: string; label: string }> = [
-  { id: "user", label: "User — Workbench only" },
-  { id: "claude_code_user", label: "Claude Code User — Workbench + Claude Code" },
-  { id: "developer", label: "Developer — Workbench + manage API keys" },
-  { id: "billing", label: "Billing — Workbench + manage billing" },
-  { id: "managed", label: "Managed — Claude Enterprise organizations only" },
+  { id: "user", label: "User (Workbench only)" },
+  { id: "claude_code_user", label: "Claude Code User (Workbench + Claude Code)" },
+  { id: "developer", label: "Developer (Workbench + manage API keys)" },
+  { id: "billing", label: "Billing (Workbench + manage billing)" },
+  { id: "managed", label: "Managed (Claude Enterprise only)" },
 ];
 
 /**
@@ -1131,11 +1131,11 @@ export class AnthropicClient implements PluginClient {
         return;
       case "api-key":
         throw new Error(
-          'Anthropic plugin: API keys cannot be deleted through the API. Use the "Deactivate key" action instead — it sets status to inactive, which revokes the key.',
+          'Anthropic plugin: API keys cannot be deleted through the API. Use the "Deactivate key" action instead, which revokes the key.',
         );
       case "workspace":
         throw new Error(
-          'Anthropic plugin: workspaces cannot be deleted. Use the "Archive workspace" action — note that archiving is irreversible and immediately revokes every API key scoped to the workspace.',
+          'Anthropic plugin: workspaces cannot be deleted. Use the "Archive workspace" action. Archiving is irreversible and revokes every API key in the workspace.',
         );
       default:
         throw new Error(`Anthropic plugin: deleteResource not supported for type "${typeId}"`);
@@ -1550,7 +1550,7 @@ export class AnthropicClient implements PluginClient {
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     if (!this.hasAdminKey) {
       throw new CostSetupError(
-        "Anthropic cost reporting needs an Admin API key (sk-ant-admin…). Add one to this account — the standard API key returns 401 on /v1/organizations/cost_report.",
+        "Anthropic cost reporting needs an Admin API key (sk-ant-admin…). Add one to this account; a standard API key returns 401.",
         { label: "Create an Admin API key", url: ADMIN_KEY_DOCS },
       );
     }
@@ -2384,7 +2384,7 @@ export class AnthropicClient implements PluginClient {
                 kind: "text",
                 variant: "muted",
                 content:
-                  "Results are JSON Lines — one JSON object per line, not a JSON array — and arrive in arbitrary order. Match each line back to its request on custom_id, never on position.",
+                  "Results are JSON Lines, one object per line, in arbitrary order. Match each line to its request by custom_id.",
               },
             ]
           : [
@@ -2408,7 +2408,7 @@ export class AnthropicClient implements PluginClient {
           type: "plugin-action",
           actionId: "cancel-batch",
           confirmMessage:
-            "Cancel this batch? Requests already in flight may still complete and still be billed — cancellation is best-effort, not a refund.",
+            "Cancel this batch? Requests already in flight may still complete and be billed.",
           successMessage: "Cancellation initiated.",
         },
       });
@@ -2473,7 +2473,7 @@ export class AnthropicClient implements PluginClient {
           type: "plugin-action",
           actionId: "archive-workspace",
           confirmMessage:
-            "Archive this workspace? This immediately revokes EVERY API key scoped to it, and there is no unarchive endpoint — the only way back is to create a new workspace and new keys. Historical usage and cost data is preserved for reporting.",
+            "Archive this workspace? This immediately revokes EVERY API key scoped to it and cannot be undone. Historical usage and cost data is kept.",
           successMessage: "Workspace archived. Its API keys have been revoked.",
         },
       });
@@ -2527,7 +2527,7 @@ export class AnthropicClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "Workspace geo is immutable after creation. Archiving is irreversible and revokes every API key in the workspace — there is no unarchive endpoint.",
+                "Workspace geo cannot change after creation. Archiving is irreversible and revokes every API key in the workspace.",
             },
           ],
         },
@@ -2568,7 +2568,7 @@ export class AnthropicClient implements PluginClient {
                     kind: "text" as const,
                     variant: "muted" as const,
                     content:
-                      "Members holding an admin or owner role cannot be re-roled or removed through the API — change their organization role in the Claude Console first.",
+                      "Admins and owners cannot be changed or removed through the API. Change their role in the Claude Console first.",
                   },
                 ]
               : []),
@@ -2640,7 +2640,7 @@ export class AnthropicClient implements PluginClient {
           type: "plugin-action",
           actionId: "deactivate-key",
           confirmMessage:
-            "Deactivate this API key? Anything using it stops working immediately. Anthropic has no delete endpoint for keys — inactive is as revoked as it gets, and you can flip it back to active later.",
+            "Deactivate this API key? Anything using it stops working immediately. You can reactivate it later.",
           successMessage: "Key deactivated.",
         },
       });
@@ -2702,7 +2702,7 @@ export class AnthropicClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "New API keys can only be created in the Claude Console — the Admin API has no create endpoint, and no delete endpoint either. Revoking is a status change to inactive.",
+                "New API keys can only be created in the Claude Console. Revoking sets the key to inactive.",
             },
           ],
         },

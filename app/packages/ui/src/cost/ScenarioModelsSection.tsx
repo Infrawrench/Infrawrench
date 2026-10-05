@@ -89,9 +89,8 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
           <h2 className="text-sm font-semibold text-on-surface">{gt("Scenario models")}</h2>
           <T>
             <p className="text-xs text-on-surface-faint mt-0.5">
-              Known future cost the trend can&rsquo;t see &mdash; a purchase, a new team, a
-              migration. Applying one draws a second line beside the forecast; it never replaces it,
-              and it never changes recorded spend.
+              Known future costs the trend can&rsquo;t see, like a purchase or a migration. Drawn
+              beside the forecast; recorded spend is never changed.
             </p>
           </T>
         </div>
@@ -109,7 +108,7 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
           <T>
-            Couldn&rsquo;t load scenario models &mdash; <Var>{error}</Var>{" "}
+            Couldn&rsquo;t load scenario models: <Var>{error}</Var>{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
               Retry
             </button>
@@ -126,9 +125,8 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
       {models?.length === 0 && (
         <T>
           <p className="text-sm text-on-surface-faint">
-            No scenario models yet. Create one to describe spend you already know is coming &mdash;
-            a reserved-instance purchase, a team starting next quarter, a migration that takes a
-            fifth off compute.
+            No scenario models yet. Create one for spend you know is coming, like a new team next
+            quarter.
           </p>
         </T>
       )}
@@ -325,8 +323,7 @@ function ScenarioModelEditModal({
         </h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-3">
-            Adjustments only ever apply to days after the last day with recorded spend. Recorded
-            history is never changed, and the unadjusted trend is always drawn alongside.
+            Adjustments apply only after the last day of recorded spend. History is never changed.
           </p>
         </T>
         {model && referents !== null && referents.length > 0 && (
@@ -489,7 +486,7 @@ function AdjustmentRow({
         <input
           className={inputClass}
           aria-label={gt("Adjustment {n} label", { n: index + 1 })}
-          placeholder={gt("What this is — e.g. Annual Datadog licence")}
+          placeholder={gt("What this is, e.g. Annual Datadog licence")}
           value={adjustment.label}
           onChange={(e) => onChange({ label: e.target.value })}
         />
@@ -607,9 +604,7 @@ function AdjustmentRow({
 
       <div>
         <T>
-          <span className={labelClass}>
-            Scope (optional &mdash; empty is the whole organization)
-          </span>
+          <span className={labelClass}>Scope (optional; empty is the whole organization)</span>
         </T>
         <CostFilterEditor
           filters={adjustment.scope}

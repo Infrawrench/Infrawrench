@@ -150,16 +150,14 @@ const LANGUAGES: SpeechPanelOption[] = [
 ];
 
 const SPEECH_HELP_TEXT =
-  "Upload a clip up to 25 MB in FLAC, MP3, MPEG, MPGA, OGG or WAV. Cohere does not accept the " +
-  "WebM your browser records on Chrome, Edge and Firefox, nor the MP4 Safari records, so " +
-  "convert a recording before uploading rather than capturing one here. Language is required " +
-  "by the API — pick the one spoken in the clip. Cohere returns plain text only, with no " +
-  "word-level timings.";
+  "Upload a clip up to 25 MB in FLAC, MP3, MPEG, MPGA, OGG or WAV. Browser recordings (WebM, MP4) " +
+  "are not accepted; convert them first. Pick the language spoken in the clip. Output is plain " +
+  "text without timings.";
 
 /** Why the Speech tab shows no Record button. See `disableRecording` below. */
 const RECORDING_DISABLED_REASON =
-  "Cohere transcribes FLAC, MP3, MPEG, MPGA, OGG and WAV only — it rejects the WebM, MP4 and " +
-  "M4A that browsers and phones record, so upload a converted clip instead.";
+  "Cohere transcribes FLAC, MP3, MPEG, MPGA, OGG and WAV only. It rejects the WebM, MP4 and " +
+  "M4A that browsers and phones record; upload a converted clip instead.";
 
 /**
  * Cohere plugin client.
@@ -990,9 +988,8 @@ export class CohereClient implements PluginClient {
           kind: "text" as const,
           variant: "muted" as const,
           content:
-            "Cohere exposes no usage or billing API. Token consumption is reported only per " +
-            "response, in each inference call's meta.billed_units — there is no aggregate " +
-            "query, and spend is visible only in the Cohere dashboard.",
+            "Cohere has no usage or billing API. Token counts are only reported per response " +
+            "(meta.billed_units); spend is visible in the Cohere dashboard.",
         },
         {
           kind: "link" as const,
@@ -1625,7 +1622,7 @@ export class CohereClient implements PluginClient {
     if (audio.byteLength === 0) throw new Error("Cohere plugin: the audio clip was empty");
     if (audio.byteLength > MAX_AUDIO_BYTES) {
       throw new Error(
-        `Cohere plugin: the clip is ${formatBytes(audio.byteLength)} — the transcription endpoint accepts at most 25 MB`,
+        `Cohere plugin: the clip is ${formatBytes(audio.byteLength)}, over the 25 MB transcription limit`,
       );
     }
 
@@ -1633,8 +1630,8 @@ export class CohereClient implements PluginClient {
     if (!extension) {
       throw new Error(
         `Cohere plugin: ${payload.mimeType || "this clip"} is not a container Cohere transcribes. ` +
-          "Supported formats are FLAC, MP3, MPEG, MPGA, OGG and WAV — browser recordings " +
-          "(WebM on Chrome, Edge and Firefox; MP4 on Safari) must be converted first.",
+          "Supported formats are FLAC, MP3, MPEG, MPGA, OGG and WAV; browser recordings " +
+          "(WebM, MP4) must be converted first.",
       );
     }
 

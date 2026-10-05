@@ -107,7 +107,7 @@ export async function cmdRecordings(
   if (recordings.length === 0) {
     println(
       c.dim(
-        "No recorded sessions. Only SSH opened through the cloud is recorded — a desktop session that dials a host directly never reaches the server.",
+        "No recorded sessions. Only SSH opened through the cloud is recorded. A desktop session that dials a host directly never reaches the server.",
       ),
     );
     return;

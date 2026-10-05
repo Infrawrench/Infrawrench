@@ -18,7 +18,7 @@ export const ModelEndpointResourceType = rt({
   id: "model-endpoint",
   parentTypeId: "model",
   description:
-    "A single provider's endpoint for a model — its own pricing, uptime, latency percentiles and throughput",
+    "One provider's endpoint for a model, with its own pricing, uptime, latency and throughput",
   fields: [
     f("endpointName", "Endpoint"),
     f("modelId", "Model ID"),

@@ -232,7 +232,7 @@ function renderStack(r: ResourceInstance): DetailViewSchema {
       muted(
         connected
           ? "Connected: Infrawrench lists this stack's dashboards, alert rules, contact points and data sources with the stored service account token. Edit the stack to replace the token."
-          : "Not connected. Use Connect stack to create a service account and token for Infrawrench (needs the stack-service-accounts:write scope), or edit the stack and paste a service account token you created. Its dashboards, alert rules, contact points and data sources list once it is connected.",
+          : "Not connected. Use Connect stack to create a service account and token for Infrawrench (needs the stack-service-accounts:write scope), or edit the stack and paste a service account token. Dashboards, alert rules, contact points and data sources appear once connected.",
       ),
       muted(
         "Synthetic checks list once a Synthetic Monitoring access token is saved on the stack (Edit).",

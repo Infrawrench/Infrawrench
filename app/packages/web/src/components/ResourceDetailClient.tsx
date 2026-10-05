@@ -1181,7 +1181,7 @@ export function ResourceDetailClient({
               <span
                 className="text-[10px] text-on-surface-faint"
                 title={gt(
-                  "Forwards the same SSH key used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection.",
+                  "Lets the remote use your SSH key, e.g. for `git clone`. A compromised remote could use it against other hosts, so only enable for hosts you trust. Applies on the next connection.",
                 )}
               >
                 {gt("(forwards your selected key; applies on next connect)")}

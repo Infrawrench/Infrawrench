@@ -140,7 +140,7 @@ export function AppLauncherPanel({
                 disabled={app.needsTerminal}
                 title={
                   app.needsTerminal
-                    ? gt("This entry needs a terminal — open it from the SSH tab instead")
+                    ? gt("This entry needs a terminal. Open it from the SSH tab instead")
                     : (app.comment ?? app.id)
                 }
                 className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50"

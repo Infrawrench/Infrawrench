@@ -149,7 +149,7 @@ export async function authenticateOrgRequest(
     const user = await ensureUserFromClaims(claims.sub, claims.email);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
     if (!(await hasMembership(user.id, pathOrgId))) {
-      return c.json({ error: "Forbidden — not a member of this organization" }, 403);
+      return c.json({ error: "Forbidden: not a member of this organization" }, 403);
     }
     const denied = await denyUnlessPermitted(
       c,
@@ -192,7 +192,7 @@ export async function authenticateOrgRequest(
       .onConflictDoUpdate({ target: users.id, set: { email } });
 
     if (!(await hasMembership(userId, pathOrgId))) {
-      return c.json({ error: "Forbidden — not a member of this organization" }, 403);
+      return c.json({ error: "Forbidden: not a member of this organization" }, 403);
     }
 
     const denied = await denyUnlessPermitted(

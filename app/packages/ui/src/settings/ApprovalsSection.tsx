@@ -27,8 +27,8 @@ export function ApprovalsSection() {
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
             Workflow runs waiting on a human. A run that calls{" "}
-            <code>infra.waitForApproval(...)</code> suspends until someone approves or denies it
-            here — or until the request expires, which fails the run.
+            <code>infra.waitForApproval(...)</code> waits until someone approves or denies it here.
+            If the request expires, the run fails.
           </p>
         </T>
       </div>

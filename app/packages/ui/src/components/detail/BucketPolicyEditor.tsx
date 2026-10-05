@@ -152,7 +152,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
       const parsed = parsePolicy(jsonText);
       if (parsed.parseError) {
         setJsonParseError(parsed.parseError);
-        setApplyError(gt("JSON has parse errors — fix them before applying."));
+        setApplyError(gt("JSON has parse errors. Fix them before applying."));
         return;
       }
       payload = serializePolicy(parsed.doc);

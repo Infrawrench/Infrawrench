@@ -21,9 +21,9 @@ export function registerSavingsPaths(ctx: BuildContext) {
   const SavingsEventKind = z
     .enum(SAVINGS_EVENT_KINDS)
     .describe(
-      "`rightsizing` — a resize to a smaller size; `orphan_deletion` — a resource the orphan " +
-        "finder flags was deleted; `sleep_schedule` — a stretch of a sleep/wake schedule in force; " +
-        "`commitment` — reservation and savings-plan discounts, derived from billing; `manual` — " +
+      "`rightsizing`: a resize to a smaller size; `orphan_deletion`: a resource the orphan " +
+        "finder flags was deleted; `sleep_schedule`: a stretch of a sleep/wake schedule in force; " +
+        "`commitment`: reservation and savings-plan discounts, derived from billing; `manual`: " +
         "logged by a person.",
     )
     .openapi("SavingsEventKind");
@@ -31,18 +31,18 @@ export function registerSavingsPaths(ctx: BuildContext) {
   const SavingsEventSource = z
     .enum(SAVINGS_EVENT_SOURCES)
     .describe(
-      "`in_app` — recorded when Infrawrench performed the action; `detected` — inferred from an " +
+      "`in_app`: recorded when Infrawrench performed the action; `detected`: inferred from an " +
         "inventory diff on sync (the action was taken in the provider's console); `manual`; " +
-        "`derived` — computed from billing with no stored event (commitments).",
+        "`derived`: computed from billing with no stored event (commitments).",
     )
     .openapi("SavingsEventSource");
 
   const RealizedSavingsBasis = z
     .enum(REALIZED_SAVINGS_BASES)
     .describe(
-      "`billing` — baseline and post-action spend both read from this resource's cost rows; " +
-        "`estimate` — no per-resource billing, so the list-price estimate is accrued over elapsed " +
-        "days; `manual` — the logged amount accrued; `unmeasured` — nothing to measure against " +
+      "`billing`: baseline and post-action spend both read from this resource's cost rows; " +
+        "`estimate`: no per-resource billing, so the list-price estimate is accrued over elapsed " +
+        "days; `manual`: the logged amount accrued; `unmeasured`: nothing to measure against " +
         "(never summed as zero).",
     )
     .openapi("RealizedSavingsBasis");
@@ -51,8 +51,8 @@ export function registerSavingsPaths(ctx: BuildContext) {
     kind: z
       .enum(["below_projection", "grew_back"])
       .describe(
-        "`below_projection` — the trailing realized rate is under the org's threshold share of " +
-          "the projected rate; `grew_back` — post-action spend is above the pre-action baseline.",
+        "`below_projection`: the trailing realized rate is under the org's threshold share of " +
+          "the projected rate; `grew_back`: post-action spend is above the pre-action baseline.",
       ),
     realizedPerDay: Money,
     projectedPerDay: Money.nullable(),
@@ -122,8 +122,8 @@ export function registerSavingsPaths(ctx: BuildContext) {
     editable: z
       .enum(["full", "annotate", "none"])
       .describe(
-        "`full` — a manual entry (PUT); `annotate` — an automatic event takes a note, a cost " +
-          "centre, a horizon and an end date (PATCH); `none` — derived rows.",
+        "`full`: a manual entry (PUT); `annotate`: an automatic event takes a note, a cost " +
+          "centre, a horizon and an end date (PATCH); `none`: derived rows.",
       ),
   }).openapi("SavingsEventResult");
 

@@ -12,7 +12,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Grafana Cloud",
   description:
-    "Hosted Grafana, metrics, logs, traces and profiles. Track Grafana Cloud spend by product and stack from billed usage, chart each stack's active series and ingest, and manage stacks, installed plugins, access policies and tokens, members, and each connected stack's dashboards, alert rules, contact points, data sources and synthetic checks.",
+    "Hosted Grafana, metrics, logs, traces and profiles. Track spend by product and stack, chart active series and ingest, and manage stacks, plugins, access policies, members, and each connected stack's dashboards, alert rules, contact points, data sources and synthetic checks.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

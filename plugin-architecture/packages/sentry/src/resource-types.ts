@@ -18,7 +18,7 @@ export const OrganizationResourceType = rt({
   name: "Organization",
   id: "organization",
   description:
-    "The Sentry organization this connection reads. Shows month-to-date usage per data category (errors, spans, replays, attachments, profiles, logs, cron and uptime monitors) with what was accepted, filtered and rate limited, an estimated cost, and charts daily usage.",
+    "The Sentry organization this connection reads. Shows month-to-date usage per data category (accepted, filtered and rate limited), an estimated cost, and daily usage charts.",
   fields: [
     f("name", "Name", { editable: false }),
     f("slug", "Slug", { required: false, editable: false }),
@@ -40,7 +40,7 @@ export const ProjectResourceType = rt({
   name: "Project",
   id: "project",
   description:
-    "A Sentry project. Shows its platform, teams, events accepted and dropped over the last 24 hours and its unresolved issues, and charts accepted, filtered and rate-limited events. Create one for a team, rename it, change its platform or delete it.",
+    "A Sentry project. Shows its platform, teams, events accepted and dropped in the last 24 hours, and unresolved issues. Create, rename, change platform or delete.",
   fields: [
     f("name", "Name"),
     f("platform", "Platform", { required: false }),
@@ -177,7 +177,7 @@ export const AlertResourceType = rt({
   name: "Alert",
   id: "alert",
   description:
-    "A Sentry alert: when its triggers fire and its filters match, Sentry runs its actions (email, Slack, PagerDuty and so on). Shows its triggers, actions, connected monitors and when it last fired. Enable or disable it, rename it, change how often it can fire, or delete it.",
+    "A Sentry alert: when its triggers fire and filters match, Sentry runs its actions (email, Slack, PagerDuty and so on). Enable, disable, rename, change frequency or delete.",
   fields: [
     f("name", "Name"),
     f("frequency", "Action Interval (minutes)", {
@@ -207,7 +207,7 @@ export const MonitorResourceType = rt({
   name: "Monitor",
   id: "monitor",
   description:
-    "A Sentry monitor (detector) that opens issues: error grouping, a metric threshold on errors, spans or sessions, or an issue stream. Shows its type, query and thresholds, the alerts it feeds and its latest issue. Enable, disable or delete it. Cron and uptime monitors are listed as their own types.",
+    "A Sentry monitor (detector) that opens issues, from error grouping, a metric threshold or an issue stream. Enable, disable or delete. Cron and uptime monitors are their own types.",
   fields: [
     f("name", "Name", { editable: false }),
     f("monitorType", "Type", { required: false, editable: false }),
@@ -234,7 +234,7 @@ export const CronMonitorResourceType = rt({
   name: "Cron Monitor",
   id: "cron-monitor",
   description:
-    "A Sentry cron monitor: a scheduled job that checks in. Shows its schedule and the status of each environment. Pause or resume it, mute or unmute its alerts, edit its name, schedule and margins, delete it, and chart check-in durations.",
+    "A Sentry cron monitor: a scheduled job that checks in. Shows its schedule and per-environment status. Pause, mute alerts, edit schedule and margins, or delete.",
   fields: [
     f("name", "Name"),
     f("schedule", "Schedule", {

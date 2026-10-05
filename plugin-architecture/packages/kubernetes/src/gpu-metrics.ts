@@ -523,9 +523,9 @@ export function describeGpuMetricsSource(source: GpuMetricsSource): string {
         case "disabled":
           return "GPU metrics are turned off on this account, so GPU cost is allocated by requests alone.";
         case "unreachable":
-          return "A GPU metrics source was found but did not answer through the Kubernetes API proxy, so GPU cost is allocated by requests alone and requested-but-idle GPUs cannot be measured.";
+          return "A GPU metrics source was found but did not answer through the Kubernetes API proxy. GPU cost is allocated by requests alone.";
         default:
-          return "No GPU metrics found (no NVIDIA DCGM exporter or AMD device metrics exporter, and no Prometheus scraping one), so GPU cost is allocated by requests alone and requested-but-idle GPUs cannot be measured.";
+          return "No GPU metrics found (no NVIDIA DCGM or AMD exporter, or Prometheus scraping one). GPU cost is allocated by requests alone.";
       }
   }
 }

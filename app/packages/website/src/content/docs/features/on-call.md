@@ -31,7 +31,7 @@ people each think the other is on call.
 
 ## Routing to whoever is on call
 
-In **Settings → Notifications**, a routing rule's destinations now include your
+In **Settings → Notifications → Routing**, a routing rule's destinations now include your
 rotations. Pick one and the rule sends to the person on call at the moment the
 alert fires. Nobody edits the rule at handover.
 

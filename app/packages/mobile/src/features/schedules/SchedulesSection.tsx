@@ -38,7 +38,7 @@ export function SchedulesSection() {
       {schedules.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load sleep schedules —{" "}
+            Couldn&apos;t load sleep schedules:{" "}
             {schedules.error instanceof Error ? schedules.error.message : "request failed"}
           </Text>
         </Card>
@@ -58,7 +58,7 @@ export function SchedulesSection() {
           {pause.isError && (
             <Card>
               <Text style={styles.error}>
-                Couldn&apos;t update the schedule —{" "}
+                Couldn&apos;t update the schedule:{" "}
                 {pause.error instanceof Error ? pause.error.message : "request failed"}
               </Text>
             </Card>

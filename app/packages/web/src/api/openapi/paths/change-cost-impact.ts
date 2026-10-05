@@ -18,16 +18,16 @@ const ChangeCostBasis = z
       "charged on the day it charged it; `amortized` spreads a commitment's up-front fee across " +
       "the term it buys; `blended` also spreads each commitment's discount evenly over the " +
       "usage it could cover. It is echoed on every response because a delta whose basis is unstated " +
-      "is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving.",
+      "is unreadable: an amortized 'after' against a cash 'before' looks exactly like a saving.",
   )
   .openapi("ChangeCostBasis");
 
 const ChangeCostImpactStatus = z
   .enum(["measured", "insufficient_data", "unknown"])
   .describe(
-    "`measured` — both windows had collected data and the delta is real. " +
-      "`insufficient_data` — the windows exist but are too short to compare. " +
-      "`unknown` — nothing here can answer the question. **`unknown` is never zero**: a resource " +
+    "`measured`: both windows had collected data and the delta is real. " +
+      "`insufficient_data`: the windows exist but are too short to compare. " +
+      "`unknown`: nothing here can answer the question. **`unknown` is never zero**: a resource " +
       "with no cost data reports that we cannot say, not that the change was free.",
   )
   .openapi("ChangeCostImpactStatus");
@@ -68,7 +68,7 @@ const ChangeCostImpactSeries = strict({
     description: "`afterPerDay - beforePerDay`. Positive means the change costs more.",
   }),
   deltaPercent: z.number().nullable().openapi({
-    description: "Null when the before window spent nothing — there is no percentage.",
+    description: "Null when the before window spent nothing; there is no percentage.",
   }),
   beforeTotal: z.number(),
   afterTotal: z.number(),
@@ -92,7 +92,7 @@ const ChangeCostImpact = strict({
         "the same number of days.",
     }),
   eventDay: z.string().openapi({
-    description: "UTC day the change landed on. Excluded from both windows — it is a mixed day.",
+    description: "UTC day the change landed on. Excluded from both windows; it is a mixed day.",
   }),
   before: ChangeCostImpactWindow.nullable(),
   after: ChangeCostImpactWindow.nullable(),
@@ -118,7 +118,7 @@ const ChangeCostImpactEntry = strict({
 
 const ChangeCostImpactsRequest = strict({
   changeIds: z.array(Uuid).max(50).openapi({
-    description: "Change ids from `GET /changes`. At most 50 — one feed page.",
+    description: "Change ids from `GET /changes`. At most 50: one feed page.",
   }),
   windowDays: z.number().int().min(2).max(30).optional().openapi({
     description: "Days either side of the change. Default 7; clamped server-side.",
@@ -144,7 +144,7 @@ const DeploymentCostImpact = strict({
   windowDays: z.number().int(),
   eventDay: z
     .string()
-    .openapi({ description: "The run's start day, UTC — what both windows hang off." }),
+    .openapi({ description: "The run's start day, UTC; what both windows hang off." }),
   resources: z.array(DeploymentCostImpactResource).openapi({
     description:
       "One row per resource the run provisioned through `infra.accounts.*.create(...)`. That is " +
@@ -160,7 +160,7 @@ const DeploymentCostImpact = strict({
     description: "Rows excluded from `total` because their impact could not be measured.",
   }),
   confidence: ChangeCostImpactConfidence.describe(
-    "The weakest confidence among the measured rows — a breakdown is only as good as its worst row.",
+    "The weakest confidence among the measured rows; a breakdown is only as good as its worst row.",
   ),
 }).openapi("DeploymentCostImpact");
 
@@ -187,7 +187,7 @@ export function registerChangeCostImpactPaths(ctx: BuildContext): void {
       "For each change, compares the resource's per-day spend over the window before it against " +
       "the window after, and reports the difference as a run-rate delta.\n\n" +
       "A POST because it takes a list of ids, not because it writes: nothing is stored. The " +
-      "answer is recomputed on every call, deliberately — provider cost arrives late and is then " +
+      "answer is recomputed on every call, deliberately; provider cost arrives late and is then " +
       "restated, so a stored number would be a wrong number that never corrects itself.\n\n" +
       "Both windows exclude the change's own day (spend on it is half old shape, half new) and " +
       "today (an accruing day always reads as a dip), and are clamped symmetrically to the days " +
@@ -246,7 +246,7 @@ export function registerChangeCostImpactPaths(ctx: BuildContext): void {
     description:
       "Writes the finding as a cost annotation, so the step in the run rate is explained on the " +
       "graph where it shows. Re-posting the same subject **rewords the existing note** rather " +
-      "than adding a second — which is what makes it safe to pin a finding again once the " +
+      "than adding a second; which is what makes it safe to pin a finding again once the " +
       "provider has finished restating. The note's date and report scope are never rewritten: " +
       "they may have been edited deliberately.\n\n" +
       "A subject with no measurable impact is a 400, not a note reading `$0.00/day`.",

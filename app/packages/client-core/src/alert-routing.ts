@@ -294,7 +294,7 @@ export const ALERT_TRIGGERS = [
   {
     id: "weeklyDigest",
     label: "Weekly digest",
-    description: "The Monday-morning summary. Channels only — never a phone.",
+    description: "The Monday-morning summary. Channels only; never a phone.",
     pushDefaultMuted: false,
     channelOnly: true,
     defaultSeverity: "info",

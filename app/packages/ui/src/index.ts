@@ -179,6 +179,8 @@ export type {
 } from "./components/MultiSelect.js";
 
 export { GlobalTabBar } from "./components/GlobalTabBar.js";
+export { SectionTabs } from "./components/SectionTabs.js";
+export type { SectionTab, SectionTabsProps } from "./components/SectionTabs.js";
 export type { GlobalTabBarProps } from "./components/GlobalTabBar.js";
 
 export { DashboardCard } from "./components/dashboard/DashboardCard.js";

@@ -72,7 +72,7 @@ export const RedshiftClusterResourceType = rt({
       category: "public-exposure",
       conditions: [{ fieldKey: "publiclyAccessible", when: "truthy" }],
       reason:
-        "The cluster endpoint resolves to a public IP reachable from outside the VPC — the data warehouse is one leaked credential away from the internet.",
+        "The cluster endpoint resolves to a public IP reachable from outside the VPC. One leaked credential exposes the data warehouse.",
     },
     {
       id: "redshift-unencrypted",

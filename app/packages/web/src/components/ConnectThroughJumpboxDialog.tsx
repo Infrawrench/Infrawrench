@@ -99,9 +99,8 @@ export function ConnectThroughJumpboxDialog({
         <div className="p-5 space-y-4">
           <T>
             <p className="text-xs text-on-surface-faint">
-              Creates a new SSH target that routes through the selected jumpbox. The jumpbox itself
-              can also be configured to route through another SSH account, allowing multi-hop
-              chains.
+              Creates an SSH target that routes through this jumpbox. Jumpboxes can themselves chain
+              through other SSH accounts.
             </p>
           </T>
 

@@ -35,7 +35,7 @@ function firewallAction(value: string | undefined): FirewallAction {
   const action = value === undefined || value === "" ? "block" : value;
   if (!isFirewallAction(action)) {
     throw new Error(
-      `Cloudflare plugin: "${action}" is not a valid WAF custom-rule action — ` +
+      `Cloudflare plugin: "${action}" is not a valid WAF custom-rule action. ` +
         `Cloudflare accepts ${FIREWALL_ACTIONS.join(", ")}.`,
     );
   }

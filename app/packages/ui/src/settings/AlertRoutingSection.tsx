@@ -158,7 +158,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Alert routing")}</h2>
         <p className="text-xs text-on-surface-muted mt-1">
           {gt(
-            "Rules are evaluated top to bottom. The first rule that matches decides where an alert goes, unless it says to keep going — so put the specific rules above the general ones.",
+            "Rules run top to bottom, and the first match decides where an alert goes unless it says to continue. Put specific rules above general ones.",
           )}
         </p>
       </div>

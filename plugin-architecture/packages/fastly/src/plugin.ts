@@ -11,7 +11,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Fastly",
   description:
-    "Edge cloud and CDN. Track Fastly spend by product from invoices and the month-to-date bill, chart requests, bandwidth, cache hit ratio and errors per service, purge cache, activate versions, and manage services, domains, backends, logging endpoints, dictionaries, KV and config stores, TLS certificates and API tokens.",
+    "Edge cloud and CDN. Track spend by product, chart requests, bandwidth, cache hit ratio and errors per service, purge cache, activate versions, and manage services, domains, backends, logging, stores, TLS certificates and API tokens.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -20,7 +20,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Fastly API token. Use the global:read scope to browse and see costs, add purge_all to purge, or use global to also activate versions and edit stores. Cost data needs a token whose owner has the Billing or Superuser role.",
+        "A Fastly API token. global:read browses and shows costs, purge_all adds purging, and global also activates versions and edits stores. Cost data needs a token whose owner has the Billing or Superuser role.",
       sensitive: true,
       placeholder: "32-character token",
       helpLink: {

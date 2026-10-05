@@ -5,14 +5,14 @@ sidebar_order: 15
 ---
 
 Wherever Infrawrench quotes a price, it also quotes an estimate of the
-emissions from running that compute: on the [Costs](./cloud-costs.md) page, on
+emissions from running that compute: on the [Costs](./cloud-costs.md) page (its **Carbon** tab has the org total), on
 a resource's header, in the create and edit forms, in
 [right-sizing](./right-sizing.md), in an
 [ephemeral environment](./ephemeral-environments.md)'s estimate, in the
 [CLI](./cli.md), to agents over [MCP](./mcp.md), and from
 [workflows](./workflows.md) and [custom graphs](./custom-graphs.md).
 
-<insert [The Estimated carbon section on the Costs page, showing total kg CO2e over 30 days, the Estimated and Not estimated counts, the by-provider list and the one-line assumptions footnote] here>
+<insert [The Estimated carbon section on the Costs page Carbon tab, showing total kg CO2e over 30 days, the Estimated and Not estimated counts, the by-provider list and the one-line assumptions footnote] here>
 
 ## It is an estimate, and it is built to say so
 

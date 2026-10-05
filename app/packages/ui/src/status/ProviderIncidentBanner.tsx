@@ -69,7 +69,7 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
       <span aria-hidden="true">⚠</span>
       <span className="truncate">
         <span className="font-medium">{summarizeStatusIncident(top)}</span>
-        <span className="opacity-80"> — {top.title}</span>
+        <span className="opacity-80">: {top.title}</span>
         {relevant.length > 1 && (
           <span className="opacity-80">
             {" "}

@@ -145,11 +145,11 @@ export function CostCentresSection() {
     if (childCount > 0) {
       lines.push(
         parentName
-          ? gt('Its {count} child centre(s) move up under "{parent}" — they are not deleted.', {
+          ? gt('Its {count} child centre(s) move up under "{parent}"; they are not deleted.', {
               count: childCount,
               parent: parentName,
             })
-          : gt("Its {count} child centre(s) become top-level centres — they are not deleted.", {
+          : gt("Its {count} child centre(s) become top-level centres; they are not deleted.", {
               count: childCount,
             }),
       );
@@ -157,7 +157,7 @@ export function CostCentresSection() {
     if (ruleCount > 0) {
       lines.push(
         gt(
-          'Its {count} allocation rule(s) are deleted, so the spend they claimed falls through to the next matching rule or to "Unallocated".',
+          'Its {count} allocation rule(s) are deleted; their spend falls through to the next matching rule or "Unallocated".',
           { count: ruleCount },
         ),
       );
@@ -185,17 +185,14 @@ export function CostCentresSection() {
         <h1 className="text-xl font-semibold">{gt("Cost Centres")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            The tree spend is allocated to for showback. Centres nest, so a division holds teams and
-            a team holds products — &ldquo;what does Engineering cost&rdquo; is the whole subtree,
-            not one bucket. The Costs panel reports each centre&rsquo;s own spend and its
-            subtree&rsquo;s separately. Nesting is at most <Var>{COST_CENTRE_LIMITS.maxDepth}</Var>{" "}
-            levels deep.
+            The tree spend is allocated to for showback. Centres nest up to{" "}
+            <Var>{COST_CENTRE_LIMITS.maxDepth}</Var> levels deep, and a centre&rsquo;s total
+            includes its subtree.
           </p>
         </T>
         <T>
           <p className="text-sm text-on-surface-muted mt-2">
-            Nesting changes nothing about matching: a cost row is still allocated to exactly one
-            centre by the{" "}
+            Each cost row is allocated to one centre by the{" "}
             <button
               type="button"
               onClick={() => openSection("tag-policy")}
@@ -203,8 +200,7 @@ export function CostCentresSection() {
             >
               allocation rules
             </button>{" "}
-            on the Tag Policy page, and spend no rule claims still reports as
-            &ldquo;Unallocated&rdquo;.
+            on the Tag Policy page. Unmatched spend reports as &ldquo;Unallocated&rdquo;.
           </p>
         </T>
       </div>

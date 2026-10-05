@@ -152,7 +152,7 @@ export function registerMetricAlertPaths(ctx: BuildContext) {
     tags: ["Metric alerts"],
     summary: "List metric series that actually exist",
     description:
-      "The series labels resources reported in the last 7 days, optionally narrowed to one plugin and resource type — what the rule builder's metric picker is fed from.",
+      "The series labels resources reported in the last 7 days, optionally narrowed to one plugin and resource type; what the rule builder's metric picker is fed from.",
     request: {
       params: OrgIdParam,
       query: strict({

@@ -266,7 +266,7 @@ export function registerDeploymentPaths(ctx: BuildContext) {
     tags: ["Deployments"],
     summary: "Roll back to a previous deployment",
     description:
-      "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing — the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded — undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.",
+      "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing; the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded; undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.",
     request: {
       params: runIdParam(),
       body: {
@@ -318,7 +318,7 @@ export function registerDeploymentPaths(ctx: BuildContext) {
     tags: ["Deployments"],
     summary: "Deploy an environment whenever a branch moves",
     description:
-      "Arming a trigger records the branch's current commit WITHOUT deploying it — the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.",
+      "Arming a trigger records the branch's current commit WITHOUT deploying it; the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: DeployTriggerInput } } },

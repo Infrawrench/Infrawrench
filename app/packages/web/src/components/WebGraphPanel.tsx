@@ -75,12 +75,12 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
         <h1 className="text-xl font-semibold text-on-surface">{gt("Dependency graph")}</h1>
         <p className="text-sm text-on-surface-muted mt-0.5">
           {gt(
-            "How your resources are wired together — read from your synced cloud data and from output references you wire yourself.",
+            "How your resources connect, from synced cloud data and the output references you wire.",
           )}
         </p>
         {error && (
           <p className="mt-2 text-xs text-danger">
-            {gt("Couldn’t refresh — showing the last loaded graph. {error}", { error })}
+            {gt("Couldn’t refresh. Showing the last loaded graph. {error}", { error })}
           </p>
         )}
       </div>

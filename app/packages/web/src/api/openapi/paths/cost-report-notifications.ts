@@ -41,7 +41,7 @@ export const ScheduleFields = {
 
 const ReportNotificationInput = strict({ ...ScheduleFields })
   .describe(
-    "A full replace, like a report's own PUT. At least one destination is required — a schedule " +
+    "A full replace, like a report's own PUT. At least one destination is required; a schedule " +
       "with nowhere to deliver would only ever record failures.",
   )
   .openapi("ReportNotificationInput");
@@ -68,7 +68,7 @@ const ReportNotification = strict({
     .enum(["pending", "succeeded", "partial", "failed", "no_targets"])
     .nullable()
     .describe(
-      "What the last attempt did. `partial` means some destinations took it and some failed — " +
+      "What the last attempt did. `partial` means some destinations took it and some failed; " +
         "never retried automatically, because a retry would double-post where it landed.",
     ),
   lastError: z.string().nullable(),
@@ -78,7 +78,7 @@ const ReportNotification = strict({
 }).openapi("ReportNotification");
 
 const ReportDeliveryTargetOption = strict({
-  id: z.string().describe("The stored row id — what the schedule input carries."),
+  id: z.string().describe("The stored row id; what the schedule input carries."),
   label: z.string().describe("Display label: `#channel` for Slack, the saved label for Teams."),
 }).openapi("ReportDeliveryTargetOption");
 
@@ -138,7 +138,7 @@ export function registerCostReportNotificationPaths(ctx: BuildContext) {
     summary: "List the destinations a schedule can deliver to",
     description:
       "The org's live Slack channels and Teams webhooks, and whether this deployment can send " +
-      "mail. Destinations are picked from here — a schedule can only point at surfaces the org " +
+      "mail. Destinations are picked from here; a schedule can only point at surfaces the org " +
       "already connected.",
     request: { params: idParam() },
     responses: {
@@ -155,7 +155,7 @@ export function registerCostReportNotificationPaths(ctx: BuildContext) {
     tags: ["Cost reports"],
     summary: "Create a delivery schedule",
     description:
-      "On its cadence the server runs the report and sends a composed text summary — period " +
+      "On its cadence the server runs the report and sends a composed text summary; period " +
       "total (converted to the org's display currency where configured, with the conversion " +
       "caveat), change vs the previous period, top groups, and a deep link. No chart images. " +
       "An empty result still sends, saying so.",
@@ -218,7 +218,7 @@ export function registerCostReportNotificationPaths(ctx: BuildContext) {
     description:
       "Runs the report and delivers it to this schedule's destinations immediately, ignoring " +
       "the schedule and its enabled flag. Fails with a 400 naming the reason when nothing could " +
-      "be delivered. A successful manual send clears a parked failure — it is the documented " +
+      "be delivered. A successful manual send clears a parked failure; it is the documented " +
       "recovery for a partial delivery.",
     request: { params: notifParam() },
     responses: {
@@ -237,7 +237,7 @@ export function registerCostReportNotificationPaths(ctx: BuildContext) {
     tags: ["Cost reports"],
     summary: "List every delivery schedule in the organization",
     description:
-      "All reports' schedules in one call — what the CLI's schedules column reads. Schedules " +
+      "All reports' schedules in one call; what the CLI's schedules column reads. Schedules " +
       "of deleted reports are excluded.",
     request: { params: OrgIdParam },
     responses: {

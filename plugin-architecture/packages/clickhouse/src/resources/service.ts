@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const ServiceResourceType = rt({
   name: "Service",
   id: "ch-service",
-  description: "A ClickHouse Cloud service — a managed ClickHouse database instance",
+  description: "A managed ClickHouse Cloud service",
   fields: [
     f("serviceId", "Service ID", { editable: false }),
     f("name", "Name", { description: "Up to 50 characters, letters, digits and spaces." }),

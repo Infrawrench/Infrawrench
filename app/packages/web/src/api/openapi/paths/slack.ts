@@ -222,7 +222,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     tags: ["Slack"],
     summary: "Slack interactivity endpoint (Approve/Deny buttons)",
     description:
-      "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI — the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
+      "Public; verified against the app's signing secret. Receives `block_actions` payloads from the Approve/Deny buttons on approval messages and the status disambiguation picker. Button decisions resolve through the same code path as the web UI; the linked member needs `workflows:approve` (workflow approvals) or must own the conversation and hold `chat:write` (chat agent tool approvals).",
     security: [],
     request: {
       headers: slackSignatureHeaders,
@@ -303,7 +303,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     tags: ["Slack"],
     summary: "Post a test message to every configured channel",
     description:
-      "Ignores routing rules — every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
+      "Ignores routing rules; every channel gets the test. Fails with the Slack error when nothing could be delivered (`not_in_channel` means the bot needs inviting to a private channel).",
     request: { params: OrgIdParam },
     responses: {
       200: {

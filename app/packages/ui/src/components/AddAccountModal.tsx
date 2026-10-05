@@ -470,7 +470,7 @@ export function AddAccountModal({
                         <option value="">{gt("Direct (no bastion)")}</option>
                         {bastions.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.connected ? b.name : gt("{name} — offline", { name: b.name })}
+                            {b.connected ? b.name : gt("{name} (offline)", { name: b.name })}
                           </option>
                         ))}
                       </select>

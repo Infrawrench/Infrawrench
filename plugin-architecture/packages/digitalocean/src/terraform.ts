@@ -84,7 +84,7 @@ export const digitaloceanTerraformExport: TerraformExportCapability = {
         const dropletIds = fieldString(resource, "dropletIds");
         if (dropletIds) {
           comments.push(
-            `Currently attached to droplet(s) ${dropletIds} — model attachments with`,
+            `Currently attached to droplet(s) ${dropletIds}; model attachments with`,
             "digitalocean_volume_attachment resources (or volume_ids on the droplet).",
           );
         }

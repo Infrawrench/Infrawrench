@@ -101,7 +101,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
           status: "ok",
           message:
             result.summary ??
-            (result.id ? gt("Sent — id {id}", { id: result.id }) : gt("Message sent.")),
+            (result.id ? gt("Sent (id {id})", { id: result.id }) : gt("Message sent.")),
           at: Date.now(),
         },
         ...prev,

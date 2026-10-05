@@ -61,7 +61,7 @@ const httpHostServices = {
       // same account works fine in the app.
       if (req.caCert) {
         throw new Error(
-          "A custom CA certificate is not supported from the CLI yet — " +
+          "A custom CA certificate is not supported from the CLI yet, " +
             "run this against the account from the desktop app or the web app.",
         );
       }

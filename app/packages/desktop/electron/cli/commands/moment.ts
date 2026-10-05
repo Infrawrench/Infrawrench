@@ -26,7 +26,7 @@ const SEVERITY_STYLE: Record<MomentSeverity, { glyph: string; color: (s: string)
 export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "The moment view merges feeds recorded by Infrawrench Cloud (change timeline, incidents, anomalies, runs) — local-only mode records none of them.",
+      "The moment view merges feeds recorded by Infrawrench Cloud (change timeline, incidents, anomalies, runs). Local-only mode records none of them.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -39,7 +39,7 @@ export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<voi
     const parsed = Date.parse(rawAt);
     if (Number.isNaN(parsed)) {
       throw new CliError(
-        `Invalid timestamp "${rawAt}" — use ISO 8601, e.g. 2026-08-03T03:14:00Z (or omit it for "around now").`,
+        `Invalid timestamp "${rawAt}": use ISO 8601, e.g. 2026-08-03T03:14:00Z (or omit it for "around now").`,
         2,
       );
     }
@@ -76,11 +76,11 @@ export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<voi
   for (const feed of response.feeds) {
     const label = MOMENT_FEED_LABELS[feed.feed] ?? feed.feed;
     if (feed.status === "error") {
-      println(c.yellow(`  ${label} unavailable${feed.error ? ` — ${feed.error}` : ""}`));
+      println(c.yellow(`  ${label} unavailable${feed.error ? `, ${feed.error}` : ""}`));
     } else if (feed.status === "omitted") {
-      println(c.dim(`  ${label} omitted — your role lacks its read permission`));
+      println(c.dim(`  ${label} omitted: your role lacks its read permission`));
     } else if (feed.truncated) {
-      println(c.dim(`  ${label} truncated — more events than the window returns`));
+      println(c.dim(`  ${label} truncated: more events than the window returns`));
     }
   }
 
@@ -111,7 +111,7 @@ export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<voi
       c.dim(`[${MOMENT_FEED_LABELS[event.feed] ?? event.feed}]`),
       event.severity === "critical" ? c.red(event.title) : event.title,
     ];
-    if (event.detail) parts.push(c.dim(`— ${event.detail}`));
+    if (event.detail) parts.push(c.dim(`(${event.detail})`));
     if (badge) parts.push(c.yellow(`(${badge})`));
     println(parts.join(" "));
   };

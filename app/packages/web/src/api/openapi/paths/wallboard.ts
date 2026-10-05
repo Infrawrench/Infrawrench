@@ -6,7 +6,7 @@ const WallboardStatus = z.enum(["ok", "degraded", "down"]).openapi({
   description:
     "Three states rather than five, because at four metres a person distinguishes three colours " +
     "reliably and nothing more. `down` is reserved for the two things that mean customers are " +
-    "affected now — a sev1 incident or a probe that is down; everything else that is wrong is " +
+    "affected now: a sev1 incident or a probe that is down; everything else that is wrong is " +
     "`degraded`. A source that could not be read is `degraded` and never `ok`.",
 });
 
@@ -50,7 +50,7 @@ export function registerWallboardPaths(ctx: BuildContext) {
       .array(z.string())
       .describe(
         "Sources that could not be read, **named on the screen**. A wallboard showing green " +
-          "because a query failed is worse than a blank one — it is actively telling the room " +
+          "because a query failed is worse than a blank one; it is actively telling the room " +
           "the wrong thing.",
       ),
     generatedAt: IsoDateTime,
@@ -64,10 +64,10 @@ export function registerWallboardPaths(ctx: BuildContext) {
     description:
       "A different reading of data the product already holds, built on one rule: a wallboard may " +
       "only show things that are true **right now** and that somebody would cross a room to look " +
-      "at. There is deliberately no history, no trend and no breakdown — those belong on the page " +
+      "at. There is deliberately no history, no trend and no breakdown; those belong on the page " +
       "you open when you do walk over.\n\n" +
-      "Four sources — declared incidents, synthetic probes, query monitors and account sync " +
-      "health — each guarded independently, because a television that goes blank because one " +
+      "Four sources (declared incidents, synthetic probes, query monitors and account sync " +
+      "health) each guarded independently, because a television that goes blank because one " +
       "query threw is showing nothing to a room that was relying on it.\n\n" +
       "Session-authenticated on purpose: unlike the calendar feed or a public status page, this " +
       "carries incident titles, probe names and account names, and a screen in an office is " +

@@ -251,7 +251,7 @@ export class HeadlessAppClient {
         cleanup();
         reject(
           new Error(
-            "the application did not open a window in time — it may need something the host " +
+            "the application did not open a window in time. It may need something the host " +
               "is missing (check the host's preflight)",
           ),
         );
@@ -532,6 +532,6 @@ export async function startHeadlessAppSession(
       .filter(Boolean)
       .pop();
     if (!detail || message.includes(detail)) throw error;
-    throw new Error(`${message} — the host said: ${detail}`);
+    throw new Error(`${message} (the host said: ${detail})`);
   }
 }

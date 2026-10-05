@@ -54,7 +54,7 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
   if (response.accounts.length === 0) {
     println(
       c.dim(
-        "Nothing looks wasted. Resources are flagged when a plugin heuristic matches — an empty list is the good outcome.",
+        "Nothing looks wasted. Resources are flagged when a plugin heuristic matches. An empty list is the good outcome.",
       ),
     );
     if (!showCost) {
@@ -109,7 +109,7 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     println();
     println(
       c.dim(
-        `${response.unownedCount} of ${response.totalCount} have no recorded owner — nobody to ask before deleting, and nobody an alert can reach.`,
+        `${response.unownedCount} of ${response.totalCount} have no recorded owner. Nobody to ask before deleting, and nobody an alert can reach.`,
       ),
     );
   }
@@ -119,7 +119,7 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     c.dim(
       showCost
         ? "Cost figures are best-effort per-resource billing matches; most providers don't report them. Confirm a resource is unused before deleting it."
-        : "Spend is collected by Infrawrench Cloud, so a local scan has no cost column — the flags never depend on billing data. Confirm a resource is unused before deleting it.",
+        : "Spend is collected by Infrawrench Cloud, so a local scan has no cost column. The flags never depend on billing data. Confirm a resource is unused before deleting it.",
     ),
   );
 }

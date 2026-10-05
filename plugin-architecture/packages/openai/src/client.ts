@@ -65,8 +65,8 @@ const API_BASE = "https://api.openai.com/v1";
  */
 const ADMIN_KEY_REQUIRED =
   'OpenAI plugin: this needs the account\'s "Admin API key". Organization projects, members, invites, ' +
-  "usage and costs live under /v1/organization/* and only an admin key (sk-admin-…) can reach them — a " +
-  "project key (sk-… / sk-proj-…) is rejected there with a 403. Edit this account and paste an admin key " +
+  "usage and costs live under /v1/organization/* and only an admin key (sk-admin-…) can reach them; a " +
+  "project key (sk-… / sk-proj-…) gets a 403. Edit this account and paste an admin key " +
   "from https://platform.openai.com/settings/organization/admin-keys.";
 
 // ---- API response shapes (only the fields this plugin reads) ---------------
@@ -1850,11 +1850,11 @@ export class OpenAIClient implements PluginClient {
         section("Speech support", [
           {
             key: "Text-to-speech",
-            value: isTtsModel(modelId) ? "Yes — /v1/audio/speech" : "No",
+            value: isTtsModel(modelId) ? "Yes (/v1/audio/speech)" : "No",
           },
           {
             key: "Transcription",
-            value: isSttModel(modelId) ? "Yes — /v1/audio/transcriptions" : "No",
+            value: isSttModel(modelId) ? "Yes (/v1/audio/transcriptions)" : "No",
           },
         ]),
       ],
@@ -1865,9 +1865,9 @@ export class OpenAIClient implements PluginClient {
         tabLabel: "Speech",
         subtitle: speechCapable
           ? `${modelId} · mp3 out, 4,096 characters per request · 25 MB per clip in`
-          : `${modelId} can't do audio — pick a speech model below to try synthesis or transcription`,
+          : `${modelId} can't do audio. Pick a speech model below.`,
         helpText:
-          "One model picker drives both halves. Synthesis falls back to gpt-4o-mini-tts and transcription to gpt-4o-transcribe when the selected model can't do that half. Word timings only come back from whisper-1; speaker labels only from gpt-4o-transcribe-diarize.",
+          "One picker drives both halves; synthesis falls back to gpt-4o-mini-tts and transcription to gpt-4o-transcribe if the model can't do that half. Word timings need whisper-1; speaker labels need gpt-4o-transcribe-diarize.",
         voices: TTS_VOICES,
         defaultVoice: DEFAULT_VOICE,
         voiceLabel: "Voice",
@@ -2123,7 +2123,7 @@ export class OpenAIClient implements PluginClient {
           type: "plugin-action",
           actionId: "archive-project",
           confirmMessage:
-            "Archive this project? OpenAI has no delete for projects and no unarchive — every API key scoped to it stops working.",
+            "Archive this project? Every API key scoped to it stops working, and it cannot be unarchived.",
           successMessage: "Project archived.",
         },
       });
@@ -2153,7 +2153,7 @@ export class OpenAIClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "User-owned project keys can be listed and revoked through the API but never created. Use “Get credentials” to create a service account in this project and mint its key — that value is shown once and cannot be re-read.",
+                "User-owned project keys can be listed and revoked but not created. Use “Get credentials” to create a service account key; it is shown once.",
             },
           ],
         },
@@ -3332,8 +3332,7 @@ export class OpenAIClient implements PluginClient {
         { label: "API Key ID", value: str(created.api_key?.id) },
         { label: "API Key", value, sensitive: true, hint: "Only shown once" },
       ],
-      warning:
-        "Save this key now. OpenAI never returns it again — the key list only ever shows a redacted value.",
+      warning: "Save this key now. OpenAI never shows it again.",
     };
   }
 
@@ -3674,9 +3673,7 @@ export class OpenAIClient implements PluginClient {
       duration !== undefined ? `${duration.toFixed(1)} s of audio` : undefined,
       wantsVerbose && words.length > 0 ? `${words.length} word timings` : undefined,
       wantsDiarized && words.length > 0 ? `${words.length} speaker segments` : undefined,
-      !wantsVerbose && !wantsDiarized
-        ? "no timings — whisper-1 is the only model that returns them"
-        : undefined,
+      !wantsVerbose && !wantsDiarized ? "no timings (only whisper-1 returns them)" : undefined,
       `${elapsedMs} ms`,
     ]
       .filter((part): part is string => Boolean(part))

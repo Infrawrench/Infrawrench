@@ -160,7 +160,7 @@ export function MetricAlertRuleModal({
         <h2 className="text-lg font-semibold text-on-surface mb-1">{gt("Metric alert rule")}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
           {gt(
-            "Fires when a metric breaches the threshold for the whole window, on every resource the selector matches — including ones created after the rule.",
+            "Fires when a metric breaches the threshold for the whole window on any matching resource, including ones created later.",
           )}
         </p>
 
@@ -181,7 +181,7 @@ export function MetricAlertRuleModal({
 
           <div role="group" aria-labelledby={`${uid}-selector-label`}>
             <span id={`${uid}-selector-label`} className={labelClass}>
-              {gt("Resources (matched by query, not by id — all resources when empty)")}
+              {gt("Resources (matched by query; all resources when empty)")}
             </span>
             <div className="grid grid-cols-2 gap-3">
               <select
@@ -241,7 +241,7 @@ export function MetricAlertRuleModal({
                   <Var>{preview.matchingResourceCount === 1 ? "" : "s"}</Var> right now
                   <Var>
                     {preview.sampleResourceNames.length > 0
-                      ? ` — ${preview.sampleResourceNames.slice(0, 3).join(", ")}${
+                      ? `: ${preview.sampleResourceNames.slice(0, 3).join(", ")}${
                           preview.matchingResourceCount > 3 ? "…" : ""
                         }`
                       : ""}

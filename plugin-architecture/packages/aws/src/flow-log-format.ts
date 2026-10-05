@@ -81,7 +81,7 @@ export function unusableReason(flowLogId: string, missing: string[]): string {
     `Flow log ${flowLogId} does not record ${missing.join(", ")}. ` +
     `The default record format is version 2 and has no direction or zone fields, so its ` +
     `records cannot be attributed to a pair. Recreate the flow log with a custom format ` +
-    `including at least ${REQUIRED_FLOW_FIELDS.join(", ")} — and ideally az-id, ` +
+    `including at least ${REQUIRED_FLOW_FIELDS.join(", ")}, and ideally az-id, ` +
     `instance-id, traffic-path, interface-type and pkt-dst-aws-service, which is what ` +
     `turns "an address" into "a resource".`
   );

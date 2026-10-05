@@ -50,7 +50,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "An Admin API key from the Mistral backoffice. Mistral's Admin API is a separate base (api.mistral.ai/v1/admin) with its own header, and it is available on Enterprise plans only. Without it, API-key listing and usage/cost collection are unavailable — everything else works normally.",
+        "An Admin API key from the Mistral backoffice. Enterprise plans only. Without it, API-key listing and usage/cost collection are unavailable; everything else works.",
       sensitive: true,
       optional: true,
       placeholder: "your-mistral-admin-api-key",

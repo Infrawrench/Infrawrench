@@ -584,7 +584,7 @@ export class GladiaClient implements PluginClient {
       if (Date.now() + POLL_INTERVAL_MS > deadline) {
         throw new Error(
           `Gladia transcription ${jobId} was still "${status || "queued"}" after ` +
-            `${Math.round(MAX_POLL_WAIT_MS / 1000)} s. The job is still running — open it under ` +
+            `${Math.round(MAX_POLL_WAIT_MS / 1000)} s. The job is still running; open it under ` +
             "Transcriptions once it finishes.",
         );
       }
@@ -925,7 +925,7 @@ export class GladiaClient implements PluginClient {
               content:
                 "Gladia has no usage or quota endpoint. These figures are summed from the " +
                 `${sampled} most recent job${sampled === 1 ? "" : "s"} returned by /v2/pre-recorded, ` +
-                "not from a billing API — they are a lower bound on your account's real usage.",
+                "not from a billing API, so they are a lower bound on real usage.",
               variant: "muted",
             },
             {

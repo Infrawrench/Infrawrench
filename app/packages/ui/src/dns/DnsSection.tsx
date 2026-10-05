@@ -100,13 +100,13 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
       <h1 className="text-xl font-semibold mb-1">{gt("Domains")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Every DNS zone and record across your providers in one place, with each record's target checked against the rest of your workspace. Nothing here resolves DNS or calls a provider — it reads the state your accounts last synced.",
+          "Every DNS zone and record across your providers, with each target checked against your workspace. From synced data; nothing here resolves DNS.",
         )}
       </p>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the DNS inventory — {error}", { error })}{" "}
+          {gt("Couldn't load the DNS inventory: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -121,7 +121,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing the last loaded inventory. {error}", { error })}
+          {gt("Couldn't refresh; showing the last loaded inventory. {error}", { error })}
         </p>
       )}
 
@@ -160,7 +160,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
           {data.zones.length === 0 && data.records.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
               {gt(
-                "No DNS zones synced. Connect an account on a provider that manages DNS — Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel — and its zones and records appear here after the next sync.",
+                "No DNS zones synced. Connect a DNS provider (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel) and zones appear after the next sync.",
               )}
             </p>
           ) : (
@@ -265,7 +265,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                 <p className="text-sm text-on-surface-faint">
                   {filter === "all"
                     ? gt(
-                        "No records synced. Several providers list zones without their records — those zones show above with the provider's own record count.",
+                        "No records synced. Some providers list zones without records; those show above with the provider's record count.",
                       )
                     : gt("No {label} records.", {
                         label: gtData(
@@ -315,7 +315,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                                   {target.service && (
                                     <T>
                                       <span className="block text-xs text-danger">
-                                        <Var>{gtData(target.service.label)}</Var> — nothing synced
+                                        <Var>{gtData(target.service.label)}</Var>: nothing synced
                                         claims &ldquo;
                                         <Var>{target.service.claimLabel}</Var>&rdquo;.{" "}
                                         <Var>{gtData(target.service.reason)}</Var>
@@ -358,7 +358,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                   <h2 className="text-sm font-medium text-on-surface mb-2">{gt("Not checked")}</h2>
                   <p className="text-xs text-on-surface-faint mb-2">
                     {gt(
-                      "A record pointing into one of these provider namespaces is shown as external rather than dangling. We can't tell a name you released from one you never owned without the data below, and guessing would flag records that are perfectly fine.",
+                      "Records pointing into these provider namespaces show as external, not dangling, because there isn't enough data to tell.",
                     )}
                   </p>
                   <ul className="flex flex-col gap-1">
@@ -367,7 +367,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                         key={`${entry.pluginId}:${entry.label}`}
                         className="text-xs text-on-surface-tertiary"
                       >
-                        <span className="text-on-surface-secondary">{gtData(entry.label)}</span> —{" "}
+                        <span className="text-on-surface-secondary">{gtData(entry.label)}</span>:{" "}
                         {gtData(entry.reason)}
                       </li>
                     ))}
@@ -377,7 +377,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
 
               <p className="mt-4 text-xs text-on-surface-faint">
                 {gt(
-                  "A dangling record points into a provider namespace this workspace manages that nothing synced claims — the subdomain-takeover signature. Those records also appear on Posture as high-severity findings and alert through the posture channel.",
+                  "A dangling record points at a provider name nothing synced claims, the sign of a possible subdomain takeover. These also show on Posture as high-severity findings.",
                 )}
               </p>
             </>

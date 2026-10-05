@@ -21,7 +21,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
     .enum(SCOPES)
     .describe(
       "Which billing boundary the traffic crossed. `unknown` means the provider's record did " +
-        "not determine one — it is priced at zero and labelled rather than folded into a " +
+        "not determine one; it is priced at zero and labelled rather than folded into a " +
         "neighbouring boundary.",
     );
 
@@ -31,7 +31,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
     ref: z
       .string()
       .describe(
-        "Stable endpoint identity — a provider resource id where one could be resolved, " +
+        "Stable endpoint identity; a provider resource id where one could be resolved, " +
           "otherwise a class token (`internet`, `aws:s3`, `infrawrench:unattributed`). Never a " +
           "raw IP address: addresses churn, so the same workload would be a different row " +
           "every day.",
@@ -58,7 +58,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
       .number()
       .describe(
         "Bytes inside `bytes` whose endpoints could not be tied to a workload. A subset, not " +
-          "an addition — nothing here has been apportioned across the attributed rows.",
+          "an addition: nothing here has been apportioned across the attributed rows.",
       ),
     truncatedBytes: z
       .number()
@@ -85,7 +85,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
 
   const NetworkFlowSource = strict({
     id: z.string(),
-    target: z.string().describe("What the flow log is attached to — a VPC id, a network."),
+    target: z.string().describe("What the flow log is attached to; a VPC id, a network."),
     region: z.string().nullable(),
     destinationType: z.string(),
     usable: z.boolean(),
@@ -104,7 +104,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
       .boolean()
       .describe(
         "False when the account's provider has no flow source we can read. Such accounts are " +
-          "listed and excluded from the totals rather than contributing zero bytes — zero would " +
+          "listed and excluded from the totals rather than contributing zero bytes; zero would " +
           "be a claim about their network, this is a statement about our coverage.",
       ),
     recut: z
@@ -151,7 +151,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
       .describe(
         "Always true. Flow bytes come from logs that sample or drop under load and are priced " +
           "at published list rates with no free tier, no volume tier and no negotiated discount " +
-          "modelled — the ranking is sound, the absolute figure will not reconcile to the invoice.",
+          "modelled: the ranking is sound, the absolute figure will not reconcile to the invoice.",
       ),
     range: strict({ from: z.string(), to: z.string() }),
     scopes: z.array(NetworkFlowScopeSummary),
@@ -273,7 +273,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
       "no negotiated discount applied. Use the ranking; do not reconcile the total against an " +
       "invoice line.\n\n" +
       "Accounts whose provider has no readable flow source appear in `accounts` with " +
-      "`supportsFlows: false` and contribute nothing to the totals — never zero bytes.",
+      "`supportsFlows: false` and contribute nothing to the totals; never zero bytes.",
     request: {
       params: OrgIdParam,
       query: strict({
@@ -419,7 +419,7 @@ export function registerNetworkFlowPaths(ctx: BuildContext) {
     summary: "Turn network flow collection on or off",
     description:
       "Collection is **off by default**. Enabling it authorizes Infrawrench to run daily " +
-      "queries against the provider's log store — and on AWS those queries are billed to your " +
+      "queries against the provider's log store; and on AWS those queries are billed to your " +
       "own cloud account per GB of log data scanned, every day, until you turn them off. That " +
       "is why the write is governed by `org:settings:write` rather than `costs:write`, and why " +
       "it is audit-logged.",

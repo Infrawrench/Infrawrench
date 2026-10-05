@@ -4,13 +4,13 @@ export const ServiceResourceType = rt({
   name: "Service",
   pinnable: false,
   id: "k8s-service",
-  description: "A Kubernetes Service — exposes pods via a stable endpoint",
+  description: "A Kubernetes Service that exposes pods via a stable endpoint",
   fields: [
     f("name", "Name"),
     f("namespace", "Namespace"),
     f("qualifiedName", "Qualified Name", {
       required: false,
-      description: "namespace/name — how Ingresses in this namespace reference this Service",
+      description: "namespace/name, as referenced by Ingresses in this namespace",
     }),
     f("type", "Type", { required: false }),
     f("clusterIP", "Cluster IP", { required: false }),
@@ -22,8 +22,7 @@ export const ServiceResourceType = rt({
   ],
   outputs: [
     o("serviceName", "Service Name", {
-      description:
-        "The Service's name — used by Ingresses and StatefulSets to reference this Service",
+      description: "The Service's name, used by Ingresses and StatefulSets",
     }),
   ],
   dependsOn: [

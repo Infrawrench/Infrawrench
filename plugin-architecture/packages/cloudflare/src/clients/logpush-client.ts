@@ -14,7 +14,7 @@ function logpushJobId(jobId: string): number {
   const parsed = Number(jobId);
   if (!Number.isInteger(parsed)) {
     throw new Error(
-      `Cloudflare plugin: "${jobId}" is not a valid Logpush job id — Cloudflare job ids are integers.`,
+      `Cloudflare plugin: "${jobId}" is not a valid Logpush job id. Job ids are integers.`,
     );
   }
   return parsed;

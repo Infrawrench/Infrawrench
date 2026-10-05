@@ -70,9 +70,9 @@ export const COST_SCENARIO_ADJUSTMENT_KIND_DESCRIPTIONS: Record<
   CostScenarioAdjustmentKind,
   string
 > = {
-  one_off: "A single charge on a single day — a purchase, an annual licence.",
+  one_off: "A single charge on a single day, like a purchase or annual licence.",
   recurring: "The same amount every period from a date, optionally ending.",
-  rate_change: "±X% of the trend from a date — a migration, a tier change.",
+  rate_change: "±X% of the trend from a date, like a migration or tier change.",
 };
 
 /**
@@ -243,7 +243,7 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
   const adjustments = input.adjustments ?? [];
   if (adjustments.length === 0) {
     return (
-      "A scenario model needs at least one adjustment — an empty model changes nothing, " +
+      "A scenario model needs at least one adjustment; an empty model changes nothing, " +
       "which is the same as applying no scenario at all."
     );
   }
@@ -262,7 +262,7 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
     seen.add(adjustment.id);
 
     if (!adjustment.label?.trim()) {
-      return "Every adjustment needs a label — it is what the chart names when the scenario moves a number.";
+      return "Every adjustment needs a label; it is what the chart names when the scenario moves a number.";
     }
     if (adjustment.label.length > COST_SCENARIO_LIMITS.maxLabelLength) {
       return `${where}: label must be ${COST_SCENARIO_LIMITS.maxLabelLength} characters or fewer.`;
@@ -276,7 +276,7 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
 
     if (adjustment.kind === "one_off") {
       if (adjustment.endDate) {
-        return `${where} is a one-off, which happens on one day — remove its end date, or make it recurring.`;
+        return `${where} is a one-off, which happens on one day. Remove its end date, or make it recurring.`;
       }
     } else if (adjustment.endDate !== null && adjustment.endDate !== undefined) {
       if (!isIsoDay(adjustment.endDate)) {
@@ -317,13 +317,13 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
       if (adjustmentCurrency !== currency) {
         return (
           `${where} is in ${adjustmentCurrency || "no currency"}, but this model is in ${currency}. ` +
-          "A model holds one currency — split the other amounts into their own model rather " +
+          "A model holds one currency. Split the other amounts into their own model rather " +
           "than summing two kinds of money into one projection."
         );
       }
       if (adjustment.kind === "recurring") {
         if (!(COST_SCENARIO_PERIODS as readonly string[]).includes(adjustment.period ?? "")) {
-          return `${where} needs a period — per day or per month.`;
+          return `${where} needs a period: per day or per month.`;
         }
       } else if (adjustment.period !== null && adjustment.period !== undefined) {
         return `${where} is a one-off, so it has no period.`;

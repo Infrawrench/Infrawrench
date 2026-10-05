@@ -129,7 +129,7 @@ export async function resolveScopedAccount(
   throw new CliError(
     `"${ctx.flags.account}" exists in several scopes (${matches
       .map((m) => m.scope)
-      .join(", ")}) — disambiguate with --local or --org.`,
+      .join(", ")}). Disambiguate with --local or --org.`,
   );
 }
 
@@ -153,7 +153,7 @@ export async function cmdResources(ctx: CliContext, typeFilter?: string): Promis
       if (showProgress) process.stderr.write(c.dim("done\n"));
     } catch (e) {
       if (showProgress) process.stderr.write("\n");
-      printErr(c.yellow(`sync failed — showing cached: ${e instanceof Error ? e.message : e}`));
+      printErr(c.yellow(`sync failed, showing cached: ${e instanceof Error ? e.message : e}`));
     }
     rows = await listCloudResources(orgId, account.id);
     if (typeFilter) rows = rows.filter((r) => r.resourceTypeId === typeFilter);

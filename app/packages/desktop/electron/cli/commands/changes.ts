@@ -42,13 +42,13 @@ const KIND_STYLE: Record<ResourceChangeKind, { glyph: string; color: (s: string)
 export async function cmdChanges(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts — local-only mode has no poller, so there is no feed.",
+      "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts. Local-only mode has no poller, so there is no feed.",
     );
   }
   const org = await resolveOrg(ctx);
 
   if (range.kind !== undefined && !KINDS.includes(range.kind as ResourceChangeKind)) {
-    throw new CliError(`--kind must be one of ${KINDS.join(", ")} — got "${range.kind}".`, 2);
+    throw new CliError(`--kind must be one of ${KINDS.join(", ")} (got "${range.kind}").`, 2);
   }
   const limit = Math.min(range.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 
@@ -148,7 +148,7 @@ function resolveWindow(range: RangeFlags): { from?: string; to?: string } {
   if (days === null) return to ? { to } : {};
   const anchor = to ? Date.parse(to) : Date.now();
   if (Number.isNaN(anchor)) {
-    throw new CliError(`Invalid --to "${to}" — use an ISO 8601 date or date-time.`, 2);
+    throw new CliError(`Invalid --to "${to}": use an ISO 8601 date or date-time.`, 2);
   }
   return {
     from: new Date(anchor - days * 86_400_000).toISOString(),

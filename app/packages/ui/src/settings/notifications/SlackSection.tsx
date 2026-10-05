@@ -258,9 +258,8 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
 
           <T>
             <p className="text-xs text-on-surface-faint">
-              Public channels work as soon as you add them. For a private channel, invite the
-              Infrawrench app to it in Slack first — otherwise posting fails with{" "}
-              <code>not_in_channel</code>.
+              Public channels work right away. For a private channel, invite the Infrawrench app in
+              Slack first, or posting fails with <code>not_in_channel</code>.
             </p>
           </T>
 

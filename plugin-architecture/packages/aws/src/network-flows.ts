@@ -350,7 +350,7 @@ async function runInsightsQuery(
       await stopQuery(creds, queryId);
       throw new Error(
         `CloudWatch Logs Insights query for ${logGroupName} did not finish within ` +
-          `${QUERY_TIMEOUT_MS / 1000}s — the log group is too large for a single-day scan`,
+          `${QUERY_TIMEOUT_MS / 1000}s. The log group is too large for a single-day scan`,
       );
     }
     await sleep(QUERY_POLL_MS, signal);

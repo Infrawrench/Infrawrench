@@ -75,7 +75,7 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
           {failed.map((artifact) => (
             <Text key={artifact.id} style={styles.failedLine}>
               {INCIDENT_ARTIFACT_LABELS[artifact.kind] ?? artifact.kind}
-              {artifact.status === "close_failed" ? " is still open — " : " — "}
+              {artifact.status === "close_failed" ? " is still open: " : ": "}
               {artifact.error}
             </Text>
           ))}
@@ -127,10 +127,7 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
         <Text style={styles.failedLine}>The timeline could not be assembled. Pull to refresh.</Text>
       )}
       {timeline.data && timeline.data.entries.length === 0 && (
-        <Text style={styles.footnote}>
-          Nothing else was recorded in this window — the change feed, deploys and alerts were all
-          quiet while this was happening.
-        </Text>
+        <Text style={styles.footnote}>Nothing else was recorded in this window.</Text>
       )}
       {timeline.data && timeline.data.entries.length > 0 && (
         <Card list>

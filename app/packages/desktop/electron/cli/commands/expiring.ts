@@ -74,7 +74,7 @@ export async function cmdExpiring(ctx: CliContext): Promise<void> {
   if (response.items.length === 0) {
     println(
       c.dim(
-        "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing — a cert's not-after date, a domain's renewal, a token's expiration, a key's age.",
+        "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing, such as a cert's end date or a domain's renewal.",
       ),
     );
     if (ctx.flags.local) {
@@ -109,7 +109,7 @@ export async function cmdExpiring(ctx: CliContext): Promise<void> {
   println();
   println(
     c.dim(
-      `Computed from already-synced fields — no provider was contacted. "≤${response.leadDays}d" follows the organization's expiry-alert lead time; age-based deadlines (key rotation budgets) count from the last rotation.`,
+      `Computed from already-synced fields. No provider was contacted. "≤${response.leadDays}d" follows the organization's expiry-alert lead time; age-based deadlines (key rotation budgets) count from the last rotation.`,
     ),
   );
 }

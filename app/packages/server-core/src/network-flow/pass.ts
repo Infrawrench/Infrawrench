@@ -136,7 +136,7 @@ export async function claimDueNetworkFlowAccounts(
           lease_owner = ${owner}::text
       -- Re-checked against the row as it stands now, not as the SELECT saw it.
       -- Without this the update is unconditional and a racing replica gets the
-      -- same account back — see the doc comment.
+      -- same account back, see the doc comment.
       WHERE account_network_flow_polls.next_poll_at IS NULL
          OR account_network_flow_polls.next_poll_at <= now()
     RETURNING account_id, organization_id, failure_count, lease_owner

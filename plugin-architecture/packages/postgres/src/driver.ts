@@ -42,7 +42,7 @@ function sanitizePgUrl(cs: string, hasExplicitSsl: boolean): string {
 }
 
 function timeoutHint(host: string): string {
-  return `Couldn't connect to PostgreSQL at ${host} within ${CONNECT_TIMEOUT_MS / 1000}s. The instance may be unreachable from this network — for Cloud SQL, add your IP to Connections → Authorized networks, or use a host that's already inside the VPC.`;
+  return `Couldn't connect to PostgreSQL at ${host} within ${CONNECT_TIMEOUT_MS / 1000}s. The instance may be unreachable from this network. For Cloud SQL, add your IP to Connections → Authorized networks, or use a host inside the VPC.`;
 }
 
 function hostOf(connectionString: string): string {

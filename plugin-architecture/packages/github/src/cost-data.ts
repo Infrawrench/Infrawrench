@@ -51,7 +51,7 @@ export function costSetupErrorFor(ctx: GitHubContext, err: unknown): Error {
     return new CostSetupError(
       ctx.owner.kind === "org"
         ? `The token cannot read ${ctx.owner.slug}'s billing usage. A fine-grained token needs the organization permission Administration (read), and its owner must be an organization owner or billing manager. A classic token needs the admin:org scope.`
-        : `The token cannot read the ${ctx.owner.slug} enterprise's billing usage. Enterprise billing needs a classic token with the manage_billing:enterprise scope (fine-grained tokens cannot reach enterprise endpoints), owned by an enterprise owner or billing manager.`,
+        : `The token cannot read the ${ctx.owner.slug} enterprise's billing usage. Enterprise billing needs a classic token with the manage_billing:enterprise scope, owned by an enterprise owner or billing manager.`,
       setupLink(ctx),
     );
   }

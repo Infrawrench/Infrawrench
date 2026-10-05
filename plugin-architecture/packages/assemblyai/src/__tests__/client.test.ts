@@ -468,7 +468,7 @@ describe("error handling", () => {
   it("explains that a 403 may be a rate limit rather than a bad key", async () => {
     installFetch(() => jsonResponse("Forbidden", 403));
     await expect(client().listResources("transcript", ACCOUNT)).rejects.toThrow(
-      /403 for rate-limit violations \(not 429\)/,
+      /403 for rate limits \(not 429\)/,
     );
   });
 

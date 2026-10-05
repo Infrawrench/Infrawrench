@@ -37,10 +37,9 @@ export function ConfigAsCodeSection() {
         <h1 className="text-xl font-semibold">{gt("Config as Code")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            Your dashboards, workflows, custom graphs, budgets, metric alerts, probes, cost centres,
-            tag policy and alert settings as one JSON document. Keep it in git for disaster
-            recovery, seed a staging organization from it, or clone a whole setup for a new client.
-            Accounts, credentials and resources are never included.
+            Your dashboards, workflows, graphs, budgets, alerts, probes, cost centres and tag policy
+            as one JSON document, to keep in git or copy to another organization. Accounts,
+            credentials and resources are never included.
           </p>
         </T>
       </div>
@@ -162,9 +161,8 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       <h2 className="text-sm font-semibold">{gt("Export")}</h2>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Entities are addressed by a stable key derived from their name, not by database id, so the
-          document applies to any organization. Ordering is stable too — re-exporting an unchanged
-          organization produces the same file, which is what makes the git diff meaningful.
+          Entries are keyed by name, so the document works in any organization, and re-exporting an
+          unchanged organization produces the same file.
         </p>
       </T>
 
@@ -302,8 +300,8 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       <h2 className="text-sm font-semibold">{gt("Import")}</h2>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Sections the document leaves out are never touched. Everything in it is applied in one
-          transaction — if any part fails, nothing changes.
+          Sections the document leaves out are never touched. It applies in one transaction: if any
+          part fails, nothing changes.
         </p>
       </T>
 
@@ -387,7 +385,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
             {nothingToDo
               ? gt("Already up to date")
               : plan.counts.delete > 0
-                ? gt("Apply — {count} will be deleted", { count: plan.counts.delete })
+                ? gt("Apply ({count} will be deleted)", { count: plan.counts.delete })
                 : pending === 1
                   ? gt("Apply {count} change", { count: pending })
                   : gt("Apply {count} changes", { count: pending })}
@@ -433,7 +431,7 @@ function PlanView({ plan }: { plan: OrgConfigPlan }) {
     <div className="border border-border rounded-lg p-3 space-y-3 bg-surface">
       {interesting.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          {gt("No changes — this organization already matches.")}
+          {gt("No changes. This organization already matches.")}
         </p>
       ) : (
         [...bySection.entries()].map(([section, changes]) => (
@@ -479,9 +477,9 @@ function PlanView({ plan }: { plan: OrgConfigPlan }) {
             {plan.unresolved.map((item, i) => (
               <li key={i} className="text-xs text-on-surface-muted">
                 <span className="text-on-surface-secondary">
-                  {ORG_CONFIG_SECTION_LABELS[item.section]} · {item.key}
+                  {ORG_CONFIG_SECTION_LABELS[item.section]} · {item.key}:
                 </span>{" "}
-                — {item.detail}
+                {item.detail}
               </li>
             ))}
           </ul>

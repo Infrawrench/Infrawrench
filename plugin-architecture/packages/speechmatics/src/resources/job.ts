@@ -14,7 +14,7 @@ export const JobResourceType = rt({
   name: "Transcription Job",
   id: "job",
   description:
-    "A Speechmatics batch transcription job. Jobs belong to one region (eu1/us1/au1) and cannot be read from another. Audio, transcripts and job config are retained for 7 days — after that the transcript endpoints return HTTP 404 and the job reports status `expired`.",
+    "A Speechmatics batch transcription job. Jobs belong to one region (eu1/us1/au1). Data is kept for 7 days, after which the job reports status `expired`.",
   fields: [
     f("jobId", "Job ID"),
     f("status", "Status", {

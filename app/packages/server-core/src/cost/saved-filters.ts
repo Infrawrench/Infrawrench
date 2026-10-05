@@ -29,7 +29,7 @@ export class SavedCostFilterResolutionError extends Error {
 
   constructor(savedFilterId: string) {
     super(
-      `Saved cost filter ${savedFilterId} not found — it may have been deleted. ` +
+      `Saved cost filter ${savedFilterId} not found; it may have been deleted. ` +
         "Refusing to run without it: dropping a filter silently would return unfiltered spend.",
     );
     this.savedFilterId = savedFilterId;

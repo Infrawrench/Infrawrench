@@ -65,7 +65,7 @@ export function customGraphTools(): ToolDefinition[] {
       name: "list_custom_graphs",
       title: "List custom graphs",
       description:
-        "List the organization's custom graphs — script-defined dashboard charts run in a " +
+        "List the organization's custom graphs, script-defined dashboard charts run in a " +
         "server-side sandbox. Source is omitted; use get_custom_graph for that.",
       inputSchema: {},
       risk: "read",
@@ -102,13 +102,13 @@ export function customGraphTools(): ToolDefinition[] {
       title: "Get custom graph typings",
       description:
         "Return the ambient `graph.d.ts` that custom-graph source is written against. ALWAYS " +
-        "call this before writing or editing graph source — it documents the whole runtime API: " +
+        "call this before writing or editing graph source; it documents the whole runtime API: " +
         "`graph.controls.*` (selects/checkboxes/buttons/inputs whose values round-trip from the " +
         "viewer), `graph.costs.query` (the org's collected spend), `graph.resources.list` and " +
         "`graph.metrics` (provider metric series), `graph.data.*` (a private key/value store), " +
         "the proxied global `fetch`, `graph.render` (chart types: line, area, stacked_bar, " +
         "multi_bar, pie, stat, table; plus refreshSeconds for auto-refresh), and a READ-ONLY " +
-        "`infra.accounts` tree over this organization's real accounts — list/get resources, " +
+        "`infra.accounts` tree over this organization's real accounts; list/get resources, " +
         "resolve outputs, read logs/metrics/manifests, run SQL queries, and run SSH commands " +
         "via resource.ssh(cmd). Mutations (create/update/delete/applyManifest) are not " +
         "available in graphs, and infra.* runs with the AUTHOR's role permissions at render " +
@@ -128,11 +128,11 @@ export function customGraphTools(): ToolDefinition[] {
       title: "Write custom graph",
       description:
         "Create a custom graph (omit graphId) or update one (pass graphId). The source is " +
-        "TypeScript run in a sandbox against the global `graph` object — call " +
+        "TypeScript run in a sandbox against the global `graph` object; call " +
         "get_custom_graph_typings FIRST. The script gathers data (org costs via " +
         "graph.costs.query, provider metrics via graph.metrics, external APIs via fetch, its own " +
         "stored data via graph.data, and read-only `infra.accounts` access incl. " +
-        "resource.ssh(cmd) — which runs with the SAVING USER's role permissions at render time), " +
+        "resource.ssh(cmd), which runs with the SAVING USER's role permissions at render time), " +
         "declares controls whose current values it reads back synchronously, and finishes with " +
         "graph.render({ title, chart, refreshSeconds }). " +
         "Before saving, the source is type-checked and the save is REJECTED with diagnostics on " +
@@ -175,7 +175,7 @@ export function customGraphTools(): ToolDefinition[] {
             check = await checkCustomGraphSource(auth.organizationId, source);
             if (check.hasErrors) {
               return err(
-                `Not saved — the graph source has type errors:\n${formatDiagnostics(check.diagnostics)}\n\n` +
+                `Not saved: the graph source has type errors:\n${formatDiagnostics(check.diagnostics)}\n\n` +
                   "Call get_custom_graph_typings to see the `graph` API, fix the source, and " +
                   "call write_custom_graph again.",
               );
@@ -233,7 +233,7 @@ export function customGraphTools(): ToolDefinition[] {
           .enum(["manual", "refresh", "interaction"])
           .optional()
           .describe(
-            'What the script sees as graph.event.kind — pass "refresh" to test its auto-refresh path.',
+            'What the script sees as graph.event.kind; pass "refresh" to test its auto-refresh path.',
           ),
       },
       risk: "write",

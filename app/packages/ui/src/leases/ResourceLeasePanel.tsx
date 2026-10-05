@@ -115,7 +115,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
         <h2 className="text-sm font-semibold text-on-surface">{gt("Lease")}</h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
           {gt(
-            "Put an expiry on this resource — “a test cluster for 3 days”. The deadline shows up on the Expiring radar; opting into auto-delete removes the resource at expiry after two warnings, and change freezes pause deletion.",
+            "Set an expiry on this resource. It shows on the Expiring radar; with auto-delete on, it's deleted at expiry after two warnings (paused during change freezes).",
           )}
         </p>
       </div>
@@ -182,7 +182,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
             {lease.note && <>{lease.note} · </>}
             {lease.lastError && <span className="text-warning">{lease.lastError} · </span>}
             {warningStatus}
-            {!lease.autoDelete && gt("Nag-only — the resource is never deleted automatically")}
+            {!lease.autoDelete && gt("Reminders only; the resource is never deleted automatically")}
           </div>
           <div className="mt-2 flex gap-2">
             <button

@@ -56,7 +56,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
       title: "Trust SSH host",
       description:
         "Pin an SSH host's key fingerprint so SSH/SFTP/tunnel connections to it are allowed. " +
-        "Use after ssh_exec fails with 'has not been trusted yet' or 'host key changed' — those " +
+        "Use after ssh_exec fails with 'has not been trusted yet' or 'host key changed'; those " +
         "errors include the presented SHA256 fingerprint. SECURITY: only trust a fingerprint the " +
         "user has confirmed out-of-band (e.g. against the provider console or `ssh-keygen -lf`); " +
         "accepting an unverified fingerprint would let a man-in-the-middle intercept the " +
@@ -96,7 +96,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
           // the user accepted: surface both so they can re-verify.
           if (e instanceof HostKeyMismatchError) {
             return err(
-              `Host key conflict for ${host}:${port} — stored=${e.storedFingerprint}, ` +
+              `Host key conflict for ${host}:${port}: stored=${e.storedFingerprint}, ` +
                 `presented=${e.presentedFingerprint}. Re-verify with the user before retrying.`,
             );
           }
@@ -135,7 +135,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
       title: "Remove SSH host trust",
       description:
         "Remove a pinned SSH host-key fingerprint. The next connection to that host will fail " +
-        "until it is trusted again — use to revoke trust in a decommissioned or compromised host.",
+        "until it is trusted again; use to revoke trust in a decommissioned or compromised host.",
       inputSchema: {
         host: z.string().min(1).max(253),
         port: z.number().int().min(1).max(65535).default(22),

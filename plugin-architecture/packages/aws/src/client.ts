@@ -1154,7 +1154,7 @@ export class AWSClient implements PluginClient {
           { label: "Secret Access Key", value: secret, sensitive: true, hint: "Only shown once" },
         ],
         warning:
-          "Save this secret access key now. AWS will not show it again — if lost, delete this key and create a new one.",
+          "Save this secret access key now. AWS will not show it again. If lost, delete this key and create a new one.",
       };
     }
     throw new Error(

@@ -267,7 +267,7 @@ function revertFailureResponse(c: Context, failure: { kind: string; message?: st
   }
   return c.json(
     {
-      error: `Couldn't read the resource's current state, so a revert can't be planned safely — ${failure.message ?? "unknown error"}`,
+      error: `Couldn't read the resource's current state, so a revert can't be planned safely, ${failure.message ?? "unknown error"}`,
     },
     502,
   );

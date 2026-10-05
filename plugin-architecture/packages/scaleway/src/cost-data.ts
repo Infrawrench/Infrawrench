@@ -79,8 +79,8 @@ export async function fetchScalewayCostData(
 ): Promise<CostRow[]> {
   if (!creds.projectId) {
     throw new Error(
-      "Scaleway plugin: cost collection requires the Default Project ID credential — " +
-        "the billing consumption API is scoped to a single project or organization.",
+      "Scaleway plugin: cost collection requires the Default Project ID credential, " +
+        "because the billing consumption API is scoped to a single project or organization.",
     );
   }
 

@@ -21,7 +21,7 @@ import { barChart } from "../charts";
 export async function cmdTags(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Tag policy and compliance are org-level cloud state — there is no local tag policy.",
+      "Tag policy and compliance are org-level cloud state. There is no local tag policy.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -112,7 +112,7 @@ export async function cmdTags(ctx: CliContext, range: RangeFlags): Promise<void>
 /** Spend grouped by cost centre through the org's allocation rules. */
 export async function cmdShowback(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Showback runs over your org's collected cloud spend — cloud mode only.");
+    throw new CliError("Showback runs over your org's collected cloud spend. Cloud mode only.");
   }
   const org = await resolveOrg(ctx);
   const { from, to } = resolveDateRange(range);

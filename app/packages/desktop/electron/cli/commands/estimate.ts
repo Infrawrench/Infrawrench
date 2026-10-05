@@ -46,7 +46,7 @@ function splitResourceId(resourceId: string): { accountId: string; resourceTypeI
   const [accountId, resourceTypeId] = resourceId.split(":");
   if (!accountId || !resourceTypeId) {
     throw new CliError(
-      `"${resourceId}" is not a resource id. Expected {accountId}:{typeId}:{externalId}, or a name with --account — see \`infrawrench resources\`.`,
+      `"${resourceId}" is not a resource id. Expected {accountId}:{typeId}:{externalId}, or a name with --account. See \`infrawrench resources\`.`,
     );
   }
   return { accountId, resourceTypeId };
@@ -133,7 +133,7 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
     );
   }
   if (ctx.flags.local) {
-    throw new CliError("`estimate` is cloud-only — drop --local, or pass --org <id|name>.");
+    throw new CliError("`estimate` is cloud-only. Drop --local, or pass --org <id|name>.");
   }
   const [{ accountId, resourceTypeId, resourceId }, org] = await Promise.all([
     resolveEstimateTarget(ctx, resourceArg),
@@ -157,7 +157,7 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
 
   if (!estimate) {
     println(
-      `${c.dim("No estimate available for")} ${c.bold(resourceTypeId)} ${c.dim("— this provider plugin doesn't publish rates for it.")}`,
+      `${c.dim("No estimate available for")} ${c.bold(resourceTypeId)} ${c.dim("(this provider plugin doesn't publish rates for it)")}`,
     );
     printCarbon(carbon ?? null);
     return;
@@ -178,7 +178,7 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
   );
   if (estimate.partial) {
     println();
-    println(c.yellow("! Partial — some components of this resource have no published rate."));
+    println(c.yellow("! Partial. Some components of this resource have no published rate."));
   }
   for (const note of estimate.notes ?? []) println(c.dim(`  ${note}`));
   printCarbon(carbon ?? null);

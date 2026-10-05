@@ -40,7 +40,7 @@ function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTyp
       .optional()
       .describe(
         "For sidecar plugins (e.g. creating a kubernetes resource inside a managed cluster): " +
-          "the parent resource id providing credentials — see list_resource_sidecars",
+          "the parent resource id providing credentials; see list_resource_sidecars",
       ),
   };
   for (const f of type.fields) {
@@ -57,7 +57,7 @@ function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTyp
       .string()
       .optional()
       .describe(
-        "Stored org SSH key id (see list_ssh_keys) — its public key is installed on the " +
+        "Stored org SSH key id (see list_ssh_keys); its public key is installed on the " +
           `machine for SSH access. Alternative to ${sshKeyFieldKey}.`,
       );
     if (!shape[sshKeyFieldKey]) {

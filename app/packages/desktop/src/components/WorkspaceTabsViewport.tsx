@@ -362,7 +362,7 @@ function renderPanel(
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
           {gt(
-            "Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.",
+            "Cost reports live in Infrawrench Cloud. Sign in and pick an organization to see them.",
           )}
         </div>
       );
@@ -406,7 +406,7 @@ function renderPanel(
         />
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
-          {gt("Invoices live in Infrawrench Cloud — sign in and pick an organization to see them.")}
+          {gt("Invoices live in Infrawrench Cloud. Sign in and pick an organization to see them.")}
         </div>
       );
     case "graph":

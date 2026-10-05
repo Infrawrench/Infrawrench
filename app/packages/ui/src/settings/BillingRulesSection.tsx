@@ -148,7 +148,7 @@ export function BillingRulesSection() {
     if (
       !window.confirm(
         gt(
-          'Delete the billing rule "{name}"?\n\nNothing is restated — collected spend was never changed — but every adjusted figure will recompute without it.',
+          'Delete the billing rule "{name}"?\n\nCollected spend is unaffected; adjusted figures will recompute without it.',
           { name: rule.name },
         ),
       )
@@ -180,18 +180,14 @@ export function BillingRulesSection() {
         <h2 className="text-base font-semibold text-on-surface">{gt("Billing rules")}</h2>
         <T>
           <p className="text-sm text-on-surface-secondary">
-            Adjustments the organisation applies to collected spend when it reports internally: a
-            markup that recovers shared overhead, a discount negotiated outside the provider&rsquo;s
-            pricing, a fixed charge per period, or a reallocation that moves a shared
-            cluster&rsquo;s cost onto the teams that use it.
+            Markups, discounts, fixed charges and reallocations applied to spend in internal
+            reports.
           </p>
         </T>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Rules are applied when a report is run and are <strong>never</strong> written into
-            collected spend, so what the providers charged stays exactly as collected and can still
-            be reconciled against an invoice. Every adjusted figure is shown beside the collected
-            one and names the rules that moved it.
+            Rules apply at report time and <strong>never</strong> change collected spend, so it
+            still reconciles against the invoice.
           </p>
         </T>
       </div>
@@ -239,7 +235,7 @@ export function BillingRulesSection() {
                   <T>
                     <span className="text-on-surface-muted">
                       {" "}
-                      — <Var>{describeBillingRuleAdjustment(rule.adjustment)}</Var>
+                      · <Var>{describeBillingRuleAdjustment(rule.adjustment)}</Var>
                       <Var>{target ? ` → ${target}` : ""}</Var> on{" "}
                       <Var>{describeBillingRuleMatch(rule.match)}</Var>
                     </span>
@@ -259,7 +255,7 @@ export function BillingRulesSection() {
                   {!rule.enabled && (
                     <T>
                       <span className="block text-xs text-on-surface-muted">
-                        Disabled — affects nothing.
+                        Disabled; affects nothing.
                       </span>
                     </T>
                   )}
@@ -316,10 +312,9 @@ export function BillingRulesSection() {
       {rules !== null && rules.length > 0 && (
         <T>
           <p className="text-xs text-on-surface-muted">
-            Lower numbers evaluate first. Every matching markup or discount applies, so two 10%
-            markups compound to 21% rather than 20%. Reallocation is first-match-wins, so a row
-            moves exactly once and the organisation&rsquo;s total is unchanged by it. Tiered and
-            expression rules price managed-account invoices only, in this same order.
+            Lower numbers evaluate first. Matching markups and discounts all apply and compound (two
+            10% markups make 21%). Reallocation is first-match-wins. Tiered and expression rules
+            price managed-account invoices only.
           </p>
         </T>
       )}
@@ -352,8 +347,7 @@ export function BillingRulesSection() {
       {!canEdit && rules !== null && (
         <T>
           <p className="text-xs text-on-surface-muted">
-            Changing these needs the <code>org:settings:write</code> permission — a markup changes
-            every number the organisation reports about itself.
+            Changing these needs the <code>org:settings:write</code> permission.
           </p>
         </T>
       )}

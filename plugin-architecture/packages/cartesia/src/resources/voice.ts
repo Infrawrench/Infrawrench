@@ -10,7 +10,7 @@ export const VoiceResourceType = rt({
   name: "Voice",
   id: "voice",
   description:
-    "A Cartesia voice usable with the Sonic text-to-speech models — either one your organization owns or one from the shared voice library",
+    "A Cartesia voice usable with the Sonic text-to-speech models, either owned by your organization or from the shared library",
   fields: [
     f("name", "Name"),
     f("voiceId", "Voice ID", { editable: false }),

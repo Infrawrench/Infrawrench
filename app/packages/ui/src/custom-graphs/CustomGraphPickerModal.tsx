@@ -117,8 +117,8 @@ export function CustomGraphPickerModal({
         <h2 className="text-base font-semibold text-on-surface mb-1">{gt("Add a custom graph")}</h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            A custom graph is a script that gathers any data — costs, metrics, external APIs — and
-            describes its own chart and controls. Write one here or ask the AI to via MCP.
+            A custom graph is a script that gathers any data (costs, metrics, external APIs) and
+            defines its own chart. Write one here or ask the AI via MCP.
           </p>
         </T>
 

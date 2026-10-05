@@ -626,7 +626,7 @@ export async function deleteEnvironmentInstanceRecord(
   if (!row) throw new EnvironmentInputError("Environment not found", 404);
   if (LIVE_STATUSES.includes(row.status)) {
     throw new EnvironmentInputError(
-      "Tear this environment down before forgetting it — its resources are still running",
+      "Tear this environment down before forgetting it: its resources are still running",
       409,
     );
   }

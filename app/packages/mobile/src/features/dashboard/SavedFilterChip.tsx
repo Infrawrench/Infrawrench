@@ -29,19 +29,19 @@ export function SavedFilterChip({ savedFilterId }: { savedFilterId: string | und
   return (
     <Field
       label="Saved filter"
-      hint="Applied by reference — manage saved filters on web or desktop."
+      hint="Applied by reference. Manage saved filters on web or desktop."
     >
       {query.isLoading ? (
         <FormHint>Loading…</FormHint>
       ) : query.data ? (
         <FormHint>
           {query.data.name}
-          {query.data.query ? ` — ${query.data.query}` : ""}
+          {query.data.query ? `: ${query.data.query}` : ""}
         </FormHint>
       ) : (
         <FormHint>
-          This saved filter no longer resolves — queries will fail until it is restored or the
-          reference is removed on web or desktop.
+          This saved filter no longer resolves. Queries fail until it is restored or the reference
+          is removed on web or desktop.
         </FormHint>
       )}
     </Field>

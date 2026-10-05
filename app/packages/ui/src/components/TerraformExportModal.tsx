@@ -127,7 +127,7 @@ export function TerraformExportModal({
                       <li key={u.id} className="text-[11px] text-warning/90">
                         <span className="font-mono">{u.displayName}</span>{" "}
                         <span className="text-warning/60">
-                          ({u.pluginId}/{u.resourceTypeId}) — {u.reason}
+                          ({u.pluginId}/{u.resourceTypeId}): {u.reason}
                         </span>
                       </li>
                     ))}
@@ -140,10 +140,10 @@ export function TerraformExportModal({
                   <p className="text-xs text-on-surface-faint">
                     <T>
                       <Var>{result.exported.length}</Var> resource
-                      <Var>{result.exported.length === 1 ? "" : "s"}</Var> exported. Secrets are
-                      referenced as <code>var.*</code> input variables — fill them in locally (e.g.
-                      via a <code>terraform.tfvars</code> you keep out of git), then use the{" "}
-                      <code>terraform import</code> hints to adopt the live resources into state.
+                      <Var>{result.exported.length === 1 ? "" : "s"}</Var> exported. Secrets are{" "}
+                      <code>var.*</code> inputs; set them locally (e.g. in a{" "}
+                      <code>terraform.tfvars</code> kept out of git), then run the{" "}
+                      <code>terraform import</code> hints to adopt the live resources.
                     </T>
                   </p>
                   <pre className="max-h-[45vh] overflow-auto text-[11px] font-mono bg-surface-sunken border border-border-strong rounded-lg p-3 text-on-surface-secondary whitespace-pre">
@@ -152,7 +152,7 @@ export function TerraformExportModal({
                 </>
               ) : (
                 <p className="text-xs text-on-surface-faint">
-                  {gt("Nothing to export — none of these resources have a Terraform mapping yet.")}
+                  {gt("Nothing to export. None of these resources have a Terraform mapping yet.")}
                 </p>
               )}
             </>

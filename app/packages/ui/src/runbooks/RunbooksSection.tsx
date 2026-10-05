@@ -676,15 +676,14 @@ export function RunbooksSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Runbooks")}</h1>
       <T>
         <p className="text-sm text-on-surface-muted mb-6">
-          The checklist somebody wrote down at 03:00, kept where the steps are actually performed. A
-          step can be a note to tick off, a link, or a workflow to run — and following one leaves a
-          record of who did what, which is the half a postmortem always misses.
+          Checklists kept where the work happens. A step can be a note to tick off, a link, or a
+          workflow to run, and every run records who did what.
         </p>
       </T>
 
       {error != null && runbooks === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the runbooks — {error}", { error })}{" "}
+          {gt("Couldn't load the runbooks: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -699,7 +698,7 @@ export function RunbooksSection({
       )}
       {error != null && runbooks !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing what was last loaded. {error}", { error })}
+          {gt("Couldn't refresh; showing what was last loaded. {error}", { error })}
         </p>
       )}
 
@@ -711,7 +710,7 @@ export function RunbooksSection({
               onClick={() => setTab("runs")}
               className="mb-4 block w-full rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-left text-sm text-on-surface"
             >
-              {gt("{count} runs in progress — open them", { count: liveRuns.length })}
+              {gt("{count} runs in progress. Open them", { count: liveRuns.length })}
             </button>
           )}
 

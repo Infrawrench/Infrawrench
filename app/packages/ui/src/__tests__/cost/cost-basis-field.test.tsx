@@ -50,7 +50,7 @@ describe("CostBasisField", () => {
       />,
     );
     expect(screen.getByRole("option", { name: "Blended" })).toBeInTheDocument();
-    expect(screen.getByText(/shared evenly across all the usage it could cover/)).toBeVisible();
+    expect(screen.getByText(/commitment discounts shared evenly/)).toBeVisible();
   });
 });
 

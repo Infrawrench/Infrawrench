@@ -344,7 +344,7 @@ export class OpenRouterClient implements PluginClient {
   private requireInferenceKey(): string {
     if (!this.inferenceKey) {
       throw new Error(
-        "OpenRouter plugin: this needs an inference API key. Management keys are rejected by the completion endpoints — add one under the account's credentials (openrouter.ai/settings/keys).",
+        "OpenRouter plugin: this needs an inference API key. Management keys are rejected by completion endpoints. Add one under the account's credentials (openrouter.ai/settings/keys).",
       );
     }
     return this.inferenceKey;

@@ -36,7 +36,7 @@ export const TranscriptionResourceType = rt({
       description: "Polling URL Gladia returned when the job was created",
     }),
     o("fullTranscript", "Full Transcript", {
-      description: "result.transcription.full_transcript — empty until the job is done",
+      description: "result.transcription.full_transcript, empty until the job is done",
     }),
   ],
   supportsDelete: true,

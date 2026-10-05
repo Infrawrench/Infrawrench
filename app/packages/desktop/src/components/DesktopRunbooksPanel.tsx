@@ -154,8 +154,7 @@ export function DesktopRunbooksPanel({ openWorkflow }: DesktopRunbooksPanelProps
         <h1 className="text-xl font-semibold mb-1">{gt("Runbooks")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Runbooks are a cloud feature. Sign in to an organization to write down the procedures
-            your team follows, and to keep a record of who did what when one is performed.
+            Runbooks are a cloud feature. Sign in to an organization to use them.
           </p>
         </T>
       </div>

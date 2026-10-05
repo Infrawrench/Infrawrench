@@ -95,7 +95,7 @@ export const HYGIENE_SEVERITY_LABELS: Record<HygieneSeverity, string> = {
 export function summarizeHygiene(report: HygieneReport): string {
   if (report.counts.total === 0) {
     return report.permissionFindingsWithheld
-      ? "No credential issues found — not enough audit history yet to judge unused permissions."
+      ? "No credential issues found; not enough audit history yet to judge unused permissions."
       : "No credential hygiene issues found.";
   }
   const parts: string[] = [];

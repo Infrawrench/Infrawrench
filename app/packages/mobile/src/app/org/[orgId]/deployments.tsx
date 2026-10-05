@@ -179,7 +179,7 @@ function DeployCostImpact({ runId }: { runId: string }) {
       </Text>
       {data.resources.map((r) => (
         <Text key={r.resourceId} style={styles.costHint} numberOfLines={2}>
-          {r.displayName} — {formatChangeCostImpact(r.impact, { verbose: true })}
+          {r.displayName}: {formatChangeCostImpact(r.impact, { verbose: true })}
         </Text>
       ))}
     </View>

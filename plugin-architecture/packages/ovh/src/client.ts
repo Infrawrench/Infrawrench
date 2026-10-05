@@ -1199,7 +1199,7 @@ export class OvhClient implements PluginClient {
       const instanceRegion = String(instance.fields["region"] ?? "");
       if (volumeRegion && instanceRegion && volumeRegion !== instanceRegion) {
         throw new Error(
-          `Volume region ${volumeRegion} does not match instance region ${instanceRegion} — OVH volumes must be in the same region as the instance.`,
+          `Volume region ${volumeRegion} does not match instance region ${instanceRegion}. Volumes must be in the same region as the instance.`,
         );
       }
       const volumeId = volume.externalId ?? sourceResourceId.split(":").pop();

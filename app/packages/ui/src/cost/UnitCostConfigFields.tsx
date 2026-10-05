@@ -148,7 +148,7 @@ export function UnitCostConfigFields({ api, config, set, metrics }: UnitCostConf
             value={mode ?? ""}
             onChange={(e) => chooseMode(e.target.value)}
           >
-            <option value="">{gt("None — show spend")}</option>
+            <option value="">{gt("None (show spend)")}</option>
             {offered.map((m) => (
               <option
                 key={m}
@@ -356,12 +356,12 @@ export function UnitCostConfigFields({ api, config, set, metrics }: UnitCostConf
       {mode !== null && (
         <T>
           <p className="text-[11px] text-on-surface-faint">
-            Group by, top groups, comparison and forecast don&rsquo;t apply to a calculation, and a
-            period with nothing to divide by is drawn as a gap rather than as zero.{" "}
+            Group by, top groups, comparison and forecast don&rsquo;t apply here. Periods with
+            nothing to divide by show as gaps.{" "}
             <Var>
               {ratio && labels !== null && labels.some((l) => l.mapping === null)
                 ? gt(
-                    "Labels not mapped to a cost dimension can only be used with the raw metric: map them on the metric to compute a ratio per value.",
+                    "Unmapped labels only work with the raw metric; map them on the metric to compute a ratio per value.",
                   )
                 : ""}
             </Var>

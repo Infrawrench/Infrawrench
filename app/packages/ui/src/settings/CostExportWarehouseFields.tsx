@@ -292,9 +292,8 @@ function WarehouseSetupPanel({
       </div>
       <T>
         <p className="text-xs text-on-surface-muted">
-          The connected account loads the rows with its own credentials. Run these grants once as an
-          administrator so it can create the table, stage each run and replace the periods it
-          exports, and nothing more.
+          The connected account loads rows with its own credentials. Run these minimal grants once
+          as an administrator.
         </p>
       </T>
       {error && <p className="text-xs text-danger break-words">{error}</p>}

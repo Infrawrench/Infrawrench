@@ -49,7 +49,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin and can only be provisioned by an organization admin. It unlocks the Workspaces, Workspace Members, Organization Members, Invites, API Keys and Rate Limits sections plus the usage, Claude Code and cost charts, all of which live under /v1/organizations/*. Leave blank and everything else keeps working; those sections simply come back empty. The Admin API is unavailable on individual (non-organization) accounts.",
+        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin; only an organization admin can create one. Unlocks Workspaces, Members, Invites, API Keys, Rate Limits and the usage, Claude Code and cost charts. Leave blank and those sections stay empty. Not available on individual accounts.",
       sensitive: true,
       optional: true,
       placeholder: "sk-ant-admin01-...",

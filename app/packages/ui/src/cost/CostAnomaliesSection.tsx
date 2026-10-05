@@ -214,7 +214,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load anomalies — {error}", { error })}
+          {gt("Couldn't load anomalies: {error}", { error })}
         </div>
       )}
 
@@ -227,7 +227,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
       {anomalies?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
           {gt(
-            "No spend anomalies in the last {days} days. Detection compares each day's spend per provider and per service against its trailing 28-day baseline, flags statistically unusual spikes, and separately flags anything that starts spending with no history at all.",
+            "No spend anomalies in the last {days} days. Each day's spend per provider and service is compared to its 28-day baseline.",
             { days: WINDOW_DAYS },
           )}
         </p>
@@ -541,7 +541,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   if (loadError !== null) {
     return (
       <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
-        {gt("Couldn't load detection settings — {loadError}", { loadError })}
+        {gt("Couldn't load detection settings: {loadError}", { loadError })}
       </div>
     );
   }
@@ -579,7 +579,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-sunken p-4">
       <p className="text-xs text-on-surface-faint">
         {gt(
-          "What counts as anomalous for this organization. Changes apply on the next detection pass; anomalies already found are not re-judged. The 28-day baseline, the 7-day alert cooldown, and the minimum history a baseline needs are not adjustable.",
+          "What counts as anomalous. Changes apply on the next detection pass; existing anomalies are not re-evaluated.",
         )}
       </p>
 
@@ -681,11 +681,8 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
         </select>
         <T>
           <span className="text-[11px] text-on-surface-faint">
-            Off by default. When on, each detection pass sends at most{" "}
-            <strong className="font-medium">one</strong> SMS to your Twilio recipients summarizing
-            what it alerted on — a day where thirty services jump is one text, not thirty — and no
-            more than one every six hours. Push, Slack and Teams are unaffected and have their own
-            toggles.
+            When on, each detection pass sends at most <strong className="font-medium">one</strong>{" "}
+            summary SMS to your Twilio recipients, no more than once every six hours.
           </span>
         </T>
       </label>
@@ -702,7 +699,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
         </label>
         <span className="text-[11px] text-on-surface-faint">
           {gt(
-            "When a provider or service keeps being marked expected, raise its spike threshold by half a deviation per verdict after the first, at most two more, within 90 days. Any unexpected verdict holds it at the threshold above.",
+            "Raise a provider or service's spike threshold (by up to one deviation) when it keeps being marked expected, within 90 days. An unexpected verdict stops the rise.",
           )}
         </span>
         <AnomalySensitivityList client={client} />
@@ -711,9 +708,8 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
       {smsUnreachable && (
         <T>
           <div role="alert" className="text-xs text-warning">
-            This organization can&rsquo;t receive SMS yet. Anomaly texts need paging enabled with
-            Twilio credentials and at least one recipient opted into SMS, under Settings &rarr;
-            Notifications. Until then this setting is saved but nothing is sent.
+            SMS isn&rsquo;t set up, so nothing will be sent. Enable paging with Twilio and opt a
+            recipient into SMS under Settings &rarr; Notifications.
           </div>
         </T>
       )}

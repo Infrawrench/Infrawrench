@@ -119,7 +119,7 @@ export async function estimateAwsCost(
       partial: rate == null,
       notes:
         volumeType === "io2" || volumeType === "io1"
-          ? ["Capacity only — provisioned IOPS are billed separately."]
+          ? ["Capacity only; provisioned IOPS are billed separately."]
           : [],
     });
   }
@@ -157,7 +157,7 @@ export async function estimateAwsCost(
       {
         partial: instanceMonthly == null || (storageGb > 0 && storageRate == null) || isAurora,
         notes: isAurora
-          ? ["Instance hours only — Aurora storage and I/O are billed per GB and per request."]
+          ? ["Instance hours only; Aurora storage and I/O are billed separately."]
           : ["Backups beyond the free allocation and I/O are not included."],
       },
     );
@@ -207,7 +207,7 @@ export async function estimateAwsCost(
         // the estimate says so rather than quietly under-quoting.
         partial: true,
         notes: [
-          "Worker nodes only — the EKS control-plane hourly charge is not included.",
+          "Worker nodes only; the EKS control-plane charge is not included.",
           "Load balancers created by services are billed separately.",
         ],
       },

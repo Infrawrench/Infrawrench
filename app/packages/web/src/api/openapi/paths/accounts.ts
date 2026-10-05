@@ -289,7 +289,7 @@ export function registerAccountPaths(ctx: BuildContext) {
     tags: ["Accounts"],
     summary: "Probe credentials before creating an account",
     description:
-      "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored — use it from the add-account flow before committing.",
+      "Runs the plugin's per-capability permission checks against the submitted credentials. Nothing is stored; use it from the add-account flow before committing.",
     request: {
       params: OrgIdParam,
       body: {
@@ -431,7 +431,7 @@ export function registerAccountPaths(ctx: BuildContext) {
     tags: ["Accounts"],
     summary: "Fetch the decrypted credentials for an account",
     description:
-      "Returns the credentials map as it was originally submitted. Sensitive — gate access carefully.",
+      "Returns the credentials map as it was originally submitted. Sensitive: gate access carefully.",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
     },

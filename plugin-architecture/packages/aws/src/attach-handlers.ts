@@ -88,7 +88,7 @@ export async function attachResource(
     }
     if (volumeAz && instanceAz && volumeAz !== instanceAz) {
       throw new Error(
-        `Volume AZ ${volumeAz} does not match instance AZ ${instanceAz} — EBS volumes must be in the same AZ as the instance.`,
+        `Volume AZ ${volumeAz} does not match instance AZ ${instanceAz} (EBS volumes must be in the same AZ as the instance).`,
       );
     }
     const region = String(instance.fields["region"] ?? ctx.creds.region);

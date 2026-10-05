@@ -79,7 +79,7 @@ export async function cmdDns(ctx: CliContext): Promise<void> {
   if (response.zones.length === 0 && response.records.length === 0) {
     println(
       c.dim(
-        "No DNS zones synced. Connect an account on a provider that manages DNS — Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel.",
+        "No DNS zones synced. Connect an account on a provider that manages DNS (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel).",
       ),
     );
     if (ctx.flags.local) {
@@ -143,7 +143,7 @@ export async function cmdDns(ctx: CliContext): Promise<void> {
       if (!target.service) continue;
       println(
         `${c.red("dangling")} ${c.bold(`${record.type} ${record.name}`)} → ${target.value}\n` +
-          `  ${target.service.label} — nothing synced claims "${target.service.claimLabel}". ${target.service.reason}`,
+          `  ${target.service.label}. Nothing synced claims "${target.service.claimLabel}". ${target.service.reason}`,
       );
     }
   }
@@ -152,14 +152,10 @@ export async function cmdDns(ctx: CliContext): Promise<void> {
     println();
     println(c.bold("Not checked"));
     for (const entry of response.skippedNamespaces) {
-      println(c.dim(`  ${entry.label} — ${entry.reason}`));
+      println(c.dim(`  ${entry.label}, ${entry.reason}`));
     }
   }
 
   println();
-  println(
-    c.dim(
-      "Computed from already-synced state — no provider was contacted and no DNS was resolved. Dangling records also appear on Posture and feed the posture alerts.",
-    ),
-  );
+  println(c.dim("Computed from synced state; no provider was contacted and no DNS was resolved."));
 }

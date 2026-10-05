@@ -36,13 +36,13 @@ export function ScenarioChip({ scenarioModelId }: { scenarioModelId: string | un
         <FormHint>Loading…</FormHint>
       ) : query.data ? (
         <FormHint>
-          {query.data.name} — {query.data.adjustments.length} adjustment
+          {query.data.name}: {query.data.adjustments.length} adjustment
           {query.data.adjustments.length === 1 ? "" : "s"} in {query.data.currency}
         </FormHint>
       ) : (
         <FormHint>
-          This scenario model could not be loaded — it may have been deleted. The budget&rsquo;s
-          forecast thresholds will error rather than quietly fall back to the trend.
+          This scenario model could not be loaded; it may have been deleted. The budget&rsquo;s
+          forecast thresholds will error until it is fixed.
         </FormHint>
       )}
     </Field>

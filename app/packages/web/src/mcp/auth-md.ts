@@ -44,7 +44,7 @@ feature enabled and no payment details required.
 - It is **deleted ${trialHours} hours after it is created** unless a person claims it.
   Everything in it goes with it.
 - It has a **zero AI budget**. Infrawrench's own chat agent will refuse to run.
-  You are expected to bring your own model — you already have one.
+  You are expected to bring your own model; you already have one.
 
 Tell your user both of these things when you register. A workspace that
 disappears overnight without warning is worse than no workspace.
@@ -60,7 +60,7 @@ curl -X POST ${base}/api/agent/identity \\
   -d '{"label": "a short name for this workspace"}'
 \`\`\`
 
-The response contains \`credential\` — an \`iwa_\` bearer token. **It is shown once
+The response contains \`credential\`, an \`iwa_\` bearer token. **It is shown once
 and cannot be recovered.** Store it before doing anything else.
 
 \`\`\`json
@@ -89,7 +89,7 @@ The full API is described at ${base}/openapi.json. You may also connect to the
 MCP endpoint at ${base}/api/mcp with the same credential.
 
 You can do almost everything a member can. You cannot manage billing, mint API
-keys, invite people, or revoke agent registrations — those need a person.
+keys, invite people, or revoke agent registrations; those need a person.
 
 ## 3. Ask to be claimed
 
@@ -112,7 +112,7 @@ curl -X POST ${base}/api/agent/identity/claim \\
 
 Show your user **both** values in one message. For example:
 
-> I've set up a workspace at ${base}/claim — open it, sign in, and enter the
+> I've set up a workspace at ${base}/claim, open it, sign in, and enter the
 > code K7MP-2Q9X to keep it. Without that it is deleted at 09:00 tomorrow.
 
 Do not email the code and do not put it in a URL you log. It is a bearer secret
@@ -129,7 +129,7 @@ curl ${base}/api/agent/identity -H 'Authorization: Bearer iwa_...'
 \`\`\`
 
 Poll no more often than the \`interval\` seconds returned above. When \`claimed\`
-becomes true you are done — your credential does not change and keeps working.
+becomes true you are done, your credential does not change and keeps working.
 
 \`trial_expires_in_ms\` is on every response, not just near the end. Use it to
 remind your user before the deadline rather than after it.

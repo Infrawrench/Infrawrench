@@ -13,7 +13,7 @@ const PushDevice = strict({
 }).openapi("PushDevice");
 
 const MUTED_TRIGGERS_DESCRIPTION =
-  "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']. A `channelOnly` trigger (one push cannot deliver, such as `weeklyDigest`) is accepted here and simply has no effect — rejecting a preference that is already a no-op would buy nothing.";
+  "Triggers this member has turned off for this organization. Anything not listed is delivered, so a trigger added by a later release arrives without the client changing. A member who has never saved preferences gets ['resourceDrift']. A `channelOnly` trigger (one push cannot deliver, such as `weeklyDigest`) is accepted here and simply has no effect; rejecting a preference that is already a no-op would buy nothing.";
 
 const PushPreferences = strict({
   mutedTriggers: z.array(AlertTriggerEnum).openapi({ description: MUTED_TRIGGERS_DESCRIPTION }),

@@ -149,7 +149,7 @@ export async function writeChangeImpactAnnotation(
   );
   if (text === null) {
     throw new ChangeImpactAnnotationError(
-      "There is no measured cost impact to annotate yet — cost data may still be arriving.",
+      "There is no measured cost impact to annotate yet; cost data may still be arriving.",
     );
   }
 

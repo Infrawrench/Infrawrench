@@ -27,7 +27,7 @@ export function DesktopIncidentsPanel({ incidentId }: { incidentId?: string | un
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt("Incidents require cloud mode — sign in to sync.")}
+        {gt("Incidents require cloud mode: sign in to sync.")}
       </div>
     );
   }

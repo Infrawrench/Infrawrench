@@ -124,7 +124,7 @@ export async function buildLocally(
     if (!platform && request.registry && process.arch === "arm64") {
       platform = "linux/amd64";
       opts.log(
-        "no plan.platform set — assuming linux/amd64 for the pushed image " +
+        "no plan.platform set, assuming linux/amd64 for the pushed image " +
           "(this machine is arm64; set plan.platform to override)",
       );
     }
@@ -257,7 +257,7 @@ export async function runInImage(
       child.on("error", (err: NodeJS.ErrnoException) => {
         reject(
           err.code === "ENOENT"
-            ? new Error("The `docker` command was not found — install Docker to use run().")
+            ? new Error("The `docker` command was not found. Install Docker to use run().")
             : err,
         );
       });

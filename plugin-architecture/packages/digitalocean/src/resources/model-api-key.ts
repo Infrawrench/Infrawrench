@@ -5,7 +5,7 @@ export const ModelApiKeyResourceType = rt({
   pinnable: false,
   id: "model-api-key",
   description:
-    "A DigitalOcean model access key — scoped credential used to authenticate against the serverless inference endpoints at inference.do-ai.run. Create these in DigitalOcean's Model Studio (the create endpoint is retired); Infrawrench lists and deletes them.",
+    "A DigitalOcean model access key for the serverless inference endpoints at inference.do-ai.run. Create keys in DigitalOcean's Model Studio; Infrawrench lists and deletes them.",
   fields: [
     f("name", "Name"),
     f("createdBy", "Created By", { required: false, editable: false }),

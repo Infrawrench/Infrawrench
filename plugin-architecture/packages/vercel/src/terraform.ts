@@ -96,7 +96,7 @@ export const vercelTerraformExport: TerraformExportCapability = {
               },
               importId: name,
               comments: [
-                "This domain is listed at the account level — attach it to a project",
+                "This domain is listed at the account level; attach it to a project",
                 "with vercel_project_domain.project_id. Set var.vercel_project_id or replace",
                 "the reference with vercel_project.<name>.id.",
               ],
@@ -151,7 +151,7 @@ export const vercelTerraformExport: TerraformExportCapability = {
             attributes,
             importId,
             comments: [
-              "Set var.vercel_env_value to the desired value before apply — exported",
+              "Set var.vercel_env_value to the desired value before apply; exported",
               "configs never embed secret env values from Infrawrench.",
             ],
           },

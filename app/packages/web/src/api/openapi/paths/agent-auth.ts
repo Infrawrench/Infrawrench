@@ -28,7 +28,7 @@ const RegisteredAgent = strict({
   credential: z.string().openapi({
     description:
       "Bearer credential for this registration. Format `iwa_<base64url>`. Returned once and " +
-      "never recoverable — there is no route that can show it again.",
+      "never recoverable: there is no route that can show it again.",
   }),
   organization_id: Uuid,
   trial_expires_at: IsoDateTime.openapi({
@@ -51,7 +51,7 @@ const ClaimStarted = strict({
     .openapi({
       description:
         "The verification page with the code pre-filled. Convenient, but it puts a live bearer " +
-        "secret in a URL — prefer `verification_uri` plus the code shown separately.",
+        "secret in a URL; prefer `verification_uri` plus the code shown separately.",
     }),
   expires_at: IsoDateTime,
   interval: z.number().int().openapi({ description: "Minimum seconds between status polls." }),
@@ -86,7 +86,7 @@ const ClaimLookup = strict({
     description:
       "Organizations this user may merge the workspace into: ones they already belong to AND " +
       "hold `accounts:write` in. A merge writes cloud credentials, so membership alone is not " +
-      "enough — the confirm route enforces the same rule.",
+      "enough: the confirm route enforces the same rule.",
   }),
 }).openapi("AgentClaimLookup");
 
@@ -107,7 +107,7 @@ const ClaimRequest = strict({
     .optional()
     .openapi({
       description:
-        "Merge only: also re-parent the trial's metrics and cost history. Off by default — it " +
+        "Merge only: also re-parent the trial's metrics and cost history. Off by default; it " +
         "changes numbers the target organization may already be reporting on. Needs `costs:write`.",
     }),
 }).openapi("AgentClaimRequest");
@@ -123,8 +123,8 @@ const AgentRevoked = strict({
   ok: z.literal(true),
   revoked: z.boolean().openapi({
     description:
-      "False when the registration was already revoked. The request still succeeds — revocation " +
-      "is idempotent — but nothing changed.",
+      "False when the registration was already revoked. The request still succeeds (revocation " +
+      "is idempotent) but nothing changed.",
   }),
 }).openapi("AgentRevoked");
 
@@ -151,7 +151,7 @@ export function registerAgentAuthPaths(ctx: BuildContext) {
     tags: ["Agent auth"],
     summary: "Open an anonymous registration and a 24-hour trial workspace",
     description:
-      "Requires no authentication — this is how a client with no credentials gets one. Rate " +
+      "Requires no authentication; this is how a client with no credentials gets one. Rate " +
       "limited per source address. The workspace it opens is deleted 24 hours later unless a " +
       "person completes the claim ceremony.",
     security: [],

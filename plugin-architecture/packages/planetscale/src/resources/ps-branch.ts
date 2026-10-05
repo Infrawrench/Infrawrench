@@ -5,7 +5,7 @@ export const PsBranchResourceType = rt({
   plural: "Branches",
   id: "ps-branch",
   description:
-    "A PlanetScale database branch — isolated schema environment with its own connection endpoint",
+    "A PlanetScale database branch: an isolated schema environment with its own connection endpoint",
   fields: [
     f("name", "Name", { editable: false }),
     f("databaseName", "Database", { editable: false }),

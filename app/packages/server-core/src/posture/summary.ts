@@ -82,7 +82,7 @@ export function postureFindingLine(
   finding: PostureFinding,
   escape: (s: string) => string = (s) => s,
 ): string {
-  return `${escape(finding.displayName)} — ${finding.title} (${finding.severity})`;
+  return `${escape(finding.displayName)}: ${finding.title} (${finding.severity})`;
 }
 
 function countsLine(summary: PostureAlertSummary): string {

@@ -472,7 +472,7 @@ function collectNamespaces(
             pluginId: plugin.id,
             pluginName: plugin.displayName,
             label: rule.label,
-            reason: `No ${type.displayName} has synced yet — an account with none is indistinguishable from one whose credentials can't list them.`,
+            reason: `No ${type.displayName} has synced yet; an account with none is indistinguishable from one whose credentials can't list them.`,
           });
           continue;
         }

@@ -257,7 +257,7 @@ describe("updateSlackApprovalMessages", () => {
       decidedByName: null,
     });
     const text = updateSlackMessage.mock.calls[0]![3] as string;
-    expect(text).toContain("Expired — not decided within the timeout");
+    expect(text).toContain("Expired; not decided within the timeout");
     expect(text).not.toContain("Astrid");
   });
 

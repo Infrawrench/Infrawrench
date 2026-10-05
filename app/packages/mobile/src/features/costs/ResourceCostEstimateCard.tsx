@@ -99,8 +99,7 @@ export function ResourceCostEstimateCard({
       {carbonBlock}
       <View>
         <Text style={{ color: colors.textFaint, fontSize: 12 }}>
-          List-price projection from the provider&rsquo;s published rates — not a bill. Your Costs
-          tab shows what was actually charged.
+          Estimated from list prices, not a bill. The Costs tab shows what was charged.
         </Text>
       </View>
     </Card>

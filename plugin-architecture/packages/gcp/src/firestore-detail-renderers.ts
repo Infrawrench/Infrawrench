@@ -145,7 +145,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
       type: "prompt-nosql-command",
       command: "deleteIndex",
       title: `Delete index on ${idx.collectionGroup}`,
-      description: `${idx.fieldsDesc || idx.name} — queries that depended on this index will stop working.`,
+      description: `${idx.fieldsDesc || idx.name}. Queries that depended on this index will stop working.`,
       fields: [
         {
           key: "indexName",
@@ -176,7 +176,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
       type: "prompt-nosql-command",
       command: "deleteBackupSchedule",
       title: `Delete schedule ${s.name}`,
-      description: `${s.recurrence} backup schedule retained for ${s.retention || "an unspecified period"} — existing backups are unaffected.`,
+      description: `${s.recurrence} backup schedule retained for ${s.retention || "an unspecified period"}. Existing backups are unaffected.`,
       fields: [
         {
           key: "scheduleName",
@@ -457,7 +457,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
                 key: "fieldPath",
                 label: "Field name",
                 description:
-                  "Name of a timestamp-typed field on your documents (e.g. expiresAt). Documents whose value at that field is in the past are deleted within 24 hours. Use dotted paths for nested fields.",
+                  "A timestamp field on your documents (e.g. expiresAt). Documents whose value is in the past are deleted within 24 hours. Use dotted paths for nested fields.",
                 kind: "text",
                 required: true,
                 placeholder: "expiresAt",
@@ -485,8 +485,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
               {
                 key: "outputUri",
                 label: "GCS output prefix",
-                description:
-                  "gs://bucket-name/some/path — an export folder will be created under it.",
+                description: "gs://bucket-name/some/path (an export folder is created under it).",
                 kind: "text",
                 required: true,
                 placeholder: "gs://my-bucket/firestore-exports",
@@ -676,7 +675,7 @@ match /databases/{database}/documents {
                 {
                   kind: "text",
                   content:
-                    "No rules deployed to this database yet. Deploy rules to restrict access — without them, the database uses project-IAM-only access.",
+                    "No rules deployed yet. Without them, access is controlled by project IAM only.",
                   variant: "muted",
                 },
               ];
@@ -750,7 +749,7 @@ match /databases/{database}/documents {
             required: true,
             options: flatBindings.map((fb) => ({
               id: `${fb.role}|${fb.raw}`,
-              label: `${fb.role.replace(/^roles\//, "")} — ${fb.raw}`,
+              label: `${fb.role.replace(/^roles\//, "")}: ${fb.raw}`,
             })),
             defaultValue:
               flatBindings.length > 0 ? `${flatBindings[0]!.role}|${flatBindings[0]!.raw}` : "",

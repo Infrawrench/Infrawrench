@@ -37,7 +37,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Hetzner project API token (read + write). Generate one in the Hetzner Console under your project → Security → API Tokens. The same token covers Cloud, DNS and Storage Boxes.",
+        "A Hetzner project API token (read + write). Generate one in the Hetzner Console under your project, Security, API Tokens. It covers Cloud, DNS and Storage Boxes.",
       sensitive: true,
       placeholder: "",
     },

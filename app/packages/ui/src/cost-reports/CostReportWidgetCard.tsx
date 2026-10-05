@@ -53,9 +53,7 @@ export function CostReportWidgetCard({
           </button>
         )}
         <div className="flex-1 flex items-center justify-center px-6 text-center text-sm text-on-surface-faint">
-          {gt(
-            "This report is unavailable — it may still be loading, or it was removed outside this dashboard.",
-          )}
+          {gt("This report is unavailable. It may still be loading, or it was removed.")}
         </div>
       </div>
     );

@@ -151,7 +151,7 @@ window.
 
 ## Where anomalies appear
 
-The Costs panel (web and desktop) has an **Anomalies** section listing the last 30 days:
+The Costs panel (web and desktop) has an **Anomalies** section on its **Alerts** tab, listing the last 30 days:
 the day, what spiked, the actual spend, the baseline it was measured against, and the
 percentage change. New spend sources carry a **New source** badge, and show `none` for the
 baseline and `new` for the change — a key with no prior spend has no percentage to be up by.
@@ -172,7 +172,7 @@ recurrence scoped to the row's own provider or service. Detection thresholds, th
 list, the learned sensitivity and the precision report, and writing an explanation, are web and
 desktop only.
 
-<insert [Mobile app Costs tab scrolled to the Anomalies section, showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
+<insert [Mobile app Costs tab, Alerts tab selected, with the Anomalies section showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
 
 ## From the CLI
 
@@ -217,7 +217,7 @@ The `--json` output carries a `kind` field on every row (`spike` or `new_source`
 ## Alerts
 
 Anomaly alerts ride the same channels as budget alerts and sync-failure incidents. Everything
-lives under **Settings → Notifications**, in two places:
+lives under **Settings → Notifications**, in two places (the Routing and Channels tabs):
 
 - **[Slack](./slack-alerts.md) and [Microsoft Teams](./teams-alerts.md)** — which channels get
   anomalies is decided by the **Alert routing** rules, not by a checkbox on the channel row.

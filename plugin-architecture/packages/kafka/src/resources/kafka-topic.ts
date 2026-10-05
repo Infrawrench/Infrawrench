@@ -17,7 +17,7 @@ export const KafkaTopicResourceType = rt({
     f("replicationFactor", "Replication Factor", {
       kind: "number",
       required: false,
-      description: "Replication factor — must be ≤ number of brokers in the cluster.",
+      description: "Replication factor. Must not exceed the number of brokers.",
     }),
   ],
   outputs: [o("name", "Topic Name"), o("partitionCount", "Partition Count")],

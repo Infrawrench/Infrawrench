@@ -40,7 +40,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "New Relic",
   description:
-    "Observability platform. Track New Relic spend by product (data ingest, full platform and core users, compute, synthetic checks) and account, and manage APM and browser applications, hosts, synthetic monitors, dashboards, workloads, alert policies and NRQL alert conditions with their metrics.",
+    "Observability platform. Track New Relic spend by product and account, and manage APM and browser applications, hosts, synthetic monitors, dashboards, workloads, alert policies and NRQL conditions with their metrics.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -59,7 +59,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "User API Key",
       description:
-        "A New Relic user key (it starts with NRAK-). It acts with the permissions of the user it belongs to, so use a user who can read usage in the parent account for cost data. Create one under your user menu, API Keys, Create a key, type User.",
+        "A New Relic user key (it starts with NRAK-). It acts with its user's permissions, so use a user who can read usage in the parent account for cost data. Create one under your user menu, API Keys, Create a key, type User.",
       sensitive: true,
       placeholder: "NRAK-…",
       helpLink: { label: "Manage API keys", url: "https://one.newrelic.com/api-keys" },
@@ -68,7 +68,7 @@ const manifest: PluginManifest = {
       key: "accountId",
       label: "Usage Account",
       description:
-        "The account usage and cost are read from. On an organization with several accounts, pick the parent (or reporting) account: New Relic records the usage of all its child accounts there. Resources are listed from every account the key can access.",
+        "The account usage and cost are read from. On an organization with several accounts, pick the parent (reporting) account, which records usage for its child accounts. Resources are listed from every account the key can access.",
       sensitive: false,
       providerOptions: { dependsOn: ["apiKey", "region"] },
       placeholder: "Account ID",

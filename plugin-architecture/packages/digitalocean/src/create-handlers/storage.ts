@@ -290,7 +290,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
       if (!ready) {
         throw new Error(
           "DigitalOcean plugin: auto-generated Spaces key isn't usable yet (still propagating after 30s). " +
-            "The key has been saved on your account — retry the bucket create in a minute, or paste an existing Spaces key in the DO console (API > Spaces Keys) and edit this account.",
+            "The key is saved on your account. Retry the bucket create in a minute, or paste an existing Spaces key into this account.",
         );
       }
     }

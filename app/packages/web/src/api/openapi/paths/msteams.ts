@@ -54,7 +54,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     tags: ["Microsoft Teams"],
     summary: "Connect a Teams channel as an alert destination",
     description:
-      "Adds a channel by webhook URL, or updates the one already holding that URL. Which alerts reach it is decided by /alert-rules — connecting a channel routes nothing to it on its own. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
+      "Adds a channel by webhook URL, or updates the one already holding that URL. Which alerts reach it is decided by /alert-rules; connecting a channel routes nothing to it on its own. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: MsTeamsWebhookCreate } } },
@@ -73,7 +73,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/msteams/webhooks/{id}",
     tags: ["Microsoft Teams"],
     summary: "Rename a Teams channel",
-    description: "The webhook URL is immutable — remove the channel and re-add it to change it.",
+    description: "The webhook URL is immutable; remove the channel and re-add it to change it.",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -112,7 +112,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     tags: ["Microsoft Teams"],
     summary: "Post a test card to every configured Teams channel",
     description:
-      "Ignores routing rules — every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
+      "Ignores routing rules; every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
     request: { params: OrgIdParam },
     responses: {
       200: {

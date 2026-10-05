@@ -91,7 +91,7 @@ export function CurrencySection() {
     if (
       !window.confirm(
         gt(
-          "Delete the {from} → {to} rate effective {effectiveFrom}?\n\nDays it covered will fall back to the next-older rate, then to automatic rates if they are on, or be reported unconverted if neither applies. No spend is lost either way.",
+          "Delete the {from} → {to} rate effective {effectiveFrom}?\n\nIts days fall back to the next-older rate, then automatic rates, or show unconverted. No spend is lost.",
           { from: rate.fromCurrency, to: rate.toCurrency, effectiveFrom: rate.effectiveFrom },
         ),
       )
@@ -122,15 +122,13 @@ export function CurrencySection() {
         <h1 className="text-xl font-semibold">{gt("Currency")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            Spend is collected and stored in the currency each provider bills in, and is never
-            merged unless you ask. Set a display currency here and Infrawrench will convert the
-            others into it, at the exchange rates you state below and, if you turn them on, at the
-            European Central Bank&rsquo;s daily reference rates.{" "}
+            Spend is stored in each provider&rsquo;s billing currency. Set a display currency to
+            convert the rest using your stated rates and, optionally, the ECB&rsquo;s daily
+            reference rates.{" "}
             <strong className="text-on-surface-secondary">
               A rate you state always wins over an automatic one.
             </strong>{" "}
-            Converted figures are labelled as converted everywhere they appear, with the source and
-            date of the rate used.
+            Converted figures are labelled with the rate&rsquo;s source and date.
           </p>
         </T>
       </div>
@@ -148,9 +146,7 @@ export function CurrencySection() {
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
             <h2 className="text-sm font-semibold">{gt("Display currency")}</h2>
             <p className="text-xs text-on-surface-muted">
-              {gt(
-                "Leave this empty to turn conversion off entirely. Nothing else on this page has any effect while it is empty, and every cost surface shows one figure per currency, as it does today.",
-              )}
+              {gt("Leave empty to turn conversion off; the rest of this page then has no effect.")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -191,7 +187,7 @@ export function CurrencySection() {
             <p className="text-xs text-on-surface-faint">
               {displayCurrency
                 ? gt(
-                    "Converting into {currency}. Spend already in {currency} is passed through untouched; any other currency without a rate below is shown separately, never folded in or dropped.",
+                    "Converting into {currency}. Currencies without a rate are shown separately, never dropped.",
                     { currency: displayCurrency },
                   )
                 : gt(
@@ -213,12 +209,9 @@ export function CurrencySection() {
             <h2 className="text-sm font-semibold">{gt("Exchange rates")}</h2>
             <T>
               <p className="text-xs text-on-surface-muted">
-                One rate per currency pair per effective date. A day&rsquo;s spend converts at the
-                rate with the latest effective date on or before that day, so restating a rate does
-                not rewrite periods you have already closed. Give a rate an end date to make it a
-                bounded override: after that day, automatic rates take over again (or the days are
-                shown unconverted if automatic rates are off). Stated rates are used in one hop
-                only; Infrawrench never inverts one or chains two through a third currency.
+                One rate per currency pair per effective date. Each day uses the latest rate in
+                effect, so new rates don&rsquo;t rewrite closed periods. An end date makes a rate a
+                bounded override. Rates are never inverted or chained through a third currency.
               </p>
             </T>
 
@@ -580,11 +573,9 @@ function AutomaticRatesCard({
       </div>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Fill every day that no stated rate covers with the European Central Bank&rsquo;s euro
-          foreign exchange reference rates, fetched daily and kept back to 1999. Weekends and
-          holidays use the last published rate, and pairs without the euro are crossed through EUR.
-          Currencies the ECB does not publish are manual-only: they convert only at a rate you state
-          below.
+          Fill days no stated rate covers with the European Central Bank&rsquo;s daily reference
+          rates (back to 1999, crossed through EUR). Currencies the ECB doesn&rsquo;t publish need a
+          stated rate.
         </p>
       </T>
 
@@ -619,7 +610,7 @@ function AutomaticRatesCard({
             {gt("End-of-month rate")}
             <span className="block text-xs text-on-surface-faint">
               {gt(
-                "Every day in a month converts at the rate on the month's last day, the way most month-end closes book it. The current month uses the latest rate until it ends.",
+                "Every day in a month converts at the month's last-day rate. The current month uses the latest rate until it ends.",
               )}
             </span>
           </span>

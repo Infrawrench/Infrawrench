@@ -67,8 +67,7 @@ export function ResourceDependenciesCard({ resourceId }: { resourceId: string })
       )}
       {graph.data?.truncated && (
         <Text style={{ color: colors.warning, fontSize: 12 }}>
-          The org&apos;s graph hit its edge cap — this resource&apos;s own neighbourhood is still
-          complete.
+          The org&apos;s graph hit its edge cap, but this resource&apos;s links are complete.
         </Text>
       )}
       <Button

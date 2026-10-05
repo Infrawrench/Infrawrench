@@ -108,7 +108,7 @@ export function quotaRowLine(row: QuotaRow): string {
     row.trend.daysToExhaustion !== null
       ? `, full ${formatDaysToExhaustion(row.trend.daysToExhaustion)}`
       : "";
-  return `${row.accountName} · ${row.service} ${row.name}${scope} — ${amounts}, ${formatQuotaUtilization(
+  return `${row.accountName} · ${row.service} ${row.name}${scope}: ${amounts}, ${formatQuotaUtilization(
     row.utilization,
   )}${trailer}`;
 }

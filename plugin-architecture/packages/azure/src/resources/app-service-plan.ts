@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const AppServicePlanResourceType = rt({
   name: "App Service Plan",
   id: "azure-app-service-plan",
-  description: "An Azure App Service plan — the compute the web apps and function apps run on",
+  description: "An Azure App Service plan: the compute web apps and function apps run on",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),

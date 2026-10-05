@@ -1543,7 +1543,7 @@ export class SpeechmaticsClient implements PluginClient {
       if (TERMINAL_STATUSES.has(status)) return status;
       if (Date.now() + POLL_INTERVAL_MS >= deadline) {
         throw new Error(
-          `Speechmatics job ${jobId} did not finish within ${Math.round(TOTAL_TIMEOUT_MS / 1000)}s. It is still running — open the job from the sidebar to read the transcript once it lands.`,
+          `Speechmatics job ${jobId} did not finish within ${Math.round(TOTAL_TIMEOUT_MS / 1000)}s. It is still running; open the job from the sidebar to read the transcript when it finishes.`,
         );
       }
       await sleep(POLL_INTERVAL_MS);
@@ -1685,7 +1685,7 @@ export class SpeechmaticsClient implements PluginClient {
             kind: "text",
             variant: "muted",
             content:
-              "Append ?format=txt, ?format=srt or ?format=json-v2 — the output format is a query " +
+              "Append ?format=txt, ?format=srt or ?format=json-v2. The format is a query " +
               "parameter, not an Accept header.",
           },
         ],
@@ -1732,7 +1732,7 @@ export class SpeechmaticsClient implements PluginClient {
       helpText:
         "Record or upload a clip and it is submitted as a batch job with ?wait=60, so the " +
         "transcript comes back in the same request. Longer clips fall back to polling, capped " +
-        "at two minutes. Melia-1 is multilingual only — picking it forces the language to “multi”. " +
+        "at two minutes. Melia-1 is multilingual only, so it forces the language to “multi”. " +
         "Synthesis uses Speechmatics' text-to-speech preview, which answers 16 kHz WAV and needs " +
         "a key that is allowed to call text to speech.",
       voices: TTS_VOICES,
@@ -1792,11 +1792,11 @@ export class SpeechmaticsClient implements PluginClient {
             variant: "muted",
             content: hasManagementToken
               ? "Projects and API keys are read from the Management API " +
-                "(https://mp.speechmatics.com/v1) with this account's management token — a " +
-                "different credential on a different host to the batch API key."
+                "(https://mp.speechmatics.com/v1) with this account's management token, " +
+                "a separate credential on a different host from the batch API key."
               : "No management token is set, so the Projects and API Keys lists stay empty. " +
-                "Transcription jobs, usage and the Speech tab are unaffected — add one from " +
-                "Portal › Manage workspace › Management tokens if you want them.",
+                "Jobs, usage and the Speech tab are unaffected. Add one from " +
+                "Portal › Manage workspace › Management tokens.",
           },
         ],
       },
@@ -1820,7 +1820,7 @@ export class SpeechmaticsClient implements PluginClient {
             variant: "muted",
             content:
               "Read from GET /v2/usage, which takes inclusive calendar dates rather than a " +
-              `granularity. Usage is region-scoped like everything else — this is ${region} only.`,
+              `granularity. Usage is region-scoped; this is ${region} only.`,
           },
         ],
       },
@@ -1840,9 +1840,8 @@ export class SpeechmaticsClient implements PluginClient {
             variant: "muted",
             content:
               "The Speech tab's pickers come from GET /v1/discovery/features on this region, " +
-              "which is unauthenticated — so they are populated even before the API key is " +
-              "validated. “multi” is appended because melia-1 requires it and discovery does " +
-              "not list it as a pack.",
+              "which needs no authentication, so they fill in before the API key is " +
+              "validated. “multi” is added because melia-1 requires it.",
           },
         ],
       },

@@ -15,7 +15,7 @@ export const BalanceResourceType = rt({
   plural: "Balances",
   id: "balance",
   description:
-    "Prepaid credit balance for this DeepSeek account, split into granted and topped-up amounts. Read-only — DeepSeek has no billing or usage API, only this endpoint.",
+    "Prepaid credit balance, split into granted and topped-up amounts. Read-only; DeepSeek has no other billing or usage API.",
   fields: [
     f("currency", "Currency", { kind: "enum", editable: false, enumValues: ["CNY", "USD"] }),
     f("totalBalance", "Total Balance", { kind: "number", editable: false }),

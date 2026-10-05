@@ -10,19 +10,19 @@ No extra provider API calls are made — the finder runs entirely over data your
 
 ## Where to find it
 
-Open **Costs** in the sidebar and scroll to **Potential savings**, below the month-to-date chart and your budgets — what you're spending and what of it is wasted read together on one page.
+Open **Costs** in the sidebar and go to the **Savings** tab. **Potential savings** is the first section there. The Overview tab next to it shows what you're spending, so the two read together.
 
 Flagged resources are grouped by account, each row showing the resource, its type, and the reason it was flagged. Where Infrawrench collects cost data for the account, rows are annotated with the resource's spend over the last 30 days.
 
-![Costs page scrolled to the Potential savings section, showing flagged resources grouped by account — each row with resource name, type badge, reason string, and a 30-day cost figure on the right](https://agent-assets.infrawrench.com/docs-screenshots/features/orphan-finder/potential-savings-section.png)
+![Costs page Savings tab showing the Potential savings section, showing flagged resources grouped by account, each row with resource name, type badge, reason string, and a 30-day cost figure on the right](https://agent-assets.infrawrench.com/docs-screenshots/features/orphan-finder/potential-savings-section.png)
 
 Each resource name is a button — activate it to jump to that resource's detail page, where you can confirm it really is unused and delete it in place. It is an ordinary tab stop, so you can reach every flagged resource from the keyboard.
 
 Prefer the terminal? **Remediate** on a row opens the provider CLI commands that clean it up, filled in with the resource's id and region, with a snapshot first where the provider supports one. See [Remediation commands](./remediation-commands.md). They are generated from the synced state, so local mode has them too.
 
-The **mobile app** has the same section at the bottom of its **Costs** tab, grouped by account the same way, and tapping a row opens that resource. It reads your organization's synced resources, so it needs you signed in — there is no local mode on a phone.
+The **mobile app** has the same section on the **Savings** tab of its Costs screen, grouped by account the same way, and tapping a row opens that resource. It reads your organization's synced resources, so it needs you signed in, there is no local mode on a phone.
 
-<insert [Mobile app Costs tab scrolled to Potential savings, showing two account groups with flagged resources — name, type and reason, and a 30-day cost figure on the right] here>
+<insert [Mobile app Costs tab, Savings tab selected, showing Potential savings with two account groups with flagged resources, name, type and reason, and a 30-day cost figure on the right] here>
 
 ## Cloud mode and local mode
 
@@ -37,7 +37,7 @@ Local mode needs no account credentials and makes no network calls at all: it re
 
 Its coverage is narrower, though, and worth understanding: the local workspace stores the resources you created or pinned in the desktop app, not everything your providers hold — the sidebar lists those live from the provider each time. So a local scan classifies what is on disk. Signing in to an organization is what gives the finder a complete, continuously synced inventory to work over.
 
-<insert [Desktop app in local mode, Costs panel scrolled to Potential savings, showing flagged resources with reasons and no cost column] here>
+<insert [Desktop app in local mode, Costs panel Savings tab showing Potential savings, showing flagged resources with reasons and no cost column] here>
 
 ## What gets flagged
 

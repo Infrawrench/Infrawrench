@@ -55,7 +55,7 @@ resource you attribute takes one off it.
 `Unowned` is printed rather than left blank on purpose. A blank cell reads as "not looked up"; the
 point is that this was looked up and the answer is nobody.
 
-The same column appears in `infrawrench orphans` and on the mobile Costs tab.
+The same column appears in `infrawrench orphans` and on the Savings tab of the mobile Costs screen.
 
 ## Alerts reach a person, not just a channel
 
@@ -100,7 +100,7 @@ Changes are recorded in the [audit log](../team-and-billing/audit-log.md).
   by resource, owner or purpose. See the [CLI](../features/cli.md).
 - The [MCP server](../features/mcp.md) exposes `list_resource_ownership`, so an AI assistant can
   answer "who owns this?" and "what has nobody claimed?" before proposing a deletion.
-- The mobile app shows the owner against each flagged resource on the Costs tab; setting one is a
+- The mobile app shows the owner against each flagged resource on the Savings tab of the Costs screen; setting one is a
   web/desktop task.
 
 ## Related

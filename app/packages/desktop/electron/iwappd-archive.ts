@@ -106,7 +106,7 @@ async function splitInto2Archives(): Promise<[Buffer<ArrayBufferLike>, Buffer<Ar
   const arm64 = members.get(ARM64_BINARY);
   if (!x86_64 || !arm64) {
     throw new Error(
-      `${iwappdArchivePath()} is missing ${!x86_64 ? X86_64_BINARY : ARM64_BINARY} — rebuild it with scripts/ensure-iwappd.mjs`,
+      `${iwappdArchivePath()} is missing ${!x86_64 ? X86_64_BINARY : ARM64_BINARY}. Rebuild it with scripts/ensure-iwappd.mjs`,
     );
   }
   return Promise.all([recompressBufferAsGz(x86_64), recompressBufferAsGz(arm64)]);

@@ -110,6 +110,41 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
+/** Horizontal tab strip for splitting a long screen into views. */
+export function TabStrip<T extends string>({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: ReadonlyArray<{ id: T; label: string }>;
+  value: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      accessibilityRole="tablist"
+      contentContainerStyle={styles.tabStrip}
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === value;
+        return (
+          <Pressable
+            key={tab.id}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(tab.id)}
+            style={[styles.tab, selected && styles.tabSelected]}
+          >
+            <Text style={selected ? styles.tabTextSelected : styles.tabText}>{tab.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export function Row({
   title,
   subtitle,
@@ -207,6 +242,17 @@ export function EmptyView({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
+  tabStrip: { gap: spacing.sm },
+  tab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceOverlay },
+  tabText: { color: colors.textMuted, fontSize: 13, fontWeight: "500" },
+  tabTextSelected: { color: colors.text, fontSize: 13, fontWeight: "600" },
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

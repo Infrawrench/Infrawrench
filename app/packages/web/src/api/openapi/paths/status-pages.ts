@@ -7,7 +7,7 @@ const ProbeStatus = z.enum(["up", "down", "unknown"]);
 const StatusComponentState = z.enum(["operational", "degraded", "down", "unknown"]).openapi({
   description:
     "A component's public state. A paused probe reads `unknown` regardless of its last " +
-    "result — the page is a claim about what is being checked now.",
+    "result: the page is a claim about what is being checked now.",
 });
 
 const StatusPageState = z.enum(["operational", "degraded", "major_outage", "unknown"]).openapi({
@@ -25,7 +25,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     label: z.string().nullable().describe("Public name; null falls back to the probe's own name."),
     groupName: z.string().nullable(),
     position: z.number().int().describe("Ascending display order."),
-    probeName: z.string().describe("The probe's internal name — editor-only."),
+    probeName: z.string().describe("The probe's internal name, editor-only."),
     probeStatus: ProbeStatus,
     probeEnabled: z.boolean().describe("False when the probe is paused."),
   }).openapi("StatusPageComponent");
@@ -69,7 +69,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     components: z
       .array(StatusPageComponentInput)
       .optional()
-      .describe("Order is significant — it is the public render order."),
+      .describe("Order is significant; it is the public render order."),
   }).openapi("StatusPageCreate");
 
   const StatusPagePatch = strict({
@@ -141,7 +141,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     summary: "Create a status page",
     description:
       "Creates a page with a freshly generated slug. `published` defaults to false, so creating " +
-      "a page never exposes anything — publish it as a separate, deliberate step.",
+      "a page never exposes anything; publish it as a separate, deliberate step.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: StatusPageCreate } } },
@@ -163,7 +163,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     summary: "Update a status page",
     description:
       "Omitted fields keep their value. `components`, when present, replaces the whole ordered " +
-      "set — which is also how a reorder is expressed.",
+      "set: which is also how a reorder is expressed.",
     request: {
       params: OrgIdParam.extend({ id: Uuid }),
       body: { content: { "application/json": { schema: StatusPagePatch } } },
@@ -184,7 +184,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     tags: ["Status pages"],
     summary: "Issue a new public link",
     description:
-      "Replaces the slug, revoking the current public URL immediately — the reroll for a link " +
+      "Replaces the slug, revoking the current public URL immediately; the reroll for a link " +
       "that ended up somewhere unintended. The page stays published.",
     request: { params: OrgIdParam.extend({ id: Uuid }) },
     responses: {
@@ -219,7 +219,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     // make generated clients attach a token to an anonymous endpoint.
     security: [],
     description:
-      "**Unauthenticated.** The only endpoint in this API that takes no credentials — a status " +
+      "**Unauthenticated.** The only endpoint in this API that takes no credentials; a status " +
       "page exists for people with no account. The payload carries labels, states and uptime " +
       "history only: probe URLs, resource and account ids, the organization id and error detail " +
       "are never included. An unpublished page and an unknown slug both answer 404, so the " +

@@ -18,7 +18,7 @@ export const OrganizationResourceType = rt({
   name: "Organization",
   id: "organization",
   description:
-    "The CoreWeave organization the API token belongs to. Shows month-to-date GPU-hours and estimated spend by instance type, cluster and capacity plan from the FOCUS usage export, and charts daily GPU-hours and spend.",
+    "The CoreWeave organization the API token belongs to. Month-to-date GPU-hours and estimated spend by instance type, cluster and capacity plan, from the FOCUS usage export.",
   fields: [
     f("name", "Name", { editable: false }),
     f("gpuHoursMtd", "GPU-Hours This Month", { kind: "number", required: false, editable: false }),
@@ -39,7 +39,7 @@ export const ClusterResourceType = rt({
   name: "CKS Cluster",
   id: "cks-cluster",
   description:
-    "A CoreWeave Kubernetes Service cluster. Create one in a VPC, change its Kubernetes version and API server visibility, open its workloads in the Kubernetes tab with per-namespace GPU cost, and chart GPU utilization, idle GPUs, memory, power and billable GPU-hours.",
+    "A CoreWeave Kubernetes Service cluster. Create one in a VPC, change its Kubernetes version and API server visibility, and see workloads, per-namespace GPU cost and GPU utilization.",
   fields: [
     f("name", "Name", { editable: false }),
     f("zone", "Zone", { editable: false }),
@@ -139,7 +139,7 @@ export const NodePoolResourceType = rt({
   name: "Node Pool",
   id: "node-pool",
   description:
-    "A CKS Node Pool: a set of Nodes of one instance type. Create one, scale it (with rack sizing and autoscaler bounds checked before anything is sent), scale it to zero and back, and chart its GPU utilization.",
+    "A CKS Node Pool: a set of Nodes of one instance type. Create, scale (rack sizing and autoscaler bounds are checked first), scale to zero and back, and chart GPU utilization.",
   parentTypeId: "cks-cluster",
   showInSidebar: true,
   fields: [
@@ -251,7 +251,7 @@ export const VpcResourceType = rt({
   plural: "VPCs",
   id: "vpc",
   description:
-    "A CoreWeave Virtual Private Cloud. CKS clusters take their pod, service and internal load balancer ranges from its named prefixes. Create one, add prefixes, and switch public ingress and egress on or off.",
+    "A CoreWeave Virtual Private Cloud. CKS clusters take their pod, service and internal load balancer ranges from its named prefixes. Add prefixes and toggle public ingress and egress.",
   fields: [
     f("name", "Name", { editable: false }),
     f("zone", "Zone", { editable: false }),

@@ -148,7 +148,7 @@ function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
 
   const ingressLabel =
     ingress === "INGRESS_TRAFFIC_ALL"
-      ? "All — public"
+      ? "All (public)"
       : ingress === "INGRESS_TRAFFIC_INTERNAL_ONLY"
         ? "Internal only"
         : ingress === "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
@@ -167,7 +167,7 @@ function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
         required: true,
         defaultValue: ingress || "INGRESS_TRAFFIC_ALL",
         options: [
-          { id: "INGRESS_TRAFFIC_ALL", label: "All — public" },
+          { id: "INGRESS_TRAFFIC_ALL", label: "All (public)" },
           { id: "INGRESS_TRAFFIC_INTERNAL_ONLY", label: "Internal only" },
           {
             id: "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER",
@@ -338,7 +338,7 @@ function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
               } else if (!m.ready) {
                 items.push({
                   kind: "text",
-                  content: "Cloud Run hasn't published DNS records yet — refresh in a few seconds.",
+                  content: "Cloud Run hasn't published DNS records yet. Refresh in a few seconds.",
                   variant: "muted",
                 });
               }
@@ -408,7 +408,7 @@ function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
     command: "createDomainMapping",
     title: "Map a custom domain",
     description:
-      "Cloud Run will start provisioning a managed TLS certificate and return the DNS records you need to add at your registrar. Make sure the domain is verified for your account first (https://www.google.com/webmasters/verification).",
+      "Cloud Run will provision a managed TLS certificate and return the DNS records to add at your registrar. Verify the domain for your account first (https://www.google.com/webmasters/verification).",
     fields: [
       {
         key: "domain",
@@ -581,7 +581,7 @@ function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailViewTab {
   };
 
   const authChildren: SchemaNode[] = iam.error
-    ? [{ kind: "text", content: "Cannot read auth mode — IAM fetch failed.", variant: "muted" }]
+    ? [{ kind: "text", content: "Cannot read auth mode: IAM fetch failed.", variant: "muted" }]
     : [
         {
           kind: "key-value-list",
@@ -591,8 +591,8 @@ function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailViewTab {
               value: isPublic
                 ? "Allow public access (no authentication checks)"
                 : isAllAuthenticated
-                  ? "Require authentication — any Google-authenticated user"
-                  : "Require authentication — IAM-controlled principals",
+                  ? "Require authentication (any Google-authenticated user)"
+                  : "Require authentication (IAM-controlled principals)",
             },
             ...(invokerMembers.length > 0
               ? [
@@ -672,7 +672,7 @@ function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailViewTab {
     {
       kind: "text",
       content:
-        "Cloud Run threat detection is a project-level setting in Security Command Center, not a per-service control. Enable in the SCC console (cloud.google.com/security-command-center) to flag runtime threats across all Cloud Run services in this project.",
+        "Threat detection is a project-level setting in Security Command Center. Enable it in the SCC console (cloud.google.com/security-command-center) to flag runtime threats across all Cloud Run services.",
       variant: "muted",
     },
   ];
@@ -765,8 +765,8 @@ function buildCloudRunTriggersTab(input: CloudRunDetailInput): DetailViewTab {
         defaultValue: "pubsub",
         options: [
           { id: "pubsub", label: "Pub/Sub message" },
-          { id: "storage-finalized", label: "Cloud Storage — Object finalized" },
-          { id: "storage-deleted", label: "Cloud Storage — Object deleted" },
+          { id: "storage-finalized", label: "Cloud Storage: Object finalized" },
+          { id: "storage-deleted", label: "Cloud Storage: Object deleted" },
           { id: "audit-log", label: "Cloud Audit Log entry" },
           { id: "custom", label: "Custom (advanced)" },
         ],

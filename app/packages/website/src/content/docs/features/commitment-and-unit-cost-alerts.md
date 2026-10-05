@@ -192,7 +192,7 @@ value beside the limit.
 
 ## Managing these alerts
 
-All three live in the **Commitment & unit-cost alerts** section of the Costs panel, below the
+All three live in the **Commitment & unit-cost alerts** section of the Costs panel's **Alerts** tab, after the
 anomaly and change-alert sections, on both web and desktop. The list shows what fired, when,
 what it was about, and the money involved. "Tune alerts" opens the thresholds for all three.
 
@@ -230,7 +230,7 @@ Idle commitments default to `info` severity rather than `warning`: nothing is br
 money already spent, and an organization that sleeps through `info` should keep sleeping through
 it. Expiry and unit-cost regressions are `warning`.
 
-Push notifications deep-link to the Costs tab in the [mobile app](./mobile-app.md), where the
+Push notifications deep-link to the **Alerts** tab of the Costs screen in the [mobile app](./mobile-app.md), where the
 firings are listed read-only — thresholds are managed from web or desktop.
 
 ## API

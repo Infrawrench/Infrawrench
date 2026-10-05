@@ -134,7 +134,7 @@ export function PolicyEditor({
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-xs text-on-surface-tertiary">
-          {gt("Resource types — none selected applies the policy to everything stateful")}
+          {gt("Resource types (none selected applies to everything stateful)")}
         </legend>
         {resourceTypeOptions.length === 0 ? (
           <T>

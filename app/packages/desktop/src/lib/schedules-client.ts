@@ -19,7 +19,7 @@ import { invoke } from "./invoke";
 export function createDesktopSchedulesClient(): SchedulesClient {
   const requireOrgId = (): string => {
     const orgId = useUIStore.getState().activeCloudOrgId;
-    if (!orgId) throw new Error("Sleep schedules require Infrawrench Cloud — sign in first.");
+    if (!orgId) throw new Error("Sleep schedules require Infrawrench Cloud: sign in first.");
     return orgId;
   };
   return {

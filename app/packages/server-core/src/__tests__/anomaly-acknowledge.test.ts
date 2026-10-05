@@ -185,14 +185,14 @@ describe("explained findings stop nagging without disappearing", () => {
 
 describe("costAnomalyExplanationPrefill", () => {
   it("opens the composer with the change, so a sentence only has to be finished", () => {
-    expect(costAnomalyExplanationPrefill(row())).toBe("Amazon EC2 spend +173% — ");
+    expect(costAnomalyExplanationPrefill(row())).toBe("Amazon EC2 spend +173%: ");
   });
 
   it("never quotes a percentage for a new source", () => {
     const prefill = costAnomalyExplanationPrefill(
       row({ kind: "new_source", baselineCents: 1, actualCents: 5000 }),
     );
-    expect(prefill).toBe("Amazon EC2 started spending — ");
+    expect(prefill).toBe("Amazon EC2 started spending: ");
     expect(prefill).not.toMatch(/%/);
   });
 });

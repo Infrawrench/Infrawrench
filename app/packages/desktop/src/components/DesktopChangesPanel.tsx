@@ -28,7 +28,7 @@ export function DesktopChangesPanel() {
         <h1 className="text-xl font-semibold mb-1">{gt("Changes")}</h1>
         <p className="text-sm text-on-surface-muted">
           {gt(
-            "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts. Local-only mode has no poller, so there is no feed — sign in to an organization to see one.",
+            "The change timeline is recorded by Infrawrench Cloud. Sign in to an organization to see it.",
           )}
         </p>
       </div>

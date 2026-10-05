@@ -78,10 +78,9 @@ export function CustomCostSourcesSection() {
         <h1 className="text-xl font-semibold">{gt("Custom Cost Sources")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            Spend Infrawrench has no integration for: a colo bill, a SaaS invoice, another
-            tool&rsquo;s export. Upload a CSV (you map its columns) or a FinOps FOCUS file (mapped
-            automatically) into a named source, and the source appears as its own provider in every
-            cost report, filter and budget.
+            Spend with no integration, like a colo bill or SaaS invoice. Upload a CSV or FinOps
+            FOCUS file into a named source, which then appears as its own provider in cost reports
+            and budgets.
           </p>
         </T>
       </div>

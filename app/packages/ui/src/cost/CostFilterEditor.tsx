@@ -354,7 +354,7 @@ function SavedFilterPicker({
           <span
             className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-2.5 py-1 text-xs text-on-surface"
             title={gt(
-              "Applied by reference and combined (AND) with the rows below. Edit it in the Costs panel to change every graph, report and budget using it.",
+              "Combined (AND) with the rows below. Edit it in the Costs panel to update everything using it.",
             )}
           >
             <span className="text-on-surface-faint">{gt("Saved filter")}</span>
@@ -378,7 +378,7 @@ function SavedFilterPicker({
       {savedFilterId && Array.isArray(saved) && !applied && (
         <p className="text-xs text-warning">
           {gt(
-            "This saved filter no longer resolves — queries will fail until it is removed here or restored.",
+            "This saved filter no longer exists. Queries will fail until it is removed or restored.",
           )}
         </p>
       )}
@@ -519,7 +519,7 @@ export function CostFilterEditor({
           onClick={toRows}
           title={
             mode === "text" && error !== null
-              ? gt("Fix the query first — switching now would discard it")
+              ? gt("Fix the query first; switching now would discard it")
               : undefined
           }
         >

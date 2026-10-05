@@ -11,7 +11,7 @@ import { fetchCloudBlastRadius } from "./cloud-resources";
  */
 function requireOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;
-  if (!orgId) throw new Error("Blast radius requires cloud mode — sign in to sync.");
+  if (!orgId) throw new Error("Blast radius requires cloud mode: sign in to sync.");
   return orgId;
 }
 

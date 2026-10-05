@@ -78,7 +78,7 @@ export function DesktopAccessReviewPanel({ openResource }: DesktopAccessReviewPa
     async (principal: AccessPrincipal) => {
       if (!activeCloudOrgId || !principal.revokeActionId) return;
       const confirmed = window.confirm(
-        `Revoke ${principal.displayName}? This runs the provider's own revoke action — ` +
+        `Revoke ${principal.displayName}? This runs the provider's revoke action, and ` +
           `anything using this principal stops working.`,
       );
       if (!confirmed) return;

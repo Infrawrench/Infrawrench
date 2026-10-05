@@ -5,7 +5,7 @@ export const AppRegistrationResourceType = rt({
   pinnable: false,
   id: "azure-app-registration",
   description:
-    "An Entra ID (Azure AD) application with a service principal — the Azure equivalent of an AWS IAM user or GCP service account. Use it for service-to-service auth via client credentials.",
+    "An Entra ID (Azure AD) application with a service principal, the Azure equivalent of an AWS IAM user or GCP service account. Use it for service-to-service auth.",
   fields: [
     f("displayName", "Display Name"),
     f("appId", "Application (Client) ID"),

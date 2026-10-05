@@ -952,7 +952,7 @@ export class NetlifyClient implements PluginClient {
             label: "TTL (seconds)",
             kind: "text",
             required: false,
-            description: "Time to live — leave blank for default (3600)",
+            description: "Time to live; leave blank for default (3600)",
           },
         ],
       };
@@ -996,7 +996,7 @@ export class NetlifyClient implements PluginClient {
             label: "Branch",
             kind: "text",
             required: false,
-            description: "Git branch to build — defaults to the production branch",
+            description: "Git branch to build; defaults to the production branch",
           },
         ],
       };

@@ -165,7 +165,7 @@ export function mapEc2ReservedInstance(
   return {
     id,
     kind: "reservation",
-    description: `EC2 Reserved Instance — ${description}`,
+    description: `EC2 Reserved Instance: ${description}`,
     ...(ri.availabilityZone ? { scope: ri.availabilityZone } : {}),
     region,
     startDate: ri.start ?? "",
@@ -262,7 +262,7 @@ export function mapRdsReservedInstance(
   return {
     id,
     kind: "reservation",
-    description: `RDS Reserved Instance — ${description}`,
+    description: `RDS Reserved Instance: ${description}`,
     region,
     startDate: start,
     ...(endDate ? { endDate } : {}),
@@ -348,7 +348,7 @@ export function mapSavingsPlan(plan: SavingsPlan): CommitmentRecord | null {
   return {
     id,
     kind: "savings_plan",
-    description: plan.description ? `${label} — ${plan.description}` : label,
+    description: plan.description ? `${label}: ${plan.description}` : label,
     ...(plan.ec2InstanceFamily ? { scope: plan.ec2InstanceFamily } : {}),
     ...(region ? { region } : {}),
     startDate: plan.start ?? "",

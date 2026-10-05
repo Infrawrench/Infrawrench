@@ -87,7 +87,7 @@ export default function AccessRequestsScreen() {
           "Not allowed",
           error instanceof Error
             ? error.message
-            : "You cannot decide this request — either it is yours, or it asks for permissions you do not hold yourself.",
+            : "You cannot decide this request: it is yours, or it asks for permissions you do not hold.",
         );
         return;
       }
@@ -135,7 +135,7 @@ export default function AccessRequestsScreen() {
       `Duration: ${formatGrantDuration(request.durationMinutes)}`,
       "",
       decision === "approve"
-        ? "Approving gives them those permissions everywhere at once — the apps, the API, terminals and the assistant — until the window closes."
+        ? "Approving gives them those permissions everywhere (apps, API, terminals, assistant) until the window closes."
         : "Denying tells them no. They can ask again.",
     ].join("\n");
 
@@ -197,8 +197,8 @@ export default function AccessRequestsScreen() {
       {focusedMissing ? (
         <Card>
           <Text style={{ color: colors.warning, fontSize: 13 }}>
-            The request your notification was about is no longer waiting — someone decided it, or it
-            expired and was treated as a denial.
+            That request is no longer waiting. Someone decided it, or it expired (treated as a
+            denial).
           </Text>
         </Card>
       ) : null}
@@ -244,9 +244,7 @@ export default function AccessRequestsScreen() {
       )}
 
       <Text style={{ color: colors.textFaint, fontSize: 12 }}>
-        Raising a request stays on the web and desktop apps — it needs a permission picker and a
-        reason somebody will read months from now. Whoever answers first decides; a second answer is
-        refused rather than overwriting the first.
+        Raise requests on the web or desktop app. Whoever answers first decides.
       </Text>
     </Screen>
   );

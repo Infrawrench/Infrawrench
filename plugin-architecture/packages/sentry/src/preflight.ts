@@ -197,7 +197,7 @@ export function sentryPolicyTemplate(capabilityIds: string[]): PolicyTemplate {
     language: "text",
     document: scopes.join("\n"),
     instructions:
-      "In Sentry, open Settings, then Developer Settings, create a New Internal Integration and grant it these permissions (Read for the :read scopes, Read & Write for :write), then copy its token. A personal token (User Settings, Personal Tokens) with the same scopes also works, limited to what your own role allows. Leave out the :write scopes for a read-only connection.",
+      "In Sentry, open Settings, then Developer Settings, create a New Internal Integration and grant it these permissions (Read for the :read scopes, Read & Write for :write), then copy its token. A personal token (User Settings, Personal Tokens) with the same scopes also works. Leave out the :write scopes for a read-only connection.",
     helpLink: SCOPES_HELP,
   };
 }

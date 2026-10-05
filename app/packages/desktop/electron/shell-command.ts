@@ -30,11 +30,11 @@ function launchArgs(): string {
 
 function posixShimContent(): string {
   // exec so the CLI inherits the terminal's stdio and exit code directly.
-  return `#!/bin/sh\n# Installed by Infrawrench — launches the desktop app in CLI mode.\nexec "${appBinaryPath()}"${launchArgs()} --cli "$@"\n`;
+  return `#!/bin/sh\n# Installed by Infrawrench. Launches the desktop app in CLI mode.\nexec "${appBinaryPath()}"${launchArgs()} --cli "$@"\n`;
 }
 
 function windowsShimContent(): string {
-  return `@echo off\r\nrem Installed by Infrawrench — launches the desktop app in CLI mode.\r\n"${appBinaryPath()}"${launchArgs()} --cli %*\r\n`;
+  return `@echo off\r\nrem Installed by Infrawrench. Launches the desktop app in CLI mode.\r\n"${appBinaryPath()}"${launchArgs()} --cli %*\r\n`;
 }
 
 function candidateDirsPosix(): string[] {

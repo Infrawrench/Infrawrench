@@ -145,7 +145,7 @@ const SPEECH_MODELS: SpeechPanelOption[] = [
     id: "universal-2",
     label: "Universal-2",
     description:
-      "Broadest coverage — 99 languages — and the model AssemblyAI falls back to when Universal-3.5 Pro cannot serve a request.",
+      "Broadest coverage (99 languages), and the fallback when Universal-3.5 Pro cannot serve a request.",
   },
 ];
 
@@ -612,7 +612,7 @@ export class AssemblyAIClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Transcripts live on the host they were created against — an account pointed at EU cannot see transcripts submitted through the default host, and vice versa.",
+                "Transcripts live on the host they were created against, so an EU account cannot see ones submitted through the default host, and vice versa.",
               variant: "muted",
             },
           ],
@@ -637,7 +637,7 @@ export class AssemblyAIClient implements PluginClient {
             {
               kind: "text",
               content:
-                "AssemblyAI exposes no usage, billing, or quota API — spend is dashboard-only. This is a count of jobs still inside the 90-day retention window, not billed usage.",
+                "AssemblyAI has no usage or billing API. This counts jobs still in the 90-day retention window, not billed usage.",
               variant: "muted",
             },
           ],
@@ -734,7 +734,7 @@ export class AssemblyAIClient implements PluginClient {
           {
             kind: "text",
             content:
-              "AssemblyAI exposes no usage, billing, or quota API — spend is dashboard-only. This is a count of jobs still inside the 90-day retention window, not billed usage.",
+              "AssemblyAI has no usage or billing API. This counts jobs still in the 90-day retention window, not billed usage.",
             variant: "muted",
           },
         ],
@@ -762,10 +762,9 @@ export class AssemblyAIClient implements PluginClient {
     return {
       modes: ["stt"],
       tabLabel: "Speech",
-      subtitle:
-        "Record or upload a clip and AssemblyAI transcribes it — upload, submit, and poll all happen in this one request.",
+      subtitle: "Record or upload a clip and AssemblyAI transcribes it.",
       helpText:
-        "The v2 API is async-only, so this runs three calls back to back: POST /v2/upload with the raw bytes, POST /v2/transcript with the returned URL, then GET /v2/transcript/{id} every 3 seconds until it completes. It gives up after 120 seconds — long recordings are better submitted from the dashboard. Punctuation, text formatting, and speaker diarization are all on. The API itself accepts files up to 2.2 GB; this panel caps lower because the clip travels base64-encoded inside a JSON request.",
+        "Uploads the clip, submits it, then polls every 3 seconds until it completes. It gives up after 120 seconds, so submit long recordings from the dashboard. Punctuation, formatting and speaker diarization are on. The size limit is lower than the API's 2.2 GB because the clip travels base64-encoded in a JSON request.",
       models: SPEECH_MODELS,
       defaultModel: DEFAULT_MODEL,
       modelLabel: "Speech model",
@@ -909,7 +908,7 @@ export class AssemblyAIClient implements PluginClient {
       }
       if (Date.now() + POLL_INTERVAL_MS > deadline) {
         throw new Error(
-          `AssemblyAI transcription did not finish within ${POLL_TIMEOUT_MS / 1000}s — transcript ${id} is still "${current.status ?? "queued"}". The job is still running on AssemblyAI's side; it will appear in this account's transcript list once it completes.`,
+          `AssemblyAI transcription did not finish within ${POLL_TIMEOUT_MS / 1000}s. Transcript ${id} is still "${current.status ?? "queued"}" and will appear in this account's transcript list once it completes.`,
         );
       }
       await sleep(POLL_INTERVAL_MS);
@@ -1036,7 +1035,7 @@ function annotateError(err: unknown): Error {
   const error = err instanceof Error ? err : new Error(String(err));
   if (!/\b403\b/.test(error.message)) return error;
   return new Error(
-    `${error.message} — AssemblyAI uses 403 for rate-limit violations (not 429), and also when the API key belongs to a different project than the one that uploaded the audio. Check both before assuming the key is invalid.`,
+    `${error.message}. AssemblyAI uses 403 for rate limits (not 429) and for keys from a different project than the one that uploaded the audio. Check both before assuming the key is invalid.`,
   );
 }
 

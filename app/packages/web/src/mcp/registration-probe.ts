@@ -67,7 +67,7 @@ export async function probeClientRegistrationSupport(authServer: string): Promis
     if (!cimd && !dcr) {
       console.warn(
         `[mcp-auth] authorization server ${authServer} advertises neither Client ID Metadata ` +
-          `Documents nor Dynamic Client Registration — MCP clients without pre-registered ` +
+          `Documents nor Dynamic Client Registration, MCP clients without pre-registered ` +
           `credentials cannot connect. Enable "Client ID Metadata Document" (the current MCP ` +
           `standard) and/or "Dynamic Client Registration" under Connect → Configuration in the ` +
           `WorkOS Dashboard, or register an OAuth client manually and configure clients with its id.`,
@@ -80,7 +80,7 @@ export async function probeClientRegistrationSupport(authServer: string): Promis
         `Dynamic Client Registration ${dcr ? "yes" : "no (deprecated by the 2026-07-28 MCP spec)"}` +
         (cimd
           ? ""
-          : " — CIMD is the current standard; consider enabling it in the WorkOS Dashboard"),
+          : ". CIMD is the current standard; consider enabling it in the WorkOS Dashboard"),
     );
   } catch (e) {
     // Unreachable AS (offline dev, egress-restricted deploys): worth a line,

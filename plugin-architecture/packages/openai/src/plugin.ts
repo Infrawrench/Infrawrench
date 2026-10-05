@@ -25,7 +25,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "OpenAI",
   description:
-    "Models, fine-tuning, batches, files, vector stores, containers and evals, plus organization projects with their members, service accounts and rate limits, spend limits and alerts, admin keys, members and spend. Includes a Speech tab for text-to-speech and transcription.",
+    "Models, fine-tuning, batches, files, vector stores, containers and evals, plus organization projects, members, service accounts, rate limits, spend limits, admin keys and spend. Includes a Speech tab.",
   // The official OpenAI mark, taken from the brand's published SVG (the
   // simple-icons distribution of it) rather than redrawn: path data verbatim,
   // re-framed from its 24×24 viewBox into the 100×100 card tile.
@@ -42,7 +42,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A project key (starts with sk- or sk-proj-) from platform.openai.com → API keys. Unlocks models, fine-tuning jobs, batches, files, vector stores, containers, evals and the Speech tab. It cannot read anything under /v1/organization/* — that needs the admin key below.",
+        "A project key (starts with sk- or sk-proj-) from platform.openai.com → API keys. Unlocks models, fine-tuning, batches, files, vector stores, containers, evals and Speech. Organization endpoints need the admin key below.",
       sensitive: true,
       placeholder: "sk-proj-…",
       helpLink: {
@@ -54,7 +54,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "An organization admin key (starts with sk-admin-) from platform.openai.com → Settings → Organization → Admin keys. Unlocks projects, project members, service accounts, rate limits and API keys, spend limits and alerts, admin keys, organization members, invites, usage charts and cost collection. Without it those sections are unavailable: admin and project keys are not interchangeable, and each returns 403 on the other's endpoints.",
+        "An organization admin key (starts with sk-admin-) from platform.openai.com → Settings → Organization → Admin keys. Unlocks projects, members, service accounts, rate limits, API keys, spend limits, admin keys, invites, usage and costs. Without it those sections are unavailable; project and admin keys are not interchangeable.",
       sensitive: true,
       optional: true,
       placeholder: "sk-admin-…",

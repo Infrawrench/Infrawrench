@@ -170,8 +170,8 @@ export function renderTerraformImportBlocks(
 
 /** Why a mapped resource still could not be adopted. */
 export const NO_IMPORT_ID_REASON =
-  "The provider gives no Terraform import ID for this resource, so it cannot be adopted — " +
-  "declaring it without an import block would plan a create for something that already exists";
+  "The provider gives no Terraform import ID for this resource, so it cannot be adopted. " +
+  "Declaring it without an import block would plan a create for something that already exists";
 
 /**
  * An adoption document plus the resources deliberately left out of it.

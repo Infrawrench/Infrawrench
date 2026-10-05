@@ -14,7 +14,7 @@ export const ProjectResourceType = rt({
   name: "Project",
   id: "project",
   description:
-    "An organization project — the billing and rate-limit boundary that API keys, members and usage are attributed to. Requires an Admin API key.",
+    "An organization project: the unit API keys, members and usage are billed and rate-limited under. Requires an Admin API key.",
   fields: [
     f("name", "Name"),
     f("status", "Status", { kind: "enum", enumValues: ["active", "archived"], required: false }),
@@ -37,7 +37,7 @@ export const ProjectResourceType = rt({
       id: "service-account-key",
       label: "Service Account API Key",
       description:
-        "Creates a service account in this project and returns its API key. Project keys owned by a user cannot be created through the API — only service-account keys can.",
+        "Creates a service account in this project and returns its API key. User-owned keys cannot be created through the API.",
       mediaType: "text",
       filenameTemplate: "openai-{resource}-service-account-key.txt",
     },

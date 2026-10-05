@@ -168,18 +168,15 @@ export function VirtualTagsSection() {
         </div>
         <T>
           <p className="text-sm text-on-surface-secondary">
-            Tags the organisation computes from its own rules: merge spellings like env, Environment
-            and ENV into one key, give spend a value by any cost filter, and split a shared cost
-            across teams by percentage or by a business metric. Rules evaluate in order and the
-            first match wins.
+            Tags computed from your own rules: merge spellings like env and ENV, assign values by
+            cost filter, or split shared costs by percentage or business metric. The first matching
+            rule wins.
           </p>
         </T>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Use a virtual tag anywhere a tag works: graphs and reports, saved filters, budgets,
-            change alerts, allocation rules and exports. It is computed when a report runs and never
-            written into collected spend, and a split shares money rather than copying it, so totals
-            never change.
+            Use a virtual tag anywhere a tag works. It is computed at report time and never changes
+            collected spend or totals.
           </p>
         </T>
       </div>

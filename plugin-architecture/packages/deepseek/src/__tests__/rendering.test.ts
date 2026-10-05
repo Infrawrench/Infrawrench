@@ -76,7 +76,7 @@ describe("renderDetail", () => {
 
     const notes = schema.sections[0]!.children.filter((n) => n.kind === "text");
     const joined = notes.map((n) => (n.kind === "text" ? n.content : "")).join(" ");
-    expect(joined).toMatch(/does not publish an RPM or TPM rate limit/);
+    expect(joined).toMatch(/has no RPM or TPM limit/);
     // The canonical base URL has no /v1 segment.
     expect(joined).toMatch(/https:\/\/api\.deepseek\.com\/chat\/completions/);
   });

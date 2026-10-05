@@ -909,14 +909,14 @@ export async function evaluateBudgetsForOrg(
             ? [
                 status.rawActualCents === null
                   ? "billing rules applied"
-                  : `billing rules applied — collected spend ${formatCents(status.rawActualCents, budget.currency)}`,
+                  : `billing rules applied; collected spend ${formatCents(status.rawActualCents, budget.currency)}`,
               ]
             : []),
           ...(status.converted
             ? ["converted to the org display currency at your stated rates"]
             : []),
           ...(status.unconvertedCurrencies.length > 0
-            ? [`excludes spend in ${status.unconvertedCurrencies.join(", ")} — no rate configured`]
+            ? [`excludes spend in ${status.unconvertedCurrencies.join(", ")}; no rate configured`]
             : []),
         ];
         const suffix = caveats.length > 0 ? ` (${caveats.join("; ")})` : "";

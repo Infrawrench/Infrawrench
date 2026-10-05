@@ -718,7 +718,7 @@ describe("POST /api/slack/interactions — alert acknowledge button", () => {
       via: "slack",
     });
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain(
-      'escalation for \\"Budget exceeded\\" is cancelled',
+      'Escalation for \\"Budget exceeded\\" is cancelled',
     );
   });
 

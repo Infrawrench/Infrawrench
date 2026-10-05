@@ -296,8 +296,8 @@ export const cloudBuildCreateConfigHandlers: Record<
           required: true,
           defaultValue: "repository",
           options: [
-            { id: "repository", label: "Repository — read from source" },
-            { id: "inline", label: "Inline — write YAML below" },
+            { id: "repository", label: "Repository (read from source)" },
+            { id: "inline", label: "Inline (write YAML below)" },
           ],
           showWhen: { fieldKey: "configType", fieldValue: "yaml" },
         },
@@ -333,7 +333,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           codeLanguage: "yaml",
           required: false,
           defaultValue: inlineYamlDefault,
-          description: "YAML body of the build config — written into the trigger directly.",
+          description: "YAML build config, written into the trigger.",
           showWhen: { fieldKey: "configLocation", fieldValue: "inline" },
         },
         {
@@ -377,7 +377,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           kind: "key-value-list",
           required: false,
           description:
-            "User-defined substitutions — keys must start with an underscore (e.g. _MY_VAR).",
+            "User-defined substitutions. Keys must start with an underscore (e.g. _MY_VAR).",
           entryKeyLabel: "Key",
           entryKeyPlaceholder: "_MY_VAR",
           entryValueLabel: "Value",
@@ -402,7 +402,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           kind: "resource-picker",
           required: true,
           description:
-            "User-managed SA the build runs as. Cloud Build began requiring this for new projects in mid-2024 — without it the API returns a silent INVALID_ARGUMENT.",
+            "User-managed service account the build runs as. Required for new projects; without it the API returns INVALID_ARGUMENT.",
           associationSources: [
             { pluginId: "gcp", resourceTypeId: "gcp-service-account", outputKey: "email" },
           ],
@@ -414,8 +414,8 @@ export const cloudBuildCreateConfigHandlers: Record<
           required: false,
           defaultValue: "no",
           options: [
-            { id: "no", label: "Enabled — runs on event" },
-            { id: "yes", label: "Disabled — won't run automatically" },
+            { id: "no", label: "Enabled (runs on event)" },
+            { id: "yes", label: "Disabled (won't run automatically)" },
           ],
         },
       ],
@@ -583,7 +583,7 @@ export const cloudBuildCreateResourceHandlers: Record<
     if (eventType === "manual" || eventType === "pubsub" || eventType === "webhook") {
       if (!repository) {
         throw new Error(
-          `Cloud Build ${eventType} triggers need a source repository — they don't support inline builds. Either:\n` +
+          `Cloud Build ${eventType} triggers need a source repository; inline builds aren't supported. Either:\n` +
             `  • Connect a 2nd-gen repo at console.cloud.google.com/cloud-build/repositories/2nd-gen, or\n` +
             `  • Create a Cloud Source Repos repo (gcloud source repos create <name>).\n` +
             `Then reopen this form to pick it.`,

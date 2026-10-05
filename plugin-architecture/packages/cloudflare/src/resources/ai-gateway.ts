@@ -5,7 +5,7 @@ export const AiGatewayResourceType = rt({
   pinnable: false,
   id: "ai-gateway",
   description:
-    "A Cloudflare AI Gateway — caching, rate limiting, logging and analytics in front of your model providers",
+    "A Cloudflare AI Gateway: caching, rate limiting, logging and analytics in front of your model providers",
   fields: [
     f("id", "Gateway ID", { editable: false }),
     f("cacheTtl", "Cache TTL (seconds)", { kind: "number", required: false }),

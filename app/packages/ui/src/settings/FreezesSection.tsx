@@ -88,10 +88,9 @@ export function FreezesSection() {
           <h1 className="text-xl font-semibold">{gt("Change Freezes")}</h1>
           <T>
             <p className="text-sm text-on-surface-muted mt-1">
-              While a freeze is in effect, destructive actions — deleting resources, destructive
-              plugin actions, destroying secret versions, rolling back deployments — are blocked for
-              everyone. Admins can override individual actions; blocks and overrides are recorded in
-              the audit log.
+              During a freeze, destructive actions (deletes, destructive plugin actions, rollbacks)
+              are blocked for everyone. Admins can override individual actions, and overrides are
+              audit-logged.
             </p>
           </T>
         </div>
@@ -294,7 +293,7 @@ function CreateFreezeForm({
         </label>
         <label className="block">
           <span className="text-xs text-on-surface-muted">
-            {gt("Starts (optional — defaults to now)")}
+            {gt("Starts (optional, defaults to now)")}
           </span>
           <input
             type="datetime-local"
@@ -305,7 +304,7 @@ function CreateFreezeForm({
         </label>
         <label className="block">
           <span className="text-xs text-on-surface-muted">
-            {gt("Ends (optional — open-ended)")}
+            {gt("Ends (optional, open-ended if blank)")}
           </span>
           <input
             type="datetime-local"

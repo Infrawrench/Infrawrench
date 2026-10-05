@@ -42,7 +42,7 @@ export function CostChangeAlertsSection() {
       {alerts.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load change alerts —{" "}
+            Couldn&apos;t load change alerts:{" "}
             {alerts.error instanceof Error ? alerts.error.message : "request failed"}
           </Text>
         </Card>

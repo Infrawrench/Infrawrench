@@ -160,7 +160,7 @@ async function emptyLogsText(
     return "Observability is on but its logs are turned off for this Worker. Turn on Logs under Observability in the Settings tab.\n";
   }
   const scope = filterId === WORKER_LOG_FILTERS[0]!.id ? "" : ` matching "${filterId}"`;
-  return `No log events${scope} in the last 7 days. Workers Logs keeps up to 7 days (3 on the Free plan); newly enabled Workers only show events from then on.\n`;
+  return `No log events${scope} in the last 7 days. Workers Logs keeps up to 7 days (3 on Free); newly enabled Workers only show events from then on.\n`;
 }
 
 function str(v: unknown): string {

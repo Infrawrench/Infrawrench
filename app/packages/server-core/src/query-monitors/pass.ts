@@ -121,7 +121,7 @@ async function runOne(monitor: ClaimedMonitor): Promise<boolean> {
     severity: "warning",
     title: `Query monitor: ${monitor.name}`,
     body:
-      `${monitor.name} is breaching — ${describeQueryMonitor(monitor)}, ` +
+      `${monitor.name} is breaching: ${describeQueryMonitor(monitor)}, ` +
       `and the last run returned ${outcome.value}.`,
     context: `Breached ${outcome.breachStreak} consecutive runs.`,
   });

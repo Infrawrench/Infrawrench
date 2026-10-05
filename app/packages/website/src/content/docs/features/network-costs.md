@@ -85,7 +85,7 @@ Once on, collection runs once a day and reads only **closed** UTC days, so the f
 
 ## How to read the screen
 
-The **Network costs** section on the [Costs panel](./cloud-costs.md#the-costs-panel) leads with a coverage line: the estimated total, the bytes behind it, and **what percentage of those bytes is attributed to a pair**. Read that first. A top-flows list without it invites exactly the wrong conclusion — that the flows shown _are_ the egress bill.
+The **Network costs** section on the [Costs panel](./cloud-costs.md#the-costs-panel)'s **Network** tab leads with a coverage line: the estimated total, the bytes behind it, and **what percentage of those bytes is attributed to a pair**. Read that first. A top-flows list without it invites exactly the wrong conclusion, that the flows shown _are_ the egress bill.
 
 Below it:
 

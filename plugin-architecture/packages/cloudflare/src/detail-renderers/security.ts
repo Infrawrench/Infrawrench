@@ -445,7 +445,7 @@ export function renderTurnstileWidgetDetail(
           {
             kind: "text",
             content:
-              "Validate the token server-side before trusting the submission. Use this widget's Secret Key (exported as `TURNSTILE_SECRET_KEY`) — never put the secret in client-side code.",
+              "Validate the token server-side before trusting the submission, using this widget's Secret Key (exported as `TURNSTILE_SECRET_KEY`). Never put the secret in client-side code.",
             variant: "muted",
           },
           { kind: "text", content: verifySnippet, variant: "mono", copyable: true },

@@ -164,7 +164,7 @@ function readString(source: string, start: number): Token {
       const next = source[i + 1];
       if (next === undefined) {
         throw new CostQueryParseError(
-          "Unterminated string — the query ends inside a quoted value.",
+          "Unterminated string; the query ends inside a quoted value.",
           source,
           start,
           source.length - start,
@@ -187,7 +187,7 @@ function readString(source: string, start: number): Token {
     i += 1;
   }
   throw new CostQueryParseError(
-    `Unterminated string — no closing ${quote} before the end of the query.`,
+    `Unterminated string; no closing ${quote} before the end of the query.`,
     source,
     start,
     source.length - start,
@@ -231,13 +231,9 @@ function tokenize(source: string): Token[] {
         i += 2;
         continue;
       }
-      throw new CostQueryParseError(
-        'Expected "!=" — a lone "!" is not an operator.',
-        source,
-        i,
-        1,
-        ["!="],
-      );
+      throw new CostQueryParseError('Expected "!="; a lone "!" is not an operator.', source, i, 1, [
+        "!=",
+      ]);
     }
     if (ch === "=" || ch === "(" || ch === ")" || ch === "," || ch === "[" || ch === "]") {
       tokens.push({ kind: "punct", text: ch, value: ch, start: i, end: i + 1 });
@@ -339,7 +335,7 @@ export const COST_QUERY_LANGUAGE_SUMMARY =
   "joined by AND. Kubernetes node and PersistentVolumeClaim labels are tags too, with " +
   "shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team']` and " +
   "`k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` means " +
-  "`tag['k8s_pvc_label:app.kubernetes.io/name']`. Keywords are case-insensitive. OR is not supported — the filter is a " +
+  "`tag['k8s_pvc_label:app.kubernetes.io/name']`. Keywords are case-insensitive. OR is not supported; the filter is a " +
   "conjunction, so use IN ('a','b') to accept several values of one dimension.";
 
 class Parser {
@@ -406,7 +402,7 @@ class Parser {
         // execution path. Rejecting it costs the user one edit.
         throw this.fail(
           "OR is not supported. A cost filter is a conjunction of terms, so several values of " +
-            "one dimension go in a list — write dimension IN ('a', 'b') — and unrelated " +
+            "one dimension go in a list (write dimension IN ('a', 'b')), and unrelated " +
             "alternatives need separate queries.",
           token,
           ["AND"],

@@ -52,7 +52,7 @@ const SYSTEM_PROMPT = [
   "",
   "You are given a JSON summary of one organization's week: spend totals per currency with the change against the previous week, the biggest week-over-week movers by cloud provider and by service, how many sync incidents opened, and how many resources were added or removed.",
   "",
-  "Write ONE paragraph of at most three sentences that says what actually mattered. Lead with the thing a reader would want to know first — usually the direction and size of the spend change, or the single mover that explains it. Name the specific provider or service responsible when the numbers point at one. If the week was unremarkable, say so plainly in a sentence rather than manufacturing significance.",
+  "Write ONE paragraph of at most three sentences that says what actually mattered. Lead with the thing a reader would want to know first, usually the direction and size of the spend change, or the single mover that explains it. Name the specific provider or service responsible when the numbers point at one. If the week was unremarkable, say so plainly in a sentence rather than manufacturing significance.",
   "",
   "Rules:",
   // Defence in depth only. The renderers treat this paragraph as literal text
@@ -62,7 +62,7 @@ const SYSTEM_PROMPT = [
   // anything. They are here to keep the output *readable*, not to keep it safe.
   "- Plain prose. No markdown, no headings, no bullet points, no emoji.",
   "- No HTML, XML or any other markup, and no tags of any kind: the paragraph is rendered as literal text, so anything that looks like a tag is shown to the reader verbatim.",
-  "- Do not restate every number — the exact figures are printed directly beneath your paragraph, so repeating them wastes the reader's time. Cite a figure only when it carries the point.",
+  "- Do not restate every number; the exact figures are printed directly beneath your paragraph, so repeating them wastes the reader's time. Cite a figure only when it carries the point.",
   "- Do not speculate about causes you cannot see in the data. You do not know what the team deployed, and guessing reads as noise.",
   "- Do not give advice, recommend actions, or ask questions.",
   "- Do not open with a greeting, a preamble, or a restatement of the task. Output the paragraph and nothing else.",

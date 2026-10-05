@@ -50,7 +50,7 @@ export function CustomerList({
           <h2 className="text-base font-semibold text-on-surface">{gt("Customers")}</h2>
           <p className="text-xs text-on-surface-faint">
             {gt(
-              "Each customer is billed for the cost centres they own. Which spend lands in a centre is decided by the allocation rules — a customer names centres, never rules.",
+              "Each customer is billed for the cost centres they own. Allocation rules decide which spend lands in each centre.",
             )}
           </p>
         </div>
@@ -83,7 +83,7 @@ export function CustomerList({
                 </div>
                 <div className="truncate text-xs text-on-surface-faint">
                   {account.costCentreIds.length === 0 && account.accountIds.length === 0
-                    ? gt("No scope — invoices for this customer will be empty")
+                    ? gt("No scope, so invoices for this customer will be empty")
                     : [
                         ...account.costCentreIds.map((id) => centreName.get(id) ?? id),
                         ...account.accountIds.map((id) =>
@@ -250,7 +250,7 @@ export function CustomerModal({
                 title={
                   costBasis === "blended"
                     ? gt(
-                        "Each commitment's discount shared evenly across all the usage it could cover, so a customer's bill does not depend on which account the provider applied a shared commitment to.",
+                        "Commitment discounts shared evenly, so a customer's bill doesn't depend on which account a shared commitment was applied to.",
                       )
                     : costBasis === "cash"
                       ? gt("What the providers charged, on the day they charged it.")
@@ -277,14 +277,12 @@ export function CustomerModal({
 
           <div className="flex flex-col gap-1">
             <span className="text-xs text-on-surface-faint">
-              {gt("Cost centres — naming a parent bills its whole subtree")}
+              {gt("Cost centres (a parent includes its whole subtree)")}
             </span>
             <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
               {paths.length === 0 ? (
                 <p className="text-xs text-on-surface-faint">
-                  {gt(
-                    "No cost centres defined. Define them in Settings → Tag policy first; a customer references centres rather than matching spend itself.",
-                  )}
+                  {gt("No cost centres defined. Define them in Settings → Tag policy first.")}
                 </p>
               ) : (
                 paths.map((row) => (
@@ -308,7 +306,7 @@ export function CustomerModal({
 
           <div className="flex flex-col gap-1">
             <span className="text-xs text-on-surface-faint">
-              {gt("Cloud accounts — claims only spend no cost centre already claimed")}
+              {gt("Cloud accounts (only spend not already in a cost centre)")}
             </span>
             <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
               {cloudAccounts.length === 0 ? (
@@ -393,8 +391,7 @@ export function RaiseInvoiceModal({
         <div className="flex flex-col gap-3">
           <T>
             <p className="text-xs text-on-surface-faint">
-              This raises a <strong>draft</strong>. Its figures recompute from live spend every time
-              you open it, and nothing is frozen until you approve it.
+              This raises a <strong>draft</strong> that tracks live spend until you approve it.
             </p>
           </T>
           <div className="grid grid-cols-2 gap-3">

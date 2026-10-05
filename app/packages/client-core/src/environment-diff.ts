@@ -670,7 +670,7 @@ export class EnvironmentDiffPluginMismatchError extends Error {
   ) {
     super(
       `"${a.accountName}" (${a.pluginId}) and "${b.accountName}" (${b.pluginId}) use different ` +
-        `providers — an environment diff compares two accounts of the same provider.`,
+        `providers; an environment diff compares two accounts of the same provider.`,
     );
     this.name = "EnvironmentDiffPluginMismatchError";
     this.a = { accountName: a.accountName, pluginId: a.pluginId };

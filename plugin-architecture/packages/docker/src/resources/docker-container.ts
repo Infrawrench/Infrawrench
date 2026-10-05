@@ -15,7 +15,7 @@ export const DockerContainerResourceType = rt({
     }),
     f("volumes", "Volumes", {
       required: false,
-      description: "Names of the Docker volumes this container mounts — bind mounts excluded",
+      description: "Names of the Docker volumes this container mounts (bind mounts excluded)",
     }),
   ],
   outputs: [o("containerId", "Container ID"), o("status", "Status")],

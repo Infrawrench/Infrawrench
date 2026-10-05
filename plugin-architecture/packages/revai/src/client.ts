@@ -292,7 +292,7 @@ export class RevAiClient implements PluginClient {
 
     if (status === 405) {
       return new Error(
-        `Rev AI rejected the job's properties for ${path} (HTTP 405 — Rev AI uses 405 for ` +
+        `Rev AI rejected the job's properties for ${path} (HTTP 405, which Rev AI uses for ` +
           `"Invalid Job Properties", not "method not allowed"). Check transcriber, language and ` +
           `diarization options against the job. Original: ${message}`,
       );
@@ -300,7 +300,7 @@ export class RevAiClient implements PluginClient {
     if (status === 406) {
       return new Error(
         `Rev AI refused the requested output format for ${path} (HTTP 406). The transcript ` +
-          `endpoint only accepts "${TRANSCRIPT_JSON_ACCEPT}" or "text/plain" — "*/*" is rejected. ` +
+          `endpoint only accepts "${TRANSCRIPT_JSON_ACCEPT}" or "text/plain"; "*/*" is rejected. ` +
           `Original: ${message}`,
       );
     }
@@ -585,7 +585,7 @@ export class RevAiClient implements PluginClient {
     if (typeId === "vocabulary") {
       if (!this.supportsVocabularies) {
         throw new Error(
-          "Rev AI plugin: the EU deployment has no /vocabularies collection — supply phrases " +
+          "Rev AI plugin: the EU deployment has no /vocabularies collection. Supply phrases " +
             "inline on the job via `custom_vocabularies` instead.",
         );
       }
@@ -834,7 +834,7 @@ export class RevAiClient implements PluginClient {
       if (Date.now() + POLL_INTERVAL_MS > deadline) {
         throw new Error(
           `Rev AI job ${jobId} was still "${status || "in_progress"}" after ` +
-            `${Math.round(MAX_POLL_WAIT_MS / 1000)} s. The job is still running — open it under ` +
+            `${Math.round(MAX_POLL_WAIT_MS / 1000)} s. The job is still running; open it under ` +
             "Transcription Jobs once it finishes.",
         );
       }
@@ -1198,9 +1198,8 @@ export class RevAiClient implements PluginClient {
           "Rev AI is asynchronous: the clip is posted to /jobs as multipart, then this panel " +
           `polls the job for up to ${Math.round(MAX_POLL_WAIT_MS / 1000)} seconds and fetches the ` +
           `transcript. Limits are 2 GB and ${MAX_AUDIO_HOURS} hours per request. Only the ` +
-          "automatic transcribers are offered here — human transcription takes hours to come " +
-          "back, bills at human rates the moment the job is accepted, and could only ever time " +
-          "out in this panel; order it through Rev AI directly.",
+          "automatic transcribers are offered here. Human transcription takes hours and bills " +
+          "at human rates, so order it through Rev AI directly.",
         languages: REVAI_LANGUAGE_OPTIONS,
         defaultLanguage: REVAI_DEFAULT_LANGUAGE,
         languageLabel: "Language",
@@ -1250,7 +1249,10 @@ export class RevAiClient implements PluginClient {
                 key: "Duration",
                 value: `${round(Number(fields["durationSeconds"] ?? 0), 2)} s`,
               },
-              { key: "Media URL", value: String(fields["mediaUrl"] ?? "") || "— (uploaded file)" },
+              {
+                key: "Media URL",
+                value: String(fields["mediaUrl"] ?? "") || "None (uploaded file)",
+              },
               {
                 key: "Auto-delete After",
                 value: Number(fields["deleteAfterSeconds"] ?? 0)

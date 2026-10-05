@@ -39,7 +39,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Together AI API key, sent as `Authorization: Bearer`. Create one at api.together.ai/settings/api-keys. Together has a single key type: the same key covers inference, fine-tuning, files, dedicated endpoints, batches, evaluations, GPU clusters and the organization's billing usage, so there is no second admin key to add. The project this key belongs to is discovered automatically from GET /v1/whoami; you do not need to paste a project id.",
+        "Your Together AI API key, sent as `Authorization: Bearer`. Create one at api.together.ai/settings/api-keys. One key covers inference, fine-tuning, files, endpoints, batches, evaluations, GPU clusters and billing usage. The project is detected automatically.",
       sensitive: true,
       placeholder: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       helpLink: { label: "Create an API key", url: "https://api.together.ai/settings/api-keys" },

@@ -269,7 +269,7 @@ export default function AccountScreen() {
               We&apos;ll send a confirmation code to the new address. Nothing changes until you
               enter it.
               {me.identities.length > 0
-                ? " You sign in with a connected account — changing this here won't change it there."
+                ? " You sign in with a connected account, so this won't change it there."
                 : ""}
             </Text>
             <TextInput
@@ -295,8 +295,7 @@ export default function AccountScreen() {
       <SectionTitle>Password</SectionTitle>
       <Card>
         <Text style={styles.hint}>
-          Opens a one-time link where you can set a new password — also how you add a password to an
-          account that only signs in with Google or SSO.
+          Opens a one-time link to set a new password, or to add one to a Google or SSO account.
         </Text>
         <Button
           label={changePassword.isPending ? "Opening…" : "Change password"}
@@ -507,7 +506,7 @@ function DeleteAccountCard({ email }: { email: string }) {
           {doomed.length > 0 ? (
             <Text style={{ color: colors.warning, fontSize: 12 }}>
               You are the only member of {doomed.map((o) => o.name).join(", ")}, so{" "}
-              {doomed.length === 1 ? "it goes" : "they go"} too — along with everything in{" "}
+              {doomed.length === 1 ? "it goes" : "they go"} too, with everything in{" "}
               {doomed.length === 1 ? "it" : "them"}. Any active subscription is cancelled.
             </Text>
           ) : null}

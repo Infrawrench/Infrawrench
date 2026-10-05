@@ -8,8 +8,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const DirectoryUserResourceType = rt({
   name: "Directory User",
   id: "directory-user",
-  description:
-    "A user synced from a directory provider. Read-only — the IdP owns the record and Directory Sync mirrors it.",
+  description: "A user synced from a directory provider. Read-only; the IdP owns the record.",
   fields: [
     f("email", "Email", { required: false, editable: false }),
     f("firstName", "First Name", { required: false, editable: false }),

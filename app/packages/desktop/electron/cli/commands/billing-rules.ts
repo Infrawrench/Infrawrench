@@ -23,8 +23,7 @@ import { c, printJson, println, printTable, type Column } from "../output";
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
     throw new CliError(
-      "Billing rules live in Infrawrench Cloud — they are applied to collected spend when a " +
-        "report is run, and a local-only workspace has no collected spend to adjust.",
+      "Billing rules live in Infrawrench Cloud, and a local-only workspace has no collected spend to adjust.",
     );
   }
 }
@@ -86,8 +85,7 @@ export async function cmdBillingRules(ctx: CliContext): Promise<void> {
   println();
   println(
     c.dim(
-      "Applied when a report is run, never written into collected spend — what the providers " +
-        "charged is unchanged and still reconciles against the invoice.",
+      "Applied when a report is run, never written into collected spend. Provider charges are unchanged.",
     ),
   );
   println(

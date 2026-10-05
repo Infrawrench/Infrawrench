@@ -82,7 +82,7 @@ export const CloudSqlInstanceResourceType = rt({
         "This Cloud SQL instance has no public IP, so Infrawrench can't reach it from outside its VPC.",
       suggestions: [
         "Add a public IP in the Google Cloud console (Cloud SQL → this instance → Connections → Networking).",
-        "Run Infrawrench from a host inside the VPC — Cloud Shell, a GCE VM, or a Cloud Run job.",
+        "Run Infrawrench from a host inside the VPC (Cloud Shell, a GCE VM, or a Cloud Run job).",
         "Set up a Cloud VPN, Cloud Interconnect, or IAP TCP tunnel from your network into the VPC.",
       ],
     };
@@ -148,7 +148,7 @@ export const CloudSqlInstanceResourceType = rt({
       category: "public-exposure",
       conditions: [{ fieldKey: "publicIpAddress", when: "notEquals", value: "" }],
       reason:
-        "The instance exposes a public IPv4 endpoint, so the SQL port is reachable from the internet, guarded only by authorized networks and credentials. Prefer private IP over VPC peering.",
+        "The instance has a public IPv4 endpoint, so the SQL port is reachable from the internet, guarded only by authorized networks and credentials. Prefer private IP.",
     },
   ],
 });

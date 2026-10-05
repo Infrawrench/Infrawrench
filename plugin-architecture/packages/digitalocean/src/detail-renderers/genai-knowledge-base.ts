@@ -89,7 +89,7 @@ export function applyGenAiKnowledgeBaseDetail(
         ? {}
         : {
             description:
-              "No Spaces buckets are listable — add Spaces API keys to this account to pick from a list.",
+              "No Spaces buckets listed. Add Spaces API keys to this account to pick from a list.",
           }),
     },
     {
@@ -192,11 +192,11 @@ export function applyGenAiKnowledgeBaseDetail(
             kind: "select",
             required: true,
             options: [
-              { id: "SCOPED", label: "Scoped — only the base URL" },
-              { id: "PATH", label: "Path — base URL + pages under its path" },
-              { id: "DOMAIN", label: "Domain — base URL + same-domain pages" },
-              { id: "SUBDOMAINS", label: "Subdomains — base URL + any subdomain" },
-              { id: "SITEMAP", label: "Sitemap — URLs discovered in the sitemap" },
+              { id: "SCOPED", label: "Scoped: only the base URL" },
+              { id: "PATH", label: "Path: base URL + pages under its path" },
+              { id: "DOMAIN", label: "Domain: base URL + same-domain pages" },
+              { id: "SUBDOMAINS", label: "Subdomains: base URL + any subdomain" },
+              { id: "SITEMAP", label: "Sitemap: URLs in the sitemap" },
             ],
             defaultValue: "SCOPED",
           },

@@ -336,7 +336,7 @@ export class MySQLClient implements PluginClient {
     const sql = this.services?.sql;
     if (!sql?.queryReadOnly) {
       throw new Error(
-        "This host cannot guarantee a read-only query against MySQL, so the importer will not run. Business-metric imports only run where the database itself refuses writes.",
+        "This host cannot guarantee a read-only query against MySQL, so the importer will not run.",
       );
     }
     const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);

@@ -636,7 +636,7 @@ export class GcpClient implements PluginClient {
           : resource;
       if (typeId === "cloud-function" && !runResource.externalId) {
         throw new Error(
-          "Cloud Function has no backing Cloud Run service yet — manifest unavailable.",
+          "Cloud Function has no backing Cloud Run service yet, so the manifest is unavailable.",
         );
       }
       const fresh = await fetchCloudRunServiceFull(this.cloudRunCtx, runResource);
@@ -701,7 +701,7 @@ export class GcpClient implements PluginClient {
           : resource;
       if (typeId === "cloud-function" && !runResource.externalId) {
         throw new Error(
-          "Cloud Function has no backing Cloud Run service yet — try again once deployment finishes.",
+          "Cloud Function has no backing Cloud Run service yet. Try again once deployment finishes.",
         );
       }
       return executeCloudRunCommand(this.cloudRunCtx, runResource, command, args);
@@ -810,9 +810,7 @@ export class GcpClient implements PluginClient {
         ],
         {
           partial: vmMonthly == null,
-          notes: [
-            "On-demand rate — sustained-use discounts apply automatically and are not deducted here.",
-          ],
+          notes: ["On-demand rate. Sustained-use discounts are not deducted."],
         },
       );
     }
@@ -861,7 +859,7 @@ export class GcpClient implements PluginClient {
         {
           partial: true,
           notes: [
-            "Worker nodes only — the GKE cluster management fee is not included.",
+            "Worker nodes only; the GKE management fee is not included.",
             "One zonal Autopilot-free cluster per billing account is exempt from that fee.",
           ],
         },

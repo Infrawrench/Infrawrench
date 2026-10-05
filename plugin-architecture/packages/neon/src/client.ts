@@ -107,22 +107,22 @@ const NEON_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
 const SCOPE_BUNDLES: Array<{ id: string; label: string; scopes: CredentialScope[] }> = [
   {
     id: "storage-rw",
-    label: "Object Storage — read & write",
+    label: "Object Storage: read & write",
     scopes: [CredentialScope.StorageRead, CredentialScope.StorageWrite],
   },
   {
     id: "storage-ro",
-    label: "Object Storage — read only",
+    label: "Object Storage: read only",
     scopes: [CredentialScope.StorageRead],
   },
   {
     id: "ai-gateway",
-    label: "AI Gateway — invoke models",
+    label: "AI Gateway: invoke models",
     scopes: [CredentialScope.AiGatewayInvoke],
   },
   {
     id: "functions",
-    label: "Functions — invoke",
+    label: "Functions: invoke",
     scopes: [CredentialScope.FunctionsInvoke],
   },
   {
@@ -418,7 +418,7 @@ export class NeonClient implements PluginClient {
           actionId: "restore",
           confirmMessage:
             "Restore this snapshot into a new branch? The branch is created unfinalized so you can inspect the data before moving computes onto it.",
-          successMessage: "Restore started — a new branch is being created.",
+          successMessage: "Restore started. A new branch is being created.",
         },
       },
     ];
@@ -529,8 +529,8 @@ export class NeonClient implements PluginClient {
           kind: "select",
           required: true,
           options: [
-            { id: "private", label: "Private — all access requires credentials" },
-            { id: "public_read", label: "Public read — anyone can read objects" },
+            { id: "private", label: "Private: all access requires credentials" },
+            { id: "public_read", label: "Public read: anyone can read objects" },
           ],
           defaultValue: "private",
         },
@@ -2240,7 +2240,7 @@ export class NeonClient implements PluginClient {
                 action: {
                   type: "plugin-action" as const,
                   actionId: "start",
-                  successMessage: "Start requested — the compute is warming up.",
+                  successMessage: "Start requested. The compute is warming up.",
                 },
               },
             ]

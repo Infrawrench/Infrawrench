@@ -542,13 +542,13 @@ export class DigitalOceanClient implements PluginClient {
             throw new Error(
               hadCertOnly
                 ? "This Kafka user was created with an mTLS certificate but no SASL password, so " +
-                    "Infrawrench can't connect — DigitalOcean serves mTLS on a separate port it " +
+                    "Infrawrench can't connect: DigitalOcean serves mTLS on a separate port it " +
                     "doesn't expose via the API. Regenerate your DO API token with the " +
                     "`database:view_credentials` scope ticked (it's NOT in “Full Access” by default), " +
                     "then click “Make connection user” again so DO returns the SASL password."
                 : "DigitalOcean doesn't expose a password for this Kafka cluster. Click “Make " +
-                    "connection user” on the cluster detail page — with the `database:view_credentials` " +
-                    "token scope, Infrawrench captures the SASL password and the connection works.",
+                    "connection user” on the cluster detail page. With the `database:view_credentials` " +
+                    "token scope, Infrawrench captures the SASL password.",
             );
           }
           let uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], conn["password"]);
@@ -573,7 +573,7 @@ export class DigitalOceanClient implements PluginClient {
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               throw new Error(
-                "DigitalOcean's `/databases/{id}/users` endpoint failed — this usually means " +
+                "DigitalOcean's `/databases/{id}/users` endpoint failed. This usually means " +
                   "the API token lacks the `database:view_credentials` scope. In the DO token UI, " +
                   "regenerate the token and explicitly tick that scope (it's *not* included by " +
                   `default in "Full Access"). Underlying error: ${msg}`,
@@ -597,8 +597,8 @@ export class DigitalOceanClient implements PluginClient {
                     "“Make connection user” button on the cluster detail page (or the DB Users " +
                     "section) and Infrawrench will capture and store the credential."
                 : `DigitalOcean doesn't expose a password for ${engine} clusters' default user. ` +
-                    "Click “Make connection user” on the cluster detail page — Infrawrench creates a " +
-                    "user, captures the credential DO mints once, and stores it for this connection.",
+                    "Click “Make connection user” on the cluster detail page. Infrawrench creates a " +
+                    "user and stores the credential DO returns once.",
             );
           }
           return uri;
@@ -908,7 +908,7 @@ export class DigitalOceanClient implements PluginClient {
           { label: "Permission", value: permission },
         ],
         warning:
-          "Save this now. The secret key cannot be re-fetched from the DigitalOcean API. This key is scoped to a single bucket — delete it from the DO console when no longer needed.",
+          "Save this now. The secret key cannot be re-fetched. It is scoped to a single bucket; delete it from the DO console when no longer needed.",
       };
     }
     throw new Error(
@@ -998,7 +998,7 @@ export class DigitalOceanClient implements PluginClient {
         if (currentName !== externalId) {
           throw new Error(
             `DigitalOcean plugin: the account's registry is "${currentName}", not ` +
-              `"${externalId}" — refusing to delete it.`,
+              `"${externalId}"; refusing to delete it.`,
           );
         }
         await this.fetch<unknown>("/registry", { method: "DELETE" });
@@ -1426,7 +1426,7 @@ export class DigitalOceanClient implements PluginClient {
       const dropletRegion = String(droplet.fields["region"] ?? "");
       if (volumeRegion && dropletRegion && volumeRegion !== dropletRegion) {
         throw new Error(
-          `Volume region ${volumeRegion} does not match droplet region ${dropletRegion} — DigitalOcean volumes must be in the same region as the droplet.`,
+          `Volume region ${volumeRegion} does not match droplet region ${dropletRegion}. Volumes must be in the same region as the droplet.`,
         );
       }
       const volumeId = volume.externalId ?? sourceResourceId.split(":").pop();
@@ -1454,7 +1454,7 @@ export class DigitalOceanClient implements PluginClient {
       const dropletRegion = String(droplet.fields["region"] ?? "");
       if (ipRegion && dropletRegion && ipRegion !== dropletRegion) {
         throw new Error(
-          `Reserved IP region ${ipRegion} does not match droplet region ${dropletRegion} — DigitalOcean reserved IPs can only be assigned to Droplets in the region they are reserved to.`,
+          `Reserved IP region ${ipRegion} does not match droplet region ${dropletRegion}. Reserved IPs can only be assigned to Droplets in their own region.`,
         );
       }
       const ip = reservedIp.externalId ?? sourceResourceId.split(":").pop();
@@ -1481,14 +1481,12 @@ export class DigitalOceanClient implements PluginClient {
       const dropletRegion = String(droplet.fields["region"] ?? "");
       if (shareRegion && dropletRegion && shareRegion !== dropletRegion) {
         throw new Error(
-          `NFS share region ${shareRegion} does not match droplet region ${dropletRegion} — droplets can only mount shares in their own region.`,
+          `NFS share region ${shareRegion} does not match droplet region ${dropletRegion}. Droplets can only mount shares in their own region.`,
         );
       }
       const dropletVpc = String(droplet.fields["vpcUuid"] ?? "");
       if (!dropletVpc) {
-        throw new Error(
-          "Couldn't determine the droplet's VPC — refresh the droplet and try again.",
-        );
+        throw new Error("Couldn't determine the droplet's VPC. Refresh the droplet and try again.");
       }
       // Idempotent: if this VPC is already on the share's allow list,
       // there's nothing to do. DO would return 422 otherwise.
@@ -1779,7 +1777,7 @@ export class DigitalOceanClient implements PluginClient {
             label: "Assigned",
             value: f["dropletId"]
               ? String(f["dropletName"] ?? f["dropletId"])
-              : "No — billed while idle",
+              : "No (billed while idle)",
           },
         ];
       case "doks-cluster":
@@ -1927,7 +1925,7 @@ export class DigitalOceanClient implements PluginClient {
     const text =
       lines.length > 0
         ? lines.join("\n") + "\n"
-        : "No cluster events yet. DO emits an event for create, scale, maintenance, and power-cycle actions — try again after one of those happens.\n";
+        : "No cluster events yet. DO emits events for create, scale, maintenance, and power-cycle actions.\n";
     return { text, containers: ["events"], activeContainer: "events" };
   }
 

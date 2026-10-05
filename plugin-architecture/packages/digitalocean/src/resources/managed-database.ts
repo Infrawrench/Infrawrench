@@ -24,7 +24,7 @@ export function kafkaAclFields(): CreateFieldConfig[] {
       required: false,
       defaultValue: "admin",
       options: [
-        { id: "admin", label: "Admin — produce, consume, and manage topics" },
+        { id: "admin", label: "Admin (produce, consume, and manage topics)" },
         { id: "produceconsume", label: "Produce & consume" },
         { id: "produce", label: "Produce only" },
         { id: "consume", label: "Consume only" },

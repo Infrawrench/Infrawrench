@@ -141,10 +141,9 @@ export function AiAttributionSection() {
         <h1 className="text-xl font-semibold">{gt("AI Attribution")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            Split AI spend by team, user, feature or customer by joining per-request logs to the
-            bills your AI providers already report. Each request is priced at list rates and scaled
-            so the split adds up to what was billed; whatever the logs do not explain stays as
-            (unattributed). Billed totals never change.
+            Split AI spend by team, user, feature or customer using per-request logs, scaled to
+            match the bill. Anything the logs don&rsquo;t explain stays (unattributed). Billed
+            totals never change.
           </p>
         </T>
       </div>
@@ -225,10 +224,9 @@ export function AiAttributionSection() {
                 <h2 className="text-sm font-semibold">{gt("Caller dimensions")}</h2>
                 <T>
                   <p className="text-xs text-on-surface-muted mt-1">
-                    Map request-metadata keys to a dimension; the first key a request carries wins.
-                    Each dimension appears in cost reports, budgets and allocation rules as the tag
-                    key <code>caller:&lt;key&gt;</code>. New mappings apply from the next
-                    collection; re-collect a source to apply them to past days.
+                    Map request-metadata keys to a dimension (first match wins), usable anywhere as
+                    the tag key <code>caller:&lt;key&gt;</code>. Changes apply from the next
+                    collection; re-collect a source to backfill.
                   </p>
                 </T>
               </div>
@@ -935,9 +933,9 @@ function StatsCard({ base, dimensions }: { base: string; dimensions: AiAttributi
           <h2 className="text-sm font-semibold">{gt("Match rate and coverage")}</h2>
           <T>
             <p className="text-xs text-on-surface-muted mt-1">
-              Matched requests landed on a billed line; ambiguous ones matched several models and
-              were split by billed amount; unmatched ones had nowhere to land (the provider is not
-              connected, or its bill does not name the model).
+              Ambiguous requests matched several models and were split by billed amount. Unmatched
+              ones have no billed line (provider not connected, or the bill doesn&rsquo;t name the
+              model).
             </p>
           </T>
         </div>

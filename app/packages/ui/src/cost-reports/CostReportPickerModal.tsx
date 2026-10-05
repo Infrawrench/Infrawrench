@@ -71,8 +71,7 @@ export function CostReportPickerModal({
         <h2 className="text-base font-semibold text-on-surface mb-1">{gt("Add a saved report")}</h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            Shows a card for a report you already have. Editing the report later updates every
-            dashboard showing it; removing this card leaves the report alone.
+            Shows a card for an existing report. Removing the card leaves the report alone.
           </p>
         </T>
 

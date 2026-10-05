@@ -3,7 +3,7 @@ import { f, rt } from "@infrawrench/plugin-base";
 export const StatefulSetResourceType = rt({
   name: "StatefulSet",
   id: "k8s-statefulset",
-  description: "A Kubernetes StatefulSet — manages stateful workloads with stable identities",
+  description: "A Kubernetes StatefulSet that manages stateful workloads with stable identities",
   fields: [
     f("name", "Name"),
     f("namespace", "Namespace"),

@@ -43,9 +43,9 @@ export async function buildDynamicEnums(): Promise<DynamicEnums> {
     })),
   }));
 
-  if (pluginIds.length === 0) throw new Error("No plugins loaded — cannot build OpenAPI enums");
+  if (pluginIds.length === 0) throw new Error("No plugins loaded, cannot build OpenAPI enums");
   if (resourceTypeIds.length === 0)
-    throw new Error("No resource types loaded — cannot build OpenAPI enums");
+    throw new Error("No resource types loaded, cannot build OpenAPI enums");
 
   const PluginId = z.enum(pluginIds as [string, ...string[]]).openapi("PluginId", {
     description: "Manifest id of an installed plugin.",
@@ -56,7 +56,7 @@ export async function buildDynamicEnums(): Promise<DynamicEnums> {
     .enum(resourceTypeIds as [string, ...string[]])
     .openapi("ResourceTypeId", {
       description:
-        "Resource type id. Note: not every plugin exposes every type — see the plugin's `resourceTypes` for the valid (pluginId, typeId) pairs.",
+        "Resource type id. Note: not every plugin exposes every type; see the plugin's `resourceTypes` for the valid (pluginId, typeId) pairs.",
       example: resourceTypeIds[0]!,
     });
 

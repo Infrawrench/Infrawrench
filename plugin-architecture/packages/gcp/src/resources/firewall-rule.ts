@@ -39,7 +39,7 @@ export const FirewallRuleResourceType = rt({
         { fieldKey: "disabled", when: "falsy" },
       ],
       reason:
-        "This enabled ingress rule allows traffic from 0.0.0.0/0 — the entire internet — to every target it applies to.",
+        "This enabled ingress rule allows traffic from 0.0.0.0/0 (the entire internet) to every target it applies to.",
     },
   ],
 });

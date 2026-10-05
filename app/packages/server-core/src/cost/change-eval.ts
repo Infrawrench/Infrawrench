@@ -260,7 +260,7 @@ export async function evaluateCostChangeAlertsForOrg(
         const verb = finding.direction === "increase" ? "up" : "down";
         const body =
           `infrawrench cost change ${subject}: spend ${verb} ${deltaLabel(finding)} ` +
-          `${windowPhrase(alert.cadence, window)} — ` +
+          `${windowPhrase(alert.cadence, window)}: ` +
           `${formatCents(finding.previousAmountCents, finding.currency)} → ` +
           `${formatCents(finding.currentAmountCents, finding.currency)}`;
         const routed = await routeAlert(

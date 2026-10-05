@@ -360,7 +360,7 @@ function renderHostedRunner(r: ResourceInstance, ctx: RenderContext): DetailView
           ["SKU spend this month", usd(f["skuMonthToDate"])],
         ]),
         muted(
-          "Larger runners bill per minute of job time on their SKU; an idle runner costs nothing. GitHub reports spend per SKU, not per runner, so runners of the same size share this figure.",
+          "Larger runners bill per minute of job time; an idle runner costs nothing. Spend is reported per SKU, so runners of the same size share this figure.",
         ),
       ]),
     ],
@@ -414,7 +414,7 @@ function renderActionsCache(r: ResourceInstance, ctx: RenderContext): DetailView
           ["Size", f["size"]],
         ]),
         muted(
-          "Each repository gets 10 GB of cache storage before the oldest caches are evicted, unless your organization buys more. Deleting caches frees space at once; workflows rebuild what they need on their next run.",
+          "Each repository gets 10 GB of cache storage (unless you buy more) before the oldest caches are evicted. Deleting caches frees space at once; workflows rebuild what they need.",
         ),
       ]),
       ...(caches && caches.length > 0

@@ -92,7 +92,7 @@ export const ErrorResponses = {
    * fix is billing rather than a role change.
    */
   402: {
-    description: "Payment required — the organization's plan does not include this",
+    description: "Payment required: the organization's plan does not include this",
     content: { "application/json": { schema: ErrorResponse } },
   },
   /** Use in place of `403` on step-up-protected routes. */

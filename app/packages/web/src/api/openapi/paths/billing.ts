@@ -35,7 +35,7 @@ const CapacityStatus = strict({
   }),
   seats: z.number().int().nonnegative().openapi({
     description:
-      "Seats from slots still inside their term, excluding lapsed and refunded. ADDITIONAL to `subscription.seatCount` — an org's capacity is the two summed, and an org can hold slots with no subscription at all.",
+      "Seats from slots still inside their term, excluding lapsed and refunded. ADDITIONAL to `subscription.seatCount`: an org's capacity is the two summed, and an org can hold slots with no subscription at all.",
   }),
   slots: z.array(CapacitySlot).openapi({
     description: "Every purchase ever made, newest first, including lapsed and refunded.",
@@ -81,7 +81,7 @@ export function registerBillingPaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/billing/checkout",
     tags: ["Billing"],
     summary: "Start a Stripe Checkout session",
-    description: "Rejected with 400 for complimentary organizations — they are never billed.",
+    description: "Rejected with 400 for complimentary organizations; they are never billed.",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -99,7 +99,7 @@ export function registerBillingPaths(ctx: BuildContext) {
     tags: ["Billing"],
     summary: "Start a Stripe Checkout session for prepaid capacity slots",
     description:
-      "A capacity slot is one seat bought outright for a fixed term instead of rented monthly, and it grants paid-plan access on its own. This is a one-time payment, so the seats are granted by the `checkout.session.completed` webhook once Stripe confirms the payment — a 200 here only means the buyer was sent to a payment page. Rejected with 400 for complimentary organizations, and 503 when the deployment has no one-time capacity price configured.",
+      "A capacity slot is one seat bought outright for a fixed term instead of rented monthly, and it grants paid-plan access on its own. This is a one-time payment, so the seats are granted by the `checkout.session.completed` webhook once Stripe confirms the payment; a 200 here only means the buyer was sent to a payment page. Rejected with 400 for complimentary organizations, and 503 when the deployment has no one-time capacity price configured.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CapacityCheckoutBody } } },

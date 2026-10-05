@@ -148,7 +148,7 @@ export function AccessRequestsSection() {
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-on-surface-muted">
                 {gt(
-                  "Need something your role does not grant? Ask for exactly that, for as long as you need it — not a permanent promotion.",
+                  "Need something your role does not grant? Ask for it for as long as you need it.",
                 )}
               </p>
               <button type="button" className={PRIMARY_BUTTON} onClick={() => setShowForm(true)}>
@@ -242,7 +242,7 @@ function Header() {
       <h1 className="text-xl font-semibold">{gt("Break-glass access")}</h1>
       <p className="text-sm text-on-surface-muted mt-1">
         {gt(
-          "Time-boxed permission elevation. Ask for the specific permissions you need, for a specific number of minutes, with a reason; someone else approves; the elevation lapses on its own. The usual alternative — making somebody an admin — is how an organization ends up with ten admins and no record of why.",
+          "Time-boxed permission elevation. Request specific permissions for a set number of minutes; someone else approves, and access lapses on its own.",
         )}
       </p>
     </div>
@@ -285,11 +285,11 @@ function RequestRow({
           <p className="text-xs text-on-surface-muted mt-0.5">{request.reason}</p>
           <p className="text-xs text-on-surface-faint mt-0.5">
             {request.active && request.grantExpiresAt
-              ? gt("Live — {countdown}", {
+              ? gt("Live: {countdown}", {
                   countdown: formatElevationCountdown(request.grantExpiresAt),
                 })
               : request.status === "pending"
-                ? gt("Raised {when} — {countdown}", {
+                ? gt("Raised {when}, {countdown}", {
                     when: new Date(request.createdAt).toLocaleString(),
                     countdown: formatElevationCountdown(request.expiresAt),
                   })
@@ -373,7 +373,7 @@ function describeOutcome(gt: ReturnType<typeof useGT>, request: AccessRequest): 
   }
   if (request.status === "denied") {
     if (request.decidedByName && request.decisionNote) {
-      return gt("Denied by {name} — {note}", {
+      return gt("Denied by {name}: {note}", {
         name: request.decidedByName,
         note: request.decisionNote,
       });
@@ -382,7 +382,7 @@ function describeOutcome(gt: ReturnType<typeof useGT>, request: AccessRequest): 
       return gt("Denied by {name}", { name: request.decidedByName });
     }
     if (request.decisionNote) {
-      return gt("Denied — {note}", { note: request.decisionNote });
+      return gt("Denied: {note}", { note: request.decisionNote });
     }
     return gt("Denied");
   }
@@ -475,7 +475,7 @@ function RequestForm({
           minLength={10}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={gt("Restoring the prod database from last night's snapshot — INC-4417")}
+          placeholder={gt("Restoring the prod database from last night's snapshot (INC-4417)")}
         />
       </div>
 

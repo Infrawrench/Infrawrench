@@ -17,7 +17,7 @@ export const TeamResourceType = rt({
   name: "Team",
   id: "team",
   description:
-    "The Coralogix team the API key belongs to. Shows this month's units, GB and estimated cost by pillar and TCO priority, the daily unit quota and how much of it today has used, and the team's configuration limits; charts daily units and GB by pillar.",
+    "The Coralogix team the API key belongs to. Shows this month's units, GB and estimated cost by pillar and TCO priority, today's use of the daily unit quota, and configuration limits.",
   fields: [
     f("name", "Name", { editable: false }),
     f("region", "Region", { required: false, editable: false }),
@@ -109,7 +109,7 @@ export const TcoPolicyResourceType = rt({
   plural: "TCO Policies",
   id: "tco-policy",
   description:
-    "A TCO Optimizer policy: it routes matching logs, spans or RUM events to a priority (High for Frequent Search, Medium for Monitoring, Low for Compliance, or Block), which sets how many units each GB costs. Change its priority, name and description, enable or disable it, and chart the volume it matched over the last week.",
+    "A TCO Optimizer policy: routes matching logs, spans or RUM events to a priority (High for Frequent Search, Medium for Monitoring, Low for Compliance, or Block), which sets the units per GB. Edit its priority, name and description, or enable or disable it.",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),

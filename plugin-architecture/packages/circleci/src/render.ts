@@ -701,7 +701,7 @@ function renderRunnerClass(r: ResourceInstance): DetailViewSchema {
     ],
     [
       muted(
-        "Tasks waiting is the queue: jobs that target this resource class and no runner has claimed yet. Use Get credentials to mint a token for installing another runner.",
+        "Tasks waiting is the queue: jobs for this resource class that no runner has claimed. Use Get credentials to mint a token for another runner.",
       ),
     ],
     runners === 0 ? (waiting > 0 ? "error" : "info") : waiting > 0 ? "degraded" : "healthy",

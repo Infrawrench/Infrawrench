@@ -398,7 +398,7 @@ export function AppWindowPanel({ accountId, resourceId, windowId, tabId }: AppWi
           <T>This window is no longer connected.</T>
         </p>
         <p className="max-w-md text-xs text-on-surface-faint">
-          <T>Open the host's Apps tab to reconnect — the application is still running there.</T>
+          <T>Open the host's Apps tab to reconnect. The application is still running there.</T>
         </p>
       </div>
     );

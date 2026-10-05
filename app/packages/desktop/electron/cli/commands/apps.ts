@@ -212,8 +212,8 @@ function printHostSetup(preflight: HostPreflight): void {
     println("");
     println(
       c.red(
-        "No writable, exec-capable directory to run the app server from — /tmp and /dev/shm are " +
-          "unwritable or mounted noexec. No package fixes this.",
+        "No writable, exec-capable directory to run the app server from: /tmp and /dev/shm are " +
+          "unwritable or mounted noexec.",
       ),
     );
   }

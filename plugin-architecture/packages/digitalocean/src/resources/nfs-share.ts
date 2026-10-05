@@ -4,7 +4,7 @@ export const NfsShareResourceType = rt({
   name: "NFS Share",
   id: "nfs-share",
   description:
-    "A DigitalOcean Network File Storage share — POSIX-compliant NFSv4.1 mountable across Droplets and DOKS nodes inside a VPC",
+    "A DigitalOcean Network File Storage share: NFSv4.1, mountable across Droplets and DOKS nodes in a VPC",
   fields: [
     f("name", "Name"),
     f("region", "Region"),

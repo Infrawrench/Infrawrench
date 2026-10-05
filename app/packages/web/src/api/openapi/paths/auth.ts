@@ -36,8 +36,8 @@ export function registerAuthPaths(ctx: BuildContext) {
     summary: "WorkOS OAuth callback",
     description:
       "Exchanges an authorization code for a session and sets the `wos-session` cookie. " +
-      "If the `state` nonce does not match the cookie set at sign-in — most often because " +
-      "the cookie expired while the user was still on AuthKit — the flow is restarted once " +
+      "If the `state` nonce does not match the cookie set at sign-in (most often because " +
+      "the cookie expired while the user was still on AuthKit) the flow is restarted once " +
       "with a fresh nonce rather than failing. Public.",
     security: [],
     request: {

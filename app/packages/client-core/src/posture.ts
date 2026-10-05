@@ -422,13 +422,13 @@ function danglingDnsFindings(dns: DnsInventoryResponse): PostureFinding[] {
       displayName: record.name,
       externalId: null,
       ruleId: DANGLING_DNS_RULE_ID,
-      title: "Dangling DNS record — subdomain takeover risk",
+      title: "Dangling DNS record: subdomain takeover risk",
       severity: service.severity,
       category: "public-exposure",
       reason:
         `${record.type} ${record.name} points at ${worst.value}, a ${service.label}, ` +
         `but no synced ${service.pluginName} resource claims "${service.claimLabel}"${others}. ` +
-        `${service.reason} Delete the record, or repoint it — and if the ${service.label} lives in a ` +
+        `${service.reason} Delete the record or repoint it. If the ${service.label} lives in a ` +
         `${service.pluginName} account you haven't connected here, connect it to clear this finding.`,
     });
   }

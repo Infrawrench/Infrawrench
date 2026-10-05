@@ -206,7 +206,7 @@ export async function normalizeInput(
 
   if (slackIds.length === 0 && teamsIds.length === 0 && emails.length === 0) {
     throw new ReportNotificationInputError(
-      "A schedule needs at least one destination — a Slack channel, a Teams webhook, or an email address",
+      "A schedule needs at least one destination; a Slack channel, a Teams webhook, or an email address",
     );
   }
 

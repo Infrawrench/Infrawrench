@@ -37,7 +37,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
     ])
     .openapi("CalendarEventLink", {
       description:
-        "Where opening the event should go — a hint rather than a URL, because each surface " +
+        "Where opening the event should go; a hint rather than a URL, because each surface " +
         "addresses its own pages differently.",
     });
 
@@ -56,7 +56,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
         "`openEnded` says so.",
     ),
     endsAt: IsoDateTime.nullable().describe(
-      "Null means a point in time — a deadline, a scheduled run — or a span whose end is not " +
+      "Null means a point in time (a deadline, a scheduled run) or a span whose end is not " +
         "known. `openEnded` distinguishes the two.",
     ),
     openEnded: z
@@ -68,7 +68,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
     allDay: z
       .boolean()
       .describe(
-        "The event is meaningful only to the day — a deadline read off a date field. Rendering " +
+        "The event is meaningful only to the day; a deadline read off a date field. Rendering " +
           "such a thing at the provider's stored midnight would be false precision.",
       ),
     severity: CalendarEventSeverity,
@@ -101,7 +101,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
       .string()
       .optional()
       .describe(
-        "The subscription URL, returned **only** by the create call — the token it contains is " +
+        "The subscription URL, returned **only** by the create call; the token it contains is " +
           "stored hashed and cannot be shown again. Lose it and mint a new feed.",
       ),
     createdAt: IsoDateTime,
@@ -130,7 +130,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
       "One time axis over six things the organization already stores: change freezes, sleep/wake " +
       "schedules, declared deadlines (certificates, domains, keys and resource leases), " +
       "commitment term ends, cron-triggered workflow runs, and declared incidents. Nothing here " +
-      "is a new record — the calendar is recomputed on every read, exactly as posture findings " +
+      "is a new record; the calendar is recomputed on every read, exactly as posture findings " +
       "and backup coverage are.\n\n" +
       "The window defaults to the last 7 and next 35 days and may span at most 400. Recurring " +
       "sources are expanded to at most 400 occurrences each, so one nightly schedule cannot " +
@@ -164,7 +164,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
     tags: ["Operations calendar"],
     summary: "List the organization's iCalendar subscriptions",
     description:
-      "Feed URLs that have been minted, including revoked ones — a revoked row is kept so the " +
+      "Feed URLs that have been minted, including revoked ones; a revoked row is kept so the " +
       "audit trail still resolves. The token itself is never returned.",
     request: { params: OrgIdParam },
     responses: {
@@ -182,7 +182,7 @@ export function registerCalendarPaths(ctx: BuildContext) {
     summary: "Mint an iCalendar subscription URL",
     description:
       "Returns the only copy of the feed URL. The token in it is 32 random bytes, stored as a " +
-      "SHA-256 hash, and is the sole credential on a route that runs outside every auth layer — " +
+      "SHA-256 hash, and is the sole credential on a route that runs outside every auth layer; " +
       "treat the URL as a secret. The URL deliberately contains no organization id.\n\n" +
       "An organization may hold 25 live subscriptions; revoking makes room.",
     request: {

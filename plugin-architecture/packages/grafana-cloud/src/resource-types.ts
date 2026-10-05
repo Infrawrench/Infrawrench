@@ -40,7 +40,7 @@ export const StackResourceType = rt({
   name: "Stack",
   id: "stack",
   description:
-    "A Grafana Cloud stack: a hosted Grafana with its metrics, logs, traces and profiles backends in one region. Create, rename, relabel, restart and delete stacks, and chart active series, ingest and discarded samples. Connect a stack (with a service account token you paste or one Infrawrench creates) to list its dashboards, alert rules, contact points and data sources; add a Synthetic Monitoring access token to list its checks.",
+    "A Grafana Cloud stack: a hosted Grafana with metrics, logs, traces and profiles backends in one region. Create, rename, relabel, restart or delete it, and chart active series, ingest and discarded samples. Connect it with a service account token to list dashboards, alert rules, contact points and data sources; add a Synthetic Monitoring token to list checks.",
   fields: [
     f("name", "Name", { description: "Display name of the stack." }),
     f("description", "Description", { required: false }),
@@ -58,7 +58,7 @@ export const StackResourceType = rt({
       kind: "password",
       required: false,
       description:
-        "A service account token (glsa_…) from this stack's Administration, Service accounts page. Lets Infrawrench list the stack's dashboards, alert rules, contact points and data sources. Admin role for everything, Viewer for dashboards and data sources only. Or use Connect stack to have one created.",
+        "A service account token (glsa_…) from this stack's Administration, Service accounts page. Lets Infrawrench list the stack's dashboards, alert rules, contact points and data sources. Admin role for everything, Viewer for dashboards and data sources only. Or use Connect stack to create one.",
     }),
     f("syntheticMonitoringToken", "Synthetic Monitoring Access Token", {
       kind: "password",

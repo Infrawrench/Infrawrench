@@ -20,7 +20,7 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
     resourceId: z
       .string()
       .describe(
-        "Infrawrench resource id of the stream to tail — or, for a sidecar stream, the peer " +
+        "Infrawrench resource id of the stream to tail; or, for a sidecar stream, the peer " +
           "plugin's own resource id (not a stored row).",
       ),
     accountId: Uuid,
@@ -55,7 +55,7 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
       "Last evaluation that found at least one matching line.",
     ),
     lastAlertedAt: IsoDateTime.nullable().describe(
-      "Last dispatched notification — the cooldown anchor.",
+      "Last dispatched notification; the cooldown anchor.",
     ),
     lastEvalError: z.string().nullable().describe("Failure detail from the last evaluation."),
     lastMatchSample: z
@@ -129,8 +129,8 @@ export function registerLogWorkspacePaths(ctx: BuildContext) {
     tags: ["Log workspaces"],
     summary: "List log-capable resources",
     description:
-      "Synced resources whose rendered detail declares the logs capability — the candidates a " +
-      "log workspace can tail — plus sidecar streams reached through a peer integration (pods " +
+      "Synced resources whose rendered detail declares the logs capability (the candidates a " +
+      "log workspace can tail) plus sidecar streams reached through a peer integration (pods " +
       "and workloads inside a managed cluster, listed live from the provider and marked with " +
       "`parentResourceId`). Discovered from the plugin contract (never a hardcoded provider " +
       "list), capped at 500 results.",

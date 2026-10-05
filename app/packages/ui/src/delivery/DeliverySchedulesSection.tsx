@@ -561,7 +561,7 @@ function ScheduleEditorModal({
               })}
               {targets && !targets.emailAvailable
                 ? gt(
-                    " This deployment has no mail provider configured — addresses will be saved but nothing will be delivered to them.",
+                    " This deployment has no mail provider configured, so addresses are saved but nothing is delivered.",
                   )
                 : ""}
             </p>

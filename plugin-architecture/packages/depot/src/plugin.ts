@@ -50,7 +50,7 @@ const manifest: PluginManifest = {
       key: "plan",
       label: "Depot Plan",
       description:
-        "Depot's API reports usage but not your plan or prices, so pick the plan you are on. Its fee and included minutes and storage shape the cost estimate and the plan allowance readings. Change it here whenever your plan changes.",
+        "Depot's API reports usage but not your plan, so pick yours. Its fee and included minutes and storage drive the cost estimate. Update it when your plan changes.",
       sensitive: false,
       defaultValue: DEFAULT_PLAN_ID,
       regions: DEPOT_PLANS.map((p) => ({ id: p.id, label: p.label, location: p.summary })),

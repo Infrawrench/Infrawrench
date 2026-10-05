@@ -71,7 +71,7 @@ function workerObservabilitySection(state: WorkerObservabilityState | null): Sec
             {
               kind: "text" as const,
               content:
-                "Workers Logs is off, so the Logs tab and the log-level and trace charts stay empty. Turn on Observability in the Settings tab to start collecting.",
+                "Workers Logs is off, so the Logs tab and log charts stay empty. Turn on Observability in the Settings tab.",
               variant: "muted" as const,
             },
           ]),
@@ -102,7 +102,7 @@ function workerTracesTab(
   if (!state.tracesEnabled) {
     body = [
       muted(
-        "Workers Traces is off for this Worker. Turn on Traces under Observability in the Settings tab; Cloudflare then records the handler, outbound fetch calls and binding calls (KV, R2, Durable Objects) for each sampled request.",
+        "Workers Traces is off for this Worker. Turn on Traces under Observability in the Settings tab to record the handler, fetch calls and binding calls for each sampled request.",
       ),
     ];
   } else if (error) {
@@ -234,7 +234,7 @@ export function renderWorkersAiModelDetail(resource: ResourceInstance): DetailVi
       tabLabel: "Playground",
       subtitle: `Chat with ${name}`,
       greeting:
-        "Hi! This is the Workers AI model playground — send a prompt to see how it responds. The full conversation history is sent on each turn.",
+        "Hi! This is the Workers AI model playground. Send a prompt to see how it responds. The full conversation history is sent on each turn.",
       inputPlaceholder: "Send a message…",
     },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
@@ -327,7 +327,7 @@ export function renderDurableObjectNamespaceDetail(resource: ResourceInstance): 
             {
               kind: "text" as const,
               content:
-                "Cloudflare exposes no public API to read or edit a Durable Object's storage from outside a Worker, so instances are read-only here. Use the dashboard's Data Studio (SQLite-backed objects) to inspect storage contents.",
+                "Durable Object storage can't be read or edited from outside a Worker, so instances are read-only here. Use the dashboard's Data Studio (SQLite-backed objects) to inspect storage.",
               variant: "muted" as const,
             },
           ]
@@ -458,7 +458,7 @@ export function renderAiGatewayDetail(
         {
           kind: "text",
           content:
-            "Send requests to this endpoint with any HTTP client. For OpenAI SDKs, use the `/compat` base URL — the SDK appends the path.",
+            "Send requests to this endpoint with any HTTP client. For OpenAI SDKs, use the `/compat` base URL; the SDK appends the path.",
           variant: "muted",
         },
         { kind: "text", content: compatUrl, variant: "mono", copyable: true },
@@ -468,7 +468,7 @@ export function renderAiGatewayDetail(
               {
                 kind: "text" as const,
                 content:
-                  "Account id couldn't be loaded, so `{account-id}` is a placeholder above — your token needs zone/account read access to resolve it.",
+                  "Account id couldn't be loaded, so `{account-id}` is a placeholder above. Your token needs zone/account read access.",
                 variant: "muted" as const,
               },
             ]),
@@ -497,7 +497,7 @@ export function renderAiGatewayDetail(
       tabLabel: "Playground",
       subtitle: "Workers AI, routed through this gateway",
       greeting:
-        "Chat with a Workers AI model through this gateway. Requests authenticate with your Cloudflare token (no provider keys needed) and show up in the gateway's logs and analytics. Pick a model above.",
+        "Chat with a Workers AI model through this gateway. Requests use your Cloudflare token (no provider keys) and appear in the gateway's logs and analytics. Pick a model above.",
       inputPlaceholder: "Send a message…",
       models: models.length > 0 ? models : FALLBACK_MODELS,
       defaultModel,
@@ -505,7 +505,7 @@ export function renderAiGatewayDetail(
       ...(authenticated
         ? {
             disabledReason:
-              "This gateway has Authenticated Gateway enabled, which requires a gateway token the playground doesn't hold. Turn off authentication (Edit AI Gateway) to chat here, or call it from your own code with a cf-aig-authorization header.",
+              "This gateway requires a gateway token the playground doesn't hold. Turn off authentication (Edit AI Gateway) to chat here, or call it from your code with a cf-aig-authorization header.",
           }
         : {}),
     },

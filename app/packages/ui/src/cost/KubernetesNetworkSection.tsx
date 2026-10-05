@@ -173,14 +173,14 @@ function Headline({ report }: { report: KubernetesNetworkReport }) {
       {billed.basis === "bytes" && (
         <p className="text-xs text-warning">
           {gt(
-            "No traffic in this range had a known boundary, so the billed amount was split by bytes alone. Treat it as a ranking, not a bill.",
+            "No traffic had a known boundary, so the bill was split by bytes alone. Treat it as a ranking.",
           )}
         </p>
       )}
       {billed.scaledDays > 0 && (
         <p className="text-xs text-on-surface-muted">
           {gt(
-            "On {days} day(s) the bill came in under the list estimate (a free allowance or a discount), so every row was scaled down by the same factor.",
+            "On {days} day(s) the bill was under the list estimate, so every row was scaled down to match.",
             { days: billed.scaledDays },
           )}
         </p>
@@ -318,7 +318,7 @@ function BilledSourceEditor({
           {query
             ? gt("Allocating the cost rows matching: {query}", { query })
             : gt(
-                "Not set. Pick the cost rows that are this cluster's data transfer (for example its cloud account and the data-transfer service) to split the real bill across workloads instead of showing list prices.",
+                "Not set. Pick this cluster's data-transfer cost rows to split the real bill across workloads instead of using list prices.",
               )}
         </p>
       )}
@@ -439,7 +439,7 @@ export function KubernetesNetworkSection({ client }: KubernetesNetworkSectionPro
           </h2>
           <p className="text-xs text-on-surface-muted mt-1">
             {gt(
-              "Pod traffic by namespace and workload, split into same-zone, cross-zone, cross-region and internet. Kept out of the network totals above, because the same bytes also leave through the nodes' own interfaces.",
+              "Pod traffic by namespace and workload, by zone, region and internet. Not added to the totals above, which already count these bytes.",
             )}
           </p>
         </div>
@@ -470,7 +470,7 @@ export function KubernetesNetworkSection({ client }: KubernetesNetworkSectionPro
           {report.totals.bytes === 0 ? (
             <p className="text-xs text-on-surface-muted">
               {gt(
-                "Nothing collected for this cluster yet. Collection reads the previous closed day once a day, after network flow collection is turned on above.",
+                "Nothing collected yet. Collection runs daily once network flow collection is on.",
               )}
             </p>
           ) : (

@@ -7,7 +7,7 @@ const ParentFolderId = z
   .nullable()
   .describe(
     "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and " +
-      "moving a folder inside itself or one of its own subfolders is rejected — both are 400s.",
+      "moving a folder inside itself or one of its own subfolders is rejected, both are 400s.",
   );
 
 const CostReportFolderInput = strict({
@@ -34,7 +34,7 @@ export function registerCostReportFolderPaths(ctx: BuildContext) {
     tags: ["Cost reports"],
     summary: "List cost-report folders",
     description:
-      "The org's report folders as a flat list — build the tree from `parentFolderId`. Folders " +
+      "The org's report folders as a flat list; build the tree from `parentFolderId`. Folders " +
       "organize the Reports list and nothing else; a report's id, URL and dashboard cards are " +
       "unchanged by where it is filed.",
     request: { params: OrgIdParam },
@@ -74,7 +74,7 @@ export function registerCostReportFolderPaths(ctx: BuildContext) {
     tags: ["Cost reports"],
     summary: "Update a cost-report folder",
     description:
-      "Rename and/or reparent. Filing a *report* is not here — that is `PUT " +
+      "Rename and/or reparent. Filing a *report* is not here; that is `PUT " +
       "/cost-reports/{id}` with a different `folderId`. Reparenting past the 3-level depth " +
       "limit, or under the folder's own subtree, is a 400.",
     request: {

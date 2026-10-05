@@ -200,12 +200,9 @@ export function GithubIssuesSection() {
         <h1 className="text-xl font-semibold">{gt("GitHub Issues")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            File savings findings (orphaned and oversized resources, cost anomalies, idle
-            commitments) as GitHub issues through the organization&apos;s GitHub App. Filing the
-            same finding again comments on its open issue instead of opening another, and when a
-            finding goes away its issue is closed or commented on. For resources managed by
-            Terraform, Infrawrench can also open a pull request with the fix. To file every new
-            finding automatically, add an alert routing rule with the GitHub issues destination
+            File savings findings as GitHub issues through the organization&apos;s GitHub App.
+            Refiling comments on the open issue, and resolved findings close or comment on theirs.
+            To file automatically, add an alert routing rule with the GitHub issues destination
             under Notifications.
           </p>
         </T>
@@ -357,7 +354,7 @@ export function GithubIssuesSection() {
             <h2 className="text-sm font-semibold">{gt("Routes")}</h2>
             <p className="text-xs text-on-surface-muted">
               {gt(
-                "Send findings about some resources to another repository, by the cost centre the resource is allocated to or by one of its tags. The first matching route wins; anything unmatched goes to the default repository.",
+                "Route findings to other repositories by cost centre or tag. The first match wins; the rest go to the default repository.",
               )}
             </p>
             {routes.map((r, idx) => (
@@ -514,7 +511,7 @@ export function GithubIssuesSection() {
             <h2 className="text-sm font-semibold">{gt("Terraform pull requests")}</h2>
             <p className="text-xs text-on-surface-muted">
               {gt(
-                "When a finding's resource is managed by Terraform (see IaC) and the fix is mechanical, a single size attribute or deleting a confirmed orphan's block, members who can file issues may open a pull request with the change. Each pull request takes a click and is never merged automatically. Needs the contents and pull requests permissions on the installation.",
+                "For Terraform-managed resources with a simple fix (a size change or removing an orphan), members who can file issues can open a pull request. Pull requests are never merged automatically. Needs the contents and pull requests permissions on the installation.",
               )}
             </p>
             <label className="flex items-center gap-2 text-sm">

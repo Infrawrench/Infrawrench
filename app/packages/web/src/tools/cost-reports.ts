@@ -69,7 +69,7 @@ export function costReportTools(): ToolDefinition[] {
       name: "list_cost_reports",
       title: "List cost reports",
       description:
-        "List the organization's saved cost reports — named, addressable cost graphs — with " +
+        "List the organization's saved cost reports, named, addressable cost graphs, with " +
         "their configuration, which dashboards carry a card for each, and the folder each is " +
         'filed under (`folderPath`, e.g. "Finance / Monthly"; null is the top level). Use ' +
         "this to find a report by name before running it. A report with no placements is " +
@@ -99,7 +99,7 @@ export function costReportTools(): ToolDefinition[] {
       title: "Get cost report",
       description:
         "Fetch one saved cost report: its name, description, saved graph configuration, and the " +
-        "dashboards showing it. This returns the definition, not the numbers — use " +
+        "dashboards showing it. This returns the definition, not the numbers; use " +
         "run_cost_report for those.",
       inputSchema: { reportId: z.string() },
       risk: "read",
@@ -119,7 +119,7 @@ export function costReportTools(): ToolDefinition[] {
       title: "Run cost report",
       description:
         "Execute a saved cost report and return its series, plus the inclusive date window its " +
-        "range resolved to. Takes only the report id — the report is the query, so there is " +
+        "range resolved to. Takes only the report id; the report is the query, so there is " +
         "nothing to reassemble.\n\n" +
         "A report saved with a relative range ('the last 30 days') covers a different window " +
         "every day, which is why the resolved `from`/`to` come back with the numbers: quote " +
@@ -198,7 +198,7 @@ export function costReportTools(): ToolDefinition[] {
       title: "Update cost report",
       description:
         "Replace a saved report's name, description and graph configuration. Every dashboard " +
-        "carrying a card for the report shows the new version — that is what referencing a " +
+        "carrying a card for the report shows the new version; that is what referencing a " +
         "report by id buys, and it is worth saying out loud before changing a shared one. " +
         "Audit-logged.",
       inputSchema: { reportId: z.string(), ...costReportInputSchema.shape },
@@ -237,7 +237,7 @@ export function costReportTools(): ToolDefinition[] {
         "File a saved cost report in a folder, or take it out of one. `folder` is a folder id, " +
         'a full path ("Finance / Monthly"), or a unique folder name; null moves the report ' +
         "to the top level of the Reports list. Filing changes nothing but where the report " +
-        "appears in the list — its id, dashboards and numbers are untouched. Audit-logged.",
+        "appears in the list; its id, dashboards and numbers are untouched. Audit-logged.",
       inputSchema: { reportId: z.string(), folder: z.string().nullable() },
       risk: "write",
       permission: "costs:write",
@@ -282,7 +282,7 @@ export function costReportTools(): ToolDefinition[] {
       description:
         "Delete a saved cost report (soft delete). Every dashboard card pointing at it is " +
         "removed too, since a card whose report is gone can only render as an unavailable " +
-        "tile — call list_cost_reports first if you need to tell the user which dashboards " +
+        "tile; call list_cost_reports first if you need to tell the user which dashboards " +
         "that affects. Audit-logged. The chat surface confirms with the user before invoking.",
       inputSchema: { reportId: z.string() },
       risk: "destructive",

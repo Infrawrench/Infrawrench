@@ -196,7 +196,7 @@ export async function listEC2Instances(
       let sshAccess: string;
       if (sshCidrs.size === 0) {
         sshAccess =
-          "⚠ Port 22 not exposed by any attached security group — SSH will time out. Add an inbound rule for TCP/22.";
+          "⚠ Port 22 not exposed by any attached security group, so SSH will time out. Add an inbound rule for TCP/22.";
       } else if (sshCidrs.has("0.0.0.0/0") || sshCidrs.has("::/0")) {
         sshAccess = EC2_SSH_WORLD_OPEN;
       } else {

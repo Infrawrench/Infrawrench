@@ -5,7 +5,7 @@ import type { BuildContext } from "../context";
 const SessionRecordingStatus = z.enum(["recording", "complete", "truncated", "abandoned"]).openapi({
   description:
     "`recording` (live), `complete` (closed cleanly), `truncated` (hit the per-session " +
-    "capture ceiling — the tape is a genuine partial and says so), or `abandoned` (the " +
+    "capture ceiling: the tape is a genuine partial and says so), or `abandoned` (the " +
     "server handling the session went away before it could close the row).",
 });
 
@@ -54,7 +54,7 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
       .nullable()
       .optional()
       .describe(
-        "Everyone who was attached to this session and in what role — the **highest** role " +
+        "Everyone who was attached to this session and in what role; the **highest** role " +
           "they held, not their role at the end. Null or empty for an ordinary solo session. " +
           "Once a session can be shared, `userId` alone stops answering 'whose hands were on " +
           'this box\'; this does. The cast carries the same facts in-band as asciicast `"m"` ' +
@@ -81,7 +81,7 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
       .boolean()
       .describe(
         "Also record keystrokes. Separate from `enabled` because it captures input at prompts " +
-          "the remote host chose not to echo — a sudo password, a pasted token — which is a " +
+          "the remote host chose not to echo (a sudo password, a pasted token) which is a " +
           "materially different promise to the people being recorded.",
       ),
     retentionDays: z.number().int().min(1).max(3650),
@@ -100,7 +100,7 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
     tags: ["Session recordings"],
     summary: "List recorded SSH sessions",
     description:
-      "Recorded sessions, newest first. Only SSH opened through the cloud is recorded — those " +
+      "Recorded sessions, newest first. Only SSH opened through the cloud is recorded; those " +
       "sessions are already proxied by the server, so recording tees a stream it holds rather " +
       "than requiring an agent on the host. A desktop session that dials a host directly never " +
       "reaches the server and cannot appear here.",
@@ -148,7 +148,7 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
     tags: ["Session recordings"],
     summary: "Update the recording policy",
     description:
-      "Partial update — omitted fields keep their current value. Recording is opt-in and off " +
+      "Partial update: omitted fields keep their current value. Recording is opt-in and off " +
       "by default. Audit-logged with the before/after policy.",
     request: {
       params: OrgIdParam,
@@ -186,7 +186,7 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
     description:
       "The session as an [asciicast v2](https://docs.asciinema.org/manual/asciicast/v2/) " +
       "document: a JSON header line followed by one `[time, code, data]` event per line. " +
-      "Deliberately somebody else's format — the same bytes play in `asciinema play` and in " +
+      "Deliberately somebody else's format; the same bytes play in `asciinema play` and in " +
       "the reference web player, so a recording is useful to an auditor who has never seen " +
       "this product. `?download=1` returns it as an attachment. **Every fetch is " +
       "audit-logged**, including this one: an investigator has to be able to answer who has " +

@@ -203,7 +203,7 @@ export function driftLines(summary: DriftSummary, bold: (s: string) => string): 
   }
   if (summary.omitted > 0 || summary.truncated) {
     const more = summary.truncated
-      ? "…and more — open the change timeline for the full window"
+      ? "…and more (open the change timeline for the full window)"
       : `…and ${plural(summary.omitted, "more change")} in the change timeline`;
     lines.push(more);
   }

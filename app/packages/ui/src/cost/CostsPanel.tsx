@@ -2,7 +2,10 @@ import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from
 import { useGT } from "gt-react";
 
 import { useDataString } from "../i18n/data-strings.js";
+import type { CostsPanelTab } from "@infrawrench/client-core";
+
 import { Modal } from "../components/Modal.js";
+import { SectionTabs } from "../components/SectionTabs.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
@@ -126,6 +129,12 @@ export interface CostsPanelProps {
    * page and for the "your key can't see this balance" help link.
    */
   onOpenExternal?: ((url: string) => void) | undefined;
+  /** Tab to open on instead of the remembered one. */
+  initialTab?: CostsPanelTab | undefined;
+}
+
+/**
+ * Org-level home| undefined;
 }
 
 /**
@@ -151,6 +160,7 @@ export function CostsPanel({
   schedules,
   onOpenScheduledResource,
   onOpenExternal,
+  initialTab,
 }: CostsPanelProps) {
   const uid = useId();
   const gt = useGT();
@@ -282,42 +292,52 @@ export function CostsPanel({
         */}
         <CostConversionNotice conversion={conversion} />
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-on-surface">{gt("This month")}</h2>
-            <div className="flex items-center gap-2">
-              {hasBillingRules && (
-                <label className="flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary">
-                  <input
-                    type="checkbox"
-                    checked={adjusted}
-                    onChange={(e) => setAdjusted(e.target.checked)}
-                    className="accent-amber-500"
-                  />
-                  {gt("Apply billing rules")}
-                </label>
-              )}
-              <label
-                htmlFor={`${uid}-groupby`}
-                className="text-xs font-medium text-on-surface-secondary"
-              >
-                {gt("Break down by")}
-              </label>
-              <select
-                id={`${uid}-groupby`}
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as CostDimensionId)}
-                className="rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500"
-              >
-                {OVERVIEW_GROUP_BYS.map((dim) => (
-                  <option key={dim} value={dim}>
-                    {gtData(DIMENSION_LABELS[dim])}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          {/*
+        <SectionTabs<CostsPanelTab>
+          ariaLabel={gt("Cost views")}
+          storageKey="infrawrench-costs-tab"
+          initialTab={initialTab}
+          tabs={[
+            {
+              id: "overview",
+              label: gt("Overview"),
+              content: (
+                <>
+                  <section className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-semibold text-on-surface">{gt("This month")}</h2>
+                      <div className="flex items-center gap-2">
+                        {hasBillingRules && (
+                          <label className="flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary">
+                            <input
+                              type="checkbox"
+                              checked={adjusted}
+                              onChange={(e) => setAdjusted(e.target.checked)}
+                              className="accent-amber-500"
+                            />
+                            {gt("Apply billing rules")}
+                          </label>
+                        )}
+                        <label
+                          htmlFor={`${uid}-groupby`}
+                          className="text-xs font-medium text-on-surface-secondary"
+                        >
+                          {gt("Break down by")}
+                        </label>
+                        <select
+                          id={`${uid}-groupby`}
+                          value={groupBy}
+                          onChange={(e) => setGroupBy(e.target.value as CostDimensionId)}
+                          className="rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500"
+                        >
+                          {OVERVIEW_GROUP_BYS.map((dim) => (
+                            <option key={dim} value={dim}>
+                              {gtData(DIMENSION_LABELS[dim])}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {/*
             The card draws into a `height: 100%` ResponsiveContainer, so it
             needs a parent with a real height. On a dashboard the grid row
             supplies one; here the page is a plain flex column, and the card's
@@ -325,176 +345,197 @@ export function CostsPanel({
             renders nothing at all. Give it the height, same `[&>*]:h-full`
             trick the dashboard's grid item uses.
           */}
-          <div className="h-80 [&>*]:h-full">
-            <CostGraphCard
-              title={gt("Month to date")}
-              config={overview}
-              api={client}
-              onConversion={setConversion}
-            />
-          </div>
-        </section>
+                    <div className="h-80 [&>*]:h-full">
+                      <CostGraphCard
+                        title={gt("Month to date")}
+                        config={overview}
+                        api={client}
+                        onConversion={setConversion}
+                      />
+                    </div>
+                  </section>
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-on-surface">{gt("Budgets")}</h2>
-            {canWrite && (
-              <button
-                type="button"
-                onClick={() => setEditing({ budget: null })}
-                className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
-              >
-                {gt("New budget")}
-              </button>
-            )}
-          </div>
-
-          {error !== null && (
-            <div role="alert" className="text-sm text-danger">
-              {gt("Couldn't load budgets — {error}", { error })}{" "}
-              <button type="button" onClick={() => void refresh()} className="underline">
-                {gt("Retry")}
-              </button>
-            </div>
-          )}
-
-          {budgets === null && error === null && (
-            <p role="status" className="text-sm text-on-surface-faint">
-              {gt("Loading budgets…")}
-            </p>
-          )}
-
-          {budgets?.length === 0 && (
-            <p className="text-sm text-on-surface-faint">
-              {gt(
-                "No budgets yet. A budget tracks spend or a usage quantity per period against all costs or a filtered slice, rolls up child budgets, and alerts when it crosses a threshold.",
-              )}
-            </p>
-          )}
-
-          {/* A tree, not a flat list: a parent's card is the rollup of the
-              cards nested under it, so each level shows its own actual and
-              forecast against its own amount. Roots tile; children stack. */}
-          <div className="grid gap-4 sm:grid-cols-2 items-start">
-            {buildBudgetTree(budgets ?? []).map((node) => (
-              <BudgetTreeItem
-                key={node.budget.id}
-                node={node}
-                renderActions={(budget) => (
-                  <div className="flex items-center justify-between gap-2 px-1 text-xs text-on-surface-faint">
-                    <PlacementList budget={budget} onOpenDashboard={onOpenDashboard} />
-                    <div className="flex items-center gap-2">
-                      {canPlace && (
-                        <button
-                          type="button"
-                          onClick={() => setPlacing(budget)}
-                          className="hover:text-on-surface-secondary underline"
-                        >
-                          {gt("Dashboards")}
-                        </button>
-                      )}
+                  <section className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-semibold text-on-surface">{gt("Budgets")}</h2>
                       {canWrite && (
                         <button
                           type="button"
-                          onClick={() => void deleteBudget(budget)}
-                          className="hover:text-danger underline"
+                          onClick={() => setEditing({ budget: null })}
+                          className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
                         >
-                          {gt("Delete")}
+                          {gt("New budget")}
                         </button>
                       )}
                     </div>
-                  </div>
-                )}
-                onEdit={canWrite ? (budget) => setEditing({ budget }) : undefined}
-                onExplain={
-                  annotateBudgetAlert ? (budget, event) => setNoting({ budget, event }) : undefined
-                }
-              />
-            ))}
-          </div>
-        </section>
 
-        {/* Below Budgets on purpose: budgets are the most consequential
-            referents of a saved filter, and the section's edit modal names
-            them before a re-scope is saved. */}
-        {client.listSavedFilters && <SavedFiltersSection client={client} />}
+                    {error !== null && (
+                      <div role="alert" className="text-sm text-danger">
+                        {gt("Couldn't load budgets: {error}", { error })}{" "}
+                        <button type="button" onClick={() => void refresh()} className="underline">
+                          {gt("Retry")}
+                        </button>
+                      </div>
+                    )}
 
-        {/* Next to saved filters, and for the same reason: a scenario model is
-            a named cost object the graphs above apply by reference, not a
-            preference. It also sits within sight of Budgets, which is where a
-            model's sharpest consequence lives: a budget can opt its forecast
-            thresholds into one. */}
-        {client.listScenarioModels && <ScenarioModelsSection client={client} />}
+                    {budgets === null && error === null && (
+                      <p role="status" className="text-sm text-on-surface-faint">
+                        {gt("Loading budgets…")}
+                      </p>
+                    )}
 
-        {/* Directly under saved filters, and above tag governance, because a
-            business metric is the same kind of object: a named declaration the
-            cost graphs above apply by reference. It is also the section a user
-            has to visit before "cost per customer" means anything anywhere. */}
-        <UnitCostsSection client={client} />
+                    {budgets?.length === 0 && (
+                      <p className="text-sm text-on-surface-faint">
+                        {gt(
+                          "No budgets yet. A budget tracks spend or usage per period and alerts when it crosses a threshold.",
+                        )}
+                      </p>
+                    )}
 
-        <TagGovernanceSection client={client} />
-
-        <CostAnomaliesSection client={client} />
-        {/* Next to anomalies on purpose; the two are siblings a user should
-            compare: anomalies are unconfigured statistical outliers, change
-            alerts are configured "moved more than X% vs the prior period". */}
-        <CostChangeAlertsSection client={client} />
-        {/* The third sibling in the alert family, and last of the three
-            because it reads on a different clock. Budgets, anomalies and
-            change alerts all answer "did something happen yesterday"; these
-            three answer "is something quietly wrong": a commitment about to
-            lapse, a commitment nobody is using, a unit cost going the wrong
-            way. Nobody acts on them within the hour, and putting them above
-            the two that are read that way would bury those. */}
-        <EfficiencyAlertsSection client={client} />
-        {/* Above the savings sections on purpose: those are about spending
-            less, this is about not stopping. A pot running dry is an outage. */}
-        <CreditBurndownSection client={client} {...(onOpenExternal ? { onOpenExternal } : {})} />
-
-        {/* First of the savings-shaped sections: commitments are the largest
-            single lever on a big bill, and the planner's recommendations are
-            what the orphan/oversize findings below should be weighed against.
-            Distinct from the credit burndown above: credits are a prepaid
-            pot with a runway, commitments are a purchase with a term. */}
-        <CommitmentsSection client={client} />
-
-        {/* Network costs sit here, after commitments and before the
-            resource-shaped findings, because they are the other lever that is
-            invisible in the cost dimensions: the orphan and oversize sections
-            below both act on a *resource*, while an egress bill is a property
-            of a conversation between two of them. */}
-        <NetworkFlowSection client={client} />
-
-        {/* Directly under the org-wide network section it is deliberately
-            kept out of: a cluster's pod traffic leaves through the same node
-            interfaces a VPC flow log counts, so it is its own per-cluster
-            view rather than more rows in that total. */}
-        <KubernetesNetworkSection client={client} />
-
-        {/* Carbon sits with the other whole-estate figures rather than beside
-            the per-resource findings below: it is a property of the estate the
-            way spend is, and it is grouped by account and region for the same
-            reason. Optional on the client, so a host that does not offer it
-            renders nothing rather than a section that fails to load. */}
-        {client.getCarbonEstimate && <CarbonPanelSection client={client} />}
-
-        {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
-        {rightsizing && (
-          <OversizedSection client={rightsizing} onOpenResource={onOpenOversizedResource} />
-        )}
-        {extendedSupport && (
-          <ExtendedSupportSection
-            client={extendedSupport}
-            onOpenResource={onOpenExtendedSupportResource}
-            onOpenExternal={onOpenExternal}
-          />
-        )}
-        {schedules && (
-          <SleepSchedulesSection client={schedules} onOpenResource={onOpenScheduledResource} />
-        )}
-        {/* Last, after every finder: those sections say what could be saved,
-            this one is the receipt for what the actions taken did save. */}
-        <RealizedSavingsSection client={client} />
+                    {/* A tree, not a flat list: a parent's card is the rollup of the
+              cards nested under it, so each level shows its own actual and
+              forecast against its own amount. Roots tile; children stack. */}
+                    <div className="grid gap-4 sm:grid-cols-2 items-start">
+                      {buildBudgetTree(budgets ?? []).map((node) => (
+                        <BudgetTreeItem
+                          key={node.budget.id}
+                          node={node}
+                          renderActions={(budget) => (
+                            <div className="flex items-center justify-between gap-2 px-1 text-xs text-on-surface-faint">
+                              <PlacementList budget={budget} onOpenDashboard={onOpenDashboard} />
+                              <div className="flex items-center gap-2">
+                                {canPlace && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPlacing(budget)}
+                                    className="hover:text-on-surface-secondary underline"
+                                  >
+                                    {gt("Dashboards")}
+                                  </button>
+                                )}
+                                {canWrite && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteBudget(budget)}
+                                    className="hover:text-danger underline"
+                                  >
+                                    {gt("Delete")}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          onEdit={canWrite ? (budget) => setEditing({ budget }) : undefined}
+                          onExplain={
+                            annotateBudgetAlert
+                              ? (budget, event) => setNoting({ budget, event })
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </div>
+                  </section>
+                </>
+              ),
+            },
+            {
+              id: "alerts",
+              label: gt("Alerts"),
+              content: (
+                <>
+                  {/* Anomalies are unconfigured outliers, change alerts are
+                      configured thresholds; efficiency alerts read on a slower
+                      clock ("is something quietly wrong"), so they come last. */}
+                  <CostAnomaliesSection client={client} />
+                  <CostChangeAlertsSection client={client} />
+                  <EfficiencyAlertsSection client={client} />
+                </>
+              ),
+            },
+            {
+              id: "savings",
+              label: gt("Savings"),
+              content: (
+                <>
+                  {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
+                  {rightsizing && (
+                    <OversizedSection
+                      client={rightsizing}
+                      onOpenResource={onOpenOversizedResource}
+                    />
+                  )}
+                  {extendedSupport && (
+                    <ExtendedSupportSection
+                      client={extendedSupport}
+                      onOpenResource={onOpenExtendedSupportResource}
+                      onOpenExternal={onOpenExternal}
+                    />
+                  )}
+                  {schedules && (
+                    <SleepSchedulesSection
+                      client={schedules}
+                      onOpenResource={onOpenScheduledResource}
+                    />
+                  )}
+                  {/* Last, after every finder: the receipt for what the
+                      actions taken did save. */}
+                  <RealizedSavingsSection client={client} />
+                </>
+              ),
+            },
+            {
+              id: "commitments",
+              label: gt("Commitments & credits"),
+              content: (
+                <>
+                  {/* Credits first: a pot running dry is an outage, while a
+                      commitment is a purchase with a term. */}
+                  <CreditBurndownSection
+                    client={client}
+                    {...(onOpenExternal ? { onOpenExternal } : {})}
+                  />
+                  <CommitmentsSection client={client} />
+                </>
+              ),
+            },
+            {
+              id: "network",
+              label: gt("Network"),
+              content: (
+                <>
+                  <NetworkFlowSection client={client} />
+                  {/* Kept apart from the org-wide total: pod traffic leaves
+                      through the same node interfaces a VPC flow log counts. */}
+                  <KubernetesNetworkSection client={client} />
+                </>
+              ),
+            },
+            // Optional on the client, so a host that does not offer carbon
+            // has no tab rather than one that fails to load.
+            ...(client.getCarbonEstimate
+              ? [
+                  {
+                    id: "carbon" as const,
+                    label: gt("Carbon"),
+                    content: <CarbonPanelSection client={client} />,
+                  },
+                ]
+              : []),
+            {
+              id: "allocation",
+              label: gt("Allocation"),
+              content: (
+                <>
+                  {/* Named cost objects the graphs apply by reference. */}
+                  <UnitCostsSection client={client} />
+                  {client.listSavedFilters && <SavedFiltersSection client={client} />}
+                  {client.listScenarioModels && <ScenarioModelsSection client={client} />}
+                  <TagGovernanceSection client={client} />
+                </>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {editing && (

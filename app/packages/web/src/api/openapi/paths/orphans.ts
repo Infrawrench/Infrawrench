@@ -15,9 +15,7 @@ export function registerOrphanPaths(ctx: BuildContext) {
   const ResourceOwnerAnnotation = strict({
     userId: Uuid.nullable().describe("Set when a routable org member owns it."),
     displayName: z.string().describe("The member's name, or the free-text owner."),
-    isLabel: z
-      .boolean()
-      .describe("True when the owner is free text — nothing can be routed to it."),
+    isLabel: z.boolean().describe("True when the owner is free text; nothing can be routed to it."),
     ticketUrl: z.string().nullable(),
     purpose: z.string().nullable(),
   }).openapi("ResourceOwnerAnnotation");
@@ -63,7 +61,7 @@ export function registerOrphanPaths(ctx: BuildContext) {
     unownedCount: z
       .number()
       .int()
-      .describe("Flagged resources with no recorded owner — the 'nobody to ask' count."),
+      .describe("Flagged resources with no recorded owner; the 'nobody to ask' count."),
     costWindowDays: z.number().int().describe("Days of trailing spend the annotations cover."),
     generatedAt: IsoDateTime,
   }).openapi("OrphanListResponse");
@@ -75,8 +73,8 @@ export function registerOrphanPaths(ctx: BuildContext) {
     summary: "List likely-orphaned and idle resources",
     description:
       "Scans the organization's already-synced resources against each plugin's declarative " +
-      "orphan heuristics — unattached volumes, unassigned floating/elastic IPs, reserved-but-" +
-      "unused static IPs — and returns the matches grouped by account, each with the plugin's " +
+      "orphan heuristics (unattached volumes, unassigned floating/elastic IPs, reserved-but-" +
+      "unused static IPs) and returns the matches grouped by account, each with the plugin's " +
       "reason. Purely a read over stored state: no provider API calls are made, so results " +
       "reflect the last sync. Where the org's collected cost data has per-resource rows, " +
       "matches are annotated with trailing spend.",

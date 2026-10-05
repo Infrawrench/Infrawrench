@@ -113,7 +113,7 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
             attributes,
             ...branchScopedImport(org, database, branch, resource.externalId),
             comments: [
-              "Password plaintext is only available at create time in Terraform —",
+              "Password plaintext is only available at create time in Terraform;",
               "import existing credentials and rotate if the secret is unknown.",
             ],
           },

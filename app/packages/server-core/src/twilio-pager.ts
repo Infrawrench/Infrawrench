@@ -124,7 +124,7 @@ function formatPageBody(args: {
   count: number;
   windowMinutes: number;
 }): string {
-  const errorPart = args.error ? ` — ${truncate(args.error, 200)}` : "";
+  const errorPart = args.error ? `: ${truncate(args.error, 200)}` : "";
   return `infrawrench: ${args.accountLabel} (${args.resourceTypeId}) failed ${args.count}× in ${args.windowMinutes} min${errorPart}`;
 }
 

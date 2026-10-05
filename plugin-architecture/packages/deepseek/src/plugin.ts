@@ -28,7 +28,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your DeepSeek API key, created at platform.deepseek.com under API keys. Starts with sk-. This is the only credential DeepSeek has — there is no separate admin or management key, and no API for creating or revoking keys, so key rotation happens in the DeepSeek console.",
+        "Your DeepSeek API key, created at platform.deepseek.com under API keys. Starts with sk-. This is the only credential DeepSeek has; rotate keys in the DeepSeek console.",
       sensitive: true,
       placeholder: "sk-...",
       helpLink: {

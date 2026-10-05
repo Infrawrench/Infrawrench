@@ -91,7 +91,7 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
     returnedState.length !== oauthState.length ||
     !crypto.timingSafeEqual(Buffer.from(returnedState), Buffer.from(oauthState))
   ) {
-    console.error("[cloud-auth] OAuth state mismatch — refusing callback");
+    console.error("[cloud-auth] OAuth state mismatch, refusing callback");
     notifyAuthError("state-mismatch", "Sign-in callback rejected (state mismatch)");
     codeVerifier = null;
     oauthState = null;

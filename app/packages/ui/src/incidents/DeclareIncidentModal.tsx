@@ -253,7 +253,7 @@ export function DeclareIncidentModal({
                 {selectedPage && selectedPage.components.length > 0 && (
                   <div className="mt-2">
                     <p className="text-xs text-on-surface-faint">
-                      {gt("Affected components — leave all unticked to report the whole page.")}
+                      {gt("Affected components (leave all unticked to report the whole page).")}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-2">
                       {selectedPage.components.map((component) => {

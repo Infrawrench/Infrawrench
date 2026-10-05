@@ -30,7 +30,7 @@ interface PageResult {
 
 function requireSource(flags: PushFlags): string {
   if (!flags.source) {
-    throw new CliError("--source <name> is required — it names the system raising this.", 2);
+    throw new CliError("--source <name> is required. It names the system raising this.", 2);
   }
   return flags.source;
 }
@@ -38,7 +38,7 @@ function requireSource(flags: PushFlags): string {
 /** `infrawrench page <message>`: raise an alert to the org's transports. */
 export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Paging goes through Infrawrench Cloud — `--local` has nobody to page.");
+    throw new CliError("Paging goes through Infrawrench Cloud. `--local` has nobody to page.");
   }
 
   // `page clear` shares the command so the cooldown a page started can be
@@ -48,7 +48,7 @@ export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags)
   }
 
   const message = rest.join(" ").trim();
-  if (!message) throw new CliError("Nothing to say — pass the alert text: `infrawrench page …`", 2);
+  if (!message) throw new CliError("Nothing to say. Pass the alert text: `infrawrench page …`", 2);
   const source = requireSource(flags);
 
   const org = await resolveOrg(ctx);
@@ -71,7 +71,7 @@ export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags)
 
   if (result.suppressed) {
     const retry = result.retryAt ? ` until ${result.retryAt}` : "";
-    println(`${c.yellow("○")} suppressed — this key is still in cooldown${retry}`);
+    println(`${c.yellow("○")} suppressed: this key is still in cooldown${retry}`);
     return;
   }
   const counts = [
@@ -84,7 +84,7 @@ export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags)
   if (!result.delivered) {
     // Not an error: the page was accepted and its cooldown rolled back, so the
     // next call tries again. Say so rather than implying the alert is lost.
-    println(`${c.yellow("!")} nobody was reached — check the org's paging settings`);
+    println(`${c.yellow("!")} nobody was reached; check the org's paging settings`);
     return;
   }
   println(`${c.green("✓")} paged ${c.dim(counts.join(", "))}`);
@@ -105,8 +105,8 @@ async function clearPage(ctx: CliContext, flags: PushFlags): Promise<void> {
   }
   println(
     result.cleared
-      ? `${c.green("✓")} cooldown cleared — the next page delivers immediately`
-      : `${c.dim("·")} nothing to clear — that key wasn't in cooldown`,
+      ? `${c.green("✓")} cooldown cleared; the next page delivers immediately`
+      : `${c.dim("·")} nothing to clear; that key wasn't in cooldown`,
   );
 }
 
@@ -121,7 +121,7 @@ async function clearPage(ctx: CliContext, flags: PushFlags): Promise<void> {
  */
 export async function cmdCostsPush(ctx: CliContext, flags: PushFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
+    throw new CliError("Cost data lives in Infrawrench Cloud. There is no local cost history.");
   }
   const source = requireSource(flags);
   const format = flags.format ?? "json";
@@ -178,7 +178,7 @@ async function readRowsInput(file: string | undefined): Promise<string> {
     }
   }
   if (process.stdin.isTTY) {
-    throw new CliError("No rows — pass --file <path> or pipe rows on stdin.", 2);
+    throw new CliError("No rows. Pass --file <path> or pipe rows on stdin.", 2);
   }
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));

@@ -9,14 +9,14 @@ const IsoDate = z
 
 const StartDate = IsoDate.describe(
   "Inclusive first day (UTC) the note is about. Mapped to whichever bucket holds it at the " +
-    "chart's binning — daily and cumulative use the day itself, weekly the Monday that starts " +
+    "chart's binning: daily and cumulative use the day itself, weekly the Monday that starts " +
     "its week, monthly the first of its month.",
 );
 
 const EndDate = IsoDate.nullable().describe(
   "Inclusive last day, or null for a note about a single moment. A deploy is a moment; a " +
     "migration is a week, and a week spelled as seven notes misstates how many things happened. " +
-    "An end equal to the start is stored as null — the same fact has one spelling.",
+    "An end equal to the start is stored as null; the same fact has one spelling.",
 );
 
 const CostReportId = z
@@ -72,7 +72,7 @@ export function registerCostAnnotationPaths(ctx: BuildContext) {
     description:
       "Dated notes drawn over cost charts. With `reportId`, the set a chart for that report " +
       "draws: the org-wide notes plus that report's own. Without it, every annotation in the " +
-      "org. Annotations are an overlay — they never appear in a series, a total, or an axis.",
+      "org. Annotations are an overlay; they never appear in a series, a total, or an axis.",
     request: {
       params: OrgIdParam,
       query: z.object({

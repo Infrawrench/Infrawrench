@@ -43,7 +43,7 @@ export function ExpiringScreen() {
   const data = expiring.data;
   if (!data || data.totalCount === 0) {
     return (
-      <EmptyView message="Nothing tracked here has a deadline. Items appear when a synced resource carries an expiry a plugin declares — TLS certificates, domain registrations, API tokens, key ages." />
+      <EmptyView message="Nothing tracked here has a deadline. Items appear when a synced resource has an expiry, such as TLS certificates, domains, API tokens or key ages." />
     );
   }
 
@@ -95,9 +95,8 @@ export function ExpiringScreen() {
       ))}
 
       <Text style={styles.footnote}>
-        Computed from fields the org has already synced — no provider calls. &quot;Upcoming&quot;
-        means due within the org&apos;s {data.leadDays}-day lead time; key ages are counted against
-        their rotation budget.
+        Computed from synced fields. &quot;Upcoming&quot; means due within the org&apos;s{" "}
+        {data.leadDays}-day lead time; key ages count against their rotation budget.
       </Text>
     </Screen>
   );

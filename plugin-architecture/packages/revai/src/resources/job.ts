@@ -34,7 +34,7 @@ export const JobResourceType = rt({
   outputs: [
     o("jobId", "Job ID", { description: "Rev AI job id, usable with /jobs/{id}" }),
     o("transcriptUrl", "Transcript URL", {
-      description: "GET this with an explicit Accept header — */* is rejected with 406",
+      description: "GET this with an explicit Accept header; */* is rejected with 406",
     }),
     o("transcriptText", "Transcript Text", {
       description: 'Plain-text transcript, empty until the job reaches status "transcribed"',

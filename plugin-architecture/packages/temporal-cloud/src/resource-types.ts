@@ -33,7 +33,7 @@ export const NamespaceResourceType = rt({
   name: "Namespace",
   id: "namespace",
   description:
-    "A Temporal Cloud namespace: the unit of isolation for workflows, with its own region, retention period, authentication and endpoints. Edit retention, delete protection, API key authentication, the codec server and tags; add or rename custom search attributes; add a replica region and fail over a multi-region namespace; and chart actions, workflow outcomes, latency and backlog.",
+    "A Temporal Cloud namespace: the unit of isolation for workflows, with its own region, retention, authentication and endpoints. Edit retention, delete protection, API key authentication, the codec server and tags; manage search attributes; add a replica region and fail over.",
   fields: [
     f("namespaceId", "Namespace ID", { editable: false }),
     f("name", "Name", { editable: false }),
@@ -172,7 +172,7 @@ export const ServiceAccountResourceType = rt({
   name: "Service Account",
   id: "service-account",
   description:
-    "A machine identity in the Temporal Cloud account. Account-scoped service accounts carry an account role plus namespace permissions; namespace-scoped ones are bound to a single namespace. Create, rename, change roles and access, and delete.",
+    "A machine identity in the Temporal Cloud account. Account-scoped ones carry an account role plus namespace permissions; namespace-scoped ones are bound to one namespace.",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
@@ -270,7 +270,7 @@ export const ConnectivityRuleResourceType = rt({
   name: "Connectivity Rule",
   id: "connectivity-rule",
   description:
-    "A connectivity rule that controls how namespaces are reached: public internet (optionally with stable IPs) or a private connection such as AWS PrivateLink or GCP Private Service Connect. Create, attach to namespaces from the namespace page, and delete.",
+    "A connectivity rule for how namespaces are reached: public internet (optionally with stable IPs) or a private connection such as AWS PrivateLink or GCP Private Service Connect. Attach it to namespaces from the namespace page.",
   fields: [
     f("type", "Type", ro),
     f("region", "Region", ro),

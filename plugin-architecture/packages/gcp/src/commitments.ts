@@ -116,7 +116,7 @@ export function mapGcpCommitment(
   const units = (commitment.resources ?? [])
     .map((resource) => ({ unit: unitLabel(resource), amount: Number(resource.amount ?? 0) }))
     .filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0);
-  const label = commitment.type ? `Committed use — ${commitment.type}` : "Committed use discount";
+  const label = commitment.type ? `Committed use: ${commitment.type}` : "Committed use discount";
   return {
     id,
     kind: "committed_use",

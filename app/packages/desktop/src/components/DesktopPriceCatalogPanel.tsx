@@ -57,9 +57,7 @@ export function DesktopPriceCatalogPanel() {
   if (!activeCloudOrgId || !client) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt(
-          "The price catalog requires cloud mode: sign in to sync. Price lists are fetched and cached by the cloud, using your organization's accounts for providers whose price API needs credentials.",
-        )}
+        {gt("The price catalog requires cloud mode: sign in to sync.")}
       </div>
     );
   }

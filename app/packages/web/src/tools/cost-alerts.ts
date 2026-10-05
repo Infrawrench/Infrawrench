@@ -58,7 +58,7 @@ export function costAlertTools(): ToolDefinition[] {
         "(optionally per group, e.g. per service) on a daily, weekly or monthly cadence and " +
         "fires when spend moves past its percent and/or absolute threshold versus the prior " +
         "period. Includes when each alert last fired. Distinct from budgets (absolute monthly " +
-        "total) and anomaly detection (statistical outliers) — use list_budgets for those.",
+        "total) and anomaly detection (statistical outliers); use list_budgets for those.",
       inputSchema: {},
       risk: "read",
       permission: "costs:read",
@@ -103,7 +103,7 @@ export function costAlertTools(): ToolDefinition[] {
         "Create a change-based cost alert. `cadence` picks the comparison: daily is one " +
         "complete day vs the same weekday last week, weekly is the last 7 complete days vs the " +
         "prior 7, monthly is month-to-date vs the same number of days last month. Set " +
-        "`thresholdPercent`, `thresholdAmountCents`, or both — when both are set BOTH must " +
+        "`thresholdPercent`, `thresholdAmountCents`, or both; when both are set BOTH must " +
         "hold, which is how a 50% jump on $2 of spend stays quiet. `groupBy` watches each " +
         "group (e.g. each service) separately instead of one total. Audit-logged.",
       inputSchema: costAlertInputSchema.innerType().innerType().shape,

@@ -33,7 +33,7 @@ export const ZoneResourceType = rt({
   postureChecks: [
     {
       id: "cloudflare-zone-paused",
-      title: "Zone paused — proxy bypassed",
+      title: "Zone paused, proxy bypassed",
       severity: "high",
       category: "public-exposure",
       conditions: [{ fieldKey: "paused", when: "truthy" }],

@@ -230,7 +230,7 @@ app.post("/:id/sign", async (c) => {
   if (!key.encryptedPrivateKey || !key.privateKeyIv) {
     return refuse(
       400,
-      "This key was imported — its private half is not held by Infrawrench Cloud, so the cloud cannot sign with it",
+      "This key was imported; its private half is not held by Infrawrench Cloud, so the cloud cannot sign with it",
       "no_private_key",
     );
   }

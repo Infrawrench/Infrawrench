@@ -112,7 +112,7 @@ describe("model detail — speech panel", () => {
     const help = detail().speechPanel!.helpText!;
     expect(help).toMatch(/WebM/);
     expect(help).toMatch(/MP4/);
-    expect(help).toMatch(/WAV header/);
+    expect(help).toMatch(/browser recordings/);
   });
 
   it("caps inline uploads under the 20 MB request limit", () => {
@@ -232,7 +232,7 @@ describe("cached-content detail", () => {
     const detail = client().renderDetail(
       resource("cached-content", { name: "cachedContents/c1", ttl: "3600s" }),
     );
-    expect(JSON.stringify(detail.sections)).toMatch(/only property the API lets you change/i);
+    expect(JSON.stringify(detail.sections)).toMatch(/Only the expiry can be changed/i);
   });
 });
 

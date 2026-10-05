@@ -962,7 +962,7 @@ export class XaiClient implements PluginClient {
 
   /** Tail row telling the user the audit log is longer than what was synced. */
   private auditTruncationMarker(accountId: string, now: string, fetched: number): ResourceInstance {
-    const note = `Older events not shown — this team's audit log has more than the ${fetched.toLocaleString()} most recent events synced here.`;
+    const note = `Older events not shown; only the ${fetched.toLocaleString()} most recent are synced.`;
     return {
       id: `${accountId}:audit-event:${AUDIT_TRUNCATED_ID}`,
       pluginId: "xai",
@@ -2627,7 +2627,7 @@ export class XaiClient implements PluginClient {
               rows:
                 acls.length > 0
                   ? acls.map((acl) => ({ cells: { acl } }))
-                  : [{ cells: { acl: "(no ACLs — this key cannot call anything)" } }],
+                  : [{ cells: { acl: "(no ACLs; this key cannot call anything)" } }],
             },
           ],
         },

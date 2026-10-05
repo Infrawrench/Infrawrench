@@ -73,7 +73,8 @@ export const BUSINESS_METRIC_KIND_LABELS: Record<BusinessMetricKind, string> = {
 };
 
 export const BUSINESS_METRIC_KIND_DESCRIPTIONS: Record<BusinessMetricKind, string> = {
-  count: "A quantity — customers, requests, GB processed. Divides spend into a cost per unit.",
+  count:
+    "A quantity such as customers, requests or GB processed. Divides spend into a cost per unit.",
   currency:
     "Money the business took in, in one currency. Divides spend into a cost per unit of " +
     "revenue, and is the only kind margin can be computed against.",
@@ -357,7 +358,7 @@ export const BUSINESS_METRIC_LIMITS = {
 export const BUSINESS_METRIC_KEY_PATTERN = /^[a-z0-9][a-z0-9_.-]*$/;
 
 export const BUSINESS_METRIC_KEY_HELP =
-  "A metric key is a lowercase slug — letters, digits, and _ . - — starting with a letter or " +
+  "A metric key is a lowercase slug (letters, digits, and _ . -) starting with a letter or " +
   "digit, e.g. `active-customers`.";
 
 /** What a new-metric form starts on. */
@@ -873,7 +874,7 @@ export function describeUnitCostCaveats(response: UnitCostQueryResponse): string
   if (response.gapBuckets > 0) {
     parts.push(
       `${response.gapBuckets} ${response.gapBuckets === 1 ? "period has" : "periods have"} ` +
-        `no ${subject} — shown as a gap, not as zero.`,
+        `no ${subject} (shown as a gap, not zero).`,
     );
   }
   if (response.partialBuckets > 0) {
@@ -886,7 +887,7 @@ export function describeUnitCostCaveats(response: UnitCostQueryResponse): string
   if (currencies.size > 1) {
     parts.push(
       "Spend spans currencies with no stated rate, so each currency divides the metric on " +
-        "its own — the series are not comparable to each other.",
+        "its own; the series are not comparable to each other.",
     );
   }
   return parts.length > 0 ? parts.join(" ") : null;

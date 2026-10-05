@@ -25,7 +25,7 @@ const IMPACT_STYLE: Record<string, { label: string; color: (s: string) => string
 export async function cmdIncidents(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Provider status correlation is computed by Infrawrench Cloud's poller, which watches each provider's public status feed — local-only mode has no poller, so there is nothing to correlate.",
+      "Provider status correlation is computed by Infrawrench Cloud's poller, which watches each provider's public status feed. Local-only mode has no poller, so there is nothing to correlate.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -44,7 +44,7 @@ export async function cmdIncidents(ctx: CliContext): Promise<void> {
   if (incidents.length === 0) {
     println(
       c.dim(
-        "No provider incidents overlap this organization — every provider status feed we watch is clear.",
+        "No provider incidents overlap this organization. Every provider status feed we watch is clear.",
       ),
     );
     return;

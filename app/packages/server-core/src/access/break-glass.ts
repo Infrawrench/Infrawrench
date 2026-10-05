@@ -177,7 +177,7 @@ export async function createAccessRequest(
   if (reason.length < 10) {
     return {
       outcome: "invalid",
-      error: "Give a reason of at least 10 characters — an unexplained elevation is not auditable.",
+      error: "Give a reason of at least 10 characters; an unexplained elevation is not auditable.",
     };
   }
   const durationMinutes = Math.trunc(input.durationMinutes);
@@ -229,7 +229,7 @@ export async function createAccessRequest(
       detailLines: [
         `Permissions: ${permissions.join(", ")}`,
         `Duration if granted: ${durationMinutes} minutes`,
-        `Timeout: ${formatApprovalExpiry(expiresAt, timeoutMinutes)} — no decision counts as a denial.`,
+        `Timeout: ${formatApprovalExpiry(expiresAt, timeoutMinutes)}; no decision counts as a denial.`,
       ],
       context: `${permissions.length} permission${permissions.length === 1 ? "" : "s"} · ${durationMinutes}m · ${formatApprovalExpiry(expiresAt, timeoutMinutes)}`,
       url: appPath(`/org/${input.organizationId}/settings/access-requests`),

@@ -141,9 +141,8 @@ export function PricingPreviewView({ result }: { result: PricingPreviewResult })
       <T>
         <p className="text-xs text-on-surface-muted">
           Priced <Var>{result.from}</Var> to <Var>{result.to}</Var> over{" "}
-          <Var>{result.lineCount}</Var> grouped cost lines. Nothing was saved. Without: the rules
-          and settings in force, minus the rule being previewed. With: including it, or with the
-          settings being tried.
+          <Var>{result.lineCount}</Var> grouped cost lines. Nothing was saved. Without: current
+          rules, minus this one. With: including it or the settings being tried.
         </p>
       </T>
 

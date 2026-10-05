@@ -204,7 +204,7 @@ describe("drift rendering", () => {
     );
     const body = formatDriftTeamsBody(over);
     expect(body).toContain("500+ changes");
-    expect(body).toContain("…and more — open the change timeline for the full window");
+    expect(body).toContain("…and more (open the change timeline for the full window)");
   });
 
   it("keeps the push body to the counts, since a banner shows a few lines", () => {

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const TursoDatabaseResourceType = rt({
   name: "Database",
   id: "turso-database",
-  description: "A Turso SQLite database — edge-replicated via libsql",
+  description: "A Turso SQLite database, edge-replicated via libsql",
   fields: [
     f("name", "Name", { editable: false }),
     f("group", "Group", { required: false, editable: false }),

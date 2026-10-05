@@ -17,7 +17,7 @@ export const ApiKeyResourceType = rt({
   name: "API Key",
   id: "api-key",
   description:
-    "An API key issued inside a Speechmatics project. Created, listed and deleted through the Management API (https://mp.speechmatics.com/v1) with a management token; the batch API key cannot see these. The secret value is only revealed once, on the create response.",
+    "An API key issued inside a Speechmatics project. Managed with a management token; the batch API key cannot see these. The secret is shown once, on creation.",
   fields: [
     f("apiKeyId", "API Key ID"),
     f("name", "Name", { required: false }),

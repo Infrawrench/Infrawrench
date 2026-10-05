@@ -56,7 +56,7 @@ const SONIC_MODELS: SpeechPanelOption[] = [
   {
     id: "sonic-latest",
     label: "Sonic (latest)",
-    description: "Rolling beta — can change without notice, not for production",
+    description: "Rolling beta; can change without notice",
   },
 ];
 
@@ -1291,7 +1291,8 @@ export class CartesiaClient implements PluginClient {
                 {
                   key: "Preview Audio",
                   value:
-                    previewUrl || "— (Cartesia only returns this with expand[]=preview_file_url)",
+                    previewUrl ||
+                    "None (Cartesia only returns this with expand[]=preview_file_url)",
                 },
               ],
             },
@@ -1304,7 +1305,7 @@ export class CartesiaClient implements PluginClient {
         modes: ["tts", "stt"],
         subtitle: `Sonic text-to-speech and Ink Whisper transcription · ${name}`,
         helpText:
-          "The model picker applies to synthesis. Transcription always runs on ink-whisper — Cartesia's only transcription model — and the language picker applies to it. Audio comes back as 44.1 kHz 128 kbps mp3.",
+          "The model picker applies to synthesis. Transcription always runs on ink-whisper, Cartesia's only transcription model, and uses the language picker. Audio comes back as 44.1 kHz 128 kbps mp3.",
         voices,
         ...(voiceId ? { defaultVoice: voiceId } : {}),
         voiceLabel: "Voice",

@@ -49,17 +49,13 @@ const manifest: PluginManifest = {
       key: "nodeHourlyRates",
       label: "Cluster hourly rates",
       description:
-        "Optional. What this cluster costs, so workload costs can be derived. " +
-        "Clusters opened from their cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, " +
-        "OVHcloud, CoreWeave) get their node prices automatically. Otherwise list instance types: " +
-        "s-2vcpu-4gb=0.0357, m5.large=0.096. The same field prices the rest of the cluster — " +
-        "controlPlane=0.10 for a managed cluster's flat fee, loadBalancer=0.0149 per " +
-        "LoadBalancer Service, storage/*=0.10 per provisioned GiB-month (or storage/gp3=0.08 " +
-        "for one class), and network/cross_zone=0.01 or network/internet_egress=0.09 to override " +
-        "the cloud's per-GB transfer rates for network costs. On GPU nodes, gpu/a100-80gb=3.93 " +
-        "(or gpu/*=2.50) sets the price of one GPU per hour, which decides how much of the node " +
-        "is charged by GPU requests. Left blank, capacity, volume sizes and efficiency are still " +
-        "shown; only the money is omitted.",
+        "Optional. Hourly prices used to derive workload costs. Clusters opened from their cloud " +
+        "account get node prices automatically. Otherwise list instance types: " +
+        "s-2vcpu-4gb=0.0357, m5.large=0.096. Other keys: controlPlane=0.10 (flat fee), " +
+        "loadBalancer=0.0149 (per LoadBalancer Service), storage/*=0.10 or storage/gp3=0.08 " +
+        "(per GiB-month), network/cross_zone=0.01 and network/internet_egress=0.09 (per GB), " +
+        "gpu/a100-80gb=3.93 or gpu/*=2.50 (per GPU hour). Left blank, capacity and efficiency " +
+        "are still shown without cost.",
       sensitive: false,
       optional: true,
       multiline: true,

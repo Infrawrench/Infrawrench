@@ -100,7 +100,7 @@ export const netlifyTerraformExport: TerraformExportCapability = {
             name: key,
             attributes,
             comments: [
-              "Set var.netlify_env_value before apply — secret values are never inlined.",
+              "Set var.netlify_env_value before apply; secret values are never inlined.",
               "Import id: team_id:site_id:key (team_id from Netlify dashboard).",
             ],
           },

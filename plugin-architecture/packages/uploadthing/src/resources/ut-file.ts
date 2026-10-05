@@ -65,7 +65,7 @@ export const UtFileResourceType = rt({
   supportsDelete: true,
   orphanRule: {
     conditions: [{ fieldKey: "status", when: "equals", value: "Failed" }],
-    reason: "Upload never completed — this file cannot be served and can be deleted.",
+    reason: "Upload never completed. This file cannot be served and can be deleted.",
   },
   iconKey: "file",
 });

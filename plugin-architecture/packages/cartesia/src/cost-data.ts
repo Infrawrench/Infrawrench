@@ -143,7 +143,7 @@ function bucketsOf(group: CreditGroup): CreditBucket[] {
 export function cartesiaCostSetupError(): CostSetupError {
   return new CostSetupError(
     "Cartesia cost collection needs an admin API key. /usage/credits rejects the standard " +
-      "sk_car_ key — credit usage is admin-only — so add an admin key (sk_car_admin_…) to " +
+      "sk_car_ key, so add an admin key (sk_car_admin_…) to " +
       "this account. Only organization admins can create one.",
     {
       label: "Create an admin key",

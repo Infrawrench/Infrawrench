@@ -61,7 +61,7 @@ async function ensureAgentSshSecurityGroup(rctx: AwsCreateContext): Promise<stri
   const vpcId = String(vpcItems[0]?.["vpcId"] ?? "");
   if (!vpcId) {
     throw new Error(
-      "openSshPort requested but no default VPC exists in this region — pick a security group explicitly instead.",
+      "openSshPort requested but no default VPC exists in this region. Pick a security group instead.",
     );
   }
 
@@ -378,7 +378,7 @@ export async function computeGetCreateConfig(
                   required: false,
                   defaultValue: "0.0.0.0/0",
                   description:
-                    "IP range allowed to reach the open ports. 0.0.0.0/0 means anywhere on the internet — restrict to your office/VPN range for production.",
+                    "IP range allowed to reach the open ports. 0.0.0.0/0 means anywhere on the internet; restrict it to your office or VPN range in production.",
                 },
               ],
             },

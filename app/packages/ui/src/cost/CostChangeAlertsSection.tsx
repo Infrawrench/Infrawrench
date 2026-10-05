@@ -216,7 +216,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load change alerts — {error}", { error })}
+          {gt("Couldn't load change alerts: {error}", { error })}
         </div>
       )}
 
@@ -229,7 +229,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
       {alerts?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
           {gt(
-            "No change alerts yet. A change alert fires when spend on a scope you choose moves more than a threshold you choose versus the prior period — unlike budgets (an absolute monthly total) and anomaly detection (statistical outliers against a learned baseline).",
+            "No change alerts yet. A change alert fires when spend on a scope moves past a threshold versus the prior period.",
           )}
         </p>
       )}
@@ -549,9 +549,8 @@ export function CostChangeAlertConfigModal({
           </div>
           <T>
             <p className="text-[11px] text-on-surface-faint">
-              Set one or both. When both are set the change must clear <em>both</em> bars, so a 50%
-              jump on $2 of spend stays quiet. New spend with no prior baseline counts as an
-              infinite percent change — an amount floor is what keeps tiny new groups from firing.
+              Set one or both. With both, a change must clear <em>both</em>. New spend counts as an
+              infinite percent change, so set an amount floor to keep tiny new groups quiet.
             </p>
           </T>
 
@@ -598,9 +597,7 @@ export function CostChangeAlertConfigModal({
               />
             )}
             <p className="mt-1 text-[11px] text-on-surface-faint">
-              {gt(
-                "Watching a dimension compares each group against its own prior window — each offending group fires its own event.",
-              )}
+              {gt("Each group is compared to its own prior window and fires its own alert.")}
             </p>
           </div>
 

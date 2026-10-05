@@ -578,7 +578,7 @@ function artifactEntry(
       // Worded as the operational consequence, not the internal state: what
       // this means for the reader is that a freeze is still in force, or the
       // public is still being told there is an outage.
-      title: `${label} is still open — closing it failed`,
+      title: `${label} is still open: closing it failed`,
       detail: artifact.error ?? "No detail was recorded.",
       severity: "critical",
       link: { kind: "incident", id: incidentId },
@@ -916,7 +916,7 @@ export function renderPostmortemMarkdown(input: PostmortemInput): string {
     lines.push("| Time | Source | What happened |");
     lines.push("| --- | --- | --- |");
     for (const entry of timeline) {
-      const what = entry.detail ? `${entry.title} — ${entry.detail}` : entry.title;
+      const what = entry.detail ? `${entry.title}: ${entry.detail}` : entry.title;
       lines.push(`| ${isoToDisplay(entry.at)} | ${entry.source} | ${escapePipes(what)} |`);
     }
   }
@@ -928,7 +928,7 @@ export function renderPostmortemMarkdown(input: PostmortemInput): string {
     lines.push("_No operator notes were written._");
   } else {
     for (const note of notes) {
-      const who = note.authorName ? ` — ${note.authorName}` : "";
+      const who = note.authorName ? `, ${note.authorName}` : "";
       lines.push(`- **${isoToDisplay(note.occurredAt)}**${who}: ${note.body}`);
     }
   }
@@ -939,7 +939,7 @@ export function renderPostmortemMarkdown(input: PostmortemInput): string {
     lines.push("");
     for (const artifact of incident.artifacts) {
       const label = INCIDENT_ARTIFACT_LABELS[artifact.kind] ?? artifact.kind;
-      const detail = artifact.status === "failed" ? ` — ${artifact.error ?? "failed"}` : "";
+      const detail = artifact.status === "failed" ? ` (${artifact.error ?? "failed"})` : "";
       lines.push(
         `- ${label}: ${artifact.status}${artifact.label ? ` (${artifact.label})` : ""}${detail}`,
       );

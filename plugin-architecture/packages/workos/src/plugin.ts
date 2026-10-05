@@ -41,7 +41,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "WorkOS",
   description:
-    "Enterprise auth infrastructure. Manage organizations, domains, users, memberships, groups and invitations, watch SSO connections and Directory Sync directories, define roles and permissions, issue organization API keys, toggle feature flags, and wire up webhook endpoints.",
+    "Enterprise auth infrastructure. Manage organizations, users, memberships and invitations, watch SSO connections and directories, define roles, issue API keys, toggle feature flags and wire up webhooks.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -50,7 +50,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A WorkOS secret API key for the environment you want to manage. Create one in the WorkOS dashboard under API Keys — sk_test_… keys manage the sandbox environment, sk_live_… keys manage production.",
+        "A WorkOS secret API key for the environment you want to manage. Create one in the WorkOS dashboard under API Keys. sk_test_… keys manage the sandbox, sk_live_… keys manage production.",
       sensitive: true,
       placeholder: "sk_live_1234567890abcdef",
       helpLink: {

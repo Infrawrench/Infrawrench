@@ -184,7 +184,7 @@ function outcomeLine(outcome: SlackApprovalOutcome): string {
     const late = outcome.decidedByName
       ? ` (${outcome.decidedByName}'s approval${outcome.via ? ` via ${outcome.via}` : ""} came after the timeout)`
       : "";
-    return `⏳ Expired — not decided within the timeout${late}`;
+    return `⏳ Expired; not decided within the timeout${late}`;
   }
   const verb = outcome.decision === "approved" ? "Approved" : "Denied";
   const glyph = outcome.decision === "approved" ? "✅" : "🚫";
@@ -220,7 +220,7 @@ export async function updateSlackApprovalMessages(
 
     const tokens = await loadOrgSlackTokens(organizationId);
     const line = outcomeLine(outcome);
-    const text = `${outcome.title} — ${line}`;
+    const text = `${outcome.title}: ${line}`;
     const blocks: unknown[] = [
       {
         type: "section",

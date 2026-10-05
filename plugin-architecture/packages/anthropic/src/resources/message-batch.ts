@@ -14,7 +14,7 @@ export const MessageBatchResourceType = rt({
   plural: "Message Batches",
   id: "message-batch",
   description:
-    "An asynchronous Message Batches job. Results are a JSONL file at `results_url` in arbitrary order — match rows back to requests on `custom_id`, never on position.",
+    "An asynchronous Message Batches job. Results are a JSONL file at `results_url` in arbitrary order; match rows by `custom_id`.",
   fields: [
     f("processingStatus", "Status", {
       kind: "enum",

@@ -18,7 +18,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MistralVoiceResourceType = rt({
   name: "Voice",
   id: "mistral-voice",
-  description: "A Mistral TTS voice — a built-in preset or a workspace voice clone",
+  description: "A Mistral TTS voice: a built-in preset or a workspace voice clone",
   fields: [
     f("voiceId", "Voice ID"),
     f("name", "Name", { required: false }),

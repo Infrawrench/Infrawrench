@@ -16,7 +16,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Oracle Cloud",
   description:
-    "Oracle Cloud Infrastructure (OCI). Billed spend by service, SKU, region, resource and compartment, Universal Credits burndown, service limits, and Compute instances, block and boot volumes, VCNs, subnets, security lists, reserved IPs, load balancers, Object Storage, Autonomous Databases, OKE clusters and budgets across every subscribed region and compartment.",
+    "Oracle Cloud Infrastructure (OCI). Billed spend by service, SKU, region and compartment, Universal Credits burndown, service limits, and Compute, volumes, networking, load balancers, Object Storage, Autonomous Databases, OKE clusters and budgets across every subscribed region.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

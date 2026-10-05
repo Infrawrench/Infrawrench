@@ -73,7 +73,7 @@ export const REVAI_TRANSCRIBER_OPTIONS: SpeechPanelOption[] = [
   {
     id: "human",
     label: "Human",
-    description: "Human transcription — hours of turnaround, US deployment only",
+    description: "Human transcription, hours of turnaround, US only",
   },
 ];
 

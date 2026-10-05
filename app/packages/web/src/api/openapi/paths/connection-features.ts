@@ -58,7 +58,7 @@ const StorageListRequest = strict({
 
 const StorageObject = strict({
   key: z.string().openapi({ description: "Full path within the bucket." }),
-  name: z.string().openapi({ description: "Last path segment — what the browser renders." }),
+  name: z.string().openapi({ description: "Last path segment, what the browser renders." }),
   size: z.number().nonnegative(),
   lastModified: z.string(),
   isDirectory: z.boolean(),

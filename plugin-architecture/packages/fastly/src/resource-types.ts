@@ -14,7 +14,7 @@ export const AccountResourceType = rt({
   name: "Fastly Account",
   id: "account",
   description:
-    "The Fastly customer account the token belongs to. Shows the month-to-date bill by product, recent invoices, this month's billable usage by product and account-wide traffic, and purges a URL from any service.",
+    "The Fastly customer account the token belongs to. Shows the month-to-date bill by product, recent invoices, billable usage and account-wide traffic, and purges a URL from any service.",
   fields: [
     f("name", "Name", { editable: false }),
     f("customerId", "Customer ID", { required: false, editable: false }),
@@ -38,7 +38,7 @@ export const ServiceResourceType = rt({
   name: "Service",
   id: "service",
   description:
-    "A Fastly delivery (VCL) or Compute service. Charts requests, bandwidth, cache hit ratio, 4xx and 5xx responses and product usage; shows live traffic; purges by URL, surrogate key or everything; activates, deactivates and clones versions; and turns products such as Image Optimizer and Next-Gen WAF on or off.",
+    "A Fastly delivery (VCL) or Compute service. Charts requests, bandwidth, cache hit ratio, errors and product usage, shows live traffic, purges by URL, surrogate key or everything, manages versions, and toggles products such as Image Optimizer and Next-Gen WAF.",
   fields: [
     f("name", "Name", { description: "The service's display name." }),
     f("comment", "Comment", { required: false, description: "A freeform note." }),
@@ -331,7 +331,7 @@ export const TlsSubscriptionResourceType = rt({
   name: "TLS Subscription",
   id: "tls-subscription",
   description:
-    "A Fastly-managed certificate subscription (Let's Encrypt, Certainly or GlobalSign): its domains, state and the expiry of the certificate it currently serves. Fastly renews it automatically while the domains stay pointed at Fastly.",
+    "A Fastly-managed certificate subscription (Let's Encrypt, Certainly or GlobalSign): its domains, state and certificate expiry. Fastly renews it while the domains stay pointed at Fastly.",
   fields: [
     f("commonName", "Common Name", { required: false, editable: false }),
     f("domains", "Domains", { required: false, editable: false }),
@@ -360,7 +360,7 @@ export const ApiTokenResourceType = rt({
   name: "API Token",
   id: "api-token",
   description:
-    "An API token belonging to the user whose token this account uses: its scope, the services it is limited to, when it was last used and when it expires. Revoke tokens you no longer need.",
+    "An API token of the user this account authenticates as: its scope, service limits, last use and expiry. Revoke tokens you no longer need.",
   fields: [
     f("name", "Name", { editable: false }),
     f("scope", "Scope", { required: false, editable: false }),
@@ -386,7 +386,7 @@ export const ApiTokenResourceType = rt({
         { fieldKey: "expiresAt", when: "empty" },
       ],
       reason:
-        "This token can change any configuration its owner can and has no expiry date. Give tokens an expiry and the narrowest scope that works (global:read for reading, purge_select for purging).",
+        "This token can change any configuration its owner can and never expires. Use an expiry and the narrowest scope that works (global:read to read, purge_select to purge).",
     },
   ],
   principalRole: {

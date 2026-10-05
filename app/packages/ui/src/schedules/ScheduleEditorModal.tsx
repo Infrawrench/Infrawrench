@@ -180,9 +180,8 @@ export function ScheduleEditorModal({
         </h2>
         <T>
           <p className="mt-1 text-xs text-on-surface-secondary">
-            <Var>{target.resourceName}</Var> is stopped at the off time and started at the on time
-            on each selected day, in the chosen timezone (DST-safe). Weekends between selected days
-            stay off.
+            <Var>{target.resourceName}</Var> stops at the off time and starts at the on time on each
+            selected day, in the chosen timezone. Weekends between selected days stay off.
           </p>
         </T>
 
@@ -294,8 +293,8 @@ export function ScheduleEditorModal({
                 {preview !== null && preview.projectedMonthlySaving == null && (
                   <T>
                     <div className="mt-1">
-                      No per-resource billing rows for this resource yet, so there is no savings
-                      figure — the schedule works either way.
+                      No billing data for this resource yet, so no savings figure. The schedule
+                      still works.
                     </div>
                   </T>
                 )}

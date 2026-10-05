@@ -157,10 +157,7 @@ function normalizeInput(input: BusinessMetricInput): {
   const currency = input.currency?.trim().toUpperCase() || null;
 
   if (kind === "currency" && !currency) {
-    throw new BusinessMetricInputError(
-      "A revenue metric must state the currency its numbers are in — margin subtracts spend " +
-        "from revenue, which is only defined in one currency.",
-    );
+    throw new BusinessMetricInputError("A revenue metric must state its currency.");
   }
   if (kind !== "currency" && currency) {
     throw new BusinessMetricInputError(

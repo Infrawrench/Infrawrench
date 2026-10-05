@@ -303,39 +303,23 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Costs",
         description:
           "Actual spend, collected from provider billing APIs into daily rows and queried by " +
-          "dimension, plus pushed rows for systems without a plugin. Totals are net — credits, " +
-          "refunds and tax included — unless a charge-type filter narrows them.",
+          "dimension, plus pushed rows for systems without a plugin. Totals are net (credits, " +
+          "refunds and tax included) unless a charge-type filter narrows them.",
       },
       {
         name: "Commitments",
         description:
-          "Reserved instances, savings plans and committed-use discounts: the inventory of what " +
-          "was purchased, how much of the usage bill it covers (reported as a range — there is " +
-          "no single honest denominator), utilization measured only over days with collected " +
-          "cost data, and a planner that recommends commitment sizes at the p10 floor of " +
-          "uncovered spend. Read-only: nothing here ever purchases.",
+          "Reserved instances, savings plans and committed-use discounts: what was purchased, how much of the usage bill it covers (a range, not a single figure), utilization over days with collected cost data, and a planner that sizes new commitments at the p10 floor of uncovered spend. Read-only: nothing here purchases.",
       },
       {
         name: "AI attribution",
         description:
-          "Split billed AI spend by caller (team, user, feature, customer, or any request-metadata " +
-          "key) by joining per-request logs (Bedrock invocation logs, Cloudflare AI Gateway logs, " +
-          "LiteLLM spend logs, custom JSONL in S3) to the provider bills. Each request is priced " +
-          "at list rates and scaled so attributed totals equal the billed amount, with an explicit " +
-          "`(unattributed)` remainder; billed totals are never changed. Caller dimensions appear " +
-          "in every cost report as the tag keys `caller:<dimension>`.",
+          "Splits billed AI spend by caller (team, user, feature, customer, or any request-metadata key) by joining per-request logs (Bedrock invocation logs, Cloudflare AI Gateway logs, LiteLLM spend logs, custom JSONL in S3) to provider bills. Requests are priced at list rates and scaled to the billed amount, with an explicit `(unattributed)` remainder. Caller dimensions appear in cost reports as the tag keys `caller:<dimension>`.",
       },
       {
         name: "Network flows",
         description:
-          "Priced source\u2192destination attribution of egress and cross-zone traffic \u2014 which two " +
-          "things are talking, across which billing boundary, and what that costs. It exists " +
-          "because every cost dimension describes one side of a transfer while a network charge " +
-          "describes a pair, so the total is visible in the cost surface and the cause is not. " +
-          "Everything here is an estimate: flow logs sample, and prices are published list " +
-          "rates with no free tier, volume tier or negotiated discount applied. Collection is " +
-          "off until an organization enables it, because the queries are billed to the " +
-          "customer's own cloud account.",
+          "Priced source-to-destination attribution of egress and cross-zone traffic: which two things are talking, across which billing boundary, and what it costs. Everything is an estimate: flow logs sample, and prices are published list rates with no free tier, volume tier or negotiated discount. Collection is off until an organization enables it, because the queries are billed to its own cloud account.",
       },
       {
         name: "Cost reports",
@@ -355,92 +339,58 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Cost annotations",
         description:
-          'Dated notes drawn over cost charts — "we migrated to Graviton here". A note carries ' +
-          "a start day and an optional end day, because a deploy is a moment and a migration is " +
-          "a week. With no report id it is org-wide and appears on every cost chart; with one it " +
-          "belongs to that report alone. Annotations are an overlay: they never change a series, " +
-          "a total, or an axis.",
+          'Dated notes drawn over cost charts, such as "we migrated to Graviton here". A note has a start day and an optional end day. Without a report id it appears on every cost chart; with one, only on that report. Annotations never change a series, total or axis.',
       },
       {
         name: "Scenario models",
         description:
-          "Named, reusable sets of adjustments overlaid on a cost forecast. A trend fit can " +
-          "only extrapolate what already happened; a scenario is where an organization writes " +
-          "down what it already knows is coming — a purchase next quarter, a team starting in " +
-          "September, a migration that takes a fifth off compute. Applying one never replaces " +
-          "the trend: the query returns both, the adjusted line is labelled with the model's " +
-          "name, and recorded history is never touched. Budgets opt in per budget, never " +
-          "globally, so a hypothesis cannot silently change when people get paged.",
+          "Named, reusable sets of adjustments overlaid on a cost forecast, for known future cost such as a purchase next quarter or a team starting in September. Applying one never replaces the trend: queries return both lines and recorded history is untouched. Budgets opt in per budget.",
       },
       {
         name: "Billing Rules",
         description:
-          "The organization's own adjustments to collected spend: a markup that recovers " +
-          "shared overhead, a discount negotiated outside the provider's pricing, a fixed " +
-          "charge per period, or a reallocation that moves a shared cluster's cost onto the " +
-          "teams that use it.\n\n" +
-          "Adjustments are applied **at query time and never written into stored cost data**, " +
-          "so collected spend remains exactly what the provider reported and can still be " +
-          "reconciled against an invoice. Every adjusted answer carries the collected totals " +
-          "beside the adjusted ones and names the rules that moved them, so an adjusted figure " +
-          "can never be read without knowing it is adjusted. Anything that pages a human " +
-          "(budgets, anomaly detection, change alerts, the digest) measures collected spend " +
-          "unless it opts in per object; cost exports are always raw, because they are the " +
-          "audit trail.\n\n" +
-          "Percentage rules compose — two 10% markups are 21%, not 20% — while reallocation is " +
-          "first-match-wins, so a row moves exactly once and total spend is conserved.",
+          "The organization's own adjustments to collected spend: a markup that recovers shared overhead, a negotiated discount, a fixed charge per period, or a reallocation that moves a shared cluster's cost onto the teams that use it.\n\nAdjustments are applied **at query time and never written into stored cost data**, so collected spend still reconciles against an invoice. Adjusted answers carry the collected totals beside the adjusted ones and name the rules that moved them. Anything that pages a human (budgets, anomaly detection, change alerts, the digest) measures collected spend unless it opts in per object; cost exports are always raw.\n\nPercentage rules compose (two 10% markups are 21%, not 20%) while reallocation is first-match-wins, so a row moves exactly once and total spend is conserved.",
       },
       {
         name: "Business metrics",
         description:
-          "The denominators unit costs divide by — customers, requests, GB processed, revenue — " +
-          "reported by the organization itself, plus the query that divides spend by them. A " +
-          "unit cost is computed at the bucket asked for from a summed numerator and a summed " +
-          "denominator (a daily ratio averaged over a month is not the monthly ratio), a period " +
-          "with no reported value comes back as an explicit gap rather than as zero, and " +
-          "currencies are never merged. Margin is offered only for a metric declared " +
-          "revenue-shaped, in its own currency.",
+          "The denominators unit costs divide by (customers, requests, GB processed, revenue), reported by the organization, plus the query that divides spend by them. Unit cost is a summed numerator over a summed denominator at the requested bucket, a period with no value is an explicit gap rather than zero, and currencies are never merged. Margin is offered only for revenue-shaped metrics, in their own currency.",
       },
       {
         name: "Cost alerts",
         description:
           "Change-based cost alerts: fire when spend on a chosen scope moves more than a " +
           "configured percent and/or amount versus the prior period, on a daily, weekly or " +
-          "monthly cadence. The third alert family — budgets watch an absolute monthly total, " +
+          "monthly cadence. The third alert family; budgets watch an absolute monthly total, " +
           "anomaly detection watches statistical outliers against a learned baseline, and these " +
           "watch a configured relative change.",
       },
       {
         name: "Cost exports",
         description:
-          "Recurring dumps of raw cost rows into a warehouse or object store. A run streams " +
-          "the org's cost rows out of storage and writes one object per period at a " +
-          "deterministic key, to S3-compatible storage or an HTTPS endpoint. Because provider " +
-          "spend is restated for days after the fact, every run also re-writes the periods " +
-          "inside a trailing restatement window and stamps each row with the collection " +
-          "watermark, so a consumer can tell a settled period from a still-moving one.",
+          "Recurring dumps of raw cost rows to S3-compatible storage or an HTTPS endpoint, one object per period at a deterministic key. Provider spend is restated for days after the fact, so each run also re-writes periods inside a trailing restatement window and stamps rows with the collection watermark.",
       },
       {
         name: "Workflows",
         description:
-          "Workflow (runbook) surface exposed over HTTP — the approval requests " +
+          "Workflow (runbook) surface exposed over HTTP; the approval requests " +
           "raised by infra.waitForApproval(...) inside runs, and the cron-schedule " +
           "sub-resource. Full workflow CRUD is managed in the app.",
       },
       {
         name: "Chat",
         description:
-          "Hosted AI chat — conversation CRUD, the SSE agent stream, pending-action " +
+          "Hosted AI chat; conversation CRUD, the SSE agent stream, pending-action " +
           "approval, secure secret handoff, and structured answers to agent questions.",
       },
       {
         name: "Resources",
-        description: "CRUD, manifest, logs, secrets, metrics — all dispatched to plugins.",
+        description: "CRUD, manifest, logs, secrets, metrics; all dispatched to plugins.",
       },
       {
         name: "Changes",
         description:
-          "Change timeline / drift feed — resources that appeared, changed, or disappeared between polls.",
+          "Change timeline / drift feed; resources that appeared, changed, or disappeared between polls.",
       },
       {
         name: "Connections",
@@ -456,47 +406,47 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "DNS",
         description:
-          "Cross-provider DNS inventory — every synced zone and record, with dangling targets flagged as subdomain-takeover candidates.",
+          "Cross-provider DNS inventory; every synced zone and record, with dangling targets flagged as subdomain-takeover candidates.",
       },
       {
         name: "Sleep schedules",
         description:
-          "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side.",
+          "Weekly off-at/on-at windows on resources whose plugin declares start/stop actions; the poller runs due transitions server-side.",
       },
       {
         name: "Resource leases",
         description:
-          "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+          'Optional TTLs on resources ("a test cluster for 3 days"). Auto-delete leases are announced twice, then deleted at expiry by the poller, deferring during change freezes.',
       },
       {
         name: "Ephemeral environments",
         description:
-          "Capture a set of existing resources as a parameterised template built from each plugin's own create-field metadata, stamp copies of it out in dependency order with a mandatory TTL, and tear them down. Expiry runs through the existing resource-lease pass, so every copy deletes itself.",
+          "Capture existing resources as a parameterised template, stamp out copies in dependency order with a mandatory TTL, and tear them down. Expiry runs through the resource-lease pass, so every copy deletes itself.",
       },
       {
         name: "Credit burndown",
         description:
-          "Prepaid credit balances with a burn rate measured from the server's own series of readings and a runway bounded by both the burn and the credit's own expiry. Only providers that expose a balance appear; most bill in arrears and have no pot to burn down.",
+          "Prepaid credit balances with a burn rate measured from the server's own readings and a runway bounded by both the burn and the credit's expiry. Only providers that expose a balance appear.",
       },
       {
         name: "Credential hygiene",
         description:
-          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise — derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions.",
+          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise, derived from the audit log and credential tables with no provider call. Only writes are audit-logged, so read permissions are not assessed.",
       },
       {
         name: "Break-glass access",
         description:
-          "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once — and are deliberately excluded from API keys, which are not people.",
+          "Time-boxed permission elevation: request specific permissions for a number of minutes with a reason, someone else approves, and it lapses on its own. Grants apply to every surface at once and are excluded from API keys.",
       },
       {
         name: "Session recordings",
         description:
-          "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window.",
+          "Replayable asciicasts of SSH sessions opened through the cloud, downloadable in asciinema's format. Opt-in per organization, with a per-organization retention window.",
       },
       {
         name: "Shared consoles",
         description:
-          "Pair-on-prod: fan a live cloud SSH session out to invited colleagues, with exactly one of them holding the keyboard. The invite link is a locator, never a capability — joining needs live org membership and the same `resources:execute` a direct terminal to that resource needs, re-derived on join, on attach and on a sweep while attached. Every join, leave, role change, handover and revocation is audit-logged, and participants are attributed in the session recording's metadata and on its timeline.",
+          "Pair-on-prod: share a live cloud SSH session with invited colleagues, with exactly one holding the keyboard. The invite link is only a locator; joining needs org membership and the same `resources:execute` a direct terminal needs. Joins, leaves, role changes, handovers and revocations are audit-logged.",
       },
       {
         name: "Synthetic probes",
@@ -506,52 +456,52 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Quota radar",
         description:
-          "How close each account is to the limits its provider enforces, with the trend fitted over recent readings. Both halves of every row come from the provider — nothing is filled in from published defaults, because an account with an approved increase would otherwise read as exhausted while it has headroom. A provider with no quota API contributes nothing rather than zero.",
+          "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero.",
       },
       {
         name: "Incidents",
         description:
-          "Incidents the organization declares itself \u2014 not to be confused with the provider status incidents under Resources, which are somebody else's outage. Declaring records the incident and, optionally, opens a change freeze, pins the moment, announces through the org's alert routing rules and posts a public status-page update; each side effect is recorded as an artefact whose failure is stored rather than thrown, so nothing an integration does can lose the declaration. The timeline is assembled on read by joining feeds that already exist, and the postmortem export pre-fills everything except the judgement.",
+          "Incidents the organization declares itself (not the provider status incidents under Resources). Declaring records the incident and can open a change freeze, pin the moment, announce through alert routing and post a status-page update; each side effect is recorded as an artefact, and a failure is stored rather than thrown. The timeline is assembled on read, and the postmortem export pre-fills everything except the judgement.",
       },
       {
         name: "Wallboard",
         description:
-          'One screen, read from across the room. Every other page here is designed for somebody sitting at it \u2014 dense tables, hover states, filters \u2014 and none of that survives being put on a television four metres away, which is where a team actually wants "is anything wrong". So this is a different reading of the same data, built on one rule: a wallboard may only show things that are true right now and that somebody would cross a room to look at. No history, no trends, no breakdowns. A source that fails is named on the screen and turns the wall amber, because a wall showing green because a query threw is worse than a blank one.',
+          "One screen for a wall display. It shows only what is true right now and worth crossing a room for: no history, trends or breakdowns. A source that fails is named on screen and turns the wall amber rather than showing green.",
       },
       {
         name: "Operations calendar",
         description:
-          "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id.",
+          "One time axis over change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record; it is recomputed on every read, and a failing source costs only its own kind. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential and which carries scheduling facts only.",
       },
       {
         name: "Runbooks",
         description:
-          "The checklist somebody wrote at 03:00, made runnable — an ordered set of steps, each either a manual tick, a link, or a button that records which workflow run was started. Performing one snapshots every step's title into the run, so the record of what somebody was asked to do survives the runbook being rewritten next week; two responders can tick different steps at the same moment without losing each other's work; and closing a run never settles its outstanding steps, because a checklist that ended early is exactly what a postmortem needs to know. Reading and performing take `resources:read` — a checklist nobody on call can open is worse than no checklist — while editing takes `org:settings:write`.",
+          "Runnable checklists: ordered steps, each a manual tick, a link, or a button that records which workflow run was started. A run snapshots every step's title, concurrent ticks do not overwrite each other, and closing a run leaves outstanding steps unsettled. Reading and performing take `resources:read`; editing takes `org:settings:write`.",
       },
       {
         name: "On-call",
         description:
-          "Who to wake, rather than which channel to shout into. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time, so a rule reading \"database alerts \u2192 whoever is on call\" needs no edit at handover. Shift boundaries are calendar-day arithmetic in the rotation's own zone \u2014 a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving change. Covers beat the rotation for exactly their window and are audit-logged, which is what lets any member arrange one at 17:55 on a Friday without an admin.",
+          "Who to wake. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time. Shift boundaries are calendar-day arithmetic in the rotation's zone, so daylight-saving changes do not drift. Covers override the rotation for their window and are audit-logged.",
       },
       {
         name: "Query monitors",
         description:
-          "A SQL query on a schedule, with a threshold and an alert. Metric alerts watch what the provider reports \u2014 CPU, connections, queue depth. Nothing watched what the data itself says, which is where a whole class of incidents lives: the orders table stopped growing, the dead-letter queue has 4,000 rows in it, yesterday's ETL wrote nought. A monitor may only run a single read-only statement, enforced by an allowlist of leading keywords on every execution rather than only on save; a failed run is `unknown` rather than `ok`, because it has told you nothing about the data; and the alert fires on the run that reaches the consecutive-breach threshold and not on every run past it.",
+          "A SQL query on a schedule, with a threshold and an alert, for what the data itself says (a table stopped growing, a dead-letter queue filling). Only a single read-only statement is allowed, checked on every execution. A failed run is `unknown`, not `ok`, and the alert fires on the run that reaches the consecutive-breach threshold, not on every run after.",
       },
       {
         name: "Price catalog",
         description:
-          "Every catalog provider's published list prices, normalized: products with their specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where the provider publishes them). Search, filter and compare equivalent instances across providers by spec. Figures are list prices, never an org's negotiated rates; each provider names its source. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one.",
+          "Published list prices for every catalog provider, normalized: products with specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where published). Search and compare equivalent instances across providers. These are list prices, never an org's negotiated rates. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one.",
       },
       {
         name: "Carbon",
         description:
-          "Estimated operational carbon beside the cost, with every assumption on the response. A resource whose provider, region or size cannot be placed against a published figure produces no estimate at all rather than a guessed one \u2014 a carbon number computed against a guessed grid is worse than no number, because it is a number somebody will put in a report. Coefficients are reproduced from the Cloud Carbon Footprint project and are not measured by us; the scope is operational compute, and storage, network and embodied emissions are excluded and said so.",
+          "Estimated operational carbon beside the cost, with every assumption on the response. A resource whose provider, region or size cannot be matched to a published figure gets no estimate rather than a guess. Coefficients come from the Cloud Carbon Footprint project and are not measured by us; storage, network and embodied emissions are excluded.",
       },
       {
         name: "Status pages",
         description:
-          "Public, unauthenticated views of a chosen set of synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history — never probe URLs, resource ids or account names.",
+          "Public, unauthenticated views of chosen synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history, never probe URLs, resource ids or account names.",
       },
       {
         name: "Ownership",
@@ -581,7 +531,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Bastions",
         description:
-          "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP.",
+          "Per-account egress agents; register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP.",
       },
       { name: "Agents", description: "Agent VM defaults, sessions, and reconciliation helpers." },
       { name: "Team", description: "Members and invitations." },
@@ -624,7 +574,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Alerts",
         description:
-          "Ordered alert routing rules — which alerts reach which destinations, with quiet hours and escalation — plus the held and awaiting-acknowledgement delivery queue.",
+          "Ordered alert routing rules (which alerts reach which destinations, with quiet hours and escalation) plus the held and awaiting-acknowledgement delivery queue.",
       },
       {
         name: "Slack",

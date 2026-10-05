@@ -81,7 +81,7 @@ export const gcpBusinessMetricSource: BusinessMetricSourceDeclaration = {
       type: "sql",
       required: true,
       description:
-        "A single SELECT returning `day`, `value` and optionally `label`. {{from}}, {{to}}, {{to_exclusive}} and {{timezone}} are replaced with quoted values for the import window. Each run is checked with a dry run first, may scan at most 100 GiB, and is refused unless BigQuery reports a SELECT.",
+        "A single SELECT returning `day`, `value` and optionally `label`. {{from}}, {{to}}, {{to_exclusive}} and {{timezone}} are replaced with quoted values for the import window. Runs are dry-run first and capped at 100 GiB scanned.",
       placeholder:
         "SELECT DATE(created_at, {{timezone}}) AS day, COUNT(DISTINCT customer_id) AS value\nFROM orders\nWHERE DATE(created_at, {{timezone}}) BETWEEN {{from}} AND {{to}}\nGROUP BY day",
     },

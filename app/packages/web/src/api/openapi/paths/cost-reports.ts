@@ -85,7 +85,7 @@ export const CostGraphConfig = strict({
     .string()
     .optional()
     .describe(
-      "A scenario model (see /cost-scenarios) overlaid on the forecast — known future cost the " +
+      "A scenario model (see /cost-scenarios) overlaid on the forecast; known future cost the " +
         "trend cannot see, drawn as a second dashed line beside the trend rather than instead " +
         "of it. Only meaningful alongside `showForecast`.",
     ),
@@ -136,7 +136,7 @@ export const CostGraphConfig = strict({
 })
   .describe(
     "The saved graph. Identical to the config an ad-hoc `cost_graph` dashboard widget stores " +
-      "inline — a report is that config given a name and an id.",
+      "inline: a report is that config given a name and an id.",
   )
   .openapi("CostGraphConfig");
 
@@ -146,7 +146,7 @@ const FolderId = z
   .describe(
     "Folder the report is filed under (see /cost-report-folders); null is the top level of the " +
       "Reports list. Moving a report is this same PUT with a different folderId; an id from " +
-      "another org is a 400. Deleting a folder never deletes its reports — they fall back to " +
+      "another org is a 400. Deleting a folder never deletes its reports; they fall back to " +
       "the top level.",
   );
 
@@ -175,7 +175,7 @@ const CostReport = strict({
   placements: z
     .array(CostReportPlacement)
     .describe(
-      "The dashboards carrying a `cost_report` card for this report. Empty is normal — a report " +
+      "The dashboards carrying a `cost_report` card for this report. Empty is normal: a report " +
         "exists, and can be run, whether or not any dashboard shows it. Deleting the report " +
         "removes these cards; removing a card leaves the report alone.",
     ),
@@ -326,7 +326,7 @@ export function registerCostReportPaths(ctx: BuildContext) {
     summary: "Update a cost report",
     description:
       "Replaces the report's name, description, config and folder. Every dashboard showing the " +
-      "report picks up the new config — that is what referencing a report by id buys.",
+      "report picks up the new config; that is what referencing a report by id buys.",
     request: {
       params: idParam(),
       body: { content: { "application/json": { schema: CostReportInput } }, required: true },
@@ -345,7 +345,7 @@ export function registerCostReportPaths(ctx: BuildContext) {
     tags: ["Cost reports"],
     summary: "Delete a cost report",
     description:
-      "Soft delete. Every dashboard card pointing at the report is removed with it — a card whose " +
+      "Soft delete. Every dashboard card pointing at the report is removed with it; a card whose " +
       "report is gone could only ever render as an unavailable tile.",
     request: { params: idParam() },
     responses: {

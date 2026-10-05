@@ -65,7 +65,7 @@ const LinearVerifyResult = strict({
 });
 
 const LinearTeam = strict({
-  id: z.string().openapi({ description: "Team id (UUID) — what issueCreate wants." }),
+  id: z.string().openapi({ description: "Team id (UUID), what issueCreate wants." }),
   key: z.string().openapi({
     description: "Short prefix issue identifiers are built from.",
     example: "ENG",
@@ -98,7 +98,7 @@ const CreateLinearIssueInput = strict({
     .optional()
     .openapi({
       description:
-        "Markdown, passed to Linear as-is — unlike Jira, where the server converts plain text " +
+        "Markdown, passed to Linear as-is; unlike Jira, where the server converts plain text " +
         "to Atlassian Document Format.",
     }),
   labelIds: z.array(z.string().max(64)).max(20).optional().openapi({
@@ -126,7 +126,7 @@ const LinearLinksQuery = strict({
     .optional()
     .openapi({
       description:
-        "Repeat to narrow to specific findings. Omit to return every link of the kind — this is " +
+        "Repeat to narrow to specific findings. Omit to return every link of the kind; this is " +
         "the batch lookup a list view makes once instead of one request per row.",
     }),
 });
@@ -212,7 +212,7 @@ export function registerLinearPaths(ctx: BuildContext) {
     tags: ["Linear"],
     summary: "List Linear teams",
     description:
-      "Backs the team picker, so nobody has to know a team id by hand — issueCreate requires " +
+      "Backs the team picker, so nobody has to know a team id by hand; issueCreate requires " +
       "one, and every issue belongs to exactly one team.",
     request: { params: OrgIdParam },
     responses: {

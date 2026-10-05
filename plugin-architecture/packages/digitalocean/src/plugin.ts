@@ -62,7 +62,7 @@ const manifest: PluginManifest = {
       key: "spacesAccessKeyId",
       label: "Spaces Access Key ID",
       description:
-        "Optional S3-compatible Spaces access key. Required to list and manage existing Spaces buckets; bucket creation can auto-mint one when the API token has spaces_key:create_credentials.",
+        "Optional S3-compatible Spaces access key, needed to list and manage existing buckets. Bucket creation can generate one if the API token has spaces_key:create_credentials.",
       sensitive: true,
       optional: true,
       placeholder: "DO00...",

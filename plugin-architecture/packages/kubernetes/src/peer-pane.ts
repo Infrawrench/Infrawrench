@@ -103,7 +103,7 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
 
   if (costs.unpriced) {
     const title =
-      "Showing capacity and efficiency without cost — no hourly rate is available for this cluster's nodes.";
+      "Showing capacity and efficiency without cost: no hourly rate is available for this cluster's nodes.";
     return { guidance: { title, suggestions: [...NO_RATE_GUIDANCE] } };
   }
 
@@ -120,7 +120,7 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
   const idle = costs.cluster.dailyIdleCost;
   if (idle != null && idle > 0) {
     suggestions.push(
-      `Idle, schedulable capacity accounts for ${formatDailyCost(idle, costs.currency)} — that is the cluster being larger than its workloads, not any one team's spend.`,
+      `Idle, schedulable capacity accounts for ${formatDailyCost(idle, costs.currency)}. That is the cluster being larger than its workloads, not any one team's spend.`,
     );
   }
 
@@ -141,7 +141,7 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
     if (costs.gpuMetrics) suggestions.push(describeGpuMetricsSource(costs.gpuMetrics));
     if (gpu.priceBases.includes("remainder")) {
       suggestions.push(
-        "Some GPU models have no published per-GPU reference price, so their GPU share is the node price less CPU and memory at reference rates. Set `gpu/<model>=<hourly price>` in the account's rates to price them exactly.",
+        "Some GPU models have no published reference price, so their share is estimated. Set `gpu/<model>=<hourly price>` in the account's rates to price them exactly.",
       );
     }
   }
@@ -159,17 +159,17 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
   }
   if (storage.unboundCount > 0) {
     suggestions.push(
-      `${storage.unboundCount} claim${storage.unboundCount === 1 ? "" : "s"} never bound to a volume — nothing was provisioned, so nothing is charged, but the pods waiting on them cannot start.`,
+      `${storage.unboundCount} claim${storage.unboundCount === 1 ? "" : "s"} never bound to a volume. Nothing is charged, but the pods waiting on them cannot start.`,
     );
   }
   if (storage.gib > 0 && storage.dailyAttributedCost == null) {
     suggestions.push(
-      `${Math.round(storage.gib)}Gi of persistent volumes are shown without cost — no per-GiB-month price is configured for ${storage.unpricedClasses.join(", ") || "these storage classes"}.`,
+      `${Math.round(storage.gib)}Gi of persistent volumes are shown without cost. No per-GiB-month price is configured for ${storage.unpricedClasses.join(", ") || "these storage classes"}.`,
     );
   }
   if (loadBalancers.count > 0 && loadBalancers.anyUnpriced) {
     suggestions.push(
-      `${loadBalancers.provisionedCount} provisioned load balancer${loadBalancers.provisionedCount === 1 ? "" : "s"} ${loadBalancers.provisionedCount === 1 ? "is" : "are"} counted without cost — no per-load-balancer price is configured.`,
+      `${loadBalancers.provisionedCount} provisioned load balancer${loadBalancers.provisionedCount === 1 ? "" : "s"} ${loadBalancers.provisionedCount === 1 ? "is" : "are"} counted without cost. No per-load-balancer price is configured.`,
     );
   }
   if (costs.cluster.hourlyControlPlaneCost == null) {
@@ -178,7 +178,7 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
     // plane really is already in the node compute above, and saying so is the
     // only way a reader can tell that case from a missing price.
     suggestions.push(
-      "No managed control-plane fee is included. On EKS, GKE or AKS that flat per-cluster charge is on the cloud account; on a self-managed cluster it is already counted, because the control-plane nodes are nodes.",
+      "No managed control-plane fee is included. On EKS, GKE or AKS that flat charge is on the cloud account.",
     );
   }
 
@@ -186,7 +186,7 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
 
   return {
     guidance: {
-      title: `Derived allocation — node prices from ${describeRateSource(costs.rateSource)}. These are apportioned estimates, not billed amounts.`,
+      title: `Derived allocation using node prices from ${describeRateSource(costs.rateSource)}. Estimates, not billed amounts.`,
       suggestions,
     },
   };

@@ -23,8 +23,7 @@ import { c, printJson, println, printTable, type Column } from "../output";
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
     throw new CliError(
-      "Invoices live in Infrawrench Cloud — they bill for spend collected server-side, and a " +
-        "local-only workspace has no collected spend to bill.",
+      "Invoices live in Infrawrench Cloud, and a local-only workspace has no collected spend to bill.",
     );
   }
 }
@@ -110,9 +109,8 @@ export async function cmdInvoices(ctx: CliContext): Promise<void> {
   println();
   println(
     c.dim(
-      "A draft's figures are recomputed from live spend every time it is read, so the list does " +
-        "not compute them — run `infrawrench invoices <number|customer>` for a draft's current " +
-        "total. An approved or sent invoice is frozen and cannot change.",
+      "Draft totals are not computed in this list. Run `infrawrench invoices <number|customer>` " +
+        "for a draft's current total. Approved and sent invoices are frozen.",
     ),
   );
 }
@@ -223,14 +221,14 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
         ),
   );
   if (invoice.status === "void" && invoice.voidReason) {
-    println(c.red(`Voided — ${invoice.voidReason}`));
+    println(c.red(`Voided: ${invoice.voidReason}`));
   }
   // Delivery, when there has been an attempt. Worth a line in a reconciliation
   // script: "sent" is a decision a person made, "delivered" is a thing that
   // either happened or did not, and only the second is checkable here.
   if (invoice.delivery) {
     const { status, delivered, recipients, attemptedAt, error } = invoice.delivery;
-    const summary = `Delivery: ${status} — ${delivered}/${recipients.length} recipient${
+    const summary = `Delivery: ${status}, ${delivered}/${recipients.length} recipient${
       recipients.length === 1 ? "" : "s"
     } on ${attemptedAt.slice(0, 10)}`;
     println(status === "succeeded" ? c.dim(summary) : c.yellow(summary));
@@ -293,7 +291,7 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
   println(
     `  rules      ${
       !d.applyBillingRules
-        ? "pass-through — no billing rule was applied"
+        ? "pass-through. No billing rule was applied"
         : d.rules.length === 0
           ? "the organisation has no billing rules"
           : d.rules.map((r) => `${r.name} (${r.summary})`).join("; ")
@@ -314,7 +312,7 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
   if (d.unconverted.length > 0) {
     println(
       c.yellow(
-        `  warning    no exchange rate stated for ${d.unconverted.join(", ")} — those amounts ` +
+        `  warning    no exchange rate stated for ${d.unconverted.join(", ")}. Those amounts ` +
           "are carried in their own currency, and this invoice cannot be approved until a rate " +
           "exists",
       ),

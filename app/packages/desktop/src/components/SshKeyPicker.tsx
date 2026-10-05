@@ -214,7 +214,7 @@ export function SshKeyPicker({
                     value="1password"
                     // i18n-ignore: product name
                     label="1Password"
-                    sublabel={gt("running — ")}
+                    sublabel={gt("running: ")}
                     selected={selectedKey?.type === "1password"}
                     onSelect={() => void selectKey({ type: "1password" })}
                   />
@@ -230,7 +230,7 @@ export function SshKeyPicker({
                     value="pageant"
                     // i18n-ignore: product name
                     label="Pageant"
-                    sublabel={gt("running — ")}
+                    sublabel={gt("running: ")}
                     selected={selectedKey?.type === "pageant"}
                     onSelect={() => void selectKey({ type: "pageant" })}
                   />

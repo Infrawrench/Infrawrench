@@ -34,7 +34,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Batch API key from the Speechmatics Portal — Manage workspace › API keys. Sent as `Authorization: Bearer …`. This is the key that lists and submits transcription jobs; it cannot read the Management API.",
+        "Batch API key from the Speechmatics Portal (Manage workspace › API keys). Lists and submits transcription jobs; it cannot read the Management API.",
       sensitive: true,
       placeholder: "your-speechmatics-api-key",
       helpLink: {
@@ -46,7 +46,7 @@ const manifest: PluginManifest = {
       key: "region",
       label: "Region",
       description:
-        "Regional batch endpoint your jobs live on. Jobs are region-scoped — a job submitted to eu1 is invisible from us1 or au1, and every request for a job must go to the same region. Pick the region your API key was created in. Note that au1 is batch-only.",
+        "Regional batch endpoint. Jobs are only visible in the region they were submitted to, so pick the region your API key was created in. au1 is batch-only.",
       sensitive: false,
       defaultValue: "eu1",
       regions: [
@@ -59,7 +59,7 @@ const manifest: PluginManifest = {
       key: "managementToken",
       label: "Management Token (optional)",
       description:
-        "Optional. A management token from the Portal — Manage workspace › Management tokens. This is a *different* credential to the API key above, and it talks to a different host: the Management API is served from https://mp.speechmatics.com/v1, not the regional ASR endpoint. Without it the Projects and API Keys resource types stay empty; transcription jobs and the Speech tab are unaffected. Each token carries its own permissions: View projects and View API keys to list, Manage projects to create, rename and delete projects, Create API key and Delete API keys for the key actions.",
+        "Optional. A management token from the Portal (Manage workspace › Management tokens), separate from the API key above. Without it the Projects and API Keys lists stay empty. It needs View projects and View API keys to list, Manage projects to edit projects, and Create/Delete API keys for key actions.",
       sensitive: true,
       optional: true,
       placeholder: "your-speechmatics-management-token",

@@ -100,7 +100,7 @@ function statusFor(r: ResourceInstance): ResourceStatus | undefined {
   }
 }
 
-const PRICING_NOTE = `Estimated: usage from CoreWeave's FOCUS export multiplied by your negotiated rates where you entered them on the account, otherwise CoreWeave's published on-demand prices (read ${PRICING_AS_OF}). Credits, discounts not entered as rates, and tax are not included.`;
+const PRICING_NOTE = `Estimated: FOCUS export usage times your negotiated rates, else CoreWeave's published on-demand prices (read ${PRICING_AS_OF}). Credits, other discounts and tax are not included.`;
 
 function renderOrganization(r: ResourceInstance): DetailViewSchema {
   const f = r.fields;
@@ -311,7 +311,7 @@ function renderNodePool(r: ResourceInstance): DetailViewSchema {
             type: "plugin-action",
             actionId: "scale-to-zero",
             confirmMessage:
-              "Scale this Node Pool to zero Nodes? Running workloads on it are evicted. The current size is remembered so Restore size can bring it back, but capacity is not held for you.",
+              "Scale this Node Pool to zero Nodes? Running workloads are evicted. Restore size brings it back, but capacity is not held.",
             successMessage: "Node Pool scaling to zero",
           },
         },

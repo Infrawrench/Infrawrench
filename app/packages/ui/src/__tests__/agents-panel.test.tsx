@@ -1037,7 +1037,7 @@ describe("AgentsPanel", () => {
       "true",
     );
     expect(screen.getByText("T3 Code access")).toBeInTheDocument();
-    expect(screen.getByText(/published on your tailnet with Tailscale Serve/)).toBeInTheDocument();
+    expect(screen.getByText(/published on your tailnet with Tailscale Serve/i)).toBeInTheDocument();
 
     // The search narrows the list like the region picker's.
     fireEvent.change(screen.getByRole("textbox", { name: "Search services" }), {

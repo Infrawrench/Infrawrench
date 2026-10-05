@@ -109,7 +109,7 @@ export const DropletResourceType = rt({
     // so1_5-, …): staying inside it keeps the resize like-for-like.
     sizeFamilyPattern: "^([a-z0-9_]+)-",
     resizeNote:
-      "DigitalOcean powers the Droplet off for the resize and boots it again afterwards. CPU/RAM only — the disk is unchanged, so the change can be reverted.",
+      "The Droplet is powered off during the resize, then restarted. CPU/RAM only, so it can be reverted.",
   },
   // Same field, same guarantee, as the posture check below: the lister always
   // writes `nextBackupStart` (the next window's ISO instant when backups are
@@ -129,8 +129,7 @@ export const DropletResourceType = rt({
       severity: "low",
       category: "data-protection",
       conditions: [{ fieldKey: "nextBackupStart", when: "equals", value: "" }],
-      reason:
-        "The Droplet has no scheduled backup window — automated backups are off, so recovery depends entirely on manual snapshots.",
+      reason: "Automated backups are off, so recovery depends on manual snapshots.",
     },
   ],
 });

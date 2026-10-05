@@ -44,7 +44,7 @@ const connectionUserAction = {
   command: "create-connection-user",
   title: "Create connection user",
   description:
-    "Atlas never returns a database user's password, so Infrawrench creates a user scoped to this cluster with a generated password and keeps the password encrypted, so this tab can connect. The project's IP access list must allow Infrawrench to reach the cluster.",
+    "Atlas never returns a database user's password, so Infrawrench creates a user for this cluster and stores its password encrypted. The project's IP access list must allow Infrawrench.",
   submitLabel: "Create user",
   fields: [
     {
@@ -104,7 +104,7 @@ export const ClusterResourceType = rt({
   name: "Cluster",
   id: "cluster",
   description:
-    "A dedicated Atlas cluster. Pause and resume it, scale its tier and storage, toggle auto-scaling and termination protection, take an on-demand snapshot, chart connections, operations, CPU, disk IOPS and replication lag, and open its data in the MongoDB console.",
+    "A dedicated Atlas cluster. Pause, resume, scale, snapshot, chart metrics, and open its data in the MongoDB console.",
   parentTypeId: PROJECT_PARENT,
   showInSidebar: true,
   fields: [

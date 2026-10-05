@@ -46,7 +46,7 @@ export function buildCloudKeyAgent(
       }
       if (key.isImported) {
         throw new Error(
-          `The cloud key "${key.name}" was imported — Infrawrench Cloud holds only its public half and cannot sign with it`,
+          `The cloud key "${key.name}" was imported. Infrawrench Cloud holds only its public half and cannot sign with it`,
         );
       }
       return key.publicKey;

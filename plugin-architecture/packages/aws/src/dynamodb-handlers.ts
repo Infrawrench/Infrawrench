@@ -226,7 +226,7 @@ export async function executeDynamoDbCommand(
       // We refuse: a DynamoDB "collection" is the table itself; deletion goes
       // through the standard resource-delete flow on the detail page.
       throw new Error(
-        "Cannot drop a DynamoDB collection from the document browser — use the resource Delete action to drop the whole table.",
+        "Cannot drop a DynamoDB collection from the document browser. Use the resource Delete action to drop the whole table.",
       );
     }
     case "createIndex": {

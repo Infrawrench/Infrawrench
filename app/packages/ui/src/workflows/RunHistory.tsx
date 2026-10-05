@@ -287,7 +287,7 @@ export function WorkflowRunHistory({
         (ordered.length === 0 ? (
           <div className="px-3 pb-2 opacity-50">
             {liveRunActive
-              ? gt("The first run is in progress — its logs are streaming above.")
+              ? gt("The first run is in progress; its logs are streaming above.")
               : gt("No runs yet. Press Run, or wait for this workflow’s trigger to fire.")}
           </div>
         ) : (

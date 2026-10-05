@@ -69,12 +69,12 @@ export function ExpiryAlertsSection() {
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Expiry radar")}</h2>
         <T>
           <p className="text-xs text-on-surface-muted mt-1">
-            Alerts for certificates, domains, tokens and keys approaching expiry — the deadlines the{" "}
+            Alerts for certificates, domains, tokens and keys nearing expiry (see the{" "}
             <button type="button" onClick={() => openWorkspace("expiring")} className="underline">
               Expiring screen
-            </button>{" "}
-            tracks. Turn the <strong>Expiry alerts</strong> trigger on for a channel or your phone
-            above to route them.
+            </button>
+            ). Turn the <strong>Expiry alerts</strong> trigger on for a channel or your phone above
+            to route them.
           </p>
         </T>
       </div>

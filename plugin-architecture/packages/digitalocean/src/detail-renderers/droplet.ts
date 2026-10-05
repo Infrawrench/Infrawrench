@@ -139,7 +139,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                 type: "plugin-action",
                 actionId: "power_cycle",
                 confirmMessage:
-                  "Power-cycle this droplet? Equivalent to pulling the plug \u2014 running processes will not flush state.",
+                  "Power-cycle this droplet? Equivalent to pulling the plug; running processes will not flush state.",
                 successMessage: "Power-cycle queued.",
               },
             },
@@ -196,7 +196,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                 command: "rebuild",
                 title: "Rebuild droplet",
                 description:
-                  "DESTRUCTIVE \u2014 rebuilds the droplet from an image. All data on the boot disk will be erased. The IP address is preserved.",
+                  "DESTRUCTIVE: rebuilds the droplet from an image and erases the boot disk. The IP address is kept.",
                 fields: [
                   {
                     key: "image",
@@ -249,7 +249,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                 type: "prompt-nosql-command",
                 command: "resize",
                 title: "Resize droplet",
-                description: `Current size: ${currentSizeSlug || "unknown"}. DigitalOcean powers the droplet down before resizing. Disk resizes are permanent (cannot scale down) \u2014 CPU/RAM-only resizes are reversible.`,
+                description: `Current size: ${currentSizeSlug || "unknown"}. The droplet is powered down for the resize. Disk resizes are permanent; CPU/RAM-only resizes are reversible.`,
                 fields: [
                   {
                     key: "size",
@@ -265,8 +265,8 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                     required: true,
                     defaultValue: "false",
                     options: [
-                      { id: "false", label: "No (CPU/RAM only \u2014 reversible)" },
-                      { id: "true", label: "Yes (permanent \u2014 cannot scale down later)" },
+                      { id: "false", label: "No (CPU/RAM only, reversible)" },
+                      { id: "true", label: "Yes (permanent, cannot scale down later)" },
                     ],
                   },
                 ],
@@ -297,7 +297,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                 actionId: "password_reset",
                 confirmMessage:
                   "Reset the root password? DigitalOcean will email the new password to the account owner.",
-                successMessage: "Password reset queued \u2014 check your DO account email.",
+                successMessage: "Password reset queued. Check your DO account email.",
               },
             },
           ],
@@ -404,7 +404,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                       command: "restore",
                       title: "Restore from backup or snapshot",
                       description:
-                        "DESTRUCTIVE \u2014 replaces the boot disk with the chosen image. The droplet is powered down during the restore.",
+                        "DESTRUCTIVE: replaces the boot disk with the chosen image. The droplet is powered down during the restore.",
                       fields: [
                         {
                           key: "image",
@@ -431,8 +431,8 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
                     kind: "text" as const,
                     variant: "muted" as const,
                     content: backupsEnabled
-                      ? "No restore points yet \u2014 backups are enabled but the first one runs within ~24 hours of enabling. Use Take Named Snapshot above for an immediate restore point."
-                      : "No restore points yet \u2014 enable backups below, or use Take Named Snapshot above to create one now.",
+                      ? "No restore points yet. The first backup runs within ~24 hours; use Take Named Snapshot for one now."
+                      : "No restore points yet. Enable backups below, or use Take Named Snapshot.",
                   },
                 ]),
           ],
@@ -476,7 +476,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
               command: "restore",
               title: "Restore from this backup",
               description:
-                "DESTRUCTIVE \u2014 replaces the boot disk with this backup image. The droplet is powered down during the restore.",
+                "DESTRUCTIVE: replaces the boot disk with this backup image. The droplet is powered down during the restore.",
               fields: [
                 {
                   key: "image",
@@ -500,7 +500,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
               type: "prompt-nosql-command" as const,
               command: "restore",
               title: "Restore from this backup",
-              description: "DESTRUCTIVE \u2014 replaces the boot disk with this backup image.",
+              description: "DESTRUCTIVE: replaces the boot disk with this backup image.",
               fields: [
                 {
                   key: "image",
@@ -575,8 +575,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
             {
               kind: "text",
               variant: "muted",
-              content:
-                "Click a snapshot to open it \u2014 rename, delete, or create a new droplet from there.",
+              content: "Click a snapshot to rename it, delete it, or create a new droplet.",
             },
           ],
         },

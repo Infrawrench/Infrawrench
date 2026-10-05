@@ -38,7 +38,7 @@ export function ProbesScreen() {
   const list = probes.data?.probes ?? [];
   if (list.length === 0) {
     return (
-      <EmptyView message="No probes yet. Create one on the web or desktop app — the editor suggests endpoints from your synced resources." />
+      <EmptyView message="No probes yet. Create one on the web or desktop app; the editor suggests endpoints from your synced resources." />
     );
   }
 

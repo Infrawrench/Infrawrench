@@ -5,12 +5,12 @@ import type { BuildContext } from "../context";
 const DnsTargetClassification = z.enum(["owned", "dangling", "external", "not-analysed"]).openapi({
   description:
     "What can be said about a record target from synced state alone. " +
-    "`owned` — the value is an identity of a synced resource. " +
-    "`dangling` — the value falls inside a provider namespace this workspace manages " +
+    "`owned`: the value is an identity of a synced resource. " +
+    "`dangling`: the value falls inside a provider namespace this workspace manages " +
     "(an S3 endpoint, a `*.vercel.app` alias) and no synced resource claims it, which is " +
     "the subdomain-takeover signature. " +
-    "`external` — the value points somewhere there is no declaration for; not a finding. " +
-    "`not-analysed` — the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV).",
+    "`external`: the value points somewhere there is no declaration for; not a finding. " +
+    "`not-analysed`: the record type carries no host target that is reasoned about (TXT, MX, SOA, CAA, SRV).",
 });
 
 export function registerDnsPaths(ctx: BuildContext) {
@@ -90,7 +90,7 @@ export function registerDnsPaths(ctx: BuildContext) {
       .int()
       .nullable()
       .describe(
-        "The provider's own record count, when reported. May exceed `recordCount` — several " +
+        "The provider's own record count, when reported. May exceed `recordCount`: several " +
           "plugins list zones without listing their records.",
       ),
     danglingCount: z.number().int(),
@@ -119,7 +119,7 @@ export function registerDnsPaths(ctx: BuildContext) {
     skippedNamespaces: z
       .array(DnsSkippedNamespace)
       .describe(
-        "Provider namespaces that were declared but not evaluated, and why — either no account " +
+        "Provider namespaces that were declared but not evaluated, and why; either no account " +
           "for the plugin is connected, or no claimant resource has synced. Both are missing data " +
           "rather than a clean bill of health, so they are reported rather than hidden.",
       ),
@@ -135,7 +135,7 @@ export function registerDnsPaths(ctx: BuildContext) {
       "One view over every zone and record across the connected DNS providers (Cloudflare, " +
       "Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record target " +
       "classified against the rest of the workspace. No provider API calls are made and no DNS " +
-      "is resolved — results reflect the last sync.\n\n" +
+      "is resolved: results reflect the last sync.\n\n" +
       "A `dangling` target is a subdomain-takeover candidate: the record points into a provider " +
       "namespace this workspace manages and nothing synced claims it. The same records surface " +
       "as `dns-dangling-target` findings on `GET /posture` and alert through the posture " +

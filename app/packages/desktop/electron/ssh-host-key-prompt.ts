@@ -65,7 +65,7 @@ export function promptHostKeyDecision(input: {
   return new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
       if (pending.delete(requestId)) {
-        console.warn(`[ssh] host-key prompt for ${input.host}:${input.port} timed out — denying.`);
+        console.warn(`[ssh] host-key prompt for ${input.host}:${input.port} timed out, denying.`);
         resolve(false);
       }
     }, PROMPT_TIMEOUT_MS);
@@ -79,7 +79,7 @@ export function promptHostKeyDecision(input: {
       clearTimeout(timer);
       pending.delete(requestId);
       console.warn(
-        `[ssh] no renderer window available to confirm host key for ${input.host}:${input.port} — denying.`,
+        `[ssh] no renderer window available to confirm host key for ${input.host}:${input.port}, denying.`,
       );
       resolve(false);
     }

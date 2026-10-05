@@ -341,7 +341,7 @@ async function evaluateQuery(
     const body =
       `${totalMatches}${anyTruncated ? "+" : ""} matching line${totalMatches === 1 && !anyTruncated ? "" : "s"} ` +
       `for "${row.search}" (${matchedStreams.map(formatCount).join(", ")})` +
-      (lastSample ? ` — ${lastSample.slice(0, 200)}` : "");
+      (lastSample ? `: ${lastSample.slice(0, 200)}` : "");
     const url = orgAppUrl(row.organizationId, "logs");
     const context = `Checked the last ${LOG_WORKSPACE_LIMITS.alertTailLines} lines per resource; next alert after the ${Math.round(LOG_WORKSPACE_LIMITS.alertCooldownMs / 60000)}-minute cooldown.`;
     const routed = await routeAlert({

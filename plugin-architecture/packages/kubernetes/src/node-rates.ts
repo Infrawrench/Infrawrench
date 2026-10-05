@@ -343,9 +343,9 @@ export function describeRateSource(source: RateSource): string {
  * pane, the docs and the cost declaration all say the same thing.
  */
 export const NO_RATE_GUIDANCE = [
-  "Open this cluster from its cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud or CoreWeave) rather than from a standalone Kubernetes account — the cloud plugin passes its node prices through automatically.",
+  "Open this cluster from its cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud or CoreWeave) rather than a standalone Kubernetes account, and node prices pass through automatically.",
   "Or set the optional “Node hourly rates” field on this Kubernetes account to a list like `s-2vcpu-4gb=0.0357, m5.large=0.096`.",
-  "The same field prices everything else a cluster costs: `controlPlane=0.10` for the managed-cluster fee, `loadBalancer=0.0149` per provisioned LoadBalancer Service, and `storage/*=0.10` per provisioned GiB-month (or `storage/gp3=0.08` for one class).",
-  "On GPU nodes, `gpu/a100-80gb=3.93` (or `gpu/*=2.50`) sets what one GPU costs per hour, which decides how much of the node's price is charged by GPU requests rather than by CPU and memory.",
+  "The same field prices the rest of the cluster: `controlPlane=0.10` for the managed-cluster fee, `loadBalancer=0.0149` per LoadBalancer Service, and `storage/*=0.10` per GiB-month (or `storage/gp3=0.08` for one class).",
+  "On GPU nodes, `gpu/a100-80gb=3.93` (or `gpu/*=2.50`) sets the hourly price of one GPU, which decides how much of the node is charged by GPU requests.",
   "Capacity, volume sizes, load-balancer counts, requests and efficiency are shown either way; only the money is missing.",
 ];

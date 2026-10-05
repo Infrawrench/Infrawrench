@@ -155,21 +155,21 @@ export class JiraApiError extends Error {
  */
 export function describeJiraError(status: number, body: string): string {
   const detail = extractJiraErrorDetail(body);
-  const suffix = detail ? ` — ${detail}` : "";
+  const suffix = detail ? `: ${detail}` : "";
 
   switch (status) {
     case 400:
-      return `Jira rejected the request (400)${suffix || " — the issue fields were not accepted."}`;
+      return `Jira rejected the request (400)${suffix || ". The issue fields were not accepted."}`;
     case 401:
       return "Jira rejected the credentials (401). Check the account email, and create a fresh API token if the old one was revoked.";
     case 403:
       return `Jira accepted the credentials but refused the action (403). The account needs Browse Projects and Create Issues on this project${suffix}`;
     case 404:
-      return `Jira returned 404${suffix || " — check the site URL, and that the project still exists and is visible to this account."}`;
+      return `Jira returned 404${suffix || ". Check the site URL, and that the project exists and is visible to this account."}`;
     case 429:
       return "Jira is rate limiting this site (429). Try again in a moment.";
     case 422:
-      return `Jira could not create the issue with this configuration (422)${suffix || " — the project likely has a required field with no default."}`;
+      return `Jira could not create the issue with this configuration (422)${suffix || ". The project likely has a required field with no default."}`;
     default:
       return status >= 500
         ? `Jira is unavailable (HTTP ${status})${suffix}`
@@ -245,7 +245,7 @@ export function parseJiraSiteUrl(raw: string): ParsedJiraSite {
   const host = parsed.hostname.toLowerCase();
   if (!ALLOWED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
     throw new JiraApiError(
-      `${host} is not a Jira Cloud site. Use the address you sign in at — it ends in .atlassian.net (older sites may use .jira.com).`,
+      `${host} is not a Jira Cloud site. Use the address you sign in at; it ends in .atlassian.net (older sites may use .jira.com).`,
     );
   }
 

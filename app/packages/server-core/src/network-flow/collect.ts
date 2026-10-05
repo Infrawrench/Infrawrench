@@ -225,7 +225,7 @@ export async function collectAccountNetworkFlows(
     // forever.
     if (options.lease?.signal.aborted) {
       console.warn(
-        `[network-flow] account ${accountId}: discarding ${day} — the plugin answered after ` +
+        `[network-flow] account ${accountId}: discarding ${day}; the plugin answered after ` +
           `authorization was withdrawn, so the day is incomplete`,
       );
       break;

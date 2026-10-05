@@ -115,7 +115,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
             <p className="text-sm text-on-surface-secondary">{gt("No connections yet.")}</p>
             <p className="text-xs text-on-surface-muted max-w-md">
               {gt(
-                'The graph is built from your synced cloud data — resources that sit inside another or whose fields name another resource — plus output references you wire yourself. Add an account and let it sync, or pick "Output reference" on a secret field when creating a resource.',
+                'The graph is built from synced cloud data and the output references you wire. Add an account and let it sync, or pick "Output reference" on a secret field when creating a resource.',
               )}
             </p>
           </>
@@ -237,7 +237,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
       {data.truncated && (
         <div className="shrink-0 px-4 py-1.5 border-b border-border text-xs text-warning">
           {gt(
-            "Too many links to draw them all — showing a partial graph. Open a single resource's Dependencies tab for its full neighbourhood.",
+            "Too many links to draw, so this graph is partial. Open a resource's Dependencies tab for its full neighbourhood.",
           )}
         </div>
       )}
@@ -381,13 +381,13 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
               >
                 <title>
                   {groupSize > 1
-                    ? gt("{count} × {name} — {type} · {account}", {
+                    ? gt("{count} × {name} · {type} · {account}", {
                         count: groupSize,
                         name: node.displayName,
                         type: gtData(node.resourceTypeLabel),
                         account: node.accountName,
                       })
-                    : gt("{name} — {type} · {account}", {
+                    : gt("{name} · {type} · {account}", {
                         name: node.displayName,
                         type: gtData(node.resourceTypeLabel),
                         account: node.accountName,

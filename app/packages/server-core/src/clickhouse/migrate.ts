@@ -196,7 +196,7 @@ export function withReplicatedEngines(stmt: string): string {
  */
 export async function migrateMetrics(): Promise<void> {
   if (!isClickHouseConfigured()) {
-    console.log("[clickhouse] metrics not configured — skipping migrate");
+    console.log("[clickhouse] metrics not configured; skipping migrate");
     return;
   }
   const replicated = process.env["CLICKHOUSE_METRICS_REPLICATED"] === "1";

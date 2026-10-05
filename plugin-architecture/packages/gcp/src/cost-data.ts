@@ -353,7 +353,7 @@ export async function fetchGcpCostData(
   const table = ctx.billingExportTable.trim();
   if (!table) {
     throw new CostSetupError(
-      "GCP has no spend API — costs come from the Cloud Billing “standard usage cost” " +
+      "GCP has no spend API. Costs come from the Cloud Billing “standard usage cost” " +
         "export to BigQuery. Turn the export on, then paste its project.dataset.table into " +
         "the account's “Billing export table” field.",
       { label: "Enable billing export to BigQuery", url: billingExportConsoleUrl(ctx.project) },

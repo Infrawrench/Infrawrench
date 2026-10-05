@@ -344,7 +344,7 @@ export function DashboardBody({
               widgetRef,
               <Card key={widget.id}>
                 <Text style={{ color: colors.textFaint, fontSize: 13 }}>
-                  {reports.isLoading ? "Loading report…" : `${widget.title} — report unavailable`}
+                  {reports.isLoading ? "Loading report…" : `${widget.title}, report unavailable`}
                 </Text>
               </Card>,
             );
@@ -395,7 +395,7 @@ export function DashboardBody({
             widgetRef,
             <Card key={widget.id}>
               <Text style={{ color: colors.textFaint, fontSize: 13 }}>
-                {budgets.isLoading ? "Loading budget…" : `${widget.title} — budget unavailable`}
+                {budgets.isLoading ? "Loading budget…" : `${widget.title}, budget unavailable`}
               </Text>
             </Card>,
           );

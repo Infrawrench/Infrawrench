@@ -58,7 +58,7 @@ function searchSources(text: string, into: Set<string>): void {
     if (!/^\[\d+\] /.test(line)) break;
     // `[n] title — url (age)`: the URL is the first token after the last
     // separator (a URL has no spaces, a title may contain the separator).
-    const sep = line.lastIndexOf(" — ");
+    const sep = line.lastIndexOf(" | ");
     if (sep < 0) continue;
     const url = line.slice(sep + 3).split(" ")[0];
     const normalized = url ? normalizeUrl(url) : null;

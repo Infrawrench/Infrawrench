@@ -1011,9 +1011,9 @@ export class DeepgramClient implements PluginClient {
             kind: "select",
             required: true,
             options: [
-              { id: "member", label: "member — transcribe, synthesize, read own usage" },
-              { id: "admin", label: "admin — manage keys, members and invites" },
-              { id: "owner", label: "owner — full control, including billing" },
+              { id: "member", label: "member: transcribe, synthesize, read own usage" },
+              { id: "admin", label: "admin: manage keys, members and invites" },
+              { id: "owner", label: "owner: full control, including billing" },
             ],
             defaultValue: "member",
             description: "A key can never be granted a scope wider than the key that created it.",
@@ -1583,7 +1583,7 @@ export class DeepgramClient implements PluginClient {
         modes: ["stt", "tts"],
         subtitle: "Round-trip audio against this project's Deepgram entitlements.",
         helpText:
-          "Text-to-speech runs on POST /v1/speak (mp3, 2,000 characters max). Transcription posts the clip's raw bytes to POST /v1/listen with punctuation, smart formatting, diarisation and utterance segmentation on, so the word table carries speaker labels.",
+          "Text-to-speech is limited to 2,000 characters (mp3). Transcription runs with punctuation, smart formatting, diarisation and utterance segmentation on, so words carry speaker labels.",
         ...(voices.length > 0 ? { voices } : {}),
         ...(defaultVoice ? { defaultVoice } : {}),
         voiceLabel: "Voice (Aura)",
@@ -1633,7 +1633,7 @@ export class DeepgramClient implements PluginClient {
             {
               kind: "text",
               content: secret
-                ? "The secret below is shown once. Deepgram never returns it again — copy it now."
+                ? "The secret below is shown once. Deepgram never returns it again, so copy it now."
                 : "Deepgram only returns a key's secret on the response that created it, so it cannot be revealed here.",
               variant: "muted",
             },
@@ -1738,7 +1738,7 @@ export class DeepgramClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Deepgram exposes consumption and prepaid credit, but no quota ceiling — there is no used-vs-limit gauge to draw.",
+                "Deepgram exposes usage and prepaid credit but no quota limit, so there is no gauge.",
               variant: "muted",
             },
           ],

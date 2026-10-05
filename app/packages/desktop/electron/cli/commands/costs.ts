@@ -115,7 +115,7 @@ export function parseDisplayFlags(range: RangeFlags): DisplayFlags {
     const measure = MEASURES.find((m) => m === range.measure);
     if (!measure) {
       throw new CliError(
-        `--measure must be one of ${MEASURES.join(", ")} — got "${range.measure}".`,
+        `--measure must be one of ${MEASURES.join(", ")} (got "${range.measure}").`,
         2,
       );
     }
@@ -125,7 +125,7 @@ export function parseDisplayFlags(range: RangeFlags): DisplayFlags {
     const binning = BINS[range.bin.toLowerCase()];
     if (!binning) {
       throw new CliError(
-        `--bin must be one of hour, day, week, month, quarter — got "${range.bin}".`,
+        `--bin must be one of hour, day, week, month, quarter (got "${range.bin}").`,
         2,
       );
     }
@@ -203,7 +203,7 @@ function parseCurrency(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   const code = raw.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code)) {
-    throw new CliError(`--currency must be a three-letter code like USD — got "${raw}".`, 2);
+    throw new CliError(`--currency must be a three-letter code like USD (got "${raw}").`, 2);
   }
   return code;
 }
@@ -268,7 +268,7 @@ function parseBasis(raw: string | undefined): CostBasis | undefined {
   if (raw === undefined) return undefined;
   const match = COST_BASES.find((b) => b === raw);
   if (!match) {
-    throw new CliError(`--basis must be one of ${COST_BASES.join(", ")} — got "${raw}".`, 2);
+    throw new CliError(`--basis must be one of ${COST_BASES.join(", ")} (got "${raw}").`, 2);
   }
   return match;
 }
@@ -279,7 +279,7 @@ export function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
     const match = CHARGE_TYPES.find((t) => t === value);
     if (!match) {
       throw new CliError(
-        `--charge-type must be one of ${CHARGE_TYPES.join(", ")} — got "${value}".`,
+        `--charge-type must be one of ${CHARGE_TYPES.join(", ")} (got "${value}").`,
         2,
       );
     }
@@ -322,7 +322,7 @@ export async function parseWhere(where: string | undefined): Promise<CostFilter[
  */
 export async function cmdCostTagKeys(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
+    throw new CliError("Cost data lives in Infrawrench Cloud. There is no local cost history.");
   }
   const org = await resolveOrg(ctx);
   const res = await orgFetch<{ values: Array<string | { value: string }> }>(
@@ -407,7 +407,7 @@ export async function resolveSavedFilterFlag(
       `--filter: no saved cost filter named "${wanted}".` +
         (saved.length > 0
           ? ` Saved filters: ${names}.`
-          : " This organization has no saved filters yet — create one from any cost editor."),
+          : " This organization has no saved filters yet. Create one from any cost editor."),
       2,
     );
   }
@@ -462,12 +462,12 @@ function printCollectionWarnings({ failing, empty, estimated }: CollectionState)
   }
   for (const account of empty) {
     println(`${c.dim("·")} ${c.bold(account.displayName)} ${c.dim("no spend data yet")}`);
-    println(`  ${c.dim("collected without error — the provider reported no spend")}`);
+    println(`  ${c.dim("collected without error. The provider reported no spend")}`);
   }
   for (const account of estimated) {
     println(`${c.dim("·")} ${c.bold(account.displayName)} ${c.dim("spend is estimated")}`);
     println(
-      `  ${c.dim("priced from current inventory at list rates — no billing API; runs low for anything deleted mid-period, and excludes credits, tax and refunds")}`,
+      `  ${c.dim("priced from current inventory at list rates. No billing API; runs low for anything deleted mid-period, and excludes credits, tax and refunds")}`,
     );
   }
   if (failing.length > 0 || empty.length > 0 || estimated.length > 0) println();
@@ -475,7 +475,7 @@ function printCollectionWarnings({ failing, empty, estimated }: CollectionState)
 
 export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
+    throw new CliError("Cost data lives in Infrawrench Cloud. There is no local cost history.");
   }
   const org = await resolveOrg(ctx);
 
@@ -618,9 +618,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   println(`${c.bold(org.displayName)} ${c.dim(`· ${scope}`)}  ${c.bold(totalLine)}`);
   if (basis === "amortized" && !collection.amortizing) {
     println(
-      c.dim(
-        "no connected provider reports amortized cost — these are the amounts you were charged",
-      ),
+      c.dim("no connected provider reports amortized cost. These are the amounts you were charged"),
     );
   }
   if (basis === "blended") {
@@ -679,7 +677,7 @@ export const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
 export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Anomaly detection runs on Infrawrench Cloud over your org's collected spend — there is no local cost history.",
+      "Anomaly detection runs on Infrawrench Cloud over your org's collected spend. There is no local cost history.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -703,7 +701,7 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   if (anomalies.length === 0) {
     println(
       c.dim(
-        "No anomalies. Each day's spend per provider and per service is compared against its own trailing 28-day baseline — nothing cleared the bar, and nothing started spending from scratch.",
+        "No anomalies. Each day's spend per provider and service is compared with its own trailing 28-day baseline.",
       ),
     );
     return;
@@ -817,7 +815,7 @@ function alertThresholdLabel(alert: CostAlert): string {
 export async function cmdCostAlerts(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Change alerts evaluate on Infrawrench Cloud over your org's collected spend — there is no local cost history.",
+      "Change alerts evaluate on Infrawrench Cloud over your org's collected spend. There is no local cost history.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -839,7 +837,7 @@ export async function cmdCostAlerts(ctx: CliContext, range: RangeFlags): Promise
   if (alerts.length === 0) {
     println(
       c.dim(
-        "No change alerts. A change alert fires when spend on a scope you choose moves more than a threshold you choose versus the prior period — distinct from budgets (an absolute monthly total) and anomaly detection (statistical outliers). Create one from the Costs panel.",
+        "No change alerts. A change alert fires when spend on a scope moves more than a threshold versus the prior period. Create one from the Costs panel.",
       ),
     );
     return;

@@ -121,7 +121,7 @@ export async function exportAzureCredential(
         ...(pw.endDateTime ? [{ label: "Expires", value: pw.endDateTime }] : []),
       ],
       warning:
-        "Save now. Microsoft Graph does not return this secret again — if lost, delete the credential (removePassword) and create a new one. Default expiry is 2 years.",
+        "Save now. Microsoft Graph does not return this secret again. If lost, delete the credential (removePassword) and create a new one. Default expiry is 2 years.",
     };
   }
 

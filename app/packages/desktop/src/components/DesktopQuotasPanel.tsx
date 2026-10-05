@@ -38,9 +38,7 @@ export function DesktopQuotasPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt(
-          "The quota radar requires cloud mode — sign in to sync. Readings are collected by the cloud poller on a schedule, and the trend needs the history it keeps.",
-        )}
+        {gt("The quota radar requires cloud mode: sign in to sync.")}
       </div>
     );
   }

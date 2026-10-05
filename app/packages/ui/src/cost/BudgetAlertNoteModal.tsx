@@ -94,8 +94,8 @@ export function BudgetAlertNoteModal({
         </h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            Why it fired, in a sentence. It is saved on the alert with your name, drawn as a note on{" "}
-            <strong className="font-medium">every cost chart</strong> covering <Var>{day}</Var>, and
+            Why it fired, in a sentence. Shown on{" "}
+            <strong className="font-medium">every cost chart</strong> covering <Var>{day}</Var> and
             posted under the alert in Slack and Teams.
           </p>
         </T>

@@ -35,7 +35,7 @@ export function CostCollectionNotice({ statuses }: { statuses: CostAccountStatus
           {failing.map((s) => (
             <View key={s.accountId} style={styles.item}>
               <Text style={styles.message}>
-                {failing.length > 1 ? `${s.displayName} — ` : ""}
+                {failing.length > 1 ? `${s.displayName}: ` : ""}
                 {s.costPollError!.message}
               </Text>
               {s.costPollError!.helpLink && (
@@ -49,7 +49,7 @@ export function CostCollectionNotice({ statuses }: { statuses: CostAccountStatus
             </View>
           ))}
           <Text style={styles.footnote}>
-            Collection retries on its own — fix the cause and the next run backfills the gap.
+            Collection retries on its own. Fix the cause and the next run backfills the gap.
           </Text>
         </View>
       )}
@@ -68,8 +68,8 @@ export function CostCollectionNotice({ statuses }: { statuses: CostAccountStatus
               </Text>
             ))}
           <Text style={styles.footnote}>
-            Collection ran without error — the provider just hasn&apos;t reported any spend. A
-            billing export enabled in the last day or two often has no rows to return yet.
+            Collection ran without error, but the provider has reported no spend yet. A billing
+            export enabled in the last day or two often has no rows.
           </Text>
         </View>
       )}

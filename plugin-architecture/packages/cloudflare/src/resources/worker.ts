@@ -29,7 +29,7 @@ export const WorkerResourceType = rt({
       label: "workers.dev subdomain",
       hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.[a-z0-9-]+\.workers\.dev`,
       reason:
-        "The name is free for anyone who can deploy a Worker on that account subdomain to claim, and Cloudflare will serve their script under your hostname.",
+        "Anyone who can deploy a Worker on that account subdomain can claim the name, and Cloudflare will serve their script under your hostname.",
     },
   ],
   supportsCreate: true,

@@ -71,7 +71,7 @@ export function renderR2BucketDetail(resource: ResourceInstance): DetailViewSche
         {
           kind: "text",
           content:
-            "The r2.dev URL serves every object in the bucket publicly. It is rate limited and meant for development; connect a custom domain for production traffic.",
+            "The r2.dev URL serves every object publicly. It is rate limited and meant for development; use a custom domain for production.",
           variant: "muted",
         },
         r2dev.enabled
@@ -335,7 +335,7 @@ export function renderQueueDetail(resource: ResourceInstance): DetailViewSchema 
           kind: "number",
           placeholder: "0",
           optional: true,
-          helpText: "Optional — delay before the message becomes available to consumers.",
+          helpText: "Optional delay before the message becomes available to consumers.",
         },
       ],
     },

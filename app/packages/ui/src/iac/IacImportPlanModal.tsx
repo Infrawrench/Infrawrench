@@ -121,17 +121,14 @@ export function IacImportPlanModal({
               {result.unsupported.length === 1 ? (
                 <T>
                   <p className="text-xs font-medium text-warning-strong">
-                    1 resource could not be adopted and was left out of the document entirely —
-                    declaring one without an import block would plan a <em>create</em> for something
-                    that already exists:
+                    1 resource could not be adopted and was left out:
                   </p>
                 </T>
               ) : (
                 <T>
                   <p className="text-xs font-medium text-warning-strong">
                     <Var>{result.unsupported.length}</Var> resources could not be adopted and were
-                    left out of the document entirely — declaring one without an import block would
-                    plan a <em>create</em> for something that already exists:
+                    left out:
                   </p>
                 </T>
               )}
@@ -139,7 +136,7 @@ export function IacImportPlanModal({
                 {result.unsupported.map((u) => (
                   <li key={u.resourceId} className="text-[11px] text-warning/90">
                     <span className="font-mono">{u.displayName}</span>{" "}
-                    <span className="text-warning/70">— {u.reason}</span>
+                    <span className="text-warning/70">({u.reason})</span>
                   </li>
                 ))}
               </ul>
@@ -152,21 +149,18 @@ export function IacImportPlanModal({
                 {result.exported.length === 1 ? (
                   <T>
                     <p className="text-xs text-on-surface-faint">
-                      1 resource. Put this in your Terraform configuration and run{" "}
-                      <code>terraform plan</code>: the <code>import</code> blocks adopt the live
-                      resources on the next apply, with no <code>terraform import</code> commands to
-                      run by hand. Secrets are referenced as <code>var.*</code> input variables and
-                      are never inlined.
+                      1 resource. Add this to your Terraform configuration and run{" "}
+                      <code>terraform plan</code>; the <code>import</code> blocks adopt it on the
+                      next apply. Secrets stay in <code>var.*</code> input variables.
                     </p>
                   </T>
                 ) : (
                   <T>
                     <p className="text-xs text-on-surface-faint">
-                      <Var>{result.exported.length}</Var> resources. Put this in your Terraform
-                      configuration and run <code>terraform plan</code>: the <code>import</code>{" "}
-                      blocks adopt the live resources on the next apply, with no{" "}
-                      <code>terraform import</code> commands to run by hand. Secrets are referenced
-                      as <code>var.*</code> input variables and are never inlined.
+                      <Var>{result.exported.length}</Var> resources. Add this to your Terraform
+                      configuration and run <code>terraform plan</code>; the <code>import</code>{" "}
+                      blocks adopt them on the next apply. Secrets stay in <code>var.*</code> input
+                      variables.
                     </p>
                   </T>
                 )}
@@ -177,7 +171,7 @@ export function IacImportPlanModal({
             ) : (
               <p className="text-xs text-on-surface-faint">
                 {gt(
-                  "Nothing to adopt — none of the selected resources can be both declared and imported. See the reasons above.",
+                  "Nothing to adopt: none of the selected resources can be imported. See the reasons above.",
                 )}
               </p>
             ))}

@@ -43,7 +43,7 @@ export const BatchResourceType = rt({
   outputs: [
     o("batchId", "Batch ID"),
     o("outputFileId", "Output File ID", {
-      description: "File containing the successful responses — empty until the batch completes",
+      description: "File with the successful responses; empty until the batch completes",
     }),
     o("errorFileId", "Error File ID"),
   ],

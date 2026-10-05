@@ -30,7 +30,7 @@ export function createCloudAgentClient(): AgentClient {
   const requireOrg = (): string => {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
-      throw new Error("Cloud agent sessions require an organization — sign in to sync.");
+      throw new Error("Cloud agent sessions require an organization: sign in to sync.");
     }
     return orgId;
   };

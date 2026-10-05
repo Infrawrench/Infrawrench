@@ -44,7 +44,7 @@ function parseBasis(raw: string | undefined): CostBasis | undefined {
   if (raw === undefined) return undefined;
   const match = COST_BASES.find((b) => b === raw);
   if (!match) {
-    throw new CliError(`--basis must be one of ${COST_BASES.join(", ")} — got "${raw}".`, 2);
+    throw new CliError(`--basis must be one of ${COST_BASES.join(", ")} (got "${raw}").`, 2);
   }
   return match;
 }
@@ -53,7 +53,7 @@ function parseCurrency(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   const code = raw.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code)) {
-    throw new CliError(`--currency must be a three-letter code like USD — got "${raw}".`, 2);
+    throw new CliError(`--currency must be a three-letter code like USD (got "${raw}").`, 2);
   }
   return code;
 }
@@ -74,8 +74,7 @@ function coverageLabel(metric: BusinessMetric): string {
 export async function cmdBusinessMetrics(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Business metrics live in Infrawrench Cloud — they only mean anything next to the spend " +
-        "they divide, and that has no local equivalent.",
+      "Business metrics live in Infrawrench Cloud, next to the spend they divide.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -207,7 +206,7 @@ export async function cmdUnitCosts(
   flags: UnitCostFlags,
 ): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Unit costs live in Infrawrench Cloud — there is no local cost history.");
+    throw new CliError("Unit costs live in Infrawrench Cloud. There is no local cost history.");
   }
   const org = await resolveOrg(ctx);
 
@@ -249,7 +248,7 @@ export async function cmdUnitCosts(
   const binning = range.groupBy ?? "daily";
   if (!["daily", "weekly", "monthly", "cumulative"].includes(binning)) {
     throw new CliError(
-      `--group-by must be one of daily, weekly, monthly, cumulative — got "${binning}".`,
+      `--group-by must be one of daily, weekly, monthly, cumulative (got "${binning}").`,
       2,
     );
   }
@@ -339,7 +338,7 @@ export async function cmdUnitCosts(
   if (response.gapBuckets > 0) {
     println(
       `${c.yellow("!")} ${c.bold(String(response.gapBuckets))} ${c.dim(
-        "period(s) have nothing to divide by — shown as “—”, not as zero. The spend is known; the ratio is not.",
+        "period(s) have nothing to divide by. Shown as “—”, not zero.",
       )}`,
     );
   }
@@ -354,7 +353,7 @@ export async function cmdUnitCosts(
   if (currencies.size > 1) {
     println(
       `${c.yellow("!")} ${c.dim(
-        "spend spans currencies with no stated rate, so each divides the metric on its own — these series are not comparable to each other",
+        "spend spans currencies with no stated rate, so each divides the metric on its own and the series are not comparable",
       )}`,
     );
   }

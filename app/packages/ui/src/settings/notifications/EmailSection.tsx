@@ -109,10 +109,8 @@ export function EmailSection({ orgId }: { orgId: string }) {
         <h3 className="text-sm font-semibold text-on-surface-secondary">{gt("Alert email")}</h3>
         <T>
           <p className="text-xs text-on-surface-muted mt-1 max-w-2xl">
-            Email members or extra addresses from the routing rules below, or straight from a
-            budget, a cost change alert, or the anomaly and commitment alert settings on the Costs
-            page. Each message has a plain-text and an HTML part, a link back to Infrawrench, and a
-            one-click unsubscribe link.
+            Email members or other addresses from the routing rules below, or directly from budgets
+            and cost alerts. Every message includes a one-click unsubscribe link.
           </p>
         </T>
         {!view.emailAvailable ? (

@@ -268,7 +268,7 @@ function LimitsSection({
       <h2 className="text-base font-semibold text-on-surface">{gt("Limits")}</h2>
       <p className="text-xs text-on-surface-faint">
         {gt(
-          "Environments spend real money, so they cannot be created without an expiry. This organization allows at most {max} hours, and pre-fills {def}. The hard ceiling is {hardMax} hours — an “ephemeral” environment that outlives a month is just infrastructure nobody owns.",
+          "Environments cost money, so every one needs an expiry. This organization allows at most {max} hours and defaults to {def}. The hard ceiling is {hardMax} hours.",
           {
             max: settings.maxTtlHours,
             def: settings.defaultTtlHours,
@@ -448,7 +448,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
             <h2 className="text-base font-semibold text-on-surface">{gt("Environments")}</h2>
             <p className="text-xs text-on-surface-faint">
               {gt(
-                "Copies stamped out of a template. Each one carries a lease on every resource it created, so it deletes itself when the countdown runs out.",
+                "Copies made from a template. Each deletes its resources when its lease runs out.",
               )}
             </p>
           </div>
@@ -487,7 +487,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
             <h2 className="text-base font-semibold text-on-surface">{gt("Templates")}</h2>
             <p className="text-xs text-on-surface-faint">
               {gt(
-                "A parameterised description of an environment you already have, built from each plugin's own create form. References between captured resources are kept as references.",
+                "Reusable descriptions of an existing environment, with parameters you set when creating a copy.",
               )}
             </p>
           </div>

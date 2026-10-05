@@ -16,7 +16,7 @@ function renderMetricsInterface(defs: WorkflowMetricDef[]): string {
     .map((m) => {
       const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(m.key) ? m.key : JSON.stringify(m.key);
       const unit = m.unit ? ` (${m.unit})` : "";
-      return `  /** ${m.label}${unit} — read/write; \`null\` until first set. */\n  ${prop}: ${metricTsType(m.type)} | null;`;
+      return `  /** ${m.label}${unit}: read/write; \`null\` until first set. */\n  ${prop}: ${metricTsType(m.type)} | null;`;
     })
     .join("\n");
   return `interface InfraMetrics {\n${props}\n}`;

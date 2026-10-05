@@ -51,9 +51,7 @@ export class CostScenarioInUseError extends Error {
 
   constructor(referents: CostScenarioReferent[]) {
     super(
-      "This scenario model is still referenced. Deleting it would silently drop its " +
-        "assumptions from every projection built on it — including any budget whose forecast " +
-        "thresholds are measured against it — so detach it from them first.",
+      "This scenario model is still referenced. Detach it from the projections and budgets using it first.",
     );
     this.referents = referents;
   }

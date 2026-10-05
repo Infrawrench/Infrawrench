@@ -18,7 +18,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "An Anyscale API key. A service account key is best: it does not expire. User keys expire after at most the organization's maximum lifetime. Cost, credits and budgets are visible to organization owners only, so give the service account the Owner role to collect spend.",
+        "An Anyscale API key. A service account key is best because it does not expire. Costs, credits and budgets are visible to organization owners only, so give the service account the Owner role.",
       sensitive: true,
       placeholder: "Paste the API key",
       helpLink: {

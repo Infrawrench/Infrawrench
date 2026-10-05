@@ -440,7 +440,7 @@ describe("T3 Code over Tailscale", () => {
     // Serve needs root or the tailscale operator.
     expect(script).toContain('sudo -n tailscale set --operator="$(id -un)"');
     expect(script).toContain("Step 1/3");
-    expect(script).toContain("Step 3/3 — Start T3 Code and pair over Tailscale");
+    expect(script).toContain("Step 3/3: Start T3 Code and pair over Tailscale");
     // Still restarts the service first, so the drop-ins take effect.
     expect(script.indexOf("restart_t3_service\n")).toBeLessThan(
       script.indexOf("pair_t3_over_tailscale\n"),

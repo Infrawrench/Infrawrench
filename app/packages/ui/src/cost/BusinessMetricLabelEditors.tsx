@@ -80,9 +80,8 @@ export function LabelMappingsEditor({
       <span className={labelClass}>{gt("Label mappings")}</span>
       <T>
         <p className="text-[11px] text-on-surface-faint mb-2">
-          Map a label your values carry to where its values live on the cost side, and unit cost and
-          margin can be computed per value: map customer to the customer tag for a cost per
-          customer. Unmapped labels can still be filtered and split when plotting the raw metric.
+          Map a label to a cost dimension to compute unit cost and margin per value, e.g. customer
+          to the customer tag for a cost per customer.
         </p>
       </T>
       <datalist id={`${uid}-labels`}>
@@ -224,9 +223,8 @@ export function ThresholdsEditor({
       <span className={labelClass}>{gt("Alert thresholds")}</span>
       <T>
         <p className="text-[11px] text-on-surface-faint mb-2">
-          Alert when the summed unit cost or margin over a trailing window crosses a limit, through
-          the same alert routing as every other cost alert. A window with fewer than half its days
-          reported is not judged.
+          Alert when unit cost or margin over a trailing window crosses a limit. Windows with under
+          half their days reported are skipped.
         </p>
       </T>
       <div className="flex flex-col gap-2">

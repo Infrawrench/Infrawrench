@@ -290,7 +290,7 @@ export async function sendTestPushToUser(userId: string, orgId: string): Promise
     .from(pushDevices)
     .where(and(eq(pushDevices.userId, userId), isNull(pushDevices.disabledAt)));
   if (devices.length === 0) {
-    throw new Error("No registered devices — sign in on the mobile app first");
+    throw new Error("No registered devices. Sign in on the mobile app first");
   }
   const msg: PushMessage = {
     title: "Test notification",

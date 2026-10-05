@@ -180,7 +180,7 @@ function renderOrganization(r: ResourceInstance): DetailViewSchema {
     section("Spend this month", [
       kv([["Month to date", usd(f["monthToDate"])]]),
       muted(
-        "Anyscale's own charges at your contracted rate, as estimated by its usage dashboard. On a customer-hosted cloud this is the Anyscale platform fee only: the machines are billed by your cloud provider and appear under that account instead, so nothing is counted twice.",
+        "Anyscale's own charges at your contracted rate, as estimated by its usage dashboard. On a customer-hosted cloud this is the platform fee only; the machines are billed under your cloud provider account.",
       ),
       ...(breakdown
         ? [

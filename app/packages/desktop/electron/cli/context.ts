@@ -44,7 +44,7 @@ export class CliError extends Error {
 
 function notSignedInError(): CliError {
   return new CliError(
-    "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app — the CLI shares its session).",
+    "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app; the CLI shares its session).",
   );
 }
 
@@ -219,7 +219,7 @@ export async function resolveOrg(ctx: CliContext): Promise<OrgInfo> {
   if (!wanted) {
     if (orgs.length === 1) return orgs[0]!;
     throw new CliError(
-      `Multiple organizations — pass --org <id|name>:\n${orgs
+      `Multiple organizations: pass --org <id|name>:\n${orgs
         .map((o) => `  ${o.id}  ${o.displayName}`)
         .join("\n")}`,
     );

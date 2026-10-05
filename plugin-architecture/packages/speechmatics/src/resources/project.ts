@@ -15,7 +15,7 @@ export const ProjectResourceType = rt({
   name: "Project",
   id: "project",
   description:
-    "A project in your Speechmatics workspace: the isolation boundary for API keys, transcripts and usage. Managed through the Management API, which lives on a different host (https://mp.speechmatics.com/v1) and needs a management token rather than the batch API key.",
+    "A project in your Speechmatics workspace: the boundary for API keys, transcripts and usage. Managed with a management token, not the batch API key.",
   fields: [
     f("projectId", "Project ID", { editable: false }),
     f("name", "Name", { required: false }),

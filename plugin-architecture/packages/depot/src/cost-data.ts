@@ -281,7 +281,7 @@ export function asCostSetupError(err: unknown): unknown {
   const message = err instanceof Error ? err.message : String(err);
   if (/ (401|403) |unauthenticated|permission_denied/i.test(message)) {
     return new CostSetupError(
-      "Depot rejected the token while reading usage. Usage needs an organization token (project tokens and pull tokens cannot read it); create one under Organization Settings, API Tokens, and update the account.",
+      "Depot rejected the token while reading usage. Usage needs an organization token (project and pull tokens can't read it). Create one under Organization Settings, API Tokens, and update the account.",
       { label: "Open Depot organization settings", url: "https://depot.dev/orgs/_/settings" },
     );
   }

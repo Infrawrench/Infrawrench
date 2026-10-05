@@ -66,7 +66,7 @@ export async function cmdDiff(
   const wantedB = flags.against ?? positionals[1];
   if (!wantedA || !wantedB) {
     throw new CliError(
-      "Two accounts are required — `infrawrench diff -a staging -b prod` " +
+      "Two accounts are required. `infrawrench diff -a staging -b prod` " +
         "(or `infrawrench diff staging prod`).",
       2,
     );
@@ -87,8 +87,7 @@ export async function cmdDiff(
   if (accountA.pluginId !== accountB.pluginId) {
     throw new CliError(
       `"${accountA.displayName}" (${accountA.pluginId}) and "${accountB.displayName}" ` +
-        `(${accountB.pluginId}) use different providers — a diff compares two accounts of the ` +
-        `same provider.`,
+        `(${accountB.pluginId}) use different providers. A diff needs two accounts of the same provider.`,
       2,
     );
   }
@@ -140,7 +139,7 @@ function printDiff(scopeLabel: string, response: EnvironmentDiffResponse): void 
     for (const type of response.unavailableTypes) {
       println(
         c.yellow(
-          `! couldn't list ${type.resourceTypeName} — excluded from the comparison (${type.message})`,
+          `! couldn't list ${type.resourceTypeName}. Excluded from the comparison (${type.message})`,
         ),
       );
     }
@@ -179,7 +178,7 @@ function printDiff(scopeLabel: string, response: EnvironmentDiffResponse): void 
     println();
     println(
       c.dim(
-        `The two inventories match — every resource in ${a.accountName} has a counterpart in ` +
+        `The two inventories match. Every resource in ${a.accountName} has a counterpart in ` +
           `${b.accountName} with the same settings.`,
       ),
     );
@@ -228,7 +227,7 @@ function printDiff(scopeLabel: string, response: EnvironmentDiffResponse): void 
         (response.includeIdentityFields
           ? "Ids, addresses and timestamps are being compared, so most rows will differ."
           : `${totals.suppressedFieldChanges} id, address and timestamp difference` +
-            `${totals.suppressedFieldChanges === 1 ? "" : "s"} hidden — every resource has ` +
+            `${totals.suppressedFieldChanges === 1 ? "" : "s"} hidden. Every resource has ` +
             `different ones; pass --all to see them.`),
     ),
   );

@@ -34,7 +34,7 @@ const ManagedAccountInput = strict({
       description:
         "ISO 4217 code the customer is invoiced in. Spend collected in another currency is " +
         "converted through the organisation's own stated exchange rates, and the rate used is " +
-        "frozen onto every invoice — so restating a rate later cannot restate history.",
+        "frozen onto every invoice; so restating a rate later cannot restate history.",
       example: "GBP",
     }),
   costBasis: z
@@ -69,13 +69,13 @@ const ManagedAccountInput = strict({
     .default([])
     .openapi({
       description:
-        "Cost centres whose spend belongs to this customer. **Subtrees are included** — naming a " +
+        "Cost centres whose spend belongs to this customer. **Subtrees are included**; naming a " +
         "parent bills every descendant, and naming both a parent and its child bills the child " +
         "once, not twice.\n\n" +
         "This is deliberately a list of existing cost centres rather than a rule of its own. " +
         "Which spend lands in which centre is already decided by the organisation's allocation " +
         "rules, and a second vocabulary over the same data would eventually disagree with the " +
-        "first — at which point an invoice would stop matching the showback report the customer " +
+        "first: at which point an invoice would stop matching the showback report the customer " +
         "was shown.",
     }),
   accountIds: z
@@ -111,7 +111,7 @@ const ManagedAccount = strict({
 }).openapi("ManagedAccount", {
   description:
     "A customer a managed service provider bills. A cost centre or cloud account belongs to at " +
-    "most one managed account — billing the same money to two customers is refused at write " +
+    "most one managed account; billing the same money to two customers is refused at write " +
     "time with a 409 naming the other customer.",
 });
 
@@ -140,7 +140,7 @@ const InvoiceLine = strict({
     .openapi({ description: "Cost-centre id, account id, or null for an org-level fixed charge." }),
   label: z.string().openapi({
     description:
-      "The name at issue time, frozen with the numbers — renaming a cost centre in March must " +
+      "The name at issue time, frozen with the numbers; renaming a cost centre in March must " +
       "not retitle a line on January's invoice.",
   }),
   currency: z.string().openapi({ description: "The currency the providers billed in." }),
@@ -186,7 +186,7 @@ const InvoiceTotals = strict({
   adjusted: CurrencyAmounts,
   billed: CurrencyAmounts.openapi({
     description:
-      "Keyed by the invoice currency, plus any currency that could not be converted — which " +
+      "Keyed by the invoice currency, plus any currency that could not be converted; which " +
       "keeps its own key so the total is never quietly short.",
   }),
 }).openapi("InvoiceTotals", {
@@ -201,7 +201,7 @@ const InvoiceDerivation = strict({
   applyBillingRules: z.boolean(),
   rateDate: IsoDay.openapi({
     description:
-      "The day the exchange rates were read — always the period's last day. One rate for the " +
+      "The day the exchange rates were read; always the period's last day. One rate for the " +
       "period rather than a per-day blend: “January, at the 31 January rate” is a sentence a " +
       "finance team can reproduce.",
   }),
@@ -226,7 +226,7 @@ const InvoiceDerivation = strict({
   }),
   missingScope: z.array(z.string()).openapi({
     description:
-      "Scope entries that no longer exist. Recorded rather than silently skipped — an invoice " +
+      "Scope entries that no longer exist. Recorded rather than silently skipped; an invoice " +
       "that is quietly short is worse than one that says why.",
   }),
   pricing: ManagedAccountPricing.optional().openapi({
@@ -254,7 +254,7 @@ const InvoiceDerivation = strict({
 const InvoiceDelivery = strict({
   status: z.enum(["pending", "succeeded", "partial", "failed", "no_targets"]).openapi({
     description:
-      "`pending` means an attempt was claimed and its outcome never recorded — the process " +
+      "`pending` means an attempt was claimed and its outcome never recorded; the process " +
       "died mid-send, so whether the customer received it is unknown. It is not a failure and " +
       "is never retried automatically.",
   }),
@@ -266,7 +266,7 @@ const InvoiceDelivery = strict({
   deliveredAt: IsoDateTime.nullable().openapi({
     description:
       "The last attempt that reached at least one address, or null when none ever has. Never " +
-      "cleared by a later failure — it is a fact about the past, and it is what decides whether " +
+      "cleared by a later failure; it is a fact about the past, and it is what decides whether " +
       "sending again is a retry or a second copy.",
   }),
   attempts: z.number().int(),
@@ -290,7 +290,7 @@ const InvoiceSummary = strict({
     .nullable()
     .openapi({
       description:
-        "`INV-2026-0001`. Null while draft — numbers are assigned at approval so a deleted draft " +
+        "`INV-2026-0001`. Null while draft: numbers are assigned at approval so a deleted draft " +
         "cannot leave a gap in the sequence.",
       example: "INV-2026-0001",
     }),
@@ -300,14 +300,14 @@ const InvoiceSummary = strict({
   currency: z.string(),
   totals: InvoiceTotals.nullable().openapi({
     description:
-      "**Null for a draft** — null, not zero. A draft's figures are recomputed on read and the " +
+      "**Null for a draft**, null, not zero. A draft's figures are recomputed on read and the " +
       "list does not recompute; fetch the invoice by id for a draft's current numbers.",
   }),
   issuedAt: IsoDateTime.nullable(),
   sentAt: IsoDateTime.nullable(),
   delivery: InvoiceDelivery.nullable().openapi({
     description:
-      "The last delivery attempt, or null when none has been made — including on an invoice " +
+      "The last delivery attempt, or null when none has been made; including on an invoice " +
       "marked sent by a deployment with no mail provider. “A person released this” and “we " +
       "delivered it” are different claims, and this field is only ever the second.",
   }),
@@ -326,7 +326,7 @@ const Invoice = InvoiceSummary.extend({
   derivation: InvoiceDerivation,
   live: z.boolean().openapi({
     description:
-      "True when the figures in this response were recomputed for it — true for a draft, false " +
+      "True when the figures in this response were recomputed for it; true for a draft, false " +
       "for everything else. Say so: “these numbers will move” and “these numbers are what we " +
       "sent” are different claims about the same fields.",
   }),
@@ -344,7 +344,7 @@ const InvoiceInput = strict({
   notes: z.string().max(4000).nullish(),
   supersedesInvoiceId: Uuid.nullish().openapi({
     description:
-      "The void invoice this one corrects. The original must already be void — a correction that " +
+      "The void invoice this one corrects. The original must already be void; a correction that " +
       "leaves the original standing means the customer holds two live invoices for one period.",
   }),
 }).openapi("InvoiceInput", {
@@ -485,7 +485,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     description:
       "A soft delete: an issued invoice names its customer, and an invoice whose customer stopped " +
       "resolving is exactly the unreconcilable document this feature exists to prevent. Draft " +
-      "invoices are removed with it — a draft was never issued.",
+      "invoices are removed with it; a draft was never issued.",
     request: { params: accountIdParam },
     responses: {
       200: { description: "Retired", content: { "application/json": { schema: Ok } } },
@@ -501,7 +501,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     tags: ["Invoices"],
     summary: "List invoices",
     description:
-      "Summaries, newest period first. A draft's `totals` is null here rather than recomputed — " +
+      "Summaries, newest period first. A draft's `totals` is null here rather than recomputed; " +
       "recomputing every draft would make opening the list one cost-data scan per draft, and " +
       "zero would be a lie the reader cannot detect.",
     request: {
@@ -564,7 +564,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     summary: "Download an invoice as CSV",
     description:
       "The derivation, not a rendered document: what was collected, what the rules added, the " +
-      "rate and the day it was read, and the final figure — every column an accounts-payable " +
+      "rate and the day it was read, and the final figure; every column an accounts-payable " +
       "clerk needs to check the arithmetic. Same RFC 4180 quoting as the scheduled cost exports.",
     request: { params: invoiceIdParam },
     responses: {
@@ -583,7 +583,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     summary: "Edit a draft invoice",
     description:
       "Draft only. An approved, sent or void invoice is refused with 409 by the service, not " +
-      "merely hidden by the UI — an issued invoice that silently changed after the customer " +
+      "merely hidden by the UI; an issued invoice that silently changed after the customer " +
       "received it is the worst outcome this feature could produce.",
     request: {
       params: invoiceIdParam,
@@ -617,7 +617,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/invoices/{id}/approve",
     tags: ["Invoices"],
-    summary: "Approve an invoice — freeze its figures",
+    summary: "Approve an invoice; freeze its figures",
     description:
       "Computes the figures one last time and writes them onto the invoice together with the " +
       "exchange rates, the day they were read, the billing rules in force and the names " +
@@ -627,7 +627,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
       "Refused with 409 when a currency in the invoice has no stated exchange rate: an approved " +
       "invoice has to be quotable as one number in the customer's currency.\n\n" +
       "Refused with 409, too, when the draft or its customer changed while the figures were " +
-      "being computed — a different period, scope, currency, cost basis or billing-rules " +
+      "being computed: a different period, scope, currency, cost basis or billing-rules " +
       "setting. Nothing is approved in that case: freezing figures that describe a different " +
       "question would be worse than making the caller look again.",
     request: { params: invoiceIdParam },
@@ -644,14 +644,14 @@ export function registerInvoicePaths(ctx: BuildContext) {
     tags: ["Invoices"],
     summary: "Send an invoice to its customer",
     description:
-      "Changes no figure — the document was frozen at approval. It records the **release** " +
+      "Changes no figure; the document was frozen at approval. It records the **release** " +
       "(this may go to the customer, and this person said so), then emails the invoice to the " +
       "customer's contact addresses with the CSV attached.\n\n" +
       "**200 even when delivery failed.** The release happened and is recorded either way; " +
       "`delivery` says what became of the transport. An error status would leave the caller " +
       "unable to tell which of the two failed. A failed delivery is visible, and re-sending " +
       "retries it.\n\n" +
-      "Sending again needs `resend: true` only when the last attempt reached somebody — see " +
+      "Sending again needs `resend: true` only when the last attempt reached somebody, see " +
       "`InvoiceSendRequest`. The body may be omitted entirely for a first send.",
     request: {
       params: invoiceIdParam,
@@ -674,7 +674,7 @@ export function registerInvoicePaths(ctx: BuildContext) {
     tags: ["Invoices"],
     summary: "Void an issued invoice",
     description:
-      "The only correction there is. The original keeps every figure it was sent with — “we " +
+      "The only correction there is. The original keeps every figure it was sent with: “we " +
       "billed you this, it was wrong, here is the corrected one” is a story a customer can " +
       "follow, and “we changed the invoice” is not.\n\n" +
       "With `supersede`, the void, the corrective draft and both directions of the link between " +

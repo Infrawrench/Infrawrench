@@ -96,7 +96,7 @@ export async function createSnapshot(
   const snapshot = validatedObject(resp.data, "snapshot", isSnapshot);
   if (!snapshot) {
     throw new Error(
-      "Neon plugin: createSnapshot did not return a snapshot — the API response shape has changed.",
+      "Neon plugin: createSnapshot did not return a snapshot; the API response shape has changed.",
     );
   }
   return buildSnapshotResource(accountId, ref.projectId, snapshot);

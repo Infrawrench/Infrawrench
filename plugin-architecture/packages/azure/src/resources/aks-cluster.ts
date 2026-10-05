@@ -13,7 +13,7 @@ export const AKSClusterResourceType = rt({
     countFieldKey: "nodeCount",
   },
   description:
-    "An Azure Kubernetes Service cluster. Pulling images from an Azure Container Registry requires an AcrPull role assignment for the cluster's kubelet identity (az aks update --attach-acr <registry>) — or a dockerConfigJson pull secret from the registry resource.",
+    "An Azure Kubernetes Service cluster. Pulling images from an Azure Container Registry requires an AcrPull role assignment for the cluster's kubelet identity (az aks update --attach-acr <registry>), or use a dockerConfigJson pull secret from the registry resource.",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),

@@ -1243,7 +1243,7 @@ export class HetznerClient implements PluginClient {
       }
       if (volumeLocation && serverLocation && volumeLocation !== serverLocation) {
         throw new Error(
-          `Volume location ${volumeLocation} does not match server location ${serverLocation} — Hetzner volumes must be in the same location as the server.`,
+          `Volume location ${volumeLocation} does not match server location ${serverLocation}. Volumes must be in the same location as the server.`,
         );
       }
       await this.fetch(`/volumes/${volumeId}/actions/attach`, {

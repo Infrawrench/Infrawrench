@@ -82,7 +82,7 @@ export const WorkflowResourceType = rt({
   id: "workflow",
   parentTypeId: "project",
   description:
-    "A workflow in a project's config, with its metrics over the last 30 days across all branches: runs, success rate, duration percentiles, credits used, time to recover and throughput. Lists its jobs and recent runs, each with Rerun and Rerun from failed, and charts duration p50 and p95, success rate and credits per day.",
+    "A workflow in a project's config, with 30-day metrics across all branches: runs, success rate, duration percentiles, credits, time to recover and throughput. Lists its jobs and recent runs (with Rerun and Rerun from failed) and charts duration, success rate and credits.",
   fields: [
     f("name", "Name", { editable: false }),
     projectRef,
@@ -116,7 +116,7 @@ export const PipelineResourceType = rt({
   name: "Pipeline",
   id: "pipeline",
   description:
-    "A recent pipeline run in the organization: its project, branch, commit, trigger and the status of each workflow, with Rerun, Rerun from failed and Cancel on each workflow. The 50 most recent pipelines are listed. Create one to trigger a pipeline on a project and branch.",
+    "A recent pipeline run: project, branch, commit, trigger and the status of each workflow, with Rerun, Rerun from failed and Cancel. The 50 most recent are listed. Create one to trigger a pipeline on a project and branch.",
   fields: [
     f("number", "Number", { kind: "number", required: false, editable: false }),
     projectRef,
@@ -261,7 +261,7 @@ export const TriggerResourceType = rt({
   parentTypeId: "project",
   showInSidebar: true,
   description:
-    "A trigger on a project's pipeline definition (GitHub App and CircleCI projects): a repository event preset, a webhook, or a cron schedule, with the refs it checks out. Enable or disable it, change its schedule and refs, delete it, or create a scheduled trigger.",
+    "A trigger on a project's pipeline definition (GitHub App and CircleCI projects): a repository event preset, webhook or cron schedule, with the refs it checks out. Enable, disable, edit, delete or create one.",
   fields: [
     f("name", "Name", { required: false, editable: false }),
     f("source", "Source", { required: false, editable: false }),
@@ -289,7 +289,7 @@ export const RunnerResourceClassResourceType = rt({
   plural: "Runner Resource Classes",
   id: "runner-resource-class",
   description:
-    "A self-hosted runner resource class: the label jobs target to run on your own machines. Shows its runners and how many tasks are waiting for or running on them. Create one, edit its description, mint a runner token with Get credentials, or delete it.",
+    "A self-hosted runner resource class: the label jobs target to run on your machines. Shows its runners and waiting or running tasks. Create, edit or delete it, or mint a runner token with Get credentials.",
   fields: [
     f("name", "Resource Class", { editable: false }),
     f("description", "Description", { required: false }),

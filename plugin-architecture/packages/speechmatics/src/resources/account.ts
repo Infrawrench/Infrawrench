@@ -18,7 +18,7 @@ export const AccountResourceType = rt({
   plural: "Account",
   id: "account",
   description:
-    "The Speechmatics account on this region — its 30-day usage summary, the language packs the batch engine currently offers, and the Speech playground.",
+    "The Speechmatics account on this region: 30-day usage, available language packs and the Speech playground.",
   fields: [
     f("region", "Region"),
     f("endpoint", "Batch API Endpoint", { required: false }),

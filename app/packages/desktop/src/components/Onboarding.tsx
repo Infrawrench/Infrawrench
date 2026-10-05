@@ -224,9 +224,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                 </button>
               </div>
               <p className="mt-4 text-[11px] text-on-surface-faint text-center">
-                {gt(
-                  "Infrawrench works fully offline too — you can sign in any time from the sidebar.",
-                )}
+                {gt("Infrawrench also works offline. You can sign in any time from the sidebar.")}
               </p>
             </div>
           )}
@@ -306,7 +304,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                     disabled={refreshingOrgs}
                     className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
                   >
-                    {refreshingOrgs ? gt("Checking…") : gt("I created one — check again")}
+                    {refreshingOrgs ? gt("Checking…") : gt("I created one, check again")}
                   </button>
                 </div>
               )}

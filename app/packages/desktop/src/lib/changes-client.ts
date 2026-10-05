@@ -23,7 +23,7 @@ export function createDesktopChangesClient(): ChangesClient {
   const requireOrg = (): string => {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
-      throw new Error("The change timeline requires cloud mode — sign in to sync.");
+      throw new Error("The change timeline requires cloud mode: sign in to sync.");
     }
     return orgId;
   };

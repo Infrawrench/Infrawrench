@@ -585,7 +585,7 @@ export function managedInvoiceBlocker(
 
     case "send": {
       if (status === "draft") {
-        return "Approve this invoice before sending it — the figures are not frozen yet.";
+        return "Approve this invoice before sending it; the figures are not frozen yet.";
       }
       if (status !== "sent") return null;
       // Deliberate: the caller has said, in as many words, "send another copy".
@@ -606,7 +606,7 @@ export function managedInvoiceBlocker(
       if (!delivery) {
         return (
           "This invoice has already been marked as sent, and this deployment holds no record of " +
-          "delivering it — whoever released it may have sent it themselves. Use “Send again” if " +
+          "delivering it; whoever released it may have sent it themselves. Use “Send again” if " +
           "you mean to email the customer another copy."
         );
       }

@@ -47,7 +47,7 @@ export const NeonCredentialResourceType = rt({
       id: "s3-credentials",
       displayName: "S3 Credentials",
       description:
-        "AWS-style keys for Neon Object Storage. Only available on the credential you just created — Neon returns these once.",
+        "AWS-style keys for Neon Object Storage. Only available on the credential you just created; Neon returns these once.",
       entries: [
         { envKey: "AWS_ACCESS_KEY_ID", outputKey: "apiToken" },
         { envKey: "AWS_SECRET_ACCESS_KEY", outputKey: "s3SecretAccessKey" },

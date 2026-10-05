@@ -124,7 +124,7 @@ export const RDSInstanceResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Instance endpoint is not reachable from this host.",
         suggestions: [
-          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "RDS instances are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the instance (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],
@@ -139,7 +139,7 @@ export const RDSInstanceResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Instance endpoint is not reachable from this host.",
         suggestions: [
-          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "RDS instances are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the instance (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],
@@ -154,7 +154,7 @@ export const RDSInstanceResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Instance endpoint is not reachable from this host.",
         suggestions: [
-          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "RDS instances are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the instance (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],
@@ -169,7 +169,7 @@ export const RDSInstanceResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Instance endpoint is not reachable from this host.",
         suggestions: [
-          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "RDS instances are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the instance (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],

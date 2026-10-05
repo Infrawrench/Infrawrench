@@ -56,9 +56,8 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
         <p>{gt("No changes recorded yet.")}</p>
         <T>
           <p className="text-xs text-on-surface-faint max-w-md text-center">
-            The cloud poller compares each sync against the last stored snapshot and records
-            anything that appeared, changed, or disappeared. New resources show their first events
-            after a few poll cycles.
+            Changes are recorded as each sync runs. New resources show events after a few poll
+            cycles.
           </p>
         </T>
       </div>

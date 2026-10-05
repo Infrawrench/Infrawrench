@@ -30,7 +30,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your ElevenLabs API key, sent as the xi-api-key header. Create one in the ElevenLabs dashboard under your profile menu (bottom-left avatar) → API Keys → Create API Key, or at elevenlabs.io/app/settings/api-keys. Grant it read access to Voices, Models, History and User (for the quota gauge and the billing currency), plus Text to Speech and Speech to Text if you want to use the Speech tab, ElevenAgents read/write for agents, phone numbers and the knowledge base, Pronunciation Dictionaries write to create or rename dictionaries, and Workspace/usage read if you want cost graphs. Workspace keys and personal keys both work.",
+        "Your ElevenLabs API key, created at elevenlabs.io/app/settings/api-keys. Grant read access to Voices, Models, History and User, plus Text to Speech and Speech to Text for the Speech tab, ElevenAgents read/write for agents, phone numbers and the knowledge base, Pronunciation Dictionaries write to edit dictionaries, and Workspace/usage read for cost graphs. Workspace and personal keys both work.",
       sensitive: true,
       placeholder: "sk_0123456789abcdef0123456789abcdef0123456789abcdef",
     },

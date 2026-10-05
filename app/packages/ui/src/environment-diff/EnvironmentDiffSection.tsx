@@ -180,7 +180,7 @@ export function EnvironmentDiffSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Environment diff")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Two accounts of the same provider, compared over the state they last synced — what exists in one and not the other, how the counts differ, and where corresponding resources disagree on a setting. The answer to “why does staging work and prod doesn’t”.",
+          "Compare two accounts of the same provider: what exists in only one, how counts differ, and where matching resources disagree on a setting.",
         )}
       </p>
 
@@ -197,7 +197,7 @@ export function EnvironmentDiffSection({
       {accountsError != null && (
         <p role="alert" className="mb-4 text-sm text-danger">
           <T>
-            Couldn&apos;t load the accounts — <Var>{accountsError}</Var>
+            Couldn&apos;t load the accounts: <Var>{accountsError}</Var>
           </T>
         </p>
       )}
@@ -323,13 +323,10 @@ function EnvironmentDiffResults({
 
   const suppressedText = data.includeIdentityFields
     ? gt("Ids, addresses and timestamps are being compared, so most rows will differ.")
-    : gt(
-        "{count} id, address and timestamp difference{plural} hidden — every resource has different ones.",
-        {
-          count: data.totals.suppressedFieldChanges,
-          plural: data.totals.suppressedFieldChanges === 1 ? "" : "s",
-        },
-      );
+    : gt("{count} id, address and timestamp difference{plural} hidden, since they always differ.", {
+        count: data.totals.suppressedFieldChanges,
+        plural: data.totals.suppressedFieldChanges === 1 ? "" : "s",
+      });
 
   return (
     <>
@@ -372,9 +369,8 @@ function EnvironmentDiffResults({
         <p role="alert" className="mb-4 text-xs text-warning">
           <T>
             Couldn&apos;t list{" "}
-            <Var>{data.unavailableTypes.map((t) => t.resourceTypeName).join(", ")}</Var> — excluded
-            from the comparison rather than reported as missing. (
-            <Var>{data.unavailableTypes[0]?.message}</Var>)
+            <Var>{data.unavailableTypes.map((t) => t.resourceTypeName).join(", ")}</Var>, so they
+            are excluded from the comparison. (<Var>{data.unavailableTypes[0]?.message}</Var>)
           </T>
         </p>
       )}
@@ -403,9 +399,8 @@ function EnvironmentDiffResults({
 
       <p className="mt-4 text-xs text-on-surface-faint">
         <T>
-          Resources are paired by type and by name with environment words removed, so{" "}
-          <code>api-staging</code> lines up with <code>api-prod</code>. <Var>{suppressedText}</Var>{" "}
-          Nothing here contacts a provider; the comparison reads the last sync.
+          Resources pair by type and by name minus environment words, so <code>api-staging</code>{" "}
+          lines up with <code>api-prod</code>. <Var>{suppressedText}</Var> Uses the last sync.
         </T>
       </p>
     </>
@@ -590,7 +585,7 @@ function ResourceName({
   if (!resource) {
     return (
       <span className="text-xs text-on-surface-faint">
-        {gt("— not in {account}", { account: fallback })}
+        {gt("Not in {account}", { account: fallback })}
       </span>
     );
   }

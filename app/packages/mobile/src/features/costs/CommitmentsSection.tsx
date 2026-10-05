@@ -45,7 +45,7 @@ export function CommitmentsSection() {
       {feed.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load commitments —{" "}
+            Couldn&apos;t load commitments:{" "}
             {feed.error instanceof Error ? feed.error.message : "request failed"}
           </Text>
         </Card>
@@ -206,7 +206,7 @@ function RecommendationRow({ rec }: { rec: CommitmentRecommendationView }) {
           {rec.region ? ` · ${rec.region}` : ""}
         </Text>
         <Text style={styles.subtitle} numberOfLines={2}>
-          Commit {formatMoney(rec.recommendedHourlyCommitment, rec.currency)}/h — save {saving} ·
+          Commit {formatMoney(rec.recommendedHourlyCommitment, rec.currency)}/h, save {saving} ·
           break-even at {pct(rec.breakEvenUtilization)} utilization
         </Text>
       </View>

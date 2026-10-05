@@ -13,7 +13,7 @@ export const NodeResourceType = rt({
     grid: "auto",
     vcpus: { from: "field", fieldKey: "capacityCpu", format: "k8s-quantity" },
   },
-  description: "A Kubernetes worker node — what pods actually schedule onto",
+  description: "A Kubernetes worker node",
   fields: [
     f("name", "Name"),
     f("ready", "Ready", { required: false }),

@@ -148,7 +148,7 @@ export function ConnectResourceModal({
           setTemplateStore({
             ...base,
             loadError: gt(
-              "The target resource doesn't support secret import or SSH — cannot connect.",
+              "Can't connect: the target resource doesn't support secret import or SSH.",
             ),
           });
         }

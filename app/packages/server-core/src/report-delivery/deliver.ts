@@ -399,9 +399,9 @@ export async function runReportNotification(
     const result = await deliverReportNotification(row.organizationId, row, data);
     const outcome = classifyReportDelivery(result);
     await recordAttempt(row, now, outcome);
-    const line = `[report-delivery] ${row.id} (report "${report.name}") attempt ${row.attemptCount + 1}/${MAX_REPORT_DELIVERY_ATTEMPTS}: ${outcome.status} — slack ${result.slack.succeeded}/${result.slack.attempted}, teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}`;
+    const line = `[report-delivery] ${row.id} (report "${report.name}") attempt ${row.attemptCount + 1}/${MAX_REPORT_DELIVERY_ATTEMPTS}: ${outcome.status}, slack ${result.slack.succeeded}/${result.slack.attempted}, teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}`;
     if (outcome.status === "succeeded") console.log(line);
-    else console.warn(`${line}${outcome.error ? ` — ${outcome.error}` : ""}`);
+    else console.warn(`${line}${outcome.error ? `: ${outcome.error}` : ""}`);
   } catch (err) {
     // A build failure (ClickHouse down, a bad config) is as retryable as a
     // total delivery failure, and just as invisible if only logged.

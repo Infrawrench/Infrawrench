@@ -77,7 +77,7 @@ Commands are written by each provider's plugin, so they use the CLI you'd use fo
 
 ## Everywhere else findings go
 
-- **Mobile**: each row on the Costs tab has a **Remediation commands** disclosure with copy buttons. Nothing runs from the phone; it only copies.
+- **Mobile**: each row on the Costs screen's **Savings** tab has a **Remediation commands** disclosure with copy buttons. Nothing runs from the phone; it only copies.
 - **CLI**: `infrawrench orphans`, `infrawrench oversized` and `infrawrench schedules` print a Remediation section under the table. With `--json`, every finding carries a `remediation` object. See [CLI](./cli.md).
 - **MCP and AI chat**: `list_orphaned_resources`, `list_oversized_resources`, `list_schedules` and `list_efficiency_alerts` return the same `remediation` object, so an agent can hand you the exact command rather than paraphrasing one. See [MCP](./mcp.md).
 - **Jira and Linear**: when you file a finding as an issue, the description includes a Remediation section with one code block per command. See [Jira](./jira.md).

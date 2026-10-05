@@ -985,3 +985,4 @@ export {
 export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./custom-costs";
+export * from "./costs-panel-tabs";

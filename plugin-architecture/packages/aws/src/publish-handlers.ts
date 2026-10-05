@@ -61,7 +61,7 @@ export async function publishSqs(
   );
   return {
     ...(res.MessageId ? { id: res.MessageId } : {}),
-    summary: res.MessageId ? `Sent — MessageId ${res.MessageId}` : "Sent.",
+    summary: res.MessageId ? `Sent, MessageId ${res.MessageId}` : "Sent.",
   };
 }
 
@@ -100,7 +100,7 @@ export async function publishSns(
   const messageId = inner?.["MessageId"];
   return {
     ...(typeof messageId === "string" ? { id: messageId } : {}),
-    summary: typeof messageId === "string" ? `Published — MessageId ${messageId}` : "Published.",
+    summary: typeof messageId === "string" ? `Published, MessageId ${messageId}` : "Published.",
   };
 }
 
@@ -131,7 +131,7 @@ export async function publishKinesis(
   return {
     ...(res.SequenceNumber ? { id: res.SequenceNumber } : {}),
     summary: res.SequenceNumber
-      ? `Put record — shard ${res.ShardId ?? "?"} seq ${res.SequenceNumber}`
+      ? `Put record, shard ${res.ShardId ?? "?"} seq ${res.SequenceNumber}`
       : "Record put.",
   };
 }
@@ -167,12 +167,12 @@ export async function publishEventBridge(
   if (failed > 0) {
     const first = res.Entries?.[0];
     throw new Error(
-      `EventBridge rejected the event: ${first?.ErrorCode ?? "unknown"} — ${first?.ErrorMessage ?? "no detail"}`,
+      `EventBridge rejected the event: ${first?.ErrorCode ?? "unknown"}: ${first?.ErrorMessage ?? "no detail"}`,
     );
   }
   const id = res.Entries?.[0]?.EventId;
   return {
     ...(id ? { id } : {}),
-    summary: id ? `Sent — EventId ${id}` : "Event sent.",
+    summary: id ? `Sent, EventId ${id}` : "Event sent.",
   };
 }

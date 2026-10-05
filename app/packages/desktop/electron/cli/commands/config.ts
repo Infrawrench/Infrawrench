@@ -47,9 +47,7 @@ const SECTIONS = Object.keys(SECTION_LABELS) as OrgConfigSection[];
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
-    throw new CliError(
-      "Config as code covers a cloud organization's dashboards, workflows, budgets and policies — a local workspace has none of them. Drop --local.",
-    );
+    throw new CliError("Config as code covers cloud organizations only. Drop --local.");
   }
 }
 
@@ -129,7 +127,7 @@ function printDocumentSummary(document: OrgConfigDocument): void {
     .filter(([, n]) => n > 0)
     .map(([label, n]) => `${n} ${label}`);
   if (parts.length === 0) {
-    println(c.dim("Nothing configured yet — the document is a valid empty starting point."));
+    println(c.dim("Nothing configured yet. The document is a valid empty starting point."));
     return;
   }
   println(c.dim(parts.join(" · ")));
@@ -179,7 +177,7 @@ async function cmdConfigApply(ctx: CliContext, flags: ConfigFlags): Promise<void
       printJson({ org: org.id, ...plan, applied: false });
       return;
     }
-    println(c.dim("Already up to date — nothing to apply."));
+    println(c.dim("Already up to date. Nothing to apply."));
     return;
   }
 
@@ -195,7 +193,7 @@ async function cmdConfigApply(ctx: CliContext, flags: ConfigFlags): Promise<void
         ? `Apply to ${org.displayName}? ${plan.counts.delete} entit${plan.counts.delete === 1 ? "y" : "ies"} will be DELETED`
         : `Apply to ${org.displayName}?`;
     if (!(await confirm(verb))) {
-      println(c.dim("Cancelled — nothing was changed."));
+      println(c.dim("Cancelled. Nothing was changed."));
       return;
     }
   }
@@ -226,7 +224,7 @@ function readDocument(flags: ConfigFlags): unknown {
     }
   } else if (process.stdin.isTTY) {
     throw new CliError(
-      "No document — pass --file <path> or pipe one on stdin (`infrawrench config export | …`).",
+      "No document. Pass --file <path> or pipe one on stdin (`infrawrench config export | …`).",
       2,
     );
   } else {
@@ -309,7 +307,7 @@ function printPlan(plan: OrgConfigPlan, opts: { applied: boolean }): void {
   const heading = opts.applied ? "Applied" : "Plan";
   const modeNote =
     plan.mode === "replace"
-      ? c.red(" (replace — anything not in the document is deleted)")
+      ? c.red(" (replace: anything not in the document is deleted)")
       : c.dim(" (merge)");
   println(`${c.bold(heading)}${modeNote}`);
   println();

@@ -505,7 +505,7 @@ export class KafkaClient implements PluginClient {
             label: "Key",
             kind: "text",
             optional: true,
-            helpText: "Optional Kafka message key — drives partition assignment.",
+            helpText: "Optional message key. Determines the partition.",
           },
           {
             key: "headers",
@@ -570,7 +570,7 @@ export class KafkaClient implements PluginClient {
         : undefined;
     return {
       ...(id ? { id } : {}),
-      summary: id ? `Produced — ${id}` : "Record produced.",
+      summary: id ? `Produced ${id}` : "Record produced.",
     };
   }
 

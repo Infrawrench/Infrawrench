@@ -29,7 +29,7 @@ export function DesktopProbesPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt("Synthetic probes require cloud mode — sign in to sync.")}
+        {gt("Synthetic probes require cloud mode: sign in to sync.")}
       </div>
     );
   }

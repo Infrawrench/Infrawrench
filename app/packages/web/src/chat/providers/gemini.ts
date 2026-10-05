@@ -27,7 +27,7 @@ import type { ChatProvider, ProviderEvent, ProviderTool, TurnRequest } from "./t
 const DEFAULT_LOCATION = "global";
 
 const NOT_CONFIGURED =
-  "GOOGLE_CLOUD_PROJECT not configured for this deployment — Gemini models are served " +
+  "GOOGLE_CLOUD_PROJECT not configured for this deployment. Gemini models are served " +
   "through Vertex AI and need a project plus Application Default Credentials";
 
 function requireProjectId(): string {

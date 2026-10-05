@@ -102,7 +102,7 @@ export async function fetchSigned(
     if (result.status < 200 || result.status >= 300) {
       throw new Error(
         `AWS ${req.service} ${req.method} ${new URL(req.url).pathname} failed: ${result.status}${
-          result.body ? ` — ${result.body.slice(0, 400)}` : ""
+          result.body ? `: ${result.body.slice(0, 400)}` : ""
         }`,
       );
     }
@@ -131,7 +131,7 @@ export async function fetchSigned(
       // ignore body read failures
     }
     throw new Error(
-      `AWS ${req.service} ${req.method} ${new URL(req.url).pathname} failed: ${res.status}${detail ? ` — ${detail.slice(0, 400)}` : ""}`,
+      `AWS ${req.service} ${req.method} ${new URL(req.url).pathname} failed: ${res.status}${detail ? `: ${detail.slice(0, 400)}` : ""}`,
     );
   }
   return res;

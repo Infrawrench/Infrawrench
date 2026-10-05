@@ -434,7 +434,7 @@ app.delete("/sessions/:id", async (c) => {
             return c.json(
               {
                 error:
-                  "The provider is rate-limiting API requests — try deleting again in a minute.",
+                  "The provider is rate-limiting API requests; try deleting again in a minute.",
               },
               429,
             );
@@ -468,7 +468,7 @@ app.post("/sessions/:id/reconcile", async (c) => {
     return c.json({
       branchName: row.branchName,
       message:
-        "T3 Code owns this server's projects and their branches — push from inside T3 Code. Infrawrench has nothing to reconcile.",
+        "T3 Code owns this server's projects and their branches; push from inside T3 Code. Infrawrench has nothing to reconcile.",
     });
   }
   return c.json({

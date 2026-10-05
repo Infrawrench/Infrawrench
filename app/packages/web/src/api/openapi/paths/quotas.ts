@@ -4,7 +4,7 @@ import type { BuildContext } from "../context";
 
 const QuotaSeverity = z.enum(["exhausted", "critical", "trending", "ok"]).openapi({
   description:
-    "Where the quota sits: `exhausted` (used >= limit — the provider is already refusing " +
+    "Where the quota sits: `exhausted` (used >= limit; the provider is already refusing " +
     "requests), `critical` (at or over the organization's threshold), `trending` (under the " +
     "threshold, but the fitted trend reaches the limit within 30 days), or `ok`. Ordered: an " +
     "exhausted quota is also over threshold and also trending, and reports as `exhausted`.",
@@ -54,7 +54,7 @@ export function registerQuotaPaths(ctx: BuildContext) {
     used: z.number().describe("How much of `limit` is consumed, in the same unit."),
     utilization: z
       .number()
-      .describe("used / limit. Not clamped at 1 — an over-quota reading is a real state."),
+      .describe("used / limit. Not clamped at 1; an over-quota reading is a real state."),
     unit: z
       .string()
       .nullable()
@@ -157,12 +157,12 @@ export function registerQuotaPaths(ctx: BuildContext) {
     summary: "List provider quota utilisation across the organization",
     description:
       "How close each account is to the limits its provider enforces, with the trend fitted " +
-      "over the last 14 days of collected readings. Both halves of every row — the used " +
-      "figure and the limit — come from the provider; nothing is filled in from published " +
+      "over the last 14 days of collected readings. Both halves of every row (the used " +
+      "figure and the limit) come from the provider; nothing is filled in from published " +
       "defaults, so an account with an approved increase reads as having the headroom it " +
       "has. This is a read over already-collected snapshots: no provider API calls are made " +
       "here, and the readings are as fresh as the last collection pass (roughly six hours). " +
-      "A plugin that declares no quota capability contributes nothing rather than zero — see " +
+      "A plugin that declares no quota capability contributes nothing rather than zero, see " +
       "`unsupportedPluginIds`.",
     request: { params: OrgIdParam },
     responses: {

@@ -53,7 +53,7 @@ export async function cmdGraph(ctx: CliContext, range: RangeFlags): Promise<void
   const focus = model.nodesById.get(focusId);
   if (!focus) {
     throw new CliError(
-      `${focusId} is not in ${org.displayName}'s dependency graph. Resources with no links in either direction are left out — the graph is about wiring, not inventory.`,
+      `${focusId} is not in ${org.displayName}'s dependency graph. Resources with no links in either direction are left out. The graph is about wiring, not inventory.`,
     );
   }
   const dependents = collectDependents(model, focusId);
@@ -123,7 +123,7 @@ function labelLookup(model: DependencyGraphModel): (id: string) => string | null
 function printTruncationNotice(): void {
   println(
     c.yellow(
-      "! Inference hit its edge cap — this is a partial view of the org. Focus one resource with --resource <id> for its complete neighbourhood.",
+      "! Inference hit its edge cap. This is a partial view of the org. Focus one resource with --resource <id> for its complete neighbourhood.",
     ),
   );
   println();
@@ -138,7 +138,7 @@ function printWholeGraph(model: DependencyGraphModel, orgName: string, truncated
   if (model.nodes.length === 0) {
     println(
       c.dim(
-        "No dependency links yet. Edges come from synced provider data and from output references you wire — connect an account and let it sync.",
+        "No dependency links yet. Edges come from synced provider data and from output references you wire. Connect an account and let it sync.",
       ),
     );
     return;
@@ -196,7 +196,7 @@ function printFocused(
   const providers = providersOf(model);
   const providerLines = renderTree(focus.id, providers, label);
   if (providerLines.length === 0) {
-    println(c.dim("  (nothing — this resource points at no others)"));
+    println(c.dim("  (nothing: this resource points at no others)"));
   } else {
     for (const line of providerLines) println(line);
   }
@@ -216,9 +216,5 @@ function printFocused(
     for (const line of consumerLines) println(line);
   }
   println();
-  println(
-    c.dim(
-      "Blast radius counts every resource that transitively depends on this one — if it breaks or rotates its outputs, that is what is affected.",
-    ),
-  );
+  println(c.dim("Blast radius is every resource that transitively depends on this one."));
 }

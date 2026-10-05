@@ -218,7 +218,7 @@ export function buildWorkerSettingDescriptors(input: WorkerSettingsInput): Setti
       control: "readonly",
       value: dash(s.compatibility_date ?? ""),
       group: "Deployment",
-      description: "Runtime compatibility date — change it by redeploying the Worker.",
+      description: "Runtime compatibility date. Redeploy the Worker to change it.",
     },
     {
       id: "compatibility_flags",

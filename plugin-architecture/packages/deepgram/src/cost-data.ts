@@ -125,8 +125,8 @@ function asScopeError(err: unknown): CostSetupError | undefined {
   if (status !== 401 && status !== 403) return undefined;
   return new CostSetupError(
     "Deepgram refused the billing breakdown for this API key. Billing is readable only by " +
-      "admin- and owner-scope keys — a member-scope key can transcribe and synthesize but " +
-      "cannot see spend. Replace this account's key with an admin or owner key from the " +
+      "admin- and owner-scope keys; a member-scope key cannot see " +
+      "spend. Replace this account's key with an admin or owner key from the " +
       "project's Settings → API Keys.",
     CONSOLE_HELP,
   );
@@ -235,7 +235,7 @@ export async function fetchDeepgramCostData(
     throw new CostSetupError(
       "Deepgram returned billing activity for this account but no dollar amounts, so there " +
         "is nothing to report as spend. Accounts billed under an enterprise contract are the " +
-        "usual reason — their usage is priced outside the API. Check the balance and invoices " +
+        "usual reason, since their usage is priced outside the API. Check the balance and invoices " +
         "in the Deepgram Console instead.",
       CONSOLE_HELP,
     );

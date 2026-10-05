@@ -13,7 +13,7 @@ export const VpcResourceType = rt({
   name: "VPC",
   id: "vpc",
   description:
-    "A DigitalOcean VPC — a private network shared by the Droplets, DOKS nodes, NFS shares and Dedicated Inference endpoints placed in it.",
+    "A DigitalOcean VPC: a private network for the Droplets, DOKS nodes, NFS shares and inference endpoints in it.",
   fields: [
     f("name", "Name"),
     f("region", "Region", {

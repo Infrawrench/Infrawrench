@@ -25,7 +25,7 @@ export function invoke<T>(channel: string, args?: Record<string, unknown>): Prom
   if (!window.electronAPI) {
     return Promise.reject(
       new Error(
-        "Electron preload script not loaded — run `pnpm install && pnpm dev` from the desktop package",
+        "Electron preload script not loaded. Run `pnpm install && pnpm dev` from the desktop package",
       ),
     );
   }

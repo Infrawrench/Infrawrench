@@ -157,7 +157,7 @@ function UtilizationBar({ row, threshold }: { row: QuotaRow; threshold: number }
       <div
         className="absolute inset-y-0 w-px bg-on-surface-faint/60"
         style={{ left: `${markerPct}%` }}
-        title={gt("Alert threshold — {value}", { value: formatQuotaUtilization(threshold) })}
+        title={gt("Alert threshold: {value}", { value: formatQuotaUtilization(threshold) })}
       />
     </div>
   );
@@ -200,8 +200,8 @@ function CoverageNotes({
           <p role="alert" className="text-danger">
             <span className="font-medium">
               <Var>{account.accountName}</Var>
-            </span>{" "}
-            — quotas could not be read: <Var>{account.lastError}</Var>
+            </span>
+            : quotas could not be read. <Var>{account.lastError}</Var>
             <Var>
               {quotaLinkUrl(account.lastErrorHelpUrl) ? (
                 <>
@@ -233,17 +233,16 @@ function CoverageNotes({
       {partial.length > 0 && (
         <T>
           <p className="text-on-surface-faint">
-            <Var>{partial.map((a) => a.accountName).join(", ")}</Var> report a representative subset
-            of their provider&apos;s quotas, not all of them — an absent row means unmeasured, not
-            headroom.
+            <Var>{partial.map((a) => a.accountName).join(", ")}</Var> report only some of their
+            provider&apos;s quotas. A missing row means unmeasured, not headroom.
           </p>
         </T>
       )}
       {unsupportedPluginIds.length > 0 && (
         <T>
           <p className="text-on-surface-faint">
-            No quota API: <Var>{unsupportedPluginIds.join(", ")}</Var>. Their limits exist but are
-            not readable — nothing is shown for them rather than zero.
+            No quota API: <Var>{unsupportedPluginIds.join(", ")}</Var>. Their limits can&apos;t be
+            read, so nothing is shown.
           </p>
         </T>
       )}
@@ -282,14 +281,14 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
       <h1 className="text-xl font-semibold mb-1">{gt("Quotas")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "How close each account is to the limits its provider enforces. Both the used figure and the limit come from the provider — nothing is assumed from published defaults, so an approved increase shows as the headroom you actually have.",
+          "How close each account is to its provider's limits. Usage and limits come from the provider, so approved increases are included.",
         )}
       </p>
 
       {error != null && data === null && (
         <T>
           <div role="alert" className="text-sm text-danger">
-            Couldn&apos;t load the quota radar — <Var>{error}</Var>{" "}
+            Couldn&apos;t load the quota radar: <Var>{error}</Var>{" "}
             <Var>
               {onRetry ? (
                 <button type="button" onClick={onRetry} className="underline">
@@ -308,7 +307,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
       {error != null && data !== null && (
         <T>
           <p role="alert" className="mb-4 text-xs text-danger">
-            Couldn&apos;t refresh — showing the last loaded readings. <Var>{error}</Var>
+            Couldn&apos;t refresh; showing the last loaded readings. <Var>{error}</Var>
           </p>
         </T>
       )}
@@ -337,7 +336,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
           {data.rows.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
               {gt(
-                "No quota readings yet. Quotas are collected a few times a day from the providers that expose them — AWS, GCP, DigitalOcean and Kubernetes today. An account on a provider with no quota API contributes nothing here rather than a reassuring zero.",
+                "No quota readings yet. Quotas are collected a few times a day from AWS, GCP, DigitalOcean and Kubernetes. Providers without a quota API show nothing.",
               )}
             </p>
           ) : (
@@ -462,7 +461,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                                       title={
                                         row.trend.perDay === null
                                           ? gt(
-                                              "Not enough history to fit a trend yet — this is not a statement that the quota is safe.",
+                                              "Not enough history for a trend yet. This doesn't mean the quota is safe.",
                                             )
                                           : gt("Flat or falling over the last 14 days.")
                                       }
@@ -478,7 +477,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                                     <span
                                       className="text-[11px] text-on-surface-faint"
                                       title={gt(
-                                        "The provider does not accept increase requests for this quota — the workload has to change instead.",
+                                        "The provider doesn't allow increases for this quota; the workload has to change instead.",
                                       )}
                                     >
                                       {gt("hard limit")}
@@ -510,12 +509,9 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
 
               <T>
                 <p className="mt-4 text-xs text-on-surface-faint">
-                  Readings are collected from your providers&apos; quota APIs a few times a day, so
-                  the figures are as fresh as the last pass. The trend is a least-squares fit over
-                  the last 14 days and only reports an exhaustion date inside 30 days — beyond that
-                  a line through provisioning history says nothing useful. The marker on each bar is
-                  your organization&apos;s <Var>{formatQuotaUtilization(data.threshold)}</Var> alert
-                  threshold.
+                  Collected a few times a day. Trends fit the last 14 days and only predict
+                  exhaustion within 30 days. The marker on each bar is your organization&apos;s{" "}
+                  <Var>{formatQuotaUtilization(data.threshold)}</Var> alert threshold.
                 </p>
               </T>
             </>

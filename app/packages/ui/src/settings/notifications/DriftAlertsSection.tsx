@@ -93,9 +93,8 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
             <button type="button" onClick={() => openWorkspace("changes")} className="underline">
               change timeline
             </button>{" "}
-            per organization per cooldown window — never one message per change. Turn the{" "}
-            <strong>Drift</strong> trigger on for a Slack channel, a Teams channel or your phone
-            above to receive it; it is off by default everywhere.
+            per cooldown window, not one message per change. Off by default; turn the{" "}
+            <strong>Drift</strong> trigger on for a channel or your phone above to receive it.
           </p>
         </T>
       </div>
@@ -127,9 +126,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
         </label>
       </div>
       <p className="text-xs text-on-surface-tertiary">
-        {gt(
-          "Field changes are off by default: they are the bulk of the volume and are usually a provider restating a value rather than someone changing something.",
-        )}
+        {gt("Field changes are off by default; they are high-volume and usually provider noise.")}
       </p>
 
       <div className="grid grid-cols-2 gap-4">
@@ -185,8 +182,8 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
         <div>
           <p className="text-xs text-on-surface-tertiary mb-2">
             <T>
-              Accounts to watch — leave every box unchecked to watch all{" "}
-              <Var>{accounts.length}</Var>.
+              Accounts to watch. Leave every box unchecked to watch all <Var>{accounts.length}</Var>
+              .
             </T>
           </p>
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-on-surface-secondary">

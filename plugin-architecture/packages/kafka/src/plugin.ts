@@ -17,7 +17,7 @@ const manifest: PluginManifest = {
       key: "connectionString",
       label: "Connection URL",
       description:
-        "kafka:// URL — e.g. kafka://broker1:9092,broker2:9092?sasl=scram-sha-256&user=alice&password=…&ssl=true. See plugin docs.",
+        "kafka:// URL, e.g. kafka://broker1:9092,broker2:9092?sasl=scram-sha-256&user=alice&password=…&ssl=true. See plugin docs.",
       sensitive: true,
       placeholder: "kafka://localhost:9092",
     },

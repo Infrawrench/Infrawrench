@@ -561,7 +561,7 @@ export class ReplicateClient implements PluginClient {
     const metrics = prediction.metrics ?? {};
     const preview = previewInput(prediction.input);
     const displayName = preview
-      ? `${prediction.model ?? shortId(prediction.id)} — ${preview}`
+      ? `${prediction.model ?? shortId(prediction.id)}: ${preview}`
       : `${prediction.model ?? "prediction"} · ${shortId(prediction.id)}`;
     const outputUrl = firstOutputUrl(prediction.output);
     return {
@@ -2063,7 +2063,7 @@ export class ReplicateClient implements PluginClient {
               kind: "text",
               // Stated plainly rather than shown as an empty chart.
               content:
-                "Replicate exposes no billing, usage or spend API — `GET /v1/account` returns identity only. Instance-seconds for this deployment are visible in the Replicate dashboard, not here.",
+                "Replicate has no billing or usage API. Instance-seconds for this deployment are in the Replicate dashboard.",
               variant: "muted",
             },
             {
@@ -2286,7 +2286,7 @@ export class ReplicateClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Pass the SKU as `hardware` when creating a deployment. Per-second pricing for each SKU is published on the Replicate pricing page — there is no pricing API.",
+                "Pass the SKU as `hardware` when creating a deployment. Per-second pricing is on the Replicate pricing page.",
               variant: "muted",
             },
           ],

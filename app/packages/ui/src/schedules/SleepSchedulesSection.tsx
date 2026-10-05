@@ -140,7 +140,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
           <h2 className="text-sm font-semibold text-on-surface">{gt("Sleep schedules")}</h2>
           <T>
             <p className="mt-1 text-xs text-on-surface-secondary">
-              Off-at/on-at windows for non-prod resources — stopped and started for you on schedule.
+              Stops and starts non-prod resources on a schedule.
               <Var>
                 {totalSaving.size > 0 ? (
                   <>
@@ -169,7 +169,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load sleep schedules — {error}", { error })}{" "}
+          {gt("Couldn't load sleep schedules: {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             {gt("Retry")}
           </button>
@@ -182,9 +182,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
       )}
       {schedules !== null && schedules.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          {gt(
-            "No schedules yet. Open a stoppable resource (VMs, database instances, dedicated endpoints…) and use its Schedule tab to put it to sleep outside working hours.",
-          )}
+          {gt("No schedules yet. Add one from a stoppable resource's Schedule tab.")}
         </p>
       )}
 
@@ -295,7 +293,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
       {schedules !== null && schedules.length > 0 && (
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "Savings are projected from each resource's trailing per-resource billing rows and the weekly off-hours fraction; some providers keep billing stopped resources. Transitions are skipped (and shown here) while a change freeze is in effect.",
+            "Savings are projected from recent billing and weekly off-hours; some providers still bill stopped resources. Change freezes skip transitions.",
           )}
         </p>
       )}

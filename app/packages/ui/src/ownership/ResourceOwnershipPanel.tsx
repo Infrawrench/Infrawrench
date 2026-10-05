@@ -185,7 +185,7 @@ export function ResourceOwnershipPanel({
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
           <T>
-            Couldn&apos;t load ownership — <Var>{error}</Var>{" "}
+            Couldn&apos;t load ownership: <Var>{error}</Var>{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
               Retry
             </button>
@@ -197,9 +197,8 @@ export function ResourceOwnershipPanel({
         <h3 className="text-sm font-semibold text-on-surface">{gt("Ownership")}</h3>
         <T>
           <p className="mt-1 text-xs text-on-surface-secondary">
-            Who to ask about this resource, and why it exists. The orphan finder shows the owner
-            against every resource it flags, and alerts about this resource go to them as well as to
-            the org.
+            Who to ask about this resource, and why it exists. Alerts about it go to the owner as
+            well as the org.
           </p>
         </T>
       </div>
@@ -251,7 +250,7 @@ export function ResourceOwnershipPanel({
         />
         <span className="text-xs text-on-surface-faint">
           {gt(
-            "Shown wherever the owner is, but nothing can be sent to it — set a person above if you want the alerts to reach someone.",
+            "Shown as the owner, but alerts can't be sent to it. Set a person above to receive alerts.",
           )}
         </span>
       </label>
@@ -299,7 +298,7 @@ export function ResourceOwnershipPanel({
       )}
       {saved && !dirty && (
         <p role="status" className="text-sm text-on-surface-secondary">
-          {record ? gt("Ownership saved.") : gt("Ownership cleared — nothing was left to record.")}
+          {record ? gt("Ownership saved.") : gt("Ownership cleared.")}
         </p>
       )}
 

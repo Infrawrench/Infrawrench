@@ -11,7 +11,7 @@ export const ContainerRegistryResourceType = rt({
   name: "Container Registry",
   plural: "Container Registries",
   id: "container-registry",
-  description: "The account's DigitalOcean Container Registry — one per account",
+  description: "The account's DigitalOcean Container Registry (one per account)",
   fields: [
     f("name", "Name"),
     f("subscriptionTier", "Subscription Tier", {
@@ -31,7 +31,7 @@ export const ContainerRegistryResourceType = rt({
     o("dockerConfigJson", "Docker Config JSON", {
       sensitive: true,
       description:
-        "Read/write docker credentials as a .dockerconfigjson document — usable directly as a kubernetes.io/dockerconfigjson pull secret.",
+        "Docker credentials as a .dockerconfigjson document, usable as a Kubernetes pull secret.",
     }),
     o("username", "Docker Username", { sensitive: true }),
     o("password", "Docker Password", { sensitive: true }),

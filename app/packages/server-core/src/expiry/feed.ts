@@ -92,7 +92,7 @@ function leaseItems(
       externalId: null,
       fieldKey: "lease",
       kind: "lease",
-      label: row.note ? `Lease ends — ${row.note}` : "Lease ends",
+      label: row.note ? `Lease ends: ${row.note}` : "Lease ends",
       basis: "expiry",
       dueAt: new Date(dueMs).toISOString(),
       daysRemaining,

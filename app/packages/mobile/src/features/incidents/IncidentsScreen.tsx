@@ -95,8 +95,8 @@ export function IncidentsScreen() {
       )}
 
       <Text style={styles.footnote}>
-        Incidents you declared — not provider outages, which appear on the Moment view. Editing,
-        retrying failed artefacts and the postmortem export live on the web and desktop apps.
+        Incidents you declared (provider outages appear on the Moment view). Editing, retries and
+        postmortem export are on web and desktop.
       </Text>
 
       <DeclareSheet visible={declaring} onClose={() => setDeclaring(false)} />

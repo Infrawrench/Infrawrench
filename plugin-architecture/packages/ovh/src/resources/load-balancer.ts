@@ -4,7 +4,7 @@ export const LoadBalancerResourceType = rt({
   id: "load-balancer",
   name: "Load Balancer",
   description:
-    "An OVHcloud Public Cloud load balancer from the older, configuration-versioned API (still in beta); new deployments use the Public Cloud Load Balancer type",
+    "An OVHcloud Public Cloud load balancer from the older beta API; new deployments use the Public Cloud Load Balancer type",
   fields: [
     f("name", "Name"),
     f("region", "Region"),

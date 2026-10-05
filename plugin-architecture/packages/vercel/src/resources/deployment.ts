@@ -4,7 +4,7 @@ export const VercelDeploymentResourceType = rt({
   name: "Deployment",
   pinnable: false,
   id: "vercel-deployment",
-  description: "A Vercel deployment — a specific build of a project",
+  description: "A Vercel deployment: a specific build of a project",
   fields: [
     f("name", "Name"),
     f("url", "URL", { required: false }),

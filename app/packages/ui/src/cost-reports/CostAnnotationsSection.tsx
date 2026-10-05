@@ -78,7 +78,7 @@ export function CostAnnotationsSection({
 
       {error !== null ? (
         <div role="alert" className="text-xs text-danger">
-          {gt("Couldn’t load annotations — {error}", { error })}{" "}
+          {gt("Couldn’t load annotations: {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             {gt("Retry")}
           </button>
@@ -89,9 +89,7 @@ export function CostAnnotationsSection({
         </p>
       ) : annotations.length === 0 ? (
         <p className="text-xs text-on-surface-faint">
-          {gt(
-            "No annotations yet. A note dated to the day something happened is what turns a step in this chart back into an explanation six weeks from now.",
-          )}
+          {gt("No annotations yet. Add a dated note to explain a change in this chart.")}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">

@@ -507,7 +507,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={gt('Search all streams — terms, "phrases", -not, /regex/')}
+          placeholder={gt('Search all streams: terms, "phrases", -not, /regex/')}
           maxLength={LOG_WORKSPACE_LIMITS.maxSearchLength}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 flex-1 min-w-40 font-mono"
           aria-label={gt("Search across all streams")}

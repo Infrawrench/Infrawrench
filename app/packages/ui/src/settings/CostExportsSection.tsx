@@ -247,10 +247,9 @@ export function CostExportsSection() {
           <h1 className="text-xl font-semibold">{gt("Cost exports")}</h1>
           <T>
             <p className="text-sm text-on-surface-muted mt-1">
-              Ship the organization&rsquo;s raw cost rows to a warehouse or object store on a
-              schedule. Each run writes <strong>one object per period</strong> at a deterministic
-              key, or replaces the period&rsquo;s rows in a Snowflake or Databricks table, so
-              re-exporting a period replaces it rather than adding a second copy of the same days.
+              Send raw cost rows to a warehouse or object store on a schedule. Each run writes{" "}
+              <strong>one object per period</strong> (or replaces the period&rsquo;s table rows), so
+              re-exports never duplicate days.
             </p>
           </T>
         </div>
@@ -267,12 +266,9 @@ export function CostExportsSection() {
 
       <T>
         <div className="mb-6 px-3 py-2 text-xs text-warning/90 border border-amber-900/40 bg-amber-950/20 rounded-lg">
-          <strong>Providers restate spend for days after the fact.</strong> The object written for
-          yesterday is not final — credits land late, tax lines are recomputed, and amortization
-          shifts. Every run therefore re-writes the periods inside its restatement window, and every
-          row carries a <code>collection_watermark</code> column: the newest day every collecting
-          account had reported. Hold back periods ending after the watermark if your reconciliation
-          needs certainty.
+          <strong>Providers restate spend for days after the fact.</strong> Each run re-writes
+          recent periods, and every row carries a <code>collection_watermark</code> column (the
+          newest day all accounts have reported). Hold back later periods if you need final figures.
         </div>
       </T>
 
@@ -292,9 +288,8 @@ export function CostExportsSection() {
       ) : exports.length === 0 ? (
         <T>
           <p className="text-sm text-on-surface-muted">
-            No exports yet. Create one to have Infrawrench write CSV or NDJSON cost rows to an
-            S3-compatible bucket (AWS S3, R2, Spaces, MinIO), POST them to an HTTPS endpoint, or
-            load them into a Snowflake or Databricks table through a connected account.
+            No exports yet. Export cost rows to an S3-compatible bucket, an HTTPS endpoint, or a
+            Snowflake or Databricks table.
           </p>
         </T>
       ) : (
@@ -591,11 +586,9 @@ function CostExportEditor({
             <h3 className="text-sm font-semibold">{gt("Restatement window")}</h3>
             <T>
               <p className="text-xs text-on-surface-muted">
-                Days of already-written history each run rebuilds. Every period overlapping the
-                window is re-exported <em>in full</em> at the key it already occupies, so the
-                destination ends up with a better copy of the same file — never a duplicate. Seven
-                days covers how far back the providers we collect from normally revise; set 0 only
-                if yours never do.
+                Days of history each run rebuilds. Overlapping periods are re-exported{" "}
+                <em>in full</em> in place, never duplicated. Seven days covers normal provider
+                revisions.
               </p>
             </T>
             <label className="block max-w-[12rem]">
@@ -736,20 +729,16 @@ function FocusColumnsNote({ version }: { version: FocusVersion }) {
       </T>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Every object follows the FinOps Open Cost and Usage Specification <Var>{version}</Var>:
-          one row per account, service, region, resource, tag set, charge type and commitment per
-          day, with billed cost (cash) and effective cost (amortized) side by side, the FOCUS charge
-          and service categories, and all tags as one JSON column. Infrawrench extras such as the
-          usage quantity and the collection watermark come last, prefixed <code>x_</code>. The
+          Objects follow FOCUS <Var>{version}</Var>, with billed and effective cost side by side and
+          tags as one JSON column. Infrawrench extras come last, prefixed <code>x_</code>. The
           export&apos;s filters and charge types still apply.
         </p>
       </T>
       {version !== FOCUS_LATEST_VERSION && (
         <T>
           <p className="text-xs text-on-surface-muted">
-            FOCUS <Var>{FOCUS_LATEST_VERSION}</Var> is the current version. It drops the deprecated
-            ProviderName and PublisherName columns and otherwise reads the same, so switch unless
-            the tool you load these files into only understands this version.
+            FOCUS <Var>{FOCUS_LATEST_VERSION}</Var> is current. It only drops the deprecated
+            ProviderName and PublisherName columns, so switch unless your tool needs this version.
           </p>
         </T>
       )}
@@ -837,9 +826,8 @@ function ColumnPicker({
       <h3 className="text-sm font-semibold">{gt("Columns")}</h3>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Which identity columns survive into the output. Leaving one out aggregates over it — a
-          provider + service export is a fraction of the size of a per-resource one. Day, currency,
-          amount and usage always come along.
+          Columns to include. Leaving one out aggregates over it. Day, currency, amount and usage
+          are always included.
         </p>
       </T>
       <div className="flex flex-wrap gap-2">
@@ -906,8 +894,8 @@ function ColumnPicker({
           <span className={LABEL}>{gt("Virtual tag columns")}</span>
           <T>
             <p className="text-xs text-on-surface-muted mb-2">
-              One column per virtual tag. A row a split rule divides is written once per share, with
-              its amounts weighted, so the file still adds up to the collected total.
+              One column per virtual tag. Split rows are written once per share, so totals still add
+              up.
             </p>
           </T>
           <div className="flex flex-wrap gap-2">
@@ -968,9 +956,8 @@ function S3DestinationFields({
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <T>
         <p className="sm:col-span-2 text-xs text-on-surface-muted">
-          One setting covers AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and
-          MinIO — leave the endpoint blank for AWS, otherwise paste the provider&rsquo;s S3 API
-          origin.
+          Works with AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and MinIO.
+          Leave the endpoint blank for AWS; otherwise paste the provider&rsquo;s S3 API origin.
         </p>
       </T>
       <label className="block">
@@ -1075,8 +1062,8 @@ function HttpDestinationFields({
       <T>
         <p className="sm:col-span-2 text-xs text-on-surface-muted">
           Each object is sent as the request body, with the object key in the
-          <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential — a
-          pre-signed URL carries its own signature — so it is encrypted and never shown again.
+          <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential:
+          encrypted and never shown again.
         </p>
       </T>
       <label className="block">

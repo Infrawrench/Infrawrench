@@ -17,7 +17,7 @@ const CostCentreInput = strict({
     .openapi({
       description:
         "Cost centre to nest this one under; null is the top level. On an update, moving a " +
-        "centre is this field changing — omitting it leaves the centre where it is. Rejected " +
+        "centre is this field changing; omitting it leaves the centre where it is. Rejected " +
         "with 400 when the parent is unknown, is the centre itself or one of its own " +
         "descendants, or when the resulting tree would be more than 4 levels deep (measured " +
         "over the whole subtree being moved).",
@@ -31,7 +31,7 @@ const CostCentre = strict({
   parentId: Uuid.nullable().openapi({
     description:
       "The centre this one sits under; null is a top-level centre. Nesting is a reporting " +
-      "structure only — allocation still resolves each cost row to exactly one centre.",
+      "structure only: allocation still resolves each cost row to exactly one centre.",
   }),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -111,7 +111,7 @@ const ShowbackReport = strict({
           description:
             "This centre's own spend plus every descendant's. Equal to `totals` for a leaf and " +
             "for every centre in an organization that does not nest. Do not sum this across " +
-            "entries — parents already contain their children.",
+            "entries: parents already contain their children.",
         }),
         parentId: Uuid.nullable().openapi({
           description: "The centre this one sits under; null for a root and for Unallocated.",
@@ -145,7 +145,7 @@ const RangeQuery = strict({
     .openapi({
       description:
         "Apply the organization's billing rules (see /billing-rules): markups multiply, and a " +
-        "reallocation moves a centre's spend onto another centre. Off by default — a chargeback " +
+        "reallocation moves a centre's spend onto another centre. Off by default; a chargeback " +
         "report that silently showed marked-up numbers is one the receiving team could not " +
         "reconcile. On, the response carries `adjustment` with the collected totals beside the " +
         "adjusted ones. Fixed-amount rules are booked onto the cost centre they name (or " +
@@ -325,7 +325,7 @@ export function registerCostCentrePaths(ctx: BuildContext) {
       'currency. Spend no rule claims comes back as the "Unallocated" bucket; every defined ' +
       "centre appears even with zero spend.\n\n" +
       "Cost centres nest, so the list is a depth-first tree. Each entry carries `totals` (spend " +
-      "allocated directly to it) and `subtreeTotals` (its own plus every descendant's) — " +
+      "allocated directly to it) and `subtreeTotals` (its own plus every descendant's). " +
       '"Engineering, of which Platform" needs both. Rules still evaluate first-match-wins by ' +
       "ascending priority against a flat list, so a row is allocated exactly once even when a " +
       "rule targets a parent and another targets its child; at equal priority the more deeply " +

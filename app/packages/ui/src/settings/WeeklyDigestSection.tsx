@@ -158,7 +158,7 @@ export function WeeklyDigestSection() {
       setSendMessage({
         kind: "ok",
         text: gt(
-          "Sent to {succeeded}/{attempted} destination(s) — Slack {slackSucceeded}/{slackAttempted}, Teams {teamsSucceeded}/{teamsAttempted}, email {emailSucceeded}/{emailAttempted}.",
+          "Sent to {succeeded}/{attempted} destination(s): Slack {slackSucceeded}/{slackAttempted}, Teams {teamsSucceeded}/{teamsAttempted}, email {emailSucceeded}/{emailAttempted}.",
           {
             succeeded: r.succeeded,
             attempted: r.attempted,
@@ -233,11 +233,9 @@ export function WeeklyDigestSection() {
       <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Weekly digest")}</h2>
       <T>
         <p className="text-xs text-on-surface-muted">
-          A summary of last week: total spend with week-over-week movers by provider and service,
-          sync incidents, and resources added or removed. It always covers the last complete
-          Monday-to-Sunday week in the time zone below, and goes to the Slack and Teams channels
-          above that have <strong>Weekly digest</strong> ticked, plus any email recipients you add
-          here.
+          Last week&rsquo;s spend and top movers, sync incidents, and resource changes. Sent to
+          channels above with <strong>Weekly digest</strong> ticked and to any email recipients
+          below.
         </p>
       </T>
 
@@ -310,8 +308,7 @@ export function WeeklyDigestSection() {
       <T>
         <p className="text-xs text-on-surface-tertiary">
           Sends every <Var>{gtData(dayLabel)}</Var> at <Var>{hourLabel(settings.sendHour)}</Var>{" "}
-          <Var>{settings.timezone}</Var>. Daylight-saving changes are handled for you — the digest
-          keeps its local send time.
+          <Var>{settings.timezone}</Var>, adjusted for daylight saving.
         </p>
       </T>
 
@@ -329,7 +326,7 @@ export function WeeklyDigestSection() {
         <p className="text-xs text-on-surface-muted">
           {settings.narrativeAvailable
             ? gt(
-                "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data. If it fails, the digest still sends without it.",
+                "A short paragraph on what changed. Only the digest's figures are sent to the model, never resource or credential data.",
               )
             : gt("Unavailable: this deployment has no LLM API key configured.")}
         </p>
@@ -349,9 +346,7 @@ export function WeeklyDigestSection() {
         )}
         {recipients.length === 0 ? (
           <p className="text-xs text-on-surface-muted">
-            {gt(
-              "No email recipients. Addresses don't have to belong to Infrawrench users — a finance alias works fine.",
-            )}
+            {gt("No email recipients. Any address works, including non-users.")}
           </p>
         ) : (
           <ul className="space-y-1">

@@ -118,7 +118,7 @@ describe("CostCollectionNotice", () => {
   it("explains an account that collected cleanly but has no data", () => {
     render(<CostCollectionNotice statuses={[status({ coverage: null })]} />);
     expect(screen.getByText("No spend data yet for Infrawrench GCP")).toBeInTheDocument();
-    expect(screen.getByText(/Collection ran without error/i)).toBeInTheDocument();
+    expect(screen.getByText(/Collection worked/i)).toBeInTheDocument();
   });
 
   it("stays quiet for an account that has never been polled", () => {

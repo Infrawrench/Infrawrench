@@ -100,7 +100,7 @@ const ConfigWorkflow = strict({
   enabled: z.boolean().default(true),
 }).openapi("OrgConfigWorkflow", {
   description:
-    "A workflow. The git-webhook signing secret is deliberately absent — it is write-only, " +
+    "A workflow. The git-webhook signing secret is deliberately absent; it is write-only, " +
     "so a document can neither leak nor set one.",
 });
 
@@ -129,7 +129,7 @@ const ConfigDashboardCard = z
   ])
   .openapi("OrgConfigDashboardCard", {
     description:
-      "One card. Position is the index in the dashboard's `cards` array — the grid order all " +
+      "One card. Position is the index in the dashboard's `cards` array; the grid order all " +
       "three card kinds share.",
   });
 
@@ -240,7 +240,7 @@ const ConfigDocument = strict({
   alertSettings: ConfigAlertSettings.optional(),
 }).openapi("OrgConfigDocument", {
   description:
-    "An organization's configuration. Every section is optional — a document that omits one " +
+    "An organization's configuration. Every section is optional; a document that omits one " +
     "leaves it entirely alone, in both apply modes.",
 });
 
@@ -261,7 +261,7 @@ const ConfigUnresolved = strict({
   detail: z.string(),
 }).openapi("OrgConfigUnresolved", {
   description:
-    "Something the document asked for that this organization could not satisfy — a pin for a " +
+    "Something the document asked for that this organization could not satisfy; a pin for a " +
     "resource nobody has synced, an account name that does not exist here. Not fatal: the " +
     "affected card, clause or deletion is dropped and the rest of the document still applies.",
 });
@@ -318,7 +318,7 @@ export function registerOrgConfigPaths(ctx: BuildContext) {
       "centres, the tag policy and the org-wide alert settings, addressed by stable keys rather " +
       "than row ids so the result applies to any organization.\n\n" +
       "Credentials, accounts, resources and workflow signing secrets are never included. " +
-      "Ordering is stable, so re-exporting an unchanged organization produces the same bytes — " +
+      "Ordering is stable, so re-exporting an unchanged organization produces the same bytes; " +
       "commit it to git and the diff is the change.\n\n" +
       "Requires the read permission of every section exported; it refuses rather than silently " +
       "omitting one, because a partial document applied in `replace` mode would delete what the " +
@@ -360,7 +360,7 @@ export function registerOrgConfigPaths(ctx: BuildContext) {
     tags: ["Config as Code"],
     summary: "Apply a configuration document",
     description:
-      "Applies the document in a single transaction and returns the plan that was executed — " +
+      "Applies the document in a single transaction and returns the plan that was executed; " +
       "all or nothing, so a failure never leaves the organization halfway between two " +
       "configurations.\n\n" +
       "Requires the write permission of every section the document carries, so this cannot be " +

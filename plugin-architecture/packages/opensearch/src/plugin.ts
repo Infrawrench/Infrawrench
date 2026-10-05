@@ -85,7 +85,7 @@ const manifest: PluginManifest = {
       key: "skipTlsVerify",
       label: "Skip TLS Verify",
       description:
-        "When 'true', the host skips TLS chain verification. Only use with isolated dev clusters — never with production.",
+        "When 'true', the host skips TLS chain verification. Only for isolated dev clusters, never production.",
       sensitive: false,
     },
   ],

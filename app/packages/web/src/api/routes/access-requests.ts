@@ -172,7 +172,7 @@ async function decide(c: Context, decision: "approved" | "denied") {
     return c.json(
       {
         error:
-          "You cannot decide your own access request — that is the whole point of the approval.",
+          "You cannot decide your own access request; that is the whole point of the approval.",
         code: "self_approval",
       },
       403,

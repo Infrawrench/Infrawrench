@@ -31,7 +31,7 @@ export function invoiceTools(): ToolDefinition[] {
         "The customers this organization bills for infrastructure it runs on their behalf. Each " +
         "one names a billing currency and the cost centres (and cloud accounts) whose spend " +
         "belongs to them.\n\n" +
-        "A managed account does **not** define its own matching rules — it references cost " +
+        "A managed account does **not** define its own matching rules; it references cost " +
         "centres, and the organization's allocation rules decide what lands in those. So the " +
         "spend on a customer's invoice is the same spend `query_showback` attributes to those " +
         "centres for the same period. A cost centre or account belongs to at most one customer.\n\n" +
@@ -75,7 +75,7 @@ export function invoiceTools(): ToolDefinition[] {
         "here, not zero**: a draft's figures are recomputed from live spend on every read and " +
         "this list does not recompute. Call `get_invoice` for a draft's current numbers, and do " +
         "not report a draft as being worth nothing.\n\n" +
-        "An issued invoice is never edited and never deleted — a wrong one is voided and " +
+        "An issued invoice is never edited and never deleted; a wrong one is voided and " +
         "superseded by a corrective invoice, which is why you may see two invoices for one " +
         "period with `supersedesInvoiceId` linking them.",
       inputSchema: {
@@ -103,12 +103,12 @@ export function invoiceTools(): ToolDefinition[] {
         "Each line carries `collected` (what the providers charged), `adjustment` (what the " +
         "organization's billing rules added or removed), `adjusted` (their sum), the exchange " +
         "`rate` and the `billed` amount in the customer's currency. " +
-        "`collected + adjustment === adjusted` holds for every currency — that identity is what " +
+        "`collected + adjustment === adjusted` holds for every currency; that identity is what " +
         "makes an invoice reconcilable, and it is the arithmetic to quote when asked why a " +
         "customer is being charged what they are.\n\n" +
         "`live` distinguishes the two kinds of answer. `live: true` means this is a **draft** " +
         "and the figures were recomputed for this call: they will move as cost data restates. " +
-        "`live: false` means the invoice was approved and its figures are frozen — the rates in " +
+        "`live: false` means the invoice was approved and its figures are frozen; the rates in " +
         "`derivation.rates`, the rules in `derivation.rules` and the names in `derivation.scope` " +
         "are the ones that applied at issue time, not the ones that apply now. Never describe a " +
         "frozen invoice as out of date; it is a document, not a query.",

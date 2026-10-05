@@ -149,7 +149,7 @@ export const ovhTerraformExport: TerraformExportCapability = {
             attributes,
             importId: resource.externalId,
             comments: [
-              "Import format: service_name/network_id — prepend var.ovh_project_id if needed.",
+              "Import format: service_name/network_id (prepend var.ovh_project_id if needed).",
             ],
           },
         };
@@ -184,7 +184,7 @@ export const ovhTerraformExport: TerraformExportCapability = {
             ...(nodeCount > 1
               ? {
                   comments: [
-                    `Cluster has ${nodeCount} nodes — expand the nodes list to match`,
+                    `Cluster has ${nodeCount} nodes; expand the nodes list to match`,
                     "each node's region/flavor in the OVH control panel.",
                   ],
                 }

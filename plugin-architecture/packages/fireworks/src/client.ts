@@ -637,7 +637,7 @@ export class FireworksClient implements PluginClient {
     const accountId = credentials["accountId"];
     if (!accountId) {
       throw new Error(
-        "Fireworks plugin: missing accountId credential — Fireworks has no whoami endpoint, so the account id must be supplied",
+        "Fireworks plugin: missing accountId credential; Fireworks has no whoami endpoint, so the account id must be supplied",
       );
     }
     this.apiKey = apiKey;
@@ -1592,7 +1592,7 @@ export class FireworksClient implements PluginClient {
       .map((user) => ({
         id: lastSegment(user.name),
         label: user.email
-          ? `${user.displayName || lastSegment(user.name)} — ${user.email}`
+          ? `${user.displayName || lastSegment(user.name)} (${user.email})`
           : user.displayName || lastSegment(user.name),
       }));
 
@@ -1764,7 +1764,7 @@ export class FireworksClient implements PluginClient {
         ? [
             {
               code: "plaintext-key-shown-once",
-              message: `Copy this key now — Fireworks returns the plaintext value only at creation and never stores it: ${created.key}`,
+              message: `Copy this key now. Fireworks never shows it again: ${created.key}`,
             },
           ]
         : [],
@@ -2672,7 +2672,7 @@ export class FireworksClient implements PluginClient {
           {
             kind: "text",
             content:
-              "Inference and control-plane calls share the same API key but not the same base URL — the account lives in the model string here, and in the path on the control plane.",
+              "Inference and control-plane calls share one API key but use different base URLs. The account id goes in the model string for inference and in the path for the control plane.",
             variant: "muted",
           },
         ],
@@ -3181,7 +3181,7 @@ export class FireworksClient implements PluginClient {
             {
               kind: "text",
               content:
-                "The plaintext value is returned once, in the create response, and is never stored — there is no way to read it back. Create a replacement key rather than trying to recover this one.",
+                "The plaintext value is only returned when the key is created. To replace a lost key, create a new one.",
               variant: "muted",
             },
           ],
@@ -3212,7 +3212,7 @@ export class FireworksClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Secret values are write-only on the Fireworks API — they are never returned by a get or a list, so only the key name is shown here.",
+                "Secret values are write-only on the Fireworks API, so only the key name is shown.",
               variant: "muted",
             },
           ],

@@ -39,7 +39,7 @@ export function OversizedSection() {
       {rightsizing.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t compute right-sizing —{" "}
+            Couldn&apos;t compute right-sizing:{" "}
             {rightsizing.error instanceof Error ? rightsizing.error.message : "request failed"}
           </Text>
         </Card>

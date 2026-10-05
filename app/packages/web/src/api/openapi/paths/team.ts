@@ -66,7 +66,7 @@ const InviteRequest = strict({
   roleId: Uuid.optional(),
   addSeat: z.boolean().optional().openapi({
     description:
-      "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true` — an org whose capacity is entirely prepaid capacity slots has no monthly seat to add.",
+      "When the paid plan is full (409 seat_limit_reached), retry with this set to buy one more monthly seat and send the invitation. Requires billing:write. Only works when the 409 reported `canAddSeat: true`: an org whose capacity is entirely prepaid capacity slots has no monthly seat to add.",
   }),
 }).openapi("InviteRequest");
 const InviteResponse = strict({ id: Uuid, token: z.string() }).openapi("InviteResponse");

@@ -85,7 +85,7 @@ export function sshKeyTools(): ToolDefinition[] {
       title: "Generate SSH key",
       description:
         "Generate a new Ed25519 SSH keypair for the organization. The private key is stored " +
-        "encrypted server-side and is usable by id with ssh_exec and SSH tunnels — it is NOT " +
+        "encrypted server-side and is usable by id with ssh_exec and SSH tunnels; it is NOT " +
         "returned by this tool. If the user needs to download the private key for use outside " +
         "Infrawrench, they must generate the key in Settings → SSH keys instead. Returns the " +
         "public key (safe to install on remote hosts' authorized_keys).",
@@ -237,7 +237,7 @@ export function sshKeyTools(): ToolDefinition[] {
         const result = await db.delete(sshKeys).where(whereClause).returning({ id: sshKeys.id });
         if (result.length === 0) {
           return err(
-            "SSH key not found — wrong id, or it belongs to another member and you lack team:role:write",
+            "SSH key not found: wrong id, or it belongs to another member and you lack team:role:write",
           );
         }
 

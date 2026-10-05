@@ -135,12 +135,11 @@ export function LinearSection() {
         <h1 className="text-xl font-semibold">Linear</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            File findings — cost anomalies, orphaned and oversized resources, posture findings,
-            expiring credentials, and failed probes — as Linear issues, and keep the issue link on
-            the finding. Connect one Linear workspace per organization. Filing needs{" "}
-            <code>linear:write</code>; seeing what has already been filed needs{" "}
-            <code>linear:read</code>. Works alongside Jira — an org with both connected chooses the
-            tracker when filing.
+            File findings (cost anomalies, orphaned resources, posture issues, expiring credentials,
+            failed probes) as Linear issues linked to the finding. One Linear workspace per
+            organization. Filing needs <code>linear:write</code>; seeing what has already been filed
+            needs <code>linear:read</code>. With Jira also connected, you pick the tracker when
+            filing.
           </p>
         </T>
       </div>
@@ -164,10 +163,9 @@ export function LinearSection() {
             <h2 className="text-sm font-semibold">{gt("Connection")}</h2>
             <T>
               <p className="text-xs text-on-surface-muted">
-                Create a personal API key in Linear under Settings → Security &amp; access, then
-                paste it here. The key is encrypted and never shown again — the field stays blank on
-                return, and leaving it blank keeps the stored key. Issues are created as the Linear
-                user the key belongs to.{" "}
+                Paste a personal API key from Linear&rsquo;s Settings → Security &amp; access.
+                Issues are created as the key&rsquo;s owner. The key is encrypted and never shown
+                again; leave the field blank to keep the stored one.{" "}
                 <button
                   type="button"
                   onClick={() => openExternal("https://linear.app/settings/account/security")}
@@ -184,7 +182,7 @@ export function LinearSection() {
                 {integration && (
                   <span className="text-on-surface-muted">
                     {" "}
-                    — {gt("stored: {hint}", { hint: integration.keyHint })}
+                    {gt("(stored: {hint})", { hint: integration.keyHint })}
                   </span>
                 )}
               </span>
@@ -204,9 +202,7 @@ export function LinearSection() {
             <h2 className="text-sm font-semibold">{gt("Defaults")}</h2>
             <T>
               <p className="text-xs text-on-surface-muted">
-                The team the &ldquo;File in Linear&rdquo; window opens preselected — every Linear
-                issue belongs to exactly one team. The list comes from Linear, so there is no id to
-                look up.
+                The team preselected when filing in Linear.
                 <Var>
                   {!integration ? <> {gt("Save the connection first to load it.")}</> : null}
                 </Var>

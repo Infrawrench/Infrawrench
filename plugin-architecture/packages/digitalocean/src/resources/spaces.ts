@@ -33,7 +33,7 @@ export const SpacesResourceType = rt({
       // allowed, so a dotted label cannot be a Spaces endpoint.
       hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.[a-z0-9]+\.(?:cdn\.)?digitaloceanspaces\.com`,
       reason:
-        "Spaces bucket names are unique per region and released on delete, so another DigitalOcean customer can recreate the bucket and serve their objects from your hostname.",
+        "Bucket names are released on delete, so another DigitalOcean customer can recreate the bucket and serve objects from your hostname.",
     },
   ],
   credentialFormats: [

@@ -323,7 +323,7 @@ export function SuppressionEditorModal({
           </h2>
           <p className="text-xs text-on-surface-faint">
             {gt(
-              "On covered days, spend in this scope is set aside before detection judges the day. A spike that only existed because of it is recorded as suppressed instead of alerting; spend beyond it still alerts.",
+              "On covered days, spend in this scope is ignored by detection. Spend beyond it still alerts.",
             )}
           </p>
         </div>

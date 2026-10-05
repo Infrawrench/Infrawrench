@@ -14,7 +14,7 @@ const TemplateFieldValue = z
     description:
       "What a captured create-form field is filled with at instantiation. `literal` is the " +
       "captured value; `parameter` is a field the user chose to vary; `output` is another " +
-      "member's resolved output (a connection string, an IP — the captured half of an output " +
+      "member's resolved output (a connection string, an IP; the captured half of an output " +
       "reference); `member-id` is another member's provider-side id.",
   });
 
@@ -167,9 +167,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
       .nullable()
       .describe("Null means 'could not be priced', which is not the same as zero."),
     currency: z.string().nullable(),
-    partial: z
-      .boolean()
-      .describe("True when at least one member is unpriced — read as 'at least'."),
+    partial: z.boolean().describe("True when at least one member is unpriced, read as 'at least'."),
     unpricedCount: z.number().int(),
     monthlyKgCo2e: z
       .number()
@@ -223,7 +221,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     tags,
     summary: "Set the organization's environment TTL rails",
     description:
-      "`org:settings:write`, not `resources:write` — this is a governance decision about how " +
+      "`org:settings:write`, not `resources:write`: this is a governance decision about how " +
       "long the organization is willing to pay for a throwaway environment. Clamped to a " +
       "720-hour ceiling; the default is clamped to the maximum. Audit-logged.",
     request: {
@@ -244,7 +242,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     tags,
     summary: "Preview a template capture",
     description:
-      "Turn a selection of live resources into a draft template. **Persists nothing** — the " +
+      "Turn a selection of live resources into a draft template. **Persists nothing**: the " +
       "editor shows the draft so the user can choose which fields to vary before saving. The " +
       "shape of every member comes from the plugin's own `getCreateConfig`: a captured value " +
       "with no matching create field is dropped, and a resource type the plugin cannot create " +
@@ -287,7 +285,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     summary: "Create an environment template",
     description:
       "Save a capture draft as a template. Member keys must be unique, every parameter and " +
-      "member reference must resolve, and the members must be orderable — a dependency cycle " +
+      "member reference must resolve, and the members must be orderable; a dependency cycle " +
       "is rejected here rather than half-way through an apply. Audit-logged.",
     request: {
       params: OrgIdParam,
@@ -351,7 +349,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     tags,
     summary: "Delete an environment template",
     description:
-      "Live instances keep running and keep their TTL — they own real resources, and the " +
+      "Live instances keep running and keep their TTL; they own real resources, and the " +
       "template is only where they came from. Their `templateId` becomes null; the " +
       "denormalized `templateName` is what the surface reads. Audit-logged.",
     request: { params: OrgIdParam.extend({ templateId: Uuid }) },
@@ -368,7 +366,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     summary: "Price an instantiation before it runs",
     description:
       "Runs each member's create fields through the plugin's own `estimateCost`. A member the " +
-      "plugin cannot price is counted in `unpricedCount` and makes the total `partial` — " +
+      "plugin cannot price is counted in `unpricedCount` and makes the total `partial`: " +
       "`null` is never rounded to zero.",
     request: {
       params: OrgIdParam.extend({ templateId: Uuid }),
@@ -404,7 +402,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     },
     responses: {
       201: {
-        description: "The instance — check `status` for `partial`",
+        description: "The instance: check `status` for `partial`",
         content: { "application/json": { schema: EnvironmentInstance } },
       },
       400: ErrorResponses[400],
@@ -467,7 +465,7 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     request: { params: OrgIdParam.extend({ instanceId: Uuid }) },
     responses: {
       200: {
-        description: "The instance — `partial` when some member could not be deleted",
+        description: "The instance: `partial` when some member could not be deleted",
         content: { "application/json": { schema: EnvironmentInstance } },
       },
       404: ErrorResponses[404],
@@ -481,14 +479,14 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
     tags,
     summary: "Forget a torn-down environment",
     description:
-      "Removes the record. Refuses while the instance still owns resources — the row is the " +
+      "Removes the record. Refuses while the instance still owns resources; the row is the " +
       "only thing that knows they exist. Audit-logged.",
     request: { params: OrgIdParam.extend({ instanceId: Uuid }) },
     responses: {
       204: { description: "Deleted" },
       404: ErrorResponses[404],
       409: {
-        description: "The environment is still live — tear it down first",
+        description: "The environment is still live; tear it down first",
         content: {
           "application/json": {
             schema: strict({ error: z.string() }).openapi("EnvironmentStillLive"),

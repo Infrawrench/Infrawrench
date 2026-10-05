@@ -397,7 +397,7 @@ export function blastRadiusHeadline(input: SeverityInput): string {
   }
   if (parts.length === 0) {
     return input.unchecked.length > 0
-      ? "Nothing found that depends on this — but the check was incomplete."
+      ? "Nothing found that depends on this, but the check was incomplete."
       : "Nothing in Infrawrench depends on this resource.";
   }
   const sentence = `${capitalize(joinList(parts))}.`;

@@ -154,7 +154,7 @@ async function numeratorFilters(
   } catch (err) {
     if (err instanceof SavedCostFilterResolutionError) {
       console.warn(
-        `[unit-cost-regression] metric ${metric.key}: saved filter unresolvable, skipping —`,
+        `[unit-cost-regression] metric ${metric.key}: saved filter unresolvable, skipping: `,
         err.message,
       );
       return null;
@@ -198,9 +198,9 @@ function regressionBody(finding: UnitCostRegressionFinding, metric: MetricRow): 
         ? "even though spend fell"
         : "on flat spend";
   return (
-    `infrawrench unit-cost regression: cost per ${unit} on "${metric.name}" rose ${percent}% — ` +
+    `infrawrench unit-cost regression: cost per ${unit} on "${metric.name}" rose ${percent}%: ` +
     `${formatUnitCost(finding.previous.unitCost, finding.currency)} → ` +
-    `${formatUnitCost(finding.current.unitCost, finding.currency)} — comparing ` +
+    `${formatUnitCost(finding.current.unitCost, finding.currency)}, comparing ` +
     `${finding.current.reportedDays} reported days to ${finding.previous.reportedDays} in the ` +
     `prior window. Spend was ${formatAmount(finding.current.cost, finding.currency)} against ` +
     `${formatAmount(finding.previous.cost, finding.currency)} (${spendDirection}), on ` +

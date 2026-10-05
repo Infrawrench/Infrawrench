@@ -321,7 +321,7 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
       Alert.alert(
         "Weekly digest",
         result
-          ? `Sent to ${result.succeeded} of ${result.attempted} destination(s) — Slack ${result.slack.succeeded}/${result.slack.attempted}, Teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}.`
+          ? `Sent to ${result.succeeded} of ${result.attempted} destination(s). Slack ${result.slack.succeeded}/${result.slack.attempted}, Teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}.`
           : "Digest sent.",
       );
       void queryClient.invalidateQueries({ queryKey: settingsKey });
@@ -345,8 +345,8 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
               Send a weekly digest
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-              Last week&apos;s spend with week-over-week movers, sync incidents, and resource churn
-              — to the channels with &quot;Weekly digest&quot; on, plus the email recipients below.
+              Last week&apos;s spend, movers, sync incidents and resource churn, sent to channels
+              with &quot;Weekly digest&quot; on and the email recipients below.
             </Text>
           </View>
           <Switch
@@ -369,7 +369,7 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
               {current.narrativeAvailable
-                ? "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data."
+                ? "A short paragraph above the numbers on what changed. Only the digest's own figures are sent to the model, never resource or credential data."
                 : "Unavailable: this deployment has no LLM API key configured."}
             </Text>
           </View>
@@ -393,8 +393,8 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
         ) : null}
         {recipientList.length === 0 ? (
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            No email recipients. Add addresses from the web app — they don&apos;t have to belong to
-            Infrawrench users.
+            No email recipients. Add addresses from the web app; they needn&apos;t be Infrawrench
+            users.
           </Text>
         ) : (
           <>
@@ -786,8 +786,8 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
       )}
 
       <Text style={{ color: colors.textMuted, fontSize: 12, paddingHorizontal: spacing.md }}>
-        The webhook URL is a credential — anyone holding it can post to that channel. It&apos;s
-        stored encrypted and never shown again after you add it.
+        The webhook URL is a credential: anyone holding it can post to that channel. It is stored
+        encrypted and never shown again.
       </Text>
 
       <Button

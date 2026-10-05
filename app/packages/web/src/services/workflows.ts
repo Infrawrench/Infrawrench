@@ -138,7 +138,7 @@ async function validateTrigger(organizationId: string, trigger: WorkflowTrigger)
     if (error) throw new WorkflowError(`Invalid cron expression: ${error}`);
     if (trigger.timezone && !isValidCronTimezone(trigger.timezone)) {
       throw new WorkflowError(
-        `Unknown timezone "${trigger.timezone}" — use an IANA name like "Europe/London".`,
+        `Unknown timezone "${trigger.timezone}"; use an IANA name like "Europe/London".`,
       );
     }
     return;

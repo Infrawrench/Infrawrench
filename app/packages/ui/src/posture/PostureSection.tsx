@@ -280,7 +280,7 @@ function ActiveFindingRow({
           // rule with a resource, which is also what the row is keyed on.
           sourceId={`${finding.resourceId}:${finding.ruleId}`}
           draft={{
-            title: `${finding.title} — ${finding.displayName}`,
+            title: `${finding.title}: ${finding.displayName}`,
             details: [
               { label: gt("Resource"), value: finding.displayName },
               { label: gt("Type"), value: finding.resourceTypeName },
@@ -335,7 +335,7 @@ function DismissedFindingRow({
           {finding.dismissal.dismissedBy
             ? gt(" by {who}", { who: finding.dismissal.dismissedBy })
             : ""}
-          {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
+          {finding.dismissal.reason ? `: ${finding.dismissal.reason}` : ""}
         </span>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
@@ -419,13 +419,13 @@ export function PostureSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Posture")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Security checks your plugins declare, evaluated across every provider — public buckets, world-open firewall rules, unencrypted disks, stale credentials — read from the state your accounts last synced.",
+          "Security checks across every provider (public buckets, open firewall rules, unencrypted disks, stale credentials), from the last sync.",
         )}
       </p>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the posture findings — {error}", { error })}{" "}
+          {gt("Couldn't load the posture findings: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -440,7 +440,7 @@ export function PostureSection({
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing the last loaded findings. {error}", { error })}
+          {gt("Couldn't refresh; showing the last loaded findings. {error}", { error })}
         </p>
       )}
 
@@ -458,11 +458,9 @@ export function PostureSection({
             <p className="text-sm text-on-surface-faint">
               {data.dismissedCount > 0
                 ? gt(
-                    "No open findings — everything currently flagged has been dismissed as an accepted risk. The dismissed list is below.",
+                    "No open findings. Everything flagged was dismissed as an accepted risk; see the list below.",
                   )
-                : gt(
-                    "No findings. Checks appear when a plugin declares posture rules over fields its listers sync — a bucket's public-access setting, a firewall's source ranges, a disk's encryption flag — so an empty list means nothing declared is flagged.",
-                  )}
+                : gt("No findings. Nothing the available checks cover is flagged.")}
             </p>
           ) : (
             <>
@@ -567,7 +565,7 @@ export function PostureSection({
               </button>
               <p className="mt-1 text-xs text-on-surface-faint">
                 {gt(
-                  "Accepted risks. Still evaluated on every scan, but kept off the list above and out of the posture alerts until restored.",
+                  "Accepted risks. Still evaluated, but hidden from the list above and from posture alerts until restored.",
                 )}
               </p>
               {showDismissed && (
@@ -597,7 +595,7 @@ export function PostureSection({
           {(data.findings.length > 0 || dismissed.length > 0) && (
             <p className="mt-4 text-xs text-on-surface-faint">
               {gt(
-                "Findings come from declarative rules your plugins ship, evaluated over already-synced fields — nothing here contacts a provider. Critical and high findings feed the posture alerts.",
+                "Computed from synced data; nothing here contacts a provider. Critical and high findings trigger posture alerts.",
               )}
             </p>
           )}

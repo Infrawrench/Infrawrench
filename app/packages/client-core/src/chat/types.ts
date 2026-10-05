@@ -140,22 +140,22 @@ export const CHAT_MODELS: ChatModelOption[] = [
   {
     id: "gemini-3.7-flash",
     label: "Gemini 3.7 Flash",
-    description: "Fast and inexpensive — the default for most chats",
+    description: "Fast and inexpensive; the default for most chats",
   },
   {
     id: "claude-sonnet-5",
     label: "Claude Sonnet 5",
-    description: "Balanced — near-Opus quality at lower cost",
+    description: "Balanced: near-Opus quality at lower cost",
   },
   {
     id: "claude-opus-5",
     label: "Claude Opus 5",
-    description: "Most capable — best for complex, multi-step infrastructure work",
+    description: "Most capable; best for complex, multi-step infrastructure work",
   },
   {
     id: "claude-haiku-4-5",
     label: "Claude Haiku 4.5",
-    description: "Fastest and cheapest — quick lookups",
+    description: "Fastest and cheapest, for quick lookups",
   },
 ];
 

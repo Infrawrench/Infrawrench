@@ -235,7 +235,7 @@ export function BulkActionBar({
         ) : (
           <span>
             {gt(
-              "Tick reports or folders to move or delete several at once. Shift-click selects a range; Ctrl+A selects all, M moves, Delete deletes, Esc clears.",
+              "Tick reports or folders to act on several. Shift-click selects a range; Ctrl+A selects all, M moves, Delete deletes, Esc clears.",
             )}
           </span>
         )}

@@ -182,7 +182,7 @@ async function loadFlowPeers(
   if (!row?.externalId) {
     return off(
       "This resource has no provider id recorded, and network flows are matched on the " +
-        "provider's id — its traffic could not be looked up.",
+        "provider's id; its traffic could not be looked up.",
     );
   }
 
@@ -330,7 +330,7 @@ async function loadReferences(
     kind: "workflow-source",
     reason:
       "Workflows and custom graphs are matched by searching their source for this resource's " +
-      "id verbatim — a script that builds the id at runtime or looks the resource up by name " +
+      "id verbatim; a script that builds the id at runtime or looks the resource up by name " +
       "will not appear here.",
   });
   unchecked.push({

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const NeonProjectResourceType = rt({
   name: "Project",
   id: "neon-project",
-  description: "A Neon project — contains branches, endpoints, and databases",
+  description: "A Neon project, containing branches, endpoints and databases",
   fields: [
     f("name", "Name"),
     f("region", "Region", { required: false, editable: false }),

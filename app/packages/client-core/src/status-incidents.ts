@@ -110,7 +110,7 @@ export function summarizeStatusIncident(incident: OrgStatusIncident): string {
   const count = incident.affectedResourceCount;
   const tail =
     count > 0
-      ? ` — ${count} of your ${count === 1 ? "resource" : "resources"}${incident.affectedRegions.length > 0 ? " there" : " may be affected"}`
+      ? `: ${count} of your ${count === 1 ? "resource" : "resources"}${incident.affectedRegions.length > 0 ? " there" : " may be affected"}`
       : "";
   return `${incident.pluginName}${where} ${what}${tail}`;
 }

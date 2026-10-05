@@ -5,7 +5,7 @@ export const AgentApiKeyResourceType = rt({
   pinnable: false,
   id: "agent-api-key",
   description:
-    "A bearer token scoped to a single Gradient AI agent's deployment endpoint. Used by client SDKs (OpenAI-compatible) and apps that call the agent directly. The secret is shown once at creation.",
+    "A bearer token for a single Gradient AI agent's endpoint, for OpenAI-compatible SDKs and apps. The secret is shown once at creation.",
   fields: [
     f("name", "Name"),
     f("createdBy", "Created By", { required: false, editable: false }),

@@ -134,7 +134,7 @@ export async function fetchPage(rawUrl: string): Promise<FetchedPage> {
   const contentType = response.headers["content-type"] ?? "";
   if (BINARY_HINT.test(contentType)) {
     throw new Error(
-      `${url.toString()} is ${contentType.split(";")[0]} — this tool reads text, not binary content.`,
+      `${url.toString()} is ${contentType.split(";")[0]}; this tool reads text, not binary content.`,
     );
   }
 

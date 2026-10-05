@@ -54,7 +54,7 @@ export function DnsScreen() {
   const data = dns.data;
   if (!data || (data.counts.zones === 0 && data.counts.records === 0)) {
     return (
-      <EmptyView message="No DNS zones synced. Connect an account on a provider that manages DNS — Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel." />
+      <EmptyView message="No DNS zones synced. Connect an account with a DNS provider (Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel)." />
     );
   }
 
@@ -87,7 +87,7 @@ export function DnsScreen() {
           style={styles.refreshError}
         >
           <Text style={styles.refreshErrorText}>
-            Couldn&apos;t refresh — showing the last loaded inventory. Tap to retry.
+            Couldn&apos;t refresh, showing the last loaded inventory. Tap to retry.
           </Text>
         </Pressable>
       )}
@@ -192,16 +192,15 @@ export function DnsScreen() {
           <SectionTitle>Not checked</SectionTitle>
           {data.skippedNamespaces.map((entry) => (
             <Text key={`${entry.pluginId}:${entry.label}`} style={styles.reason}>
-              {entry.label} — {entry.reason}
+              {entry.label}: {entry.reason}
             </Text>
           ))}
         </View>
       )}
 
       <Text style={styles.footnote}>
-        Computed from state the org has already synced — no provider calls and no DNS resolution. A
-        dangling record points into a provider namespace nothing synced claims; those also appear on
-        Posture and feed the posture alerts.
+        Computed from synced state, with no live DNS lookups. Dangling records (pointing into a
+        namespace nothing synced claims) also appear on Posture.
       </Text>
     </Screen>
   );
@@ -249,7 +248,7 @@ function DnsRow({ record, onPress }: { record: DnsRecordEntry; onPress: () => vo
         </Text>
         {dangling?.service && (
           <Text style={styles.reason} numberOfLines={3}>
-            {dangling.service.label} — nothing synced claims &ldquo;{dangling.service.claimLabel}
+            {dangling.service.label}: nothing synced claims &ldquo;{dangling.service.claimLabel}
             &rdquo;. {dangling.service.reason}
           </Text>
         )}

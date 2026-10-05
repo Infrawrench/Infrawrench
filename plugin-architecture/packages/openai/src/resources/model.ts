@@ -12,7 +12,7 @@ export const ModelResourceType = rt({
   name: "Model",
   id: "model",
   description:
-    "A model this API key can call — base models plus any fine-tuned snapshots the organization owns. Text-to-speech and transcription are exercised from the Speech tab.",
+    "A model this API key can call, including your fine-tuned snapshots. Try speech models from the Speech tab.",
   fields: [
     f("modelId", "Model ID"),
     f("ownedBy", "Owned By", { required: false }),

@@ -128,19 +128,19 @@ export function dnsContentField(opts: DnsContentFieldOptions): CreateFieldConfig
     picker(
       "A",
       DNS_IPV4_SOURCES,
-      `${label} — pick an IPv4 resource`,
+      `${label}: pick an IPv4 resource`,
       "The record will track this resource's public IPv4 address.",
     ),
     picker(
       "AAAA",
       DNS_IPV6_SOURCES,
-      `${label} — pick an IPv6 resource`,
+      `${label}: pick an IPv6 resource`,
       "The record will track this resource's public IPv6 address.",
     ),
     picker(
       "CNAME",
       DNS_HOSTNAME_SOURCES,
-      `${label} — pick a hostname resource`,
+      `${label}: pick a hostname resource`,
       "The record will track this resource's hostname.",
     ),
     {

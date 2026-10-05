@@ -3,8 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const EvaluationResourceType = rt({
   name: "Evaluation",
   id: "evaluation",
-  description:
-    "A Together AI evaluation job — classify, score or compare model outputs against a dataset",
+  description: "A Together AI evaluation job that classifies, scores or compares model outputs",
   fields: [
     f("workflowId", "Workflow ID"),
     f("status", "Status", { required: false }),

@@ -20,7 +20,7 @@ import { formatChangeTime, formatMetricAlertCondition, formatMetricAlertSelector
 export async function cmdAlerts(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Metric alerts live in Infrawrench Cloud — the poller evaluates them server-side. Drop --local.",
+      "Metric alerts live in Infrawrench Cloud. The poller evaluates them server-side. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -34,7 +34,7 @@ export async function cmdAlerts(ctx: CliContext): Promise<void> {
   if (rules.length === 0) {
     println(
       c.dim(
-        'No metric alert rules yet. Create one from the Metric alerts page — e.g. "CPU % > 90 for 15m on plugin aws".',
+        'No metric alert rules yet. Create one from the Metric alerts page, e.g. "CPU % > 90 for 15m on plugin aws".',
       ),
     );
     return;
@@ -80,7 +80,7 @@ export async function cmdAlerts(ctx: CliContext): Promise<void> {
 export async function cmdAlertEvents(ctx: CliContext, limit?: number): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Metric alerts live in Infrawrench Cloud — the poller evaluates them server-side. Drop --local.",
+      "Metric alerts live in Infrawrench Cloud. The poller evaluates them server-side. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);

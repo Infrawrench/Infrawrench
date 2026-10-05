@@ -5,7 +5,7 @@ import type { BuildContext } from "../context";
 const LeaseStatus = z.enum(["active", "deleted", "failed", "canceled"]).openapi({
   description:
     "Lease lifecycle: `active` (counting down), `deleted` (auto-delete completed), " +
-    "`failed` (auto-delete was retried and given up on — see `lastError`), or " +
+    "`failed` (auto-delete was retried and given up on, see `lastError`), or " +
     "`canceled` (called off; the resource stays).",
 });
 
@@ -118,9 +118,9 @@ export function registerLeasePaths(ctx: BuildContext) {
     tags: ["Resource leases"],
     summary: "Create a resource lease",
     description:
-      "Attach an expiry to a resource — 'give me a test cluster for 3 days'. One lease per " +
+      "Attach an expiry to a resource; 'give me a test cluster for 3 days'. One lease per " +
       "resource (an active lease conflicts; a terminal one is replaced). `autoDelete: true` " +
-      "opts into deletion at expiry — the poller announces it twice first, defers during " +
+      "opts into deletion at expiry; the poller announces it twice first, defers during " +
       "change freezes, and requires the caller to hold `resources:delete`. Audit-logged.",
     request: {
       params: OrgIdParam,
@@ -171,7 +171,7 @@ export function registerLeasePaths(ctx: BuildContext) {
     tags: ["Resource leases"],
     summary: "Cancel a lease",
     description:
-      "Stop the countdown — the resource stays, the lease goes `canceled` and leaves the " +
+      "Stop the countdown; the resource stays, the lease goes `canceled` and leaves the " +
       "expiry radar. Audit-logged.",
     request: { params: OrgIdParam.extend({ leaseId: Uuid }) },
     responses: {

@@ -43,7 +43,7 @@ export function ProviderIncidentNotice({
     <View style={styles.box}>
       {active.length > 0 && (
         <Text style={styles.heading}>
-          {active.length === 1 ? "Provider incident" : `${active.length} provider incidents`} —
+          {active.length === 1 ? "Provider incident" : `${active.length} provider incidents`},
           it&apos;s them, not you
         </Text>
       )}

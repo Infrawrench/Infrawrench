@@ -172,7 +172,7 @@ async function resolveNumeratorFilters(
   const text = request.query?.trim();
   if (text && inline.length > 0) {
     throw new UnitCostRunError(
-      "Send either `filters` or `query`, not both — they are two spellings of the same filter, " +
+      "Send either `filters` or `query`, not both; they are two spellings of the same filter, " +
         "and running one while ignoring the other would silently answer a different question.",
     );
   }
@@ -330,7 +330,7 @@ export async function runUnitCostCalculation(
     // requests: it type checks, it produces a number, and the number means
     // nothing. A metric declares its kind once so this is caught here.
     throw new UnitCostRunError(
-      `Margin needs a revenue metric — "${metric.key}" counts ${metric.unit || "units"}, not ` +
+      `Margin needs a revenue metric. "${metric.key}" counts ${metric.unit || "units"}, not ` +
         'money. Declare a metric with kind "currency" and its currency to compute margin.',
     );
   }
@@ -342,8 +342,8 @@ export async function runUnitCostCalculation(
     const target = mappings.get(label);
     if (!target && ratio) {
       throw new UnitCostRunError(
-        `"${label}" is not mapped to a cost dimension, so spend cannot be ${use} by it — a ` +
-          `ratio needs both halves split the same way. Map the label to the tag, virtual tag ` +
+        `"${label}" is not mapped to a cost dimension, so spend cannot be ${use} by it. ` +
+          `Map the label to the tag, virtual tag ` +
           `or cost centre its values name (edit the metric), or plot the raw metric instead.`,
       );
     }

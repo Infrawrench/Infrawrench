@@ -316,16 +316,15 @@ export function CalendarSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Calendar")}</h1>
       <T>
         <p className="text-sm text-on-surface-muted mb-6">
-          Everything with a date on it, on one axis: change freezes, sleep windows, expiring
-          certificates and leases, commitment terms ending, scheduled workflow runs and declared
-          incidents. Nothing here is a new record — it is the things you already have, finally
-          beside each other. Subscribe from a calendar app to carry it around.
+          Everything dated, on one axis: change freezes, sleep windows, expiring certificates and
+          leases, commitment ends, scheduled runs and incidents. Subscribe from a calendar app to
+          take it with you.
         </p>
       </T>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the calendar — {error}", { error })}{" "}
+          {gt("Couldn't load the calendar: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -340,7 +339,7 @@ export function CalendarSection({
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing the last loaded window. {error}", { error })}
+          {gt("Couldn't refresh; showing the last loaded window. {error}", { error })}
         </p>
       )}
 
@@ -485,7 +484,7 @@ export function CalendarSection({
                       <button
                         type="button"
                         onClick={() => setSelectedDay(dayKey === selectedDay ? null : dayKey)}
-                        aria-label={gt("{day} — {count} events", {
+                        aria-label={gt("{day}: {count} events", {
                           day: formatDayHeading(dayKey),
                           count: dayEvents.length,
                         })}
@@ -680,17 +679,16 @@ function SubscriptionsView({
     <div className="flex flex-col gap-5">
       <T>
         <p className="max-w-2xl text-sm text-on-surface-muted">
-          A subscription is a URL you paste into Google Calendar, Outlook or your phone. It updates
-          on its own, roughly hourly. Anyone holding the URL can read this calendar, so treat it as
-          a password — it carries names and times, never credentials, costs or anything you could
-          act on.
+          Paste a subscription URL into Google Calendar, Outlook or your phone; it updates about
+          hourly. Anyone with the URL can read this calendar (names and times only), so keep it
+          private like a password.
         </p>
       </T>
 
       {mintedUrl && (
         <div className="rounded-xl border border-accent/40 bg-accent/5 p-4">
           <p className="mb-2 text-sm font-medium text-on-surface">
-            {gt("Copy this now — it is not shown again")}
+            {gt("Copy this now. It won't be shown again")}
           </p>
           <code className="block break-all rounded bg-surface-overlay px-2 py-1.5 text-xs text-on-surface-secondary">
             {mintedUrl}
@@ -818,7 +816,7 @@ function SubscriptionsView({
             {revoked.map((subscription) => (
               <li key={subscription.id}>
                 {subscription.name}
-                {" — "}
+                {": "}
                 {gt("revoked {when}", {
                   when: new Date(subscription.revokedAt ?? "").toLocaleDateString(),
                 })}

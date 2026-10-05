@@ -100,7 +100,7 @@ export function QuietHoursEditor({
             })
           }
         >
-          <option value="">{gt("never — hold everything")}</option>
+          <option value="">{gt("never (hold everything)")}</option>
           {(Object.keys(SEVERITY_LABELS) as AlertSeverity[]).map((s) => (
             <option key={s} value={s}>
               {gtData(SEVERITY_LABELS[s])}
@@ -110,7 +110,7 @@ export function QuietHoursEditor({
       </label>
 
       <p className="text-xs text-on-surface-faint">
-        {gt("Held alerts are queued, not dropped — they arrive when the window closes.")}
+        {gt("Held alerts are queued, not dropped, and arrive when the window closes.")}
       </p>
     </div>
   );

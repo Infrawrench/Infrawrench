@@ -14,13 +14,13 @@ const PrincipalRole = z
   .openapi({
     description:
       "What kind of identity the principal is, from the resource type's `principalRole` " +
-      "declaration. Grouping and labels only — it is not a permission model.",
+      "declaration. Grouping and labels only; it is not a permission model.",
   });
 
 const PrincipalActivity = z.enum(["active", "stale", "unknown"]).openapi({
   description:
     "What could be established about the principal's last use. `unknown` means the resource " +
-    "type declares no last-used field, or the provider stored nothing parseable — it is a " +
+    "type declares no last-used field, or the provider stored nothing parseable; it is a " +
     "first-class answer and is never reported as `stale`.",
 });
 
@@ -78,13 +78,13 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
       .boolean()
       .nullable()
       .describe(
-        "Multi-factor state, only on types that declare an MFA field. Null everywhere else — " +
+        "Multi-factor state, only on types that declare an MFA field. Null everywhere else; " +
           '"not synced" is not "MFA is off".',
       ),
     parent: z
       .string()
       .nullable()
-      .describe("The principal this one hangs off — a key's owner, a binding's subject."),
+      .describe("The principal this one hangs off; a key's owner, a binding's subject."),
     owner: AccessPrincipalOwner.nullable().describe(
       "Who owns the resource, from the resource-ownership record. Null when nobody is named.",
     ),
@@ -157,7 +157,7 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
     principals: z
       .array(AccessPrincipal)
       .describe(
-        "Every synced principal, by account then type then name. Never filtered by dismissals — " +
+        "Every synced principal, by account then type then name. Never filtered by dismissals; " +
           "accepting a finding must not remove a principal from the inventory.",
       ),
     findings: z
@@ -215,7 +215,7 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
       "evidence against them: unused beyond the staleness window, holding administrative or " +
       "wildcard permissions, past the rotation budget their plugin declares, carrying no " +
       "recorded owner, or signing in without a second factor.\n\n" +
-      "This is about principals in **your** clouds — it is neither your Infrawrench team's " +
+      "This is about principals in **your** clouds; it is neither your Infrawrench team's " +
       "roles (`/team`) nor the credentials Infrawrench stores for you " +
       "(`/credential-hygiene`).\n\n" +
       "No provider API calls are made: everything is computed from already-synced fields, so " +
@@ -270,7 +270,7 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
     tags: ["Access review"],
     summary: "Dismiss an access review finding",
     description:
-      "Accept a finding — that break-glass role really is meant to be admin, that shared key " +
+      "Accept a finding; that break-glass role really is meant to be admin, that shared key " +
       "really is rotated out of band. The finding leaves `findings` and stops feeding the " +
       "security alerts, but the rule keeps being evaluated and the finding is reported back " +
       "under `dismissed` for as long as it still matches. The principal itself stays in " +

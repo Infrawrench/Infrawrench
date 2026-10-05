@@ -39,7 +39,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Deepgram",
   description:
-    "Speech-to-text, text-to-speech and voice agents. Manage projects, API keys, members, invites, balances and purchases, Voice Agent configurations and variables, chart usage, read the request log, and round-trip audio through Nova transcription and Aura voices.",
+    "Speech-to-text, text-to-speech and voice agents. Manage projects, keys, members, invites, balances and Voice Agent configurations, chart usage, read the request log, and try Nova transcription and Aura voices.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -48,7 +48,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A Deepgram API key. Create one in the Deepgram Console under your project's Settings → API Keys. Deepgram has a single key type but three scopes: a `member` key can transcribe and synthesize but cannot list keys, members, invites or balances, so those sections stay empty; use an `admin` or `owner` key to manage the project. The secret is shown once at creation and cannot be retrieved afterwards.",
+        "A Deepgram API key, from the Console under your project's Settings → API Keys. A `member` key can transcribe and synthesize but cannot list keys, members, invites or balances; use an `admin` or `owner` key to manage the project. The secret is shown once.",
       sensitive: true,
       placeholder: "0123456789abcdef0123456789abcdef01234567",
       helpLink: {

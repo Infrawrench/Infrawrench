@@ -121,9 +121,7 @@ export function MomentScreen({ at: atParam, window: windowParam }: MomentScreenP
   return (
     <Screen onRefresh={() => void moment.refetch()} refreshing={moment.isRefetching}>
       <Text style={styles.subtitle}>
-        {at
-          ? `Around ${new Date(at).toLocaleString()}`
-          : "Around now — pull to refresh to recentre"}
+        {at ? `Around ${new Date(at).toLocaleString()}` : "Around now, pull to refresh to recentre"}
       </Text>
 
       <ChipRow>
@@ -223,7 +221,7 @@ export function MomentScreen({ at: atParam, window: windowParam }: MomentScreenP
       )}
 
       <Text style={styles.footer}>
-        {new Date(data.from).toLocaleString()} — {new Date(data.to).toLocaleString()} ·{" "}
+        {new Date(data.from).toLocaleString()} to {new Date(data.to).toLocaleString()} ·{" "}
         {data.events.length} event{data.events.length === 1 ? "" : "s"}
       </Text>
     </Screen>

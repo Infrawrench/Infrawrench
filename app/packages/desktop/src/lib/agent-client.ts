@@ -515,7 +515,7 @@ export function createDesktopAgentClient(): AgentClient {
         return {
           branchName: row.branch_name,
           message:
-            "T3 Code owns this server's projects and their branches — push from inside T3 Code. Infrawrench has nothing to reconcile.",
+            "T3 Code owns this server's projects and branches, so push from inside T3 Code. Infrawrench has nothing to reconcile.",
         };
       }
       // Git-URL sessions have no local checkout to fetch into: reconciling
@@ -523,7 +523,7 @@ export function createDesktopAgentClient(): AgentClient {
       if (isCloneableGitRepo(row.repo)) {
         return {
           branchName: row.branch_name,
-          message: `This session was cloned from a Git URL — open the agent terminal and push ${row.branch_name} from the VM (the local app has no checkout to fetch into).`,
+          message: `This session was cloned from a Git URL. Open the agent terminal and push ${row.branch_name} from the VM (the local app has no checkout to fetch into).`,
         };
       }
       const agentKey = await ensureAgentSshKey();
@@ -1086,7 +1086,7 @@ async function createRepoConfigResources(
       }
       if (matching.length > 1) {
         throw new Error(
-          `agent.json: multiple ${spec.pluginId} accounts exist — set "account" to one of: ${matching.map((a) => a.display_name).join(", ")}`,
+          `agent.json: multiple ${spec.pluginId} accounts exist; set "account" to one of: ${matching.map((a) => a.display_name).join(", ")}`,
         );
       }
       const account = matching[0]!;

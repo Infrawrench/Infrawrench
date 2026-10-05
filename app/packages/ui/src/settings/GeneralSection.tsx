@@ -762,8 +762,7 @@ function SessionsCard() {
           </h2>
           <T>
             <p className="text-xs text-on-surface-muted max-w-md">
-              Everywhere you&apos;re currently signed in — the web app, the desktop app, the CLI and
-              mobile.
+              Everywhere you&apos;re signed in: web, desktop, CLI and mobile.
             </p>
           </T>
         </div>
@@ -880,7 +879,7 @@ function DeleteAccountCard({ email }: { email: string }) {
           <ul className="text-xs text-on-surface-tertiary space-y-1">
             {preview.blockers.map((b) => (
               <li key={b.id}>
-                <span className="text-on-surface-secondary">{b.name}</span> — {b.memberCount}{" "}
+                <span className="text-on-surface-secondary">{b.name}</span>: {b.memberCount}{" "}
                 {gt("members")}
               </li>
             ))}

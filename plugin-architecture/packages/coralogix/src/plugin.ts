@@ -12,7 +12,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Coralogix",
   description:
-    "Observability platform for logs, metrics and traces. Track Coralogix usage and estimated cost by pillar and TCO priority, watch the daily unit quota, and manage alerts, dashboards, TCO policies, parsing rules, enrichments, outbound webhooks, quota rules and Events2Metrics.",
+    "Observability platform for logs, metrics and traces. Track usage and estimated cost by pillar and TCO priority, watch the daily quota, and manage alerts, dashboards, TCO policies, parsing rules, enrichments, webhooks and Events2Metrics.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -46,7 +46,7 @@ const manifest: PluginManifest = {
       key: "unitPrice",
       label: "Price per Unit (USD)",
       description:
-        "What one Coralogix unit costs on your plan. Coralogix's API reports usage in units, never in money, so cost is units multiplied by this price. Leave it at Coralogix's published $1.50 per unit, or enter your contracted rate; you can change it later by editing the account.",
+        "What one Coralogix unit costs on your plan. Coralogix reports usage in units, not money, so cost is units multiplied by this price. Leave the published $1.50 per unit or enter your contracted rate. You can edit it later.",
       sensitive: false,
       optional: true,
       defaultValue: "1.50",

@@ -16,14 +16,14 @@ export const DatabaseUserResourceType = rt({
   plural: "DB Users",
   pinnable: false,
   id: "db-user",
-  description: "A managed-database user — created server-side, password kept locally.",
+  description: "A managed-database user. The password is kept locally.",
   fields: [
     f("name", "Username", {
       description: "Letters, digits, and `_-` only. Must be unique within the cluster.",
     }),
     f("role", "Role", {
       required: false,
-      description: "DO-assigned role — `primary` for the bootstrap user, `normal` for the rest.",
+      description: "DO-assigned role: `primary` for the bootstrap user, `normal` for the rest.",
     }),
     f("databaseId", "Cluster ID", {
       required: false,
@@ -34,9 +34,8 @@ export const DatabaseUserResourceType = rt({
     o("password", "Password", {
       sensitive: true,
       description:
-        "The plaintext password DO returned at create time. Only available for users " +
-        "Infrawrench minted itself — pre-existing users (including `doadmin`) have no " +
-        "stored password because DO doesn't expose them post-create.",
+        "The password DO returned at create time. Only available for users " +
+        "Infrawrench created; pre-existing users (including `doadmin`) have none.",
     }),
   ],
   // The lister records the cluster uuid; a managed-database's externalId is

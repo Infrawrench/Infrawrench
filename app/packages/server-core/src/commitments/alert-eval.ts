@@ -269,13 +269,13 @@ function expiryBody(finding: CommitmentExpiryFinding, accountName: string): stri
         `${formatAmount(finding.monthlyCoveredUsageAmount, finding.currency)}/month of usage`,
     );
   }
-  const moneyClause = money.length > 0 ? ` — ${money.join(", ")}` : "";
+  const moneyClause = money.length > 0 ? `: ${money.join(", ")}` : "";
 
   if (finding.autoRenewing) {
     return (
       `infrawrench commitment renewal: ${subject} renews automatically ` +
       `${whenPhrase(finding.daysRemaining)} (${finding.termEndDay})${moneyClause}. ` +
-      `It will not lapse, but it will keep billing at the then-current rate — ` +
+      `It will not lapse, but it will keep billing at the then-current rate: ` +
       `cancel it now if the workload it was bought for has gone.`
     );
   }
@@ -292,9 +292,8 @@ function expiryBody(finding: CommitmentExpiryFinding, accountName: string): stri
   return (
     `infrawrench commitment expiry: ${subject} ends ` +
     `${whenPhrase(finding.daysRemaining)} (${finding.termEndDay})${moneyClause}. ` +
-    `The usage it covers reverts to on-demand pricing the day it ends — at least that much, ` +
-    `since on-demand is never cheaper than the committed rate. Renew it, resize it, or budget ` +
-    `for the increase.`
+    `The usage it covers reverts to on-demand pricing the day it ends, which is never cheaper ` +
+    `than the committed rate. Renew it, resize it, or budget for the increase.`
   );
 }
 

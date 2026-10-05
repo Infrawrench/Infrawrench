@@ -64,8 +64,8 @@ export class ManagedAccountScopeConflictError extends Error {
     super(
       `That ${first.kind === "account" ? "cloud account" : "cost centre"} is already billed to ` +
         `"${first.ownerName}"${conflicts.length > 1 ? ` (and ${conflicts.length - 1} more)` : ""}. ` +
-        "A cost centre or account belongs to exactly one customer — billing the same money " +
-        "twice is not a state this can represent.",
+        "A cost centre or account belongs to exactly one customer, so the same money " +
+        "cannot be billed twice.",
     );
   }
 }

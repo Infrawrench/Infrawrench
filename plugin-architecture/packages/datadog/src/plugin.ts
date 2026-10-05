@@ -14,7 +14,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Datadog",
   description:
-    "Monitoring and observability. Track Datadog spend by product and organization with month-end projections and cost attribution by tag, chart hourly usage, and manage monitors, downtimes, dashboards, SLOs, synthetic tests, hosts, users and API and application keys.",
+    "Monitoring and observability. Track Datadog spend by product and organization with month-end projections, chart hourly usage, and manage monitors, downtimes, dashboards, SLOs, synthetic tests, hosts, users and keys.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -49,7 +49,7 @@ const manifest: PluginManifest = {
       key: "appKey",
       label: "Application Key",
       description:
-        "A Datadog application key from Organization Settings, Application Keys (or Personal Settings for your own). It carries its owner's permissions. Cost data needs Usage Read and Billing Read; to keep the account read-only, create a scoped key with only the read scopes listed under Check credentials.",
+        "A Datadog application key from Organization Settings, Application Keys (or Personal Settings for your own). It carries its owner's permissions. Cost data needs Usage Read and Billing Read. For a read-only account, use a scoped key with only the read scopes listed under Check credentials.",
       sensitive: true,
       placeholder: "40 hexadecimal characters",
       helpLink: {

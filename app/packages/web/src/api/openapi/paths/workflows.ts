@@ -30,8 +30,7 @@ const WorkflowSchedule = strict({
   expression: CronExpression,
   timezone: CronTimezone.nullable(),
   enabled: z.boolean().openapi({
-    description:
-      "Mirrors the workflow's enabled flag — a disabled workflow's schedule never fires.",
+    description: "Mirrors the workflow's enabled flag; a disabled workflow's schedule never fires.",
   }),
   lastRunAt: IsoDateTime.nullable().openapi({
     description: "When the workflow last finished a run (any trigger source).",
@@ -62,7 +61,7 @@ const WorkflowScheduleInput = strict({
 const WorkflowTypingsResponse = strict({
   dts: z.string().openapi({
     description:
-      "Ambient TypeScript declarations for this workflow's `infra` API — the same " +
+      "Ambient TypeScript declarations for this workflow's `infra` API; the same " +
       "file the Monaco editor and `check` endpoint type against.",
   }),
 }).openapi("WorkflowTypingsResponse");
@@ -84,7 +83,7 @@ export function registerWorkflowPaths(ctx: BuildContext) {
       "with this organization's connected accounts, resource types, SSH key names, and the " +
       "workflow's trigger + metrics. Default is the fast static surface (`create` fields are " +
       "`Record<string, string>`). Pass `enrich=1` for a second pass that hits provider APIs for " +
-      "precise create() field unions and live sidecar capability flags — the editor loads " +
+      "precise create() field unions and live sidecar capability flags; the editor loads " +
       "static first and upgrades when that finishes.",
     request: {
       params: idParam(),
@@ -132,7 +131,7 @@ export function registerWorkflowPaths(ctx: BuildContext) {
     tags: ["Workflows"],
     summary: "Create or replace a workflow's cron schedule",
     description:
-      "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\nChanging the schedule makes scheduled runs act with the permissions of the caller from then on, the same as editing the workflow's code. When the workflow has secrets assigned, the caller also needs `secrets:read`.",
+      "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence; never immediately on save.\n\nChanging the schedule makes scheduled runs act with the permissions of the caller from then on, the same as editing the workflow's code. When the workflow has secrets assigned, the caller also needs `secrets:read`.",
     request: {
       params: idParam(),
       body: {
