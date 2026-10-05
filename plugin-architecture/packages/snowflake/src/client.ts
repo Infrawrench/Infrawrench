@@ -1,4 +1,7 @@
 import type {
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -25,6 +28,10 @@ import { ident, isNotAuthorized, literal, num, qualified, runSql, str } from "./
 import { SnowflakeAuth, parseCredential } from "./auth.js";
 import type { SnowflakeRates } from "./catalog.js";
 import { WAREHOUSE_SIZES, findSize, parseRates } from "./catalog.js";
+import {
+  listSnowflakeBusinessMetricOptions,
+  runSnowflakeBusinessMetricSource,
+} from "./business-metric-source.js";
 import { fetchSnowflakeCostData, summarizeMonth } from "./cost-data.js";
 import {
   fetchAttribution,
@@ -584,6 +591,22 @@ export class SnowflakeClient implements PluginClient {
 
   async fetchCreditBalance(_accountId: string): Promise<CreditBalance[]> {
     return fetchBalances(this.ctx);
+  }
+
+  async listBusinessMetricSourceOptions(
+    _accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]> {
+    return listSnowflakeBusinessMetricOptions(this.ctx, fieldKey, params);
+  }
+
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    return runSnowflakeBusinessMetricSource(this.ctx, params, range);
   }
 
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {

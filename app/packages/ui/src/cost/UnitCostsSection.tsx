@@ -4,6 +4,8 @@ import { T, Var, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
+import { BusinessMetricImporterModal } from "./BusinessMetricImporterModal.js";
+import { MetricCsvImportModal } from "./MetricCsvImportModal.js";
 import {
   BUSINESS_METRIC_KEY_HELP,
   BUSINESS_METRIC_KINDS,
@@ -70,6 +72,24 @@ function describeCoverage(metric: BusinessMetric, gt: ReturnType<typeof useGT>):
   });
 }
 
+/** "Imported from CloudWatch metric · prod · last run 2 h ago", or the failure. */
+function describeImporter(
+  importer: NonNullable<BusinessMetric["importer"]>,
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
+  const source = gt("Imported from {source} · {account}", {
+    source: importer.sourceLabel ? gtData(importer.sourceLabel) : gt("a removed source"),
+    account: importer.accountName ?? gt("removed account"),
+  });
+  if (!importer.enabled) return `${source} · ${gt("paused")}`;
+  if (importer.lastStatus === "error") {
+    return `${source} · ${gt("last run failed: {error}", { error: importer.lastError ?? "" })}`;
+  }
+  if (!importer.lastRunAt) return `${source} · ${gt("first run pending")}`;
+  return `${source} · ${gt("last run {when}", { when: new Date(importer.lastRunAt).toLocaleString() })}`;
+}
+
 /**
  * Business metrics: the denominators unit costs divide by.
  *
@@ -81,10 +101,13 @@ function describeCoverage(metric: BusinessMetric, gt: ReturnType<typeof useGT>):
  */
 export function UnitCostsSection({ client }: { client: CostsClient }) {
   const gt = useGT();
+  const gtData = useDataString();
   const [metrics, setMetrics] = useState<BusinessMetric[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ metric: BusinessMetric | null } | null>(null);
   const [reporting, setReporting] = useState<BusinessMetric | null>(null);
+  const [importing, setImporting] = useState<BusinessMetric | null>(null);
+  const [uploading, setUploading] = useState<BusinessMetric | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
 
   const list = client.listBusinessMetrics;
@@ -178,7 +201,8 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
       {metrics?.length === 0 && (
         <T>
           <p className="text-sm text-on-surface-faint">
-            No business metrics yet. Add one, then report its daily values from a workflow with{" "}
+            No business metrics yet. Add one, then import its daily values on a schedule from a
+            connected account, upload a CSV, or report them from a workflow with{" "}
             <Var>
               <code className="text-on-surface-secondary">infra.businessMetrics.write</code>
             </Var>
@@ -215,6 +239,13 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                 >
                   {describeCoverage(metric, gt)}
                 </span>
+                {metric.importer && (
+                  <span
+                    className={`block text-xs mt-0.5 ${metric.importer.lastStatus === "error" ? "text-danger" : "text-on-surface-faint"}`}
+                  >
+                    {describeImporter(metric.importer, gt, gtData)}
+                  </span>
+                )}
                 {metric.description && (
                   <span className="block text-xs text-on-surface-faint mt-0.5">
                     {metric.description}
@@ -229,6 +260,24 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                     className="text-on-surface-secondary hover:text-on-surface underline"
                   >
                     {gt("Values")}
+                  </button>
+                )}
+                {client.getBusinessMetricImporter && client.listBusinessMetricSources && (
+                  <button
+                    type="button"
+                    onClick={() => setImporting(metric)}
+                    className="text-on-surface-secondary hover:text-on-surface underline"
+                  >
+                    {metric.importer ? gt("Importer") : gt("Import…")}
+                  </button>
+                )}
+                {client.writeBusinessMetricValues && (
+                  <button
+                    type="button"
+                    onClick={() => setUploading(metric)}
+                    className="text-on-surface-secondary hover:text-on-surface underline"
+                  >
+                    {gt("Upload CSV")}
                   </button>
                 )}
                 {canWrite && (
@@ -269,6 +318,24 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
           api={client}
           onSave={save}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {importing && (
+        <BusinessMetricImporterModal
+          metric={importing}
+          client={client}
+          onClose={() => setImporting(null)}
+          onChanged={refresh}
+        />
+      )}
+
+      {uploading && (
+        <MetricCsvImportModal
+          metric={uploading}
+          client={client}
+          onClose={() => setUploading(null)}
+          onChanged={refresh}
         />
       )}
 
@@ -638,10 +705,15 @@ function MetricValuesModal({
         <ul className="flex flex-col">
           {(values ?? []).map((value) => (
             <li
-              key={value.day}
+              key={`${value.day}-${value.label ?? ""}`}
               className="flex items-center justify-between gap-3 border-b border-border py-1.5 text-sm last:border-0"
             >
-              <span className="text-on-surface-secondary">{value.day}</span>
+              <span className="text-on-surface-secondary">
+                {value.day}
+                {value.label ? (
+                  <span className="ml-2 text-xs text-on-surface-faint">{value.label}</span>
+                ) : null}
+              </span>
               <span className="text-on-surface tabular-nums">{value.value}</span>
               <span className="text-xs text-on-surface-faint">{value.source}</span>
             </li>

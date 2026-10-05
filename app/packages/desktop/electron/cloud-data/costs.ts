@@ -801,6 +801,89 @@ ipcMain.handle(
   },
 );
 
+// Business-metric importers. The importer runs in the cloud (the poller
+// claims it), so the desktop is purely a client of these routes.
+ipcMain.handle("cloud_list_business_metric_sources", async (_e, { orgId }: { orgId: string }) => {
+  const res = await cloudFetch<{ sources: unknown[] }>(orgId, "/business-metrics/importer-sources");
+  return res?.sources ?? [];
+});
+
+ipcMain.handle(
+  "cloud_list_business_metric_source_options",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    const res = await cloudFetch<{ options: unknown[] }>(
+      orgId,
+      "/business-metrics/importer-options",
+      { method: "POST", body: JSON.stringify(request) },
+    );
+    return res?.options ?? [];
+  },
+);
+
+ipcMain.handle(
+  "cloud_preview_business_metric_import",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetch(orgId, "/business-metrics/importer-preview", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_get_business_metric_importer",
+  async (_e, { orgId, metricId }: { orgId: string; metricId: string }) => {
+    const res = await cloudFetch<{ importer: unknown }>(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/importer`,
+    );
+    return res?.importer ?? null;
+  },
+);
+
+ipcMain.handle(
+  "cloud_save_business_metric_importer",
+  async (_e, { orgId, metricId, input }: { orgId: string; metricId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/importer`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_business_metric_importer",
+  async (_e, { orgId, metricId }: { orgId: string; metricId: string }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/importer`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_run_business_metric_importer",
+  async (
+    _e,
+    { orgId, metricId, request }: { orgId: string; metricId: string; request?: unknown },
+  ) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/importer/run`, {
+      method: "POST",
+      body: JSON.stringify(request ?? {}),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_list_business_metric_import_runs",
+  async (_e, { orgId, metricId, limit }: { orgId: string; metricId: string; limit?: number }) => {
+    const res = await cloudFetch<{ runs: unknown[] }>(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/importer/runs?limit=${limit ?? 20}`,
+    );
+    return res?.runs ?? [];
+  },
+);
+
 ipcMain.handle(
   "cloud_query_unit_costs",
   async (

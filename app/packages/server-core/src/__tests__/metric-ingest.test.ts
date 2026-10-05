@@ -27,20 +27,20 @@ function upsert() {
 
 /**
  * The value tuples of the upsert, sliced out of the positional params. Each row
- * binds 8 params in column order (id, organization_id, metric_id, day, value,
- * source, updated_by_user_id, updated_at: created_at renders as `default`);
- * the trailing param is the conflict clause's updated_at.
+ * binds 9 params in column order (id, organization_id, metric_id, day, value,
+ * label, source, updated_by_user_id, updated_at: created_at renders as
+ * `default`); the trailing param is the conflict clause's updated_at.
  */
 function inserted(): Array<Record<string, unknown>> {
   const q = upsert();
   if (!q) return [];
   const rows: Array<Record<string, unknown>> = [];
-  for (let i = 0; i + 8 <= q.params.length; i += 8) {
-    const [, organizationId, metricId, day, value, source, updatedByUserId] = q.params.slice(
+  for (let i = 0; i + 9 <= q.params.length; i += 9) {
+    const [, organizationId, metricId, day, value, label, source, updatedByUserId] = q.params.slice(
       i,
-      i + 8,
+      i + 9,
     );
-    rows.push({ organizationId, metricId, day, value, source, updatedByUserId });
+    rows.push({ organizationId, metricId, day, value, label, source, updatedByUserId });
   }
   return rows;
 }
@@ -77,7 +77,7 @@ describe("ingestMetricValues — restatement", () => {
     // The conflict target *is* the restatement guarantee: without it the write
     // would append a second row for the same day and every reader would see the
     // number twice.
-    expect(upsert()?.sql).toContain('on conflict ("metric_id","day") do update set');
+    expect(upsert()?.sql).toContain('on conflict ("metric_id","day","label") do update set');
     expect(upsert()?.sql).toContain('"value" = excluded.value');
   });
 
@@ -101,6 +101,27 @@ describe("ingestMetricValues — restatement", () => {
       { date: "2026-07-02", value: 2 },
     ]);
     expect(result.written).toBe(2);
+  });
+
+  it("keys restatement on (day, label): a breakdown is several rows for one day", async () => {
+    await write([
+      { date: "2026-07-01", value: 3, label: "acme" },
+      { date: "2026-07-01", value: 4, label: "globex" },
+      { date: "2026-07-01", value: 5, label: "acme" },
+      { date: "2026-07-01", value: 9 },
+    ]);
+    const rows = inserted();
+    expect(rows).toHaveLength(3);
+    expect(rows.find((r) => r["label"] === "acme")?.["value"]).toBe(5);
+    // An unlabeled value is stored under the empty label, never NULL: a NULL
+    // in the unique index would never collide, so a re-report would append.
+    expect(rows.find((r) => r["label"] === "")?.["value"]).toBe(9);
+  });
+
+  it("rejects an over-long label", async () => {
+    await expect(write([{ date: "2026-07-01", value: 1, label: "x".repeat(121) }])).rejects.toThrow(
+      /label longer than 120/,
+    );
   });
 
   it("stamps the source and the acting user on every row", async () => {

@@ -1,5 +1,9 @@
 import type {
   BudgetInput,
+  BusinessMetricImporterInput,
+  BusinessMetricImportPreviewRequest,
+  BusinessMetricImportRunRequest,
+  BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
   BusinessMetricValueInput,
   CostAlertInput,
@@ -43,6 +47,14 @@ import {
   updateCloudSavedCostFilter,
   createCloudBusinessMetric,
   deleteCloudBusinessMetric,
+  deleteCloudBusinessMetricImporter,
+  getCloudBusinessMetricImporter,
+  listCloudBusinessMetricImportRuns,
+  listCloudBusinessMetricSourceOptions,
+  listCloudBusinessMetricSources,
+  previewCloudBusinessMetricImport,
+  runCloudBusinessMetricImporter,
+  saveCloudBusinessMetricImporter,
   listCloudBusinessMetricValues,
   updateCloudBusinessMetric,
   writeCloudBusinessMetricValues,
@@ -93,6 +105,22 @@ export function createDesktopCostsClient(): CostsClient {
       listCloudBusinessMetricValues(requireOrgId(), metricId, limit),
     writeBusinessMetricValues: (metricId: string, values: BusinessMetricValueInput[]) =>
       writeCloudBusinessMetricValues(requireOrgId(), metricId, values),
+    // Importers run in the cloud; the desktop configures them exactly as web does.
+    listBusinessMetricSources: () => listCloudBusinessMetricSources(requireOrgId()),
+    listBusinessMetricSourceOptions: (request: BusinessMetricSourceOptionsRequest) =>
+      listCloudBusinessMetricSourceOptions(requireOrgId(), request),
+    previewBusinessMetricImport: (request: BusinessMetricImportPreviewRequest) =>
+      previewCloudBusinessMetricImport(requireOrgId(), request),
+    getBusinessMetricImporter: (metricId: string) =>
+      getCloudBusinessMetricImporter(requireOrgId(), metricId),
+    saveBusinessMetricImporter: (metricId: string, input: BusinessMetricImporterInput) =>
+      saveCloudBusinessMetricImporter(requireOrgId(), metricId, input),
+    deleteBusinessMetricImporter: (metricId: string) =>
+      deleteCloudBusinessMetricImporter(requireOrgId(), metricId),
+    runBusinessMetricImporter: (metricId: string, request?: BusinessMetricImportRunRequest) =>
+      runCloudBusinessMetricImporter(requireOrgId(), metricId, request),
+    listBusinessMetricImportRuns: (metricId: string, limit?: number) =>
+      listCloudBusinessMetricImportRuns(requireOrgId(), metricId, limit),
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
     // Explaining a finding is org-level cloud state like the tuning below it,

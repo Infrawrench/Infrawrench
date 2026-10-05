@@ -9,8 +9,16 @@ import type {
   PeerPaneContext,
   PeerPaneSchema,
   PeerPaneResource,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle } from "@infrawrench/plugin-base";
+import {
+  assertBusinessMetricSql,
+  bindBusinessMetricSqlRange,
+  joinSubtitle,
+  rowsToBusinessMetricPoints,
+  withBusinessMetricTimeout,
+} from "@infrawrench/plugin-base";
 
 const VISIBLE_SCHEMA_FILTER =
   "schema_name NOT IN ('pg_catalog', 'information_schema') AND schema_name NOT LIKE 'pg_toast%' AND schema_name NOT LIKE 'pg_temp_%'";
@@ -396,6 +404,33 @@ export class PostgresClient implements PluginClient {
       { label: "Size", value: size },
       { label: "Tables", value: String(tableCount) },
     ];
+  }
+
+  /**
+   * Business-metric importer: run the importer's SELECT with the range
+   * placeholders bound, inside the driver's read-only transaction, and turn
+   * the `day` / `value` (/ `label`) rows into points. Never falls back to the
+   * writable `query()`: an unattended statement must not be able to write.
+   */
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    const statement = (params["sql"] ?? "").trim();
+    assertBusinessMetricSql(statement);
+    const bound = bindBusinessMetricSqlRange(statement, range);
+    // Re-check after binding: substituted values are quoted literals, so the
+    // statement shape cannot change, but the guard is cheap and runs every time.
+    assertBusinessMetricSql(bound);
+    const sql = this.services?.sql;
+    if (!sql?.queryReadOnly) {
+      throw new Error(
+        "This host cannot guarantee a read-only query against PostgreSQL, so the importer will not run. Business-metric imports only run where the database itself refuses writes.",
+      );
+    }
+    const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);
+    return { points: rowsToBusinessMetricPoints(rows, range.maxRows) };
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {

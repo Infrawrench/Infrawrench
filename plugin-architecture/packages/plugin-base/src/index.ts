@@ -62,6 +62,31 @@ export {
   resolveFocusService,
 } from "./focus.js";
 export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
+
+export type {
+  BusinessMetricSourceDeclaration,
+  BusinessMetricSourceDryRun,
+  BusinessMetricSourceField,
+  BusinessMetricSourceOption,
+  BusinessMetricSourcePoint,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
+} from "./business-metric-source.js";
+export {
+  BUSINESS_METRIC_SOURCE_LIMITS,
+  assertBusinessMetricSql,
+  bindBusinessMetricSqlRange,
+  businessMetricSqlProblem,
+  coerceBusinessMetricDay,
+  coerceBusinessMetricNumber,
+  isBusinessMetricDay,
+  isValidTimezone,
+  localDayOf,
+  nextBusinessMetricDay,
+  rowsToBusinessMetricPoints,
+  withBusinessMetricTimeout,
+  zonedDayStartMs,
+} from "./business-metric-source.js";
 export { CreditAccessError } from "./credits.js";
 
 export type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";

@@ -37,6 +37,26 @@ const manifest: PluginManifest = {
       placeholder: "-----BEGIN CERTIFICATE-----\n...",
     },
   ],
+  businessMetricSource: {
+    label: "PostgreSQL query",
+    description:
+      "Run a SELECT on a schedule and store one value per day. The query runs in a read-only transaction that is rolled back, so it cannot change data.",
+    kind: "sql",
+    sqlDialect: "PostgreSQL",
+    readOnly: "enforced",
+    fields: [
+      {
+        key: "sql",
+        label: "Query",
+        type: "sql",
+        required: true,
+        description:
+          'Return a "day" column (date) and a "value" column (number), plus an optional "label" column for a breakdown. {{from}} and {{to}} are the first and last day of the window (inclusive), {{to_exclusive}} is the day after {{to}}, and {{timezone}} is the importer\'s timezone. Days are taken as written, so convert timestamps yourself, for example (created_at AT TIME ZONE {{timezone}})::date.',
+        placeholder:
+          "SELECT created_at::date AS day, count(*) AS value\nFROM signups\nWHERE created_at >= {{from}} AND created_at < {{to_exclusive}}\nGROUP BY 1",
+      },
+    ],
+  },
   sqlDriver: {
     driver: "postgres",
     credentialKey: "connectionString",

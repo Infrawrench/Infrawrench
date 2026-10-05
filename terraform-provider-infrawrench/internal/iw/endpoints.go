@@ -457,6 +457,38 @@ func (c *Client) DeleteBusinessMetric(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/business-metrics/"+seg(id))
 }
 
+// GetBusinessMetricImporter reads a metric's importer. The route answers
+// `{"importer": null}` for a metric whose values are only pushed; that is
+// synthesised into a 404 so a deletion outside Terraform reads as "needs
+// recreating" like every other object.
+func (c *Client) GetBusinessMetricImporter(ctx context.Context, metricID string) (*BusinessMetricImporter, error) {
+	path := "/business-metrics/" + seg(metricID) + "/importer"
+	var envelope struct {
+		Importer *BusinessMetricImporter `json:"importer"`
+	}
+	if err := c.Get(ctx, path, &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Importer == nil {
+		return nil, notFound(http.MethodGet, path, metricID)
+	}
+	return envelope.Importer, nil
+}
+
+// PutBusinessMetricImporter creates or replaces a metric's importer.
+func (c *Client) PutBusinessMetricImporter(ctx context.Context, metricID string, in BusinessMetricImporterInput) (*BusinessMetricImporter, error) {
+	var out BusinessMetricImporter
+	if err := c.Put(ctx, "/business-metrics/"+seg(metricID)+"/importer", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteBusinessMetricImporter stops importing. Imported values stay.
+func (c *Client) DeleteBusinessMetricImporter(ctx context.Context, metricID string) error {
+	return c.Delete(ctx, "/business-metrics/"+seg(metricID)+"/importer")
+}
+
 /* ----------------------------- cost annotations ---------------------------- */
 
 // ListCostAnnotations unwraps the {"annotations": […]} envelope.

@@ -55,6 +55,15 @@ export function buildHostServices(
         await guard();
         return driver.query(connectionString, sql, sqlOptions);
       },
+      // Only offered when the driver can enforce it; see SqlHostServices.
+      ...(driver.queryReadOnly
+        ? {
+            queryReadOnly: async (sql: string) => {
+              await guard();
+              return driver.queryReadOnly!(connectionString, sql, sqlOptions);
+            },
+          }
+        : {}),
       execute: async (sql, params) => {
         await guard();
         return driver.execute(connectionString, sql, params, sqlOptions);

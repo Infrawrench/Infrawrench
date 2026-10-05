@@ -19,6 +19,7 @@ import {
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
+import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
@@ -248,6 +249,11 @@ export class PollerLoop extends TickLoop {
     // SKIP LOCKED lease the account poll uses. Deliberately small: each one
     // opens a connection to a customer database. Defensive like the others.
     await this.tickQueryMonitors();
+
+    // Business-metric importers: a small batch of due pulls (CloudWatch,
+    // warehouse SQL, billing platforms) that restate a metric's trailing days.
+    // Same SKIP LOCKED claim as query monitors. Defensive like the others.
+    await this.tickMetricImports();
 
     // Eleventh pass: synthetic probes. Claims due probes with the accounts
     // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease:
@@ -511,6 +517,19 @@ export class PollerLoop extends TickLoop {
    * somebody else's production database, and the pass runs them sequentially
    * for the same reason.
    */
+  /**
+   * Run the business-metric importers that have come due. Small batch, run
+   * sequentially, for the query monitors' reason: each one reads from
+   * somebody else's production system.
+   */
+  private async tickMetricImports(): Promise<void> {
+    try {
+      await runBusinessMetricImportPass({ limit: 3 });
+    } catch (e) {
+      console.error("[metric-import] tick failed:", e);
+    }
+  }
+
   private async tickQueryMonitors(): Promise<void> {
     try {
       await runQueryMonitorPass({ limit: 5 });

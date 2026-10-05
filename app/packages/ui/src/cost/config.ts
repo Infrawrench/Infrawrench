@@ -80,7 +80,14 @@ import {
   BUSINESS_METRIC_KEY_PATTERN,
   BUSINESS_METRIC_KINDS,
   BUSINESS_METRIC_LIMITS,
+  BUSINESS_METRIC_IMPORT_AGGREGATIONS,
+  BUSINESS_METRIC_IMPORT_LIMITS,
+  BUSINESS_METRIC_IMPORT_SCHEDULES,
   UNIT_COST_MODES,
+  type BusinessMetricImporterInput,
+  type BusinessMetricImportPreviewRequest,
+  type BusinessMetricImportRunRequest,
+  type BusinessMetricSourceOptionsRequest,
   type BusinessMetricInput,
   type BusinessMetricValueInput,
   type UnitCostQueryRequest,
@@ -352,6 +359,21 @@ export {
   BUSINESS_METRIC_KEY_HELP,
   DEFAULT_BUSINESS_METRIC_INPUT,
   normalizeBusinessMetricKey,
+  BUSINESS_METRIC_IMPORT_SCHEDULES,
+  BUSINESS_METRIC_IMPORT_SCHEDULE_HOURS,
+  BUSINESS_METRIC_IMPORT_SCHEDULE_LABELS,
+  BUSINESS_METRIC_IMPORT_AGGREGATIONS,
+  BUSINESS_METRIC_IMPORT_AGGREGATION_LABELS,
+  BUSINESS_METRIC_IMPORT_LIMITS,
+  aggregateBusinessMetricPoints,
+  describeBusinessMetricImporter,
+  parseMetricCsv,
+  guessCsvMapping,
+  csvRowsToMetricValues,
+  CSV_DATE_FORMATS,
+  CSV_DATE_FORMAT_LABELS,
+  type MetricCsvColumnMapping,
+  type CsvDateFormat,
   unitCostQueryForConfig,
   UNIT_COST_MODES,
   UNIT_COST_MODE_LABELS,
@@ -363,6 +385,19 @@ export {
   describeUnitCostCaveats,
   type BusinessMetric,
   type BusinessMetricCoverage,
+  type BusinessMetricImportAggregation,
+  type BusinessMetricImporter,
+  type BusinessMetricImporterInput,
+  type BusinessMetricImporterSummary,
+  type BusinessMetricImportPreview,
+  type BusinessMetricImportPreviewRequest,
+  type BusinessMetricImportRun,
+  type BusinessMetricImportRunRequest,
+  type BusinessMetricImportSchedule,
+  type BusinessMetricImportValue,
+  type BusinessMetricSourceAccount,
+  type BusinessMetricSourceOption,
+  type BusinessMetricSourceOptionsRequest,
   type BusinessMetricInput,
   type BusinessMetricKind,
   type BusinessMetricValue,
@@ -1256,6 +1291,8 @@ export const businessMetricInputSchema = z.object({
 export const businessMetricValueInputSchema = z.object({
   date: isoDate,
   value: z.number().finite(),
+  /** Optional breakdown label; `(date, label)` is what a write restates. */
+  label: z.string().max(BUSINESS_METRIC_LIMITS.maxLabelLength).optional(),
 });
 
 /** The batch envelope for `POST /business-metrics/{id}/values`. */
@@ -1288,11 +1325,76 @@ export const unitCostQueryRequestSchema = z.object({
   displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
 });
 
+/** Plugin-defined source parameters: a bounded string map, checked against the form server-side. */
+const businessMetricSourceParamsSchema = z
+  .record(
+    z.string().min(1).max(BUSINESS_METRIC_IMPORT_LIMITS.maxParamKeyLength),
+    z.string().max(BUSINESS_METRIC_IMPORT_LIMITS.maxParamValueLength),
+  )
+  .refine((p) => Object.keys(p).length <= BUSINESS_METRIC_IMPORT_LIMITS.maxParams, {
+    message: `at most ${BUSINESS_METRIC_IMPORT_LIMITS.maxParams} parameters`,
+  });
+
+/**
+ * Create/replace body for `PUT /business-metrics/{id}/importer`. Which keys
+ * `params` may carry, and which are required, is the account plugin's form;
+ * that check (and the read-only SQL guard) is server-side, in
+ * `server-core/cost/metric-importers.ts`.
+ */
+export const businessMetricImporterInputSchema = z.object({
+  accountId: z.string().min(1),
+  params: businessMetricSourceParamsSchema,
+  schedule: z.enum(BUSINESS_METRIC_IMPORT_SCHEDULES).optional(),
+  backfillDays: z
+    .number()
+    .int()
+    .min(BUSINESS_METRIC_IMPORT_LIMITS.minBackfillDays)
+    .max(BUSINESS_METRIC_IMPORT_LIMITS.maxBackfillDays)
+    .optional(),
+  timezone: z.string().min(1).max(64).optional(),
+  aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
+  enabled: z.boolean().optional(),
+});
+
+/** `POST /business-metrics/{id}/importer/run`. */
+export const businessMetricImportRunRequestSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+
+/** `POST /business-metrics/importer-preview`. */
+export const businessMetricImportPreviewRequestSchema = z.object({
+  accountId: z.string().min(1),
+  params: businessMetricSourceParamsSchema,
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  timezone: z.string().min(1).max(64).optional(),
+  aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
+  dryRun: z.boolean().optional(),
+});
+
+/** `POST /business-metrics/importer-options`. */
+export const businessMetricSourceOptionsRequestSchema = z.object({
+  accountId: z.string().min(1),
+  fieldKey: z.string().min(1).max(BUSINESS_METRIC_IMPORT_LIMITS.maxParamKeyLength),
+  params: businessMetricSourceParamsSchema,
+});
+
 /** Same compile-time proof as above, for the unit-cost half of the contract. */
 export type SchemasMatchBusinessMetricContract = [
   Exact<z.infer<typeof businessMetricInputSchema>, BusinessMetricInput>,
   Exact<z.infer<typeof businessMetricValueInputSchema>, BusinessMetricValueInput>,
   Exact<z.infer<typeof unitCostQueryRequestSchema>, UnitCostQueryRequest>,
+  Exact<z.infer<typeof businessMetricImporterInputSchema>, BusinessMetricImporterInput>,
+  Exact<z.infer<typeof businessMetricImportRunRequestSchema>, BusinessMetricImportRunRequest>,
+  Exact<
+    z.infer<typeof businessMetricImportPreviewRequestSchema>,
+    BusinessMetricImportPreviewRequest
+  >,
+  Exact<
+    z.infer<typeof businessMetricSourceOptionsRequestSchema>,
+    BusinessMetricSourceOptionsRequest
+  >,
 ];
 
 /* ------------------------------------------------------------------ *

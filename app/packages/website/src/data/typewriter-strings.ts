@@ -184,6 +184,7 @@ export const typewriterStrings: string[] = [
   "Deepgram Projects",
   "New Relic Alert Policies",
   "Grafana Cloud Stacks",
+  "Metronome Billable Metrics",
   "Sentry Cron Monitors",
   "Coralogix TCO Policies",
   "Twilio Phone Numbers",

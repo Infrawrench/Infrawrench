@@ -210,4 +210,7 @@
 // upload sequence (`/{id}/uploads`, `…/rows`, `…/complete`, DELETE an
 // upload). Each source reads as its own `custom:<id>` provider in cost
 // queries. Additive.
-export const API_VERSION = "1.59.0";
+// 1.60.0: business-metric importers (importer-sources/options/preview, /{id}/importer CRUD, run, runs),
+// an optional `label` on metric values, `import` as a value source, `importer` on BusinessMetric, and the
+// Metronome plugin and resource type IDs. Additive.
+export const API_VERSION = "1.60.0";

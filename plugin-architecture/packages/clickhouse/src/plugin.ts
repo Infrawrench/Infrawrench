@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { clickhouseBusinessMetricSource } from "./business-metric-source.js";
 import { ClickHouseClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ServiceResourceType } from "./resources/service.js";
@@ -104,6 +105,9 @@ const manifest: PluginManifest = {
   // Organization quotas that report usage (services, Postgres services,
   // API keys); the Cloud API publishes only these few.
   quotas: { label: "Quotas", partial: true },
+  // Scheduled SQL importer for business metrics (unit-cost denominators),
+  // run with readonly=1 on the service configured for SQL.
+  businessMetricSource: clickhouseBusinessMetricSource,
   statusFeed,
 };
 

@@ -10,6 +10,7 @@ import { parseAccount } from "./account.js";
 import type { SnowflakeContext } from "./api.js";
 import { isNotAuthorized, runSql, str } from "./api.js";
 import { SnowflakeAuth, parseCredential } from "./auth.js";
+import { snowflakeBusinessMetricSource } from "./business-metric-source.js";
 import { DEFAULT_RATES, RATE_KEYS } from "./catalog.js";
 import { SnowflakeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -145,6 +146,8 @@ const manifest: PluginManifest = {
     partial: true,
     requiresElevatedCredential: true,
   },
+  // Scheduled SQL importer for business metrics (unit-cost denominators).
+  businessMetricSource: snowflakeBusinessMetricSource,
   statusFeed,
   warehouseSink: SNOWFLAKE_WAREHOUSE_SINK,
   rateLimit: { capacity: 10, refillPerSecond: 2 },

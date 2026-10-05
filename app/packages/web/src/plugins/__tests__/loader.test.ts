@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { loadPlugins } from "@/plugins/loader";
 
 describe("plugin loader", () => {
-  it("loads all 75 plugins successfully", async () => {
+  it("loads all 76 plugins successfully", async () => {
     const plugins = await loadPlugins();
-    expect(plugins).toHaveLength(75);
+    expect(plugins).toHaveLength(76);
   });
 
   it("each plugin has a valid manifest with required fields", async () => {
@@ -44,6 +44,7 @@ describe("plugin loader", () => {
       "memcached",
       "neon",
       "newrelic",
+      "metronome",
       "circleci",
       "mssql",
       "fly",

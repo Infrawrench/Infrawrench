@@ -159,6 +159,7 @@
     "@infrawrench/plugin-kubernetes": "workspace:*",
     "@infrawrench/plugin-linode": "workspace:*",
     "@infrawrench/plugin-memcached": "workspace:*",
+    "@infrawrench/plugin-metronome": "workspace:*",
     "@infrawrench/plugin-mistral": "workspace:*",
     "@infrawrench/plugin-modal": "workspace:*",
     "@infrawrench/plugin-mongodb": "workspace:*",

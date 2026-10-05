@@ -14575,5 +14575,289 @@
       },
       "; las filas se agregan en una por día antes de enviarse."
     ]
-  }
+  },
+  "df961bd6f2d29462": "Guardado. La primera ejecución está pendiente y aparecerá en el historial de abajo.",
+  "b7c2cf7d5d68084a": "Guardado. El importador está en pausa.",
+  "29a7807a2cb658c3": "Se importaron {days} días ({from} → {to}).",
+  "c328788a41a38531": "La ejecución falló: {error}",
+  "85526b9d4df5f412": "¿Dejar de importar {name}? Los valores ya importados se conservan; los días nuevos quedarán vacíos salvo que otra fuente los informe.",
+  "ec3d73279f51989d": "Seleccione o escriba un valor",
+  "9f562543270b4df7": "No se pudieron cargar las opciones: {error}",
+  "09811e95427f9952": "Importador de {name}",
+  "6d9b88601844a88f": "Importar {name} de forma programada",
+  "34a6d7b6eda650d1": "Cargando fuentes…",
+  "4548d3e1509c2237": "Cuenta de origen",
+  "f359074d4f6229af": "El proveedor garantiza el acceso de solo lectura.",
+  "36796968473edae1": "Solo se aceptan sentencias SELECT o WITH individuales; los permisos de la propia cuenta son la otra línea de defensa, así que use un rol de solo lectura.",
+  "b943e95ca9db4dc4": "Días reajustados en cada ejecución",
+  "1cb6abd79b8a143b": "Varios puntos en un mismo día",
+  "84cc4c6658301806": "Ejecutar según la programación",
+  "516297cfe5b18c63": "Aún falta: {fields}",
+  "76ce1c4a128aba3e": "Vista previa de los últimos 14 días",
+  "3b344b5ddaf1178e": "Prueba en seco",
+  "43fbe4470169c787": "Se analizarían {bytes}.",
+  "f44fe664fbe71054": "{days} días a partir de {points} puntos, {from} → {to}, en {ms} ms. No se escribió nada.",
+  "d1c388e7854bab51": "La fuente no devolvió nada para este periodo. Revise la consulta o la serie elegida; una ejecución dejaría estos días vacíos.",
+  "fbfcb6f15b2a0a6b": "Ejecuciones recientes",
+  "295a274775e31ce6": "{days} días escritos",
+  "0786770645df39cf": "manual",
+  "425c5e70e6ac6000": "programada",
+  "9a439c760e8647a6": "Dejar de importar",
+  "d3bd123a9413a14a": "Guardar importador",
+  "eed3d30633763dfd": "Ese archivo supera los 10 MB. Use un importador programado o la API.",
+  "c44eba347f74bd71": "El archivo no tiene filas.",
+  "4a555b9284e946e2": "Escritos {written} de {total}…",
+  "580c038ef6e7526e": "Listo: {written} valores escritos en {days} días.",
+  "7d9ff26ab12e7447": "Subir valores de {name}",
+  "4715502c4d75c2d1": "Subir un CSV para {name}",
+  "8830f51c59c8e5e0": "Archivo CSV",
+  "2e0939210b24f514": "{file}: {rows} filas",
+  "9e10c4b822fd96ff": "La primera fila es un encabezado",
+  "cb96ddd47bd1407a": "Columna de día",
+  "66b7b311eb8e08a1": "Formato de fecha",
+  "edae466f054f78d4": "Columna de valor",
+  "74050f54df4a9cbd": "Columna de etiqueta (opcional)",
+  "9feaf58424c848ae": "Se escribirán {values} valores en {days} días.",
+  "68bacf560d983026": "{count} filas no se pueden leer y se omitirán.",
+  "22094ab91d2bb219": "Línea {row}: {message}",
+  "c7aa8559d5f215a7": "Subiendo…",
+  "3d7f48afffe87063": "Subir valores",
+  "795550b779b450be": "Importado desde {source} · {account}",
+  "13bccf430b0855e9": "una fuente eliminada",
+  "7d5dcf03b4c5fe16": "cuenta eliminada",
+  "38fd2714fd15df4b": "la última ejecución falló: {error}",
+  "392f01cb1fba48e2": "primera ejecución pendiente",
+  "bbf70f9217ad9dbc": "última ejecución {when}",
+  "1f3af22498812efb": "Importador",
+  "89f14ff46926cb19": "Importar…",
+  "407a7b1bf1ff22af": "Subir CSV",
+  "0dbea113bccf1e85": "Un cliente de Metronome, con sus alias de ingesta, campos personalizados y facturas recientes. El uso y los ingresos por cliente se pueden importar como métrica de negocio.",
+  "5a92537ff15477c6": "Un token de API de Metronome, creado en la aplicación de Metronome en Developer, luego API tokens. Un token conserva los permisos del usuario que lo creó; Infrawrench solo lee, así que sirve un token que el soporte de Metronome haya limitado a acceso de solo lectura.",
+  "fee0fddbbd223d11": "Una métrica facturable de Metronome: los filtros de eventos, los filtros de propiedades y la agregación que convierten los eventos de uso en una cantidad facturada. Su uso diario se puede importar como métrica de negocio.",
+  "c65473919109a10c": "Agregación",
+  "d182db0be9d58ba8": "Clave de agregación",
+  "dc81fa2b1e43b197": "Promedio",
+  "4b10e8bfd3b73514": "Espacios de nombres de servicios de AWS (AWS/Lambda) o su propio espacio de nombres personalizado. CloudWatch solo muestra las métricas que informaron datos en las dos últimas semanas; escriba un espacio de nombres para usar uno que no aparezca en la lista.",
+  "9ee4281205d7d1a9": "BigQuery SQL",
+  "66dbe371b027101e": "Métrica facturable",
+  "a6a92d1d564a362a": "Métrica facturable",
+  "0428d90a6598687e": "Uso de la métrica facturable",
+  "7089fb06cbdabaa1": "Métricas facturables",
+  "1b83de40d0d3bd64": "Estado de facturación",
+  "d2adcc35dabf0b7d": "Desglosar por cliente",
+  "f8ae7f4170edb27d": "ClickHouse SQL",
+  "3d1f50ee10b6a08c": "Métrica de CloudWatch",
+  "3ed7c225c95b0de2": "Crear un token de API de Metronome",
+  "791f152c7b207028": "Moneda o unidad de precio",
+  "52fd1bf452c725b7": "Campos personalizados",
+  "f5a2020feef9d7f7": "Cliente",
+  "bdd4281774beba65": "Base de datos predeterminada: los nombres de tabla sin calificar se resuelven aquí.",
+  "cc48e7b8f25c2f40": "Conjunto de datos predeterminado: los nombres de tabla de la consulta que no estén calificados con un conjunto de datos se resuelven aquí.",
+  "0cac3d52bbfd0b79": "Tipos de evento",
+  "aec5248a7ec52304": "Tipos de evento excluidos",
+  "8bc0f979962c334c": "Claves de grupo",
+  "3e322a46e3ef1e3e": "Importe desde Metronome el uso diario de una métrica facturable o los ingresos facturados cada día. Opcionalmente, guarde un valor por cliente.",
+  "c54299d43bacbc55": "Alias de ingesta",
+  "109633c51163dd36": "Ingresos facturados",
+  "5ca46a2b1d26a77f": "Limite la importación a un cliente o lea todos los clientes.",
+  "787f4c28aed5178f": "Máximo",
+  "a568cc74f3e42425": "ID de métrica",
+  "f376e605e0be14f1": "Metronome",
+  "302c8167d13d6238": "Uso o ingresos de Metronome",
+  "5843a54f27dac920": "Facturación basada en el uso de Metronome: lista clientes y métricas facturables, e importa el uso diario de una métrica facturable o los ingresos facturados de cada día como métrica de negocio para los costos unitarios.",
+  "bc8578d9f6500c86": "Mínimo",
+  "107d5a3719533db6": "Consulta de MySQL",
+  "d24af5916e805fd0": "No, guardar un total por día",
+  "e517d1b6b964fcc3": "Base de datos predeterminada opcional: los nombres de tabla sin calificar se resuelven aquí. La consulta se ejecuta en el servicio configurado como nombre de host SQL de la cuenta.",
+  "47d7f3540ef53b55": "Esquema predeterminado opcional dentro de la base de datos.",
+  "9837e4afd0ee0e82": "Opcional. Una ayuda para buscar el nombre de una tabla para la consulta; no se usa cuando se ejecuta la consulta.",
+  "ffa65db06d018c64": "Opcional. El rol con el que se ejecuta la consulta. Snowflake no puede hacer que una sesión sea de solo lectura, así que elija un rol que solo pueda leer los datos que la consulta necesita. Déjelo vacío para usar el rol de la cuenta.",
+  "5b56fc50233ddb7b": "p50 (mediana)",
+  "570f6539e84f6517": "p90",
+  "397af2e4536f6834": "p95",
+  "aca8ecb6d627e747": "p99",
+  "5d2fc689a2f9ad33": "Consulta de PostgreSQL",
+  "1a91d294f35b6747": "Alias de ingesta principal",
+  "abd02b8c25794b7f": "Lea una métrica de CloudWatch, como recuentos de solicitudes, mensajes procesados o una métrica personalizada que publique su aplicación, y guarde un valor por día.",
+  "2b3763ddfd302640": "Se lee por horas y luego el importador la combina en días según su agregación. Sum es adecuada para recuentos; en promedios y percentiles cada día combina valores horarios, por lo que la cifra diaria es una aproximación.",
+  "5333ada81df60d11": "Ejecute una consulta SQL de ClickHouse de forma programada en el servicio al que esta cuenta se conecta para SQL. Debe devolver una fila por día con una columna `day` y una columna `value`, más una columna `label` opcional para un desglose.",
+  "cada4946f72f9d34": "Ejecute una consulta GoogleSQL en BigQuery de forma programada. Debe devolver una fila por día con una columna `day` y una columna `value`, más una columna `label` opcional para un desglose.",
+  "7f9a1b5a1836e642": "Ejecute un SELECT de forma programada y guarde un valor por día. La consulta se ejecuta en una transacción de solo lectura que se revierte, por lo que no puede modificar datos.",
+  "dfd7d5557cfbdd8a": "Ejecute una consulta SQL de Snowflake de forma programada. Debe devolver una fila por día con una columna `day` y una columna `value`, más una columna `label` opcional para un desglose.",
+  "36fe4f7e5375de39": "ID de cuenta de Salesforce",
+  "e3756ae6bf560d24": "Recuento de muestras",
+  "186a46cf510cb390": "Snowflake SQL",
+  "9310c1d48106917e": "Estadística",
+  "b8e54299db7d3bff": "Suma",
+  "be32a121b226d112": "El ID de la métrica facturable por el que filtra la API de uso de Metronome.",
+  "5f1f205824e76f73": "El primer alias que pueden llevar los eventos de uso de este cliente.",
+  "15ed9e9ba4d51ab1": "La métrica que se importará como uso. Metronome informa el uso en días UTC; para las métricas SUM y COUNT el importador lee el uso por horas y lo suma en días en la zona horaria del importador, mientras que las demás agregaciones (MAX, UNIQUE, LATEST, SQL) se guardan en el día UTC en que se midieron.",
+  "08004fead2879200": "El ID de cliente de Metronome, aceptado en lugar de un alias de ingesta en los eventos de uso.",
+  "c4042b281f6de3ec": "El proyecto en el que se ejecuta y se factura la consulta. La cuenta de servicio necesita BigQuery Job User aquí y BigQuery Data Viewer en los datos que lee.",
+  "16cff3d11ed80e18": "La región en la que se publica la métrica. La región de la cuenta aparece primero.",
+  "21cff14a3bb3f27f": "El almacén en el que se ejecuta la consulta y al que se le factura. Déjelo vacío para usar el almacén de la cuenta.",
+  "58227f91d844fe1c": "Si está activado, el valor de cada día se divide por nombre de cliente, de modo que los costos unitarios se puedan consultar por cliente. El total del día no cambia.",
+  "2af09e9b76cba776": "Qué facturas se suman como ingresos. USD se guarda en dólares, no en centavos. Los ingresos se guardan en el día UTC en que Metronome los factura, ya que los desgloses de facturas solo están disponibles en días UTC.",
+  "dd740166280aca29": "Qué serie de la métrica leer. CloudWatch trata cada combinación de dimensiones como una serie distinta, así que elija el conjunto exacto con el que se publica la métrica.",
+  "479e74b184bf3ad2": "Sí, guardar un valor por cliente y día",
+  "0f967c3b94636de3": {
+    "t": "p",
+    "i": 1,
+    "c": "Una copia de seguridad que nunca ha restaurado es una hipótesis. Registre cada simulacro (qué restauró, cuánto tardó y si comprobó lo que se recuperó) y esta página le avisará cuando la evidencia haya quedado obsoleta."
+  },
+  "134377222cc9b710": {
+    "t": "p",
+    "i": 1,
+    "c": "Todavía no hay nada que simular. Un recurso aparece aquí cuando algo realmente lo respalda; un recurso sin copia de seguridad es una brecha de cobertura, no una restauración sin probar."
+  },
+  "b68be2093735da09": {
+    "t": "p",
+    "i": 1,
+    "c": "Cada ejecución lee los últimos días de una cuenta conectada y los reescribe: un día que devuelve la fuente reemplaza lo almacenado para él, y un día para el que no devuelve nada queda como hueco en lugar de convertirse en cero. Las consultas son de solo lectura, con un límite de filas y un tiempo de espera."
+  },
+  "54e9d68c377ea869": {
+    "t": "p",
+    "i": 1,
+    "c": "Ninguna de sus cuentas conectadas puede alimentar todavía una métrica de negocio. Conecte una cuenta de AWS, GCP, Snowflake, ClickHouse, PostgreSQL, MySQL o Metronome, o informe los valores mediante la API, desde un flujo de trabajo o subiendo un CSV."
+  },
+  "db60fd1cc82e58e0": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Devuelva una fila por día con una columna",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "y una columna",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", ",
+      "más una",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " ",
+      "opcional para un desglose. Use",
+      " ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      ",",
+      " ",
+      {
+        "i": 6,
+        "k": "_gt_value_6",
+        "v": "v"
+      },
+      ",",
+      " ",
+      {
+        "i": 7,
+        "k": "_gt_value_7",
+        "v": "v"
+      },
+      " ",
+      "y",
+      " ",
+      {
+        "i": 8,
+        "k": "_gt_value_8",
+        "v": "v"
+      },
+      " ",
+      "para la ventana; se reemplazan por literales entre comillas."
+    ]
+  },
+  "452bc9205b7f2414": {
+    "t": "p",
+    "i": 1,
+    "c": "Días cerrados que terminan ayer. Auméntelo si la fuente revisa los días recientes."
+  },
+  "e42444015ec84663": {
+    "t": "p",
+    "i": 1,
+    "c": "Deje ambas fechas vacías para ejecutar la ventana guardada. Establézcalas para cargar el historial (hasta 730 días por ejecución). Las ejecuciones usan la configuración guardada, así que guarde primero."
+  },
+  "bdb730c62a0e48bf": {
+    "t": "p",
+    "i": 1,
+    "c": "Una fila por día (o por día y etiqueta). Volver a subir un día lo reemplaza en lugar de sumarse, así que basta con volver a subir un archivo corregido."
+  },
+  "c6f3f7d198ce0ccc": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Todavía no hay métricas de negocio. Añada una y luego importe sus valores diarios de forma programada desde una cuenta conectada, suba un CSV o infórmelos desde un flujo de trabajo con",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ", mediante la API o a mano."
+    ]
+  },
+  "822e74262e966aa2": {
+    "t": "p",
+    "i": 1,
+    "c": "Las alertas de métricas vigilan lo que informa su proveedor. Esto vigila lo que dicen sus datos: la tabla de pedidos que dejó de crecer, la cola de mensajes fallidos con cuatro mil filas, el ETL de ayer que no escribió nada. Una consulta de solo lectura, programada, con un umbral."
+  },
+  "04219bc443db9979": {
+    "t": "p",
+    "i": 1,
+    "c": "Todavía no hay monitores. Un buen primer monitor es la consulta que ejecuta a mano cada mañana."
+  },
+  "cb9a29f432666346": {
+    "t": "p",
+    "i": 1,
+    "c": "La lista de comprobación que alguien anotó a las 03:00, guardada donde realmente se realizan los pasos. Un paso puede ser una nota para marcar, un enlace o un flujo de trabajo que ejecutar, y seguir uno deja constancia de quién hizo qué, que es la mitad que siempre se le escapa a un postmortem."
+  },
+  "69ccba033eb53144": {
+    "t": "p",
+    "i": 1,
+    "c": "Todavía no hay runbooks. El primero suele ser lo que le explicó a alguien la semana pasada."
+  },
+  "48052b44d19d880a": {
+    "t": "p",
+    "i": 1,
+    "c": "A quién despertar, en lugar de en qué canal gritar. Una rotación es una lista de personas, una duración de turno y una hora de relevo; una regla de enrutamiento de alertas puede entonces decir \"quien esté de guardia\" y seguir significándolo después del relevo del lunes."
+  },
+  "97c729112da450d3": {
+    "t": "p",
+    "i": 1,
+    "c": "Todavía no hay rotaciones. Cree una y una regla de enrutamiento de alertas podrá enviar a quien esté de guardia en lugar de a un canal."
+  },
+  "ba6ed645b78d89a8": {
+    "t": "p",
+    "i": 1,
+    "c": "Los límites de turno son días naturales en la zona horaria propia de la rotación, de modo que un relevo a las 09:00 se mantiene a las 09:00 durante un cambio de horario de verano. Una rotación desactivada, vacía o que aún no ha comenzado no se resuelve en nadie, y una regla de enrutamiento que la nombra sigue entregando a sus otros destinos, porque perder una alerta por una rotación mal configurada sería lo peor que esto podría hacer."
+  },
+  "7269d4d63b45f8cc": "Los 76 plugins",
+  "5126884c00d5ab41": "Combinar orígenes con",
+  "7a32d9ae9f093537": "Métrica de recuento",
+  "699fd877c735b22a": "Métrica de Datadog",
+  "e060e59c13202454": "Para métricas de recuento y de tasa, lee el número de eventos en lugar de la tasa por segundo que almacena Datadog.",
+  "639bf864e454ce2e": "Rollup por hora",
+  "08d54ebeebec538a": "Cómo se resume cada hora antes de que el importador combine las horas en días. Sum es adecuado para recuentos; en los promedios, una cifra diaria combina valores horarios, por lo que es una aproximación.",
+  "6833d50ff27e13fd": "Cómo se combinan los valores que informan varios hosts o contenedores a la vez.",
+  "a1d569001f00bf32": "Se muestran las métricas que han informado datos en la última semana. Escribe un nombre para usar una que no aparezca.",
+  "2c755076c3ba6923": "No, usar los valores almacenados",
+  "ab806d7eae571587": "Número de valores",
+  "858fa003bc4e909d": "Clave de etiqueta opcional. Cada valor se convierte en su propia etiqueta de la métrica, y el total de un día es la suma de todos ellos.",
+  "caf00c92d9dc527b": "Lee una métrica de Datadog, como solicitudes atendidas, pedidos realizados o una métrica personalizada que envía tu aplicación, y almacena un valor por día.",
+  "b38bc72b1ea1524a": "Qué orígenes incluir, como etiquetas de Datadog: env:prod, o varias separadas por comas para exigirlas todas. * lee todos los orígenes.",
+  "6b4bda4c8c687a02": "Sí, leerla como recuento"
 }

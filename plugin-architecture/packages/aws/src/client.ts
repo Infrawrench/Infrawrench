@@ -27,6 +27,9 @@ import type {
   QuotaUsage,
   PriceCatalogRequest,
   PriceCatalogResult,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
 } from "@infrawrench/plugin-base";
 import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import type {
@@ -153,6 +156,7 @@ import {
   type AwsListServiceQuotasResponse,
 } from "./quotas.js";
 import { AWS_NETWORK_FLOW_CAPABILITY, fetchAwsNetworkFlows } from "./network-flows.js";
+import { listCloudWatchSourceOptions, runCloudWatchSource } from "./business-metric-source.js";
 import { callGetMetricStatistics } from "./metrics/cw-helpers.js";
 import { ensureArray } from "./xml.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
@@ -604,6 +608,27 @@ export class AWSClient implements PluginClient {
       AWS_NETWORK_FLOW_CAPABILITY.maxPairsPerDay,
       range.signal,
     );
+  }
+
+  async listBusinessMetricSourceOptions(
+    _accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]> {
+    return listCloudWatchSourceOptions(
+      (region) => this.credsFor(region),
+      this.creds.region,
+      fieldKey,
+      params,
+    );
+  }
+
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    return runCloudWatchSource((region) => this.credsFor(region), this.creds.region, params, range);
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {

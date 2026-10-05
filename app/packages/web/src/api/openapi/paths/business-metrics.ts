@@ -82,6 +82,20 @@ const BusinessMetricCoverage = strict({
     .describe("Days carrying a value — compare against the span to spot a sparse series."),
 }).openapi("BusinessMetricCoverage");
 
+const BusinessMetricImporterSummary = strict({
+  accountId: z.string(),
+  accountName: z.string().nullable(),
+  pluginId: z.string().nullable(),
+  sourceLabel: z
+    .string()
+    .nullable()
+    .describe('The source plugin\'s name for itself, e.g. "CloudWatch metric".'),
+  enabled: z.boolean(),
+  lastRunAt: IsoDateTime.nullable(),
+  lastStatus: z.enum(["success", "error"]).nullable(),
+  lastError: z.string().nullable(),
+}).openapi("BusinessMetricImporterSummary");
+
 const BusinessMetric = strict({
   id: Uuid,
   key: z.string(),
@@ -99,18 +113,172 @@ const BusinessMetric = strict({
     "Null when the metric has no values at all — not an error, but every unit-cost chart drawn " +
       "from it is one continuous gap.",
   ),
+  importer: BusinessMetricImporterSummary.nullable().describe(
+    "The scheduled importer feeding this metric, or null when its values are only pushed.",
+  ),
 }).openapi("BusinessMetric");
+
+const ImportSchedule = z
+  .enum(["every_6_hours", "every_12_hours", "daily", "weekly"])
+  .openapi("BusinessMetricImportSchedule");
+const ImportAggregation = z
+  .enum(["sum", "average", "min", "max", "last", "count"])
+  .openapi("BusinessMetricImportAggregation", {
+    description:
+      "How several points the source returns for one day (and label) become that day's value. " +
+      "A SQL query grouped by day returns one row per day and every choice agrees.",
+  });
+const SourceParams = z
+  .record(z.string(), z.string())
+  .describe(
+    "The source plugin's form values, keyed by field (see `GET /business-metrics/importer-sources`). " +
+      "SQL fields must be a single SELECT or WITH statement; `{{from}}`, `{{to}}`, `{{to_exclusive}}` " +
+      "and `{{timezone}}` are replaced with quoted literals.",
+  );
+
+const BusinessMetricImporterInput = strict({
+  accountId: z
+    .string()
+    .describe("A connected account whose plugin declares a business-metric source."),
+  params: SourceParams,
+  schedule: ImportSchedule.optional().describe("Absent is `daily`."),
+  backfillDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(730)
+    .optional()
+    .describe("Trailing closed days each scheduled run restates, ending yesterday. Absent is 7."),
+  timezone: z
+    .string()
+    .optional()
+    .describe("IANA timezone the days are counted in. Absent is `UTC`.")
+    .openapi({ example: "America/New_York" }),
+  aggregation: ImportAggregation.optional().describe("Absent is `sum`."),
+  enabled: z.boolean().optional().describe("Absent is true."),
+}).openapi("BusinessMetricImporterInput");
+
+const BusinessMetricImporter = strict({
+  id: Uuid,
+  metricId: Uuid,
+  accountId: z.string(),
+  accountName: z.string().nullable(),
+  pluginId: z.string().nullable(),
+  sourceLabel: z.string().nullable(),
+  params: z.record(z.string(), z.string()),
+  schedule: ImportSchedule,
+  backfillDays: z.number().int(),
+  timezone: z.string(),
+  aggregation: ImportAggregation,
+  enabled: z.boolean(),
+  nextRunAt: IsoDateTime.nullable(),
+  lastRunAt: IsoDateTime.nullable(),
+  lastStatus: z.enum(["success", "error"]).nullable(),
+  lastError: z.string().nullable(),
+  consecutiveFailures: z
+    .number()
+    .int()
+    .describe("Failed runs in a row; scheduling backs off on it and a success resets it."),
+  createdByUserId: z.string().nullable(),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+}).openapi("BusinessMetricImporter");
+
+const BusinessMetricImportRun = strict({
+  id: Uuid,
+  importerId: Uuid,
+  trigger: z.enum(["schedule", "manual"]),
+  status: z.enum(["running", "success", "error"]),
+  from: z.string().describe("First day, inclusive, in the importer's timezone."),
+  to: z.string(),
+  pointsRead: z.number().int(),
+  daysWritten: z.number().int(),
+  error: z.string().nullable(),
+  notes: z.array(z.string()),
+  startedAt: IsoDateTime,
+  finishedAt: IsoDateTime.nullable(),
+  durationMs: z.number().int().nullable(),
+}).openapi("BusinessMetricImportRun");
+
+const SourceField = strict({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(["select", "sql", "text", "number"]),
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+  placeholder: z.string().optional(),
+  defaultValue: z.string().optional(),
+  options: z
+    .array(strict({ id: z.string(), label: z.string(), description: z.string().optional() }))
+    .optional(),
+  dependsOn: z.array(z.string()).optional(),
+  allowCustom: z.boolean().optional(),
+}).openapi("BusinessMetricSourceField");
+
+const BusinessMetricSourceAccount = strict({
+  accountId: z.string(),
+  accountName: z.string(),
+  pluginId: z.string(),
+  pluginName: z.string(),
+  source: strict({
+    label: z.string(),
+    description: z.string().optional(),
+    kind: z.enum(["sql", "metric"]),
+    fields: z.array(SourceField),
+    sqlDialect: z.string().optional(),
+    readOnly: z.enum(["enforced", "validated"]).optional(),
+    supportsDryRun: z.boolean().optional(),
+  }),
+}).openapi("BusinessMetricSourceAccount");
+
+const ImportValue = strict({
+  date: z.string(),
+  value: z.number(),
+  label: z.string().optional(),
+});
+
+const BusinessMetricImportPreviewRequest = strict({
+  accountId: z.string(),
+  params: SourceParams,
+  from: z.string().optional().describe("Default: 14 days ending yesterday."),
+  to: z.string().optional(),
+  timezone: z.string().optional(),
+  aggregation: ImportAggregation.optional(),
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe("Validate with the provider without reading data, where the source supports it."),
+}).openapi("BusinessMetricImportPreviewRequest");
+
+const BusinessMetricImportPreview = strict({
+  from: z.string(),
+  to: z.string(),
+  values: z.array(ImportValue),
+  pointsRead: z.number().int(),
+  days: z.number().int(),
+  notes: z.array(z.string()),
+  durationMs: z.number().int(),
+  dryRun: strict({
+    valid: z.boolean(),
+    message: z.string(),
+    bytesProcessed: z.number().optional(),
+  }).optional(),
+}).openapi("BusinessMetricImportPreview");
 
 const BusinessMetricValue = strict({
   day: z.string().describe("UTC day, YYYY-MM-DD."),
   value: z.number(),
-  source: z.enum(["api", "workflow"]),
+  label: z
+    .string()
+    .nullable()
+    .describe("Optional breakdown label; a day's total is the sum across its labels."),
+  source: z.enum(["api", "workflow", "import"]),
   updatedAt: IsoDateTime,
 }).openapi("BusinessMetricValue");
 
 const BusinessMetricValuesInput = strict({
   values: z
-    .array(strict({ date: z.string(), value: z.number() }))
+    .array(strict({ date: z.string(), value: z.number(), label: z.string().max(120).optional() }))
     .max(5000)
     .describe(
       "Days to report. **Re-reporting a day restates it rather than adding to it**, so an " +
@@ -402,6 +570,207 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
               written: z.number().int().describe("Days written, counting restatements."),
             }),
           },
+        },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/business-metrics/importer-sources",
+    tags: ["Business metrics"],
+    summary: "List importer sources",
+    description:
+      "Connected accounts whose plugin can feed a business metric on a schedule, each with the " +
+      "plugin's importer form: which fields to fill and which are pickers.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Sources",
+        content: {
+          "application/json": { schema: strict({ sources: z.array(BusinessMetricSourceAccount) }) },
+        },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/importer-options",
+    tags: ["Business metrics"],
+    summary: "List an importer picker's choices",
+    description:
+      "Choices for one `select` field of a source's form, given the values picked so far. Needs " +
+      "`resources:execute` and `costs:write`: it calls the provider with the account's credentials.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({ accountId: z.string(), fieldKey: z.string(), params: SourceParams }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Choices",
+        content: {
+          "application/json": {
+            schema: strict({
+              options: z.array(
+                strict({ id: z.string(), label: z.string(), description: z.string().optional() }),
+              ),
+            }),
+          },
+        },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/importer-preview",
+    tags: ["Business metrics"],
+    summary: "Preview an importer",
+    description:
+      "Run a source over a window and return the values it would write, writing nothing; or, " +
+      "with `dryRun`, validate the query with the provider without reading data. Read-only " +
+      "queries only, with the same row limit and timeout as a scheduled run.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: BusinessMetricImportPreviewRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Preview",
+        content: { "application/json": { schema: BusinessMetricImportPreview } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/business-metrics/{id}/importer",
+    tags: ["Business metrics"],
+    summary: "Get a metric's importer",
+    description: "`importer` is null when the metric's values are only pushed.",
+    request: { params: idParam() },
+    responses: {
+      200: {
+        description: "Importer",
+        content: {
+          "application/json": {
+            schema: strict({ importer: BusinessMetricImporter.nullable() }),
+          },
+        },
+      },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/business-metrics/{id}/importer",
+    tags: ["Business metrics"],
+    summary: "Create or replace a metric's importer",
+    description:
+      "One importer per metric. A full replace: omitted fields take their defaults. Each run " +
+      "restates whole days (every label a day carried is replaced by what the source returned), " +
+      "never touches days the source returned nothing for, and ignores points outside the " +
+      "window. Changing the account, the params or the schedule makes it due immediately.",
+    request: {
+      params: idParam(),
+      body: {
+        content: { "application/json": { schema: BusinessMetricImporterInput } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Saved",
+        content: { "application/json": { schema: BusinessMetricImporter } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/business-metrics/{id}/importer",
+    tags: ["Business metrics"],
+    summary: "Delete a metric's importer",
+    description: "Stops importing and drops the run history. Values already imported stay.",
+    request: { params: idParam() },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/{id}/importer/run",
+    tags: ["Business metrics"],
+    summary: "Run a metric's importer now",
+    description:
+      "Runs synchronously and returns the finished run, failed or not. With no body it reads the " +
+      "importer's own window; `from`/`to` backfill a wider one (at most 730 days).",
+    request: {
+      params: idParam(),
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({ from: z.string().optional(), to: z.string().optional() }),
+          },
+        },
+        required: false,
+      },
+    },
+    responses: {
+      200: {
+        description: "Run",
+        content: { "application/json": { schema: BusinessMetricImportRun } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/business-metrics/{id}/importer/runs",
+    tags: ["Business metrics"],
+    summary: "List a metric's import runs",
+    description: "Newest first; the most recent 50 are kept.",
+    request: {
+      params: idParam(),
+      query: strict({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .openapi({ description: "Default 20." }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Runs",
+        content: {
+          "application/json": { schema: strict({ runs: z.array(BusinessMetricImportRun) }) },
         },
       },
       400: ErrorResponses[400],

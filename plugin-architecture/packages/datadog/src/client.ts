@@ -1,4 +1,7 @@
 import type {
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -15,6 +18,10 @@ import { externalIdOf } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
 import { ddFetch, ddPaged, statusOf } from "./api.js";
 import { fetchCostAttribution } from "./attribution.js";
+import {
+  listDatadogMetricSourceOptions,
+  runDatadogMetricSource,
+} from "./business-metric-source.js";
 import { fetchDatadogCostData, fetchDatadogCostSummary } from "./cost-data.js";
 import type {
   DdApiKey,
@@ -831,5 +838,25 @@ export class DatadogClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderDatadogSidebar(resource);
+  }
+
+  // -------------------------------------------------------------------------
+  // Business metric source (see `business-metric-source.ts`)
+  // -------------------------------------------------------------------------
+
+  async listBusinessMetricSourceOptions(
+    _accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]> {
+    return listDatadogMetricSourceOptions(this.ctx, fieldKey, params);
+  }
+
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    return runDatadogMetricSource(this.ctx, params, range);
   }
 }

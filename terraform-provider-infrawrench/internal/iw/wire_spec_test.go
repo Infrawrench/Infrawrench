@@ -113,7 +113,15 @@ func specChecks() []specCheck {
 		{schema: "BusinessMetricInput", value: BusinessMetricInput{}},
 		{schema: "BusinessMetricScopeTerm", value: CostFilter{}},
 		{schema: "BusinessMetricCoverage", value: BusinessMetricCoverage{}},
-		{schema: "BusinessMetric", value: BusinessMetric{}},
+		{
+			schema: "BusinessMetric",
+			value:  BusinessMetric{},
+			// A read-only summary of the importer feeding the metric, which
+			// infrawrench_business_metric_importer manages as its own object.
+			ignored: []string{"importer"},
+		},
+		{schema: "BusinessMetricImporterInput", value: BusinessMetricImporterInput{}},
+		{schema: "BusinessMetricImporter", value: BusinessMetricImporter{}},
 
 		{schema: "CostAnnotation", value: CostAnnotation{}},
 		{schema: "CostAnnotationInput", value: CostAnnotationInput{}},

@@ -611,6 +611,16 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Billing",
+    providers: [
+      {
+        name: "Metronome",
+        detail: "Daily usage and invoiced revenue as unit-cost business metrics",
+        resources: ["Customer", "Billable Metric"],
+      },
+    ],
+  },
+  {
     name: "Communications",
     providers: [
       {

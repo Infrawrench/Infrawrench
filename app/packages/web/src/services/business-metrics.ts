@@ -29,6 +29,10 @@ import {
   type CostFilter,
 } from "@infrawrench/client-core";
 import { getMetricCoverage } from "@infrawrench/server-core/cost/metric-ingest";
+import {
+  getBusinessMetricImporter,
+  getBusinessMetricImporterSummaries,
+} from "@infrawrench/server-core/cost/metric-importers";
 
 import { db } from "../db/client";
 import { businessMetricValues, businessMetrics } from "../db/schema";
@@ -55,6 +59,7 @@ export class BusinessMetricInputError extends Error {
 function toBusinessMetric(
   row: BusinessMetricRow,
   coverage: BusinessMetric["coverage"],
+  importer: BusinessMetric["importer"] = null,
 ): BusinessMetric {
   return {
     id: row.id,
@@ -70,6 +75,26 @@ function toBusinessMetric(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     coverage,
+    importer,
+  };
+}
+
+/** The summary of one metric's importer, or null. */
+async function importerSummary(
+  organizationId: string,
+  metricId: string,
+): Promise<BusinessMetric["importer"]> {
+  const importer = await getBusinessMetricImporter(organizationId, metricId);
+  if (!importer) return null;
+  return {
+    accountId: importer.accountId,
+    accountName: importer.accountName,
+    pluginId: importer.pluginId,
+    sourceLabel: importer.sourceLabel,
+    enabled: importer.enabled,
+    lastRunAt: importer.lastRunAt,
+    lastStatus: importer.lastStatus,
+    lastError: importer.lastError,
   };
 }
 
@@ -158,8 +183,11 @@ export async function listBusinessMetrics(organizationId: string): Promise<Busin
       and(eq(businessMetrics.organizationId, organizationId), isNull(businessMetrics.deletedAt)),
     )
     .orderBy(asc(businessMetrics.key));
+  const importers = await getBusinessMetricImporterSummaries(organizationId);
   return Promise.all(
-    rows.map(async (row) => toBusinessMetric(row, await getMetricCoverage(row.id))),
+    rows.map(async (row) =>
+      toBusinessMetric(row, await getMetricCoverage(row.id), importers.get(row.id) ?? null),
+    ),
   );
 }
 
@@ -179,7 +207,13 @@ export async function getBusinessMetric(
       ),
     )
     .limit(1);
-  return row ? toBusinessMetric(row, await getMetricCoverage(row.id)) : null;
+  return row
+    ? toBusinessMetric(
+        row,
+        await getMetricCoverage(row.id),
+        await importerSummary(organizationId, row.id),
+      )
+    : null;
 }
 
 export async function createBusinessMetric(
@@ -241,7 +275,13 @@ export async function updateBusinessMetric(
       ),
     )
     .returning();
-  return updated ? toBusinessMetric(updated, await getMetricCoverage(updated.id)) : null;
+  return updated
+    ? toBusinessMetric(
+        updated,
+        await getMetricCoverage(updated.id),
+        await importerSummary(organizationId, updated.id),
+      )
+    : null;
 }
 
 /** Soft-delete a metric. False when not found. */
@@ -273,12 +313,13 @@ export async function listBusinessMetricValues(
     .select()
     .from(businessMetricValues)
     .where(eq(businessMetricValues.metricId, metricId))
-    .orderBy(sql`${businessMetricValues.day} DESC`)
+    .orderBy(sql`${businessMetricValues.day} DESC`, asc(businessMetricValues.label))
     .limit(Math.min(Math.max(Math.round(limit), 1), BUSINESS_METRIC_LIMITS.maxValuesPageSize));
   return rows.map((r) => ({
     day: r.day,
     value: Number(r.value),
-    source: r.source === "workflow" ? "workflow" : "api",
+    label: r.label ? r.label : null,
+    source: r.source === "workflow" || r.source === "import" ? r.source : "api",
     updatedAt: r.updatedAt.toISOString(),
   }));
 }

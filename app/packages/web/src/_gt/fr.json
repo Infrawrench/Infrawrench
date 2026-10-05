@@ -14575,5 +14575,289 @@
       },
       "; les lignes sont agrégées à une par jour avant l'envoi."
     ]
-  }
+  },
+  "df961bd6f2d29462": "Enregistré. La première exécution est prévue maintenant et apparaîtra dans l’historique ci-dessous.",
+  "b7c2cf7d5d68084a": "Enregistré. L’importateur est en pause.",
+  "29a7807a2cb658c3": "{days} jours importés ({from} → {to}).",
+  "c328788a41a38531": "L’exécution a échoué : {error}",
+  "85526b9d4df5f412": "Arrêter l’importation de {name} ? Les valeurs déjà importées sont conservées ; les nouveaux jours resteront vides, sauf si une autre source les fournit.",
+  "ec3d73279f51989d": "Choisissez ou saisissez une valeur",
+  "9f562543270b4df7": "Impossible de charger les choix : {error}",
+  "09811e95427f9952": "Importateur pour {name}",
+  "6d9b88601844a88f": "Importer {name} selon un calendrier",
+  "34a6d7b6eda650d1": "Chargement des sources…",
+  "4548d3e1509c2237": "Compte source",
+  "f359074d4f6229af": "L’accès en lecture seule est garanti par le fournisseur.",
+  "36796968473edae1": "Seules les instructions SELECT ou WITH uniques sont acceptées ; les droits du compte constituent l’autre ligne de défense, utilisez donc un rôle en lecture seule.",
+  "b943e95ca9db4dc4": "Jours recalculés à chaque exécution",
+  "1cb6abd79b8a143b": "Plusieurs points sur un même jour",
+  "84cc4c6658301806": "Exécuter selon le calendrier",
+  "516297cfe5b18c63": "Encore requis : {fields}",
+  "76ce1c4a128aba3e": "Aperçu des 14 derniers jours",
+  "3b344b5ddaf1178e": "Simulation",
+  "43fbe4470169c787": "Analyserait {bytes}.",
+  "f44fe664fbe71054": "{days} jours à partir de {points} points, {from} → {to}, en {ms} ms. Rien n’a été écrit.",
+  "d1c388e7854bab51": "La source n’a rien renvoyé pour cette période. Vérifiez la requête ou la série choisie ; une exécution laisserait ces jours vides.",
+  "fbfcb6f15b2a0a6b": "Exécutions récentes",
+  "295a274775e31ce6": "{days} jours écrits",
+  "0786770645df39cf": "manuelle",
+  "425c5e70e6ac6000": "planifiée",
+  "9a439c760e8647a6": "Arrêter l’importation",
+  "d3bd123a9413a14a": "Enregistrer l’importateur",
+  "eed3d30633763dfd": "Ce fichier dépasse 10 Mo. Utilisez plutôt un importateur planifié ou l’API.",
+  "c44eba347f74bd71": "Le fichier ne contient aucune ligne.",
+  "4a555b9284e946e2": "{written} sur {total} écrites…",
+  "580c038ef6e7526e": "Terminé : {written} valeurs écrites sur {days} jours.",
+  "7d9ff26ab12e7447": "Téléverser des valeurs pour {name}",
+  "4715502c4d75c2d1": "Téléverser un CSV pour {name}",
+  "8830f51c59c8e5e0": "Fichier CSV",
+  "2e0939210b24f514": "{file} : {rows} lignes",
+  "9e10c4b822fd96ff": "La première ligne est un en-tête",
+  "cb96ddd47bd1407a": "Colonne du jour",
+  "66b7b311eb8e08a1": "Format de date",
+  "edae466f054f78d4": "Colonne de la valeur",
+  "74050f54df4a9cbd": "Colonne du libellé (facultatif)",
+  "9feaf58424c848ae": "{values} valeurs sur {days} jours seront écrites.",
+  "68bacf560d983026": "{count} lignes sont illisibles et seront ignorées.",
+  "22094ab91d2bb219": "Ligne {row} : {message}",
+  "c7aa8559d5f215a7": "Téléversement…",
+  "3d7f48afffe87063": "Téléverser les valeurs",
+  "795550b779b450be": "Importé depuis {source} · {account}",
+  "13bccf430b0855e9": "une source supprimée",
+  "7d5dcf03b4c5fe16": "compte supprimé",
+  "38fd2714fd15df4b": "dernière exécution échouée : {error}",
+  "392f01cb1fba48e2": "première exécution en attente",
+  "bbf70f9217ad9dbc": "dernière exécution {when}",
+  "1f3af22498812efb": "Importateur",
+  "89f14ff46926cb19": "Importer…",
+  "407a7b1bf1ff22af": "Téléverser un CSV",
+  "0dbea113bccf1e85": "Un client dans Metronome, avec ses alias d’ingestion, ses champs personnalisés et ses factures récentes. L’utilisation et le chiffre d’affaires par client peuvent être importés comme métrique métier.",
+  "5a92537ff15477c6": "Un jeton d’API Metronome, créé dans l’application Metronome sous Developer, puis API tokens. Un jeton conserve les autorisations de l’utilisateur qui l’a créé ; Infrawrench ne fait que lire, donc un jeton limité à la lecture seule par le support Metronome convient.",
+  "fee0fddbbd223d11": "Une métrique facturable Metronome : les filtres d’événements, les filtres de propriétés et l’agrégation qui transforment les événements d’utilisation en quantité facturée. Son utilisation quotidienne peut être importée comme métrique métier.",
+  "c65473919109a10c": "Agrégation",
+  "d182db0be9d58ba8": "Clé d’agrégation",
+  "dc81fa2b1e43b197": "Moyenne",
+  "4b10e8bfd3b73514": "Espaces de noms de services AWS (AWS/Lambda) ou votre propre espace de noms personnalisé. CloudWatch ne liste que les métriques ayant fourni des données au cours des deux dernières semaines ; saisissez un espace de noms pour utiliser un espace non listé.",
+  "9ee4281205d7d1a9": "BigQuery SQL",
+  "66dbe371b027101e": "Métrique facturable",
+  "a6a92d1d564a362a": "Métrique facturable",
+  "0428d90a6598687e": "Utilisation de la métrique facturable",
+  "7089fb06cbdabaa1": "Métriques facturables",
+  "1b83de40d0d3bd64": "Statut de facturation",
+  "d2adcc35dabf0b7d": "Ventiler par client",
+  "f8ae7f4170edb27d": "ClickHouse SQL",
+  "3d1f50ee10b6a08c": "Métrique CloudWatch",
+  "3ed7c225c95b0de2": "Créer un jeton d’API Metronome",
+  "791f152c7b207028": "Devise ou unité de tarification",
+  "52fd1bf452c725b7": "Champs personnalisés",
+  "f5a2020feef9d7f7": "Client",
+  "bdd4281774beba65": "Base de données par défaut : les noms de table non qualifiés sont résolus ici.",
+  "cc48e7b8f25c2f40": "Dataset par défaut : les noms de table de la requête non qualifiés par un dataset sont résolus ici.",
+  "0cac3d52bbfd0b79": "Types d’événements",
+  "aec5248a7ec52304": "Types d’événements exclus",
+  "8bc0f979962c334c": "Clés de regroupement",
+  "3e322a46e3ef1e3e": "Importez l’utilisation quotidienne d’une métrique facturable, ou le chiffre d’affaires facturé chaque jour, depuis Metronome. Possibilité de stocker une valeur par client.",
+  "c54299d43bacbc55": "Alias d’ingestion",
+  "109633c51163dd36": "Chiffre d’affaires facturé",
+  "5ca46a2b1d26a77f": "Limiter l’importation à un client, ou lire tous les clients.",
+  "787f4c28aed5178f": "Maximum",
+  "a568cc74f3e42425": "ID de la métrique",
+  "f376e605e0be14f1": "Metronome",
+  "302c8167d13d6238": "Utilisation ou chiffre d’affaires Metronome",
+  "5843a54f27dac920": "Facturation à l’usage Metronome : liste les clients et les métriques facturables, et importe l’utilisation quotidienne d’une métrique facturable ou le chiffre d’affaires facturé chaque jour comme métrique métier pour les coûts unitaires.",
+  "bc8578d9f6500c86": "Minimum",
+  "107d5a3719533db6": "Requête MySQL",
+  "d24af5916e805fd0": "Non, stocker un total par jour",
+  "e517d1b6b964fcc3": "Base de données par défaut facultative : les noms de table non qualifiés sont résolus ici. La requête s’exécute sur le service défini comme nom d’hôte SQL du compte.",
+  "47d7f3540ef53b55": "Schéma par défaut facultatif au sein de la base de données.",
+  "9837e4afd0ee0e82": "Facultatif. Un assistant pour rechercher un nom de table pour la requête ; il n’est pas utilisé lors de l’exécution de la requête.",
+  "ffa65db06d018c64": "Facultatif. Le rôle sous lequel la requête s’exécute. Snowflake ne peut pas rendre une session en lecture seule, choisissez donc un rôle qui peut uniquement lire les données dont la requête a besoin. Laissez vide pour utiliser le rôle du compte.",
+  "5b56fc50233ddb7b": "p50 (médiane)",
+  "570f6539e84f6517": "p90",
+  "397af2e4536f6834": "p95",
+  "aca8ecb6d627e747": "p99",
+  "5d2fc689a2f9ad33": "Requête PostgreSQL",
+  "1a91d294f35b6747": "Alias d’ingestion principal",
+  "abd02b8c25794b7f": "Lisez une métrique CloudWatch, comme un nombre de requêtes, des messages traités ou une métrique personnalisée publiée par votre application, et stockez une valeur par jour.",
+  "2b3763ddfd302640": "Lue par heure, puis combinée en jours selon l’agrégation de l’importateur. La somme convient aux comptages ; pour les moyennes et les percentiles, chaque jour combine des valeurs horaires, donc un chiffre quotidien est une approximation.",
+  "5333ada81df60d11": "Exécutez une requête ClickHouse SQL selon un calendrier sur le service auquel ce compte se connecte pour SQL. Elle doit renvoyer une ligne par jour avec une colonne `day` et une colonne `value`, plus une colonne `label` facultative pour une ventilation.",
+  "cada4946f72f9d34": "Exécutez une requête GoogleSQL dans BigQuery selon un calendrier. Elle doit renvoyer une ligne par jour avec une colonne `day` et une colonne `value`, plus une colonne `label` facultative pour une ventilation.",
+  "7f9a1b5a1836e642": "Exécutez une requête SELECT selon un calendrier et stockez une valeur par jour. La requête s’exécute dans une transaction en lecture seule annulée ensuite, elle ne peut donc pas modifier les données.",
+  "dfd7d5557cfbdd8a": "Exécutez une requête Snowflake SQL selon un calendrier. Elle doit renvoyer une ligne par jour avec une colonne `day` et une colonne `value`, plus une colonne `label` facultative pour une ventilation.",
+  "36fe4f7e5375de39": "ID de compte Salesforce",
+  "e3756ae6bf560d24": "Nombre d’échantillons",
+  "186a46cf510cb390": "Snowflake SQL",
+  "9310c1d48106917e": "Statistique",
+  "b8e54299db7d3bff": "Somme",
+  "be32a121b226d112": "L’ID de métrique facturable utilisé comme filtre par l’API d’utilisation de Metronome.",
+  "5f1f205824e76f73": "Le premier alias que les événements d’utilisation peuvent porter pour ce client.",
+  "15ed9e9ba4d51ab1": "La métrique à importer pour l’utilisation. Metronome rapporte l’utilisation par jour UTC ; pour les métriques SUM et COUNT, l’importateur lit l’utilisation horaire et l’additionne par jour dans le fuseau horaire de l’importateur, tandis que les autres agrégations (MAX, UNIQUE, LATEST, SQL) sont stockées sur le jour UTC où elles ont été mesurées.",
+  "08004fead2879200": "L’ID client Metronome, accepté à la place d’un alias d’ingestion dans les événements d’utilisation.",
+  "c4042b281f6de3ec": "Le projet dans lequel la requête s’exécute et est facturée. Le compte de service a besoin de BigQuery Job User ici et de BigQuery Data Viewer sur les données qu’il lit.",
+  "16cff3d11ed80e18": "La région dans laquelle la métrique est publiée. La région du compte est listée en premier.",
+  "21cff14a3bb3f27f": "L’entrepôt sur lequel la requête s’exécute et qui en supporte la facturation. Laissez vide pour utiliser l’entrepôt du compte.",
+  "58227f91d844fe1c": "Lorsque cette option est activée, la valeur de chaque jour est répartie par nom de client, ce qui permet de lire les coûts unitaires par client. Le total du jour reste inchangé.",
+  "2af09e9b76cba776": "Les factures à totaliser pour le chiffre d’affaires. USD est stocké en dollars, pas en cents. Le chiffre d’affaires est stocké sur le jour UTC où Metronome le facture, car le détail des factures n’est disponible que par jour UTC.",
+  "dd740166280aca29": "La série de la métrique à lire. CloudWatch traite chaque combinaison de dimensions comme une série distincte, choisissez donc l’ensemble exact avec lequel la métrique est publiée.",
+  "479e74b184bf3ad2": "Oui, stocker une valeur par client et par jour",
+  "0f967c3b94636de3": {
+    "t": "p",
+    "i": 1,
+    "c": "Une sauvegarde que vous n'avez jamais restaurée n'est qu'une hypothèse. Consignez chaque exercice (ce que vous avez restauré, combien de temps cela a pris et si vous avez vérifié ce qui a été récupéré) et cette page vous indiquera quand les preuves sont devenues obsolètes."
+  },
+  "134377222cc9b710": {
+    "t": "p",
+    "i": 1,
+    "c": "Rien à tester pour l'instant. Une ressource apparaît ici dès que quelque chose la sauvegarde réellement ; une ressource sans sauvegarde est une lacune de couverture plutôt qu'une restauration non testée."
+  },
+  "b68be2093735da09": {
+    "t": "p",
+    "i": 1,
+    "c": "Chaque exécution lit les derniers jours d'un compte connecté et les réécrit : un jour renvoyé par la source remplace ce qui était stocké, et un jour pour lequel elle ne renvoie rien reste une lacune au lieu de devenir zéro. Les requêtes sont en lecture seule, avec une limite de lignes et un délai d'expiration."
+  },
+  "54e9d68c377ea869": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucun de vos comptes connectés ne peut encore alimenter une métrique métier. Connectez un compte AWS, GCP, Snowflake, ClickHouse, PostgreSQL, MySQL ou Metronome, ou transmettez les valeurs via l'API, depuis un workflow ou en important un CSV."
+  },
+  "db60fd1cc82e58e0": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Renvoyez une ligne par jour avec une colonne",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "et une colonne",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", ",
+      "plus une colonne",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " ",
+      "facultative pour une ventilation. Utilisez",
+      " ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      ",",
+      " ",
+      {
+        "i": 6,
+        "k": "_gt_value_6",
+        "v": "v"
+      },
+      ",",
+      " ",
+      {
+        "i": 7,
+        "k": "_gt_value_7",
+        "v": "v"
+      },
+      " ",
+      "et",
+      " ",
+      {
+        "i": 8,
+        "k": "_gt_value_8",
+        "v": "v"
+      },
+      " ",
+      "pour la période ; ils sont remplacés par des littéraux entre guillemets."
+    ]
+  },
+  "452bc9205b7f2414": {
+    "t": "p",
+    "i": 1,
+    "c": "Jours clôturés se terminant hier. Augmentez cette valeur si la source révise les jours récents."
+  },
+  "e42444015ec84663": {
+    "t": "p",
+    "i": 1,
+    "c": "Laissez les deux dates vides pour exécuter la période enregistrée. Renseignez-les pour importer l'historique (jusqu'à 730 jours par exécution). Les exécutions utilisent la configuration enregistrée : enregistrez d'abord."
+  },
+  "bdb730c62a0e48bf": {
+    "t": "p",
+    "i": 1,
+    "c": "Une ligne par jour (ou par jour et par libellé). Importer à nouveau un jour le remplace au lieu de s'y ajouter : il suffit donc d'importer à nouveau un fichier corrigé."
+  },
+  "c6f3f7d198ce0ccc": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aucune métrique métier pour l'instant. Ajoutez-en une, puis importez ses valeurs quotidiennes selon une planification depuis un compte connecté, importez un CSV ou transmettez-les depuis un workflow avec",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ", via l'API ou manuellement."
+    ]
+  },
+  "822e74262e966aa2": {
+    "t": "p",
+    "i": 1,
+    "c": "Les alertes de métriques surveillent ce que votre fournisseur rapporte. Ceci surveille ce que disent vos données : la table des commandes qui a cessé de croître, la file de lettres mortes avec quatre mille lignes, l'ETL d'hier qui n'a rien écrit. Une requête en lecture seule, planifiée, avec un seuil."
+  },
+  "04219bc443db9979": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucun moniteur pour l'instant. Un bon premier choix est la requête que vous exécutez à la main chaque matin."
+  },
+  "cb9a29f432666346": {
+    "t": "p",
+    "i": 1,
+    "c": "La checklist que quelqu'un a notée à 03:00, conservée là où les étapes sont réellement effectuées. Une étape peut être une note à cocher, un lien ou un workflow à exécuter, et en suivre une laisse une trace de qui a fait quoi, la moitié qui manque toujours à un postmortem."
+  },
+  "69ccba033eb53144": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucun runbook pour l'instant. Le premier est généralement ce que vous avez expliqué à quelqu'un la semaine dernière."
+  },
+  "48052b44d19d880a": {
+    "t": "p",
+    "i": 1,
+    "c": "Qui réveiller, plutôt que dans quel canal crier. Une rotation est une liste de personnes, une durée de garde et une heure de passation ; une règle de routage des alertes peut alors dire \"la personne d'astreinte\" et rester valable après la passation du lundi."
+  },
+  "97c729112da450d3": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune rotation pour l'instant. Créez-en une et une règle de routage des alertes pourra envoyer à la personne d'astreinte plutôt qu'à un canal."
+  },
+  "ba6ed645b78d89a8": {
+    "t": "p",
+    "i": 1,
+    "c": "Les limites de garde sont des jours calendaires dans le fuseau horaire propre à la rotation, si bien qu'une passation à 09:00 reste à 09:00 lors d'un changement d'heure. Une rotation désactivée, vide ou pas encore commencée ne désigne personne, et une règle de routage qui la cite continue de livrer à ses autres destinations, car perdre une alerte à cause d'une rotation mal configurée serait la pire chose que cela puisse faire."
+  },
+  "7269d4d63b45f8cc": "Les 76 plugins",
+  "5126884c00d5ab41": "Combiner les sources avec",
+  "7a32d9ae9f093537": "Métrique de comptage",
+  "699fd877c735b22a": "Métrique Datadog",
+  "e060e59c13202454": "Pour les métriques de comptage et de taux, lire le nombre d'événements plutôt que le taux par seconde stocké par Datadog.",
+  "639bf864e454ce2e": "Rollup horaire",
+  "08d54ebeebec538a": "Comment chaque heure est résumée avant que l'importateur ne regroupe les heures en jours. Sum convient aux comptages ; pour les moyennes, une valeur journalière combine des valeurs horaires et n'est donc qu'une approximation.",
+  "6833d50ff27e13fd": "Comment sont combinées les valeurs remontées simultanément par plusieurs hôtes ou conteneurs.",
+  "a1d569001f00bf32": "Les métriques ayant remonté des données la semaine dernière sont listées. Saisissez un nom pour en utiliser une autre.",
+  "2c755076c3ba6923": "Non, utiliser les valeurs stockées",
+  "ab806d7eae571587": "Nombre de valeurs",
+  "858fa003bc4e909d": "Clé de tag facultative. Chaque valeur devient un libellé distinct de la métrique, et le total d'une journée est la somme de toutes ces valeurs.",
+  "caf00c92d9dc527b": "Lire une métrique Datadog, comme les requêtes servies, les commandes passées ou une métrique personnalisée envoyée par votre application, et stocker une valeur par jour.",
+  "b38bc72b1ea1524a": "Sources à inclure, sous forme de tags Datadog : env:prod, ou plusieurs séparés par des virgules pour les exiger tous. * lit toutes les sources.",
+  "6b4bda4c8c687a02": "Oui, la lire comme un comptage"
 }
