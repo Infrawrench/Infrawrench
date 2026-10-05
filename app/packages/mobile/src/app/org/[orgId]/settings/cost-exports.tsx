@@ -55,7 +55,7 @@ export default function CostExportsScreen() {
         <Card key={exp.id} list>
           <Row
             title={exp.name}
-            subtitle={`${exp.destination.kind === "warehouse" ? "TABLE" : exp.format.toUpperCase()}${exp.schema === "focus-1.3" ? ` · ${COST_EXPORT_SCHEMA_LABELS[exp.schema]}` : ""} · ${exp.cadence} ${String(exp.hour).padStart(2, "0")}:00 ${exp.timezone}`}
+            subtitle={`${exp.destination.kind === "warehouse" ? "TABLE" : exp.format.toUpperCase()}${exp.schema && exp.schema !== "native" ? ` · ${COST_EXPORT_SCHEMA_LABELS[exp.schema]}` : ""} · ${exp.cadence} ${String(exp.hour).padStart(2, "0")}:00 ${exp.timezone}`}
             right={<StatusBadge export={exp} />}
           />
           <Row

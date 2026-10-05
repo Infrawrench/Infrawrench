@@ -37,6 +37,7 @@ import type {
   CostExportObject,
   CostExportRunResult,
 } from "@infrawrench/client-core";
+import { focusVersionOfSchema } from "@infrawrench/client-core";
 import { getCostCoverage } from "../clickhouse/cost-readers";
 import { isClickHouseConfigured } from "../clickhouse/client";
 import { uploadCostExportObject, CostExportUploadError } from "./destinations";
@@ -227,7 +228,7 @@ export async function runCostExport(
   const retryDelays = opts.persistRetryDelaysMs ?? PERSIST_RETRY_DELAYS_MS;
   const cadence = row.cadence as CostExportCadence;
   const format = row.format === "ndjson" ? "ndjson" : "csv";
-  const focus = row.outputSchema === "focus-1.3";
+  const focus = focusVersionOfSchema(row.outputSchema);
   const query = row.query;
   const destination = row.destination;
   const guarded = !toleratesRedelivery(destination);
@@ -295,7 +296,7 @@ export async function runCostExport(
     // before it did.
     if (focus && destination.kind === "warehouse") {
       throw new CostExportUploadError(
-        "FOCUS 1.3 columns can only be written as files. Switch this export to Infrawrench columns, or to an S3 or HTTPS destination.",
+        "FOCUS columns can only be written as files. Switch this export to Infrawrench columns, or to an S3 or HTTPS destination.",
       );
     }
     // Loaded once per run, not per period: names do not change between the
@@ -385,41 +386,44 @@ export async function runCostExport(
       // FOCUS fixes its own columns and grain, so only the query's scope
       // (filters, charge types) carries over; `dimensions`, `tagKeys` and
       // `costBasis` are native-layout settings and do not apply.
-      const { body, contentType } = focusLookups
-        ? serializeFocusRows(
-            format,
-            mapFocusRows(
-              count(
-                streamFocusSourceRows({
+      const { body, contentType } =
+        focus && focusLookups
+          ? serializeFocusRows(
+              format,
+              mapFocusRows(
+                count(
+                  streamFocusSourceRows({
+                    organizationId: row.organizationId,
+                    from: period.from,
+                    to: period.to,
+                    filters: query.filters ?? [],
+                    chargeTypes: query.chargeTypes,
+                  }),
+                ),
+                focusLookups,
+                stamp,
+                focus,
+              ),
+              focus,
+            )
+          : serializeRows(
+              format,
+              count<CostExportRow>(
+                streamCostExportRows({
                   organizationId: row.organizationId,
                   from: period.from,
                   to: period.to,
+                  dimensions: query.dimensions ?? [],
+                  tagKeys: query.tagKeys ?? [],
+                  virtualTagKeys: query.virtualTagKeys ?? [],
                   filters: query.filters ?? [],
                   chargeTypes: query.chargeTypes,
+                  costBasis: query.costBasis,
                 }),
               ),
-              focusLookups,
+              columns,
               stamp,
-            ),
-          )
-        : serializeRows(
-            format,
-            count<CostExportRow>(
-              streamCostExportRows({
-                organizationId: row.organizationId,
-                from: period.from,
-                to: period.to,
-                dimensions: query.dimensions ?? [],
-                tagKeys: query.tagKeys ?? [],
-                virtualTagKeys: query.virtualTagKeys ?? [],
-                filters: query.filters ?? [],
-                chargeTypes: query.chargeTypes,
-                costBasis: query.costBasis,
-              }),
-            ),
-            columns,
-            stamp,
-          );
+            );
 
       const { byteCount } = await uploadCostExportObject({
         destination,

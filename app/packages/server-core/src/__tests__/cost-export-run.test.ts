@@ -338,9 +338,11 @@ describe("runCostExport — warehouse destinations", () => {
   });
 
   it("refuses a FOCUS layout instead of loading native rows into the table", async () => {
-    const result = await runCostExport({ ...warehouseRow(), outputSchema: "focus-1.3" }, noRetry);
-    expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/FOCUS 1\.3 columns can only be written as files/);
+    for (const outputSchema of ["focus-1.3", "focus-1.4"]) {
+      const result = await runCostExport({ ...warehouseRow(), outputSchema }, noRetry);
+      expect(result.status).toBe("failed");
+      expect(result.error).toMatch(/FOCUS columns can only be written as files/);
+    }
     expect(warehouseLoads).toHaveLength(0);
   });
 });

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   COST_EFFICIENCY_LIMITS,
   EFFICIENCY_ALERT_KINDS,
+  FOCUS_DEFAULT_DOWNLOAD_VERSION,
   type AlertEmailRecipients,
   type EfficiencyAlertKind,
 } from "@infrawrench/client-core";
@@ -90,7 +91,7 @@ app.post("/query", async (c) => {
 
 /**
  * POST /api/org/:orgId/costs/focus-export: the rows a cost query selects, as a
- * FOCUS 1.3 CSV download.
+ * FOCUS CSV download (`version`, default 1.3 for older scripts).
  *
  * `costs:read`, like the query it mirrors, and unlike a scheduled export's
  * `org:settings:write`: a download goes to the person who asked, once, and
@@ -145,6 +146,9 @@ app.post("/focus-export", async (c) => {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${focusExportFilename(parsed.data)}"`,
+      // Says which header the body carries, so a client never has to guess
+      // from the version it asked for (an older server ignores the field).
+      "X-Focus-Version": parsed.data.version ?? FOCUS_DEFAULT_DOWNLOAD_VERSION,
       "Cache-Control": "no-store",
     },
   });

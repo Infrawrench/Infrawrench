@@ -325,6 +325,25 @@ describe("POST /focus-export", () => {
       "org-1",
       expect.objectContaining({ from: "2026-09-01", to: "2026-09-30" }),
     );
+    // No `version`: scripts written before 1.4 keep the header they parse.
+    expect(res.headers.get("X-Focus-Version")).toBe("1.3");
+  });
+
+  it("passes the requested FOCUS version through and names it in a header", async () => {
+    mockStreamFocusExport.mockResolvedValueOnce((async function* () {})());
+    const res = await post(buildApp(), { ...body, version: "1.4" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Focus-Version")).toBe("1.4");
+    expect(mockStreamFocusExport).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ version: "1.4" }),
+    );
+  });
+
+  it("rejects a FOCUS version it does not write", async () => {
+    const res = await post(buildApp(), { ...body, version: "1.2" });
+    expect(res.status).toBe(400);
+    expect(mockStreamFocusExport).not.toHaveBeenCalled();
   });
 });
 

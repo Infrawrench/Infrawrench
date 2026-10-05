@@ -42,23 +42,49 @@ export const COST_EXPORT_FORMAT_LABELS: Record<CostExportFormat, string> = {
  * - `native`: Infrawrench's own layout: `day`, the identity columns the export
  *   keeps, the measures, then provenance. Compact, and shaped by the query's
  *   `dimensions` and `tagKeys`.
- * - `focus-1.3`: the FinOps Open Cost and Usage Specification, version 1.3
- *   (https://focus.finops.org/focus-specification/v1-3/). Fixed columns at the
- *   full row grain (account, service, region, resource, charge type,
- *   commitment, tags), with billed and effective cost side by side. The
+ * - `focus-1.4` / `focus-1.3`: the FinOps Open Cost and Usage Specification
+ *   (https://focus.finops.org/focus-specification/) at that version. Fixed
+ *   columns at the full row grain (account, service, region, resource, charge
+ *   type, commitment, tags), with billed and effective cost side by side. The
  *   query's `dimensions`, `tagKeys` and `costBasis` do not apply; its
- *   `filters` and `chargeTypes` still do. See {@link FOCUS_1_3_COLUMNS}.
+ *   `filters` and `chargeTypes` still do. See {@link FOCUS_COLUMNS_BY_VERSION}.
  *
  * Versioned in the value so a later specification is an additive option
- * rather than a silent change to what an existing export writes.
+ * rather than a silent change to what an existing export writes: an export
+ * saved as `focus-1.3` keeps writing 1.3 headers until someone switches it.
  */
-export const COST_EXPORT_SCHEMAS = ["native", "focus-1.3"] as const;
+export const COST_EXPORT_SCHEMAS = ["native", "focus-1.4", "focus-1.3"] as const;
 export type CostExportSchema = (typeof COST_EXPORT_SCHEMAS)[number];
 
 export const COST_EXPORT_SCHEMA_LABELS: Record<CostExportSchema, string> = {
   native: "Infrawrench columns",
+  "focus-1.4": "FOCUS 1.4",
   "focus-1.3": "FOCUS 1.3",
 };
+
+/** The FOCUS specification versions a file can be written in, newest first. */
+export const FOCUS_VERSIONS = ["1.4", "1.3"] as const;
+export type FocusVersion = (typeof FOCUS_VERSIONS)[number];
+
+/** What a new export or an ad-hoc download from our own clients writes. */
+export const FOCUS_LATEST_VERSION: FocusVersion = "1.4";
+
+/**
+ * What `POST /costs/focus-export` writes when the request names no version.
+ * Pinned to the version the route shipped with, because 1.4 drops two columns
+ * (`ProviderName`, `PublisherName`) a script reading the old header may use.
+ * Our own clients always send {@link FOCUS_LATEST_VERSION}.
+ */
+export const FOCUS_DEFAULT_DOWNLOAD_VERSION: FocusVersion = "1.3";
+
+/**
+ * The FOCUS version a schema value writes, or null for the native layout.
+ * Absent reads as native, which is what a row from before FOCUS support was.
+ */
+export function focusVersionOfSchema(schema: string | null | undefined): FocusVersion | null {
+  const version = schema?.startsWith("focus-") ? schema.slice("focus-".length) : "";
+  return (FOCUS_VERSIONS as readonly string[]).includes(version) ? (version as FocusVersion) : null;
+}
 
 /**
  * The FOCUS v1.3 columns a FOCUS-schema object carries, in the order they are
@@ -111,6 +137,32 @@ export const FOCUS_1_3_COLUMNS = [
 ] as const;
 
 /**
+ * The FOCUS v1.4 columns, chosen the same way as {@link FOCUS_1_3_COLUMNS}.
+ *
+ * 1.4 removed the deprecated `ProviderName` and `PublisherName` (their values
+ * live on in `ServiceProviderName` and `HostProviderName`) and added two
+ * Conditional Cost and Usage columns we have no data for, so they are left
+ * out: `InvoiceDetailId` (needs the provider's invoice line ids) and
+ * `CommitmentProgramEligibilityDetails` (must list every public commitment
+ * program a charge is eligible for, which no collector knows; a partial list
+ * would be non-conformant). Its new Billing Period, Contract Commitment and
+ * Invoice Detail datasets are separate files and are not written.
+ */
+export const FOCUS_1_4_COLUMNS = FOCUS_1_3_COLUMNS.filter(
+  (c): c is Exclude<(typeof FOCUS_1_3_COLUMNS)[number], "ProviderName" | "PublisherName"> =>
+    c !== "ProviderName" && c !== "PublisherName",
+);
+
+/** The specification columns per version, in the order they are written. */
+export const FOCUS_COLUMNS_BY_VERSION: Record<
+  FocusVersion,
+  readonly (typeof FOCUS_1_3_COLUMNS)[number][]
+> = {
+  "1.3": FOCUS_1_3_COLUMNS,
+  "1.4": FOCUS_1_4_COLUMNS,
+};
+
+/**
  * Custom columns appended after the FOCUS ones. The specification requires
  * the `x_` prefix and that they come last, unmixed.
  *
@@ -155,6 +207,11 @@ export interface FocusExportRequest {
   /** ANDed with whichever inline filter spelling was sent. */
   savedFilterId?: string | undefined;
   chargeTypes?: CostChargeType[] | undefined;
+  /**
+   * The FOCUS version to write. Absent means
+   * {@link FOCUS_DEFAULT_DOWNLOAD_VERSION}, for scripts written before 1.4.
+   */
+  version?: FocusVersion | undefined;
 }
 
 /** Longest range one ad-hoc FOCUS download may span, in days (inclusive). */
@@ -174,6 +231,7 @@ export function focusExportRequestForConfig(
   return {
     from,
     to,
+    version: FOCUS_LATEST_VERSION,
     filters: config.filters,
     ...(config.savedFilterId ? { savedFilterId: config.savedFilterId } : {}),
   };

@@ -15499,5 +15499,51 @@
     "t": "p",
     "i": 1,
     "c": "Senden Sie E-Mails an Mitglieder oder zusätzliche Adressen über die Routing-Regeln unten oder direkt aus einem Budget, einer Kostenänderungswarnung oder den Warneinstellungen für Anomalien und Commitments auf der Seite Kosten. Jede Nachricht enthält einen Klartext- und einen HTML-Teil, einen Link zurück zu Infrawrench und einen Link zum Abmelden mit einem Klick."
+  },
+  "c70f0f43d61d894e": "Die Zeilen dieses Berichts als FOCUS-1.4-CSV herunterladen: abgerechnete und effektive Kosten, Gebühren- und Dienstkategorien sowie Tags, eine Zeile pro Ressource und Tag",
+  "ffa87fdbbf917a9d": {
+    "t": "h3",
+    "i": 1,
+    "c": [
+      "FOCUS-",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "-Spalten"
+    ]
+  },
+  "4c7ae5e458dda567": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Jedes Objekt folgt der FinOps Open Cost and Usage Specification ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ": eine Zeile pro Konto, Dienst, Region, Ressource, Tag-Satz, Gebührenart und Commitment pro Tag, mit abgerechneten Kosten (Cash) und effektiven Kosten (amortisiert) nebeneinander, den FOCUS-Gebühren- und Dienstkategorien und allen Tags in einer JSON-Spalte. Infrawrench-Extras wie die Nutzungsmenge und das Erfassungs-Wasserzeichen stehen am Ende, mit dem Präfix ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "x_"
+      },
+      ". Die Filter und Gebührenarten des Exports gelten weiterhin."
+    ]
+  },
+  "ff0937b22a8e784b": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "FOCUS ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ist die aktuelle Version. Sie entfernt die veralteten Spalten ProviderName und PublisherName und ist ansonsten gleich. Wechseln Sie also, es sei denn, das Tool, in das Sie diese Dateien laden, versteht nur diese Version."
+    ]
   }
 }

@@ -15504,5 +15504,50 @@
     "t": "p",
     "i": 1,
     "c": "Envía correos a miembros o a direcciones adicionales desde las reglas de enrutamiento de abajo, o directamente desde un presupuesto, una alerta de cambio de costes o la configuración de alertas de anomalías y compromisos en la página Costes. Cada mensaje tiene una parte de texto sin formato y otra HTML, un enlace de vuelta a Infrawrench y un enlace para darse de baja con un clic."
+  },
+  "c70f0f43d61d894e": "Descarga las filas de este informe como CSV FOCUS 1.4: coste facturado y efectivo, categorías de cargo y de servicio, y etiquetas, una fila por recurso y día",
+  "ffa87fdbbf917a9d": {
+    "t": "h3",
+    "i": 1,
+    "c": [
+      "Columnas FOCUS ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "4c7ae5e458dda567": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Cada objeto sigue la FinOps Open Cost and Usage Specification ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ": una fila por cuenta, servicio, región, recurso, conjunto de etiquetas, tipo de cargo y compromiso por día, con el coste facturado (efectivo pagado) y el coste efectivo (amortizado) uno al lado del otro, las categorías de cargo y de servicio de FOCUS, y todas las etiquetas en una única columna JSON. Los extras de Infrawrench, como la cantidad de uso y la marca de agua de recopilación, van al final con el prefijo ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "x_"
+      },
+      ". Los filtros y tipos de cargo de la exportación se siguen aplicando."
+    ]
+  },
+  "ff0937b22a8e784b": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "FOCUS ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " es la versión actual. Elimina las columnas obsoletas ProviderName y PublisherName y, por lo demás, es igual, así que cámbiate a ella salvo que la herramienta en la que cargas estos archivos solo entienda esta versión."
+    ]
   }
 }

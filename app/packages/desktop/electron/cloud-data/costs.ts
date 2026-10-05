@@ -11,7 +11,7 @@ ipcMain.handle(
   },
 );
 
-// The FOCUS 1.3 CSV of a report's rows. Text, not JSON, so `cloudFetchText`;
+// The FOCUS CSV of a report's rows. Text, not JSON, so `cloudFetchText`;
 // the renderer hands the body to the browser's own download path.
 ipcMain.handle(
   "cloud_costs_focus_export",

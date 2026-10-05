@@ -99,7 +99,7 @@ export async function queryCloudCosts(
   return invoke("cloud_costs_query", { orgId, request });
 }
 
-/** `POST /costs/focus-export`: the FOCUS 1.3 CSV body as text. */
+/** `POST /costs/focus-export`: the FOCUS CSV body as text. */
 export async function downloadCloudFocusExport(
   orgId: string,
   request: FocusExportRequest,

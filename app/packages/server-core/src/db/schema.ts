@@ -4654,7 +4654,7 @@ export const costExports = pgTable(
     /** `csv` | `ndjson`: how the row stream is serialised. */
     format: text("format").notNull().default("csv"),
     /**
-     * `native` | `focus-1.3`: which columns an object carries. Orthogonal to
+     * `native` | `focus-1.4` | `focus-1.3`: which columns an object carries. Orthogonal to
      * {@link format}: a FOCUS export can be CSV or NDJSON. Named `output_schema`
      * rather than `schema` to stay clear of the SQL keyword.
      */

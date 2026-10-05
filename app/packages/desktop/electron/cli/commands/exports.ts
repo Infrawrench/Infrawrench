@@ -19,6 +19,7 @@ import type {
   CostExportWarehouseSetup,
   CostExportWarehouseSink,
   FocusExportRequest,
+  FocusVersion,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { ExportsFlags, RangeFlags } from "../args";
 import { resolveDateRange } from "../args";
@@ -108,8 +109,8 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
         c.dim(
           e.destination.kind === "warehouse"
             ? "table"
-            : e.schema === "focus-1.3"
-              ? `${e.format} · FOCUS 1.3`
+            : e.schema && e.schema !== "native"
+              ? `${e.format} · FOCUS ${e.schema.replace(/^focus-/, "")}`
               : e.format,
         ),
     },
@@ -210,7 +211,8 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
 
 /**
  * `infrawrench export --format focus [<report name|id>]`: the rows a cost query
- * selects, as a FOCUS 1.3 CSV, written to stdout or `--out <file>`.
+ * selects, as a FOCUS CSV (1.4 unless `--focus-version 1.3`), written to stdout
+ * or `--out <file>`.
  *
  * The range and filter flags are the `costs` command's (`--last`, `--from`,
  * `--to`, `--where`, `--filter`, `--charge-type`) so a file and the chart it
@@ -227,13 +229,21 @@ export async function cmdExportFocus(
   range: RangeFlags,
   reportQuery: string,
   out: string | undefined,
+  focusVersion: string | undefined,
 ): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
   // Dynamic, like the other client-core helpers the CLI uses, so the CLI
   // still takes no new runtime dependency.
-  const { focusExportRequestForConfig, focusExportFilename } =
+  const { focusExportRequestForConfig, focusExportFilename, FOCUS_VERSIONS, FOCUS_LATEST_VERSION } =
     await import("@infrawrench/client-core");
+  const version = (focusVersion ?? FOCUS_LATEST_VERSION) as FocusVersion;
+  if (!FOCUS_VERSIONS.includes(version)) {
+    throw new CliError(
+      `--focus-version: "${focusVersion}" is not a FOCUS version this server writes. Use ${FOCUS_VERSIONS.join(" or ")}.`,
+      2,
+    );
+  }
 
   const report = reportQuery.trim() ? await resolveReport(org.id, reportQuery.trim()) : null;
   const base: FocusExportRequest = report
@@ -260,6 +270,7 @@ export async function cmdExportFocus(
     filters: [...(base.filters ?? []), ...where],
     ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
     ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
+    version,
   };
 
   const csv = await orgFetchText(org.id, "/costs/focus-export", {
@@ -282,7 +293,7 @@ export async function cmdExportFocus(
     return;
   }
 
-  const summary = `FOCUS 1.3 · ${rowCount.toLocaleString()} rows · ${request.from} → ${request.to}`;
+  const summary = `FOCUS ${version} · ${rowCount.toLocaleString()} rows · ${request.from} → ${request.to}`;
   if (out) {
     writeFileSync(out, csv, "utf8");
     printErr(`${c.green("✓")} ${c.bold(out)} ${c.dim(`· ${summary}`)}`);

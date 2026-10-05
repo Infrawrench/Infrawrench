@@ -1,6 +1,6 @@
 ---
 title: Scheduled cost exports
-description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON files in Infrawrench or FOCUS 1.3 columns, or straight into a Snowflake or Databricks table, with the restatement handling a finance system needs.
+description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON files in Infrawrench or FOCUS (1.4 or 1.3) columns, or straight into a Snowflake or Databricks table, with the restatement handling a finance system needs.
 sidebar_order: 4
 ---
 
@@ -44,7 +44,7 @@ Go to **Settings → Cost Exports** and click **New export**.
 ### Name, format, and schedule
 
 - **Format** — `CSV` (with a header row) or `NDJSON` (one JSON object per line, the shape BigQuery, Snowflake and DuckDB all load directly).
-- **Column layout** — Infrawrench columns (described below) or [FOCUS 1.3](#focus-13).
+- **Column layout** — Infrawrench columns (described below), [FOCUS 1.4](#focus), or FOCUS 1.3.
 - **Cadence** — `daily`, `weekly` (Monday-start ISO weeks), or `monthly`. This is _also_ the period definition: it decides how many days go into each object.
 - **Hour** and **timezone** — when the run fires, in your own zone. The timezone also decides what "yesterday" means, which is what a period boundary is measured against.
 
@@ -60,9 +60,16 @@ Every object also carries `day`, `currency`, `amount`, `usage_amount` and `usage
 
 Filters use the same [cost filters](./cloud-costs.md) the graphs and budgets do, so "filtered to account X" means one thing everywhere.
 
-### FOCUS 1.3
+### FOCUS
 
-Set **Column layout** to **FOCUS 1.3** and every object follows the [FinOps Open Cost and Usage Specification](https://focus.finops.org/) version 1.3 instead of the columns above, so it loads into any tool that reads FOCUS without a mapping step. It works with either format: CSV, or NDJSON with the FOCUS column names as keys.
+Set **Column layout** to **FOCUS 1.4** and every object follows the [FinOps Open Cost and Usage Specification](https://focus.finops.org/) version 1.4 instead of the columns above, so it loads into any tool that reads FOCUS without a mapping step. It works with either format: CSV, or NDJSON with the FOCUS column names as keys.
+
+**FOCUS 1.4 or 1.3.** Pick 1.4 unless the tool you load into only understands 1.3. The two differ in two places:
+
+- 1.4 removed the deprecated `ProviderName` and `PublisherName` columns. A 1.3 file still writes them, with the same value as `ServiceProviderName`.
+- 1.4 requires a tax row's `EffectiveCost` to equal its `BilledCost`. A 1.3 file writes the provider's amortized figure for tax, as 1.3 asks.
+
+An export you saved as FOCUS 1.3 keeps writing 1.3 until you change its **Column layout**, so switching versions is always your decision and never a surprise header change in your warehouse.
 
 A FOCUS export fixes its own columns and grain. The column toggles, tag columns and cost basis above do not apply to it; its filters and charge types still do. Each row is one account, service, region, resource, tag set, charge type and commitment for one day.
 
@@ -76,7 +83,7 @@ A FOCUS export fixes its own columns and grain. The column toggles, tag columns 
 | `ChargePeriodStart` / `End`                                    | The day, as `[day 00:00Z, next day 00:00Z)`.                                                                                                                                                                                      |
 | `BillingPeriodStart` / `End`                                   | The calendar month containing the day, in UTC.                                                                                                                                                                                    |
 | `BillingAccountId` / `Name`                                    | The connected account and the name you gave it.                                                                                                                                                                                   |
-| `ServiceName`, `ServiceCategory`, `ServiceSubcategory`         | The provider's service name, classified into the FOCUS 1.3 categories. Each provider maps its own services; anything unrecognised is `Other`.                                                                                     |
+| `ServiceName`, `ServiceCategory`, `ServiceSubcategory`         | The provider's service name, classified into the FOCUS categories (the same list in 1.3 and 1.4). Each provider maps its own services; anything unrecognised is `Other`.                                                          |
 | `ServiceProviderName`, `HostProviderName`, `InvoiceIssuerName` | The provider. Rows you [push over the API](./server-push.md#cost-rows) name their `source`.                                                                                                                                       |
 | `RegionId` / `RegionName`, `ResourceId` / `ResourceName`       | From the cost row. The resource name comes from your Infrawrench inventory when the resource is in it.                                                                                                                            |
 | `CommitmentDiscount*`                                          | Where the provider reports which commitment a row belongs to: id, `Spend` (savings plan) or `Usage` (reservation, committed-use) category, type, name from the commitment inventory, and `Used` on usage it covered.              |
@@ -85,9 +92,11 @@ A FOCUS export fixes its own columns and grain. The column toggles, tag columns 
 
 After the FOCUS columns come Infrawrench's own, prefixed `x_` as the specification requires: `x_InfrawrenchProviderId`, `x_InfrawrenchChargeType` (the finer-grained charge type), `x_UsageQuantity` and `x_UsageUnit` (the consumption the provider reported), `x_ResourceType`, `x_CostEstimated` (`true` for providers whose amounts are estimated rather than billed), and `x_ExportedAt` / `x_CollectionWatermark` (the provenance columns described above).
 
-Conditional FOCUS columns that need data no provider gives us (SKU, pricing category, unit prices, invoice id, sub-account, capacity reservation) are left out, which the specification allows.
+Conditional FOCUS columns that need data no provider gives us (SKU, pricing category, unit prices, invoice id, sub-account, capacity reservation) are left out, which the specification allows. The same goes for the two columns 1.4 added to cost rows: `InvoiceDetailId` needs the provider's invoice line ids, and `CommitmentProgramEligibilityDetails` must list _every_ commitment program a charge could be covered by, which no provider API we collect from reports. The separate datasets 1.4 introduced (billing periods, contract commitments, invoice details) are not written.
 
-The same file is available once, without a schedule, from a cost report's **Download FOCUS CSV** link, `POST /costs/focus-export`, and `infrawrench export --format focus`.
+FOCUS 1.4 also says `BilledCost` should be the invoiced amount rather than an estimate. A few providers expose no billing API, so their spend is estimated from inventory; those rows carry `x_CostEstimated = true`, and you can filter on that column if your tool must only see invoiced figures.
+
+The same file is available once, without a schedule, from a cost report's **Download FOCUS CSV** link (always 1.4), `POST /costs/focus-export` (pass `"version": "1.4"`; a request without it gets 1.3 so scripts written before 1.4 keep working, and the `X-Focus-Version` response header says which you got), and `infrawrench export --format focus` (1.4, or `--focus-version 1.3`).
 
 ### If you restrict an export to particular charge types
 
@@ -125,7 +134,7 @@ If you have a [Snowflake](../plugins/snowflake.md) or [Databricks](../plugins/da
 
 <insert [The New cost export dialog with "Snowflake table" selected as the destination: account, warehouse, database, schema and table pickers filled in, and the least-privilege GRANT statements shown below them] here>
 
-A table takes Infrawrench columns only. [FOCUS 1.3](#focus-13) is available for S3 and HTTPS destinations, so the **Column layout** setting is hidden while a table is selected.
+A table takes Infrawrench columns only. [FOCUS](#focus) is available for S3 and HTTPS destinations, so the **Column layout** setting is hidden while a table is selected.
 
 Pick the destination type (**Snowflake table** or **Databricks table**), then the account, then each field from a picker that lists what that account can see:
 

@@ -183,7 +183,7 @@ infrawrench exports setup "Finance warehouse"
 
 `exports run` forces a run and lists the objects it wrote, then exits non-zero if the destination rejected it, so a CI step can depend on it. Running is behind an explicit verb rather than a bare positional like `reports`, because this one writes to somebody's bucket.
 
-`export --format focus` downloads cost rows as a [FOCUS 1.3](./cost-exports.md#focus-13) CSV, once, with the same range and filter flags `costs` takes. Name a saved report to start from its range and filters; range flags then override its range and `--where` narrows it further:
+`export --format focus` downloads cost rows as a [FOCUS 1.4](./cost-exports.md#focus) CSV (or 1.3 with `--focus-version 1.3`), once, with the same range and filter flags `costs` takes. Name a saved report to start from its range and filters; range flags then override its range and `--where` narrows it further:
 
 ```
 infrawrench export --format focus --last 30d > focus.csv

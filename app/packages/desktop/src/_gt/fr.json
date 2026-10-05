@@ -15503,5 +15503,50 @@
     "t": "p",
     "i": 1,
     "c": "Envoyez des e-mails à des membres ou à des adresses supplémentaires depuis les règles de routage ci-dessous, ou directement depuis un budget, une alerte de variation des coûts ou les paramètres d'alerte d'anomalies et d'engagements de la page Coûts. Chaque message comporte une partie texte brut et une partie HTML, un lien vers Infrawrench et un lien de désabonnement en un clic."
+  },
+  "c70f0f43d61d894e": "Télécharger les lignes de ce rapport au format CSV FOCUS 1.4 : coût facturé et coût effectif, catégories de frais et de service, et étiquettes, une ligne par ressource et par jour",
+  "ffa87fdbbf917a9d": {
+    "t": "h3",
+    "i": 1,
+    "c": [
+      "Colonnes FOCUS ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "4c7ae5e458dda567": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Chaque objet suit la FinOps Open Cost and Usage Specification ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " : une ligne par compte, service, région, ressource, ensemble d'étiquettes, type de frais et engagement par jour, avec le coût facturé (trésorerie) et le coût effectif (amorti) côte à côte, les catégories de frais et de service FOCUS, et toutes les étiquettes dans une seule colonne JSON. Les compléments Infrawrench, comme la quantité d'utilisation et le filigrane de collecte, viennent en dernier, préfixés par ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "x_"
+      },
+      ". Les filtres et types de frais de l'export s'appliquent toujours."
+    ]
+  },
+  "ff0937b22a8e784b": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "FOCUS ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " est la version actuelle. Elle supprime les colonnes obsolètes ProviderName et PublisherName et reste identique pour le reste ; passez-y donc, sauf si l'outil dans lequel vous chargez ces fichiers ne comprend que cette version."
+    ]
   }
 }

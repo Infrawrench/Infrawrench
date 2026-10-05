@@ -30,6 +30,7 @@ import {
   type CostExportQuery,
   type CostExportSchema,
   type CostExportStatus,
+  focusVersionOfSchema,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costExports } from "../db/schema";
@@ -241,9 +242,9 @@ async function normalizeInputFor(
   if (normalized.destination.kind === "warehouse") {
     // The warehouse loader writes the native layout and replaces each period
     // by its `day` column; FOCUS rows have neither, so they go to files only.
-    if (normalized.schema === "focus-1.3") {
+    if (focusVersionOfSchema(normalized.schema)) {
       throw new CostExportInputError(
-        "FOCUS 1.3 columns can only be written as files (S3 or HTTPS). Use Infrawrench columns for a warehouse table.",
+        "FOCUS columns can only be written as files (S3 or HTTPS). Use Infrawrench columns for a warehouse table.",
       );
     }
     try {

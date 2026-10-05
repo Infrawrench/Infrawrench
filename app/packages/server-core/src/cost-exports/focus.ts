@@ -1,13 +1,23 @@
 /**
- * FOCUS 1.3 cost rows: the `focus-1.3` export schema and the ad-hoc FOCUS
- * download both stream through here.
+ * FOCUS cost rows: the `focus-1.4` and `focus-1.3` export schemas and the
+ * ad-hoc FOCUS download all stream through here.
  *
  * FOCUS (the FinOps Open Cost and Usage Specification) fixes the columns, the
  * row grain and the vocabulary of a cost dataset, so a file written here loads
  * into any tool that reads FOCUS without a mapping step. The source of truth
- * for everything below is the v1.3 specification
- * (https://github.com/FinOps-Open-Cost-and-Usage-Spec/FOCUS_Spec/tree/v1.3);
- * the column list itself is `FOCUS_1_3_COLUMNS` in client-core.
+ * for everything below is the specification at each tag
+ * (https://github.com/FinOps-Open-Cost-and-Usage-Spec/FOCUS_Spec/tree/v1.4,
+ * and `/tree/v1.3`); the column lists are `FOCUS_COLUMNS_BY_VERSION` in client-core.
+ *
+ * ## What differs between the versions we write
+ *
+ * One mapping serves both; {@link toFocusRow} takes the version. 1.4 removed
+ * `ProviderName`/`PublisherName` (the header drops them) and now requires
+ * EffectiveCost to equal BilledCost on Tax rows, where 1.3 wanted it derived
+ * from the effective cost of the taxed charges. Its other changes are new
+ * Conditional columns we have no data for and new datasets (billing period,
+ * contract commitment, invoice detail) we do not write. The ServiceCategory
+ * and ServiceSubcategory allowed values are identical in both.
  *
  * ## How our rows map
  *
@@ -43,7 +53,12 @@
  *   requires, and its display name is the name the user gave it.
  */
 import type { CostChargeType, CostFilter } from "@infrawrench/client-core";
-import { FOCUS_1_3_COLUMNS, FOCUS_CUSTOM_COLUMNS } from "@infrawrench/client-core";
+import {
+  FOCUS_1_3_COLUMNS,
+  FOCUS_COLUMNS_BY_VERSION,
+  FOCUS_CUSTOM_COLUMNS,
+  type FocusVersion,
+} from "@infrawrench/client-core";
 import {
   resolveFocusService,
   type FocusCapabilityDeclaration,
@@ -414,10 +429,9 @@ export interface FocusStamp {
 type FocusColumn = (typeof FOCUS_1_3_COLUMNS)[number] | (typeof FOCUS_CUSTOM_COLUMNS)[number];
 
 /** The full header, FOCUS columns first and custom columns after, unmixed. */
-export const FOCUS_OUTPUT_COLUMNS: readonly FocusColumn[] = [
-  ...FOCUS_1_3_COLUMNS,
-  ...FOCUS_CUSTOM_COLUMNS,
-];
+export function focusOutputColumns(version: FocusVersion): readonly FocusColumn[] {
+  return [...FOCUS_COLUMNS_BY_VERSION[version], ...FOCUS_CUSTOM_COLUMNS];
+}
 
 /** `ChargeDescription`: should not be null, so it is always composed. */
 function chargeDescription(service: string, chargeType: string, provider: string): string {
@@ -462,12 +476,14 @@ function accountName(accountId: string, lookups: FocusLookups): string | null {
 
 /**
  * Map one raw row onto the FOCUS columns. Pure: everything it reads is the row
- * and the lookups, so the tests exercise it directly.
+ * and the lookups, so the tests exercise it directly. The row carries every
+ * column any version has; the serialisers write the version's header.
  */
 export function toFocusRow(
   raw: FocusSourceRow,
   lookups: FocusLookups,
   stamp: FocusStamp,
+  version: FocusVersion,
 ): FocusRow {
   const chargeType = raw.charge_type || "usage";
   const category = focusChargeCategory(chargeType);
@@ -488,9 +504,11 @@ export function toFocusRow(
   // "EffectiveCost of a charge unrelated to other charges (e.g. Credit) MUST
   // match the BilledCost." Amortization has nothing to spread on a credit or
   // an adjustment, so a provider that reported a different figure for one is
-  // overruled rather than written into a non-conformant row.
-  const effective =
-    category === "Credit" || category === "Adjustment" ? billed : Number(raw.effective) || 0;
+  // overruled rather than written into a non-conformant row. 1.4 adds Tax:
+  // "EffectiveCost MUST equal BilledCost when ChargeCategory is Tax or Credit".
+  const effectiveIsBilled =
+    category === "Credit" || category === "Adjustment" || (category === "Tax" && version !== "1.3");
+  const effective = effectiveIsBilled ? billed : Number(raw.effective) || 0;
   const listCost = category === "Usage" ? effective : billed;
 
   const day = raw.day;
@@ -546,7 +564,8 @@ export function toFocusRow(
     PricingQuantity: null,
     PricingUnit: null,
     // Deprecated in 1.3 in favour of ServiceProviderName / HostProviderName,
-    // but still Mandatory: written with the same value.
+    // but still Mandatory there: written with the same value. Removed in 1.4,
+    // whose header leaves them out.
     ProviderName: providerName,
     PublisherName: providerName,
     RegionId: region,
@@ -580,18 +599,26 @@ function csvValue(cell: FocusCell): string {
 }
 
 /** CSV with a header line; FOCUS null is an empty field. */
-export async function* toFocusCsv(rows: AsyncIterable<FocusRow>): AsyncGenerator<string> {
-  yield `${FOCUS_OUTPUT_COLUMNS.join(",")}\n`;
+export async function* toFocusCsv(
+  rows: AsyncIterable<FocusRow>,
+  version: FocusVersion,
+): AsyncGenerator<string> {
+  const columns = focusOutputColumns(version);
+  yield `${columns.join(",")}\n`;
   for await (const row of rows) {
-    yield `${FOCUS_OUTPUT_COLUMNS.map((c) => csvValue(row[c] ?? null)).join(",")}\n`;
+    yield `${columns.map((c) => csvValue(row[c] ?? null)).join(",")}\n`;
   }
 }
 
 /** One JSON object per line, keys in column order; FOCUS null is JSON null. */
-export async function* toFocusNdjson(rows: AsyncIterable<FocusRow>): AsyncGenerator<string> {
+export async function* toFocusNdjson(
+  rows: AsyncIterable<FocusRow>,
+  version: FocusVersion,
+): AsyncGenerator<string> {
+  const columns = focusOutputColumns(version);
   for await (const row of rows) {
     const obj: FocusRow = {};
-    for (const c of FOCUS_OUTPUT_COLUMNS) obj[c] = row[c] ?? null;
+    for (const c of columns) obj[c] = row[c] ?? null;
     yield `${JSON.stringify(obj)}\n`;
   }
 }
@@ -601,16 +628,18 @@ export async function* mapFocusRows(
   source: AsyncIterable<FocusSourceRow>,
   lookups: FocusLookups,
   stamp: FocusStamp,
+  version: FocusVersion,
 ): AsyncGenerator<FocusRow, void, undefined> {
-  for await (const raw of source) yield toFocusRow(raw, lookups, stamp);
+  for await (const raw of source) yield toFocusRow(raw, lookups, stamp, version);
 }
 
 /** Pick the FOCUS serialiser and the MIME type for a format. */
 export function serializeFocusRows(
   format: "csv" | "ndjson",
   rows: AsyncIterable<FocusRow>,
+  version: FocusVersion,
 ): { body: AsyncIterable<string>; contentType: string } {
   return format === "ndjson"
-    ? { body: toFocusNdjson(rows), contentType: "application/x-ndjson" }
-    : { body: toFocusCsv(rows), contentType: "text/csv; charset=utf-8" };
+    ? { body: toFocusNdjson(rows, version), contentType: "application/x-ndjson" }
+    : { body: toFocusCsv(rows, version), contentType: "text/csv; charset=utf-8" };
 }

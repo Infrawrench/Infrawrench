@@ -152,6 +152,8 @@ interface ExportFlags {
   format?: string | undefined;
   /** `--out <path>` (or `--file`): where `--format focus` writes; stdout when omitted. */
   out?: string | undefined;
+  /** `--focus-version 1.4|1.3`: validated by the command; the latest when omitted. */
+  focusVersion?: string | undefined;
 }
 
 // The per-command flag interfaces below live here, with the parser that fills
@@ -469,6 +471,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // Config-as-code flags (`config`). `--file` doubles as the export
         // destination; `--out` is the name that reads right when writing.
         out: { type: "string" },
+        // `export --format focus`: which FOCUS version to write.
+        "focus-version": { type: "string" },
         sections: { type: "string" },
         prune: { type: "boolean", default: false },
         // `exports create` (a warehouse export). `--plugin`, `--account` and
@@ -629,6 +633,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     exportFlags: {
       format: str("format"),
       out: str("out") ?? str("file"),
+      focusVersion: str("focus-version"),
     },
     diff: {
       against: str("against"),

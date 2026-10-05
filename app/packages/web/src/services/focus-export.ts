@@ -1,6 +1,6 @@
 /**
- * Ad-hoc FOCUS 1.3 download: the rows a cost query selects, written in the
- * same FOCUS layout a `focus-1.3` scheduled export writes.
+ * Ad-hoc FOCUS download: the rows a cost query selects, written in the same
+ * FOCUS layout a `focus-<version>` scheduled export writes.
  *
  * Shared by the HTTP route (which the web app, the desktop app and the CLI all
  * call) so the filter resolution, the range bound and the column mapping are
@@ -9,7 +9,11 @@
  * use too: a downloaded file and an exported object over the same days are the
  * same bytes apart from `x_ExportedAt`.
  */
-import { FOCUS_EXPORT_MAX_DAYS, type FocusExportRequest } from "@infrawrench/client-core";
+import {
+  FOCUS_DEFAULT_DOWNLOAD_VERSION,
+  FOCUS_EXPORT_MAX_DAYS,
+  type FocusExportRequest,
+} from "@infrawrench/client-core";
 export { focusExportFilename } from "@infrawrench/client-core";
 import {
   loadFocusLookups,
@@ -53,6 +57,7 @@ export async function streamFocusExport(
     costCollectionWatermark(organizationId),
   ]);
 
+  const version = req.version ?? FOCUS_DEFAULT_DOWNLOAD_VERSION;
   const rows = mapFocusRows(
     streamFocusSourceRows({
       organizationId,
@@ -63,6 +68,7 @@ export async function streamFocusExport(
     }),
     lookups,
     { exportedAt: now.toISOString(), collectionWatermark: watermark },
+    version,
   );
-  return toFocusCsv(rows);
+  return toFocusCsv(rows, version);
 }

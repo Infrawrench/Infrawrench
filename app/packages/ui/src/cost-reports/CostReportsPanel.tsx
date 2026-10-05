@@ -1192,7 +1192,7 @@ function ReportDetail({
               onClick={() => void downloadFocus()}
               disabled={exporting}
               title={gt(
-                "Download this report's rows as a FOCUS 1.3 CSV: billed and effective cost, charge and service categories, and tags, one row per resource per day",
+                "Download this report's rows as a FOCUS 1.4 CSV: billed and effective cost, charge and service categories, and tags, one row per resource per day",
               )}
               className="hover:text-on-surface-secondary underline disabled:opacity-50"
             >

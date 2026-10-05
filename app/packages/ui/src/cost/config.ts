@@ -132,6 +132,7 @@ import {
   type VirtualTagRule,
   type VirtualTagSource,
 } from "@infrawrench/client-core";
+import { FOCUS_VERSIONS } from "@infrawrench/client-core";
 import {
   COST_ANOMALY_FEEDBACK_LIMITS,
   COST_ANOMALY_FEEDBACK_REASONS,
@@ -1287,14 +1288,16 @@ export const costQueryRequestSchema = z.object({
  * types) and nothing about drawing a graph, because the file has no buckets,
  * no groups and no basis: FOCUS carries billed and effective cost side by side.
  */
-export const focusExportRequestSchema = costQueryRequestSchema.pick({
-  from: true,
-  to: true,
-  filters: true,
-  query: true,
-  savedFilterId: true,
-  chargeTypes: true,
-});
+export const focusExportRequestSchema = costQueryRequestSchema
+  .pick({
+    from: true,
+    to: true,
+    filters: true,
+    query: true,
+    savedFilterId: true,
+    chargeTypes: true,
+  })
+  .extend({ version: z.enum(FOCUS_VERSIONS).optional() });
 
 /* ------------------------------------------------------------------ *
  * Billing rules: POST/PUT /billing-rules.

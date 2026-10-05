@@ -118,8 +118,9 @@ COMMANDS
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
   export --format focus [<report n|id>]
-                      cost rows as a FOCUS 1.3 CSV (stdout, or --out <file>)   [--last 30d]
-                      [--where …] [--filter <name|id>] [--charge-type …]; a report brings its
+                      cost rows as a FOCUS 1.4 CSV (stdout, or --out <file>)   [--last 30d]
+                      [--where …] [--filter <name|id>] [--charge-type …] [--focus-version 1.3];
+                      a report brings its
                       own range and filters, range flags override the range
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
@@ -564,7 +565,13 @@ export async function runCli(): Promise<void> {
         // because both write a file in someone else's format, but takes the
         // `costs` flags rather than `--account`.
         if (parsed.exportFlags.format === "focus") {
-          await cmdExportFocus(ctx, parsed.range, rest.join(" "), parsed.exportFlags.out);
+          await cmdExportFocus(
+            ctx,
+            parsed.range,
+            rest.join(" "),
+            parsed.exportFlags.out,
+            parsed.exportFlags.focusVersion,
+          );
           break;
         }
         await cmdExport(ctx, parsed.exportFlags.format);

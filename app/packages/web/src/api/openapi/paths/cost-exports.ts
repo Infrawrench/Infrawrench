@@ -120,12 +120,13 @@ const CostExportDestination = z
 
 const SCHEMA_DESCRIPTION =
   "Which columns an object carries. `native` is Infrawrench's own layout, shaped by " +
-  "`query.dimensions` and `query.tagKeys`. `focus-1.3` writes the FinOps Open Cost and Usage " +
-  "Specification v1.3 columns at the full row grain, with `BilledCost` (cash) and " +
+  "`query.dimensions` and `query.tagKeys`. `focus-1.4` and `focus-1.3` write the FinOps Open " +
+  "Cost and Usage Specification columns of that version at the full row grain (1.4 drops the " +
+  "deprecated `ProviderName` and `PublisherName`), with `BilledCost` (cash) and " +
   "`EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and " +
   "`query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do.";
 
-const CostExportSchema = z.enum(["native", "focus-1.3"]).openapi("CostExportSchema");
+const CostExportSchema = z.enum(["native", "focus-1.4", "focus-1.3"]).openapi("CostExportSchema");
 
 const CostExportInput = strict({
   name: z.string().min(1).max(120),

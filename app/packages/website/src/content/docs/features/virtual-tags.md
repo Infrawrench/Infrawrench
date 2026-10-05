@@ -66,7 +66,7 @@ The `virtual_tag` dimension appears wherever you choose a dimension:
 - **Saved filters**: a filter row on a virtual tag, or `virtual_tag['team'] = 'payments'` in the query language.
 - **Budgets** and **change alerts**: scope a budget, or watch each value of a virtual tag separately.
 - **Allocation rules** (and so [showback and invoices](./tag-policy-and-showback.md)): route a virtual tag value to a cost centre. A split tag routes each share separately.
-- **Cost exports**: add virtual tag columns (`vtag_<key>`). A split row is written once per share with weighted amounts. Exports in FOCUS 1.3 columns cannot filter by a virtual tag yet; filter on the provider tags it is built from instead.
+- **Cost exports**: add virtual tag columns (`vtag_<key>`). A split row is written once per share with weighted amounts. Exports in FOCUS columns cannot filter by a virtual tag yet; filter on the provider tags it is built from instead.
 
 A virtual tag's **key cannot change** once created, because saved filters, budgets and reports store it; rename the display name freely. Deleting a tag that something still references is refused with a list of what uses it, so a budget can never silently widen to all spend.
 

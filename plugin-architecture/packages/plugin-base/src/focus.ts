@@ -7,9 +7,11 @@
  * every subcategory has exactly one parent. Both lists below are copied from
  * the v1.3 specification
  * (https://github.com/FinOps-Open-Cost-and-Usage-Spec/FOCUS_Spec/tree/v1.3,
- * `columns/servicecategory.md` and `columns/servicesubcategory.md`) and must
- * only ever change alongside a specification version bump: a value outside
- * them makes the whole file non-conformant.
+ * `columns/servicecategory.md` and `columns/servicesubcategory.md`), and are
+ * unchanged in v1.4 (`datasets/cost_and_usage/columns/`), so one list serves
+ * every version the exports write. They must only ever change alongside a
+ * specification version bump: a value outside them makes the whole file
+ * non-conformant. A version that changes them needs a list per version.
  *
  * Classifying a service is provider knowledge ("is `Workers` compute?"), so it
  * belongs to plugins: {@link FocusCapabilityDeclaration} on a plugin's
@@ -20,7 +22,7 @@
  * balancer"); a provider's product names go in that provider's plugin.
  */
 
-/** `ServiceCategory` allowed values, FOCUS v1.3, in specification order. */
+/** `ServiceCategory` allowed values, FOCUS v1.3 and v1.4, in specification order. */
 export const FOCUS_SERVICE_CATEGORIES = [
   "AI and Machine Learning",
   "Analytics",

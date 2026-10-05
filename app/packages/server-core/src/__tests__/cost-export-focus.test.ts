@@ -3,7 +3,12 @@ import { describe, it, expect, vi } from "vitest";
 // The mapping is pure; only `loadFocusLookups` touches Postgres, and these
 // tests build the lookups by hand.
 vi.mock("../db/client", () => ({ db: {} }));
-import { FOCUS_1_3_COLUMNS, FOCUS_CUSTOM_COLUMNS } from "@infrawrench/client-core";
+import {
+  FOCUS_1_3_COLUMNS,
+  FOCUS_1_4_COLUMNS,
+  FOCUS_CUSTOM_COLUMNS,
+  focusVersionOfSchema,
+} from "@infrawrench/client-core";
 import {
   FOCUS_SERVICE_CATEGORIES,
   isValidFocusClassification,
@@ -15,7 +20,7 @@ import {
   focusChargeCategory,
   focusChargeFrequency,
   focusNumber,
-  FOCUS_OUTPUT_COLUMNS,
+  focusOutputColumns,
   toFocusCsv,
   toFocusNdjson,
   toFocusRow,
@@ -76,7 +81,8 @@ async function* rows(...list: FocusRow[]): AsyncGenerator<FocusRow> {
 
 describe("FOCUS column layout", () => {
   it("writes every FOCUS column before the x_ custom columns, unmixed", () => {
-    expect(FOCUS_OUTPUT_COLUMNS).toEqual([...FOCUS_1_3_COLUMNS, ...FOCUS_CUSTOM_COLUMNS]);
+    expect(focusOutputColumns("1.3")).toEqual([...FOCUS_1_3_COLUMNS, ...FOCUS_CUSTOM_COLUMNS]);
+    expect(focusOutputColumns("1.4")).toEqual([...FOCUS_1_4_COLUMNS, ...FOCUS_CUSTOM_COLUMNS]);
     expect(FOCUS_CUSTOM_COLUMNS.every((c) => c.startsWith("x_"))).toBe(true);
     expect(FOCUS_1_3_COLUMNS.some((c) => c.startsWith("x_"))).toBe(false);
   });
@@ -109,6 +115,22 @@ describe("FOCUS column layout", () => {
     ];
     for (const column of mandatory) expect(FOCUS_1_3_COLUMNS).toContain(column);
   });
+
+  it("drops only the columns FOCUS 1.4 removed, keeping the order", () => {
+    expect(FOCUS_1_4_COLUMNS).toEqual(
+      FOCUS_1_3_COLUMNS.filter((c) => c !== "ProviderName" && c !== "PublisherName"),
+    );
+    // 1.4 made no column Mandatory that 1.3 did not already require.
+    expect(FOCUS_1_4_COLUMNS).toContain("ServiceProviderName");
+    expect(FOCUS_1_4_COLUMNS).toContain("HostProviderName");
+  });
+
+  it("reads the FOCUS version out of a schema value", () => {
+    expect(focusVersionOfSchema("focus-1.4")).toBe("1.4");
+    expect(focusVersionOfSchema("focus-1.3")).toBe("1.3");
+    expect(focusVersionOfSchema("native")).toBeNull();
+    expect(focusVersionOfSchema("focus-9.9")).toBeNull();
+  });
 });
 
 describe("charge mapping", () => {
@@ -134,7 +156,7 @@ describe("charge mapping", () => {
 
 describe("toFocusRow", () => {
   it("maps an on-demand usage row", () => {
-    const row = toFocusRow(raw(), lookups(), stamp);
+    const row = toFocusRow(raw(), lookups(), stamp, "1.3");
     expect(row).toMatchObject({
       BilledCost: 12.5,
       EffectiveCost: 12.5,
@@ -188,6 +210,7 @@ describe("toFocusRow", () => {
       }),
       lookups(),
       stamp,
+      "1.3",
     );
     expect(row).toMatchObject({
       BilledCost: 0,
@@ -213,6 +236,7 @@ describe("toFocusRow", () => {
       }),
       lookups(),
       stamp,
+      "1.3",
     );
     expect(row).toMatchObject({
       ChargeCategory: "Purchase",
@@ -232,6 +256,7 @@ describe("toFocusRow", () => {
       raw({ charge_type: "credit", billed: -5, effective: 0 }),
       lookups(),
       stamp,
+      "1.3",
     );
     expect(row.EffectiveCost).toBe(-5);
     expect(row.ListCost).toBe(-5);
@@ -242,6 +267,7 @@ describe("toFocusRow", () => {
       raw({ region: "", resource_id: "", tags: {}, usage_amount: 0, usage_unit: "" }),
       lookups(),
       stamp,
+      "1.3",
     );
     expect(row.RegionId).toBeNull();
     expect(row.RegionName).toBeNull();
@@ -262,13 +288,42 @@ describe("toFocusRow", () => {
       }),
       lookups(),
       stamp,
+      "1.3",
     );
     expect(row.ServiceProviderName).toBe("snowflake-invoices");
     expect(row.BillingAccountName).toBe("snowflake-invoices");
   });
 
+  it("keeps a tax row's amortized effective cost in 1.3", () => {
+    const row = toFocusRow(
+      raw({ charge_type: "tax", billed: 10, effective: 8 }),
+      lookups(),
+      stamp,
+      "1.3",
+    );
+    expect(row.EffectiveCost).toBe(8);
+  });
+
+  it("forces EffectiveCost to BilledCost on a tax row in 1.4", () => {
+    const row = toFocusRow(
+      raw({ charge_type: "tax", billed: 10, effective: 8 }),
+      lookups(),
+      stamp,
+      "1.4",
+    );
+    expect(row.ChargeCategory).toBe("Tax");
+    expect(row.EffectiveCost).toBe(10);
+    expect(row.ListCost).toBe(10);
+  });
+
+  it("maps usage the same way in 1.3 and 1.4", () => {
+    const v13 = toFocusRow(raw(), lookups(), stamp, "1.3");
+    const v14 = toFocusRow(raw(), lookups(), stamp, "1.4");
+    expect(v14).toEqual(v13);
+  });
+
   it("rolls the billing period over a year boundary", () => {
-    const row = toFocusRow(raw({ day: "2026-12-31" }), lookups(), stamp);
+    const row = toFocusRow(raw({ day: "2026-12-31" }), lookups(), stamp, "1.3");
     expect(row.BillingPeriodStart).toBe("2026-12-01T00:00:00Z");
     expect(row.BillingPeriodEnd).toBe("2027-01-01T00:00:00Z");
     expect(row.ChargePeriodEnd).toBe("2027-01-01T00:00:00Z");
@@ -286,19 +341,31 @@ describe("focusNumber", () => {
 
 describe("serialisation", () => {
   it("writes CSV nulls as empty fields and quotes the Tags JSON", async () => {
-    const row = toFocusRow(raw(), lookups(), stamp);
-    const csv = await collect(toFocusCsv(rows(row)));
+    const row = toFocusRow(raw(), lookups(), stamp, "1.3");
+    const csv = await collect(toFocusCsv(rows(row), "1.3"));
     const [header, line] = csv.trimEnd().split("\n");
-    expect(header).toBe(FOCUS_OUTPUT_COLUMNS.join(","));
+    expect(header).toBe(focusOutputColumns("1.3").join(","));
     expect(line).toContain('"{""team"":""platform""}"');
     expect(line).toContain(",,"); // ChargeClass null
   });
 
   it("writes NDJSON nulls as JSON null", async () => {
-    const row = toFocusRow(raw(), lookups(), stamp);
-    const out = JSON.parse((await collect(toFocusNdjson(rows(row)))).trim()) as FocusRow;
+    const row = toFocusRow(raw(), lookups(), stamp, "1.3");
+    const out = JSON.parse((await collect(toFocusNdjson(rows(row), "1.3"))).trim()) as FocusRow;
     expect(out.ChargeClass).toBeNull();
-    expect(Object.keys(out)).toEqual([...FOCUS_OUTPUT_COLUMNS]);
+    expect(Object.keys(out)).toEqual([...focusOutputColumns("1.3")]);
+  });
+
+  it("leaves ProviderName and PublisherName out of a 1.4 file", async () => {
+    const row = toFocusRow(raw(), lookups(), stamp, "1.4");
+    const csv = await collect(toFocusCsv(rows(row), "1.4"));
+    const header = csv.split("\n")[0]!.split(",");
+    expect(header).not.toContain("ProviderName");
+    expect(header).not.toContain("PublisherName");
+    expect(header).toContain("ServiceProviderName");
+    const out = JSON.parse((await collect(toFocusNdjson(rows(row), "1.4"))).trim()) as FocusRow;
+    expect(Object.keys(out)).toEqual([...focusOutputColumns("1.4")]);
+    expect(out).not.toHaveProperty("ProviderName");
   });
 });
 
@@ -320,7 +387,7 @@ describe("buildFocusExportQuery", () => {
 });
 
 describe("plugin FOCUS declarations", () => {
-  it("only use FOCUS 1.3 category/subcategory pairs", () => {
+  it("only use FOCUS category/subcategory pairs (identical in 1.3 and 1.4)", () => {
     for (const plugin of BUNDLED_PLUGINS) {
       const focus = plugin.manifest.costs?.focus;
       if (!focus) continue;

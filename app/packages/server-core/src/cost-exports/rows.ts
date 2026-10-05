@@ -196,7 +196,7 @@ export function costExportScope(
         if (!f.tagKey) throw new Error("A virtual tag filter needs a key");
         if (!scope) {
           throw new Error(
-            "FOCUS 1.3 exports cannot filter by a virtual tag yet. Use Infrawrench columns, or filter by the tags it is built from.",
+            "FOCUS exports cannot filter by a virtual tag yet. Use Infrawrench columns, or filter by the tags it is built from.",
           );
         }
         return [membershipCondition(scope.value(f.tagKey), f.op, f.values)];

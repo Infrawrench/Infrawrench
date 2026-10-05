@@ -49,7 +49,7 @@ export interface CostReportsClient extends CostApi {
   /** Contents are not deleted with it: they fall back to the top level. */
   deleteFolder?(folderId: string): Promise<void>;
   /**
-   * The rows a report's query selects, as FOCUS 1.3 CSV text
+   * The rows a report's query selects, as FOCUS CSV text, in the version the request names
    * (`POST /costs/focus-export`). A read (`costs:read`), so it sits with the
    * reads; optional so a host without it simply offers no download.
    */

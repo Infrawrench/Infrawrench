@@ -34,12 +34,12 @@ The report's page draws the chart full width, with the report's name, its descri
 - **Rename** — the name is how people ask for it, in chat and on the command line.
 - **Duplicate** — copy the config under a new name, so a variant does not mean editing the shared original.
 - **Dashboards** — add or remove its cards, one per dashboard.
-- **Download FOCUS CSV** — the rows behind the chart as a [FOCUS 1.3](./cost-exports.md#focus-13) file, for a FinOps tool or a spreadsheet. See below.
+- **Download FOCUS CSV** — the rows behind the chart as a [FOCUS 1.4](./cost-exports.md#focus) file, for a FinOps tool or a spreadsheet. See below.
 - **Delete** — see below.
 
 ### Download as FOCUS
 
-**Download FOCUS CSV** writes the rows the report selects (its date range as of today, its filters and its saved filter) in the FinOps Open Cost and Usage Specification 1.3 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with billed and effective cost side by side. Grouping, binning and the cost basis do not apply; the file carries both bases and says which charge type each row is. It is the same mapping a [FOCUS scheduled export](./cost-exports.md#focus-13) writes, so a one-off download and a nightly feed agree.
+**Download FOCUS CSV** writes the rows the report selects (its date range as of today, its filters and its saved filter) in the FinOps Open Cost and Usage Specification 1.4 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with billed and effective cost side by side. Grouping, binning and the cost basis do not apply; the file carries both bases and says which charge type each row is. It is the same mapping a [FOCUS scheduled export](./cost-exports.md#focus) writes, so a one-off download and a nightly feed agree.
 
 One download spans at most 366 days. For anything longer, or for a recurring feed, set up a scheduled export.
 

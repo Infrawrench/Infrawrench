@@ -180,13 +180,14 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Default:  stringdefault.StaticString("native"),
 				MarkdownDescription: "Which columns each object carries. `native` (the default) is " +
 					"Infrawrench's own layout, shaped by `query.dimensions` and `query.tag_keys`. " +
-					"`focus-1.3` writes the FinOps Open Cost and Usage Specification (FOCUS) v1.3 " +
-					"columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` " +
+					"`focus-1.4` and `focus-1.3` write the FinOps Open Cost and Usage Specification " +
+					"(FOCUS) columns of that version at the full row grain (1.4 drops the deprecated " +
+					"`ProviderName` and `PublisherName`; pick 1.3 only for a tool that cannot read 1.4), with `BilledCost` (cash) and `EffectiveCost` " +
 					"(amortized) side by side, the FOCUS charge and service categories, and all tags " +
 					"as one JSON `Tags` column. `query.dimensions`, `query.tag_keys` and " +
 					"`query.cost_basis` are ignored for it (set `dimensions = []`), while filters and " +
 					"`query.charge_types` still apply. Works with either `format`.",
-				Validators: []validator.String{oneOfValidator("native", "focus-1.3")},
+				Validators: []validator.String{oneOfValidator("native", "focus-1.4", "focus-1.3")},
 			},
 			"cadence": schema.StringAttribute{
 				Required:            true,

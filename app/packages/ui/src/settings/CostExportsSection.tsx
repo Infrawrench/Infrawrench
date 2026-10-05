@@ -12,6 +12,8 @@ import {
   DEFAULT_COST_EXPORT_INPUT,
   costExportWarehouseTable,
   describeCostExportDestination,
+  FOCUS_LATEST_VERSION,
+  focusVersionOfSchema,
   type CostDimensionId,
   type CostDimensionOption,
   type CostExport,
@@ -21,6 +23,7 @@ import {
   type CostExportRunResult,
   type CostExportS3Destination,
   type CostExportWarehouseSink,
+  type FocusVersion,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { parseNumericInputValue } from "../form-values.js";
@@ -305,7 +308,7 @@ export function CostExportsSection() {
                     {exp.destination.kind !== "warehouse" && (
                       <span className="text-xs text-on-surface-muted uppercase">{exp.format}</span>
                     )}
-                    {exp.schema === "focus-1.3" && (
+                    {exp.schema !== "native" && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-secondary">
                         {gtData(COST_EXPORT_SCHEMA_LABELS[exp.schema])}
                       </span>
@@ -413,6 +416,7 @@ function CostExportEditor({
   const isS3 = form.destination.kind === "s3";
   const isHttp = form.destination.kind === "http";
   const warehouseDestination = form.destination.kind === "warehouse" ? form.destination : null;
+  const focusVersion = focusVersionOfSchema(form.schema ?? "native");
   const activeSink = warehouseDestination
     ? sinks.find((s) => s.pluginId === warehouseDestination.pluginId)
     : undefined;
@@ -613,8 +617,8 @@ function CostExportEditor({
             </label>
           </section>
 
-          {form.schema === "focus-1.3" && !warehouseDestination ? (
-            <FocusColumnsNote />
+          {focusVersion && !warehouseDestination ? (
+            <FocusColumnsNote version={focusVersion} />
           ) : (
             <ColumnPicker
               query={form.query}
@@ -722,22 +726,33 @@ function CostExportEditor({
  * The stored `dimensions`/`tagKeys` are kept untouched, so switching back to
  * native columns restores the previous choice.
  */
-function FocusColumnsNote() {
+function FocusColumnsNote({ version }: { version: FocusVersion }) {
   return (
     <section className="space-y-2">
       <T>
-        <h3 className="text-sm font-semibold">FOCUS 1.3 columns</h3>
+        <h3 className="text-sm font-semibold">
+          FOCUS <Var>{version}</Var> columns
+        </h3>
       </T>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Every object follows the FinOps Open Cost and Usage Specification 1.3: one row per
-          account, service, region, resource, tag set, charge type and commitment per day, with
-          billed cost (cash) and effective cost (amortized) side by side, the FOCUS charge and
-          service categories, and all tags as one JSON column. Infrawrench extras such as the usage
-          quantity and the collection watermark come last, prefixed <code>x_</code>. The
+          Every object follows the FinOps Open Cost and Usage Specification <Var>{version}</Var>:
+          one row per account, service, region, resource, tag set, charge type and commitment per
+          day, with billed cost (cash) and effective cost (amortized) side by side, the FOCUS charge
+          and service categories, and all tags as one JSON column. Infrawrench extras such as the
+          usage quantity and the collection watermark come last, prefixed <code>x_</code>. The
           export&apos;s filters and charge types still apply.
         </p>
       </T>
+      {version !== FOCUS_LATEST_VERSION && (
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            FOCUS <Var>{FOCUS_LATEST_VERSION}</Var> is the current version. It drops the deprecated
+            ProviderName and PublisherName columns and otherwise reads the same, so switch unless
+            the tool you load these files into only understands this version.
+          </p>
+        </T>
+      )}
     </section>
   );
 }

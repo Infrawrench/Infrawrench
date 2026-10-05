@@ -256,4 +256,8 @@
 // the efficiency alert settings (absent on a write means unchanged); and
 // `GET /alert-email`, `GET|PUT /alert-email/settings` and
 // `DELETE /alert-email/suppressions/{id}`. All additive.
-export const API_VERSION = "1.73.0";
+// 1.74.0: FOCUS 1.4. `focus-1.4` on the CostExportSchema enum, and an
+// optional `version` (`1.3` | `1.4`, default `1.3`) on
+// `POST /costs/focus-export`, whose response now carries `X-Focus-Version`.
+// Additive: an existing export or a request without `version` writes 1.3.
+export const API_VERSION = "1.74.0";

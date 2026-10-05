@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.73.0",
+    "version": "1.74.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4050,6 +4050,14 @@
               "$ref": "#/components/schemas/CostChargeType"
             },
             "description": "Restrict to these kinds of charge. Omitted is all of them, which is what makes an unfiltered total net rather than gross — credits, refunds and commitment discounts are included. Rows collected before charge types existed, and rows from providers that cannot distinguish them, are `usage`."
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "1.4",
+              "1.3"
+            ],
+            "description": "The FOCUS version to write. Omitted means `1.3`."
           }
         },
         "required": [
@@ -7625,9 +7633,10 @@
         "type": "string",
         "enum": [
           "native",
+          "focus-1.4",
           "focus-1.3"
         ],
-        "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.3` writes the FinOps Open Cost and Usage Specification v1.3 columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do."
+        "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.4` and `focus-1.3` write the FinOps Open Cost and Usage Specification columns of that version at the full row grain (1.4 drops the deprecated `ProviderName` and `PublisherName`), with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do."
       },
       "CostExportFilter": {
         "type": "object",
@@ -8018,7 +8027,7 @@
                 "$ref": "#/components/schemas/CostExportSchema"
               },
               {
-                "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.3` writes the FinOps Open Cost and Usage Specification v1.3 columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do. Omitted keeps the stored value (`native` on create)."
+                "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.4` and `focus-1.3` write the FinOps Open Cost and Usage Specification columns of that version at the full row grain (1.4 drops the deprecated `ProviderName` and `PublisherName`), with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do. Omitted keeps the stored value (`native` on create)."
               }
             ]
           },
@@ -47326,8 +47335,8 @@
         "tags": [
           "Costs"
         ],
-        "summary": "Download cost rows as a FOCUS 1.3 CSV",
-        "description": "The rows a cost query selects, written as a CSV in the FinOps Open Cost and Usage Specification (FOCUS) v1.3 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side, `ChargeCategory`, `ServiceCategory`/`ServiceSubcategory`, `Tags` as a JSON object and the commitment columns where the provider reports a commitment. Custom columns follow, prefixed `x_`. The same mapping a `focus-1.3` scheduled export writes (see /cost-exports).\n\nTakes the cost query's filter in either spelling (`filters` or `query`, never both), an optional saved filter, and charge types. The range spans at most 366 days; for anything longer, or for a recurring feed, use a scheduled export. Validation errors are a 400 before any CSV is written; the body is then streamed.\n\n_Requires permission: `costs:read`._",
+        "summary": "Download cost rows as a FOCUS CSV",
+        "description": "The rows a cost query selects, written as a CSV in the FinOps Open Cost and Usage Specification (FOCUS) layout of `version` (`1.4` or `1.3`; omitted means `1.3`, so scripts written before 1.4 keep their header). One row per account, service, region, resource, tag set, charge type and commitment per day, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side, `ChargeCategory`, `ServiceCategory`/`ServiceSubcategory`, `Tags` as a JSON object and the commitment columns where the provider reports a commitment. Custom columns follow, prefixed `x_`. 1.4 drops the deprecated `ProviderName` and `PublisherName` (`ServiceProviderName` and `HostProviderName` carry the same value) and sets `EffectiveCost` to `BilledCost` on tax rows. The same mapping a `focus-<version>` scheduled export writes (see /cost-exports).\n\nTakes the cost query's filter in either spelling (`filters` or `query`, never both), an optional saved filter, and charge types. The range spans at most 366 days; for anything longer, or for a recurring feed, use a scheduled export. Validation errors are a 400 before any CSV is written; the body is then streamed.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -47353,7 +47362,19 @@
         },
         "responses": {
           "200": {
-            "description": "FOCUS 1.3 CSV, with a header row",
+            "description": "FOCUS CSV, with a header row",
+            "headers": {
+              "X-Focus-Version": {
+                "description": "The FOCUS version the body is written in (`1.4` or `1.3`).",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "1.4",
+                    "1.3"
+                  ]
+                }
+              }
+            },
             "content": {
               "text/csv": {
                 "schema": {

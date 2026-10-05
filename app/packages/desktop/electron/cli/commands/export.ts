@@ -47,7 +47,7 @@ export async function cmdExport(ctx: CliContext, format: string | undefined): Pr
   const chosen = format ?? "terraform";
   if (chosen !== "terraform") {
     throw new CliError(
-      `Unknown export format "${chosen}". Use "terraform" (an account's inventory as HCL) or "focus" (cost rows as a FOCUS 1.3 CSV).`,
+      `Unknown export format "${chosen}". Use "terraform" (an account's inventory as HCL) or "focus" (cost rows as a FOCUS CSV).`,
       2,
     );
   }
