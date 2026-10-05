@@ -5,6 +5,7 @@ import { LOGO_SVG } from "./logo.js";
 import { DEFAULT_REGION, HOME_REGION_OPTIONS } from "./regions.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { ociPriceCatalog } from "./price-catalog.js";
 import { ociTerraformExport } from "./terraform.js";
 
 const API_KEY_DOCS = "https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm";
@@ -89,6 +90,7 @@ const manifest: PluginManifest = {
     partial: true,
   },
   statusFeed,
+  priceCatalog: ociPriceCatalog,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
 };
 

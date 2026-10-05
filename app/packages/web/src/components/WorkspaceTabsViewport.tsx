@@ -70,6 +70,7 @@ import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
 import { WebStatusPagesPanel } from "./WebStatusPagesPanel";
 import { WebQuotasPanel } from "./WebQuotasPanel";
+import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
@@ -634,6 +635,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebStatusPagesPanel key={orgId} orgId={orgId} />;
     case "quotas":
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
+    case "price-catalog":
+      return <WebPriceCatalogPanel key={orgId} orgId={orgId} />;
     case "incidents":
       return (
         <WebIncidentsPanel

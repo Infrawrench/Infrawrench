@@ -60,6 +60,11 @@ for (const plugin of BUNDLED_PLUGINS) {
       add(region.location);
     }
   }
+  // Price catalog: service labels and the source name are rendered through
+  // useDataString on the Price catalog tab. Region labels are provider
+  // proper names, left as they are.
+  add(manifest.priceCatalog?.source.name);
+  for (const service of manifest.priceCatalog?.services ?? []) add(service.label);
   for (const type of plugin.resourceTypes) {
     add(type.displayName);
     add(type.pluralDisplayName);

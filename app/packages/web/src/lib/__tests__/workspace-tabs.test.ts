@@ -142,6 +142,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns price catalog route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "price-catalog" });
+    expect(args).toEqual({
+      to: "/org/$orgId/price-catalog",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns quotas route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "quotas" });
     expect(args).toEqual({
@@ -542,6 +550,12 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the quotas path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/quotas")).toEqual({ kind: "quotas" });
+  });
+
+  it("parses the price catalog path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/price-catalog")).toEqual({
+      kind: "price-catalog",
+    });
   });
 
   it("parses the incidents list path", () => {

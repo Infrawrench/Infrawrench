@@ -72,6 +72,8 @@ interface CreateResourceModalProps {
   resourceType: ResourceTypeDefinition;
   clientFactory?: () => PluginClient | Promise<PluginClient>;
   parentResourceId?: string;
+  /** Start the form from these values (the Price catalog's "use in estimate"). */
+  initialFields?: Record<string, string>;
   onClose: () => void;
   onCreated: (resource: ResourceInstance) => void;
 }
@@ -82,6 +84,7 @@ export function CreateResourceModal({
   resourceType,
   clientFactory,
   parentResourceId,
+  initialFields,
   onClose,
   onCreated,
 }: CreateResourceModalProps) {
@@ -367,7 +370,7 @@ export function CreateResourceModal({
     onCreated,
   ]);
 
-  const form = useCreateResourceForm(callbacks, [
+  const form = useCreateResourceForm(initialFields ? { ...callbacks, initialFields } : callbacks, [
     activeCloudOrgId,
     accountId,
     clientFactory,

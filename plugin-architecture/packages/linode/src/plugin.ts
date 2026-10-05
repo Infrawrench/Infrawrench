@@ -25,6 +25,7 @@ import {
 } from "./resources/platform.js";
 import { BucketResourceType, VolumeResourceType } from "./resources/storage.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { fetchLinodePriceCatalog, linodePriceCatalog } from "./price-catalog.js";
 import { linodeTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -71,6 +72,8 @@ const manifest: PluginManifest = {
   },
   preflight: LINODE_PREFLIGHT,
   statusFeed,
+  // Plan list prices from the public /linode/types. See price-catalog.ts.
+  priceCatalog: linodePriceCatalog,
   // Linode rate-limits per token and per endpoint; listers fan out at most 8 wide.
   rateLimit: { capacity: 40, refillPerSecond: 10 },
 };
@@ -101,4 +104,5 @@ export const plugin: Plugin = {
   terraformExport: linodeTerraformExport,
   parseStatusFeed,
   policyTemplate: linodePolicyTemplate,
+  fetchPriceCatalog: fetchLinodePriceCatalog,
 };

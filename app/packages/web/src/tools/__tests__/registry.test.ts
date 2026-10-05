@@ -54,6 +54,11 @@ vi.mock("../carbon", () => ({
     { name: "cb1", title: "CB1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../price-catalog", () => ({
+  priceCatalogTools: () => [
+    { name: "pc1", title: "PC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../moment", () => ({
   momentTools: () => [
     { name: "m1", title: "M1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -122,6 +127,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("iv1");
     expect(names).toContain("m1");
     expect(names).toContain("cb1");
+    expect(names).toContain("pc1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
     expect(names).toContain("d1");

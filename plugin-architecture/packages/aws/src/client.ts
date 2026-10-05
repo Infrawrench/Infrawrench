@@ -25,6 +25,8 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
   QuotaUsage,
+  PriceCatalogRequest,
+  PriceCatalogResult,
 } from "@infrawrench/plugin-base";
 import { withMetricsCapability } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
@@ -127,8 +129,13 @@ import {
   modifyServerlessCache,
   updateLambdaFunction,
 } from "./update-handlers.js";
-import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
+import {
+  fetchEc2MonthlyPrices,
+  getProducts,
+  HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH,
+} from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
+import { fetchAwsPriceCatalog } from "./price-catalog.js";
 import { fetchAwsCommitments } from "./commitments.js";
 import {
   fetchAwsQuotas,
@@ -583,6 +590,27 @@ export class AWSClient implements PluginClient {
    * injected into `quotas.ts` rather than assembled there; see that module's
    * header for why the fallback to the *default* quota is load-bearing.
    */
+  /**
+   * Price catalog (EC2): Price List Query API for specs, on-demand and
+   * reserved (`pricing:GetProducts`), plus current spot prices from
+   * `ec2:DescribeSpotPriceHistory` in the requested region. See
+   * `price-catalog.ts`.
+   */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    return fetchAwsPriceCatalog(
+      {
+        getProducts: (body) => getProducts(this.creds, body),
+        describeSpotPriceHistory: (region, params) =>
+          ec2Call<Record<string, unknown>>(
+            this.credsFor(region),
+            "DescribeSpotPriceHistory",
+            params,
+          ),
+      },
+      request,
+    );
+  }
+
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
     const regions = await this.getEnabledRegions();
     return fetchAwsQuotas({

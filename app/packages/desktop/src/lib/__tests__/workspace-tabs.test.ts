@@ -8,6 +8,7 @@ import {
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
+  priceCatalogTabTarget,
   incidentsTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
@@ -81,6 +82,11 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns quotas route args", () => {
     const args = getWorkspaceNavigateArgs(quotasTabTarget());
     expect(args.to).toBe("/quotas");
+  });
+
+  it("returns price catalog route args", () => {
+    const args = getWorkspaceNavigateArgs(priceCatalogTabTarget());
+    expect(args.to).toBe("/price-catalog");
   });
 
   it("returns incidents route args, clearing the param for the list view", () => {
@@ -384,6 +390,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the quotas path", () => {
     expect(syncWorkspaceRouteFromPath("/quotas")).toEqual({ kind: "quotas" });
+  });
+
+  it("parses the price catalog path", () => {
+    expect(syncWorkspaceRouteFromPath("/price-catalog")).toEqual({ kind: "price-catalog" });
   });
 
   it("parses the incidents path, with and without a selected incident", () => {

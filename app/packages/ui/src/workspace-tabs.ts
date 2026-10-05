@@ -148,6 +148,10 @@ export function quotasTabTarget(): WorkspaceTabTarget {
   return { kind: "quotas" };
 }
 
+export function priceCatalogTabTarget(): WorkspaceTabTarget {
+  return { kind: "price-catalog" };
+}
+
 /**
  * Incident mode. One tab, optionally remembering which incident it was on:
  * during an incident people flip between the timeline and everything else, and

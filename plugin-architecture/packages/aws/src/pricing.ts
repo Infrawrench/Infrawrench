@@ -34,7 +34,7 @@ interface PriceListEntry {
   };
 }
 
-interface GetProductsResponse {
+export interface GetProductsResponse {
   PriceList?: string[];
   NextToken?: string;
 }
@@ -87,7 +87,12 @@ export function parseOnDemandHourlyUsd(priceList: readonly string[]): number | n
   return parseOnDemandUsd(priceList, HOURLY_UNIT);
 }
 
-async function getProducts(
+/**
+ * One signed GetProducts call. Exported so the price catalog
+ * (`price-catalog.ts`) pages the same request rather than owning a second
+ * transport.
+ */
+export async function getProducts(
   credentials: AwsCredentials,
   body: Record<string, unknown>,
 ): Promise<GetProductsResponse> {
@@ -106,13 +111,13 @@ async function getProducts(
   return (await res.json()) as GetProductsResponse;
 }
 
-const termMatch = (field: string, value: string) => ({
+export const termMatch = (field: string, value: string) => ({
   Type: "TERM_MATCH",
   Field: field,
   Value: value,
 });
 
-type PriceFilter = ReturnType<typeof termMatch>;
+export type PriceFilter = ReturnType<typeof termMatch>;
 
 /**
  * Filters that pin one clean price per instance type: Linux, shared tenancy,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.51.0",
+    "version": "1.52.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -195,6 +195,10 @@
     {
       "name": "Query monitors",
       "description": "A SQL query on a schedule, with a threshold and an alert. Metric alerts watch what the provider reports — CPU, connections, queue depth. Nothing watched what the data itself says, which is where a whole class of incidents lives: the orders table stopped growing, the dead-letter queue has 4,000 rows in it, yesterday's ETL wrote nought. A monitor may only run a single read-only statement, enforced by an allowlist of leading keywords on every execution rather than only on save; a failed run is `unknown` rather than `ok`, because it has told you nothing about the data; and the alert fires on the run that reaches the consecutive-breach threshold and not on every run past it."
+    },
+    {
+      "name": "Price catalog",
+      "description": "Every catalog provider's published list prices, normalized: products with their specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where the provider publishes them). Search, filter and compare equivalent instances across providers by spec. Figures are list prices, never an org's negotiated rates; each provider names its source. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one."
     },
     {
       "name": "Carbon",
@@ -3129,6 +3133,7 @@
               "probes",
               "status-pages",
               "quotas",
+              "price-catalog",
               "incidents",
               "workflows",
               "deployments",
@@ -20827,6 +20832,607 @@
           "byProvider",
           "rows",
           "assumptions",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogProductFamily": {
+        "type": "string",
+        "enum": [
+          "compute",
+          "gpu",
+          "database",
+          "kubernetes-node",
+          "storage"
+        ]
+      },
+      "PriceCatalogArea": {
+        "type": "string",
+        "enum": [
+          "north-america",
+          "south-america",
+          "europe",
+          "asia-pacific",
+          "middle-east",
+          "africa",
+          "oceania"
+        ],
+        "description": "Coarse geography. A provider without the requested region is priced in its first declared region in this area."
+      },
+      "PriceCatalogProviderState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "no-account",
+          "no-region",
+          "loading",
+          "error"
+        ],
+        "description": "`no-account`: the provider's price API needs credentials and the org has no account on it. `loading`: the first fetch is still running, ask again shortly."
+      },
+      "PriceCatalogProviderStatus": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "requiresCredentials": {
+            "type": "boolean"
+          },
+          "permission": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          "refreshHours": {
+            "type": "number"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "family": {
+                  "$ref": "#/components/schemas/PriceCatalogProductFamily"
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "family"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "area": {
+                  "$ref": "#/components/schemas/PriceCatalogArea"
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "area"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "state": {
+            "$ref": "#/components/schemas/PriceCatalogProviderState"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fetchedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "requiresCredentials",
+          "permission",
+          "source",
+          "refreshHours",
+          "services",
+          "regions",
+          "state",
+          "region",
+          "error",
+          "fetchedAt",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogSpecs": {
+        "type": "object",
+        "properties": {
+          "vcpus": {
+            "type": "number"
+          },
+          "memoryGb": {
+            "type": "number"
+          },
+          "gpuCount": {
+            "type": "number"
+          },
+          "gpuModel": {
+            "type": "string"
+          },
+          "gpuMemoryGb": {
+            "type": "number"
+          },
+          "storageGb": {
+            "type": "number"
+          },
+          "storageType": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PriceRateType": {
+        "type": "string",
+        "enum": [
+          "on-demand",
+          "spot",
+          "reserved",
+          "savings-plan"
+        ]
+      },
+      "PriceCatalogPrice": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string"
+          },
+          "rateType": {
+            "$ref": "#/components/schemas/PriceRateType"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "month",
+              "gb-month"
+            ]
+          },
+          "amount": {
+            "type": "number",
+            "description": "Price per `unit` in `currency`, the provider's list price."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "term": {
+            "type": "string",
+            "description": "Commitment term for reserved / savings plan: `1yr`, `3yr`."
+          },
+          "paymentOption": {
+            "type": "string"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "description": "When the provider says the rate took effect. Absent when the source does not say."
+          }
+        },
+        "required": [
+          "region",
+          "rateType",
+          "unit",
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogComparable": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false,
+        "description": "Monthly amount in the org's display currency (converted at the org's stated rate), or in the native currency when no display currency is configured; null when there is no rate. Sorting and `maxMonthlyPrice` use it."
+      },
+      "PriceCatalogRow": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "serviceLabel": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string",
+            "example": "m7i.large"
+          },
+          "name": {
+            "type": "string"
+          },
+          "family": {
+            "$ref": "#/components/schemas/PriceCatalogProductFamily"
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "specs": {
+            "$ref": "#/components/schemas/PriceCatalogSpecs"
+          },
+          "region": {
+            "type": "string"
+          },
+          "regionLabel": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/PriceCatalogPrice"
+          },
+          "monthlyAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`price` as a 730-hour month."
+          },
+          "comparable": {
+            "$ref": "#/components/schemas/PriceCatalogComparable"
+          },
+          "otherPrices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogPrice"
+            },
+            "description": "The product's other rates in the same region."
+          },
+          "estimate": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "resourceTypeId",
+              "fields"
+            ],
+            "additionalProperties": false,
+            "description": "Create-form prefill for the plugin's estimate, with the region filled in."
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "serviceId",
+          "serviceLabel",
+          "sku",
+          "name",
+          "family",
+          "series",
+          "specs",
+          "region",
+          "regionLabel",
+          "price",
+          "monthlyAmount",
+          "comparable",
+          "otherPrices",
+          "estimate"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogSearchResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogRow"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "area": {
+            "$ref": "#/components/schemas/PriceCatalogArea"
+          },
+          "rateType": {
+            "$ref": "#/components/schemas/PriceRateType"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogProviderStatus"
+            }
+          },
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mixedCurrencies": {
+            "type": "boolean",
+            "description": "True when rows were sorted across currencies with no common comparable figure."
+          },
+          "gpuModels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "rows",
+          "total",
+          "offset",
+          "limit",
+          "area",
+          "rateType",
+          "providers",
+          "displayCurrency",
+          "currencies",
+          "mixedCurrencies",
+          "gpuModels",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogCompareTarget": {
+        "type": "object",
+        "properties": {
+          "vcpus": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "memoryGb": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gpuCount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gpuModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "vcpus",
+          "memoryGb",
+          "gpuCount",
+          "gpuModel"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogCompareProvider": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "regionLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/PriceCatalogProviderState"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "best": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogRow"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Cheapest product meeting every stated spec."
+              }
+            ]
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogRow"
+            }
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "region",
+          "regionLabel",
+          "state",
+          "error",
+          "best",
+          "alternatives"
+        ],
+        "additionalProperties": false
+      },
+      "PriceCatalogCompareResponse": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/PriceCatalogCompareTarget"
+          },
+          "reference": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PriceCatalogRow"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "area": {
+            "$ref": "#/components/schemas/PriceCatalogArea"
+          },
+          "rateType": {
+            "$ref": "#/components/schemas/PriceRateType"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogCompareProvider"
+            }
+          },
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mixedCurrencies": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "target",
+          "reference",
+          "area",
+          "rateType",
+          "providers",
+          "displayCurrency",
+          "mixedCurrencies",
           "generatedAt"
         ],
         "additionalProperties": false
@@ -54787,6 +55393,704 @@
         },
         "operationId": "getOrgOrgIdCarbon",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/price-catalog/providers": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "summary": "List the providers that publish a price catalog",
+        "description": "Every plugin that declares a price catalog, with its source, refresh cadence, services, regions and whether its price API needs credentials. A credentialed provider the org has no account on reports `no-account`.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "providers": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PriceCatalogProviderStatus"
+                      }
+                    }
+                  },
+                  "required": [
+                    "providers"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPriceCatalogProviders",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/price-catalog/search": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "summary": "Search provider list prices",
+        "description": "Search instance types across every catalog provider: one row per product priced at the requested rate type in the region chosen for each provider. Filters narrow by provider, service, specs, GPU and price; rows sort by monthly price by default.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Free text over SKU, name, series and GPU model."
+            },
+            "required": false,
+            "description": "Free text over SKU, name, series and GPU model.",
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated plugin ids."
+            },
+            "required": false,
+            "description": "Comma-separated plugin ids.",
+            "name": "pluginIds",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated service ids (from the providers list)."
+            },
+            "required": false,
+            "description": "Comma-separated service ids (from the providers list).",
+            "name": "serviceIds",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated product families."
+            },
+            "required": false,
+            "description": "Comma-separated product families.",
+            "name": "families",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Exact provider region, for providers that declare it."
+            },
+            "required": false,
+            "description": "Exact provider region, for providers that declare it.",
+            "name": "region",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PriceCatalogArea"
+            },
+            "required": false,
+            "name": "area",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum vCPUs."
+            },
+            "required": false,
+            "description": "Minimum vCPUs.",
+            "name": "minVcpus",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Maximum vCPUs."
+            },
+            "required": false,
+            "description": "Maximum vCPUs.",
+            "name": "maxVcpus",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum memory, GB."
+            },
+            "required": false,
+            "description": "Minimum memory, GB.",
+            "name": "minMemoryGb",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Maximum memory, GB."
+            },
+            "required": false,
+            "description": "Maximum memory, GB.",
+            "name": "maxMemoryGb",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "any",
+                "required",
+                "none"
+              ]
+            },
+            "required": false,
+            "name": "gpu",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Case-insensitive substring, e.g. `H100`."
+            },
+            "required": false,
+            "description": "Case-insensitive substring, e.g. `H100`.",
+            "name": "gpuModel",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum GPU count."
+            },
+            "required": false,
+            "description": "Minimum GPU count.",
+            "name": "minGpus",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Upper bound on the comparable monthly price."
+            },
+            "required": false,
+            "description": "Upper bound on the comparable monthly price.",
+            "name": "maxMonthlyPrice",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PriceRateType"
+            },
+            "required": false,
+            "name": "rateType",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "`1yr` or `3yr` for commitments."
+            },
+            "required": false,
+            "description": "`1yr` or `3yr` for commitments.",
+            "name": "term",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "price",
+                "vcpus",
+                "memory",
+                "gpus",
+                "name"
+              ]
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "required": false,
+            "name": "order",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Rows per page, 1 to 500. Default 100."
+            },
+            "required": false,
+            "description": "Rows per page, 1 to 500. Default 100.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Rows to skip."
+            },
+            "required": false,
+            "description": "Rows to skip.",
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching catalog rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCatalogSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPriceCatalogSearch",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/price-catalog/compare": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "summary": "Compare equivalent instances across providers",
+        "description": "The cheapest product per provider that meets every stated spec (at least the vCPUs, memory and GPUs asked for), in each provider's region for the area. Give the target as specs, or name a reference product and its specs are used.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum vCPUs."
+            },
+            "required": false,
+            "description": "Minimum vCPUs.",
+            "name": "vcpus",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum memory, GB."
+            },
+            "required": false,
+            "description": "Minimum memory, GB.",
+            "name": "memoryGb",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Minimum GPUs."
+            },
+            "required": false,
+            "description": "Minimum GPUs.",
+            "name": "gpuCount",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "gpuModel",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "referencePluginId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "referenceSku",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PriceCatalogArea"
+            },
+            "required": false,
+            "name": "area",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/PriceRateType"
+            },
+            "required": false,
+            "name": "rateType",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated plugin ids."
+            },
+            "required": false,
+            "description": "Comma-separated plugin ids.",
+            "name": "pluginIds",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "description": "Runners-up per provider, 0 to 10. Default 2."
+            },
+            "required": false,
+            "description": "Runners-up per provider, 0 to 10. Default 2.",
+            "name": "alternatives",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Best match per provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCatalogCompareResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPriceCatalogCompare",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/dns": {

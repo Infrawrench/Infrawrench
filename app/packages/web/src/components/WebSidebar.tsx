@@ -44,6 +44,7 @@ import {
   ProbesIcon,
   StatusPagesIcon,
   QuotasIcon,
+  PriceCatalogIcon,
   IncidentsIcon,
   EnvironmentsIcon,
 } from "@infrawrench/ui";
@@ -645,6 +646,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <QuotasIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/quotas", params: { orgId: orgId! } }),
+              },
+              {
+                key: "price-catalog",
+                label: gt("Price catalog"),
+                icon: <PriceCatalogIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/price-catalog", params: { orgId: orgId! } }),
               },
               {
                 key: "incidents",

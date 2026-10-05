@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { SCALEWAY_FOCUS } from "./focus-services.js";
 import { ScalewayClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { scalewayPriceCatalog } from "./price-catalog.js";
 import { InstanceResourceType } from "./resources/instance.js";
 import { KapsuleClusterResourceType } from "./resources/kapsule-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -75,6 +76,7 @@ const manifest: PluginManifest = {
     periodNative: true,
   },
   statusFeed,
+  priceCatalog: scalewayPriceCatalog,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

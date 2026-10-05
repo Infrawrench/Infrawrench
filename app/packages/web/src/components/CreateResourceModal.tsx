@@ -22,6 +22,8 @@ interface Props {
   resourceTypeDisplayName: string;
   /** Set for peer-plugin creation (e.g. k8s-pod on a gcloud account). */
   parentResourceId?: string;
+  /** Start the form from these values (the Price catalog's "use in estimate"). */
+  initialFields?: Record<string, string>;
   onClose: () => void;
   onCreated: (resource: { id: string; displayName: string }) => void;
 }
@@ -32,6 +34,7 @@ export function CreateResourceModal({
   resourceTypeId,
   resourceTypeDisplayName,
   parentResourceId,
+  initialFields,
   onClose,
   onCreated,
 }: Props) {
@@ -82,6 +85,7 @@ export function CreateResourceModal({
 
   const callbacks = useMemo(
     () => ({
+      ...(initialFields ? { initialFields } : {}),
       loadConfig: () =>
         apiPost<CreateResourceConfig>(`/api/org/${orgId}/resources/create-config`, {
           accountId,
@@ -142,7 +146,7 @@ export function CreateResourceModal({
           },
         ),
     }),
-    [accountId, orgId, pluginId, resourceTypeId, parentResourceId, onCreated],
+    [accountId, orgId, pluginId, resourceTypeId, parentResourceId, onCreated, initialFields],
   );
 
   const form = useCreateResourceForm(callbacks, [accountId, resourceTypeId, parentResourceId]);

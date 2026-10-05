@@ -31,6 +31,7 @@ import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as PostureRouteImport } from './routes/posture'
+import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
 import { Route as ProbesRouteImport } from './routes/probes'
 import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
 import { Route as QuotasRouteImport } from './routes/quotas'
@@ -155,6 +156,11 @@ const PostureRoute = PostureRouteImport.update({
   path: '/posture',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PriceCatalogRoute = PriceCatalogRouteImport.update({
+  id: '/price-catalog',
+  path: '/price-catalog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProbesRoute = ProbesRouteImport.update({
   id: '/probes',
   path: '/probes',
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
@@ -320,6 +328,7 @@ export interface FileRoutesById {
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
+  '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
@@ -359,6 +368,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/price-catalog'
     | '/probes'
     | '/query-monitors'
     | '/quotas'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/price-catalog'
     | '/probes'
     | '/query-monitors'
     | '/quotas'
@@ -433,6 +444,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/moment'
     | '/posture'
+    | '/price-catalog'
     | '/probes'
     | '/query-monitors'
     | '/quotas'
@@ -471,6 +483,7 @@ export interface RootRouteChildren {
   MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
   PostureRoute: typeof PostureRoute
+  PriceCatalogRoute: typeof PriceCatalogRoute
   ProbesRoute: typeof ProbesRoute
   QueryMonitorsRoute: typeof QueryMonitorsRoute
   QuotasRoute: typeof QuotasRoute
@@ -642,6 +655,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PostureRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/price-catalog': {
+      id: '/price-catalog'
+      path: '/price-catalog'
+      fullPath: '/price-catalog'
+      preLoaderRoute: typeof PriceCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/probes': {
       id: '/probes'
       path: '/probes'
@@ -759,6 +779,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,
   PostureRoute: PostureRoute,
+  PriceCatalogRoute: PriceCatalogRoute,
   ProbesRoute: ProbesRoute,
   QueryMonitorsRoute: QueryMonitorsRoute,
   QuotasRoute: QuotasRoute,

@@ -206,9 +206,35 @@ export interface ExportsFlags {
   dimensions?: string | undefined;
 }
 
+/**
+ * `prices search|compare` filters, kept as the raw strings typed: the
+ * command hands them to client-core's query normalizers, the same ones the
+ * server applies to a query string, so the CLI cannot drift from the route.
+ */
+export interface PriceFlags {
+  provider?: string | undefined;
+  region?: string | undefined;
+  area?: string | undefined;
+  rate?: string | undefined;
+  term?: string | undefined;
+  vcpus?: string | undefined;
+  memory?: string | undefined;
+  minVcpus?: string | undefined;
+  maxVcpus?: string | undefined;
+  minMemory?: string | undefined;
+  maxMemory?: string | undefined;
+  gpu?: string | undefined;
+  gpus?: string | undefined;
+  gpuModel?: string | undefined;
+  maxPrice?: string | undefined;
+  sort?: string | undefined;
+  desc: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
+  prices: PriceFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
@@ -328,6 +354,24 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         timezone: { type: "string" },
         "restatement-days": { type: "string" },
         dimensions: { type: "string" },
+        // Price catalog (`prices search|compare`).
+        provider: { type: "string" },
+        region: { type: "string" },
+        area: { type: "string" },
+        rate: { type: "string" },
+        term: { type: "string" },
+        vcpus: { type: "string" },
+        memory: { type: "string" },
+        "min-vcpus": { type: "string" },
+        "max-vcpus": { type: "string" },
+        "min-memory": { type: "string" },
+        "max-memory": { type: "string" },
+        gpu: { type: "string" },
+        gpus: { type: "string" },
+        "gpu-model": { type: "string" },
+        "max-price": { type: "string" },
+        sort: { type: "string" },
+        desc: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -477,6 +521,25 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       cooldown,
       voice: values.voice === true,
       file: str("file"),
+    },
+    prices: {
+      provider: str("provider"),
+      region: str("region"),
+      area: str("area"),
+      rate: str("rate"),
+      term: str("term"),
+      vcpus: str("vcpus"),
+      memory: str("memory"),
+      minVcpus: str("min-vcpus"),
+      maxVcpus: str("max-vcpus"),
+      minMemory: str("min-memory"),
+      maxMemory: str("max-memory"),
+      gpu: str("gpu"),
+      gpus: str("gpus"),
+      gpuModel: str("gpu-model"),
+      maxPrice: str("max-price"),
+      sort: str("sort"),
+      desc: values.desc === true,
     },
     positionals: parsed.positionals,
     version: values.version === true,

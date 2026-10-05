@@ -358,6 +358,21 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         });
       }
 
+      const priceCatalog = plugin.manifest.priceCatalog;
+      if (priceCatalog) {
+        // The declaration says which half the host calls; the other half
+        // missing would make the catalog silently empty for this provider.
+        if (priceCatalog.requiresCredentials) {
+          it("priceCatalog.requiresCredentials → client has fetchPriceCatalog", () => {
+            expect(typeof client.fetchPriceCatalog).toBe("function");
+          });
+        } else {
+          it("priceCatalog (public) → plugin has fetchPriceCatalog", () => {
+            expect(typeof plugin.fetchPriceCatalog).toBe("function");
+          });
+        }
+      }
+
       if (plugin.manifest.preflight) {
         // Not enforceable at registration (no client exists yet), so the
         // bundled-plugin contract tests pin it down here instead.

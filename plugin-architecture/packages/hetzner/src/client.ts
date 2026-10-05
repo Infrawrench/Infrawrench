@@ -14,6 +14,8 @@ import type {
   MetricSeries,
   CostFetchRange,
   CostRow,
+  PriceCatalogRequest,
+  PriceCatalogResult,
 } from "@infrawrench/plugin-base";
 import {
   joinSubtitle,
@@ -52,6 +54,7 @@ import {
   updateStorageBox,
 } from "./storage-boxes.js";
 import { createRateCardCache, type RateCardCache } from "./pricing.js";
+import { fetchHetznerPriceCatalog } from "./price-catalog.js";
 
 /**
  * Hetzner Cloud plugin client.
@@ -2200,6 +2203,21 @@ export class HetznerClient implements PluginClient {
    * on the client, which the host builds once per collection pass, so the
    * month chunks of one pass share a single `/pricing` request.
    */
+  /**
+   * Server type list prices (net of VAT) from `/server_types`, in the
+   * currency `/pricing` reports. See `price-catalog.ts`.
+   */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    return fetchHetznerPriceCatalog(
+      {
+        fetchAll: (path, rootKey) => this.fetchAll(path, rootKey),
+        currency: async () =>
+          (await this.rateCardCache.load({ fetch: (path) => this.fetch(path) })).currency,
+      },
+      request,
+    );
+  }
+
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchHetznerCostData(
       {

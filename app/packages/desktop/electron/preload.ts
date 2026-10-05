@@ -185,6 +185,8 @@ const INVOKE_CHANNELS = [
   "local_orphans_list",
   "cloud_expiring",
   "cloud_quotas",
+  "cloud_price_catalog_search",
+  "cloud_price_catalog_compare",
   "cloud_posture",
   "cloud_posture_dismiss",
   "cloud_posture_restore",

@@ -138,7 +138,12 @@ export function createLinodeApi(config: LinodeApiConfig): LinodeApi {
     return JSON.parse(text) as T;
   }
 
-  const auth = { Authorization: `Bearer ${config.token}` };
+  // An empty token sends no Authorization header: the public price
+  // endpoints (`/linode/types` and friends) answer anonymously, which is what
+  // lets the price catalog work without a connected account.
+  const auth: Record<string, string> = config.token
+    ? { Authorization: `Bearer ${config.token}` }
+    : {};
 
   const api: LinodeApi = {
     get<T>(path: string, opts?: RequestOptions) {

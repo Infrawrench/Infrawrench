@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { AZURE_FOCUS } from "./focus-services.js";
 import { AzureClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { azureTerraformExport } from "./terraform.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
@@ -116,6 +117,7 @@ const manifest: PluginManifest = {
   // surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
   statusFeed,
+  priceCatalog,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -163,5 +165,6 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new AzureClient(credentials, resourceTypes, services),
   parseStatusFeed,
+  fetchPriceCatalog,
   terraformExport: azureTerraformExport,
 };

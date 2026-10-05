@@ -61,6 +61,7 @@ import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel"
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopStatusPagesPanel } from "@/components/DesktopStatusPagesPanel";
 import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
+import { DesktopPriceCatalogPanel } from "@/components/DesktopPriceCatalogPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
@@ -585,6 +586,8 @@ function renderPanel(
       return <DesktopStatusPagesPanel />;
     case "quotas":
       return <DesktopQuotasPanel />;
+    case "price-catalog":
+      return <DesktopPriceCatalogPanel />;
     case "incidents":
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "settings":
