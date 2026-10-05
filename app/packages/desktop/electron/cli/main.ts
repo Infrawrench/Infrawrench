@@ -99,6 +99,8 @@ COMMANDS
                       [--currency USD  convert to your org's display currency at its stated rates]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
                       [--filter <name|id>  a saved cost filter, resolved server-side; ANDs with --where]
+                      [--measure cost|usage|count] [--unit <usage unit>] [--bin day|week|month|quarter|hour]
+                      [--cumulative]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period" — distinct from budgets and anomalies)   [--limit 20]
@@ -108,6 +110,8 @@ COMMANDS
                       with fired alerts and children that outgrow their parent
   reports             the org's saved cost reports (named cost graphs)
   reports <name|id>   run one saved report and chart it
+                      [--measure cost|usage|count] [--unit <u>] [--bin …] [--cumulative]
+                      (one-off view of the report; nothing is saved)
                       [--format pdf [--out <path>]  save the rendered PDF instead]
   reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
   canvas list         cost canvases: reports the chat agent built from a description
@@ -272,6 +276,15 @@ FLAGS
   --filter <name|id>  costs: apply a saved cost filter by reference — resolved on the server
                       at query time, so it always means what it means everywhere else; combines
                       with --where by AND
+  --measure <m>       costs/reports: what to sum. cost (default, money), usage (the usage
+                      quantity providers report; needs --unit, since hours and gigabytes
+                      cannot be added) or count (how many distinct --group-by values had
+                      nonzero cost per bin; its total counts each value once)
+  --unit <u>          costs/reports --measure usage: the unit to sum, as the provider spells
+                      it (e.g. Hrs, GB-Mo); run without it to list the units present
+  --bin <b>           costs/reports: day (default for costs), week, month, quarter, or hour
+                      (refused while every provider reports daily rows)
+  --cumulative        costs/reports: running totals from the start of the range
   --margin            unit-costs: draw (revenue − cost) ÷ revenue instead of cost per unit.
                       Only for a metric declared revenue-shaped — the server refuses it for a
                       count metric rather than returning a plausible wrong number
@@ -475,7 +488,7 @@ export async function runCli(): Promise<void> {
           break;
         }
         if (rest.length > 0) {
-          await cmdRunReport(ctx, rest.join(" "), pdfFlags(parsed));
+          await cmdRunReport(ctx, rest.join(" "), pdfFlags(parsed), parsed.range);
           break;
         }
         if (parsed.exportFlags.format) {

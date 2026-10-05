@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.57.0",
+    "version": "1.58.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3795,6 +3795,18 @@
           },
           "adjustment": {
             "$ref": "#/components/schemas/CostAdjustmentSummary"
+          },
+          "measure": {
+            "type": "string",
+            "enum": [
+              "usage",
+              "count"
+            ],
+            "description": "Set when the request measured something other than money; absent means every amount is money in its series' currency. For both, series carry `currency: \"\"` and the totals are keyed by `\"\"`."
+          },
+          "usageUnit": {
+            "type": "string",
+            "description": "The unit a `usage` response is in."
           }
         },
         "required": [
@@ -3803,6 +3815,18 @@
           "totals"
         ],
         "additionalProperties": false
+      },
+      "CostBinning": {
+        "type": "string",
+        "enum": [
+          "hourly",
+          "daily",
+          "weekly",
+          "monthly",
+          "quarterly",
+          "cumulative"
+        ],
+        "description": "Time bucket of the x axis. Weeks start on Monday and quarters on the first of January, April, July and October (UTC). `cumulative` is the older spelling of daily bins with `cumulative: true`, kept so stored configs and existing clients keep working. `hourly` is refused with a 400 while no connected account stores hourly cost rows: every provider's spend is collected per UTC day today (see `granularity` on /costs/status)."
       },
       "CostDimension": {
         "type": "string",
@@ -3871,6 +3895,15 @@
           "other"
         ]
       },
+      "CostMeasure": {
+        "type": "string",
+        "enum": [
+          "cost",
+          "usage",
+          "count"
+        ],
+        "description": "What the Y axis sums. `cost` (the default) is money per currency. `usage` sums the usage quantity providers report beside the money and requires `usageUnit`, because quantities in different units cannot be added. `count` is how many distinct values of the `groupBy` dimension had nonzero cost in each bin (how many services were billed each day) and requires a `groupBy`; its range total is a distinct count, not a sum of the bins. `usage` and `count` cannot carry a forecast, a scenario or billing rules (a 400), `count` cannot be cumulative, and a display currency is ignored for both."
+      },
       "CostQueryRequest": {
         "type": "object",
         "properties": {
@@ -3885,13 +3918,7 @@
             "example": "2026-07-01"
           },
           "binning": {
-            "type": "string",
-            "enum": [
-              "daily",
-              "weekly",
-              "monthly",
-              "cumulative"
-            ]
+            "$ref": "#/components/schemas/CostBinning"
           },
           "groupBy": {
             "type": "string",
@@ -3954,6 +3981,19 @@
           "adjusted": {
             "type": "boolean",
             "description": "Apply the organization's billing rules (see /billing-rules) — markups, discounts, reallocations. Omitted (the default, and what every unattended reader sends) is raw collected spend. Present, the response carries `adjustment` with the collected totals beside the adjusted ones and the rules that moved them; it is set even for an organization with no rules, because the absence of that field is the only signal that a figure is unadjusted."
+          },
+          "measure": {
+            "$ref": "#/components/schemas/CostMeasure"
+          },
+          "usageUnit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a `usage` measure sums, exactly as the provider spells it (`Hrs`, `GB-Mo`). List them with GET /costs/dimensions?dimension=usage-units. Required for `usage`, refused for any other measure."
+          },
+          "cumulative": {
+            "type": "boolean",
+            "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
           }
         },
         "required": [
@@ -4462,6 +4502,14 @@
             "type": "boolean",
             "description": "Whether this account's amounts are derived by Infrawrench — inventory priced against a rate card, or metered usage priced at published list rates — rather than reported as billed spend. True means the series cannot be reconciled against an invoice: resources deleted part-way through a period are no longer in inventory to be priced, all rates are list rather than negotiated, and credits, tax and refunds never appear."
           },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "hourly"
+            ],
+            "description": "The granularity this account's cost rows are stored at. `daily` for every provider today; hourly bins are offered only once some account reports `hourly`."
+          },
           "costLastPolledAt": {
             "type": [
               "string",
@@ -4549,6 +4597,7 @@
           "chargeTypes",
           "amortization",
           "estimated",
+          "granularity",
           "costLastPolledAt",
           "costBackfilledAt",
           "costPollFailureCount",
@@ -4676,17 +4725,14 @@
               "multi_bar",
               "line",
               "area",
-              "pie"
-            ]
+              "pie",
+              "donut",
+              "table"
+            ],
+            "description": "How the series are drawn. `pie` and `donut` draw period totals per group; `table` lists every bucket as a row with a column per series and a total."
           },
           "binning": {
-            "type": "string",
-            "enum": [
-              "daily",
-              "weekly",
-              "monthly",
-              "cumulative"
-            ]
+            "$ref": "#/components/schemas/CostBinning"
           },
           "dateRange": {
             "$ref": "#/components/schemas/CostDateRange"
@@ -4739,6 +4785,19 @@
               "cash",
               "amortized"
             ]
+          },
+          "measure": {
+            "$ref": "#/components/schemas/CostMeasure"
+          },
+          "usageUnit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a `usage` measure sums, exactly as the provider spells it (`Hrs`, `GB-Mo`). List them with GET /costs/dimensions?dimension=usage-units. Required for `usage`, refused for any other measure."
+          },
+          "cumulative": {
+            "type": "boolean",
+            "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
           }
         },
         "required": [
@@ -4898,6 +4957,28 @@
           "to",
           "result"
         ],
+        "additionalProperties": false
+      },
+      "CostReportRunOverrides": {
+        "type": "object",
+        "properties": {
+          "measure": {
+            "$ref": "#/components/schemas/CostMeasure"
+          },
+          "usageUnit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a `usage` measure sums, exactly as the provider spells it (`Hrs`, `GB-Mo`). List them with GET /costs/dimensions?dimension=usage-units. Required for `usage`, refused for any other measure."
+          },
+          "binning": {
+            "$ref": "#/components/schemas/CostBinning"
+          },
+          "cumulative": {
+            "type": "boolean",
+            "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
+          }
+        },
         "additionalProperties": false
       },
       "CostCanvasKpiMetric": {
@@ -8335,9 +8416,11 @@
           "binning": {
             "type": "string",
             "enum": [
+              "hourly",
               "daily",
               "weekly",
               "monthly",
+              "quarterly",
               "cumulative"
             ]
           },
@@ -8433,9 +8516,11 @@
           "binning": {
             "type": "string",
             "enum": [
+              "hourly",
               "daily",
               "weekly",
               "monthly",
+              "quarterly",
               "cumulative"
             ]
           },
@@ -41960,7 +42045,7 @@
           "Costs"
         ],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one.\n\n_Requires permission: `costs:read`._",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one. `usage-units` lists the usage units present in the cost data, most common first, for the `usage` measure's unit picker.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -42787,7 +42872,7 @@
           "Cost reports"
         ],
         "summary": "Run a cost report",
-        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. Takes no body: the report *is* the query, so a caller never has to reassemble its config to get the numbers.\n\n_Requires permission: `costs:read`._",
+        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. The body is optional: the report *is* the query, so a caller never has to reassemble its config to get the numbers. It may carry one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`) that apply to this run only and are never saved; switching a run to `usage` or `count` drops the saved forecast, scenario and billing rules, which only apply to money.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -42811,6 +42896,16 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportRunOverrides"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Result",

@@ -12,9 +12,10 @@ import Svg, {
 import {
   binForecast,
   bucketCostAnnotations,
+  costSeriesTotal,
+  effectiveCostBinning,
   formatBucketLabel,
   formatCostAnnotationDates,
-  formatMoney,
   niceAxis,
   totalPerBucket,
   FORECAST_COLOR,
@@ -59,7 +60,13 @@ export interface CostChartProps {
   response: CostQueryResponse;
   chartType: CostChartType;
   binning: CostBinningId;
-  currency: string;
+  /** Running totals: the config's toggle (the legacy `cumulative` bin implies it). */
+  cumulative?: boolean | undefined;
+  /**
+   * Formats one value for the axis, legend and table: money for the cost
+   * measure, a quantity with its unit for usage, a whole number for count.
+   */
+  format: (value: number) => string;
   /**
    * Dated notes drawn over the chart, read-only. Mobile shows the markers and
    * the text on tap; writing one stays on web and desktop, where the date
@@ -90,7 +97,15 @@ function colorFor(index: number, isOther: boolean): string {
     : (SERIES_COLORS[index % SERIES_COLORS.length] ?? OTHER_SERIES_COLOR);
 }
 
-export function CostChart({ response, chartType, binning, currency, annotations }: CostChartProps) {
+export function CostChart({
+  response,
+  chartType,
+  binning,
+  cumulative: cumulativeFlag,
+  format,
+  annotations,
+}: CostChartProps) {
+  const { bin, cumulative } = effectiveCostBinning({ binning, cumulative: cumulativeFlag });
   const actualTotals = totalPerBucket(response.series);
 
   // Forecast buckets run past the observed ones, so they widen the axis.
@@ -98,7 +113,8 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     ? binForecast(
         response.forecast,
         binning,
-        binning === "cumulative" ? actualTotals[actualTotals.length - 1]?.amount : undefined,
+        cumulative ? actualTotals[actualTotals.length - 1]?.amount : undefined,
+        cumulative,
       )
     : [];
 
@@ -109,7 +125,8 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     ? binForecast(
         response.scenario.points,
         binning,
-        binning === "cumulative" ? actualTotals[actualTotals.length - 1]?.amount : undefined,
+        cumulative ? actualTotals[actualTotals.length - 1]?.amount : undefined,
+        cumulative,
       )
     : [];
 
@@ -128,7 +145,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     return {
       label: s.label,
       color: colorFor(i, s.key === OTHER_GROUP_KEY),
-      total: s.points.reduce((sum, p) => sum + p.amount, 0),
+      total: costSeriesTotal(s.points, cumulative),
       values,
     };
   });
@@ -137,7 +154,20 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     return <Text style={styles.empty}>No cost data for this period yet</Text>;
   }
 
-  if (chartType === "pie") return <PieChart series={series} currency={currency} />;
+  if (chartType === "pie" || chartType === "donut") {
+    return <PieChart series={series} format={format} donut={chartType === "donut"} />;
+  }
+  if (chartType === "table") {
+    return (
+      <CostTable
+        buckets={buckets.filter((b) => actualTotals.some((p) => p.bucket === b))}
+        bucketIndex={bucketIndex}
+        series={series}
+        bin={bin}
+        format={format}
+      />
+    );
+  }
 
   const stacked = chartType === "stacked_bar" || chartType === "area";
 
@@ -200,12 +230,12 @@ export function CostChart({ response, chartType, binning, currency, annotations 
    * from. Nothing here touches `series`, `axis`, or `buckets`: annotations are
    * an overlay, and the bars are identical with or without them.
    */
-  const markers = bucketCostAnnotations(annotations ?? [], buckets, binning);
+  const markers = bucketCostAnnotations(annotations ?? [], buckets, bin);
 
   return (
     <View style={{ gap: spacing.sm }}>
       <Svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
-        <GridTicks ticks={axis.ticks} y={y} format={(t) => formatMoney(t, currency)} />
+        <GridTicks ticks={axis.ticks} y={y} format={format} />
 
         {chartType === "stacked_bar" || chartType === "multi_bar" ? (
           <Bars
@@ -288,14 +318,14 @@ export function CostChart({ response, chartType, binning, currency, annotations 
         })}
 
         <EdgeLabels
-          start={formatBucketLabel(buckets[0]!, binning)}
-          end={buckets.length > 1 ? formatBucketLabel(buckets[buckets.length - 1]!, binning) : null}
+          start={formatBucketLabel(buckets[0]!, bin)}
+          end={buckets.length > 1 ? formatBucketLabel(buckets[buckets.length - 1]!, bin) : null}
         />
       </Svg>
 
       <Legend
         series={series}
-        currency={currency}
+        format={format}
         extra={[
           ...(comparison ? [{ label: "Previous period", color: colors.textMuted }] : []),
           ...(forecast ? [{ label: "Forecast (trend)", color: FORECAST_COLOR }] : []),
@@ -372,7 +402,16 @@ const PIE_SIZE = 168;
 const PIE_R = 66;
 const PIE_INNER = 36;
 
-function PieChart({ series, currency }: { series: PlotSeries[]; currency: string }) {
+function PieChart({
+  series,
+  format,
+  donut,
+}: {
+  series: PlotSeries[];
+  format: (value: number) => string;
+  /** A ring with the total in its hole; otherwise a full pie. */
+  donut: boolean;
+}) {
   const total = series.reduce((sum, s) => sum + Math.max(0, s.total), 0);
   if (total <= 0) return <Text style={styles.empty}>No cost data for this period yet</Text>;
 
@@ -391,24 +430,53 @@ function PieChart({ series, currency }: { series: PlotSeries[]; currency: string
           const from = angle + gap / 2;
           const to = angle + sweep - gap / 2;
           angle += sweep;
-          return <Path key={s.label} d={donutSlice(center, from, to)} fill={s.color} />;
+          return (
+            <Path
+              key={s.label}
+              d={donutSlice(center, from, to, donut ? PIE_INNER : 0)}
+              fill={s.color}
+            />
+          );
         })}
+        {donut ? (
+          <SvgText
+            x={center}
+            y={center + 4}
+            fill={colors.textSecondary}
+            fontSize={12}
+            fontWeight="600"
+            textAnchor="middle"
+          >
+            {format(total)}
+          </SvgText>
+        ) : null}
       </Svg>
-      <Legend series={series} currency={currency} />
+      <Legend series={series} format={format} />
     </View>
   );
 }
 
-/** Donut wedge between two angles, as an SVG path. */
-function donutSlice(center: number, from: number, to: number): string {
+/**
+ * Wedge between two angles, as an SVG path: a ring segment for a donut, or a
+ * slice to the centre when `inner` is 0.
+ */
+function donutSlice(center: number, from: number, to: number, inner: number): string {
   const large = to - from > Math.PI ? 1 : 0;
   const p = (radius: number, a: number) =>
     `${center + radius * Math.cos(a)},${center + radius * Math.sin(a)}`;
+  if (inner === 0) {
+    return [
+      `M${center},${center}`,
+      `L${p(PIE_R, from)}`,
+      `A${PIE_R},${PIE_R} 0 ${large} 1 ${p(PIE_R, to)}`,
+      "Z",
+    ].join("");
+  }
   return [
     `M${p(PIE_R, from)}`,
     `A${PIE_R},${PIE_R} 0 ${large} 1 ${p(PIE_R, to)}`,
-    `L${p(PIE_INNER, to)}`,
-    `A${PIE_INNER},${PIE_INNER} 0 ${large} 0 ${p(PIE_INNER, from)}`,
+    `L${p(inner, to)}`,
+    `A${inner},${inner} 0 ${large} 0 ${p(inner, from)}`,
     "Z",
   ].join("");
 }
@@ -419,11 +487,11 @@ function donutSlice(center: number, from: number, to: number): string {
  */
 function Legend({
   series,
-  currency,
+  format,
   extra = [],
 }: {
   series: PlotSeries[];
-  currency: string;
+  format: (value: number) => string;
   extra?: Array<{ label: string; color: string }>;
 }) {
   return (
@@ -434,7 +502,7 @@ function Legend({
           <Text style={styles.legendLabel} numberOfLines={1}>
             {s.label}
           </Text>
-          <Text style={styles.legendValue}>{formatMoney(s.total, currency)}</Text>
+          <Text style={styles.legendValue}>{format(s.total)}</Text>
         </View>
       ))}
       {extra.map((e) => (
@@ -445,6 +513,53 @@ function Legend({
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+/**
+ * The table view on a phone: one row per bucket with its total, newest first,
+ * and the per-series split underneath when there is more than one series. A
+ * column per series would not fit a phone's width; rows do.
+ */
+function CostTable({
+  buckets,
+  bucketIndex,
+  series,
+  bin,
+  format,
+}: {
+  buckets: string[];
+  bucketIndex: Map<string, number>;
+  series: PlotSeries[];
+  bin: CostBinningId;
+  format: (value: number) => string;
+}) {
+  const rows = [...buckets].reverse();
+  return (
+    <View style={styles.table}>
+      {rows.map((bucket) => {
+        const at = bucketIndex.get(bucket)!;
+        const total = series.reduce((sum, s) => sum + (s.values[at] ?? 0), 0);
+        return (
+          <View key={bucket} style={styles.tableRow}>
+            <View style={styles.tableHead}>
+              <Text style={styles.tableBucket}>{formatBucketLabel(bucket, bin)}</Text>
+              <Text style={styles.tableTotal}>{format(total)}</Text>
+            </View>
+            {series.length > 1 &&
+              series.map((s) => (
+                <View key={s.label} style={styles.tableSplit}>
+                  <View style={[styles.swatch, { backgroundColor: s.color }]} />
+                  <Text style={styles.legendLabel} numberOfLines={1}>
+                    {s.label}
+                  </Text>
+                  <Text style={styles.legendValue}>{format(s.values[at] ?? 0)}</Text>
+                </View>
+              ))}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -510,4 +625,10 @@ const styles = StyleSheet.create({
   swatch: { width: 8, height: 8, borderRadius: 2 },
   legendLabel: { color: colors.textMuted, fontSize: 11, flex: 1 },
   legendValue: { color: colors.textSecondary, fontSize: 11 },
+  table: { gap: spacing.sm },
+  tableRow: { gap: 2 },
+  tableHead: { flexDirection: "row", justifyContent: "space-between" },
+  tableBucket: { color: colors.textMuted, fontSize: 12 },
+  tableTotal: { color: colors.text, fontSize: 12, fontWeight: "600" },
+  tableSplit: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: 4 },
 });

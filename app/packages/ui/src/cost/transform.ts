@@ -91,6 +91,7 @@ export function spliceForecast(
   pivot: PivotedChart,
   response: CostQueryResponse,
   binning: CostBinningId,
+  cumulative = binning === "cumulative",
 ): void {
   const forecast = response.forecast;
   if (!forecast || forecast.length === 0 || pivot.rows.length === 0) return;
@@ -100,7 +101,8 @@ export function spliceForecast(
   const binned = binForecast(
     forecast,
     binning,
-    binning === "cumulative" ? lastActual?.amount : undefined,
+    cumulative ? lastActual?.amount : undefined,
+    cumulative,
   );
 
   const lastRow = pivot.rows[pivot.rows.length - 1];
@@ -137,6 +139,7 @@ export function spliceScenario(
   pivot: PivotedChart,
   response: CostQueryResponse,
   binning: CostBinningId,
+  cumulative = binning === "cumulative",
 ): void {
   const scenario = response.scenario;
   if (!scenario || scenario.points.length === 0 || pivot.rows.length === 0) return;
@@ -146,7 +149,8 @@ export function spliceScenario(
   const binned = binForecast(
     scenario.points,
     binning,
-    binning === "cumulative" ? lastActual?.amount : undefined,
+    cumulative ? lastActual?.amount : undefined,
+    cumulative,
   );
 
   // Anchor on the last observed bucket so the dashed line leaves the actuals

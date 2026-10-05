@@ -17,7 +17,7 @@
  * they still parse to exactly these shapes.
  */
 
-import type { CostGraphConfig, CostQueryResponse } from "./costs";
+import type { CostBinningId, CostGraphConfig, CostMeasure, CostQueryResponse } from "./costs";
 
 /** Bounds the API enforces on report names and descriptions. */
 export const COST_REPORT_LIMITS = {
@@ -130,6 +130,50 @@ export interface CostReportRunResult {
   from: string;
   to: string;
   result: CostQueryResponse;
+}
+
+/**
+ * One-off display overrides for `POST /cost-reports/:id/run`: look at a saved
+ * report as usage, or by quarter, without editing what everybody else sees.
+ * Never saved.
+ */
+export interface CostReportRunOverrides {
+  measure?: CostMeasure | undefined;
+  usageUnit?: string | undefined;
+  binning?: CostBinningId | undefined;
+  cumulative?: boolean | undefined;
+}
+
+/**
+ * The config a run with {@link CostReportRunOverrides} executes.
+ *
+ * Switching to `usage` or `count` drops the saved forecast, scenario, billing
+ * rules and unit-cost metric, because those only mean anything for money and
+ * the query refuses them otherwise: an override is a different view of the
+ * same scope, not a request to fail. The saved config itself is untouched.
+ */
+export function applyCostReportRunOverrides(
+  config: CostGraphConfig,
+  overrides: CostReportRunOverrides,
+): CostGraphConfig {
+  const next: CostGraphConfig = { ...config };
+  if (overrides.binning) next.binning = overrides.binning;
+  if (overrides.cumulative !== undefined) next.cumulative = overrides.cumulative;
+  if (overrides.measure) {
+    next.measure = overrides.measure;
+    if (overrides.measure !== "usage") delete next.usageUnit;
+    if (overrides.measure !== "cost") {
+      next.showForecast = false;
+      delete next.scenarioModelId;
+      delete next.adjusted;
+      delete next.unitCostMetricId;
+      delete next.unitCostMode;
+    }
+  }
+  if (overrides.usageUnit) next.usageUnit = overrides.usageUnit;
+  // `binning: "cumulative"` plus an explicit toggle-off means daily bins.
+  if (overrides.cumulative === false && next.binning === "cumulative") next.binning = "daily";
+  return next;
 }
 
 /** Trim and bound a report name; returns null when it isn't usable. */

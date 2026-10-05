@@ -3,12 +3,15 @@ import type {
   CompiledBillingAdjustments,
   CostBasis,
   CostBinningId,
+  CostBinSize,
   CostChargeType,
   CostDimensionId,
   CostFilter,
+  CostGranularity,
   CostQueryRequest,
   CostSeriesPoint,
 } from "@infrawrench/client-core";
+import { effectiveCostBinning, HOURLY_BINNING_UNAVAILABLE_REASON } from "@infrawrench/client-core";
 import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import { aiCostAttributed, costDaily } from "./schema";
@@ -450,17 +453,45 @@ function reallocationExpr(
   return sql`multiIf(${sql.join(branches, sql`, `)}, ${fallback})`;
 }
 
-function bucketExpr(binning: CostBinning): SQL {
-  switch (binning) {
+/**
+ * The granularity `cost_daily` stores, which is the granularity of every
+ * provider's cost rows: the plugin contract's `CostRow.date` is a UTC day and
+ * the table is keyed by `day`. Reported per account by `GET /costs/status` so
+ * the editors can explain why hourly bins are unavailable, and checked by
+ * {@link bucketExpr} so no reader can quietly draw a day's spend as if it all
+ * landed at midnight.
+ */
+export const COST_STORE_GRANULARITY: CostGranularity = "daily";
+
+/**
+ * The bucket expression for a bin size. Running totals (`cumulative`) are a
+ * post-pass over these buckets, not a bucket of their own, so they never
+ * reach here.
+ */
+function bucketExpr(bin: CostBinSize): SQL {
+  switch (bin) {
     case "weekly":
       return sql`toString(toStartOfWeek(${costDaily.day}, 1))`;
     case "monthly":
       return sql`toString(toStartOfMonth(${costDaily.day}))`;
-    // Cumulative is a running sum over daily buckets, applied after the query.
+    case "quarterly":
+      return sql`toString(toStartOfQuarter(${costDaily.day}))`;
     case "daily":
-    case "cumulative":
       return sql`toString(${costDaily.day})`;
+    case "hourly":
+      // There is no hour to bucket by: a day-keyed row would land entirely in
+      // its midnight bucket and the chart would show 23 empty hours a day.
+      throw new Error(HOURLY_BINNING_UNAVAILABLE_REASON);
   }
+}
+
+/** Replace each point with the running sum up to and including it. */
+function runningSum(points: CostSeriesPoint[]): CostSeriesPoint[] {
+  let running = 0;
+  return points.map((p) => {
+    running += p.amount;
+    return { bucket: p.bucket, amount: running };
+  });
 }
 
 /**
@@ -505,8 +536,17 @@ interface QueryCostsRow {
  * account-targeted rule would fire on a row showback already considers moved.
  */
 export async function queryCosts(organizationId: string, q: CostQuery): Promise<CostSeriesGroup[]> {
-  const rawExpr = amountExpr(q.costBasis);
-  const adjustments = q.adjustments;
+  const { bin, cumulative } = effectiveCostBinning(q);
+  if (q.measure === "count") {
+    return (await queryCostCounts(organizationId, q)).series;
+  }
+  // `usage` sums the quantity column instead of money, over rows in one unit
+  // only, and ignores currency entirely: forty hours billed in USD and forty in
+  // EUR are eighty hours. The service refuses billing rules for it, so the
+  // adjustment branches below never see a usage query.
+  const usage = q.measure === "usage";
+  const rawExpr = usage ? sql`${costDaily.usage_amount}` : amountExpr(q.costBasis);
+  const adjustments = usage ? undefined : q.adjustments;
   const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
   let groupExpr = q.groupBy === "none" ? sql`''` : dimensionExpr(q.groupBy, q.groupByTagKey);
@@ -525,9 +565,10 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
       membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
     ),
     chargeTypeCondition(q.chargeTypes),
+    usage ? eq(costDaily.usage_unit, q.usageUnit ?? "") : undefined,
   );
   const selection = {
-    bucket: bucketExpr(q.binning).as("bucket"),
+    bucket: bucketExpr(bin).as("bucket"),
     grp: groupExpr.as("grp"),
     currency: costDaily.currency,
     amount: sql<number>`sum(${moneyExpr})`.as("amount"),
@@ -584,14 +625,25 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
 
   const groups = new Map<string, CostSeriesGroup>();
   for (const r of rows) {
-    const mapKey = `${r.grp}\x00${r.currency}`;
+    // A quantity has no currency: usage rows billed in different currencies
+    // are the same hours, so they share one series keyed by `""`. The scan
+    // still groups by currency (the SQL is the spend query's, unchanged) and
+    // the fold happens here, on rows already ordered by bucket.
+    const currency = usage ? "" : r.currency;
+    const mapKey = `${r.grp}\x00${currency}`;
     let g = groups.get(mapKey);
     if (!g) {
-      g = { key: String(r.grp), currency: r.currency, points: [] };
+      g = { key: String(r.grp), currency, points: [] };
       if (adjustments) g.rawPoints = [];
       groups.set(mapKey, g);
     }
-    g.points.push({ bucket: String(r.bucket), amount: Number(r.amount) });
+    const bucket = String(r.bucket);
+    const last = g.points[g.points.length - 1];
+    if (usage && last && last.bucket === bucket) {
+      last.amount += Number(r.amount);
+      continue;
+    }
+    g.points.push({ bucket, amount: Number(r.amount) });
     // `rawPoints` exists only when rules were applied, which is exactly when
     // the projection carried `raw_amount`. The two conditions are the same
     // `adjustments` check, so this never reads a column that was not selected.
@@ -599,20 +651,10 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   }
 
   const result = [...groups.values()];
-  if (q.binning === "cumulative") {
+  if (cumulative) {
     for (const g of result) {
-      let running = 0;
-      g.points = g.points.map((p) => {
-        running += p.amount;
-        return { bucket: p.bucket, amount: running };
-      });
-      if (g.rawPoints) {
-        let rawRunning = 0;
-        g.rawPoints = g.rawPoints.map((p) => {
-          rawRunning += p.amount;
-          return { bucket: p.bucket, amount: rawRunning };
-        });
-      }
+      g.points = runningSum(g.points);
+      if (g.rawPoints) g.rawPoints = runningSum(g.rawPoints);
     }
   }
   return result;
@@ -655,17 +697,108 @@ export async function queryUsageDaily(
   return rows.map((r) => ({ bucket: String(r.bucket), amount: Number(r.amount) }));
 }
 
-/** Distinct usage units present in an org's cost data (the usage-budget picker). */
+/**
+ * The `count` measure: how many distinct values of the group-by dimension had
+ * nonzero spend in each bin, plus the distinct count over the whole range.
+ *
+ * Two levels of aggregation, both in ClickHouse: the inner query sums spend per
+ * (bin, value, currency) and the outer counts the values whose sum is not zero.
+ * "Nonzero" is judged per currency, so a value billed 5 USD and refunded 5 EUR
+ * on the same day still counts (the two amounts are not comparable), and
+ * restated rows net out exactly as they do on the spend chart. Empty values
+ * (rows with no resource id, untagged rows) are not a value and are never
+ * counted.
+ *
+ * The range total is a separate distinct count rather than a sum of the bins:
+ * a service billed on all thirty days is one service, not thirty.
+ */
+export async function queryCostCounts(
+  organizationId: string,
+  q: CostQuery,
+): Promise<{ series: CostSeriesGroup[]; total: number }> {
+  if (q.groupBy === "none") throw new Error("The count measure needs a groupBy dimension");
+  const { bin } = effectiveCostBinning(q);
+  const groupExpr = dimensionExpr(q.groupBy, q.groupByTagKey);
+  const moneyExpr = amountExpr(q.costBasis);
+  const where = and(
+    costDailyOrgCondition(organizationId),
+    dayRange(q.from, q.to),
+    ...q.filters.map((f) =>
+      membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+    ),
+    chargeTypeCondition(q.chargeTypes),
+    sql`${groupExpr} != ''`,
+  );
+
+  const [perBin, overall] = await Promise.all([
+    query((db) => {
+      const perGroup = db
+        .select({
+          bucket: bucketExpr(bin).as("bucket"),
+          grp: groupExpr.as("grp"),
+          currency: costDaily.currency,
+          amount: sql<number>`sum(${moneyExpr})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .where(where)
+        .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+        .as("per_group");
+      return db
+        .select({
+          bucket: perGroup.bucket,
+          n: sql<string>`uniqExact(${perGroup.grp})`.as("n"),
+        })
+        .from(perGroup)
+        .where(sql`${perGroup.amount} != 0`)
+        .groupBy(perGroup.bucket)
+        .orderBy(asc(perGroup.bucket));
+    }),
+    query((db) => {
+      const perGroup = db
+        .select({
+          grp: groupExpr.as("grp"),
+          currency: costDaily.currency,
+          amount: sql<number>`sum(${moneyExpr})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .where(where)
+        .groupBy(sql`grp`, costDaily.currency)
+        .as("per_group_total");
+      return db
+        .select({ n: sql<string>`uniqExact(${perGroup.grp})`.as("n") })
+        .from(perGroup)
+        .where(sql`${perGroup.amount} != 0`);
+    }),
+  ]);
+
+  const points = perBin.map((r) => ({ bucket: String(r.bucket), amount: Number(r.n) }));
+  return {
+    series: points.length > 0 ? [{ key: "", currency: "", points }] : [],
+    total: Number(overall[0]?.n ?? 0),
+  };
+}
+
+/**
+ * The usage units present in an org's cost rows, most-used first by row count:
+ * the choices for a usage card's unit picker, so nobody has to know how a
+ * provider spells "hours".
+ */
 export async function getCostUsageUnits(organizationId: string): Promise<string[]> {
   const rows = await query((db) =>
     db
-      .selectDistinct({ value: costDaily.usage_unit })
+      .select({
+        unit: costDaily.usage_unit,
+        rows: sql<string>`count()`.as("rows"),
+      })
       .from(costDaily)
       .where(and(costDailyOrgCondition(organizationId), sql`${costDaily.usage_unit} != ''`))
-      .orderBy(asc(costDaily.usage_unit))
-      .limit(200),
+      .groupBy(costDaily.usage_unit)
+      .orderBy(desc(sql`rows`))
+      .limit(500),
   );
-  return rows.map((r) => String(r.value));
+  return rows.map((r) => r.unit);
 }
 
 /** One provider-native resource's summed spend over a date range. */

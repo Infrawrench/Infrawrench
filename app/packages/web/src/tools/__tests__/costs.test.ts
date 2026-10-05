@@ -143,7 +143,7 @@ describe("costTools", () => {
   });
 
   it("query_costs rejects malformed input", async () => {
-    const r = await tool("query_costs").handler({ ...validQuery, binning: "hourly" }, auth);
+    const r = await tool("query_costs").handler({ ...validQuery, binning: "fortnightly" }, auth);
     expect(r.isError).toBe(true);
     expect(mockRunCostQuery).not.toHaveBeenCalled();
   });

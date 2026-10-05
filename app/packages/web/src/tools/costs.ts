@@ -71,9 +71,18 @@ export function costTools(): ToolDefinition[] {
         "Dates are inclusive YYYY-MM-DD. Group by " +
         "provider/account/service/region/resource/tag/charge_type/commitment " +
         "(groupByTagKey required for tag), filter on the same dimensions, choose " +
-        "daily/weekly/monthly/cumulative binning, and optionally include the previous period " +
-        "(comparePreviousPeriod) or a trend forecast (forecast). Amounts are in the returned " +
-        'currency\'s major unit; groups beyond topN fold into an "Other" series.\n\n' +
+        "daily/weekly/monthly/quarterly binning (cumulative: true for running totals at any bin; " +
+        "'hourly' is refused while every provider reports daily rows), and optionally include " +
+        "the previous period (comparePreviousPeriod) or a trend forecast (forecast). Amounts are " +
+        'in the returned currency\'s major unit; groups beyond topN fold into an "Other" series.\n\n' +
+        "`measure` changes what is summed: 'cost' (default, money), 'usage' (the usage quantity " +
+        "providers report, which needs `usageUnit` because hours and gigabytes cannot be added; " +
+        "list units with list_cost_dimension_values dimension=usage-units) or 'count' (how many " +
+        "distinct values of `groupBy` had nonzero cost in each bin, e.g. how many services or " +
+        "resources were billed each day; needs a groupBy, and its total is a distinct count over " +
+        "the whole range, not a sum). Usage and count responses carry `measure`, their series " +
+        "have an empty currency, and they cannot be combined with forecast, scenarios or " +
+        "adjusted.\n\n" +
         "costBasis picks the money: 'cash' (default) is what the provider charged on the day it " +
         "charged it; 'amortized' spreads a commitment's up-front fee across the term it buys, " +
         "which is the right number for an org holding reservations or savings plans. Providers " +
@@ -227,8 +236,9 @@ export function costTools(): ToolDefinition[] {
       description:
         "List the distinct values present in the organization's cost data for a dimension " +
         "(with display labels), the available tag keys via dimension=tag-keys, or the usage " +
-        "units providers report (for a usage budget's usageUnit) via dimension=usage-units. Use " +
-        "this to discover valid filter/group-by values before calling query_costs.",
+        "units providers report via dimension=usage-units (a usage budget's usageUnit, or " +
+        "query_costs' measure='usage'). Use this to discover valid filter/group-by values before " +
+        "calling query_costs.",
       inputSchema: {
         dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units"]),
         tagKey: z.string().optional().describe("Required when dimension is 'tag'."),

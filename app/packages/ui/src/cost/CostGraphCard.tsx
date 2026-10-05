@@ -21,6 +21,10 @@ import {
   FORECAST_COLOR,
   OTHER_SERIES_COLOR,
   SCENARIO_COLOR,
+  costSeriesTotal,
+  effectiveCostBinning,
+  formatCostMeasureValue,
+  isCostTotalsChart,
   type CostConversion,
 } from "@infrawrench/client-core";
 import { useChartTheme } from "../chart-theme.js";
@@ -127,6 +131,10 @@ function SpendGraphCard({
   } | null>(null);
 
   const request = useMemo(() => costQueryForConfig(config), [config]);
+  const { bin, cumulative } = effectiveCostBinning(config);
+  /** Draws period totals per group (pie, donut) rather than a time axis. */
+  const totalsChart = isCostTotalsChart(config.chartType);
+  const tableView = config.chartType === "table";
 
   /**
    * Held in a ref rather than listed in the fetch effect's dependencies: a
@@ -145,17 +153,19 @@ function SpendGraphCard({
       .then((response) => {
         if (cancelled) return;
         const pivot = pivotSeries(response.series);
-        if (response.comparison && config.chartType !== "pie") {
+        if (response.comparison && !totalsChart) {
           alignComparison(pivot.rows, response.comparison);
         }
-        if (response.forecast && config.chartType !== "pie") {
-          spliceForecast(pivot, response, config.binning);
+        // The table lists observed buckets only: a projected row would read as
+        // a recorded figure in a grid of recorded figures.
+        if (response.forecast && !totalsChart && !tableView) {
+          spliceForecast(pivot, response, config.binning, cumulative);
         }
         // A second overlay, never a replacement for the first: the trend line
         // stays on the chart beside the scenario line so a reader can see what
         // the fit said before anybody's assumptions touched it.
-        if (response.scenario && config.chartType !== "pie") {
-          spliceScenario(pivot, response, config.binning);
+        if (response.scenario && !totalsChart && !tableView) {
+          spliceScenario(pivot, response, config.binning, cumulative);
         }
         setState({ response, pivot });
         onConversionRef.current?.(response.conversion);
@@ -173,7 +183,7 @@ function SpendGraphCard({
     return () => {
       cancelled = true;
     };
-  }, [api, request, config.chartType, config.binning]);
+  }, [api, request, totalsChart, tableView, config.binning, cumulative]);
 
   const loadAnnotations = api.listCostAnnotations;
   const refreshAnnotations = useCallback(async () => {
@@ -200,13 +210,13 @@ function SpendGraphCard({
    * whether or not a single note exists.
    */
   const markers: CostAnnotationMarker[] = useMemo(() => {
-    if (!state || config.chartType === "pie") return [];
+    if (!state || totalsChart || tableView) return [];
     return bucketCostAnnotations(
       annotations,
       state.pivot.rows.map((r) => String(r["bucket"])),
-      config.binning,
+      bin,
     );
-  }, [annotations, state, config.binning, config.chartType]);
+  }, [annotations, state, bin, totalsChart, tableView]);
 
   const canWriteAnnotations = Boolean(
     api.createCostAnnotation && api.updateCostAnnotation && api.deleteCostAnnotation,
@@ -214,6 +224,15 @@ function SpendGraphCard({
   const openMarkerRow = markers.find((m) => m.bucket === openMarker) ?? null;
 
   const currency = state?.response.currencies[0] ?? "USD";
+  /**
+   * Every value on the card goes through here: money for the cost measure, a
+   * quantity with its unit for usage, a whole number for count. The response
+   * says which, so a card can never print a count with a dollar sign.
+   */
+  const measure = state?.response.measure;
+  const usageUnit = state?.response.usageUnit;
+  const fmt = (value: number, cur: string = currency): string =>
+    formatCostMeasureValue(value, { measure, currency: cur, usageUnit });
   const mixedCurrency = (state?.response.currencies.length ?? 0) > 1;
   const conversionNote = describeCostConversion(state?.response.conversion);
   /**
@@ -252,14 +271,24 @@ function SpendGraphCard({
       : null;
   const total = state
     ? Object.entries(state.response.totals)
-        .map(([cur, amt]) => formatMoney(amt, cur))
+        .map(([cur, amt]) => fmt(amt, cur))
         .join(" + ")
     : null;
   const previousTotal =
     state?.response.previousTotals &&
     Object.entries(state.response.previousTotals)
-      .map(([cur, amt]) => formatMoney(amt, cur))
+      .map(([cur, amt]) => fmt(amt, cur))
       .join(" + ");
+  /**
+   * What the Y axis is, said under the title whenever it is not money: a
+   * number with no currency sign could otherwise be read as dollars.
+   */
+  const measureCaption =
+    measure === "usage"
+      ? gt("Usage quantity in {unit}.", { unit: usageUnit ?? "" })
+      : measure === "count"
+        ? gt("Distinct values with nonzero cost per bin; the total counts each value once.")
+        : null;
 
   const deltaPct = useMemo(() => {
     if (!state?.response.previousTotals) return null;
@@ -324,6 +353,75 @@ function SpendGraphCard({
   // states keep their own text visible to assistive tech.
   const hasChartData = !loading && !error && (state?.pivot.rows.length ?? 0) > 0;
 
+  /**
+   * The table view: one row per bucket, a column per series, the bucket total
+   * and (when comparing) the previous period's total for the same position.
+   * Real table semantics, so it reads cell by cell with a screen reader rather
+   * than as one opaque image.
+   */
+  const renderTable = (pivot: PivotedChart) => {
+    const comparing = Boolean(state?.response.comparison);
+    return (
+      <div className="flex-1 min-h-0 overflow-auto">
+        <table className="w-full text-xs tabular-nums">
+          <thead className="sticky top-0 bg-surface-raised">
+            <tr className="text-on-surface-faint">
+              <th scope="col" className="text-left font-medium py-1 pr-3">
+                {gt("Period")}
+              </th>
+              {pivot.series.map((def) => (
+                <th key={def.dataKey} scope="col" className="text-right font-medium py-1 px-2">
+                  {def.label}
+                </th>
+              ))}
+              {pivot.series.length > 1 && (
+                <th scope="col" className="text-right font-medium py-1 px-2">
+                  {gt("Total")}
+                </th>
+              )}
+              {comparing && (
+                <th scope="col" className="text-right font-medium py-1 pl-2">
+                  {gt("Previous period")}
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {pivot.rows.map((row) => {
+              const bucket = String(row["bucket"]);
+              const values = pivot.series.map((def) => row[def.dataKey]);
+              const rowTotal = values.reduce<number>(
+                (sum, v) => sum + (typeof v === "number" ? v : 0),
+                0,
+              );
+              const previous = row[COMPARISON_KEY];
+              return (
+                <tr key={bucket} className="border-t border-border text-on-surface-secondary">
+                  <th scope="row" className="text-left font-normal py-1 pr-3 whitespace-nowrap">
+                    {formatBucketLabel(bucket, bin)}
+                  </th>
+                  {values.map((v, i) => (
+                    <td key={pivot.series[i]!.dataKey} className="text-right py-1 px-2">
+                      {typeof v === "number" ? fmt(v, pivot.series[i]!.currency) : "–"}
+                    </td>
+                  ))}
+                  {pivot.series.length > 1 && (
+                    <td className="text-right py-1 px-2 text-on-surface">{fmt(rowTotal)}</td>
+                  )}
+                  {comparing && (
+                    <td className="text-right py-1 pl-2 text-on-surface-faint">
+                      {typeof previous === "number" ? fmt(previous) : "–"}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const renderChart = () => {
     if (!state) return null;
     const { pivot, response } = state;
@@ -336,12 +434,15 @@ function SpendGraphCard({
       );
     }
 
-    if (config.chartType === "pie") {
+    if (tableView) return renderTable(pivot);
+
+    if (totalsChart) {
       const slices = response.series.map((s, i) => ({
         name: s.label,
-        value: s.points.reduce((sum, p) => sum + p.amount, 0),
+        value: costSeriesTotal(s.points, cumulative),
         fill: colorFor(i, s.key === "__other__"),
       }));
+      const donut = config.chartType === "donut";
       return (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
@@ -349,7 +450,7 @@ function SpendGraphCard({
               data={slices}
               dataKey="value"
               nameKey="name"
-              innerRadius="45%"
+              innerRadius={donut ? "55%" : 0}
               outerRadius="80%"
               paddingAngle={2}
               stroke="none"
@@ -360,12 +461,26 @@ function SpendGraphCard({
             </Pie>
             <Tooltip
               contentStyle={tooltipStyle}
-              formatter={(value, name) => [formatMoney(Number(value), currency), String(name)]}
+              formatter={(value, name) => [fmt(Number(value)), String(name)]}
             />
             <Legend
               wrapperStyle={{ fontSize: 11 }}
               formatter={(value: string) => <span style={{ color: chart.tick }}>{value}</span>}
             />
+            {/* The donut's hole carries the figure the ring divides up. */}
+            {donut && total ? (
+              <text
+                x="50%"
+                y="45%"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={chart.tick}
+                fontSize={13}
+                fontWeight={600}
+              >
+                {total}
+              </text>
+            ) : null}
           </PieChart>
         </ResponsiveContainer>
       );
@@ -413,7 +528,7 @@ function SpendGraphCard({
           <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
           <XAxis
             dataKey="bucket"
-            tickFormatter={(b: string) => formatBucketLabel(b, config.binning)}
+            tickFormatter={(b: string) => formatBucketLabel(b, bin)}
             tick={{ fill: chart.tick, fontSize: 11 }}
             stroke={chart.axis}
             minTickGap={24}
@@ -421,14 +536,14 @@ function SpendGraphCard({
           <YAxis
             tick={{ fill: chart.tick, fontSize: 11 }}
             stroke={chart.axis}
-            tickFormatter={(v: number) => formatMoney(v, currency)}
+            tickFormatter={(v: number) => fmt(v)}
             domain={yScale.domain}
             ticks={yScale.ticks}
             width={70}
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelFormatter={(b) => formatBucketLabel(String(b), config.binning)}
+            labelFormatter={(b) => formatBucketLabel(String(b), bin)}
             formatter={(value, name) => {
               const label =
                 String(name) === COMPARISON_KEY
@@ -439,7 +554,7 @@ function SpendGraphCard({
                       ? scenarioLabel
                       : (pivot.series.find((s) => s.dataKey === String(name))?.label ??
                         String(name));
-              return [formatMoney(Number(value), currency), label];
+              return [fmt(Number(value)), label];
             }}
           />
           {pivot.series.length > 1 && (
@@ -691,6 +806,9 @@ function SpendGraphCard({
               })}
           </p>
         )}
+        {measureCaption && (
+          <p className="text-[11px] text-on-surface-faint mt-0.5">{measureCaption}</p>
+        )}
         {(mixedCurrency || periodNativeNote || conversionNote) && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
             {mixedCurrency && gt("Mixed currencies — series are shown per currency. ")}
@@ -708,8 +826,8 @@ function SpendGraphCard({
 
       <div
         className="flex-1 min-h-0 px-3 pb-3 flex flex-col"
-        role={hasChartData ? "img" : undefined}
-        aria-label={hasChartData ? chartAriaLabel : undefined}
+        role={hasChartData && !tableView ? "img" : undefined}
+        aria-label={hasChartData && !tableView ? chartAriaLabel : undefined}
       >
         {loading ? (
           <div

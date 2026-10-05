@@ -1,7 +1,13 @@
 import { useState } from "react";
 import {
   COST_BINNING_LABELS,
-  COST_BINNINGS,
+  COST_BIN_SIZES,
+  COST_MEASURE_LABELS,
+  COST_MEASURES,
+  costDisplayProblem,
+  effectiveCostBinning,
+  isCostTotalsChart,
+  type CostMeasure,
   COST_CHART_TYPE_LABELS,
   COST_CHART_TYPES,
   COST_DIMENSION_LABELS,
@@ -41,7 +47,19 @@ const CHART_TYPE_OPTIONS = COST_CHART_TYPES.map((t) => ({
   value: t,
   label: COST_CHART_TYPE_LABELS[t],
 }));
-const BINNING_OPTIONS = COST_BINNINGS.map((b) => ({ value: b, label: COST_BINNING_LABELS[b] }));
+// Hourly is left out rather than shown as a dead chip: every provider's cost
+// rows are daily (the hint below says so), and a chip can't be disabled.
+const BINNING_OPTIONS = COST_BIN_SIZES.filter((b) => b !== "hourly").map((b) => ({
+  value: b,
+  label: COST_BINNING_LABELS[b],
+}));
+const MEASURE_OPTIONS = COST_MEASURES.map((m) => ({ value: m, label: COST_MEASURE_LABELS[m] }));
+
+/** The legacy `binning: "cumulative"` as a bin size plus the toggle, like web. */
+function normalizeDisplayConfig(config: CostGraphConfig): CostGraphConfig {
+  if (config.binning !== "cumulative") return config;
+  return { ...config, binning: "daily", cumulative: true };
+}
 const PRESET_OPTIONS = COST_RANGE_PRESETS.map((p) => ({
   value: p,
   label: COST_RANGE_PRESET_LABELS[p],
@@ -65,7 +83,13 @@ export function CostGraphSheet({
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(initialTitle);
-  const [config, setConfig] = useState<CostGraphConfig>(initialConfig);
+  const [config, setConfig] = useState<CostGraphConfig>(() =>
+    normalizeDisplayConfig(initialConfig),
+  );
+  const measure: CostMeasure = config.measure ?? "cost";
+  const { bin, cumulative } = effectiveCostBinning(config);
+  // The units the org's cost rows carry, so nobody has to type "GB-Mo".
+  const usageUnits = useDimensionValues("usage-units", undefined, measure === "usage");
   const [topNText, setTopNText] = useState(String(initialConfig.topN));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +100,23 @@ export function CostGraphSheet({
   const set = (patch: Partial<CostGraphConfig>) =>
     setConfig((prev) => ({ ...prev, ...patch }) as CostGraphConfig);
 
+  /** Same clearing rules as web: money-only options go when money does. */
+  const setMeasure = (next: CostMeasure) =>
+    setConfig((prev) => {
+      const updated: CostGraphConfig = { ...prev, measure: next === "cost" ? undefined : next };
+      if (next !== "usage") delete updated.usageUnit;
+      if (next !== "cost") {
+        updated.showForecast = false;
+        delete updated.scenarioModelId;
+        delete updated.adjusted;
+        delete updated.unitCostMetricId;
+        delete updated.unitCostMode;
+        if (next === "count" && isCostTotalsChart(updated.chartType)) updated.chartType = "line";
+      }
+      if (next === "count") delete updated.cumulative;
+      return updated;
+    });
+
   async function save() {
     const topN = Math.max(1, Math.min(15, Number(topNText) || DEFAULT_COST_GRAPH_CONFIG.topN));
     const cleaned: CostGraphConfig = {
@@ -84,9 +125,17 @@ export function CostGraphSheet({
       // An empty rule matches everything, which is not what an operator who
       // added a row and picked nothing meant: drop it rather than save it.
       filters: config.filters.filter((f) => f.values.length > 0),
+      ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),
     };
     if (cleaned.groupBy === "tag" && !cleaned.groupByTagKey) {
       setError("Choose a tag key to group by");
+      return;
+    }
+    // The shared rule set the API enforces, checked here so the sheet can say
+    // what to fix rather than surfacing a 400.
+    const problem = costDisplayProblem({ ...cleaned, forecast: cleaned.showForecast });
+    if (problem) {
+      setError(problem);
       return;
     }
     setSaving(true);
@@ -124,14 +173,54 @@ export function CostGraphSheet({
       />
       <ChipSelect
         label="Chart type"
-        options={CHART_TYPE_OPTIONS}
+        options={
+          // A count is one series: a pie of it would be a single slice.
+          measure === "count"
+            ? CHART_TYPE_OPTIONS.filter((o) => !isCostTotalsChart(o.value))
+            : CHART_TYPE_OPTIONS
+        }
         value={config.chartType}
         onChange={(chartType) => set({ chartType })}
       />
       <ChipSelect
+        label="Measure"
+        hint={
+          measure === "usage"
+            ? "Sums the usage quantity providers report, in one unit."
+            : measure === "count"
+              ? "Distinct values of the group-by with nonzero cost per bin."
+              : undefined
+        }
+        options={MEASURE_OPTIONS}
+        value={measure}
+        onChange={setMeasure}
+      />
+      {measure === "usage" ? (
+        <ChipSelect
+          label="Usage unit"
+          hint={
+            usageUnits.isLoading
+              ? "Loading units…"
+              : (usageUnits.data ?? []).length === 0
+                ? "No connected provider reports usage quantities yet."
+                : "Quantities in different units can't be added."
+          }
+          options={[
+            ...(config.usageUnit &&
+            !(usageUnits.data ?? []).some((u) => u.value === config.usageUnit)
+              ? [{ value: config.usageUnit, label: config.usageUnit }]
+              : []),
+            ...(usageUnits.data ?? []).map((u) => ({ value: u.value, label: u.label })),
+          ]}
+          value={config.usageUnit ?? null}
+          onChange={(usageUnit) => set({ usageUnit })}
+        />
+      ) : null}
+      <ChipSelect
         label="Binning"
+        hint="Hourly isn't offered: every connected provider reports spend per day."
         options={BINNING_OPTIONS}
-        value={config.binning}
+        value={bin === "hourly" ? null : bin}
         onChange={(binning) => set({ binning })}
       />
       <ChipSelect
@@ -193,11 +282,20 @@ export function CostGraphSheet({
             value={config.comparePreviousPeriod}
             onChange={(comparePreviousPeriod) => set({ comparePreviousPeriod })}
           />
-          <ToggleChip
-            label="Forecast"
-            value={config.showForecast}
-            onChange={(showForecast) => set({ showForecast })}
-          />
+          {measure === "cost" ? (
+            <ToggleChip
+              label="Forecast"
+              value={config.showForecast}
+              onChange={(showForecast) => set({ showForecast })}
+            />
+          ) : null}
+          {measure !== "count" && !config.unitCostMetricId ? (
+            <ToggleChip
+              label="Cumulative"
+              value={cumulative}
+              onChange={(next) => set({ cumulative: next || undefined })}
+            />
+          ) : null}
         </ChipRow>
       </Field>
       <FormError message={error} />

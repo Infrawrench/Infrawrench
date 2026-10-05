@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 
-import { costReportInputSchema } from "@infrawrench/ui/cost/config";
+import { costReportInputSchema, costReportRunOverridesSchema } from "@infrawrench/ui/cost/config";
 import { costReportFolderPaths, type CostReportFolder } from "@infrawrench/client-core";
 import {
   createCostReport,
@@ -122,16 +122,32 @@ export function costReportTools(): ToolDefinition[] {
         "nothing to reassemble.\n\n" +
         "A report saved with a relative range ('the last 30 days') covers a different window " +
         "every day, which is why the resolved `from`/`to` come back with the numbers: quote " +
-        "them alongside any total.",
-      inputSchema: { reportId: z.string() },
+        "them alongside any total.\n\n" +
+        "Optional one-off overrides look at the same report differently without saving " +
+        "anything: `binning` (hourly/daily/weekly/monthly/quarterly; hourly is refused while " +
+        "providers only report daily rows), `cumulative` for running totals, and `measure`: " +
+        "'cost' (money), 'usage' (summed usage quantity in one `usageUnit`, from " +
+        "list_cost_dimension_values dimension=usage-units) or 'count' (how many distinct values " +
+        "of the report's group-by had nonzero cost per bin, e.g. how many services were billed " +
+        "each day; its total is a distinct count over the whole range). Switching to usage or " +
+        "count drops the report's forecast, scenario and billing rules for that run. When the " +
+        "result carries `measure`, its amounts are not money: say so.",
+      inputSchema: { reportId: z.string(), ...costReportRunOverridesSchema.shape },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const reportId = input["reportId"] as string;
+        const { reportId, ...rest } = input as { reportId: string } & Record<string, unknown>;
+        const overrides = costReportRunOverridesSchema.safeParse(rest);
+        if (!overrides.success) return err(`Invalid overrides: ${overrides.error.message}`);
         try {
-          const result = await runCostReport(auth.organizationId, reportId);
+          const result = await runCostReport(
+            auth.organizationId,
+            reportId,
+            new Date(),
+            overrides.data,
+          );
           if (!result) return err(`Cost report not found: ${reportId}`);
           return ok(result);
         } catch (e) {

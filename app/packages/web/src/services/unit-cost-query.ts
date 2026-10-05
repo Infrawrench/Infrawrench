@@ -36,6 +36,7 @@ import {
   type UnitCostQueryResponse,
 } from "@infrawrench/client-core";
 import { queryCosts } from "@infrawrench/server-core/clickhouse/cost-readers";
+import { HOURLY_BINNING_UNAVAILABLE_REASON } from "@infrawrench/client-core";
 import {
   convertGroups,
   mergeConvertedGroups,
@@ -191,6 +192,8 @@ export async function runUnitCostQuery(
 ): Promise<UnitCostQueryResponse> {
   if (request.from > request.to) throw new CostQueryError("from must not be after to");
   if (daySpan(request.from, request.to) > 1100) throw new CostQueryError("Date range too large");
+  // Same refusal as the spend query: there are no hourly cost rows to divide.
+  if (request.binning === "hourly") throw new CostQueryError(HOURLY_BINNING_UNAVAILABLE_REASON);
 
   const metric = await getBusinessMetric(organizationId, metricKeyOrId);
   if (!metric) throw new BusinessMetricNotFoundError(metricKeyOrId);

@@ -1,7 +1,13 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
-import { CostQueryResponse } from "./costs";
+import {
+  CostBinning,
+  CostCumulative,
+  CostMeasure,
+  CostQueryResponse,
+  CostUsageUnit,
+} from "./costs";
 
 const IsoDate = z
   .string()
@@ -40,8 +46,13 @@ export const CostDateRange = z
 
 export const CostGraphConfig = strict({
   version: z.literal(1),
-  chartType: z.enum(["stacked_bar", "multi_bar", "line", "area", "pie"]),
-  binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),
+  chartType: z
+    .enum(["stacked_bar", "multi_bar", "line", "area", "pie", "donut", "table"])
+    .describe(
+      "How the series are drawn. `pie` and `donut` draw period totals per group; `table` lists " +
+        "every bucket as a row with a column per series and a total.",
+    ),
+  binning: CostBinning,
   dateRange: CostDateRange,
   groupBy: z.enum([
     "none",
@@ -77,6 +88,9 @@ export const CostGraphConfig = strict({
         "of it. Only meaningful alongside `showForecast`.",
     ),
   costBasis: z.enum(["cash", "amortized"]).optional(),
+  measure: CostMeasure.optional(),
+  usageUnit: CostUsageUnit.optional(),
+  cumulative: CostCumulative.optional(),
 })
   .describe(
     "The saved graph. Identical to the config an ad-hoc `cost_graph` dashboard widget stores " +
@@ -124,6 +138,13 @@ const CostReport = strict({
         "removes these cards; removing a card leaves the report alone.",
     ),
 }).openapi("CostReport");
+
+const CostReportRunOverrides = strict({
+  measure: CostMeasure.optional(),
+  usageUnit: CostUsageUnit.optional(),
+  binning: CostBinning.optional(),
+  cumulative: CostCumulative.optional(),
+}).openapi("CostReportRunOverrides");
 
 const CostReportRunResult = strict({
   reportId: Uuid,
@@ -220,9 +241,18 @@ export function registerCostReportPaths(ctx: BuildContext) {
     summary: "Run a cost report",
     description:
       "Executes the report's saved config and returns the series, along with the inclusive " +
-      "window a relative preset resolved to. Takes no body: the report *is* the query, so a " +
-      "caller never has to reassemble its config to get the numbers.",
-    request: { params: idParam() },
+      "window a relative preset resolved to. The body is optional: the report *is* the query, " +
+      "so a caller never has to reassemble its config to get the numbers. It may carry " +
+      "one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`) that apply " +
+      "to this run only and are never saved; switching a run to `usage` or `count` drops the " +
+      "saved forecast, scenario and billing rules, which only apply to money.",
+    request: {
+      params: idParam(),
+      body: {
+        required: false,
+        content: { "application/json": { schema: CostReportRunOverrides } },
+      },
+    },
     responses: {
       200: {
         description: "Result",

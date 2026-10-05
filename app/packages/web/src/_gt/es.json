@@ -14497,5 +14497,14 @@
   "32a05db3e5616a2a": "Principal actual",
   "270945bb12405379": "Este presupuesto tiene presupuestos secundarios, por lo que sus cifras son la suma de las de ellos durante su propio periodo; su ámbito de abajo se deja de lado mientras tenga secundarios.",
   "d347b3f88598fe3f": "El gasto real y la previsión de un presupuesto principal son la suma de los de sus secundarios. Solo los presupuestos que miden la misma moneda o unidad de uso pueden ser principales.",
-  "65e732d989fcabd1": "Aún no hay presupuestos. Un presupuesto sigue el gasto o una cantidad de uso por periodo frente a todos los costes o una parte filtrada, agrupa presupuestos secundarios y avisa al cruzar un umbral."
+  "65e732d989fcabd1": "Aún no hay presupuestos. Un presupuesto sigue el gasto o una cantidad de uso por periodo frente a todos los costes o una parte filtrada, agrupa presupuestos secundarios y avisa al cruzar un umbral.",
+  "35277ba5f4c30c67": "Cantidad de uso en {unit}.",
+  "44afd3f757216761": "Valores distintos con coste distinto de cero por intervalo; el total cuenta cada valor una vez.",
+  "d30f0d8375d3cfe4": "Por horas no está disponible: todos los proveedores conectados informan del gasto por día, así que no hay filas por hora que agrupar.",
+  "bb98f97d2c48b9a3": "Elige una unidad…",
+  "bd2c4090b9af1ac9": "Ningún proveedor conectado informa todavía de cantidades de uso, así que no hay ninguna unidad que elegir.",
+  "6d0a77776de1f616": "Suma la cantidad de uso que los proveedores informan junto al importe. Las cantidades en unidades distintas no se pueden sumar, así que solo cuentan las filas en la unidad elegida.",
+  "e78f7d02b3edeb6f": "Contar necesita una agrupación: elige qué contar (servicios, cuentas, recursos…) en Agrupar por.",
+  "442ed4f971944172": "Cuenta cuántos valores distintos de la agrupación tuvieron un coste distinto de cero en cada intervalo. La previsión, los escenarios y el acumulado no se aplican.",
+  "e135277cfe4e5938": "Acumulado"
 }

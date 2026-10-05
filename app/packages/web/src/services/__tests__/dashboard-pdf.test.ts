@@ -23,6 +23,45 @@ const { costResponseBlocks, customChartBlocks } = await import("../dashboard-pdf
 describe("costResponseBlocks", () => {
   const config = { ...DEFAULT_COST_GRAPH_CONFIG, comparePreviousPeriod: true };
 
+  it("renders a count card as a quarterly table with plain numbers", () => {
+    const { blocks, total } = costResponseBlocks(
+      {
+        ...DEFAULT_COST_GRAPH_CONFIG,
+        chartType: "table",
+        binning: "quarterly",
+        groupBy: "service",
+        measure: "count",
+      },
+      {
+        series: [
+          {
+            key: "",
+            label: "Service count",
+            currency: "",
+            points: [
+              { bucket: "2026-04-01", amount: 12 },
+              { bucket: "2026-07-01", amount: 14 },
+            ],
+          },
+        ],
+        currencies: [""],
+        totals: { "": 17 },
+        measure: "count",
+      },
+    );
+    expect(blocks[0]).toMatchObject({
+      kind: "table",
+      columns: ["Period", "Service count", "Total"],
+      rows: [
+        ["Q2 2026", "12", "12"],
+        ["Q3 2026", "14", "14"],
+      ],
+    });
+    expect(blocks[1]).toMatchObject({ kind: "table", columns: ["Group", "Count"] });
+    // The distinct total, never 12 + 14, and no currency sign.
+    expect(total).toBe("17");
+  });
+
   it("charts the series, overlays the forecast, and tabulates totals with the change", () => {
     const { blocks, total, totalChange } = costResponseBlocks(config, {
       series: [

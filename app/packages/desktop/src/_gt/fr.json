@@ -14284,5 +14284,14 @@
   "32a05db3e5616a2a": "Parent actuel",
   "270945bb12405379": "Ce budget a des budgets enfants : ses chiffres sont donc la somme des leurs sur sa propre période, et son périmètre ci-dessous est ignoré tant qu'il a des enfants.",
   "d347b3f88598fe3f": "Les dépenses réelles et les prévisions d'un parent sont la somme de celles de ses enfants. Seuls les budgets mesurant la même devise ou la même unité d'utilisation peuvent être parents.",
-  "65e732d989fcabd1": "Aucun budget pour l'instant. Un budget suit les dépenses ou une quantité d'utilisation par période sur l'ensemble des coûts ou sur une portion filtrée, regroupe des budgets enfants et alerte lorsqu'un seuil est franchi."
+  "65e732d989fcabd1": "Aucun budget pour l'instant. Un budget suit les dépenses ou une quantité d'utilisation par période sur l'ensemble des coûts ou sur une portion filtrée, regroupe des budgets enfants et alerte lorsqu'un seuil est franchi.",
+  "35277ba5f4c30c67": "Quantité d'utilisation en {unit}.",
+  "44afd3f757216761": "Valeurs distinctes avec un coût non nul par intervalle ; le total compte chaque valeur une seule fois.",
+  "d30f0d8375d3cfe4": "Le découpage horaire n'est pas disponible : tous les fournisseurs connectés déclarent les dépenses par jour, il n'y a donc pas de lignes horaires à regrouper.",
+  "bb98f97d2c48b9a3": "Choisir une unité…",
+  "bd2c4090b9af1ac9": "Aucun fournisseur connecté ne déclare encore de quantités d'utilisation, il n'y a donc aucune unité à choisir.",
+  "6d0a77776de1f616": "Additionne la quantité d'utilisation que les fournisseurs déclarent à côté du montant. Des quantités dans des unités différentes ne peuvent pas être additionnées : seules les lignes dans l'unité choisie comptent.",
+  "e78f7d02b3edeb6f": "Le comptage nécessite un regroupement : choisissez ce qu'il faut compter (services, comptes, ressources…) dans Regrouper par.",
+  "442ed4f971944172": "Compte combien de valeurs distinctes du regroupement ont eu un coût non nul dans chaque intervalle. La prévision, les scénarios et le cumul ne s'appliquent pas.",
+  "e135277cfe4e5938": "Cumulé"
 }

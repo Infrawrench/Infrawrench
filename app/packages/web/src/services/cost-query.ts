@@ -9,8 +9,13 @@ import {
   COST_CHARGE_TYPES,
   COST_CHARGE_TYPE_LABELS,
   COST_DIMENSIONS,
+  COST_DIMENSION_LABELS,
   CostQueryParseError,
+  HOURLY_BINNING_UNAVAILABLE_REASON,
   OTHER_GROUP_KEY,
+  costDisplayProblem,
+  costSeriesTotal,
+  effectiveCostBinning,
   parseCostQuery,
   type CostAccountStatus,
   type CostDimensionId,
@@ -20,10 +25,12 @@ import {
   type CostSeriesPoint,
 } from "@infrawrench/ui/cost/config";
 import {
+  COST_STORE_GRANULARITY,
   getCostCoverage,
   getCostDimensionValues,
   getCostTagKeys,
   getCostUsageUnits,
+  queryCostCounts,
   queryCosts,
   type CostSeriesGroup,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
@@ -224,18 +231,11 @@ function foldTopN(groups: CostSeriesGroup[], topN: number): CostSeriesGroup[] {
  * is its sum. Doing the cumulative special-case here too would be correct but
  * would imply a per-series reading the wire shape deliberately refuses.
  */
-function rawTotalsOf(
-  groups: CostSeriesGroup[],
-  binning: CostQueryRequest["binning"],
-): Record<string, number> {
+function rawTotalsOf(groups: CostSeriesGroup[], cumulative: boolean): Record<string, number> {
   const totals: Record<string, number> = {};
   for (const g of groups) {
     if (!g.rawPoints) continue;
-    const sum =
-      binning === "cumulative"
-        ? (g.rawPoints[g.rawPoints.length - 1]?.amount ?? 0)
-        : g.rawPoints.reduce((s, p) => s + p.amount, 0);
-    totals[g.currency] = (totals[g.currency] ?? 0) + sum;
+    totals[g.currency] = (totals[g.currency] ?? 0) + costSeriesTotal(g.rawPoints, cumulative);
   }
   return totals;
 }
@@ -292,17 +292,53 @@ async function labelSeries(
   }));
 }
 
-function totalsOf(groups: CostSeriesGroup[], binning: CostQueryRequest["binning"]) {
+function totalsOf(groups: CostSeriesGroup[], cumulative: boolean) {
   const totals: Record<string, number> = {};
   for (const g of groups) {
     // Cumulative points are running sums: the period total is the last point.
-    const sum =
-      binning === "cumulative"
-        ? (g.points[g.points.length - 1]?.amount ?? 0)
-        : g.points.reduce((s, p) => s + p.amount, 0);
-    totals[g.currency] = (totals[g.currency] ?? 0) + sum;
+    totals[g.currency] = (totals[g.currency] ?? 0) + costSeriesTotal(g.points, cumulative);
   }
   return totals;
+}
+
+/** `"Service count"`: what the single series of a count query is counting. */
+function countSeriesLabel(q: CostQueryRequest): string {
+  if (q.groupBy === "tag") return `${q.groupByTagKey ?? "Tag"} values`;
+  if (q.groupBy === "none") return "Count";
+  return `${COST_DIMENSION_LABELS[q.groupBy]} count`;
+}
+
+/**
+ * The `count` measure, answered on its own path: one series, no top-N fold, no
+ * currency, and a range total that is a distinct count rather than a sum.
+ */
+async function runCostCountQuery(
+  organizationId: string,
+  q: CostQueryRequest,
+  baseQuery: Parameters<typeof queryCostCounts>[1],
+): Promise<CostQueryResponse> {
+  const label = countSeriesLabel(q);
+  const toSeries = (groups: CostSeriesGroup[]): CostQuerySeries[] =>
+    groups.map((g) => ({ key: g.key, label, currency: "", points: g.points }));
+
+  const current = await queryCostCounts(organizationId, baseQuery);
+  const response: CostQueryResponse = {
+    series: toSeries(current.series),
+    currencies: current.series.length > 0 ? [""] : [],
+    totals: current.series.length > 0 ? { "": current.total } : {},
+    measure: "count",
+  };
+  if (q.comparePreviousPeriod) {
+    const span = daySpan(q.from, q.to);
+    const previous = await queryCostCounts(organizationId, {
+      ...baseQuery,
+      from: addDays(q.from, -span),
+      to: addDays(q.to, -span),
+    });
+    response.comparison = toSeries(previous.series);
+    response.previousTotals = { "": previous.total };
+  }
+  return response;
 }
 
 /** Aggregate cost series for a graph, plus optional comparison and forecast. */
@@ -324,6 +360,17 @@ export async function runCostQuery(
       "scenarioModelId requires forecast: true — there is nothing to adjust otherwise",
     );
   }
+  // The display rules shared with the editors and the CLI (a usage query
+  // names one unit, a count query has a group-by, neither carries a forecast
+  // or billing rules). Refused rather than quietly dropped, for the same
+  // reason the scenario check above is.
+  const displayProblem = costDisplayProblem(q);
+  if (displayProblem) throw new CostQueryError(displayProblem);
+  const { bin, cumulative } = effectiveCostBinning(q);
+  if (bin === "hourly" && COST_STORE_GRANULARITY !== "hourly") {
+    throw new CostQueryError(HOURLY_BINNING_UNAVAILABLE_REASON);
+  }
+  const measure = q.measure ?? "cost";
 
   // Text queries are compiled to the structured filter here and nowhere else.
   // Everything below (and everything in `cost-readers.ts`) sees only
@@ -382,13 +429,25 @@ export async function runCostQuery(
     // amortized current one is a comparison of two different questions.
     ...(q.costBasis ? { costBasis: q.costBasis } : {}),
     ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
+    // The display options ride on the base query too, so the previous period
+    // is measured, binned and accumulated exactly like the current one.
+    ...(measure !== "cost" ? { measure } : {}),
+    ...(measure === "usage" && q.usageUnit ? { usageUnit: q.usageUnit } : {}),
+    ...(q.cumulative ? { cumulative: true } : {}),
   };
+
+  if (measure === "count") return runCostCountQuery(organizationId, q, baseQuery);
 
   // Conversion is opt-in twice over: the caller has to ask for a display
   // currency AND the org has to have configured one. Absent either, this
   // resolves to `{ displayCurrency: null }` and every step below is a no-op:
   // the response is byte-identical to what it has always been.
-  const { displayCurrency, rates } = await loadConversionContext(organizationId, q.displayCurrency);
+  // A quantity has no currency to convert, so a usage query skips the lookup
+  // entirely rather than asking for rates it would never apply.
+  const { displayCurrency, rates } =
+    measure === "usage"
+      ? { displayCurrency: null, rates: [] }
+      : await loadConversionContext(organizationId, q.displayCurrency);
 
   /**
    * Convert, then merge, then fold: in that order, deliberately.
@@ -409,8 +468,12 @@ export async function runCostQuery(
   const response: CostQueryResponse = {
     series,
     currencies: [...new Set(grouped.map((g) => g.currency))].sort(),
-    totals: totalsOf(grouped, q.binning),
+    totals: totalsOf(grouped, cumulative),
   };
+  if (measure === "usage") {
+    response.measure = "usage";
+    if (q.usageUnit) response.usageUnit = q.usageUnit;
+  }
   // Only set when something was actually converted. Its absence is how a client
   // knows the per-currency numbers are the literal collected ones.
   if (conversion) response.conversion = conversion;
@@ -421,7 +484,7 @@ export async function runCostQuery(
   // `rawPoints`, and the collected totals are the totals, which is the true
   // answer, not a placeholder.
   if (adjustmentSummary) {
-    const rawTotals = rawTotalsOf(grouped, q.binning);
+    const rawTotals = rawTotalsOf(grouped, cumulative);
     adjustmentSummary.rawTotals =
       Object.keys(rawTotals).length > 0 ? rawTotals : { ...response.totals };
     response.adjustment = adjustmentSummary;
@@ -442,7 +505,7 @@ export async function runCostQuery(
       }),
     );
     response.comparison = await labelSeries(organizationId, q.groupBy, prevGrouped);
-    response.previousTotals = totalsOf(prevGrouped, q.binning);
+    response.previousTotals = totalsOf(prevGrouped, cumulative);
   }
 
   if (q.forecast) {
@@ -545,6 +608,12 @@ export async function listCostDimensionValues(
   dimension: string,
   tagKey?: string,
 ): Promise<CostDimensionValue[]> {
+  // Not a dimension (nothing filters or groups by it) but answered here so the
+  // usage-unit picker reaches it through the same route and IPC channel every
+  // other picker already uses.
+  if (dimension === "usage-units") {
+    return (await getCostUsageUnits(organizationId)).map((unit) => ({ value: unit, label: unit }));
+  }
   if (!(COST_DIMENSIONS as readonly string[]).includes(dimension)) {
     throw new CostQueryError("Invalid dimension");
   }
@@ -693,6 +762,9 @@ export async function getOrgCostStatus(organizationId: string): Promise<CostAcco
         // False means the provider reported the money. True means we priced it
         // ourselves, which the surfaces have to say out loud.
         estimated: capability?.estimated ?? false,
+        // A property of the store, not the plugin: every provider's rows are
+        // kept per day, so this is what decides whether hourly bins can work.
+        granularity: COST_STORE_GRANULARITY,
         costLastPolledAt: row.costLastPolledAt?.toISOString() ?? null,
         costBackfilledAt: row.costBackfilledAt?.toISOString() ?? null,
         costPollFailureCount: row.costPollFailureCount,

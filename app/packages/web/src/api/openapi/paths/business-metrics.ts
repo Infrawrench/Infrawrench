@@ -123,7 +123,7 @@ const BusinessMetricValuesInput = strict({
 const UnitCostQueryRequest = strict({
   from: z.string().describe("Inclusive, YYYY-MM-DD."),
   to: z.string(),
-  binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),
+  binning: z.enum(["hourly", "daily", "weekly", "monthly", "quarterly", "cumulative"]),
   mode: z
     .enum(["unit_cost", "margin"])
     .optional()
@@ -209,7 +209,7 @@ const UnitCostQueryResponse = strict({
     currency: z.string().nullable(),
   }),
   mode: z.enum(["unit_cost", "margin"]),
-  binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),
+  binning: z.enum(["hourly", "daily", "weekly", "monthly", "quarterly", "cumulative"]),
   series: z
     .array(UnitCostSeries)
     .describe(

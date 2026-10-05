@@ -25,3 +25,20 @@ resource "infrawrench_cost_report" "by_service" {
     }
   }
 }
+
+# How many services were billed each quarter, drawn as a table.
+resource "infrawrench_cost_report" "services_billed" {
+  name = "Services billed per quarter"
+
+  config {
+    chart_type = "table"
+    binning    = "quarterly"
+    group_by   = "service"
+    measure    = "count"
+
+    date_range {
+      kind   = "relative"
+      preset = "12m"
+    }
+  }
+}

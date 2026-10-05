@@ -14497,5 +14497,14 @@
   "32a05db3e5616a2a": "Aktuelles übergeordnetes Budget",
   "270945bb12405379": "Dieses Budget hat untergeordnete Budgets, daher sind seine Zahlen die Summe von deren Zahlen über seinen eigenen Zeitraum; sein Bereich unten wird ignoriert, solange es untergeordnete Budgets hat.",
   "d347b3f88598fe3f": "Ist-Ausgaben und Prognose eines übergeordneten Budgets sind die Summe der Werte seiner untergeordneten Budgets. Nur Budgets mit derselben Währung oder Nutzungseinheit können übergeordnet sein.",
-  "65e732d989fcabd1": "Noch keine Budgets. Ein Budget verfolgt Ausgaben oder eine Nutzungsmenge pro Zeitraum für alle Kosten oder einen gefilterten Teil, fasst untergeordnete Budgets zusammen und warnt, wenn ein Schwellenwert überschritten wird."
+  "65e732d989fcabd1": "Noch keine Budgets. Ein Budget verfolgt Ausgaben oder eine Nutzungsmenge pro Zeitraum für alle Kosten oder einen gefilterten Teil, fasst untergeordnete Budgets zusammen und warnt, wenn ein Schwellenwert überschritten wird.",
+  "35277ba5f4c30c67": "Nutzungsmenge in {unit}.",
+  "44afd3f757216761": "Unterschiedliche Werte mit Kosten ungleich null pro Intervall; die Summe zählt jeden Wert einmal.",
+  "d30f0d8375d3cfe4": "Stündlich ist nicht verfügbar: Alle verbundenen Anbieter melden Ausgaben pro Tag, daher gibt es keine stündlichen Zeilen zum Gruppieren.",
+  "bb98f97d2c48b9a3": "Einheit auswählen…",
+  "bd2c4090b9af1ac9": "Noch kein verbundener Anbieter meldet Nutzungsmengen, daher gibt es keine Einheit zur Auswahl.",
+  "6d0a77776de1f616": "Summiert die Nutzungsmenge, die Anbieter neben dem Betrag melden. Mengen in unterschiedlichen Einheiten lassen sich nicht addieren, daher zählen nur Zeilen in der gewählten Einheit.",
+  "e78f7d02b3edeb6f": "Zählen braucht eine Gruppierung: Wählen Sie unter „Gruppieren nach“, was gezählt werden soll (Dienste, Konten, Ressourcen…).",
+  "442ed4f971944172": "Zählt, wie viele unterschiedliche Werte der Gruppierung in jedem Intervall Kosten ungleich null hatten. Prognose, Szenarien und Kumulierung gelten nicht.",
+  "e135277cfe4e5938": "Kumuliert"
 }
