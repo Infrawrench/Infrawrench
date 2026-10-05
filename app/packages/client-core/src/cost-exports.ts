@@ -206,12 +206,13 @@ export const COST_EXPORT_CADENCE_LABELS: Record<CostExportCadence, string> = {
   monthly: "Monthly (1st)",
 };
 
-export const COST_EXPORT_DESTINATION_KINDS = ["s3", "http"] as const;
+export const COST_EXPORT_DESTINATION_KINDS = ["s3", "http", "warehouse"] as const;
 export type CostExportDestinationKind = (typeof COST_EXPORT_DESTINATION_KINDS)[number];
 
 export const COST_EXPORT_DESTINATION_LABELS: Record<CostExportDestinationKind, string> = {
   s3: "S3-compatible object storage",
   http: "HTTPS endpoint (signed URL)",
+  warehouse: "Warehouse table",
 };
 
 /**
@@ -258,7 +259,81 @@ export interface CostExportHttpDestination {
   urlHint: string;
 }
 
-export type CostExportDestination = CostExportS3Destination | CostExportHttpDestination;
+/**
+ * Where a warehouse run loads: a table in a connected account of a plugin that
+ * declares a warehouse sink (Snowflake, Databricks). The account's own stored
+ * credentials do the loading, so the export holds no secret of its own.
+ *
+ * `target` holds the answers to the plugin's target fields (for Snowflake
+ * `warehouse`, `database`, `schema`, `table`; for Databricks `warehouseId`,
+ * `catalog`, `schema`, `table`), listed by `GET /cost-exports/warehouse-sinks`
+ * and filled from `POST /cost-exports/warehouse-options`. Hosts never
+ * interpret them.
+ *
+ * Every run replaces, per period, the rows matching `export_id` and the
+ * period's days in one transaction, so restatements overwrite rather than
+ * append, the same guarantee an S3 object at a deterministic key gives.
+ */
+export interface CostExportWarehouseDestination {
+  kind: "warehouse";
+  /** Plugin that owns the warehouse, e.g. `snowflake` or `databricks`. */
+  pluginId: string;
+  /** Connected account (of `pluginId`) whose credentials load the rows. */
+  accountId: string;
+  target: Record<string, string>;
+}
+
+export type CostExportDestination =
+  CostExportS3Destination | CostExportHttpDestination | CostExportWarehouseDestination;
+
+/**
+ * Columns a warehouse destination adds in front of the layout's own: which
+ * export wrote the row (the replace scope, so several exports can share a
+ * table) and which period it belongs to.
+ */
+export const COST_EXPORT_WAREHOUSE_COLUMNS = ["export_id", "period_start"] as const;
+
+/** A plugin that can be a warehouse destination, with the org's eligible accounts. */
+export interface CostExportWarehouseSink {
+  pluginId: string;
+  displayName: string;
+  /** Destination type label, e.g. "Snowflake table". */
+  label: string;
+  description: string | null;
+  targetFields: CostExportWarehouseTargetField[];
+  accounts: Array<{ id: string; name: string }>;
+}
+
+export interface CostExportWarehouseTargetField {
+  key: string;
+  label: string;
+  description: string | null;
+  dependsOn: string[];
+  optional: boolean;
+  allowCustom: boolean;
+  placeholder: string | null;
+  emptyLabel: string | null;
+}
+
+/** `POST /cost-exports/warehouse-options` body. */
+export interface CostExportWarehouseOptionsRequest {
+  accountId: string;
+  field: string;
+  /** Values chosen so far, for fields that depend on them. */
+  target: Record<string, string>;
+}
+
+export interface CostExportWarehouseOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+/** `POST /cost-exports/warehouse-setup` answer: grants to run once, plus non-SQL notes. */
+export interface CostExportWarehouseSetup {
+  sql: string;
+  notes: string[];
+}
 
 /**
  * The rows a run selects. Deliberately the same vocabulary as a cost graph,
@@ -437,3 +512,21 @@ export const COST_EXPORT_BASE_COLUMNS = [
  * `collection_watermark` says how far the underlying collection had got.
  */
 export const COST_EXPORT_PROVENANCE_COLUMNS = ["exported_at", "collection_watermark"] as const;
+
+/** The table a warehouse destination loads into, dotted (`DB.SCHEMA.TABLE`). */
+export function costExportWarehouseTable(d: CostExportWarehouseDestination): string {
+  return ["database", "catalog", "schema", "table"]
+    .map((k) => d.target[k])
+    .filter(Boolean)
+    .join(".");
+}
+
+/**
+ * One-line destination summary every compact surface prints (CLI, mobile):
+ * `s3://bucket/prefix`, `POST host/…a7f2`, or `snowflake: DB.SCHEMA.TABLE`.
+ */
+export function describeCostExportDestination(d: CostExportDestination): string {
+  if (d.kind === "s3") return `s3://${d.bucket}/${d.prefix}`;
+  if (d.kind === "http") return `${d.method} ${d.urlHint}`;
+  return `${d.pluginId}: ${costExportWarehouseTable(d)}`;
+}

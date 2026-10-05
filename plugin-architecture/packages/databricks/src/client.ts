@@ -18,6 +18,10 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
+  CredentialFieldOption,
+  WarehouseLoadRequest,
+  WarehouseLoadResult,
+  WarehouseSetupGuide,
 } from "@infrawrench/plugin-base";
 import {
   labeledFieldItems,
@@ -26,6 +30,13 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchDatabricksCostData } from "./cost-data.js";
+import {
+  databricksPrincipal,
+  databricksSetupGuide,
+  listDatabricksTargetOptions,
+  loadDatabricksRows,
+  type ApiFn as SinkApiFn,
+} from "./warehouse-sink.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listClusters,
@@ -168,6 +179,37 @@ export class DatabricksClient implements PluginClient {
       throw new Error(`Databricks ${method} ${path} failed: ${res.status} ${text}`);
     }
     return res.text();
+  }
+
+  // -------------------------------------------------------------------------
+  // Warehouse sink: cost exports load into a UC table (see warehouse-sink.ts).
+  // -------------------------------------------------------------------------
+
+  private get sinkApi(): SinkApiFn {
+    return <T>(method: string, path: string, body?: Record<string, unknown>) =>
+      this.api<T>(method, path, body);
+  }
+
+  listWarehouseTargetOptions(
+    _accountId: string,
+    fieldKey: string,
+    target: Record<string, string>,
+  ): Promise<CredentialFieldOption[]> {
+    return listDatabricksTargetOptions(this.sinkApi, fieldKey, target);
+  }
+
+  loadWarehouseRows(
+    _accountId: string,
+    request: WarehouseLoadRequest,
+  ): Promise<WarehouseLoadResult> {
+    return loadDatabricksRows(this.sinkApi, request);
+  }
+
+  async describeWarehouseSetup(
+    _accountId: string,
+    target: Record<string, string>,
+  ): Promise<WarehouseSetupGuide> {
+    return databricksSetupGuide(target, await databricksPrincipal(this.sinkApi));
   }
 
   private makeId(accountId: string, typeId: string, externalId: string): string {

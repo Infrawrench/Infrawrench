@@ -83,6 +83,10 @@ Size and auto-suspend recommendations come with a one-click fix.
 
 Resource monitors with a credit quota appear on the [quota radar](../features/quota-radar.md).
 
+## Cost exports into Snowflake
+
+A Snowflake account can be the destination of a [scheduled cost export](../features/cost-exports.md#destination-snowflake-or-databricks-table): Infrawrench loads its cost rows into a table you pick (or creates it), replacing each exported period in one transaction. The export uses this account's credentials; the role needs USAGE on the warehouse, database and schema and CREATE TABLE on the schema, which the export dialog prints as GRANT statements.
+
 ## Tips & limits
 
 - **Listing never wakes a warehouse.** Resources are read with `SHOW` commands, which Snowflake answers without compute. Costs, metrics, recommendations and attribution do query `ACCOUNT_USAGE`, which needs the connection's warehouse; an X-Small with a 60 second auto-suspend is plenty. Those reads are cached for 30 minutes, so a pinned warehouse's chart does not keep the warehouse running.

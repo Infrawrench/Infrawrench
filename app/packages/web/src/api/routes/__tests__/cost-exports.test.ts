@@ -49,6 +49,15 @@ vi.mock("@infrawrench/server-core/cost-exports/run", () => ({
   runCostExport: (...a: unknown[]) => mockRun(...a),
 }));
 
+const mockSinks = vi.fn();
+const mockOptions = vi.fn();
+const mockSetup = vi.fn();
+vi.mock("@infrawrench/server-core/cost-exports/warehouse", () => ({
+  listWarehouseSinks: (...a: unknown[]) => mockSinks(...a),
+  listWarehouseOptions: (...a: unknown[]) => mockOptions(...a),
+  describeWarehouseSetup: (...a: unknown[]) => mockSetup(...a),
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
@@ -336,5 +345,60 @@ describe("POST /:id/run", () => {
     expect(mockLogAudit).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: expect.objectContaining({ status: "failed" }) }),
     );
+  });
+});
+
+describe("warehouse destination helpers", () => {
+  it("are org:settings:write, like every other export write", async () => {
+    const app = buildAppWithPermissions(["costs:read"]);
+    expect((await app.request("/warehouse-sinks")).status).toBe(403);
+    expect(
+      (
+        await app.request("/warehouse-options", {
+          method: "POST",
+          body: JSON.stringify({ accountId: "a", field: "database" }),
+          headers: { "Content-Type": "application/json" },
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  it("lists sinks before matching /:id", async () => {
+    mockSinks.mockResolvedValue([{ pluginId: "snowflake" }]);
+    const res = await buildAppWithPermissions(["org:settings:write"]).request("/warehouse-sinks");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sinks: [{ pluginId: "snowflake" }] });
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("returns picker options, and a provider refusal as a 400 with its message", async () => {
+    const app = buildAppWithPermissions(["org:settings:write"]);
+    mockOptions.mockResolvedValueOnce([{ id: "ANALYTICS", label: "ANALYTICS" }]);
+    const ok = await app.request("/warehouse-options", {
+      method: "POST",
+      body: JSON.stringify({ accountId: "acct", field: "database", target: {} }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await ok.json()).toEqual({ options: [{ id: "ANALYTICS", label: "ANALYTICS" }] });
+    expect(mockOptions).toHaveBeenCalledWith("org-1", "acct", "database", {});
+
+    mockOptions.mockRejectedValueOnce(new Error("Snowflake: insufficient privileges"));
+    const refused = await app.request("/warehouse-options", {
+      method: "POST",
+      body: JSON.stringify({ accountId: "acct", field: "schema", target: { database: "X" } }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ error: "Snowflake: insufficient privileges" });
+  });
+
+  it("returns the setup statements", async () => {
+    mockSetup.mockResolvedValue({ sql: "GRANT USAGE ...", notes: [] });
+    const res = await buildAppWithPermissions(["org:settings:write"]).request("/warehouse-setup", {
+      method: "POST",
+      body: JSON.stringify({ accountId: "acct", target: { database: "A" } }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await res.json()).toEqual({ sql: "GRANT USAGE ...", notes: [] });
   });
 });

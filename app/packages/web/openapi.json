@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.50.0",
+    "version": "1.51.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5824,6 +5824,39 @@
               "urlHint"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "warehouse"
+                ]
+              },
+              "pluginId": {
+                "type": "string",
+                "description": "Plugin whose warehouse receives the rows: `snowflake` or `databricks`. See `GET /cost-exports/warehouse-sinks`."
+              },
+              "accountId": {
+                "type": "string",
+                "description": "Connected account of that plugin. Its stored credentials load the rows; the export carries no credential of its own."
+              },
+              "target": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "The plugin's target fields. Snowflake: `warehouse` (optional), `database`, `schema`, `table`. Databricks: `warehouseId`, `catalog`, `schema`, `table`. A table that does not exist is created on the first run."
+              }
+            },
+            "required": [
+              "kind",
+              "pluginId",
+              "accountId",
+              "target"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -6051,6 +6084,152 @@
         ],
         "additionalProperties": false
       },
+      "CostExportWarehouseTargetField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": {
+            "type": "boolean"
+          },
+          "allowCustom": {
+            "type": "boolean",
+            "description": "A value outside the listed options is accepted (a table created on first run)."
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "emptyLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "dependsOn",
+          "optional",
+          "allowCustom",
+          "placeholder",
+          "emptyLabel"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportWarehouseSink": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targetFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostExportWarehouseTargetField"
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "pluginId",
+          "displayName",
+          "label",
+          "description",
+          "targetFields",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportWarehouseOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportWarehouseSetup": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "GRANT statements to run once, with comments."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "sql",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
       "CostExportObject": {
         "type": "object",
         "properties": {
@@ -6072,7 +6251,7 @@
           },
           "key": {
             "type": "string",
-            "description": "`{prefix}/cost-export/{exportId}/{cadence}/{periodStart}.{format}`. Deterministic, so re-exporting a restated period overwrites this object instead of adding a second copy."
+            "description": "`{prefix}/cost-export/{exportId}/{cadence}/{periodStart}.{format}`. Deterministic, so re-exporting a restated period overwrites this object instead of adding a second copy. For a warehouse destination, the table and the period's days (`byteCount` is 0)."
           },
           "rowCount": {
             "type": "integer"
@@ -40180,7 +40359,7 @@
           "Cost exports"
         ],
         "summary": "Create a cost export",
-        "description": "Credentials are required on create. They are encrypted at rest and no route ever returns them; responses carry a redacted `credentialHint` instead.\n\n_Requires permission: `org:settings:write`._",
+        "description": "Credentials are required on create for S3 and HTTPS destinations. They are encrypted at rest and no route ever returns them; responses carry a redacted `credentialHint` instead. A warehouse destination takes none: it loads with the connected account's credentials.\n\n_Requires permission: `org:settings:write`._",
         "parameters": [
           {
             "schema": {
@@ -40227,6 +40406,212 @@
           }
         },
         "operationId": "postOrgOrgIdCostExports",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-exports/warehouse-sinks": {
+      "get": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "List warehouse destination types",
+        "description": "Plugins that can load an export into a table in their own warehouse (Snowflake, Databricks), each with the organization's connected accounts and the target fields to fill.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Warehouse sinks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sinks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostExportWarehouseSink"
+                      }
+                    }
+                  },
+                  "required": [
+                    "sinks"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostExportsWarehouseSinks",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-exports/warehouse-options": {
+      "post": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "List options for a warehouse target field",
+        "description": "Reads the provider live with the account's credentials (warehouses, databases or catalogs, schemas, tables). A provider refusal is a 400 carrying its message.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "field"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostExportWarehouseOption"
+                      }
+                    }
+                  },
+                  "required": [
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostExportsWarehouseOptions",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-exports/warehouse-setup": {
+      "post": {
+        "tags": [
+          "Cost exports"
+        ],
+        "summary": "Least-privilege setup for a warehouse target",
+        "description": "The GRANT statements the connected role or principal needs for a target, plus any non-SQL steps (for Databricks, CAN USE on the SQL warehouse).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "accountId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExportWarehouseSetup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostExportsWarehouseSetup",
         "x-required-permission": "org:settings:write"
       }
     },

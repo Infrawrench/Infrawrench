@@ -174,4 +174,8 @@
 // optional on input, where omitted keeps the stored value, and always present
 // on CostExport), and `POST /costs/focus-export` downloads the rows a cost
 // query selects as a FOCUS 1.3 CSV. Additive.
-export const API_VERSION = "1.50.0";
+// 1.51.0: warehouse destinations for cost exports (Snowflake and Databricks
+// tables): a `warehouse` branch on CostExportDestination, plus
+// `GET /cost-exports/warehouse-sinks`, `POST /cost-exports/warehouse-options`
+// and `POST /cost-exports/warehouse-setup`. Additive.
+export const API_VERSION = "1.51.0";

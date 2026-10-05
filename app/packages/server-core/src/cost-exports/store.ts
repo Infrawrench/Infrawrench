@@ -37,6 +37,11 @@ import { buildAad, decrypt, encrypt } from "../encryption";
 import { isValidTimeZone } from "../digest/compose";
 import { nextCostExportRunAt } from "./periods";
 import { assertDestinationUrl, normalizeS3Endpoint, S3_REGION_PATTERN } from "./egress";
+import {
+  assertWarehouseDestination,
+  normalizeWarehouseDestination,
+  WarehouseDestinationError,
+} from "./warehouse";
 
 export type CostExportRecord = typeof costExports.$inferSelect;
 
@@ -118,10 +123,22 @@ function normalizeQuery(raw: unknown): CostExportQuery {
  * The HTTPS destination is deliberately *not* given the URL here: the URL is a
  * credential, so it lives in the encrypted bundle and only its host survives
  * into the non-secret config as {@link CostExportHttpDestination.urlHint}.
+ *
+ * A warehouse destination is only shape-checked here; the account and the
+ * plugin's required fields are checked by {@link assertWarehouseDestination}
+ * in the create/update paths, which can reach the database.
  */
 export function normalizeDestination(raw: unknown, url: string | undefined): CostExportDestination {
   const d = (raw ?? {}) as Record<string, unknown>;
   const kind = requireOneOf(d["kind"], COST_EXPORT_DESTINATION_KINDS, "destination.kind");
+
+  if (kind === "warehouse") {
+    try {
+      return normalizeWarehouseDestination(d);
+    } catch (e) {
+      throw new CostExportInputError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   if (kind === "s3") {
     const bucket = String(d["bucket"] ?? "").trim();
@@ -202,6 +219,37 @@ interface NormalizedInput {
   destination: CostExportDestination;
 }
 
+/**
+ * {@link normalizeInput} plus the checks that need the database: a warehouse
+ * destination's account must be the org's and its plugin a warehouse sink.
+ */
+async function normalizeInputFor(
+  organizationId: string,
+  input: CostExportInput,
+  storedSchema: CostExportSchema = "native",
+): Promise<NormalizedInput> {
+  const normalized = normalizeInput(input, storedSchema);
+  if (normalized.destination.kind === "warehouse") {
+    // The warehouse loader writes the native layout and replaces each period
+    // by its `day` column; FOCUS rows have neither, so they go to files only.
+    if (normalized.schema === "focus-1.3") {
+      throw new CostExportInputError(
+        "FOCUS 1.3 columns can only be written as files (S3 or HTTPS). Use Infrawrench columns for a warehouse table.",
+      );
+    }
+    try {
+      normalized.destination = await assertWarehouseDestination(
+        organizationId,
+        normalized.destination,
+      );
+    } catch (e) {
+      if (e instanceof WarehouseDestinationError) throw new CostExportInputError(e.message);
+      throw e;
+    }
+  }
+  return normalized;
+}
+
 function normalizeInput(
   input: CostExportInput,
   storedSchema: CostExportSchema = "native",
@@ -259,6 +307,8 @@ function hintFor(creds: CostExportCredentials): string {
  * contract the Jira and Twilio settings use for a blank password field.
  */
 function credentialsFromInput(input: CostExportInput): CostExportCredentials | null {
+  // A warehouse loads with the connected account's own credentials.
+  if (input.destination?.kind === "warehouse") return null;
   if (input.destination?.kind === "s3") {
     const accessKeyId = input.accessKeyId?.trim();
     const secretAccessKey = input.secretAccessKey?.trim();
@@ -318,7 +368,9 @@ export function toCostExportView(row: CostExportRecord): CostExport {
     restatementDays: row.restatementDays,
     enabled: row.enabled,
     destination: row.destination,
-    hasCredentials: !!row.encryptedCredentials,
+    // A warehouse export borrows the connected account's credentials, so it
+    // always "has" them as far as the form is concerned.
+    hasCredentials: !!row.encryptedCredentials || row.destination.kind === "warehouse",
     credentialHint: row.credentialHint,
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
     lastStatus: row.lastStatus as CostExportStatus,
@@ -377,9 +429,9 @@ export async function createCostExport(
   input: CostExportInput,
   userId: string | null,
 ): Promise<CostExport> {
-  const normalized = normalizeInput(input);
+  const normalized = await normalizeInputFor(organizationId, input);
   const creds = credentialsFromInput(input);
-  if (!creds) {
+  if (!creds && normalized.destination.kind !== "warehouse") {
     throw new CostExportInputError(
       normalized.destination.kind === "s3"
         ? "accessKeyId and secretAccessKey are required to create an S3 export"
@@ -398,7 +450,7 @@ export async function createCostExport(
   }
 
   const id = randomUUID();
-  const enc = await encrypt(JSON.stringify(creds), credentialAad(id));
+  const enc = creds ? await encrypt(JSON.stringify(creds), credentialAad(id)) : null;
   const now = new Date();
 
   const [row] = await db
@@ -417,9 +469,9 @@ export async function createCostExport(
       enabled: normalized.enabled,
       destinationKind: normalized.destination.kind,
       destination: normalized.destination,
-      encryptedCredentials: enc.ciphertext,
-      credentialsIv: enc.iv,
-      credentialHint: hintFor(creds),
+      encryptedCredentials: enc?.ciphertext ?? null,
+      credentialsIv: enc?.iv ?? null,
+      credentialHint: creds ? hintFor(creds) : null,
       lastStatus: "pending",
       nextRunAt: normalized.enabled
         ? nextCostExportRunAt(normalized.cadence, normalized.hour, normalized.timezone, now)
@@ -441,15 +493,20 @@ export async function updateCostExport(
   const existing = await getCostExportRow(organizationId, id);
   if (!existing) return null;
 
-  const normalized = normalizeInput(input, toCostExportView(existing).schema);
+  const normalized = await normalizeInputFor(
+    organizationId,
+    input,
+    toCostExportView(existing).schema,
+  );
   const creds = credentialsFromInput(input);
-  if (!creds && !existing.encryptedCredentials) {
+  const isWarehouse = normalized.destination.kind === "warehouse";
+  if (!isWarehouse && !creds && !existing.encryptedCredentials) {
     throw new CostExportInputError("This export has no stored credentials; supply them");
   }
   // A destination that changed kind cannot keep the old credentials: an S3
   // key pair is not a URL. Rejecting is better than silently running with a
   // credential that cannot possibly match the new destination.
-  if (!creds && existing.destinationKind !== normalized.destination.kind) {
+  if (!isWarehouse && !creds && existing.destinationKind !== normalized.destination.kind) {
     throw new CostExportInputError(
       "Changing the destination type requires supplying new credentials",
     );
@@ -478,6 +535,11 @@ export async function updateCostExport(
             credentialsIv: enc.iv,
             credentialHint: hintFor(creds),
           }
+        : {}),
+      // Switching to a warehouse drops the old bucket key or URL: nothing
+      // would ever use it again, and a stored secret nobody uses is a liability.
+      ...(isWarehouse
+        ? { encryptedCredentials: null, credentialsIv: null, credentialHint: null }
         : {}),
       // Reschedule from now: the user just changed when this should fire, and
       // leaving the old lease in place would run it on the old schedule once.

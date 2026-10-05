@@ -27,6 +27,7 @@ import {
 } from "./resources/platform.js";
 import { LakebaseBranchResourceType, LakebaseProjectResourceType } from "./resources/lakebase.js";
 import { databricksTerraformExport } from "./terraform.js";
+import { DATABRICKS_WAREHOUSE_SINK } from "./warehouse-sink.js";
 
 const manifest: PluginManifest = {
   id: "databricks",
@@ -69,6 +70,7 @@ const manifest: PluginManifest = {
     dimensions: ["service", "resource"],
     maxHistoryDays: 365,
   },
+  warehouseSink: DATABRICKS_WAREHOUSE_SINK,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

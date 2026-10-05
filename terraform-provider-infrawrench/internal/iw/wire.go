@@ -430,7 +430,7 @@ type BillingRule struct {
 
 /* ------------------------------- cost exports ------------------------------ */
 
-// CostExportDestination is a tagged union over the two delivery targets.
+// CostExportDestination is a tagged union over the three delivery targets.
 //
 // The HTTP branch's URL is a write-only credential and lives on the input, not
 // here; UrlHint is the server's redacted echo of it and is recomputed whenever
@@ -449,6 +449,12 @@ type CostExportDestination struct {
 	// http
 	Method  *string `json:"method,omitempty"`
 	URLHint *string `json:"urlHint,omitempty"`
+
+	// warehouse: a table in a connected Snowflake or Databricks account. The
+	// account's own credentials load the rows, so there is no secret here.
+	PluginID  *string           `json:"pluginId,omitempty"`
+	AccountID *string           `json:"accountId,omitempty"`
+	Target    map[string]string `json:"target,omitempty"`
 }
 
 // costExportS3Destination and costExportHTTPDestination are the wire shapes of
@@ -467,6 +473,15 @@ type costExportHTTPDestination struct {
 	Method *string `json:"method,omitempty"`
 }
 
+// costExportWarehouseDestination always sends `target`, even empty, because
+// the server's schema requires the key.
+type costExportWarehouseDestination struct {
+	Kind      string            `json:"kind"`
+	PluginID  *string           `json:"pluginId,omitempty"`
+	AccountID *string           `json:"accountId,omitempty"`
+	Target    map[string]string `json:"target"`
+}
+
 // MarshalJSON emits only the keys belonging to the named branch, since the
 // server's destination schema is a strict discriminated union.
 func (d CostExportDestination) MarshalJSON() ([]byte, error) {
@@ -482,8 +497,19 @@ func (d CostExportDestination) MarshalJSON() ([]byte, error) {
 		})
 	case "http":
 		return json.Marshal(costExportHTTPDestination{Kind: "http", Method: d.Method})
+	case "warehouse":
+		target := d.Target
+		if target == nil {
+			target = map[string]string{}
+		}
+		return json.Marshal(costExportWarehouseDestination{
+			Kind:      "warehouse",
+			PluginID:  d.PluginID,
+			AccountID: d.AccountID,
+			Target:    target,
+		})
 	default:
-		return nil, fmt.Errorf("unknown export destination kind %q (want \"s3\" or \"http\")", d.Kind)
+		return nil, fmt.Errorf("unknown export destination kind %q (want \"s3\", \"http\" or \"warehouse\")", d.Kind)
 	}
 }
 

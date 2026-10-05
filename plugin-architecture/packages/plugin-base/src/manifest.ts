@@ -229,6 +229,13 @@ export interface PluginManifest {
    * least-privilege policy generator (backed by `Plugin.policyTemplate`).
    */
   preflight?: PreflightDeclaration;
+  /**
+   * If present, this plugin can load rows into a table in the provider's own
+   * warehouse, via `PluginClient.loadWarehouseRows`, and the host offers its
+   * accounts as a destination for scheduled cost exports. See
+   * `warehouse-sink.ts` for the contract.
+   */
+  warehouseSink?: WarehouseSinkDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -528,6 +535,34 @@ export interface PluginClient {
    * can stop retrying on a tight loop and show the fix.
    */
   fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
+  /**
+   * Options for one target field of `manifest.warehouseSink`, given the values
+   * chosen so far. Read-only metadata calls; must not resume compute where the
+   * provider can avoid it.
+   */
+  listWarehouseTargetOptions?(
+    accountId: string,
+    fieldKey: string,
+    target: Record<string, string>,
+  ): Promise<CredentialFieldOption[]>;
+  /**
+   * Atomically replace one slice of a warehouse table with the streamed rows,
+   * creating the table (and any missing columns) first. Only called when the
+   * manifest declares `warehouseSink`. A failure must leave the table as it
+   * was; throw a user-facing error, it is shown as the export run's status.
+   */
+  loadWarehouseRows?(
+    accountId: string,
+    request: WarehouseLoadRequest,
+  ): Promise<WarehouseLoadResult>;
+  /**
+   * The least-privilege grants the connected principal needs for a target,
+   * personalised with the account's role or user where the plugin can tell.
+   */
+  describeWarehouseSetup?(
+    accountId: string,
+    target: Record<string, string>,
+  ): Promise<WarehouseSetupGuide>;
   /**
    * Return **aggregated** source→destination flows for one closed UTC day.
    * Only called when the manifest declares `networkFlows`.
@@ -1092,6 +1127,12 @@ import type {
 } from "./network-flow.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+import type {
+  WarehouseLoadRequest,
+  WarehouseLoadResult,
+  WarehouseSetupGuide,
+  WarehouseSinkDeclaration,
+} from "./warehouse-sink.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

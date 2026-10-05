@@ -1,12 +1,12 @@
 ---
 title: Scheduled cost exports
-description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON, in Infrawrench or FOCUS 1.3 columns, with the restatement handling a finance system needs.
+description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON files in Infrawrench or FOCUS 1.3 columns, or straight into a Snowflake or Databricks table, with the restatement handling a finance system needs.
 sidebar_order: 4
 ---
 
 Cost graphs and the API answer questions inside Infrawrench. A **cost export** is for the other case: you want the rows themselves, on a schedule, landing somewhere your warehouse or your finance system already reads from.
 
-An export is a saved query, a schedule, and a destination. On its cadence, Infrawrench streams your `cost_daily` rows out of storage and writes **one object per period** — one file per day, week, or month — to an S3-compatible bucket or an HTTPS endpoint.
+An export is a saved query, a schedule, and a destination. On its cadence, Infrawrench streams your `cost_daily` rows out of storage and writes **one object per period** (one file per day, week, or month) to an S3-compatible bucket or an HTTPS endpoint, or **replaces that period's rows in a table** in a connected Snowflake or Databricks account.
 
 > **Cloud only.** Exports run on Infrawrench Cloud's background pollers, against the cloud cost store. The desktop app can create and run them while signed into a cloud org, but local-only mode has no cost history to export.
 
@@ -119,9 +119,66 @@ The object is sent as the request body of a `POST` (or `PUT`) to a URL you suppl
 
 The URL must be `https`. It is treated as a credential in its own right — a pre-signed URL carries its own signature — so it is encrypted at rest and never shown again.
 
+### Destination: Snowflake or Databricks table
+
+If you have a [Snowflake](../plugins/snowflake.md) or [Databricks](../plugins/databricks.md) account connected, an export can load straight into a table there. There is no file, bucket or second credential: the connected account's own credentials do the loading, so rotating them under **Accounts** is the only rotation there is.
+
+<insert [The New cost export dialog with "Snowflake table" selected as the destination: account, warehouse, database, schema and table pickers filled in, and the least-privilege GRANT statements shown below them] here>
+
+A table takes Infrawrench columns only. [FOCUS 1.3](#focus-13) is available for S3 and HTTPS destinations, so the **Column layout** setting is hidden while a table is selected.
+
+Pick the destination type (**Snowflake table** or **Databricks table**), then the account, then each field from a picker that lists what that account can see:
+
+| Snowflake                                                                      | Databricks                              |
+| ------------------------------------------------------------------------------ | --------------------------------------- |
+| **Warehouse** runs the load (optional; the account's configured one otherwise) | **SQL warehouse** runs the load         |
+| **Database**                                                                   | **Catalog** (Unity Catalog)             |
+| **Schema**                                                                     | **Schema**                              |
+| **Table**: pick one, or type a new name                                        | **Table**: pick one, or type a new name |
+
+A table that does not exist is **created on the first run**, with typed columns (`DATE`, `NUMBER(38, 10)` / `DECIMAL(38, 10)`, `TIMESTAMP_TZ` / `TIMESTAMP`, strings). On Snowflake a plain name you type is upper-cased, and so are the columns, so you can query them unquoted. If you later add a dimension or tag column to the export, the missing column is added to the table on the next run; columns the export does not write are left alone (and loaded as `NULL`).
+
+Every row carries two extra columns in front of the usual ones:
+
+| Column         | Meaning                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| `export_id`    | Which export wrote the row. Several exports can share one table without touching each other's rows. |
+| `period_start` | The first day of the period the row was exported in, the same value an object key would carry.      |
+
+**Restatements replace, they never append.** For each period a run exports, the rows matching `export_id` and the period's days are deleted and the fresh rows inserted **in one transaction**, so the table always holds exactly one copy of each day, and a run that fails part-way leaves the previous copy in place. The trailing restatement window and `collection_watermark` work exactly as they do for files.
+
+How the load works, and why:
+
+- **Snowflake** loads through the [SQL API](https://docs.snowflake.com/en/developer-guide/sql-api/intro), which cannot upload files (`PUT` is not supported there), so the usual stage-and-`COPY INTO` path is not available without an external stage and a storage integration. Instead, rows go into a short-lived transient staging table with bound multi-row `INSERT`s (1,000 rows per request, values never in the SQL text), then one `BEGIN; DELETE …; INSERT … SELECT …; COMMIT` swaps the period in. The staging table is dropped afterwards.
+- **Databricks** loads through the [SQL Statement Execution API](https://docs.databricks.com/api/workspace/statementexecution) on the SQL warehouse you picked. Rows go into a per-run staging Delta table in batches of up to 2 MiB of SQL, then one `INSERT INTO … REPLACE WHERE export_id = … AND day BETWEEN …` replaces the period in a single Delta commit. Writing to a Unity Catalog volume and running `COPY INTO` was the alternative; it needs a volume and extra grants, and `COPY INTO` deduplicates by file name, which fights a restated period rather than helping it.
+
+**Least-privilege setup.** Click **Show least-privilege setup** in the dialog (or run `infrawrench exports setup <name>`) for the exact statements, filled in with your names and the account's role or principal. They amount to:
+
+```sql
+-- Snowflake (as the schema owner or SECURITYADMIN)
+GRANT USAGE ON WAREHOUSE "LOAD_WH" TO ROLE "INFRAWRENCH_ROLE";
+GRANT USAGE ON DATABASE "ANALYTICS" TO ROLE "INFRAWRENCH_ROLE";
+GRANT USAGE ON SCHEMA "ANALYTICS"."FINOPS" TO ROLE "INFRAWRENCH_ROLE";
+GRANT CREATE TABLE ON SCHEMA "ANALYTICS"."FINOPS" TO ROLE "INFRAWRENCH_ROLE";
+-- only if the table already exists and another role owns it
+GRANT SELECT, INSERT, DELETE ON TABLE "ANALYTICS"."FINOPS"."COSTS" TO ROLE "INFRAWRENCH_ROLE";
+```
+
+```sql
+-- Databricks (as the schema owner or a metastore admin)
+GRANT USE CATALOG ON CATALOG `main` TO `infrawrench-sp`;
+GRANT USE SCHEMA, CREATE TABLE ON SCHEMA `main`.`finops` TO `infrawrench-sp`;
+-- only if the table already exists and someone else owns it
+GRANT SELECT, MODIFY ON TABLE `main`.`finops`.`costs` TO `infrawrench-sp`;
+```
+
+Databricks also needs **CAN USE** on the SQL warehouse (SQL Warehouses, the warehouse, **Permissions**). `CREATE TABLE` is needed even for an existing table, because each run stages through a temporary table in the same schema.
+
+The **Format** setting does not apply to a table destination; columns are typed instead.
+
 ### Destination address rules
 
-Both destination types are reached from Infrawrench's servers, so both follow the same rules:
+The S3 and HTTPS destinations are reached from Infrawrench's servers, so both follow the same rules (a table destination talks to the connected account's own Snowflake or Databricks host, like every other call that account makes):
 
 - **`https` only.** A plain `http://` endpoint or URL is refused, and so is one with a username or password in it.
 - **Public addresses only.** A host that is, or resolves to, a private, loopback, link-local or otherwise reserved address (`10.x`, `192.168.x`, `127.0.0.1`, `169.254.169.254` and their IPv6 counterparts) is refused when you save the export and again on every run. A MinIO or other gateway on a private network has to be reachable at a public `https` address to receive exports.
@@ -165,6 +222,10 @@ Each export shows the outcome of its last run: how many objects and rows it wrot
 - `HTTP POST failed (302): redirects are not followed`: the URL redirects somewhere else; use the final URL.
 - `S3 PUT refused: destination resolves to a private or reserved address`: see [destination address rules](#destination-address-rules).
 - `No destination credentials are stored` — the credential could not be decrypted; re-enter it.
+- `Snowflake: … Insufficient privileges …` or `Databricks: PERMISSION_DENIED …`: the connected role or principal is missing a grant; the message names what the load needs, and **Show least-privilege setup** prints the statements.
+- `The connected account this export loads through no longer exists`: the account was removed; edit the export and pick another one.
+
+Warehouse loads also retry a throttled request on their own (Snowflake's SQL API with the same request id, so it is never applied twice; Databricks on HTTP 429) before the run gives up.
 
 A failed run reschedules on the normal cadence rather than backing off. The cadence is already at least a day, the failure is already visible, and an extra backoff only delays recovery once somebody has fixed the credential.
 
@@ -176,7 +237,13 @@ A failed run reschedules on the normal cadence rather than backing off. The cade
 infrawrench exports                    # every export, with the last run's status and error
 infrawrench exports run "Finance warehouse"
 infrawrench exports --json
+infrawrench exports warehouses         # Snowflake/Databricks destinations, your accounts, the --target keys
+infrawrench exports create --name "Finance warehouse" --plugin snowflake -a "Prod Snowflake" \
+  --target database=ANALYTICS --target schema=FINOPS --target table=COSTS
+infrawrench exports setup "Finance warehouse"   # the GRANT statements it needs
 ```
+
+`exports create` makes table exports only (S3 and HTTPS exports take a secret, which belongs in the settings form rather than in shell history). It also takes `--cadence`, `--hour`, `--timezone`, `--restatement-days` and `--dimensions provider,account,service,region`.
 
 `exports run` exits non-zero when the run fails, so a CI step can depend on it. Running is behind an explicit verb rather than a bare positional, because unlike `infrawrench reports <name>` this one writes to somebody's bucket.
 
@@ -195,7 +262,7 @@ Every mutation is written to the [audit log](../team-and-billing/audit-log.md) a
 
 - 25 exports per organization.
 - Restatement window: 0–90 days.
-- A run writes every period overlapping its window, so a daily export with a 90-day window writes 91 objects per run.
+- A run writes every period overlapping its window, so a daily export with a 90-day window writes 91 objects per run (or replaces 91 days of rows in a table).
 
 ## See also
 

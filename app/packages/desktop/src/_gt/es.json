@@ -13510,5 +13510,61 @@
       },
       ". Los filtros y tipos de cargo de la exportación se siguen aplicando."
     ]
+  },
+  "89f3a7d7b043fe23": "Tabla de Databricks",
+  "03c12f895f6c0bd0": "infrawrench_costs",
+  "6892247f01ce944c": "INFRAWRENCH_COSTS",
+  "d62528a9c3494c35": "Carga filas en una tabla de su cuenta de Snowflake mediante la API de SQL. La tabla se crea en la primera ejecución si no existe.",
+  "5ce184480c92662e": "Carga filas en una tabla de Unity Catalog mediante un SQL warehouse. Si la tabla no existe, se crea como tabla Delta en la primera ejecución.",
+  "437f4c13b801db7d": "Elija una tabla existente o escriba un nombre nuevo; se creará una tabla Delta nueva.",
+  "9d4c4c15213df1e9": "Elija una tabla existente o escriba un nombre nuevo; se creará una tabla nueva.",
+  "f567f6fd45f71a23": "Ejecuta la carga. Basta con un warehouse serverless pequeño.",
+  "07447ca87b2a9394": "Ejecuta la carga. Basta con un warehouse X-Small con suspensión automática.",
+  "651cc7aaf30c2aa4": "Tabla de Snowflake",
+  "d9be128cdefe662a": "SQL warehouse",
+  "a45fa4cabec0dc7b": "El warehouse configurado en la cuenta",
+  "15131735780e419c": "No se pudieron listar las opciones",
+  "7d58f7029c7305bb": "Elija {label}…",
+  "fcfa067ab8a00eaa": "Primero elija los campos de arriba",
+  "304cc5acb741079b": "No se pudieron listar las opciones ({error}). Escriba el nombre.",
+  "7fdd41a2fb5e2c2b": "No se pudieron generar las sentencias de configuración",
+  "7b5dcc37bea9e653": "Actualizar sentencias de configuración",
+  "16f47d1d1364ff0c": "Mostrar configuración de privilegios mínimos",
+  "b2c74a74a06c3223": "\"{name}\" cargó {rows} filas en {periods} periodo(s).",
+  "9f0296f9719298a9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Todavía no hay ninguna cuenta de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " conectada. Añada una en Cuentas y vuelva para elegir su tabla."
+    ]
+  },
+  "dc0742680499bef8": {
+    "t": "p",
+    "i": 1,
+    "c": "La cuenta conectada carga las filas con sus propias credenciales. Ejecute estos permisos una vez como administrador para que pueda crear la tabla, preparar cada ejecución y reemplazar los periodos que exporta, y nada más."
+  },
+  "572eac73fad3900d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Envía las filas de costos sin procesar de la organización a un almacén de datos o almacenamiento de objetos según un horario. Cada ejecución escribe ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "un objeto por periodo"
+      },
+      " en una clave determinista, o reemplaza las filas del periodo en una tabla de Snowflake o Databricks, así que volver a exportar un periodo lo reemplaza en lugar de agregar una segunda copia de los mismos días."
+    ]
+  },
+  "1b4bc6acc70aeab9": {
+    "t": "p",
+    "i": 1,
+    "c": "Aún no hay exportaciones. Cree una para que Infrawrench escriba filas de costos en CSV o NDJSON en un bucket compatible con S3 (AWS S3, R2, Spaces, MinIO), las envíe por POST a un endpoint HTTPS o las cargue en una tabla de Snowflake o Databricks a través de una cuenta conectada."
   }
 }

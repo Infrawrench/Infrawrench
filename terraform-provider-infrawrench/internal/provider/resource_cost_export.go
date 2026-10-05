@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -38,6 +39,13 @@ var costExportRegionPattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 // a bare host or an https:// origin with an optional port, no credentials, no
 // path. The server additionally refuses private and reserved addresses.
 var costExportEndpointPattern = regexp.MustCompile(`^(https://)?[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$`)
+
+// costExportTargetKeyPattern mirrors the server's rule for warehouse target
+// field names: a letter, then letters, digits or underscores, 64 at most.
+var costExportTargetKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,63}$`)
+
+// costExportWarehousePlugins are the plugins that declare a warehouse sink.
+var costExportWarehousePlugins = []string{"snowflake", "databricks"}
 
 // costExportQueryVersion is the query document version this provider writes.
 //
@@ -78,6 +86,9 @@ type costExportDestinationModel struct {
 	ForcePathStyle types.Bool   `tfsdk:"force_path_style"`
 	Method         types.String `tfsdk:"method"`
 	URLHint        types.String `tfsdk:"url_hint"`
+	PluginID       types.String `tfsdk:"plugin_id"`
+	AccountID      types.String `tfsdk:"account_id"`
+	Target         types.Map    `tfsdk:"target"`
 }
 
 var costExportDestinationAttrTypes = map[string]attr.Type{
@@ -89,6 +100,9 @@ var costExportDestinationAttrTypes = map[string]attr.Type{
 	"force_path_style": types.BoolType,
 	"method":           types.StringType,
 	"url_hint":         types.StringType,
+	"plugin_id":        types.StringType,
+	"account_id":       types.StringType,
+	"target":           types.MapType{ElemType: types.StringType},
 }
 
 type costExportResourceModel struct {
@@ -118,8 +132,11 @@ func (r *costExportResource) Metadata(_ context.Context, req resource.MetadataRe
 
 func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A scheduled delivery of cost rows to an S3-compatible bucket or an HTTP " +
-			"endpoint.\n\n" +
+		MarkdownDescription: "A scheduled delivery of cost rows to an S3-compatible bucket, an HTTP " +
+			"endpoint, or a table in a connected Snowflake or Databricks account.\n\n" +
+			"A `warehouse` destination takes no credential of its own: the connected account's " +
+			"stored credentials load the rows, so `access_key_id`, `secret_access_key` and `url` " +
+			"stay unset and `has_credentials` is always true.\n\n" +
 			"**Credentials are write-only.** `access_key_id`, `secret_access_key` and `url` are " +
 			"accepted on write and never returned by any route — not by the create response, not " +
 			"by a read, not by the listing. Three things follow, and all three are permanent " +
@@ -151,7 +168,8 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"format": schema.StringAttribute{
 				Required: true,
 				MarkdownDescription: "`csv` for a spreadsheet-and-warehouse friendly file, `ndjson` for " +
-					"one JSON object per line.",
+					"one JSON object per line. Ignored by a `warehouse` destination, which loads typed " +
+					"columns; set `csv`.",
 				Validators: []validator.String{oneOfValidator("csv", "ndjson")},
 			},
 			"schema": schema.StringAttribute{
@@ -288,8 +306,39 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"kind": schema.StringAttribute{
 						Required: true,
 						MarkdownDescription: "`s3` to write objects to an S3-compatible bucket, `http` to " +
-							"POST or PUT each file to a webhook.",
-						Validators: []validator.String{oneOfValidator("s3", "http")},
+							"POST or PUT each file to a webhook, `warehouse` to load rows into a " +
+							"Snowflake or Databricks table.",
+						Validators: []validator.String{oneOfValidator("s3", "http", "warehouse")},
+					},
+					"plugin_id": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "Which warehouse: `" + joinBackticked(costExportWarehousePlugins) +
+							"`. `warehouse` only.",
+						Validators: []validator.String{oneOfValidator(costExportWarehousePlugins...)},
+					},
+					"account_id": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "Id of the connected Snowflake or Databricks account whose " +
+							"credentials load the rows, at most 128 characters; it must belong to " +
+							"`plugin_id`. `warehouse` only. Its role or principal needs the grants shown " +
+							"in the export's settings (`infrawrench exports setup` prints them).",
+						Validators: []validator.String{stringvalidator.LengthBetween(1, 128)},
+					},
+					"target": schema.MapAttribute{
+						Optional:    true,
+						ElementType: types.StringType,
+						MarkdownDescription: "Where in the warehouse the rows land. Snowflake: `warehouse` " +
+							"(optional; the account's configured warehouse otherwise), `database`, " +
+							"`schema`, `table`. Databricks: `warehouseId` (the SQL warehouse id), " +
+							"`catalog`, `schema`, `table`. A table that does not exist is created on the " +
+							"first run; each run replaces, in one transaction, the rows matching this " +
+							"export's `export_id` and the periods it writes. Keys are letters, digits " +
+							"and underscores; values are 1 to 255 characters. `warehouse` only.",
+						Validators: []validator.Map{
+							mapvalidator.KeysAre(stringvalidator.RegexMatches(costExportTargetKeyPattern,
+								"must start with a letter and contain only letters, digits or underscores")),
+							mapvalidator.ValueStringsAre(stringvalidator.LengthBetween(1, 255)),
+						},
 					},
 					"bucket": schema.StringAttribute{
 						Optional:            true,
@@ -540,6 +589,16 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 			Endpoint:       stringPtr(dest.Endpoint),
 			ForcePathStyle: boolPtr(dest.ForcePathStyle),
 			Method:         stringPtr(dest.Method),
+			PluginID:       stringPtr(dest.PluginID),
+			AccountID:      stringPtr(dest.AccountID),
+		}
+		if !dest.Target.IsNull() && !dest.Target.IsUnknown() {
+			target := map[string]string{}
+			diags.Append(dest.Target.ElementsAs(ctx, &target, false)...)
+			if diags.HasError() {
+				return iw.CostExportInput{}, diags
+			}
+			destination.Target = target
 		}
 	}
 
@@ -612,6 +671,14 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 	})
 	diags.Append(d...)
 
+	// Null for the s3 and http branches, so a configuration that never mentions
+	// `target` does not drift against an empty map.
+	target := types.MapNull(types.StringType)
+	if remote.Destination.Kind == "warehouse" {
+		target, d = types.MapValueFrom(ctx, types.StringType, remote.Destination.Target)
+		diags.Append(d...)
+	}
+
 	destination, d := types.ObjectValueFrom(ctx, costExportDestinationAttrTypes, costExportDestinationModel{
 		Kind:           types.StringValue(remote.Destination.Kind),
 		Bucket:         stringValue(remote.Destination.Bucket),
@@ -621,6 +688,9 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 		ForcePathStyle: boolValue(remote.Destination.ForcePathStyle),
 		Method:         stringValue(remote.Destination.Method),
 		URLHint:        stringValue(remote.Destination.URLHint),
+		PluginID:       stringValue(remote.Destination.PluginID),
+		AccountID:      stringValue(remote.Destination.AccountID),
+		Target:         target,
 	})
 	diags.Append(d...)
 

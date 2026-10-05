@@ -188,8 +188,27 @@ export interface ConfigFlags {
   yes: boolean;
 }
 
+/**
+ * Flags for `exports create`: a warehouse export from the command line. The
+ * plugin is `--plugin`, the account `-a/--account` (both shared with other
+ * commands), and each target field one `--target key=value`.
+ */
+export interface ExportsFlags {
+  name?: string | undefined;
+  plugin?: string | undefined;
+  /** `key=value`, repeatable: `--target database=ANALYTICS --target table=COSTS`. */
+  target: string[];
+  cadence?: string | undefined;
+  hour?: number | undefined;
+  timezone?: string | undefined;
+  restatementDays?: number | undefined;
+  /** Comma-separated identity columns, e.g. `provider,account,service`. */
+  dimensions?: string | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
+  exports: ExportsFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
@@ -300,6 +319,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         out: { type: "string" },
         sections: { type: "string" },
         prune: { type: "boolean", default: false },
+        // `exports create` (a warehouse export). `--plugin`, `--account` and
+        // `--timezone`-style schedule flags only mean something there.
+        name: { type: "string" },
+        target: { type: "string", multiple: true },
+        cadence: { type: "string" },
+        hour: { type: "string" },
+        timezone: { type: "string" },
+        "restatement-days": { type: "string" },
+        dimensions: { type: "string" },
       },
     });
   } catch (e) {
@@ -352,7 +380,28 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     return value;
   };
 
+  /** A whole number within bounds, or a single-line error naming them. */
+  const boundedInt = (key: string, min: number, max: number): number | undefined => {
+    const text = str(key);
+    if (text === undefined) return undefined;
+    const value = Number(text);
+    if (!Number.isInteger(value) || value < min || value > max) {
+      throw new CliError(`--${key} must be a whole number from ${min} to ${max}, got "${text}"`, 2);
+    }
+    return value;
+  };
+
   return {
+    exports: {
+      name: str("name"),
+      plugin: str("plugin"),
+      target: Array.isArray(multi.target) ? multi.target : [],
+      cadence: str("cadence"),
+      hour: boundedInt("hour", 0, 23),
+      timezone: str("timezone"),
+      restatementDays: boundedInt("restatement-days", 0, 90),
+      dimensions: str("dimensions"),
+    },
     flags: {
       output,
       color: !values["no-color"],

@@ -42,6 +42,15 @@ for (const plugin of BUNDLED_PLUGINS) {
   add(manifest.description);
   add(manifest.sshInstall?.description);
   for (const message of manifest.sshInstall?.messages ?? []) add(message);
+  // Warehouse sink copy shown on the cost export destination picker.
+  add(manifest.warehouseSink?.label);
+  add(manifest.warehouseSink?.description);
+  for (const field of manifest.warehouseSink?.targetFields ?? []) {
+    add(field.label);
+    add(field.description);
+    add(field.placeholder);
+    add(field.emptyLabel);
+  }
   for (const field of manifest.credentialFields) {
     add(field.label);
     add(field.description);

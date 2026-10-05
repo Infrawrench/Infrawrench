@@ -10,6 +10,38 @@ vi.mock("electron", () => ({
 
 import { parseCliArgs, parseLastDays, resolveDayWindow } from "../cli/args";
 
+describe("parseCliArgs — exports create", () => {
+  it("collects repeatable --target pairs and the schedule flags", () => {
+    const parsed = parseCliArgs([
+      "exports",
+      "create",
+      "--name",
+      "Finance",
+      "--plugin",
+      "snowflake",
+      "--target",
+      "database=ANALYTICS",
+      "--target",
+      "table=COSTS",
+      "--hour",
+      "6",
+      "--restatement-days",
+      "14",
+    ]);
+    expect(parsed.exports).toMatchObject({
+      name: "Finance",
+      plugin: "snowflake",
+      target: ["database=ANALYTICS", "table=COSTS"],
+      hour: 6,
+      restatementDays: 14,
+    });
+  });
+
+  it("rejects an out-of-range hour", () => {
+    expect(() => parseCliArgs(["exports", "create", "--hour", "24"])).toThrow(/0 to 23/);
+  });
+});
+
 describe("parseCliArgs — flags for changes / graph / anomalies", () => {
   it("reads --anomalies as a costs modifier, not a command", () => {
     const parsed = parseCliArgs(["costs", "--anomalies"]);
