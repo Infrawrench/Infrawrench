@@ -53,7 +53,7 @@ export const LkeClusterResourceType = rt({
     o("nodeHourlyRates", "Node Hourly Rates", {
       hidden: true,
       description:
-        "JSON map of node plan to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost",
+        "Hourly node prices by plan, plus the control plane, NodeBalancer and Block Storage prices, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost",
     }),
   ],
   iconKey: "kubernetes",

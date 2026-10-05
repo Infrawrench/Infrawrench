@@ -34,12 +34,8 @@ import {
 } from "./metrics.js";
 import * as objects from "./object-storage.js";
 import { verifyLinodeCredentials } from "./preflight.js";
-import {
-  type PriceCatalogCache,
-  createPriceCatalogCache,
-  findLinodeType,
-  regionalPrice,
-} from "./pricing.js";
+import { type PriceCatalogCache, createPriceCatalogCache } from "./pricing.js";
+import { buildLkeNodeRates } from "./lke-node-rates.js";
 import { dashboardStats, renderDetail, renderSidebarItem } from "./render.js";
 import type { LinodeDatabase, LinodeInstance, LinodeLkeCluster, LinodeLkePool } from "./types.js";
 import { applyUpdate } from "./update.js";
@@ -209,12 +205,7 @@ export class LinodeClient implements PluginClient {
         this.api.all<LinodeLkePool>(`/lke/clusters/${clusterId}/pools`),
         this.catalog.get(),
       ]);
-      const rates: Record<string, number> = {};
-      for (const p of pools) {
-        const hourly = regionalPrice(findLinodeType(catalog, p.type), cluster.region).hourly;
-        if (p.type && hourly != null) rates[p.type] = hourly;
-      }
-      return Object.keys(rates).length ? JSON.stringify(rates) : "";
+      return buildLkeNodeRates(cluster, pools, catalog);
     } catch {
       return "";
     }
