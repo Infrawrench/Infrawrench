@@ -32,6 +32,8 @@ The form has two fields and both are plain text areas. Paste your cluster's kube
 
 There is one optional second field, **Cluster hourly rates**, used only for cost allocation — see [Cost allocation](#cost-allocation) below. Leave it blank unless you are connecting a cluster that has no cloud account behind it in Infrawrench, or you want to price the parts of the cluster that are not node compute.
 
+A third optional field, **GPU metrics source**, matters only on GPU clusters. Leave it blank and Infrawrench finds a Prometheus scraping NVIDIA's DCGM exporter on its own (or samples the exporter directly); set it to `namespace/service:port` to name one, or to `none` to turn GPU metrics off.
+
 ### Cloud accounts need inline credentials
 
 In the web app (and for accounts synced to the cloud), the kubeconfig runs on Infrawrench's servers, so it must carry its credentials inline. Use one of:
@@ -64,13 +66,14 @@ A cluster has no billing API — the money is charged to the cloud account that 
 
 The full explanation is on its own page: **[Kubernetes cost allocation](../features/kubernetes-costs.md)**. The short version:
 
-- **Node prices** come from the parent cloud plugin when you open the cluster from its cloud account. DigitalOcean supplies the real node-pool price; AWS and Azure supply on-demand list prices; CoreWeave supplies your negotiated rates where you entered them on the CoreWeave account, otherwise its published on-demand prices; GCP, Scaleway and OVHcloud do not supply one yet. Otherwise fill in the **Cluster hourly rates** field (`s-2vcpu-4gb=0.0357, m5.large=0.096`).
+- **Node prices** come from the parent cloud plugin when you open the cluster from its cloud account. DigitalOcean supplies the real node-pool price; AWS, Azure and GCP supply on-demand list prices (GCP per node pool, with attached GPUs priced separately); CoreWeave supplies your negotiated rates where you entered them on the CoreWeave account, otherwise its published on-demand prices; Scaleway and OVHcloud do not supply one yet. Otherwise fill in the **Cluster hourly rates** field (`s-2vcpu-4gb=0.0357, m5.large=0.096`).
 - **Everything else the cluster costs is priced from the same field**, with reserved keys: `controlPlane=0.10` for the flat managed-cluster fee, `loadBalancer=0.0149` per provisioned `LoadBalancer` Service, and `storage/*=0.10` (or `storage/gp3=0.08`) per provisioned GiB-month. No cloud plugin supplies these automatically yet.
 - **With no price at all, no number is invented.** You get capacity, volume sizes, load-balancer counts, requests and efficiency, and the pane explains what to do about it.
 - **metrics-server is optional.** With it, a pod is charged the greater of its request and its actual usage, and you get efficiency figures. Without it, allocation falls back to requests alone and efficiency reads **unknown** — never 0%. A missing metrics-server never breaks the pane.
 - **PersistentVolumeClaims** are charged to the workload that mounts them, or to the namespace when several do. A **bound claim nothing mounts** — the classic leftover from a scaled-down StatefulSet — gets its own waste bucket rather than a tenant's bill, and a claim that never bound is reported but never priced.
 - **`LoadBalancer` Services** are charged to the workload behind their selector, or to the namespace when the selector is ambiguous. One that has not been provisioned yet is counted, not charged.
 - **Idle capacity, the control-plane fee, system-reserved capacity and unattached volumes each get their own bucket**, never spread across namespaces — a cluster that is mostly idle is oversized, and burying that in per-team numbers hides it.
+- **GPU nodes are split three ways.** The GPU share of the node's price is charged by GPU requests (`nvidia.com/gpu`, MIG profiles at their fraction of the card, time-sliced replicas at 1/replicas, AMD and other accelerators); unrequested GPUs get their own bucket; with DCGM or AMD exporter metrics, requested-but-idle GPUs are measured and whole-GPU workloads that fit a MIG profile are listed. See [GPUs](../features/kubernetes-costs.md#gpus).
 - **Egress is not allocated.** The cluster API exposes no per-workload byte counters, so no apportionment is invented.
 - **`kube-system` and the other control-plane namespaces are included**, even though the workload listings hide them. Their pods hold real capacity on the same nodes.
 

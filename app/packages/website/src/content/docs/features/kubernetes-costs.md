@@ -1,6 +1,6 @@
 ---
 title: Kubernetes cost allocation
-description: Work out what each namespace, workload, and pod in a cluster actually costs — compute, volumes, load balancers and the control-plane fee — including the capacity nobody is using.
+description: Work out what each namespace, workload, and pod in a cluster actually costs — compute, GPUs, volumes, load balancers and the control-plane fee — including the capacity nobody is using.
 sidebar_order: 3
 ---
 
@@ -21,6 +21,7 @@ So Infrawrench derives it. Node capacity, times what that node costs per hour, t
 | Live CPU/memory usage           | `metrics.k8s.io`, served by metrics-server.                    | Allocation falls back to requests alone. Efficiency reads **unknown**.  |
 | PersistentVolumeClaims          | `/api/v1/persistentvolumeclaims`. Optional RBAC.               | Storage is reported as unavailable, not as zero.                        |
 | `LoadBalancer` Services         | `/api/v1/services`. Optional RBAC.                             | Load balancers are reported as unavailable, not as zero.                |
+| GPU utilization                 | NVIDIA's DCGM exporter or AMD's device metrics exporter.       | GPUs are charged by request; requested-but-idle GPUs read **unknown**.  |
 | Per-GiB-month and per-LB prices | The optional rates field (see below).                          | Volume sizes and load-balancer counts are shown with no money attached. |
 | The managed control-plane fee   | The optional rates field.                                      | No control-plane bucket. A self-managed cluster genuinely has none.     |
 
@@ -48,8 +49,8 @@ Two sources, in order.
 | ------------ | --------------------------------------------------------------------------------------------------------------------- | ---------- |
 | DigitalOcean | The published hourly price of each node pool's Droplet size — which is what DOKS worker nodes are actually billed at. | Real price |
 | AWS          | On-demand hourly price of the managed node groups' instance types.                                                    | List price |
-| Azure        | Retail pay-as-you-go hourly price of the cluster's node VM size.                                                      | List price |
-| GCP          | Not yet — see [Limitations](#limitations).                                                                            | None       |
+| Azure        | Retail pay-as-you-go hourly price of every node pool's VM size, GPU pools included.                                   | List price |
+| GCP          | On-demand price of each node pool: its machine type's cores and RAM, plus each attached GPU at its own price.         | List price |
 | Scaleway     | Not yet.                                                                                                              | None       |
 | OVHcloud     | Not yet.                                                                                                              | None       |
 
@@ -72,6 +73,8 @@ The same field prices everything else the cluster costs, using reserved keys:
 | `loadBalancer/<ns>/<name>` | One specific Service. Overrides the flat rate, **including with `0`**. | `loadBalancer/kube-system/metallb-demo=0` |
 | `storage/<class>`          | Per **provisioned** GiB-month for one StorageClass.                    | `storage/gp3=0.08`                        |
 | `storage/*`                | Per provisioned GiB-month for any class not named above.               | `storage/*=0.10`                          |
+| `gpu/<model>`              | What one GPU costs per hour. Sets the GPU share of a GPU node's price. | `gpu/a100-80gb=3.93`                      |
+| `gpu/*`                    | The same, for any GPU model not named above.                           | `gpu/*=2.50`                              |
 
 ```
 s-2vcpu-4gb=0.0357, m5.large=0.096
@@ -125,6 +128,64 @@ Reported per workload for CPU and memory. A workload using under 20% of what it 
 Both dimensions have to be low. A workload using 5% of its CPU but 90% of its memory is correctly sized for memory, and shrinking it would break it.
 
 Efficiency only appears when metrics-server does. Requests alone say nothing about waste — so a workload nothing measured reads **unknown**, never 0%.
+
+## GPUs
+
+A GPU node is one price for three things: GPUs, CPU and memory. Splitting it only 65/35 between CPU and memory would charge a CPU-only pod that lands on an eight-GPU machine as if it held a slice of the GPUs, and let the GPU workload ride for the price of its vCPUs. So on a node with accelerators the price is split three ways, and the GPU part is charged by GPU requests.
+
+### Which nodes have GPUs, and how many
+
+Infrawrench reads each node's extended resources and labels, the ones NVIDIA's device plugin and GPU feature discovery set:
+
+| What you run                                                   | Advertised as                                         | One unit is worth                                 |
+| -------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------- |
+| Whole GPUs                                                     | `nvidia.com/gpu`                                      | One GPU.                                          |
+| MIG, `mixed` strategy                                          | `nvidia.com/mig-1g.5gb`, `nvidia.com/mig-3g.40gb`, …  | Its compute slices out of 7 (out of 4 on an A30). |
+| MIG, `single` strategy, or GKE GPU partitioning                | `nvidia.com/gpu`, with the profile in the node labels | The profile's compute slices out of 7.            |
+| Time-slicing or MPS (`replicas: N`), including GKE GPU sharing | `nvidia.com/gpu` or `nvidia.com/gpu.shared`           | 1/N of a GPU.                                     |
+| AMD, Intel, Habana Gaudi, AWS Neuron, Cloud TPU                | `amd.com/gpu`, `gpu.intel.com/i915`, …                | One device (or core, for Neuron cores).           |
+
+The physical GPU count comes from GPU feature discovery's `nvidia.com/gpu.count` label (or the GKE, Karpenter and EKS Auto Mode equivalents). The model comes from `nvidia.com/gpu.product`, `cloud.google.com/gke-accelerator`, the Karpenter or EKS GPU-name label, or, on AKS and other nodes no GPU component labelled, the instance type (`p4d.24xlarge`, `Standard_NC24ads_A100_v4`, `a2-highgpu-1g`, CoreWeave's `gd-8xh100ib-i128`).
+
+A pod's GPU request follows the scheduler's rules: a container that sets only a limit (the usual way to ask for a GPU) gets an equal request, and init containers peak rather than add.
+
+### The GPU share of a node's price
+
+In order:
+
+1. **A per-GPU price.** GKE clusters get one automatically, because Compute Engine bills an attached GPU as its own line. Anywhere else, `gpu/<model>=<hourly price>` in the rates field sets one. The GPU share is that price times the node's GPUs, capped at the node's own price.
+2. **A published reference ratio.** For a model with a published Compute Engine price (T4, P4, P100, V100, L4, A100 40GB and 80GB, H100, H200), the GPU share is the GPU's fraction of a reference machine made of those GPUs plus the node's vCPUs and memory at N2 component prices. The per-GPU figures come from Compute Engine's [accelerator-optimized pricing](https://cloud.google.com/products/compute/pricing/accelerator-optimized) in Iowa: T4, P4, P100 and V100 are listed per GPU; L4, A100 and H100/H200 are sold inside G2, A2 and A3 machines, so their figure is the machine price minus its vCPUs and memory at N2 rates, per GPU. It is a ratio, so it holds whatever the node really costs: list, billed or negotiated.
+3. **The remainder.** For any other model (an A10G, an L40S, an AMD Instinct), the node's vCPUs and memory are priced at those component rates and everything else the node costs is the GPU. CPU and memory prices are similar across clouds; GPU prices are not, which is why the GPU is the side left to fall out.
+
+The GPU tab on the cluster says which of the three priced each node.
+
+### Idle GPUs, two kinds
+
+- **Unrequested GPUs** are allocatable GPUs no pod asked for. Like idle CPU they are their own bucket, never spread across tenants: on a GPU cluster this is usually the most expensive line on the page.
+- **Requested but idle** is GPU time a workload holds and does not use, measured from GPU utilization. It is that workload's waste, and it is added to the Efficiency report's waste column.
+
+<insert [Cluster GPUs tab showing the GPU summary, the GPU nodes table with models, requested and unrequested GPUs and how each node's GPU share was priced, and the GPU workloads table] here>
+
+### Where GPU utilization comes from
+
+`metrics.k8s.io` has no GPU figures, so utilization comes from NVIDIA's **DCGM exporter** (the GPU operator installs it as `nvidia-dcgm-exporter`) or AMD's **device metrics exporter**, read through the Kubernetes API server's proxy:
+
+1. **Your Prometheus**, if one scrapes the exporter. Infrawrench finds the Services the common installs create (`prometheus-operated`, `*-prometheus-server`, kube-prometheus-stack) or the one you name in the account's **GPU metrics source** field as `namespace/service:port`. This gives the last hour's average for idle cost, and a seven-day p95 for right-sizing.
+2. **The DCGM exporter pods directly**, if no Prometheus has GPU series. An instant sample: enough to show idle GPUs now, not enough to recommend a smaller one.
+
+The metrics are DCGM's `DCGM_FI_DEV_GPU_UTIL` and `DCGM_FI_DEV_FB_USED`, with `DCGM_FI_PROF_GR_ENGINE_ACTIVE` for MIG instances (where GPU utilization is not reported), and AMD's `gpu_gfx_activity` and `gpu_used_vram`. Set the field to `none` to turn GPU metrics off.
+
+**Time-sliced and MPS GPUs read unknown.** DCGM cannot tell which of the containers sharing a GPU is doing the work, so no per-pod figure is invented.
+
+<insert [Kubernetes account edit form with the optional "GPU metrics source" field filled in as monitoring/prometheus-operated:9090] here>
+
+### GPU right-sizing
+
+The Efficiency tab lists whole-GPU workloads that would fit a smaller MIG profile. Unlike CPU and memory, this one can be named: a MIG profile is a discrete choice, a GPU request is one number, and a Prometheus scraping the exporter has the history a p95 needs.
+
+A workload is listed only when **every** one of its GPU pods holds whole, unshared NVIDIA GPUs on a MIG-capable model (A30, A100, H100, H200, B200), has a seven-day p95 from Prometheus, and is at least a day old. The suggestion is the smallest profile whose compute slices and memory both cover the busiest device's p95 utilization and peak memory with 25% headroom, and the saving is the GPU cost the other slices free up. On a GPU with no MIG (a T4, an L4) a workload under 30% p95 is pointed at time-slicing or MPS instead, without a figure.
+
+Acting on one means repartitioning the node (the GPU operator's `nvidia.com/mig.config` label) and changing the workload's request to the profile's resource.
 
 ## Beyond node compute
 
@@ -236,8 +297,9 @@ The **Namespaces group in the Kubernetes pane follows the listings, not the allo
 ## Where it shows up
 
 - **The Kubernetes pane** on your cloud cluster resource — a Namespaces group ordered by cost, and per-item cost and efficiency appended to every pod, deployment, statefulset, daemonset and namespace pill. A namespace pill reads `Active · ~$4.20/day · 18% CPU`: the phase, the day's allocated cost, and the tighter of its two efficiency figures. Its banner also flags unattached volumes, never-bound claims and unpriced components.
-- **Resource cards** — cost/day and efficiency stats for clusters, namespaces, pods, deployments, statefulsets and daemonsets. The cluster card also carries an **Idle** stat with its percentage (measured against node cost, not the whole bill), an **Over-requested** money figure, and **Volumes** / **Load balancers** counts.
-- **Detail views** — a **Cost by namespace** table on the cluster with a Storage/LB column and the idle, system-reserved, control-plane and unattached-volume rows; a **What the cluster costs** per-component breakdown; and a **Cost by workload** table on each namespace.
+- **Resource cards** — cost/day and efficiency stats for clusters, namespaces, pods, deployments, statefulsets and daemonsets. The cluster card also carries an **Idle** stat with its percentage (measured against node cost, not the whole bill), an **Over-requested** money figure, and **Volumes** / **Load balancers** counts. On a GPU cluster it adds **GPUs**, **Idle GPUs** and **Requested GPU idle**, and anything holding GPUs gets a **GPU** stat.
+- **Detail views** — a **Cost by namespace** table on the cluster with a Storage/LB column (and a GPU column on a GPU cluster) and the idle, system-reserved, idle-GPU, control-plane and unattached-volume rows; a **What the cluster costs** per-component breakdown; and a **Cost by workload** table on each namespace.
+- **The GPUs tab** — on a cluster with accelerators: every GPU node, how its GPU share was priced, and every GPU workload with its utilization.
 - **The Efficiency tab** — on the cluster and on every namespace.
 - **The Storage & load balancers tab** — every claim and every `LoadBalancer` Service, with what it is attributed to and what it costs.
 - **Metrics tabs** — cost, each component, waste and efficiency as time series.
@@ -260,6 +322,7 @@ The dimensions it reports:
 | Tag `workload`      | The owning Deployment / StatefulSet / DaemonSet / Job name, where there is one |
 | Tag `workload_kind` | That owner's kind                                                              |
 | Tag `system`        | `true` for the control-plane namespaces                                        |
+| Tag `gpu_model`     | On GPU rows: the GPU model (`a100-80gb`, `t4`, …), or `mixed`                  |
 
 The service labels **partition** the bill — every unit of money appears under exactly one, so they can be summed without double-counting:
 
@@ -272,14 +335,27 @@ The service labels **partition** the bill — every unit of money appears under 
 | `kubernetes-system-reserved` | Node capacity the kubelet keeps.                                      |
 | `kubernetes-storage-idle`    | A bound volume no running pod mounts.                                 |
 | `kubernetes-control-plane`   | The flat managed-cluster fee.                                         |
+| `kubernetes-gpu`             | A workload's share of GPU node price, charged by its GPU requests.    |
+| `kubernetes-gpu-idle`        | Allocatable GPUs no pod requested, one row per GPU node.              |
 
-Because they partition, a workload's `kubernetes-workload` row carries its **compute only** — its disks and load balancers are separate rows under their own labels. Group by the `namespace` tag for a per-team view including storage; filter to `kubernetes-workload` alone for compute only; filter to `kubernetes-storage-idle` for a standing list of disks to delete.
+Because they partition, a workload's `kubernetes-workload` row carries its **CPU and memory compute only** — its GPUs, disks and load balancers are separate rows under their own labels. Group by the `namespace` tag for a per-team view including storage; filter to `kubernetes-workload` alone for compute only; filter to `kubernetes-storage-idle` for a standing list of disks to delete.
+
+GPU spend by model, from the terminal:
+
+```bash
+infrawrench costs --where "provider = 'kubernetes'" --group-by tag:gpu_model
+```
+
+The same allocation reaches the MCP tools: `query_costs` groups and filters by these services and tags, and `get_resource_stats` / `get_resource_metrics` on a cluster, namespace or workload return the GPU stats and series.
 
 **There is no history to backfill.** The Kubernetes API describes what is running right now, not what ran last Tuesday. Each daily collection appends one honest snapshot, and the series builds up from the day you connect the account. Unlike a provider that can restate a week of invoices, there is nothing here to restate.
 
 ## Limitations
 
-- **GCP, Scaleway and OVHcloud supply no node price yet.** GKE clusters show capacity and efficiency without money unless you fill in the rates field yourself. GCP's Cloud Billing SKUs price vCPU-hours and GiB-hours separately rather than per machine type, so producing a per-node rate needs a machine-type → (vCPU, GiB) lookup that is not built yet.
+- **Scaleway and OVHcloud supply no node price yet.** Their clusters show capacity and efficiency without money unless you fill in the rates field yourself.
+- **GKE Autopilot and Spot node pools are not priced.** Autopilot bills per pod rather than per node, and on-demand prices would overstate Spot several times over.
+- **GPU reference prices are a ratio, not a price.** Without a per-GPU price, the GPU share of a node comes from published Compute Engine component prices; set `gpu/<model>=` for an exact split.
+- **A MIG slice is priced by compute slices**, so a memory-heavy profile such as `1g.10gb` on an A100 40GB pays 1/7 of the card while using a quarter of its memory. Slices nobody configured or requested land in the idle-GPU bucket.
 - **AWS and Azure prices are list prices.** Commitments and Spot are not reflected, so a heavily-committed cluster will read high.
 - **No cloud plugin supplies the storage, load-balancer or control-plane prices automatically yet.** They arrive through the same rates field, so a cluster opened from its cloud account gets node prices for free but needs `storage/*`, `loadBalancer` and `controlPlane` filled in by hand. Until they are, volumes and load balancers are shown as capacity and counts with no money.
 - **Egress is not allocated at all**, and is not guessed. See [above](#egress-is-not-allocated-and-will-not-be-guessed).

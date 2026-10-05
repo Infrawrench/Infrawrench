@@ -5,6 +5,29 @@ import type { Efficiency } from "./cost-model.js";
 import { formatDailyCost, isOverRequested } from "./cost-model.js";
 import type { CostIndex } from "./cost-surface.js";
 import { podEntry, tightestEfficiency, workloadEntry } from "./cost-surface.js";
+import { formatGpus } from "./gpu.js";
+
+/**
+ * GPU stats for anything holding GPUs: count and busy share, then the GPU
+ * money. Nothing at all for a workload with no GPU request.
+ */
+function gpuStats(
+  entry: { gpus: number; gpuDailyCost: number | null; gpuUtilization: number | null } | undefined,
+  currency: string,
+): DashboardStat[] {
+  if (!entry || !(entry.gpus > 0)) return [];
+  const busy = entry.gpuUtilization;
+  const money = formatDailyCost(entry.gpuDailyCost, currency);
+  return [
+    {
+      label: "GPU",
+      value: `${formatGpus(entry.gpus)}${busy != null ? ` · ${Math.round(busy * 100)}% busy` : ""}${money ? ` · ${money}` : ""}`,
+      ...(busy != null
+        ? { variant: busy < 0.2 ? ("status-degraded" as const) : ("status-healthy" as const) }
+        : {}),
+    },
+  ];
+}
 
 /**
  * Efficiency reads as a stat only when there is live utilization behind it.
@@ -107,6 +130,30 @@ export async function fetchDashboardStats(
         if (loadBalancers.count > 0) {
           clusterStats.push({ label: "Load balancers", value: String(loadBalancers.count) });
         }
+        // GPUs get their own stats: on a GPU cluster they are usually most of
+        // the bill, and idle GPUs are the single most expensive finding.
+        const gpu = costs.cluster.gpu;
+        if (gpu.nodeCount > 0) {
+          const busy = gpu.utilization;
+          clusterStats.push({
+            label: "GPUs",
+            value: `${formatGpus(gpu.allocated)} of ${formatGpus(gpu.physical)} requested${busy != null ? ` · ${Math.round(busy * 100)}% busy` : ""}`,
+          });
+          if (gpu.dailyIdleCost != null && gpu.idle > 0) {
+            clusterStats.push({
+              label: "Idle GPUs",
+              value: `${formatGpus(gpu.idle)} · ${formatDailyCost(gpu.dailyIdleCost, currency)}`,
+              variant: "status-degraded",
+            });
+          }
+          if (gpu.wastedDailyCost != null && gpu.wastedDailyCost > 0) {
+            clusterStats.push({
+              label: "Requested GPU idle",
+              value: formatDailyCost(gpu.wastedDailyCost, currency),
+              variant: "status-degraded",
+            });
+          }
+        }
         clusterStats.push({ label: "Nodes", value: String(costs.cluster.nodeCount) });
       }
       return clusterStats;
@@ -122,6 +169,7 @@ export async function fetchDashboardStats(
         { label: "Replicas", value: `${ready}/${desired}`, variant },
         ...costStat(entry?.dailyCost ?? null, currency),
         ...(entry ? efficiencyStat(entry.efficiency) : []),
+        ...gpuStats(entry, currency),
         { label: "Namespace", value: namespace },
       ];
     }
@@ -134,6 +182,7 @@ export async function fetchDashboardStats(
         { label: "Ready", value: `${ready}/${desired}`, variant },
         ...costStat(entry?.dailyCost ?? null, currency),
         ...(entry ? efficiencyStat(entry.efficiency) : []),
+        ...gpuStats(entry, currency),
         { label: "Namespace", value: namespace },
       ];
     }
@@ -155,6 +204,7 @@ export async function fetchDashboardStats(
           : []),
         ...costStat(entry?.dailyCost ?? null, currency),
         ...(entry ? efficiencyStat(entry.efficiency) : []),
+        ...gpuStats(entry, currency),
         { label: "Namespace", value: namespace },
       ];
     }
@@ -182,6 +232,7 @@ export async function fetchDashboardStats(
         ...(entry ? [{ label: "Pods", value: String(entry.podCount) }] : []),
         ...costStat(entry?.dailyCost ?? null, currency),
         ...(entry ? efficiencyStat(entry.efficiency) : []),
+        ...gpuStats(entry, currency),
       ];
     }
     case "k8s-cronjob":

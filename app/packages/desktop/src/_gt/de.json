@@ -14124,5 +14124,9 @@
   "f062a44ecc235fd7": "An ein Dashboard anheften",
   "31f42181d049b8f1": "Eine Karte ist eine Ansicht dieses Canvas. Das Entfernen einer Karte lässt das Canvas unverändert; eine Änderung am Canvas ändert alle Karten gleichzeitig.",
   "ad475b46159ceafe": "Canvas",
-  "42f6971ba1ffba7e": "Canvases befinden sich in Infrawrench Cloud. Melden Sie sich an und wählen Sie eine Organisation, um sie zu sehen."
+  "42f6971ba1ffba7e": "Canvases befinden sich in Infrawrench Cloud. Melden Sie sich an und wählen Sie eine Organisation, um sie zu sehen.",
+  "924995cec49feef3": "GPU-Metrikquelle",
+  "44024c9a4eb4a978": "JSON-Stundenpreis pro Node-Pool (Maschine plus angeschlossene GPUs) und pro GPU, der an den Kubernetes-Peer übergeben wird, damit er Kosten pro Namespace, pro Workload und pro GPU ableiten kann. Leer, wenn kein Preis verfügbar ist.",
+  "5b041bee093b7b32": "Optional. Was dieser Cluster kostet, damit sich Workload-Kosten ableiten lassen. Cluster, die über ihr Cloud-Konto geöffnet werden (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud, CoreWeave), erhalten ihre Node-Preise automatisch. Andernfalls listen Sie Instanztypen auf: s-2vcpu-4gb=0.0357, m5.large=0.096. Dasselbe Feld bepreist auch den Rest des Clusters — controlPlane=0.10 für die Pauschalgebühr eines verwalteten Clusters, loadBalancer=0.0149 pro LoadBalancer Service, storage/*=0.10 pro bereitgestelltem GiB-Monat (oder storage/gp3=0.08 für eine Klasse). Auf GPU-Nodes legt gpu/a100-80gb=3.93 (oder gpu/*=2.50) den Preis einer GPU pro Stunde fest; davon hängt ab, wie viel des Nodes über GPU-Anforderungen berechnet wird. Bleibt das Feld leer, werden Kapazität, Volume-Größen und Effizienz weiterhin angezeigt; nur die Kosten werden weggelassen.",
+  "d13dc6c4ffe407c6": "Optional. Woher die GPU-Auslastung stammt, für die Kosten ungenutzter GPUs und das GPU-Rightsizing. Bleibt das Feld leer, wird das Prometheus des Clusters automatisch gefunden (oder die Pods des NVIDIA DCGM Exporters werden direkt abgefragt). Geben Sie namespace/service:port an, um ein Prometheus zu benennen, das den DCGM- oder AMD-Exporter abfragt, oder none, um GPU-Metriken abzuschalten."
 }

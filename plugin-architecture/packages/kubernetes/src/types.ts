@@ -58,6 +58,8 @@ export interface K8sPodContainer {
    * sidecar (KEP-753), which changes the pod's effective request.
    */
   restartPolicy?: string;
+  /** Declared ports. Read to find a metrics exporter's scrape port. */
+  ports?: Array<{ containerPort: number; name?: string; protocol?: string }>;
   /** Whole-ConfigMap/Secret env imports. */
   envFrom?: Array<{
     configMapRef?: { name?: string };
@@ -111,6 +113,8 @@ export interface K8sPod {
   spec: K8sPodSpec;
   status: {
     phase: string;
+    /** When the kubelet started the pod. Gates GPU right-sizing on history length. */
+    startTime?: string;
     conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;
     containerStatuses?: Array<{
       ready: boolean;

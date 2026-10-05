@@ -23,6 +23,8 @@
  * gets believed.
  */
 
+import { canonicalGpuModel, type NodeGpuInventory } from "./gpu.js";
+
 /** How much to trust a rate. Always surfaced, never silently dropped. */
 export type RateSource = "billed" | "list-price" | "manual";
 
@@ -33,6 +35,25 @@ export interface NodeRateTable {
   byInstanceType: Record<string, number>;
   /** Exact node name → hourly cost. Wins over `byInstanceType`. */
   byNodeName: Record<string, number>;
+  /**
+   * Node label key → label value → hourly cost. Wins over `byInstanceType`,
+   * loses to `byNodeName`.
+   *
+   * Exists for node pools an instance type cannot tell apart: on GKE an
+   * `n1-standard-8` with four T4s attached and one with none share a machine
+   * type and differ in price by the GPUs, so the GCP plugin prices each pool
+   * and keys it by `cloud.google.com/gke-nodepool`.
+   */
+  byNodeLabel: Record<string, Record<string, number>>;
+  /**
+   * Price of one physical GPU for one hour, by model. Keys are matched against
+   * the node's canonical GPU model (`a100-80gb`, `t4`), its raw label value,
+   * or `*` for any GPU. Decides what share of a GPU node's price is the GPU;
+   * never adds to the node's price. Supplied by a cloud plugin that bills GPUs
+   * as their own line (Google Cloud), or typed on the account as
+   * `gpu/<model>=<price>`.
+   */
+  gpuHourly: Record<string, number>;
   /**
    * The flat managed-control-plane fee, per cluster per hour.
    *
@@ -73,6 +94,8 @@ export const EMPTY_RATE_TABLE: NodeRateTable = {
   source: "list-price",
   byInstanceType: {},
   byNodeName: {},
+  byNodeLabel: {},
+  gpuHourly: {},
   loadBalancerByService: {},
   storageGiBMonth: {},
 };
@@ -86,6 +109,16 @@ function coerceRateMap(value: unknown): Record<string, number> {
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     const num = typeof raw === "number" ? raw : Number(raw);
     if (Number.isFinite(num) && num >= 0) out[key] = num;
+  }
+  return out;
+}
+
+function coerceLabelRateMap(value: unknown): Record<string, Record<string, number>> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, Record<string, number>> = {};
+  for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+    const rates = coerceRateMap(inner);
+    if (Object.keys(rates).length > 0) out[key] = rates;
   }
   return out;
 }
@@ -110,6 +143,7 @@ const CONTROL_PLANE_KEY = "controlPlane";
 const LOAD_BALANCER_KEY = "loadBalancer";
 const STORAGE_PREFIX = "storage/";
 const LOAD_BALANCER_PREFIX = "loadBalancer/";
+const GPU_PREFIX = "gpu/";
 
 /**
  * Parse the `nodeHourlyRates` credential.
@@ -136,6 +170,7 @@ const LOAD_BALANCER_PREFIX = "loadBalancer/";
  *
  *     s-2vcpu-4gb=0.0357, m5.large=0.096
  *     controlPlane=0.10, loadBalancer=0.0149, storage/*=0.10
+ *     gpu/a100-80gb=3.93, gpu/*=2.50
  *
  * Anything unparseable yields an empty table rather than an error; a
  * malformed rate hint must not stop the cluster from listing. Every new field
@@ -158,6 +193,8 @@ export function parseNodeRates(raw: string | undefined | null): NodeRateTable {
         source: coerceSource(parsed["source"]),
         byInstanceType: coerceRateMap(parsed["byInstanceType"]),
         byNodeName: coerceRateMap(parsed["byNodeName"]),
+        byNodeLabel: coerceLabelRateMap(parsed["byNodeLabel"]),
+        gpuHourly: coerceRateMap(parsed["gpuHourly"]),
         ...(controlPlaneHourly !== undefined ? { controlPlaneHourly } : {}),
         ...(loadBalancerHourly !== undefined ? { loadBalancerHourly } : {}),
         loadBalancerByService: coerceRateMap(parsed["loadBalancerByService"]),
@@ -171,6 +208,7 @@ export function parseNodeRates(raw: string | undefined | null): NodeRateTable {
   const byInstanceType: Record<string, number> = {};
   const loadBalancerByService: Record<string, number> = {};
   const storageGiBMonth: Record<string, number> = {};
+  const gpuHourly: Record<string, number> = {};
   let controlPlaneHourly: number | undefined;
   let loadBalancerHourly: number | undefined;
 
@@ -189,6 +227,9 @@ export function parseNodeRates(raw: string | undefined | null): NodeRateTable {
     else if (name.startsWith(STORAGE_PREFIX)) {
       const cls = name.slice(STORAGE_PREFIX.length);
       if (cls) storageGiBMonth[cls] = rate;
+    } else if (name.startsWith(GPU_PREFIX)) {
+      const model = name.slice(GPU_PREFIX.length);
+      if (model) gpuHourly[model] = rate;
     } else if (name.startsWith(LOAD_BALANCER_PREFIX)) {
       const service = name.slice(LOAD_BALANCER_PREFIX.length);
       if (service) loadBalancerByService[service] = rate;
@@ -200,6 +241,8 @@ export function parseNodeRates(raw: string | undefined | null): NodeRateTable {
     source: "manual",
     byInstanceType,
     byNodeName: {},
+    byNodeLabel: {},
+    gpuHourly,
     ...(controlPlaneHourly !== undefined ? { controlPlaneHourly } : {}),
     ...(loadBalancerHourly !== undefined ? { loadBalancerHourly } : {}),
     loadBalancerByService,
@@ -212,15 +255,43 @@ export function rateForNode(
   table: NodeRateTable,
   nodeName: string,
   instanceType: string,
+  labels: Record<string, string> = {},
 ): number | undefined {
   const exact = table.byNodeName[nodeName];
   if (exact !== undefined) return exact;
+  for (const [key, byValue] of Object.entries(table.byNodeLabel)) {
+    const value = labels[key];
+    if (value !== undefined && byValue[value] !== undefined) return byValue[value];
+  }
   if (!instanceType) return undefined;
   return table.byInstanceType[instanceType];
 }
 
 export function hasAnyRate(table: NodeRateTable): boolean {
-  return Object.keys(table.byNodeName).length > 0 || Object.keys(table.byInstanceType).length > 0;
+  return (
+    Object.keys(table.byNodeName).length > 0 ||
+    Object.keys(table.byInstanceType).length > 0 ||
+    Object.keys(table.byNodeLabel).length > 0
+  );
+}
+
+/**
+ * The per-GPU hourly price for a node's devices, or `undefined` to fall back
+ * to the reference split. An exact label value wins, then the canonical model
+ * (so `gpu/A100-SXM4-80GB` and `gpu/a100-80gb` both work), then `*`.
+ */
+export function gpuRateFor(table: NodeRateTable, gpus: NodeGpuInventory): number | undefined {
+  const entries = Object.entries(table.gpuHourly);
+  if (entries.length === 0) return undefined;
+  if (gpus.modelLabel && table.gpuHourly[gpus.modelLabel] !== undefined) {
+    return table.gpuHourly[gpus.modelLabel];
+  }
+  if (gpus.model) {
+    for (const [key, rate] of entries) {
+      if (key !== "*" && canonicalGpuModel(key) === gpus.model) return rate;
+    }
+  }
+  return table.gpuHourly["*"];
 }
 
 /**
@@ -275,5 +346,6 @@ export const NO_RATE_GUIDANCE = [
   "Open this cluster from its cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud or CoreWeave) rather than from a standalone Kubernetes account — the cloud plugin passes its node prices through automatically.",
   "Or set the optional “Node hourly rates” field on this Kubernetes account to a list like `s-2vcpu-4gb=0.0357, m5.large=0.096`.",
   "The same field prices everything else a cluster costs: `controlPlane=0.10` for the managed-cluster fee, `loadBalancer=0.0149` per provisioned LoadBalancer Service, and `storage/*=0.10` per provisioned GiB-month (or `storage/gp3=0.08` for one class).",
+  "On GPU nodes, `gpu/a100-80gb=3.93` (or `gpu/*=2.50`) sets what one GPU costs per hour, which decides how much of the node's price is charged by GPU requests rather than by CPU and memory.",
   "Capacity, volume sizes, load-balancer counts, requests and efficiency are shown either way; only the money is missing.",
 ];

@@ -21,6 +21,7 @@ import type {
 import { formatDailyCost, formatEfficiency, isOverRequested, workloadKey } from "./cost-model.js";
 import type { RateSource } from "./node-rates.js";
 import type { UtilizationStatus } from "./metrics-api.js";
+import type { GpuMetricsSource } from "./gpu-metrics.js";
 import type { ResourceStatus } from "@infrawrench/plugin-base";
 
 /** Lookup tables keyed the way the listers name things. */
@@ -43,6 +44,8 @@ export interface CostIndex {
    * snapshot with no timestamp is indistinguishable from a stale one.
    */
   generatedAt: string;
+  /** Where GPU utilization came from; `null` when no pod requests a GPU. */
+  gpuMetrics: GpuMetricsSource | null;
   /** `namespace/name` → pod. */
   pods: Map<string, PodAllocation>;
   /** `namespace/Kind/name` → workload. */
@@ -56,6 +59,7 @@ export function buildCostIndex(
   rateSource: RateSource,
   utilizationStatus: UtilizationStatus,
   generatedAt: string,
+  gpuMetrics: GpuMetricsSource | null = null,
 ): CostIndex {
   const pods = new Map<string, PodAllocation>();
   for (const pod of cluster.pods) pods.set(`${pod.namespace}/${pod.name}`, pod);
@@ -74,6 +78,7 @@ export function buildCostIndex(
     utilizationAvailable: utilizationStatus.available,
     utilizationStatus,
     generatedAt,
+    gpuMetrics,
     pods,
     workloads,
     namespaces,
@@ -166,5 +171,7 @@ export const SYSTEM_RESERVED_BUCKET_LABEL = "(system reserved · kubelet)";
  * as for one running ten thousand.
  */
 export const CONTROL_PLANE_BUCKET_LABEL = "(control plane · managed cluster fee)";
+/** Allocatable GPUs no pod requested: idle capacity, in GPU form. */
+export const GPU_IDLE_BUCKET_LABEL = "(idle GPUs · requested by nothing)";
 /** Bound volumes no running pod mounts: idle capacity, in disk form. */
 export const UNATTACHED_STORAGE_BUCKET_LABEL = "(unattached volumes · mounted by nothing)";

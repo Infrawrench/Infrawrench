@@ -3,6 +3,7 @@ export interface CloudBillingSku {
   serviceRegions?: string[];
   category?: {
     resourceFamily?: string;
+    resourceGroup?: string;
     usageType?: string;
   };
   pricingInfo?: Array<{
@@ -24,6 +25,28 @@ type GceDiskType = "pd-balanced" | "pd-ssd" | "pd-standard";
 export interface PricingRates {
   machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }>;
   diskGbMonthUsd: Partial<Record<GceDiskType, number>>;
+  /**
+   * On-demand price of one GPU per hour, keyed by {@link gpuSkuKey}. Compute
+   * Engine bills an attached GPU as its own SKU ("Nvidia Tesla T4 GPU running
+   * in Americas"), separately from the machine's cores and RAM.
+   */
+  gpuHourlyUsd?: Record<string, number>;
+}
+
+/**
+ * A GPU's identity reduced to sorted lowercase tokens, without "nvidia" and
+ * "gpu", so a SKU description ("Nvidia Tesla A100 GPU running in Americas")
+ * and a GKE / Compute accelerator type (`nvidia-tesla-a100`) meet on the same
+ * key: `a100-tesla`.
+ */
+export function gpuSkuKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\brunning in\b.*$/, "")
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && t !== "nvidia" && t !== "gpu" && t !== "gpus")
+    .sort()
+    .join("-");
 }
 
 export interface PricingCacheEntry extends PricingRates {
@@ -101,6 +124,7 @@ export async function fetchPricingRatesForGeo(
 
   const machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }> = {};
   const diskGbMonthUsd: Partial<Record<GceDiskType, number>> = {};
+  const gpuHourlyUsd: Record<string, number> = {};
   // Match Storage SKU descriptions (excluding "Regional" replicas) to disk types.
   const diskSkuMatchers: Array<{ type: GceDiskType; needle: string }> = [
     { type: "pd-balanced", needle: "Balanced PD Capacity" },
@@ -142,6 +166,22 @@ export async function fetchPricingRatesForGeo(
 
     if (family !== "Compute") continue;
 
+    // GPUs: the geo-wide on-demand SKU only. Commitment, Spot/Preemptible
+    // (filtered by usageType above) and calendar-mode variants carry other
+    // words in the description and are skipped rather than mis-keyed.
+    if (
+      (sku.category?.resourceGroup === "GPU" || /\bGPU running in\b/.test(description)) &&
+      description.includes(`running in ${geo}`) &&
+      !/commit|reserv|calendar|dws|flex/i.test(description)
+    ) {
+      const rate = unitPriceToUsd(
+        sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice,
+      );
+      const key = gpuSkuKey(description);
+      if (rate > 0 && key && gpuHourlyUsd[key] == null) gpuHourlyUsd[key] = rate;
+      continue;
+    }
+
     const isCoreSku = description.includes("Instance Core");
     const isRamSku = description.includes("Instance Ram");
     if (!isCoreSku && !isRamSku) continue;
@@ -162,7 +202,7 @@ export async function fetchPricingRatesForGeo(
     if (isRamSku) machineRates[machineFamily]!.ramPerGiBHourUsd = hourly;
   }
 
-  return { machineRates, diskGbMonthUsd };
+  return { machineRates, diskGbMonthUsd, gpuHourlyUsd };
 }
 
 /**

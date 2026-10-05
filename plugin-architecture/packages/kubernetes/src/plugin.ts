@@ -53,13 +53,26 @@ const manifest: PluginManifest = {
         "s-2vcpu-4gb=0.0357, m5.large=0.096. The same field prices the rest of the cluster — " +
         "controlPlane=0.10 for a managed cluster's flat fee, loadBalancer=0.0149 per " +
         "LoadBalancer Service, storage/*=0.10 per provisioned GiB-month (or storage/gp3=0.08 " +
-        "for one class). Left blank, capacity, volume sizes and efficiency are still shown — " +
-        "only the money is omitted.",
+        "for one class). On GPU nodes, gpu/a100-80gb=3.93 (or gpu/*=2.50) sets the price of one " +
+        "GPU per hour, which decides how much of the node is charged by GPU requests. Left " +
+        "blank, capacity, volume sizes and efficiency are still shown; only the money is omitted.",
       sensitive: false,
       optional: true,
       multiline: true,
       placeholder:
         "s-2vcpu-4gb=0.0357, m5.large=0.096\ncontrolPlane=0.10, loadBalancer=0.0149, storage/*=0.10",
+    },
+    {
+      key: "gpuMetricsSource",
+      label: "GPU metrics source",
+      description:
+        "Optional. Where GPU utilization comes from, for idle-GPU cost and GPU right-sizing. " +
+        "Left blank, the cluster's Prometheus is found automatically (or the NVIDIA DCGM " +
+        "exporter pods are sampled directly). Set it to namespace/service:port to name a " +
+        "Prometheus that scrapes the DCGM or AMD exporter, or to none to turn GPU metrics off.",
+      sensitive: false,
+      optional: true,
+      placeholder: "monitoring/prometheus-operated:9090",
     },
   ],
   /**
@@ -68,7 +81,9 @@ const manifest: PluginManifest = {
    * workload; plus each PersistentVolumeClaim charged to the workload that
    * mounts it and each LoadBalancer Service to the workload behind its
    * selector; plus explicit idle, system-reserved, control-plane and
-   * unattached-volume buckets for the money that belongs to no tenant. The
+   * unattached-volume buckets for the money that belongs to no tenant. GPU
+   * nodes carve a GPU share off the node price, charged by GPU requests
+   * (`kubernetes-gpu`), with unrequested GPUs as `kubernetes-gpu-idle`. The
    * real money is invoiced to the cloud account that owns the nodes: summing
    * both accounts double-counts.
    *

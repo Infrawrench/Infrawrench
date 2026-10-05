@@ -229,6 +229,13 @@ export async function listAKSClusters(
         nodeCount: totalNodes,
         nodePoolCount: agentPools?.length ?? 0,
         vmSize: String(firstPool?.["vmSize"] ?? ""),
+        // Every pool's VM size, so a GPU user pool is priced as well as the
+        // system pool. Read by the Kubernetes peer's node-rate lookup.
+        vmSizes: [
+          ...new Set(
+            (agentPools ?? []).map((pool) => String(pool["vmSize"] ?? "")).filter(Boolean),
+          ),
+        ].join(","),
         osDiskSizeGb: Number(firstPool?.["osDiskSizeGB"] ?? 0),
         networkPlugin: String(networkProfile?.["networkPlugin"] ?? ""),
         tier: String((cluster["sku"] as Record<string, unknown> | undefined)?.["tier"] ?? "Free"),

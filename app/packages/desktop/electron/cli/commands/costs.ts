@@ -256,10 +256,16 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   }
   const org = await resolveOrg(ctx);
 
-  const groupBy = range.groupBy ?? "provider";
-  if (groupBy !== "none" && !GROUP_DIMENSIONS.includes(groupBy as never)) {
+  const requested = range.groupBy ?? "provider";
+  // `tag:<key>` groups by one tag's values (the API's groupBy "tag" plus
+  // groupByTagKey): how a plugin's own dimensions, such as a Kubernetes
+  // row's `namespace` or `gpu_model`, become chartable from here.
+  const tagKey = requested.startsWith("tag:") ? requested.slice(4).trim() : null;
+  if (tagKey === "") throw new CliError(`--group-by tag:<key> needs a tag key, e.g. tag:team.`);
+  const groupBy = tagKey ? "tag" : requested;
+  if (!tagKey && groupBy !== "none" && !GROUP_DIMENSIONS.includes(groupBy as never)) {
     throw new CliError(
-      `--group-by must be one of none, ${GROUP_DIMENSIONS.join(", ")} — got "${groupBy}".`,
+      `--group-by must be one of none, ${GROUP_DIMENSIONS.join(", ")}, tag:<key> — got "${groupBy}".`,
     );
   }
 
@@ -276,6 +282,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     to,
     binning: "daily",
     groupBy: groupBy as CostQueryRequest["groupBy"],
+    ...(tagKey ? { groupByTagKey: tagKey } : {}),
     filters,
     topN: 8,
     comparePreviousPeriod: false,
@@ -308,6 +315,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       from,
       to,
       groupBy,
+      groupByTagKey: tagKey,
       // Echoed as both the text the user typed and the structure it compiled
       // to, so a script can see which filter actually ran without re-parsing.
       where: range.where?.trim() || null,

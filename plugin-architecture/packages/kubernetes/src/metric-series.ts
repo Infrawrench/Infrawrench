@@ -62,6 +62,14 @@ function efficiencySeries(
   ];
 }
 
+/** GPU utilization as a percentage series, when something measured it. */
+function gpuUtilizationSeries(
+  utilization: number | null,
+  range: { startMs: number; endMs: number },
+): MetricSeries[] {
+  return flatSeries("GPU utilization", utilization == null ? null : utilization * 100, "%", range);
+}
+
 function clusterSeries(
   cluster: ClusterAllocation,
   currency: string,
@@ -83,6 +91,15 @@ function clusterSeries(
     ...flatSeries("Persistent volumes", cluster.storage.dailyAttributedCost, money, range),
     ...flatSeries("Unattached volumes", cluster.storage.dailyUnattachedCost, money, range),
     ...flatSeries("Load balancers", cluster.loadBalancers.dailyCost, money, range),
+    // GPU lines only exist on a cluster with GPUs: flatSeries drops a null.
+    ...(cluster.gpu.nodeCount > 0
+      ? [
+          ...flatSeries("GPU cost", cluster.gpu.dailyCost, money, range),
+          ...flatSeries("Idle GPUs (unrequested)", cluster.gpu.dailyIdleCost, money, range),
+          ...flatSeries("Requested GPU idle", cluster.gpu.wastedDailyCost, money, range),
+          ...gpuUtilizationSeries(cluster.gpu.utilization, range),
+        ]
+      : []),
     // The money twin of the efficiency percentages below: what the gap between
     // requested and used actually costs.
     ...flatSeries("Over-requested (wasted)", cluster.wastedDailyCost, money, range),
@@ -119,6 +136,8 @@ export function buildCostMetricSeries(
       return [
         ...flatSeries("Namespace cost", entry.dailyCost, money, range),
         ...flatSeries("Compute", entry.computeDailyCost, money, range),
+        ...(entry.gpus > 0 ? flatSeries("GPU", entry.gpuDailyCost, money, range) : []),
+        ...(entry.gpus > 0 ? gpuUtilizationSeries(entry.gpuUtilization, range) : []),
         ...flatSeries("Persistent volumes", entry.storageDailyCost, money, range),
         ...flatSeries("Load balancers", entry.loadBalancerDailyCost, money, range),
         ...flatSeries("Over-requested (wasted)", entry.wastedDailyCost, money, range),
@@ -130,6 +149,8 @@ export function buildCostMetricSeries(
       if (!entry) return [];
       return [
         ...flatSeries("Pod cost", entry.dailyCost, money, range),
+        ...(entry.gpus > 0 ? flatSeries("GPU", entry.gpuDailyCost, money, range) : []),
+        ...(entry.gpus > 0 ? gpuUtilizationSeries(entry.gpuUtilization, range) : []),
         ...efficiencySeries(entry.efficiency, range),
       ];
     }
@@ -146,6 +167,11 @@ export function buildCostMetricSeries(
       if (!entry) return [];
       return [
         ...flatSeries(`${kind} cost`, entry.dailyCost, money, range),
+        ...(entry.gpus > 0 ? flatSeries("GPU", entry.gpuDailyCost, money, range) : []),
+        ...(entry.gpus > 0 ? gpuUtilizationSeries(entry.gpuUtilization, range) : []),
+        ...(entry.gpus > 0
+          ? flatSeries("Requested GPU idle", entry.gpuWastedDailyCost, money, range)
+          : []),
         ...flatSeries("Persistent volumes", entry.storageDailyCost, money, range),
         ...flatSeries("Load balancers", entry.loadBalancerDailyCost, money, range),
         ...flatSeries("Over-requested (wasted)", entry.wastedDailyCost, money, range),
