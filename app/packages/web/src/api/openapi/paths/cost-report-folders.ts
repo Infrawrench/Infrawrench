@@ -64,6 +64,7 @@ export function registerCostReportFolderPaths(ctx: BuildContext) {
         content: { "application/json": { schema: CostReportFolder } },
       },
       400: ErrorResponses[400],
+      403: ErrorResponses[403],
     },
   });
 
@@ -89,6 +90,7 @@ export function registerCostReportFolderPaths(ctx: BuildContext) {
         content: { "application/json": { schema: CostReportFolder } },
       },
       400: ErrorResponses[400],
+      403: ErrorResponses[403],
       404: ErrorResponses[404],
     },
   });

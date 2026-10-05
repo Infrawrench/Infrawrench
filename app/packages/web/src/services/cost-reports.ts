@@ -32,7 +32,7 @@ import {
 import { disableReportNotificationsForReport } from "@infrawrench/server-core/report-delivery/store";
 import { db } from "../db/client";
 import { costReports, dashboardWidgets, dashboards } from "../db/schema";
-import { assertCostReportFolderInOrg } from "./cost-report-folders";
+import { assertCanFileIntoCostReportFolder } from "./cost-report-folders";
 import { runCostQuery } from "./cost-query";
 
 type CostReportRow = typeof costReports.$inferSelect;
@@ -183,8 +183,9 @@ export async function createCostReport(
   createdByUserId: string | null,
 ): Promise<CostReport> {
   // A cross-org or stale folder id is a CostReportFolderError (a 400 at the
-  // API), caught here rather than left to surface as an FK violation.
-  if (input.folderId) await assertCostReportFolderInOrg(organizationId, input.folderId);
+  // API), caught here rather than left to surface as an FK violation; a folder
+  // the caller only views is a 403, as it is for a move.
+  if (input.folderId) await assertCanFileIntoCostReportFolder(organizationId, input.folderId);
   const [created] = await db
     .insert(costReports)
     .values({
@@ -213,8 +214,13 @@ export async function updateCostReport(
   reportId: string,
   input: CostReportInput,
 ): Promise<CostReport | null> {
-  if (!(await loadReportRow(organizationId, reportId, "editor"))) return null;
-  if (input.folderId) await assertCostReportFolderInOrg(organizationId, input.folderId);
+  const current = await loadReportRow(organizationId, reportId, "editor");
+  if (!current) return null;
+  // Only a move is checked: re-saving a report where it already sits must not
+  // fail for an editor of the report who merely views its folder.
+  if (input.folderId && input.folderId !== current.folderId) {
+    await assertCanFileIntoCostReportFolder(organizationId, input.folderId);
+  }
   const [updated] = await db
     .update(costReports)
     .set({

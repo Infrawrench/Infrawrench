@@ -260,4 +260,6 @@
 // optional `version` (`1.3` | `1.4`, default `1.3`) on
 // `POST /costs/focus-export`, whose response now carries `X-Focus-Version`.
 // Additive: an existing export or a request without `version` writes 1.3.
-export const API_VERSION = "1.74.0";
+// 1.74.1: creating or moving a report or folder into a folder now needs editor
+// on that folder, as the bulk move already did; a viewer gets a 403.
+export const API_VERSION = "1.74.1";

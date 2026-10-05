@@ -56,7 +56,7 @@ Once the list grows past a screenful, group it. **New folder** on the Reports pa
 Folders organize the list and change nothing else. A report keeps its id, its URL, its dashboard cards, and its name-based matching in the [CLI](#from-the-command-line) and chat no matter where it is filed. Two things follow from that:
 
 - **Deleting a folder never deletes a report.** The folder's reports move to the top of the list and its subfolders become top-level folders — the confirmation says exactly that before anything happens.
-- **Moving is always safe.** The one thing the server refuses is a move that could not mean anything: a folder cannot be placed inside itself or one of its own subfolders, and nothing can nest past the three-level limit. The move menu greys those targets out.
+- **Moving is always safe.** The server refuses a move that could not mean anything: a folder cannot be placed inside itself or one of its own subfolders, and nothing can nest past the three-level limit. The move menu greys those targets out. Filing a report or folder into a folder, whether by moving it or creating it there, also needs you to be able to edit that folder, since its sharing extends to whatever is filed in it.
 
 ### Moving and deleting many at once
 

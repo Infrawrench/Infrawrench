@@ -126,11 +126,15 @@ export class ObjectNotVisibleError extends Error {
 /** A caller who can see the object but lacks the level the action needs. */
 export class ObjectAccessDeniedError extends Error {
   override readonly name = "ObjectAccessDeniedError";
-  constructor(readonly needed: ObjectAccessLevel) {
+  constructor(
+    readonly needed: ObjectAccessLevel,
+    message?: string,
+  ) {
     super(
-      needed === "owner"
-        ? "Only an owner of this item can do that. Ask an owner to share it with you as an owner."
-        : "You can view this item but not edit it. Ask an owner to share it with you as an editor.",
+      message ??
+        (needed === "owner"
+          ? "Only an owner of this item can do that. Ask an owner to share it with you as an owner."
+          : "You can view this item but not edit it. Ask an owner to share it with you as an editor."),
     );
   }
 }

@@ -274,6 +274,7 @@ export function registerCostReportPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Created", content: { "application/json": { schema: CostReport } } },
       400: ErrorResponses[400],
+      403: ErrorResponses[403],
     },
   });
 
@@ -333,6 +334,7 @@ export function registerCostReportPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Updated", content: { "application/json": { schema: CostReport } } },
       400: ErrorResponses[400],
+      403: ErrorResponses[403],
       404: ErrorResponses[404],
     },
   });

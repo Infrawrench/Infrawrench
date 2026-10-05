@@ -16,7 +16,14 @@
  * `costReportFolderMoveBlocker` in client-core, so the move menu in the UI can
  * grey out exactly the targets these functions would reject with a 400.
  */
-import { deleteObjectSharing, filterVisibleObjects, requireObjectAccess } from "./object-sharing";
+import {
+  deleteObjectSharing,
+  filterVisibleObjects,
+  loadAccessResolver,
+  ObjectAccessDeniedError,
+  objectAccessProblem,
+  requireObjectAccess,
+} from "./object-sharing";
 import { and, asc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
@@ -85,23 +92,40 @@ export async function listVisibleCostReportFolders(
 }
 
 /**
- * Throw {@link CostReportFolderError} unless `folderId` is one of the org's
- * folders: the check report create/update runs before filing a report, so a
- * cross-org or stale folder id is a clean 400 rather than an FK violation
- * surfacing as a 500.
+ * Throw unless the caller may file something into `folderId`: it must be one
+ * of the org's folders, visible to the caller, and held at editor. Filing
+ * hands the folder's grantees access to what is filed (folder grants
+ * inherit), so a glimpse is not enough; the bulk move enforces the same rule.
+ * An unknown or invisible folder is a {@link CostReportFolderError} (400), a
+ * visible one the caller cannot edit is an {@link ObjectAccessDeniedError}.
  */
-export async function assertCostReportFolderInOrg(
+export async function assertCanFileIntoCostReportFolder(
   organizationId: string,
   folderId: string,
 ): Promise<void> {
   const [row] = await db
-    .select({ id: costReportFolders.id })
+    .select({ name: costReportFolders.name, parentFolderId: costReportFolders.parentFolderId })
     .from(costReportFolders)
     .where(
       and(eq(costReportFolders.id, folderId), eq(costReportFolders.organizationId, organizationId)),
     )
     .limit(1);
   if (!row) throw new CostReportFolderError("Unknown folder.");
+  const resolver = await loadAccessResolver(organizationId, "cost_report_folder");
+  const denied = objectAccessProblem(
+    resolver,
+    folderId,
+    { folderId: row.parentFolderId },
+    "editor",
+  );
+  if (!denied) return;
+  if (denied instanceof ObjectAccessDeniedError) {
+    throw new ObjectAccessDeniedError(
+      "editor",
+      `You can't file items into "${row.name}": ${denied.message}`,
+    );
+  }
+  throw new CostReportFolderError("Unknown folder.");
 }
 
 export async function createCostReportFolder(
@@ -112,6 +136,7 @@ export async function createCostReportFolder(
   const folders = await listCostReportFolders(organizationId);
   const blocked = costReportFolderMoveBlocker(folders, null, parentFolderId);
   if (blocked) throw new CostReportFolderError(blocked);
+  if (parentFolderId) await assertCanFileIntoCostReportFolder(organizationId, parentFolderId);
 
   const [created] = await db
     .insert(costReportFolders)
@@ -149,6 +174,9 @@ export async function updateCostReportFolder(
 
   const blocked = costReportFolderMoveBlocker(folders, folderId, parentFolderId);
   if (blocked) throw new CostReportFolderError(blocked);
+  if (parentFolderId && parentFolderId !== current.parentFolderId) {
+    await assertCanFileIntoCostReportFolder(organizationId, parentFolderId);
+  }
 
   const [updated] = await db
     .update(costReportFolders)
