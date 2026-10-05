@@ -45,6 +45,12 @@
 
 import type { CostBasis } from "./costs";
 import type { CostAdjustmentRule } from "./billing-rules";
+import type {
+  ManagedAccountPricing,
+  PricingEffect,
+  PricingExpressionFailure,
+  RerateCoverage,
+} from "./msp-pricing";
 
 /* ------------------------------------------------------------------ *
  * Managed accounts
@@ -90,6 +96,12 @@ export interface ManagedAccountInput {
    * providers charged, which is what a pass-through contract says.
    */
   applyBillingRules?: boolean | undefined;
+  /**
+   * Re-rating to public pricing and discount treatment for this customer.
+   * Absent leaves the saved settings as they are on update and means
+   * "pass everything through, no re-rating" on create.
+   */
+  pricing?: ManagedAccountPricing | undefined;
   notes?: string | null | undefined;
   /** Cost centres whose spend is this customer's. Subtrees are included. */
   costCentreIds: string[];
@@ -107,6 +119,8 @@ export interface ManagedAccount {
   billingCurrency: string;
   costBasis: CostBasis;
   applyBillingRules: boolean;
+  /** Re-rating and discount treatment; see `msp-pricing.ts`. */
+  pricing: ManagedAccountPricing;
   notes: string | null;
   costCentreIds: string[];
   accountIds: string[];
@@ -274,6 +288,20 @@ export interface ManagedInvoiceLine {
   rate: number | null;
   /** `adjusted × rate`, in the invoice currency. Null when unconvertible. */
   billed: number | null;
+  /**
+   * What moved this line, in pipeline order, in the line's own currency: one
+   * entry per re-rating step, discount treatment or billing rule that changed
+   * it. Sums to {@link adjustment}. Absent on invoices approved before the
+   * breakdown existed.
+   */
+  effects?: ManagedInvoiceLineEffect[] | undefined;
+}
+
+/** One rule or setting's contribution to one invoice line. */
+export interface ManagedInvoiceLineEffect {
+  /** Matches a {@link ManagedInvoiceDerivation.effects} entry's `key`. */
+  key: string;
+  amount: number;
 }
 
 /**
@@ -326,6 +354,23 @@ export interface ManagedInvoiceDerivation {
   unconverted: string[];
   /** The enabled billing rules in force, in evaluation order, at issue time. */
   rules: CostAdjustmentRule[];
+  /**
+   * The customer's pricing settings at issue time, frozen with the figures.
+   * Absent on invoices approved before managed-account pricing existed.
+   */
+  pricing?: ManagedAccountPricing | undefined;
+  /**
+   * Every rule or setting that moved money, in pipeline order, with what it
+   * added or removed per currency. The per-invoice answer to "which rule
+   * changed what".
+   */
+  effects?: PricingEffect[] | undefined;
+  /** How much in-scope usage was re-rated from a list price. Null when off. */
+  rerateCoverage?: RerateCoverage | null | undefined;
+  /** Things the reader should know about how this was priced. */
+  warnings?: string[] | undefined;
+  /** Expression rules that failed on some lines; those lines kept their cost. */
+  expressionFailures?: PricingExpressionFailure[] | undefined;
   /** The scope, with the names it had at issue time. */
   scope: {
     costCentres: Array<{ id: string; name: string }>;

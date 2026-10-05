@@ -180,4 +180,9 @@
 // and `POST /cost-exports/warehouse-setup`. Additive.
 // 1.52.0: price catalog. `GET /price-catalog/providers`, `/search` and
 // `/compare` (resources:read), and `price-catalog` on the TabTarget enum. Additive.
-export const API_VERSION = "1.52.0";
+// 1.53.0: managed-account pricing. `tiered` and `expression` billing-rule kinds with
+// `tiers`/`tierMode`/`tierScope`/`expression` and `managedAccountIds`; `pricing` on managed
+// accounts (re-rating to public pricing, discount treatment); per-line `effects` and
+// `effects`/`rerateCoverage`/`warnings`/`expressionFailures` on invoice derivations;
+// `POST /billing-rules/preview` and `POST /billing-rules/reorder`. Additive.
+export const API_VERSION = "1.53.0";

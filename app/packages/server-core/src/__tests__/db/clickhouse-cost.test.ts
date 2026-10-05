@@ -71,6 +71,8 @@ function costRow(over: Partial<CostDailyRow>): CostDailyRow {
     amortized_amount: 0,
     amortized_reported: 0,
     commitment_id: "",
+    list_amount: 0,
+    list_reported: 0,
     ...over,
   };
 }

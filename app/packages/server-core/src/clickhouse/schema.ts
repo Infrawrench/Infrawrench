@@ -315,6 +315,20 @@ export const costDaily = clickhouseTable(
      * discount a row is attributable to. Empty for everything else.
      */
     commitment_id: string().notNull().default(""),
+    /**
+     * The same consumption at the provider's public on-demand list price, when
+     * the provider reports one (`CostRow.listAmount`), or when the amount was
+     * itself derived from list prices (an `estimated` plugin). Read only by
+     * managed-account invoices that re-rate to public pricing.
+     */
+    list_amount: float64().notNull().default(0),
+    /**
+     * Whether `list_amount` was reported, as opposed to defaulted. The same
+     * pair `amortized_*` uses and for the same reason: a list price of zero
+     * (free-tier usage) is an answer, and "no list price" must fall back to
+     * the uplift instead of re-rating the line to nothing.
+     */
+    list_reported: uint8().notNull().default(0),
   },
   (t) => [
     replacingMergeTree({

@@ -19,11 +19,14 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   MANAGED_ACCOUNT_LIMITS,
+  managedAccountPricingError,
   managedAccountScopeConflicts,
   normalizeCurrencyCode,
+  normalizeManagedAccountPricing,
   type CostBasis,
   type ManagedAccount,
   type ManagedAccountInput,
+  type ManagedAccountPricing,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, costCentres, managedAccounts, managedInvoices } from "../db/schema";
@@ -79,6 +82,8 @@ function toWire(row: Row, invoiceCount: number): ManagedAccount {
     billingCurrency: row.billingCurrency,
     costBasis: row.costBasis as CostBasis,
     applyBillingRules: row.applyBillingRules,
+    // Null is the pre-pricing default: nothing re-rated, everything passed through.
+    pricing: normalizeManagedAccountPricing(row.pricing),
     notes: row.notes,
     costCentreIds: Array.isArray(row.costCentreIds) ? row.costCentreIds : [],
     accountIds: Array.isArray(row.accountIds) ? row.accountIds : [],
@@ -111,6 +116,8 @@ interface Normalized {
   billingCurrency: string;
   costBasis: CostBasis;
   applyBillingRules: boolean;
+  /** Undefined on an update that did not send it: the saved settings stay. */
+  pricing?: ManagedAccountPricing | undefined;
   notes: string | null;
   costCentreIds: string[];
   accountIds: string[];
@@ -154,8 +161,16 @@ function normalizeInput(input: ManagedAccountInput): Normalized {
     return unique;
   };
 
+  let pricing: ManagedAccountPricing | undefined;
+  if (input.pricing !== undefined) {
+    pricing = normalizeManagedAccountPricing(input.pricing);
+    const pricingError = managedAccountPricingError(pricing);
+    if (pricingError) throw new ManagedAccountError(pricingError);
+  }
+
   return {
     name,
+    pricing,
     contactName: trimOrNull(
       input.contactName,
       MANAGED_ACCOUNT_LIMITS.maxContactNameLength,
@@ -353,6 +368,7 @@ export async function createManagedAccount(
         id: randomUUID(),
         organizationId,
         ...data,
+        pricing: data.pricing ?? null,
         createdByUserId: createdByUserId ?? null,
       })
       .returning();
@@ -388,7 +404,13 @@ export async function updateManagedAccount(
   try {
     const [row] = await db
       .update(managedAccounts)
-      .set({ ...data, updatedAt: new Date() })
+      .set({
+        ...data,
+        // Absent means "leave as saved", so a client that predates the
+        // pricing settings cannot wipe them by saving a contact address.
+        pricing: data.pricing === undefined ? existing.pricing : data.pricing,
+        updatedAt: new Date(),
+      })
       .where(and(eq(managedAccounts.id, id), eq(managedAccounts.organizationId, organizationId)))
       .returning();
     if (!row) return null;

@@ -329,6 +329,8 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /billing-rules": "costs:read",
   "GET /billing-rules/{id}": "costs:read",
   "POST /billing-rules": "org:settings:write",
+  "POST /billing-rules/preview": "costs:read",
+  "POST /billing-rules/reorder": "org:settings:write",
   "PUT /billing-rules/{id}": "org:settings:write",
   "DELETE /billing-rules/{id}": "org:settings:write",
   // managed accounts & invoices: the managed-service-provider surface.

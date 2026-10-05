@@ -44,6 +44,7 @@ const COST_DATA = [
   /report-delivery/,
   /cost-exports/,
   /cost\/invoices/,
+  /cost\/pricing-preview/,
 ];
 
 /**

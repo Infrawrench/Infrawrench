@@ -204,6 +204,8 @@ export function supersededTombstones(
       // amortized reader's fallback to `amount` finds zero either way.
       amortized_reported: 0,
       commitment_id: row.commitment_id,
+      list_amount: 0,
+      list_reported: 0,
     });
   }
   return [...tombstones.values()];

@@ -58,8 +58,19 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  billingRuleAppliesToCustomer,
   buildExchangeRateTable,
   dedupeScopeCentres,
+  describeBillingRule,
+  isInvoiceOnlyBillingRuleKind,
+  managedAccountPricingIsNeutral,
+  normalizeManagedAccountPricing,
+  orderBillingRules,
+  priceLines,
+  pricingTagKeys,
+  type PricingEffect,
+  type PricingLine,
+  type PricingResult,
   fixedRuleAmountForRange,
   formatManagedInvoiceNumber,
   MANAGED_INVOICE_LIMITS,
@@ -84,10 +95,10 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, managedAccounts, managedInvoices, organizations } from "../db/schema";
-import { getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
+import { getPricingLines, getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
 import { csvCell } from "../cost-exports/serialize";
 import { listAllocationRules, listCostCentres } from "./allocation";
-import { resolveBillingAdjustments } from "./billing-rules";
+import { listBillingRules, resolveBillingAdjustments } from "./billing-rules";
 import { rateForDay, parseRate } from "./currency-convert";
 import { listOrgExchangeRates } from "./currency-settings";
 import { deliverInvoiceEmail } from "./invoice-delivery";
@@ -141,6 +152,20 @@ type ManagedAccountRow = typeof managedAccounts.$inferSelect;
  * and a period and nothing else, which is what lets the approval path call it
  * one last time and store the answer without any risk of storing something
  * different from what the draft was showing a second earlier.
+ *
+ * ## Two paths to the same lines
+ *
+ * When nothing changes money (no markup, no tier, no expression, no re-rating,
+ * every discount passed through) the classic path runs: one `getShowbackSpend`
+ * scan, and every cost-centre line is byte-identical to the showback row.
+ *
+ * Otherwise the **priced** path runs: `getPricingLines` scans the same rows
+ * under the same allocation and reallocation, grouped finer, and the pure
+ * engine in `client-core/msp-pricing.ts` applies re-rating, discount treatment
+ * and the billing rules in order, recording what each one changed. That ledger
+ * is what lets every line say which rule moved which amount. For percentage
+ * rules alone the two paths agree, because a product of factors over a group is
+ * the same as applying the factors one after another to each member.
  */
 export async function computeInvoiceFigures(
   organizationId: string,
@@ -151,24 +176,27 @@ export async function computeInvoiceFigures(
   const costBasis = account.costBasis as CostBasis;
   const scopeCentreIds = Array.isArray(account.costCentreIds) ? account.costCentreIds : [];
   const scopeAccountIds = Array.isArray(account.accountIds) ? account.accountIds : [];
+  const pricing = normalizeManagedAccountPricing(account.pricing);
 
-  const [centres, allocationRules, billing, rates, accountRows] = await Promise.all([
+  const [centres, allocationRules, billing, allRules, rates, accountRows] = await Promise.all([
     listCostCentres(organizationId),
     listAllocationRules(organizationId),
     account.applyBillingRules ? resolveBillingAdjustments(organizationId) : Promise.resolve(null),
+    account.applyBillingRules ? listBillingRules(organizationId) : Promise.resolve([]),
     listOrgExchangeRates(organizationId),
-    scopeAccountIds.length > 0
-      ? db
-          .select({ id: accounts.id, displayName: accounts.displayName })
-          .from(accounts)
-          .where(
-            and(eq(accounts.organizationId, organizationId), inArray(accounts.id, scopeAccountIds)),
-          )
-      : Promise.resolve([] as Array<{ id: string; displayName: string }>),
+    db
+      .select({ id: accounts.id, displayName: accounts.displayName })
+      .from(accounts)
+      .where(eq(accounts.organizationId, organizationId)),
   ]);
 
   const centreById = new Map(centres.map((c) => [c.id, c]));
-  const accountNameById = new Map(accountRows.map((a) => [a.id, a.displayName]));
+  const orgAccountNames = new Map(accountRows.map((a) => [a.id, a.displayName]));
+  const accountNameById = new Map(
+    scopeAccountIds
+      .filter((id) => orgAccountNames.has(id))
+      .map((id) => [id, orgAccountNames.get(id)!] as const),
+  );
 
   // Scope that has since disappeared is recorded, never silently skipped: an
   // invoice that is quietly short is worse than one that says why.
@@ -195,30 +223,7 @@ export async function computeInvoiceFigures(
     });
   }
 
-  const compiled =
-    billing && !billingAdjustmentsAreEmptyLocal(billing) ? billing.adjustments : undefined;
-  const rows = await getShowbackSpend(
-    organizationId,
-    orderedRules,
-    periodFrom,
-    periodTo,
-    costBasis,
-    compiled,
-  );
-
-  // bucket id → currency → { adjusted, collected }
-  const byBucket = new Map<string, Map<string, { adjusted: number; collected: number }>>();
-  for (const row of rows) {
-    const key = row.costCentreId || UNALLOCATED_KEY;
-    const bucket = byBucket.get(key) ?? new Map();
-    const entry = bucket.get(row.currency) ?? { adjusted: 0, collected: 0 };
-    entry.adjusted = round6(entry.adjusted + row.amount);
-    entry.collected = round6(entry.collected + (row.rawAmount ?? row.amount));
-    bucket.set(row.currency, entry);
-    byBucket.set(key, bucket);
-  }
-
-  /* -- cost-centre lines, over deduplicated subtrees -- */
+  /* -- the tree, needed by both paths -- */
 
   const parentOf = new Map<string, string | null>(centres.map((c) => [c.id, c.parentId]));
   const liveScopeCentres = scopeCentreIds.filter((id) => centreById.has(id));
@@ -233,43 +238,150 @@ export async function computeInvoiceFigures(
     list.push(centre.id);
     childrenOf.set(centre.parentId, list);
   }
-
-  const subtreeTotals = (rootId: string): Map<string, { adjusted: number; collected: number }> => {
-    const out = new Map<string, { adjusted: number; collected: number }>();
+  const subtreeIds = (rootId: string): string[] => {
+    const out: string[] = [];
     const seen = new Set<string>();
     const stack = [rootId];
     while (stack.length > 0) {
       const id = stack.pop()!;
       if (seen.has(id)) continue; // cycle guard, matching buildShowbackCentres
       seen.add(id);
-      for (const [currency, amounts] of byBucket.get(id) ?? []) {
-        const entry = out.get(currency) ?? { adjusted: 0, collected: 0 };
-        entry.adjusted = round6(entry.adjusted + amounts.adjusted);
-        entry.collected = round6(entry.collected + amounts.collected);
-        out.set(currency, entry);
-      }
+      out.push(id);
       for (const child of childrenOf.get(id) ?? []) stack.push(child);
     }
     return out;
   };
 
+  /* -- which rules move money for this customer -- */
+
+  const engineRules = allRules.filter(
+    (r) =>
+      r.enabled &&
+      (r.adjustment.kind === "percentage" || isInvoiceOnlyBillingRuleKind(r.adjustment.kind)) &&
+      billingRuleAppliesToCustomer(r, account.id),
+  );
+  const priced = engineRules.length > 0 || !managedAccountPricingIsNeutral(pricing);
+
+  // bucket id → currency → amounts and the effects that produced them
+  const byBucket = new Map<string, Map<string, BucketAmounts>>();
+  const put = (bucketId: string, currency: string, amounts: BucketAmounts) => {
+    const bucket = byBucket.get(bucketId) ?? new Map<string, BucketAmounts>();
+    const entry = bucket.get(currency) ?? { adjusted: 0, collected: 0, effects: new Map() };
+    entry.adjusted = round6(entry.adjusted + amounts.adjusted);
+    entry.collected = round6(entry.collected + amounts.collected);
+    for (const [k, v] of amounts.effects)
+      entry.effects.set(k, round6((entry.effects.get(k) ?? 0) + v));
+    bucket.set(currency, entry);
+    byBucket.set(bucketId, bucket);
+  };
+
+  let pricingResult: PricingResult | null = null;
+
+  if (priced) {
+    const scopeBuckets = [
+      ...billableCentres.flatMap(subtreeIds),
+      ...[...accountNameById.keys()].map((id) => `${ACCOUNT_BUCKET_PREFIX}${id}`),
+    ];
+    const rows =
+      scopeBuckets.length === 0
+        ? []
+        : await getPricingLines(organizationId, orderedRules, periodFrom, periodTo, {
+            costBasis,
+            reallocations: billing?.adjustments.reallocations,
+            tagKeys: pricingTagKeys(engineRules),
+            buckets: scopeBuckets,
+          });
+    const lines: PricingLine[] = rows.map((r) => ({
+      ...r,
+      accountName: orgAccountNames.get(r.accountId) ?? r.accountId,
+    }));
+    pricingResult = priceLines(lines, { pricing, rules: engineRules, customer: account.name });
+    for (const b of pricingResult.buckets) {
+      put(b.bucket || UNALLOCATED_KEY, b.currency, {
+        adjusted: b.adjusted,
+        collected: b.collected,
+        effects: new Map(Object.entries(b.effects)),
+      });
+    }
+  } else {
+    // Reallocation still moves rows between buckets with no rule changing an
+    // amount, so the classic scan runs adjusted whenever one is in force.
+    const compiled =
+      billing && billing.adjustments.reallocations.length > 0 ? billing.adjustments : undefined;
+    const rows = await getShowbackSpend(
+      organizationId,
+      orderedRules,
+      periodFrom,
+      periodTo,
+      costBasis,
+      compiled,
+    );
+    for (const row of rows) {
+      put(row.costCentreId || UNALLOCATED_KEY, row.currency, {
+        adjusted: row.amount,
+        collected: row.rawAmount ?? row.amount,
+        effects: new Map(),
+      });
+    }
+  }
+
+  const subtreeTotals = (rootId: string): Map<string, BucketAmounts> => {
+    const out = new Map<string, BucketAmounts>();
+    for (const id of subtreeIds(rootId)) {
+      for (const [currency, amounts] of byBucket.get(id) ?? []) {
+        const entry = out.get(currency) ?? { adjusted: 0, collected: 0, effects: new Map() };
+        entry.adjusted = round6(entry.adjusted + amounts.adjusted);
+        entry.collected = round6(entry.collected + amounts.collected);
+        for (const [k, v] of amounts.effects) {
+          entry.effects.set(k, round6((entry.effects.get(k) ?? 0) + v));
+        }
+        out.set(currency, entry);
+      }
+    }
+    return out;
+  };
+
+  // Effects in pipeline order, so a line's breakdown reads top to bottom the
+  // way the money moved.
+  const effectOrder = new Map((pricingResult?.effects ?? []).map((e, i) => [e.key, i]));
+  const lineEffects = (effects: Map<string, number>): ManagedInvoiceLine["effects"] => {
+    const list = [...effects]
+      .filter(([, amount]) => amount !== 0)
+      .sort(([a], [b]) => (effectOrder.get(a) ?? 0) - (effectOrder.get(b) ?? 0))
+      .map(([key, amount]) => ({ key, amount }));
+    return list.length > 0 ? list : undefined;
+  };
+
   const rawLines: Array<Omit<ManagedInvoiceLine, "rate" | "billed">> = [];
+  const pushLine = (
+    kind: ManagedInvoiceLine["kind"],
+    refId: string,
+    label: string,
+    currency: string,
+    amounts: BucketAmounts,
+  ) => {
+    if (amounts.adjusted === 0 && amounts.collected === 0) return;
+    const effects = lineEffects(amounts.effects);
+    rawLines.push({
+      kind,
+      refId,
+      label,
+      currency,
+      collected: amounts.collected,
+      adjustment: round6(amounts.adjusted - amounts.collected),
+      adjusted: amounts.adjusted,
+      ...(effects ? { effects } : {}),
+    });
+  };
+
+  /* -- cost-centre lines, over deduplicated subtrees -- */
 
   for (const centreId of billableCentres) {
     const centre = centreById.get(centreId)!;
     for (const [currency, amounts] of [...subtreeTotals(centreId)].sort(([a], [b]) =>
       a.localeCompare(b),
     )) {
-      if (amounts.adjusted === 0 && amounts.collected === 0) continue;
-      rawLines.push({
-        kind: "cost_centre",
-        refId: centreId,
-        label: centre.name,
-        currency,
-        collected: amounts.collected,
-        adjustment: round6(amounts.adjusted - amounts.collected),
-        adjusted: amounts.adjusted,
-      });
+      pushLine("cost_centre", centreId, centre.name, currency, amounts);
     }
   }
 
@@ -281,16 +393,7 @@ export async function computeInvoiceFigures(
     const bucket = byBucket.get(`${ACCOUNT_BUCKET_PREFIX}${accountId}`);
     if (!bucket) continue;
     for (const [currency, amounts] of [...bucket].sort(([a], [b]) => a.localeCompare(b))) {
-      if (amounts.adjusted === 0 && amounts.collected === 0) continue;
-      rawLines.push({
-        kind: "account",
-        refId: accountId,
-        label,
-        currency,
-        collected: amounts.collected,
-        adjustment: round6(amounts.adjusted - amounts.collected),
-        adjusted: amounts.adjusted,
-      });
+      pushLine("account", accountId, label, currency, amounts);
     }
   }
 
@@ -313,6 +416,7 @@ export async function computeInvoiceFigures(
     return false;
   };
   const scopeAccountSet = new Set(scopeAccountIds);
+  const fixedEffects: PricingEffect[] = [];
 
   for (const rule of billing?.adjustments.fixed ?? []) {
     const targetsCentre =
@@ -333,7 +437,20 @@ export async function computeInvoiceFigures(
       collected: 0,
       adjustment: amount,
       adjusted: amount,
+      effects: [{ key: rule.ruleId, amount }],
     });
+    const existing = fixedEffects.find((e) => e.key === rule.ruleId);
+    if (existing) {
+      existing.totals[rule.currency] = round6((existing.totals[rule.currency] ?? 0) + amount);
+    } else {
+      fixedEffects.push({
+        key: rule.ruleId,
+        ruleId: rule.ruleId,
+        label: rule.name,
+        kind: "fixed",
+        totals: { [rule.currency]: amount },
+      });
+    }
   }
 
   /* -- conversion into the customer's currency -- */
@@ -374,13 +491,28 @@ export async function computeInvoiceFigures(
     (a, b) => (b.billed ?? b.adjusted) - (a.billed ?? a.adjusted) || a.label.localeCompare(b.label),
   );
 
+  // The rules in force *for this customer*: the graph caption's list plus the
+  // invoice-only kinds that apply here, in evaluation order.
+  const rulesInForce = account.applyBillingRules
+    ? orderBillingRules(allRules)
+        .filter((r) => r.enabled && billingRuleAppliesToCustomer(r, account.id))
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          kind: r.adjustment.kind,
+          summary: describeBillingRule(r),
+        }))
+    : [];
+
+  const effects = [...(pricingResult?.effects ?? []), ...fixedEffects];
+
   const derivation: ManagedInvoiceDerivation = {
     costBasis,
     applyBillingRules: account.applyBillingRules,
     rateDate,
     rates: [...appliedRates.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
     unconverted: [...unconverted].sort(),
-    rules: billing?.rules ?? [],
+    rules: rulesInForce.length > 0 ? rulesInForce : (billing?.rules ?? []),
     scope: {
       costCentres: billableCentres.map((id) => ({ id, name: centreById.get(id)!.name })),
       accounts: scopeAccountIds
@@ -388,24 +520,21 @@ export async function computeInvoiceFigures(
         .map((id) => ({ id, label: accountNameById.get(id)! })),
     },
     missingScope,
+    pricing,
+    effects,
+    rerateCoverage: pricingResult?.coverage ?? null,
+    warnings: pricingResult?.warnings ?? [],
+    expressionFailures: pricingResult?.expressionFailures ?? [],
   };
 
   return { lines, totals: sumManagedInvoiceLines(lines, invoiceCurrency), derivation };
 }
 
-/**
- * Local copy of `billingAdjustmentsAreEmpty`'s question, phrased over the
- * resolved bundle. Kept here rather than imported so the fixed-rule branch
- * above and this one cannot drift: fixed rules are applied as lines, not in the
- * scan, so a rule set that is *only* fixed rules must still skip the adjusted
- * query path, otherwise every row comes back with a `rawAmount` equal to its
- * amount and the invoice claims an adjustment happened when none did.
- */
-function billingAdjustmentsAreEmptyLocal(
-  billing: Awaited<ReturnType<typeof resolveBillingAdjustments>>,
-): boolean {
-  const { factors, reallocations } = billing.adjustments;
-  return factors.length === 0 && reallocations.length === 0;
+/** One bucket's amounts in one currency, with the ledger that produced them. */
+interface BucketAmounts {
+  adjusted: number;
+  collected: number;
+  effects: Map<string, number>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -636,6 +765,8 @@ interface FigureInputs {
   billingCurrency: string;
   costBasis: string;
   applyBillingRules: boolean;
+  /** The customer's re-rating and discount settings, canonically serialized. */
+  pricing: string;
   costCentreIds: string[];
   accountIds: string[];
 }
@@ -649,6 +780,7 @@ function figureInputsOf(row: InvoiceRow, account: ManagedAccountRow): FigureInpu
     billingCurrency: account.billingCurrency,
     costBasis: String(account.costBasis),
     applyBillingRules: account.applyBillingRules,
+    pricing: JSON.stringify(normalizeManagedAccountPricing(account.pricing)),
     costCentreIds: Array.isArray(account.costCentreIds) ? [...account.costCentreIds] : [],
     accountIds: Array.isArray(account.accountIds) ? [...account.accountIds] : [],
   };
@@ -670,6 +802,7 @@ function figureInputsChanged(before: FigureInputs, after: FigureInputs): string[
   if (before.applyBillingRules !== after.applyBillingRules) {
     changed.push("whether the billing rules apply");
   }
+  if (before.pricing !== after.pricing) changed.push("the customer's pricing settings");
   if (!sameList(before.costCentreIds, after.costCentreIds)) {
     changed.push("the cost centres in scope");
   }

@@ -290,9 +290,10 @@ And the organization's own adjustments to collected spend — the answer to "why
 infrawrench billing-rules                 # every rule, in the order it evaluates
 infrawrench billing-rules "Platform overhead"
 infrawrench billing-rules --json
+infrawrench billing-rules preview "Volume tiers" --customer northwind --month 2026-09
 ```
 
-Read-only: writing a markup changes every figure the organization reports about itself, and rides `org:settings:write` with an audit entry behind it. See [Billing rules](./billing-rules.md).
+Read-only: writing a markup changes every figure the organization reports about itself, and rides `org:settings:write` with an audit entry behind it. `preview` is a dry run of one saved rule against a month of real spend (last month by default), with the totals without and with it and the lines it moved; `--customer` prices one managed account's invoice scope. See [Billing rules](./billing-rules.md).
 
 And, if you bill customers for the infrastructure you run for them, the documents themselves:
 

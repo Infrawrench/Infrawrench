@@ -52,18 +52,45 @@
  * the ClickHouse compiler from drifting into three different vocabularies.
  */
 import type { CostChargeType } from "./costs.js";
+import { pricingExpressionError } from "./pricing-expression.js";
 
 /* ------------------------------------------------------------------ *
  * Vocabulary
  * ------------------------------------------------------------------ */
 
-export const BILLING_RULE_KINDS = ["percentage", "fixed", "reallocation"] as const;
+export const BILLING_RULE_KINDS = [
+  "percentage",
+  "fixed",
+  "reallocation",
+  "tiered",
+  "expression",
+] as const;
 export type BillingRuleKind = (typeof BILLING_RULE_KINDS)[number];
+
+/**
+ * Kinds that only apply when a managed account's invoice is priced.
+ *
+ * A tier is a statement about *one customer's* monthly volume, and a custom
+ * expression is evaluated per invoice line; neither has a meaning over the
+ * organisation's own cost graphs, budgets or showback, so those paths never
+ * compile them and never name them in an "adjusted" caption. Saying so in one
+ * constant is what keeps a graph from claiming a rule moved it when it did not.
+ */
+export const BILLING_RULE_INVOICE_KINDS = ["tiered", "expression"] as const;
+export type BillingRuleInvoiceKind = (typeof BILLING_RULE_INVOICE_KINDS)[number];
+
+export function isInvoiceOnlyBillingRuleKind(
+  kind: BillingRuleKind,
+): kind is BillingRuleInvoiceKind {
+  return (BILLING_RULE_INVOICE_KINDS as readonly string[]).includes(kind);
+}
 
 export const BILLING_RULE_KIND_LABELS: Record<BillingRuleKind, string> = {
   percentage: "Markup or discount",
   fixed: "Fixed amount",
   reallocation: "Reallocation",
+  tiered: "Tiered rate",
+  expression: "Custom expression",
 };
 
 export const BILLING_RULE_KIND_DESCRIPTIONS: Record<BillingRuleKind, string> = {
@@ -76,7 +103,49 @@ export const BILLING_RULE_KIND_DESCRIPTIONS: Record<BillingRuleKind, string> = {
   reallocation:
     "Move matched spend to a different cost centre or account. The first matching reallocation " +
     "rule wins, so a row moves exactly once and the organisation's total never changes.",
+  tiered:
+    "Mark up or discount a customer's matched spend by rate tiers on their monthly volume, " +
+    "for example +8% up to 10,000, +5% to 50,000 and +3% above. Applies to invoices only.",
+  expression:
+    "Compute a line's new cost with a small, safe expression such as " +
+    '`if service == "AmazonEC2" and tag.env == "prod" then cost * 1.1`. Applies to invoices only.',
 };
+
+/**
+ * How a tiered rule turns a volume into an amount.
+ *
+ * - `marginal`: each slice of spend is charged at its own tier's rate, like
+ *   income tax. Crossing a threshold never makes the earlier spend dearer.
+ * - `volume`: the whole month's spend is charged at the rate of the tier the
+ *   total falls in. Simpler to quote, and it has a cliff at every threshold.
+ */
+export const BILLING_RULE_TIER_MODES = ["marginal", "volume"] as const;
+export type BillingRuleTierMode = (typeof BILLING_RULE_TIER_MODES)[number];
+
+export const BILLING_RULE_TIER_MODE_LABELS: Record<BillingRuleTierMode, string> = {
+  marginal: "Marginal (each slice at its own rate)",
+  volume: "Whole volume (all spend at the reached tier's rate)",
+};
+
+/** Whether volume is measured over all matched spend or per service. */
+export const BILLING_RULE_TIER_SCOPES = ["overall", "per_service"] as const;
+export type BillingRuleTierScope = (typeof BILLING_RULE_TIER_SCOPES)[number];
+
+export const BILLING_RULE_TIER_SCOPE_LABELS: Record<BillingRuleTierScope, string> = {
+  overall: "Overall monthly spend",
+  per_service: "Each service's monthly spend",
+};
+
+/**
+ * One rate tier. `upTo` is the exclusive upper bound of monthly spend this
+ * tier covers, in the rule's currency; null on the last tier, which is
+ * open-ended. Tiers are stored in ascending order and start at zero.
+ */
+export interface BillingRuleTier {
+  upTo: number | null;
+  /** Signed: +8 marks up by 8%, -2 discounts by 2%. */
+  percent: number;
+}
 
 /** How often a fixed-amount rule's amount recurs. */
 export const BILLING_RULE_FIXED_PERIODS = ["daily", "monthly"] as const;
@@ -144,6 +213,21 @@ export interface BillingRuleAdjustment {
   targetKind?: BillingRuleTargetKind | null | undefined;
   /** The cost centre id or account id named by {@link targetKind}. */
   targetId?: string | null | undefined;
+  /**
+   * `tiered` only. Ascending tiers on monthly spend in {@link currency}; the
+   * last one has `upTo: null`.
+   */
+  tiers?: BillingRuleTier[] | null | undefined;
+  /** `tiered` only. */
+  tierMode?: BillingRuleTierMode | null | undefined;
+  /** `tiered` only. */
+  tierScope?: BillingRuleTierScope | null | undefined;
+  /**
+   * `expression` only. The source of a pricing expression; see
+   * `pricing-expression.ts` for the language. Stored as text and parsed on
+   * every use, so the stored form is always the one a person wrote.
+   */
+  expression?: string | null | undefined;
 }
 
 export interface BillingRule {
@@ -160,6 +244,12 @@ export interface BillingRule {
   priority: number;
   match: BillingRuleMatch;
   adjustment: BillingRuleAdjustment;
+  /**
+   * `tiered` and `expression` only: the managed accounts (customers) whose
+   * invoices this rule prices. Empty means every customer whose billing rules
+   * are on.
+   */
+  managedAccountIds?: string[] | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -171,6 +261,7 @@ export interface BillingRuleInput {
   priority: number;
   match: BillingRuleMatch;
   adjustment: BillingRuleAdjustment;
+  managedAccountIds?: string[] | undefined;
 }
 
 export const BILLING_RULE_LIMITS = {
@@ -187,6 +278,10 @@ export const BILLING_RULE_LIMITS = {
   maxPercent: 1000,
   /** ±$1bn per period: far above any real overhead, far below overflow. */
   maxFixedAmount: 1_000_000_000,
+  /** Tiers on one tiered rule. */
+  maxTiers: 20,
+  /** Customers one invoice-only rule can be scoped to. */
+  maxManagedAccounts: 100,
 } as const;
 
 export const DEFAULT_BILLING_RULE_INPUT: BillingRuleInput = {
@@ -196,6 +291,7 @@ export const DEFAULT_BILLING_RULE_INPUT: BillingRuleInput = {
   priority: 0,
   match: {},
   adjustment: { kind: "percentage", percent: 0 },
+  managedAccountIds: [],
 };
 
 /* ------------------------------------------------------------------ *
@@ -276,8 +372,90 @@ export function billingRuleInputError(input: BillingRuleInput): string | null {
     return "A markup or discount cannot move spend — use a reallocation rule for that.";
   } else if (a.kind === "fixed" && a.targetKind && !a.targetId?.trim()) {
     return "A fixed-amount rule with a target needs the target itself.";
+  } else if ((a.kind === "tiered" || a.kind === "expression") && (a.targetKind || a.targetId)) {
+    return "A tiered or expression rule cannot move spend; use a reallocation rule for that.";
   }
 
+  if (a.kind === "tiered") {
+    const tierError = billingRuleTiersError(a.tiers ?? []);
+    if (tierError) return tierError;
+    if (!a.currency || !/^[A-Za-z]{3}$/.test(a.currency)) {
+      return "A tiered rule needs the three-letter currency its thresholds are stated in.";
+    }
+    if (!(BILLING_RULE_TIER_MODES as readonly string[]).includes(a.tierMode ?? "")) {
+      return "A tiered rule must be marginal or whole-volume.";
+    }
+    if (!(BILLING_RULE_TIER_SCOPES as readonly string[]).includes(a.tierScope ?? "")) {
+      return "A tiered rule must measure overall spend or each service's spend.";
+    }
+  } else if (a.tiers && a.tiers.length > 0) {
+    return `A ${BILLING_RULE_KIND_LABELS[a.kind].toLowerCase()} rule cannot carry tiers.`;
+  }
+
+  if (a.kind === "expression") {
+    if (!a.expression?.trim()) return "An expression rule needs an expression.";
+    const exprError = pricingExpressionError(a.expression);
+    if (exprError) {
+      return `Expression error at character ${exprError.position + 1}: ${exprError.message}`;
+    }
+  } else if (a.expression) {
+    return `A ${BILLING_RULE_KIND_LABELS[a.kind].toLowerCase()} rule cannot carry an expression.`;
+  }
+
+  const scoped = input.managedAccountIds ?? [];
+  if (scoped.length > 0 && !isInvoiceOnlyBillingRuleKind(a.kind)) {
+    return (
+      "Only tiered and expression rules can be limited to particular customers; the other kinds " +
+      "apply to the organisation's own figures too."
+    );
+  }
+  if (scoped.length > BILLING_RULE_LIMITS.maxManagedAccounts) {
+    return `A rule can name at most ${BILLING_RULE_LIMITS.maxManagedAccounts} customers.`;
+  }
+
+  return null;
+}
+
+/**
+ * Why a tier list is unusable, or null. Shared by the editor and the API.
+ *
+ * Tiers must be ascending with strictly increasing positive thresholds, and
+ * only the last may be open-ended: a gap or an overlap would leave some
+ * monthly volume with no rate or two.
+ */
+export function billingRuleTiersError(tiers: readonly BillingRuleTier[]): string | null {
+  if (tiers.length === 0) return "A tiered rule needs at least one tier.";
+  if (tiers.length > BILLING_RULE_LIMITS.maxTiers) {
+    return `A tiered rule can have at most ${BILLING_RULE_LIMITS.maxTiers} tiers.`;
+  }
+  let previous = 0;
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i]!;
+    if (typeof tier.percent !== "number" || !Number.isFinite(tier.percent)) {
+      return `Tier ${i + 1} needs a percentage.`;
+    }
+    if (
+      tier.percent < BILLING_RULE_LIMITS.minPercent ||
+      tier.percent > BILLING_RULE_LIMITS.maxPercent
+    ) {
+      return `Tier ${i + 1}'s percentage must be between ${BILLING_RULE_LIMITS.minPercent}% and ${BILLING_RULE_LIMITS.maxPercent}%.`;
+    }
+    const last = i === tiers.length - 1;
+    if (last) {
+      if (tier.upTo !== null) return "The last tier must be open-ended (no upper bound).";
+    } else {
+      if (typeof tier.upTo !== "number" || !Number.isFinite(tier.upTo)) {
+        return `Tier ${i + 1} needs an upper bound; only the last tier is open-ended.`;
+      }
+      if (tier.upTo <= previous) {
+        return `Tier ${i + 1}'s upper bound must be greater than ${previous}.`;
+      }
+      if (tier.upTo > BILLING_RULE_LIMITS.maxFixedAmount) {
+        return `Tier ${i + 1}'s upper bound must be at most ${BILLING_RULE_LIMITS.maxFixedAmount}.`;
+      }
+      previous = tier.upTo;
+    }
+  }
   return null;
 }
 
@@ -300,16 +478,25 @@ export function normalizeBillingRuleInput(input: BillingRuleInput): BillingRuleI
 
   const a = input.adjustment;
   const kind = a.kind;
+  const targetless = kind === "percentage" || kind === "tiered" || kind === "expression";
   const adjustment: BillingRuleAdjustment = {
     kind,
     percent: kind === "percentage" ? (a.percent ?? 0) : null,
     amount: kind === "fixed" ? (a.amount ?? 0) : null,
-    currency: kind === "fixed" ? (a.currency?.trim().toUpperCase() ?? null) : null,
+    currency:
+      kind === "fixed" || kind === "tiered" ? (a.currency?.trim().toUpperCase() ?? null) : null,
     period: kind === "fixed" ? (a.period ?? "monthly") : null,
-    // A percentage rule can never carry a target; a fixed rule may, and a
-    // reallocation rule must.
-    targetKind: kind === "percentage" ? null : (a.targetKind ?? null),
-    targetId: kind === "percentage" ? null : a.targetId?.trim() || null,
+    // A percentage, tiered or expression rule can never carry a target; a fixed
+    // rule may, and a reallocation rule must.
+    targetKind: targetless ? null : (a.targetKind ?? null),
+    targetId: targetless ? null : a.targetId?.trim() || null,
+    tiers:
+      kind === "tiered"
+        ? (a.tiers ?? []).map((t) => ({ upTo: t.upTo ?? null, percent: t.percent }))
+        : null,
+    tierMode: kind === "tiered" ? (a.tierMode ?? "marginal") : null,
+    tierScope: kind === "tiered" ? (a.tierScope ?? "overall") : null,
+    expression: kind === "expression" ? (a.expression?.trim() ?? "") : null,
   };
   // A target kind with no id (or the reverse) is half a target; collapse it so
   // validation sees one state rather than two.
@@ -323,6 +510,9 @@ export function normalizeBillingRuleInput(input: BillingRuleInput): BillingRuleI
     priority: input.priority,
     match,
     adjustment,
+    managedAccountIds: [
+      ...new Set((input.managedAccountIds ?? []).map((id) => id.trim()).filter(Boolean)),
+    ],
   };
 }
 
@@ -592,7 +782,24 @@ export function describeBillingRuleAdjustment(adjustment: BillingRuleAdjustment)
       return `move to ${adjustment.targetKind === "account" ? "account" : "cost centre"} ${
         adjustment.targetId ?? "?"
       }`;
+    case "tiered":
+      return describeBillingRuleTiers(adjustment);
+    case "expression":
+      return `expression: ${adjustment.expression ?? ""}`;
   }
+}
+
+/** "marginal tiers on monthly spend (USD): to 10000 +8%, to 50000 +5%, above +3%". */
+export function describeBillingRuleTiers(adjustment: BillingRuleAdjustment): string {
+  const signed = (p: number) => `${p > 0 ? "+" : ""}${p}%`;
+  const tiers = (adjustment.tiers ?? [])
+    .map((t) =>
+      t.upTo === null ? `above ${signed(t.percent)}` : `to ${t.upTo} ${signed(t.percent)}`,
+    )
+    .join(", ");
+  const mode = adjustment.tierMode === "volume" ? "whole-volume" : "marginal";
+  const scope = adjustment.tierScope === "per_service" ? "per-service" : "monthly";
+  return `${mode} tiers on ${scope} spend (${adjustment.currency ?? "?"}): ${tiers}`;
 }
 
 /** "Platform overhead: +15% on tag team=platform"; the caption everywhere. */
@@ -605,12 +812,16 @@ export function describeBillingRule(rule: {
 
 /** The `rules` entries an adjusted response carries. */
 export function summarizeBillingRules(rules: readonly BillingRule[]): CostAdjustmentRule[] {
-  return orderBillingRules(rules)
-    .filter((r) => r.enabled)
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      kind: r.adjustment.kind,
-      summary: describeBillingRule(r),
-    }));
+  return (
+    orderBillingRules(rules)
+      // Invoice-only kinds never move a graph, a budget or a showback figure, so
+      // naming them in that caption would be a claim the number does not bear out.
+      .filter((r) => r.enabled && !isInvoiceOnlyBillingRuleKind(r.adjustment.kind))
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        kind: r.adjustment.kind,
+        summary: describeBillingRule(r),
+      }))
+  );
 }

@@ -7,6 +7,9 @@ import type {
   ManagedInvoiceInput,
   ManagedInvoiceSummary,
   ManagedInvoiceUpdate,
+  CostDimensionOption,
+  PricingPreviewRequest,
+  PricingPreviewResult,
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
@@ -33,6 +36,14 @@ export function createWebInvoicesClient(orgId: string): InvoicesClient {
     // Content-Disposition filename right and streams without buffering the CSV
     // into memory first. Session auth rides the cookie.
     invoiceExportUrl: (invoiceId: string) => `${base}/invoices/${invoiceId}/export`,
+    listCostDimension: async (dimension: "provider" | "service") => {
+      const res = await apiGet<{ values: Array<string | CostDimensionOption> }>(
+        `${base}/costs/dimensions?dimension=${dimension}`,
+      );
+      return res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v));
+    },
+    previewPricing: (request: PricingPreviewRequest) =>
+      apiPost<PricingPreviewResult>(`${base}/billing-rules/preview`, request),
 
     createManagedAccount: (input: ManagedAccountInput) =>
       apiPost<ManagedAccount>(`${base}/managed-accounts`, input),

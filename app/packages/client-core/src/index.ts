@@ -316,6 +316,18 @@ export {
   describeBillingRuleMatch,
   describeBillingRuleAdjustment,
   summarizeBillingRules,
+  BILLING_RULE_INVOICE_KINDS,
+  BILLING_RULE_TIER_MODES,
+  BILLING_RULE_TIER_MODE_LABELS,
+  BILLING_RULE_TIER_SCOPES,
+  BILLING_RULE_TIER_SCOPE_LABELS,
+  isInvoiceOnlyBillingRuleKind,
+  billingRuleTiersError,
+  describeBillingRuleTiers,
+  type BillingRuleInvoiceKind,
+  type BillingRuleTier,
+  type BillingRuleTierMode,
+  type BillingRuleTierScope,
   type BillingRuleKind,
   type BillingRuleFixedPeriod,
   type BillingRuleTargetKind,
@@ -397,6 +409,7 @@ export {
   type ManagedInvoiceInput,
   type ManagedInvoiceLine,
   type ManagedInvoiceLineKind,
+  type ManagedInvoiceLineEffect,
   type ManagedInvoiceRate,
   type ManagedInvoiceStatus,
   type ManagedInvoiceSummary,
@@ -671,6 +684,8 @@ export {
 export * from "./api-types";
 export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
+export * from "./pricing-expression";
+export * from "./msp-pricing";
 export * from "./orphans";
 // CO2e beside the cost, with its assumptions on the response.
 export * from "./carbon-factors";

@@ -13967,5 +13967,232 @@
         "v": "v"
       }
     ]
+  },
+  "8174595981e0925f": "Nada modificó ningún importe.",
+  "de2c77496139710d": "No hay uso en el alcance para recalcular.",
+  "375c5be9e0bf24b8": "{share}% recalculado a partir de un precio de lista",
+  "d39b9d6b17a3095d": "Por servicio",
+  "e084e89e10fd6245": "Con precio de lista",
+  "c8378abe60e1b20c": "Alternativa",
+  "6413ab2635f48efc": "No hay gasto en el alcance para ese mes.",
+  "036b72b5a3f9509c": "Sin",
+  "a3f6533c62317d14": "Con",
+  "34b2255f1fdae46c": "Diferencia",
+  "46ba472e667dac9f": "{name}: {count} línea(s) conservaron su coste porque {message}",
+  "82f74920f744da4b": "Qué cambió qué, en orden",
+  "9941fb21f99f8931": "Cobertura del recálculo",
+  "dda47cac2ed494df": "Líneas que más cambiaron",
+  "edfc051ddb88a351": "Guarde al cliente para previsualizar su tarificación con un mes de gasto.",
+  "693d04f73948dc0d": "Mostrar qué cambió esta línea",
+  "a9640d8138642eb4": "Seleccione un proveedor…",
+  "da2bd46741ea0c63": "Todos los servicios",
+  "60a59fbd9419a334": "Porcentaje de recargo",
+  "0ef098aa2c438553": "todos los servicios",
+  "051372274fca89e1": "Recalcular el uso con los precios de lista públicos bajo demanda de los proveedores",
+  "24ca51678a4b8058": "Proveedores y servicios que se recalculan (si no se indica ninguno, se aplican a todos)",
+  "6867c0b3b5892653": "Recargo alternativo cuando no existe precio de lista (%)",
+  "df80907f3e7bf0fb": "Recargos alternativos por proveedor o por servicio (prevalece el más específico)",
+  "f44833c6236e1314": "Descuentos y créditos de proveedores en las facturas de este cliente",
+  "67c7df4ab065d9e1": "% para el cliente",
+  "d81ca5e6d40de342": "Mes de previsualización",
+  "058cb08641b0385d": "Tarificación…",
+  "5e90be8844f7e4f0": "Previsualizar con ese mes",
+  "30cf8f7a837fbccb": "por encima de {from}",
+  "5b622db0f65b738c": "de {from} a",
+  "decbb921bb2f0b64": "Límite superior del nivel {n}",
+  "d85d23e20ee9a996": "Porcentaje del nivel {n}",
+  "b679b2d77e9e5350": "Añadir un nivel",
+  "82285e0ac643a487": "Expresión de tarificación",
+  "f1bdf636181bd0b9": "Carácter {n}: {message}",
+  "742488d8c86c39f1": "La expresión es válida.",
+  "e2130640d0fbc233": "Insertar:",
+  "b9db13385d1cd9ec": "Insertar una condición de servicio",
+  "e5d76c5094b394a7": "servicio…",
+  "67c7fb77b15ba892": "Insertar una condición de proveedor",
+  "b1c368ecc4ad0137": "proveedor…",
+  "88c1ce23d5934988": "Insertar una condición de cuenta",
+  "faca07bc10ffaedf": "cuenta…",
+  "2253d6c0f79796be": "Insertar una etiqueta",
+  "1666bf55e692ebed": "etiqueta…",
+  "73cdbd0c36e5ecea": "Referencia de expresiones",
+  "4edf6fe7bc21c31c": "El valor de una etiqueta, o vacío cuando la línea no la tiene.",
+  "6e9fc4e824340c64": "No se pudo guardar la regla",
+  "dd420bd9b4c8f356": "Falló la previsualización",
+  "1ae319394964b5d8": "Editar «{name}»",
+  "a12d2e8fb4d7e487": "Moneda en la que se expresan los niveles",
+  "8680d8b326341f8f": "Modo de niveles",
+  "6bd18b7dc2782cf8": "Volumen de los niveles",
+  "b44e19626edf9c22": "Clientes cuyas facturas tarifica esta regla (si no se marca ninguno, se aplica a todos)",
+  "6f73ed5df95f1095": "Aún no hay cuentas gestionadas; añada clientes en Facturas.",
+  "da4fde47c1d8fe1f": "Guardar regla",
+  "88b7f37ac993f1cf": "Previsualizar con el gasto real",
+  "4250aa639a72808a": "Previsualizar cliente",
+  "ecc961d3100a7b45": "Toda la organización",
+  "cdb715062114cc47": "Las reglas de reasignación y de importe fijo no modifican los precios de las líneas, por lo que la previsualización solo muestra las demás reglas.",
+  "0340eea0fdec1bb8": "No se pudo reordenar las reglas",
+  "edc8970c74e49b07": "Solo facturas · todos los clientes",
+  "2892443d8a6fc73f": "Solo facturas · {customers}",
+  "b7a5989d96a178f3": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "% del uso en el alcance recalculado a partir de un precio de lista del proveedor (",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " cobrado, con precio de lista de",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ");",
+      " ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      " no tenía precio de lista y se le aplicó un recargo."
+    ]
+  },
+  "a539e1e192f8d6af": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Se tarificaron ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " a ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " sobre",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " líneas de coste agrupadas. No se guardó nada. Sin: las reglas y ajustes vigentes, menos la regla que se previsualiza. Con: incluyéndola, o con los ajustes que se están probando."
+    ]
+  },
+  "2c7efcf4bcc8e69f": {
+    "t": "p",
+    "i": 1,
+    "c": "Se aplica cuando se calculan las facturas de este cliente. El gasto cobrado nunca se reescribe; cada factura muestra la cifra cobrada y lo que cambió cada ajuste."
+  },
+  "7a8361f91065db15": {
+    "t": "p",
+    "i": 1,
+    "c": "El uso se factura al precio de lista que el proveedor informa para él, en lugar de lo que usted pagó. Cuando un proveedor no informa precio de lista, la línea se factura por su importe cobrado más el recargo alternativo, y la factura muestra cuánto fue por cada vía."
+  },
+  "8e6256d16f0cbfbd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "La expresión devuelve el nuevo coste de la línea. Escriba ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "if"
+      },
+      " condición",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "then"
+      },
+      " coste para cambiar solo las líneas que coinciden; sin ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "else"
+      },
+      ", las demás líneas conservan su coste. Las condiciones usan ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "=="
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "!="
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "<"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": ">"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "and"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "or"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "not"
+      },
+      " y ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "in […]"
+      },
+      ". El texto se compara de forma exacta."
+    ]
+  },
+  "d84ec1e382811bd4": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Limitar una regla a clientes concretos requiere el permiso ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "invoices:read"
+      },
+      " ",
+      "para listarlos."
+    ]
+  },
+  "b5428fafa700bd9b": {
+    "t": "p",
+    "i": 1,
+    "c": "Los números más bajos se evalúan primero. Se aplican todos los recargos o descuentos que coincidan, así que dos recargos del 10% se acumulan hasta el 21% y no el 20%. La reasignación es de primera coincidencia, de modo que una fila se mueve exactamente una vez y el total de la organización no cambia. Las reglas por niveles y de expresión tarifican solo las facturas de cuentas gestionadas, en este mismo orden."
   }
 }

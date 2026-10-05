@@ -80,6 +80,7 @@
     "./cost/tag-policy": "./src/cost/tag-policy.ts",
     "./cost/allocation": "./src/cost/allocation.ts",
     "./cost/billing-rules": "./src/cost/billing-rules.ts",
+    "./cost/pricing-preview": "./src/cost/pricing-preview.ts",
     "./cost/managed-accounts": "./src/cost/managed-accounts.ts",
     "./cost/invoices": "./src/cost/invoices.ts",
     "./cost/currency-convert": "./src/cost/currency-convert.ts",

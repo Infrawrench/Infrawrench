@@ -128,6 +128,10 @@ function toCostDailyRow(
     amortized_amount: r.amortizedAmount ?? 0,
     amortized_reported: r.amortizedAmount === undefined ? 0 : 1,
     commitment_id: commitmentId,
+    // Absent and zero differ here too: free-tier usage lists at zero, while a
+    // provider with no list price leaves the line to the fallback uplift.
+    list_amount: r.listAmount ?? 0,
+    list_reported: r.listAmount === undefined ? 0 : 1,
   };
 }
 

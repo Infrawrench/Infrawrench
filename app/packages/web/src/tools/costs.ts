@@ -11,6 +11,7 @@ import {
   COST_QUERY_LANGUAGE_SUMMARY,
   budgetInputSchema,
   costQueryRequestSchema,
+  pricingPreviewRequestSchema,
 } from "@infrawrench/ui/cost/config";
 import {
   acknowledgeCostAnomaly,
@@ -37,7 +38,11 @@ import { listCostScenarioModels as listCostScenarioModelsForOrg } from "../servi
 import { logAudit } from "../services/audit";
 import { getAccountTagCompliance, getUntaggedSpendReport } from "../services/tag-policy";
 import { getShowbackReport } from "../services/showback";
-import { listBillingRules as listBillingRulesForOrg } from "@infrawrench/server-core/cost/billing-rules";
+import {
+  BillingRuleError,
+  listBillingRules as listBillingRulesForOrg,
+} from "@infrawrench/server-core/cost/billing-rules";
+import { previewPricing } from "@infrawrench/server-core/cost/pricing-preview";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
 import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
 import { denyUnlessPermitted } from "./permissions";
@@ -496,7 +501,13 @@ export function costTools(): ToolDefinition[] {
         "applies, so two 10% markups compound to 21% rather than 20%. Reallocation is " +
         "first-match-wins by ascending priority, so a row moves exactly once and the " +
         "organization's total is unchanged by any reallocation. Disabled rules are listed but " +
-        "affect nothing.",
+        "affect nothing.\n\n" +
+        "Two kinds apply **only to managed-account invoices**, never to the organization's own " +
+        "graphs or budgets: `tiered` (a markup or discount by rate tiers on a customer's monthly " +
+        "spend, marginal or whole-volume, overall or per service) and `expression` (a sandboxed " +
+        'pricing expression such as `if service == "AmazonEC2" then cost * 1.1`). Their ' +
+        "`managedAccountIds` limits them to particular customers; empty means every customer. " +
+        "Use preview_billing_rule to see what a rule does to a month of real spend.",
       inputSchema: {},
       risk: "read",
       permission: "costs:read",
@@ -504,6 +515,49 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         return ok(await listBillingRulesForOrg(auth.organizationId));
+      },
+    },
+
+    {
+      name: "preview_billing_rule",
+      title: "Preview a billing rule or customer pricing",
+      description:
+        "Dry-run a billing rule, or a managed account's pricing settings, against one calendar " +
+        "month of real collected spend (last month by default). Nothing is saved. The month is " +
+        "priced twice, once as things stand and once with the candidate swapped in, and the " +
+        "response gives `collected`, `before` and `after` totals per currency, every effect in " +
+        "order (re-rating, discount treatment, each rule), re-rating coverage, expression " +
+        "failures, and the 25 lines that moved most.\n\n" +
+        "Pass `rule` (the same shape list_billing_rules returns, without id and timestamps) to " +
+        "try a rule; add `ruleId` to try an edit of an existing one. Pass `managedAccountId` to " +
+        "price one customer's scope with their settings (see list_managed_accounts), and " +
+        "`pricing` to try different settings for them. Without a customer the organization's " +
+        "whole spend is priced as one customer.\n\n" +
+        "Pricing expressions are a small sandboxed language: fields `cost`, `collected`, " +
+        "`list_cost`, `has_list_price`, `usage`, `unit`, `service`, `provider`, `account`, " +
+        "`account_name`, `region`, `charge_type`, `currency`, `month`, `customer`, `tag.<key>`; " +
+        "operators `+ - * /`, `== != < <= > >=`, `and or not`, `in [..]`; functions `min max " +
+        "abs round contains starts_with ends_with lower has_tag`; and `if c then x else y` " +
+        "(the top-level else defaults to `cost`). An invalid expression comes back as an error " +
+        "naming the character it was found at.",
+      inputSchema: pricingPreviewRequestSchema.shape,
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const parsed = pricingPreviewRequestSchema.safeParse(input);
+        if (!parsed.success) return err(`Invalid preview: ${parsed.error.message}`);
+        if (parsed.data.managedAccountId) {
+          const deniedInvoices = await denyUnlessPermitted(auth, "invoices:read");
+          if (deniedInvoices) return deniedInvoices;
+        }
+        try {
+          return ok(await previewPricing(auth.organizationId, parsed.data));
+        } catch (e) {
+          if (e instanceof BillingRuleError) return err(e.message);
+          throw e;
+        }
       },
     },
 

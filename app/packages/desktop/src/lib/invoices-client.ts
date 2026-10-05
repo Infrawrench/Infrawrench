@@ -8,9 +8,12 @@ import type {
   ManagedInvoiceInput,
   ManagedInvoiceSummary,
   ManagedInvoiceUpdate,
+  PricingPreviewRequest,
+  PricingPreviewResult,
 } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 import { listCloudAccounts } from "./cloud-accounts";
+import { loadCloudCostDimensionValues } from "./cloud-costs";
 
 /**
  * Invoices are cloud-only for the same reason cost reports are: the spend they
@@ -51,6 +54,10 @@ export function createDesktopInvoicesClient(): InvoicesClient {
         pluginId: a.pluginId,
       }));
     },
+    listCostDimension: (dimension: "provider" | "service") =>
+      loadCloudCostDimensionValues(requireOrgId(), dimension),
+    previewPricing: (request: PricingPreviewRequest) =>
+      invoke<PricingPreviewResult>("cloud_preview_pricing", { orgId: requireOrgId(), request }),
 
     createManagedAccount: (input: ManagedAccountInput) =>
       invoke<ManagedAccount>("cloud_create_managed_account", { orgId: requireOrgId(), input }),

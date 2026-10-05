@@ -403,6 +403,21 @@ type BillingRuleAdjustment struct {
 	Period     *string  `json:"period"`
 	TargetKind *string  `json:"targetKind"`
 	TargetID   *string  `json:"targetId"`
+	// Tiers, TierMode and TierScope are `tiered` only: rate tiers on a
+	// managed account's monthly spend. Invoice-only; never moves the org's
+	// own graphs.
+	Tiers     []BillingRuleTier `json:"tiers"`
+	TierMode  *string           `json:"tierMode"`
+	TierScope *string           `json:"tierScope"`
+	// Expression is `expression` only: a sandboxed pricing expression the
+	// server parses and type-checks on save.
+	Expression *string `json:"expression"`
+}
+
+// BillingRuleTier is one rate tier; UpTo is nil on the open-ended last tier.
+type BillingRuleTier struct {
+	UpTo    *float64 `json:"upTo"`
+	Percent float64  `json:"percent"`
 }
 
 // BillingRuleInput is the POST/PUT body.
@@ -413,19 +428,24 @@ type BillingRuleInput struct {
 	Priority    int64                 `json:"priority"`
 	Match       BillingRuleMatch      `json:"match"`
 	Adjustment  BillingRuleAdjustment `json:"adjustment"`
+	// ManagedAccountIDs limits a tiered or expression rule to these customers;
+	// empty means every customer. Always sent, so removing the attribute
+	// widens the rule back to everyone rather than leaving it as it was.
+	ManagedAccountIDs []string `json:"managedAccountIds"`
 }
 
 // BillingRule is a stored restatement rule.
 type BillingRule struct {
-	ID          string                `json:"id"`
-	Name        string                `json:"name"`
-	Description *string               `json:"description"`
-	Enabled     bool                  `json:"enabled"`
-	Priority    int64                 `json:"priority"`
-	Match       BillingRuleMatch      `json:"match"`
-	Adjustment  BillingRuleAdjustment `json:"adjustment"`
-	CreatedAt   string                `json:"createdAt"`
-	UpdatedAt   string                `json:"updatedAt"`
+	ID                string                `json:"id"`
+	Name              string                `json:"name"`
+	Description       *string               `json:"description"`
+	Enabled           bool                  `json:"enabled"`
+	Priority          int64                 `json:"priority"`
+	Match             BillingRuleMatch      `json:"match"`
+	Adjustment        BillingRuleAdjustment `json:"adjustment"`
+	ManagedAccountIDs []string              `json:"managedAccountIds"`
+	CreatedAt         string                `json:"createdAt"`
+	UpdatedAt         string                `json:"updatedAt"`
 }
 
 /* ------------------------------- cost exports ------------------------------ */

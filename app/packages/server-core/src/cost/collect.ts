@@ -59,7 +59,13 @@ export async function collectAccountCosts(
       await client.fetchCostData(accountId, chunk),
     );
     if (rows.length > 0) {
-      const mapped = toCostDailyRows(meta, rows);
+      // An estimating plugin's amounts *are* list prices (inventory or usage
+      // times a published rate card), so they are recorded as such for
+      // re-rating. Anything the plugin stated itself wins.
+      const listed = capability.estimated
+        ? rows.map((r) => (r.listAmount === undefined ? { ...r, listAmount: r.amount } : r))
+        : rows;
+      const mapped = toCostDailyRows(meta, listed);
       // Rows this account has stored for these days that the collection is not
       // rewriting are superseded: a cell the provider restated away, or one
       // whose key moved when the plugin started stamping charge types. They are

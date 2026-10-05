@@ -6,6 +6,7 @@ import {
   describeManagedInvoiceTotal,
   managedInvoiceDeliveryRetryable,
   type CostCentre,
+  type CostDimensionOption,
   type ManagedAccount,
   type ManagedAccountInput,
   type ManagedInvoiceSummary,
@@ -57,6 +58,8 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
   const [invoices, setInvoices] = useState<ManagedInvoiceSummary[] | null>(null);
   const [centres, setCentres] = useState<CostCentre[]>([]);
   const [cloudAccounts, setCloudAccounts] = useState<InvoiceScopeAccount[]>([]);
+  const [providers, setProviders] = useState<CostDimensionOption[]>([]);
+  const [services, setServices] = useState<CostDimensionOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<{ account: ManagedAccount | null } | null>(
     null,
@@ -86,12 +89,23 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     // cost you the ability to *edit* a customer's scope, not the ability to see
     // this month's invoices, which is what folding them into the load above
     // would have done.
-    const [centreRows, cloudRows] = await Promise.all([
+    const noOptions = () => [] as CostDimensionOption[];
+    const [centreRows, cloudRows, providerRows, serviceRows] = await Promise.all([
       client.listCostCentres().catch(() => [] as CostCentre[]),
       client.listAccounts().catch(() => [] as InvoiceScopeAccount[]),
+      client.listCostDimension?.("provider").catch(noOptions) ?? noOptions(),
+      client.listCostDimension?.("service").catch(noOptions) ?? noOptions(),
     ]);
     setCentres(centreRows);
     setCloudAccounts(cloudRows);
+    // Without the dimension lists, fall back to the providers of the accounts
+    // the customer could own, so the re-rating scope is still a picker.
+    setProviders(
+      providerRows.length > 0
+        ? providerRows
+        : [...new Set(cloudRows.map((a) => a.pluginId))].map((p) => ({ value: p, label: p })),
+    );
+    setServices(serviceRows);
   }, [client]);
 
   useEffect(() => {
@@ -190,6 +204,18 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
           account={editingAccount.account}
           centres={centres}
           cloudAccounts={cloudAccounts}
+          providers={providers}
+          services={services}
+          onPreview={
+            client.previewPricing && editingAccount.account
+              ? (pricing, month) =>
+                  client.previewPricing!({
+                    managedAccountId: editingAccount.account!.id,
+                    pricing,
+                    month,
+                  })
+              : undefined
+          }
           onSave={saveAccount}
           onClose={() => setEditingAccount(null)}
         />

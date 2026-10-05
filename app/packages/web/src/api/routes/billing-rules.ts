@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { billingRuleInputSchema } from "@infrawrench/ui/cost/config";
+import {
+  billingRuleInputSchema,
+  billingRuleReorderSchema,
+  pricingPreviewRequestSchema,
+} from "@infrawrench/ui/cost/config";
 import {
   BillingRuleError,
   BillingRuleNameConflictError,
@@ -8,8 +12,12 @@ import {
   deleteBillingRule,
   getBillingRule,
   listBillingRules,
+  reorderBillingRules,
   updateBillingRule,
 } from "@infrawrench/server-core/cost/billing-rules";
+import { previewPricing } from "@infrawrench/server-core/cost/pricing-preview";
+import { COST_SCOPE_RESTRICTED_CODE } from "@infrawrench/client-core";
+import { requestIsCostScoped } from "../../auth/cost-visibility";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -60,6 +68,75 @@ app.get("/", async (c) => {
   return c.json(await listBillingRules(c.get("organizationId")));
 });
 
+/**
+ * POST /api/org/:orgId/billing-rules/preview: price one month with a candidate
+ * rule or candidate customer settings swapped in, and say what changed.
+ *
+ * A POST because the candidate is a body, not because anything is written:
+ * nothing is. Reads ride `costs:read` like the rest of this surface, plus
+ * `invoices:read` when a customer is named, since the answer is that
+ * customer's priced spend.
+ */
+app.post("/preview", async (c) => {
+  requirePermission(c, "costs:read");
+  const parsed = pricingPreviewRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid preview request", issues: parsed.error.issues }, 400);
+  }
+  if (parsed.data.managedAccountId) {
+    requirePermission(c, "invoices:read");
+    // A customer preview is that customer's invoice, and `/invoices` and
+    // `/managed-accounts` are refused outright for scoped cost access
+    // (COST_SCOPE_DENY_RULES). The org-wide preview stays open: its cost reads
+    // are narrowed to the caller's slice like any other.
+    if (requestIsCostScoped(c)) {
+      return c.json(
+        {
+          error:
+            "Previewing a managed account's pricing uses the whole organization's spend and is not available with scoped cost access.",
+          code: COST_SCOPE_RESTRICTED_CODE,
+        },
+        403,
+      );
+    }
+  }
+  try {
+    return c.json(await previewPricing(c.get("organizationId"), parsed.data));
+  } catch (e) {
+    return writeError(c, e);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/billing-rules/reorder: put every rule in a new
+ * evaluation order. One audited act, rather than one PUT per rule whose
+ * intermediate states would each be a different, unintended order.
+ */
+app.post("/reorder", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = billingRuleReorderSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid order", issues: parsed.error.issues }, 400);
+  }
+  let rules;
+  try {
+    rules = await reorderBillingRules(organizationId, parsed.data.ids);
+  } catch (e) {
+    return writeError(c, e);
+  }
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "billing_rule.reorder",
+    entityType: "billing_rule",
+    entityId: "order",
+    metadata: { order: rules.map((r) => ({ id: r.id, name: r.name, priority: r.priority })) },
+  });
+  return c.json(rules);
+});
+
 /** GET /api/org/:orgId/billing-rules/:id: one rule. */
 app.get("/:id", async (c) => {
   requirePermission(c, "costs:read");
@@ -91,7 +168,12 @@ app.post("/", async (c) => {
     action: "billing_rule.create",
     entityType: "billing_rule",
     entityId: rule.id,
-    metadata: { name: rule.name, match: rule.match, adjustment: rule.adjustment },
+    metadata: {
+      name: rule.name,
+      match: rule.match,
+      adjustment: rule.adjustment,
+      managedAccountIds: rule.managedAccountIds,
+    },
   });
   return c.json(rule);
 });
@@ -131,6 +213,7 @@ app.put("/:id", async (c) => {
       enabled: rule.enabled,
       match: rule.match,
       adjustment: rule.adjustment,
+      managedAccountIds: rule.managedAccountIds,
     },
   });
   return c.json(rule);

@@ -514,36 +514,77 @@ type AccountCredentialsInput struct {
 
 // ManagedAccountInput is the POST/PUT body for a customer an MSP bills.
 type ManagedAccountInput struct {
-	Name              string   `json:"name"`
-	ContactName       *string  `json:"contactName"`
-	ContactEmail      *string  `json:"contactEmail"`
-	BillingAddress    *string  `json:"billingAddress"`
-	BillingCurrency   string   `json:"billingCurrency"`
-	CostBasis         *string  `json:"costBasis,omitempty"`
-	ApplyBillingRules *bool    `json:"applyBillingRules,omitempty"`
-	Notes             *string  `json:"notes"`
-	CostCentreIDs     []string `json:"costCentreIds"`
-	AccountIDs        []string `json:"accountIds"`
+	Name              string  `json:"name"`
+	ContactName       *string `json:"contactName"`
+	ContactEmail      *string `json:"contactEmail"`
+	BillingAddress    *string `json:"billingAddress"`
+	BillingCurrency   string  `json:"billingCurrency"`
+	CostBasis         *string `json:"costBasis,omitempty"`
+	ApplyBillingRules *bool   `json:"applyBillingRules,omitempty"`
+	// Pricing is always sent by the provider; the API keeps the saved
+	// settings when it is absent, which only matters to other clients.
+	Pricing       *ManagedAccountPricing `json:"pricing,omitempty"`
+	Notes         *string                `json:"notes"`
+	CostCentreIDs []string               `json:"costCentreIds"`
+	AccountIDs    []string               `json:"accountIds"`
+}
+
+// ManagedAccountPricing is how a customer's invoice is priced beyond the
+// billing rules: re-rating to public list prices and what happens to provider
+// discounts, credits and commitment benefits.
+type ManagedAccountPricing struct {
+	Rerate             ManagedAccountRerate `json:"rerate"`
+	Discounts          DiscountTreatment    `json:"discounts"`
+	Credits            DiscountTreatment    `json:"credits"`
+	CommitmentBenefits DiscountTreatment    `json:"commitmentBenefits"`
+}
+
+// ManagedAccountRerate presents usage at the provider's public on-demand price.
+type ManagedAccountRerate struct {
+	Enabled               bool                `json:"enabled"`
+	Scope                 []PricingScopeEntry `json:"scope"`
+	FallbackUpliftPercent float64             `json:"fallbackUpliftPercent"`
+	Uplifts               []PricingUplift     `json:"uplifts"`
+}
+
+// PricingScopeEntry names a provider and optionally one of its services.
+type PricingScopeEntry struct {
+	PluginID string  `json:"pluginId"`
+	Service  *string `json:"service,omitempty"`
+}
+
+// PricingUplift is a per-provider or per-service fallback uplift.
+type PricingUplift struct {
+	PluginID string  `json:"pluginId"`
+	Service  *string `json:"service,omitempty"`
+	Percent  float64 `json:"percent"`
+}
+
+// DiscountTreatment says whether a benefit reaches the customer.
+type DiscountTreatment struct {
+	Mode               string   `json:"mode"`
+	PassThroughPercent *float64 `json:"passThroughPercent,omitempty"`
 }
 
 // ManagedAccount is a billed customer. A cost centre or cloud account belongs
 // to at most one of them; claiming one twice is a 409 naming the other customer.
 type ManagedAccount struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	ContactName       *string  `json:"contactName"`
-	ContactEmail      *string  `json:"contactEmail"`
-	BillingAddress    *string  `json:"billingAddress"`
-	BillingCurrency   string   `json:"billingCurrency"`
-	CostBasis         string   `json:"costBasis"`
-	ApplyBillingRules bool     `json:"applyBillingRules"`
-	Notes             *string  `json:"notes"`
-	CostCentreIDs     []string `json:"costCentreIds"`
-	AccountIDs        []string `json:"accountIds"`
-	InvoiceCount      int64    `json:"invoiceCount"`
-	CreatedByUserID   *string  `json:"createdByUserId"`
-	CreatedAt         string   `json:"createdAt"`
-	UpdatedAt         string   `json:"updatedAt"`
+	ID                string                `json:"id"`
+	Name              string                `json:"name"`
+	ContactName       *string               `json:"contactName"`
+	ContactEmail      *string               `json:"contactEmail"`
+	BillingAddress    *string               `json:"billingAddress"`
+	BillingCurrency   string                `json:"billingCurrency"`
+	CostBasis         string                `json:"costBasis"`
+	ApplyBillingRules bool                  `json:"applyBillingRules"`
+	Pricing           ManagedAccountPricing `json:"pricing"`
+	Notes             *string               `json:"notes"`
+	CostCentreIDs     []string              `json:"costCentreIds"`
+	AccountIDs        []string              `json:"accountIds"`
+	InvoiceCount      int64                 `json:"invoiceCount"`
+	CreatedByUserID   *string               `json:"createdByUserId"`
+	CreatedAt         string                `json:"createdAt"`
+	UpdatedAt         string                `json:"updatedAt"`
 }
 
 /* ----------------------------- deploy triggers ----------------------------- */

@@ -217,6 +217,9 @@ export async function ingestCostRows(opts: {
       // the cash amount for these rows rather than showing them as worthless.
       amortized_reported: 0,
       commitment_id: "",
+      // A pushed row carries no list price; re-rating falls back to the uplift.
+      list_amount: 0,
+      list_reported: 0,
     };
   });
 

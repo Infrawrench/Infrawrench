@@ -6,6 +6,9 @@ import type {
   ManagedInvoiceInput,
   ManagedInvoiceSummary,
   ManagedInvoiceUpdate,
+  CostDimensionOption,
+  PricingPreviewRequest,
+  PricingPreviewResult,
 } from "@infrawrench/client-core";
 
 /** One cloud account, as the scope picker needs it. */
@@ -42,6 +45,18 @@ export interface InvoicesClient {
   listAccounts(): Promise<InvoiceScopeAccount[]>;
   /** The download URL for an invoice's CSV, or undefined when unsupported. */
   invoiceExportUrl?(invoiceId: string): string;
+  /**
+   * Providers and services with spend, for the re-rating scope and uplift
+   * pickers in the customer editor. Optional: without it those pickers fall
+   * back to the providers of the customer's own accounts.
+   */
+  listCostDimension?(dimension: "provider" | "service"): Promise<CostDimensionOption[]>;
+  /**
+   * Dry-run a customer's pricing settings against a month of spend
+   * (`POST /billing-rules/preview`). Optional: the editor hides the preview
+   * button without it.
+   */
+  previewPricing?(request: PricingPreviewRequest): Promise<PricingPreviewResult>;
 
   createManagedAccount?(input: ManagedAccountInput): Promise<ManagedAccount>;
   updateManagedAccount?(id: string, input: ManagedAccountInput): Promise<ManagedAccount>;

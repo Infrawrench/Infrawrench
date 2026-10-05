@@ -3,10 +3,12 @@ package provider
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -71,6 +73,20 @@ type billingRuleAdjustmentModel struct {
 	Period     types.String  `tfsdk:"period"`
 	TargetKind types.String  `tfsdk:"target_kind"`
 	TargetID   types.String  `tfsdk:"target_id"`
+	Tiers      types.List    `tfsdk:"tiers"`
+	TierMode   types.String  `tfsdk:"tier_mode"`
+	TierScope  types.String  `tfsdk:"tier_scope"`
+	Expression types.String  `tfsdk:"expression"`
+}
+
+type billingRuleTierModel struct {
+	UpTo    types.Float64 `tfsdk:"up_to"`
+	Percent types.Float64 `tfsdk:"percent"`
+}
+
+var billingRuleTierAttrTypes = map[string]attr.Type{
+	"up_to":   types.Float64Type,
+	"percent": types.Float64Type,
 }
 
 var billingRuleAdjustmentAttrTypes = map[string]attr.Type{
@@ -81,7 +97,18 @@ var billingRuleAdjustmentAttrTypes = map[string]attr.Type{
 	"period":      types.StringType,
 	"target_kind": types.StringType,
 	"target_id":   types.StringType,
+	"tiers":       types.ListType{ElemType: types.ObjectType{AttrTypes: billingRuleTierAttrTypes}},
+	"tier_mode":   types.StringType,
+	"tier_scope":  types.StringType,
+	"expression":  types.StringType,
 }
+
+// The server's defaults for a tiered rule that leaves these unset. A config
+// that omits them keeps them null in state when the server echoes the default.
+const (
+	billingRuleDefaultTierMode  = "marginal"
+	billingRuleDefaultTierScope = "overall"
+)
 
 type billingRuleResourceModel struct {
 	ID          types.String `tfsdk:"id"`
@@ -91,6 +118,8 @@ type billingRuleResourceModel struct {
 	Priority    types.Int64  `tfsdk:"priority"`
 	Match       types.Object `tfsdk:"match"`
 	Adjustment  types.Object `tfsdk:"adjustment"`
+	// ManagedAccountIDs scopes a tiered or expression rule to customers.
+	ManagedAccountIDs types.Set `tfsdk:"managed_account_ids"`
 }
 
 func (r *billingRuleResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -143,6 +172,15 @@ func (r *billingRuleResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"holds is applied, in this order.",
 				Validators: []validator.Int64{int64validator.Between(0, 100000)},
 			},
+			"managed_account_ids": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				MarkdownDescription: "`tiered` and `expression` rules only: the `infrawrench_managed_account` " +
+					"ids whose invoices this rule prices, at most 100. Omitted or empty means every customer " +
+					"whose billing rules are on. Setting it on any other kind is refused by the API, because " +
+					"those kinds also move the organization's own figures.",
+				Validators: []validator.Set{setvalidator.SizeAtMost(100)},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"match": schema.SingleNestedBlock{
@@ -189,8 +227,15 @@ func (r *billingRuleResource) Schema(_ context.Context, _ resource.SchemaRequest
 						Required: true,
 						MarkdownDescription: "`percentage` to scale matched spend, `fixed` to add a flat " +
 							"amount per period, `reallocation` to move matched spend onto another " +
-							"cost centre or account without changing the total.",
-						Validators: []validator.String{oneOfValidator("percentage", "fixed", "reallocation")},
+							"cost centre or account without changing the total.\n\n" +
+							"`tiered` and `expression` price **managed-account invoices only** and never " +
+							"change the organization's own graphs, budgets or showback: `tiered` marks a " +
+							"customer's matched monthly spend up or down by rate tiers on its volume, and " +
+							"`expression` computes each matched line's new cost with a sandboxed pricing " +
+							"expression.",
+						Validators: []validator.String{
+							oneOfValidator("percentage", "fixed", "reallocation", "tiered", "expression"),
+						},
 					},
 					"percent": schema.Float64Attribute{
 						Optional: true,
@@ -213,7 +258,8 @@ func (r *billingRuleResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"currency": schema.StringAttribute{
 						Optional: true,
 						MarkdownDescription: "Uppercase ISO 4217 code that `amount` is denominated in, e.g. `USD`. " +
-							"`fixed` rules only.",
+							"`fixed` rules, and `tiered` rules, whose tier thresholds are stated in it " +
+							"(spend in other currencies is not tiered, and the invoice says so).",
 						Validators: []validator.String{
 							stringvalidator.RegexMatches(billingRuleCurrencyPattern,
 								"must be a three-letter uppercase ISO 4217 code, e.g. USD"),
@@ -236,6 +282,53 @@ func (r *billingRuleResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"target_id": schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: "Id of the cost centre or account named by `target_kind`.",
+					},
+					"tiers": schema.ListNestedAttribute{
+						Optional: true,
+						MarkdownDescription: "`tiered` rules only: between 1 and 20 tiers in ascending order. Each " +
+							"tier but the last sets `up_to`, the exclusive upper bound of monthly spend it " +
+							"covers; the last tier leaves it unset and is open-ended. For example 8% up to " +
+							"10000, 5% up to 50000 and 3% above.",
+						Validators: []validator.List{sizeBetween(1, 20)},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"up_to": schema.Float64Attribute{
+									Optional: true,
+									MarkdownDescription: "Exclusive upper bound of monthly spend in `currency`, " +
+										"between 0 and 1000000000 and strictly greater than the previous " +
+										"tier's. Unset on the last tier only.",
+									Validators: []validator.Float64{betweenFloat(0, 1_000_000_000)},
+								},
+								"percent": schema.Float64Attribute{
+									Required:            true,
+									MarkdownDescription: "Signed rate for this tier, between -100 and 1000.",
+									Validators:          []validator.Float64{betweenFloat(-100, 1000)},
+								},
+							},
+						},
+					},
+					"tier_mode": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "`tiered` rules only. `marginal` (the default) charges each slice of " +
+							"the month's spend at its own tier's rate; `volume` charges the whole month at the " +
+							"rate of the tier the total falls in.",
+						Validators: []validator.String{oneOfValidator("marginal", "volume")},
+					},
+					"tier_scope": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "`tiered` rules only. `overall` (the default) measures the customer's " +
+							"matched monthly spend as one volume; `per_service` measures each service separately.",
+						Validators: []validator.String{oneOfValidator("overall", "per_service")},
+					},
+					"expression": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "`expression` rules only: a pricing expression of 1 to 2000 " +
+							"characters giving a matched line's new cost, e.g. " +
+							"`if service == \"AmazonEC2\" and tag.env == \"prod\" then cost * 1.1`. It is " +
+							"parsed and type-checked by the API on apply, and a mistake fails the apply with " +
+							"the character it was found at. It is evaluated by a small interpreter over a " +
+							"closed set of fields and functions, never handed to a database or script engine.",
+						Validators: []validator.String{stringvalidator.LengthBetween(1, 2000)},
 					},
 				},
 				Validators: []validator.Object{objectvalidator.IsRequired()},
@@ -406,7 +499,30 @@ func billingRuleInputFrom(ctx context.Context, model billingRuleResourceModel) (
 			Period:     stringPtr(a.Period),
 			TargetKind: stringPtr(a.TargetKind),
 			TargetID:   stringPtr(a.TargetID),
+			TierMode:   stringPtr(a.TierMode),
+			TierScope:  stringPtr(a.TierScope),
+			Expression: stringPtr(a.Expression),
 		}
+		if !a.Tiers.IsNull() && !a.Tiers.IsUnknown() {
+			var tiers []billingRuleTierModel
+			diags.Append(a.Tiers.ElementsAs(ctx, &tiers, false)...)
+			if diags.HasError() {
+				return iw.BillingRuleInput{}, diags
+			}
+			for _, t := range tiers {
+				adjustment.Tiers = append(adjustment.Tiers, iw.BillingRuleTier{
+					UpTo:    float64Ptr(t.UpTo),
+					Percent: t.Percent.ValueFloat64(),
+				})
+			}
+		}
+	}
+
+	// Always sent: an omitted attribute means every customer, so dropping it
+	// from config must widen the rule rather than leave the saved scope.
+	managedAccountIDs := []string{}
+	if !model.ManagedAccountIDs.IsNull() && !model.ManagedAccountIDs.IsUnknown() {
+		diags.Append(model.ManagedAccountIDs.ElementsAs(ctx, &managedAccountIDs, false)...)
 	}
 
 	return iw.BillingRuleInput{
@@ -414,11 +530,12 @@ func billingRuleInputFrom(ctx context.Context, model billingRuleResourceModel) (
 		// Description has no omitempty on the wire, so a null attribute marshals
 		// as an explicit JSON null and clears the stored description. That is what
 		// removing the attribute from config should mean.
-		Description: stringPtr(model.Description),
-		Enabled:     model.Enabled.ValueBool(),
-		Priority:    model.Priority.ValueInt64(),
-		Match:       match,
-		Adjustment:  adjustment,
+		Description:       stringPtr(model.Description),
+		Enabled:           model.Enabled.ValueBool(),
+		Priority:          model.Priority.ValueInt64(),
+		Match:             match,
+		Adjustment:        adjustment,
+		ManagedAccountIDs: managedAccountIDs,
 	}, diags
 }
 
@@ -436,6 +553,40 @@ func billingRuleStateFrom(ctx context.Context, remote *iw.BillingRule, prior bil
 	match, d := billingRuleMatchTo(ctx, remote.Match, prior.Match)
 	diags.Append(d...)
 
+	// The prior adjustment decides whether an echoed default stays null and
+	// whether a whitespace-only difference in an expression is drift.
+	var priorAdj billingRuleAdjustmentModel
+	if !prior.Adjustment.IsNull() && !prior.Adjustment.IsUnknown() {
+		diags.Append(prior.Adjustment.As(ctx, &priorAdj, basetypes.ObjectAsOptions{
+			UnhandledNullAsEmpty:    true,
+			UnhandledUnknownAsEmpty: true,
+		})...)
+	}
+	keepNullDefault := func(remoteValue *string, priorValue types.String, def string) types.String {
+		if remoteValue != nil && *remoteValue == def && priorValue.IsNull() {
+			return types.StringNull()
+		}
+		return stringValue(remoteValue)
+	}
+	expression := stringValue(remote.Adjustment.Expression)
+	if remote.Adjustment.Expression != nil && !priorAdj.Expression.IsNull() &&
+		strings.TrimSpace(priorAdj.Expression.ValueString()) == *remote.Adjustment.Expression {
+		expression = priorAdj.Expression
+	}
+	tiers := types.ListNull(types.ObjectType{AttrTypes: billingRuleTierAttrTypes})
+	if remote.Adjustment.Tiers != nil {
+		models := make([]billingRuleTierModel, 0, len(remote.Adjustment.Tiers))
+		for _, t := range remote.Adjustment.Tiers {
+			models = append(models, billingRuleTierModel{
+				UpTo:    float64Value(t.UpTo),
+				Percent: types.Float64Value(t.Percent),
+			})
+		}
+		var td diag.Diagnostics
+		tiers, td = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: billingRuleTierAttrTypes}, models)
+		diags.Append(td...)
+	}
+
 	adjustment, d := types.ObjectValueFrom(ctx, billingRuleAdjustmentAttrTypes, billingRuleAdjustmentModel{
 		Kind:       types.StringValue(remote.Adjustment.Kind),
 		Percent:    float64Value(remote.Adjustment.Percent),
@@ -444,17 +595,33 @@ func billingRuleStateFrom(ctx context.Context, remote *iw.BillingRule, prior bil
 		Period:     stringValue(remote.Adjustment.Period),
 		TargetKind: stringValue(remote.Adjustment.TargetKind),
 		TargetID:   stringValue(remote.Adjustment.TargetID),
+		Tiers:      tiers,
+		TierMode:   keepNullDefault(remote.Adjustment.TierMode, priorAdj.TierMode, billingRuleDefaultTierMode),
+		TierScope:  keepNullDefault(remote.Adjustment.TierScope, priorAdj.TierScope, billingRuleDefaultTierScope),
+		Expression: expression,
 	})
 	diags.Append(d...)
 
+	managedAccountIDs := types.SetNull(types.StringType)
+	if len(remote.ManagedAccountIDs) > 0 || (!prior.ManagedAccountIDs.IsNull() && !prior.ManagedAccountIDs.IsUnknown()) {
+		var sd diag.Diagnostics
+		ids := remote.ManagedAccountIDs
+		if ids == nil {
+			ids = []string{}
+		}
+		managedAccountIDs, sd = types.SetValueFrom(ctx, types.StringType, ids)
+		diags.Append(sd...)
+	}
+
 	return billingRuleResourceModel{
-		ID:          types.StringValue(remote.ID),
-		Name:        types.StringValue(remote.Name),
-		Description: stringValue(remote.Description),
-		Enabled:     types.BoolValue(remote.Enabled),
-		Priority:    types.Int64Value(remote.Priority),
-		Match:       match,
-		Adjustment:  adjustment,
+		ID:                types.StringValue(remote.ID),
+		Name:              types.StringValue(remote.Name),
+		Description:       stringValue(remote.Description),
+		Enabled:           types.BoolValue(remote.Enabled),
+		Priority:          types.Int64Value(remote.Priority),
+		Match:             match,
+		Adjustment:        adjustment,
+		ManagedAccountIDs: managedAccountIDs,
 	}, diags
 }
 

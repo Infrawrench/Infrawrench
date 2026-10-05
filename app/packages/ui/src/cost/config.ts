@@ -60,9 +60,16 @@ import {
   BILLING_RULE_FIXED_PERIODS,
   BILLING_RULE_TARGET_KINDS,
   BILLING_RULE_LIMITS,
+  BILLING_RULE_TIER_MODES,
+  BILLING_RULE_TIER_SCOPES,
+  PRICING_EXPRESSION_LIMITS,
+  DISCOUNT_TREATMENT_MODES,
+  MANAGED_ACCOUNT_PRICING_LIMITS,
   type BillingRuleAdjustment,
   type BillingRuleInput,
   type BillingRuleMatch,
+  type ManagedAccountPricing,
+  type PricingPreviewRequest,
   BUSINESS_METRIC_KEY_PATTERN,
   BUSINESS_METRIC_KINDS,
   BUSINESS_METRIC_LIMITS,
@@ -819,6 +826,19 @@ export const billingRuleAdjustmentSchema = z.object({
   period: z.enum(BILLING_RULE_FIXED_PERIODS).nullable().default(null),
   targetKind: z.enum(BILLING_RULE_TARGET_KINDS).nullable().default(null),
   targetId: z.string().min(1).nullable().default(null),
+  tiers: z
+    .array(
+      z.object({
+        upTo: z.number().positive().max(BILLING_RULE_LIMITS.maxFixedAmount).nullable(),
+        percent: z.number().min(BILLING_RULE_LIMITS.minPercent).max(BILLING_RULE_LIMITS.maxPercent),
+      }),
+    )
+    .max(BILLING_RULE_LIMITS.maxTiers)
+    .nullable()
+    .default(null),
+  tierMode: z.enum(BILLING_RULE_TIER_MODES).nullable().default(null),
+  tierScope: z.enum(BILLING_RULE_TIER_SCOPES).nullable().default(null),
+  expression: z.string().max(PRICING_EXPRESSION_LIMITS.maxLength).nullable().default(null),
 });
 
 export const billingRuleInputSchema = z.object({
@@ -828,6 +848,64 @@ export const billingRuleInputSchema = z.object({
   priority: z.number().int().min(0).max(100_000),
   match: billingRuleMatchSchema,
   adjustment: billingRuleAdjustmentSchema,
+  managedAccountIds: z
+    .array(z.string().min(1))
+    .max(BILLING_RULE_LIMITS.maxManagedAccounts)
+    .optional(),
+});
+
+/**
+ * Reordering: the full list of rule ids in the order they should evaluate.
+ * The server rewrites priorities to match, in one transaction.
+ */
+export const billingRuleReorderSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BILLING_RULE_LIMITS.maxRules),
+});
+
+/* ------------------------------------------------------------------ *
+ * Managed-account pricing: re-rating and discount treatment.
+ * ------------------------------------------------------------------ */
+
+const pricingScopeEntrySchema = z.object({
+  pluginId: z.string().min(1).max(64),
+  service: z.string().max(256).nullish(),
+});
+
+const discountTreatmentSchema = z.object({
+  mode: z.enum(DISCOUNT_TREATMENT_MODES),
+  passThroughPercent: z.number().min(0).max(100).nullish(),
+});
+
+const upliftPercent = z
+  .number()
+  .min(MANAGED_ACCOUNT_PRICING_LIMITS.minUpliftPercent)
+  .max(MANAGED_ACCOUNT_PRICING_LIMITS.maxUpliftPercent);
+
+/** Shape-only; the cross-field rules are `managedAccountPricingError`. */
+export const managedAccountPricingSchema = z.object({
+  rerate: z.object({
+    enabled: z.boolean(),
+    scope: z.array(pricingScopeEntrySchema).max(MANAGED_ACCOUNT_PRICING_LIMITS.maxScopeEntries),
+    fallbackUpliftPercent: upliftPercent,
+    uplifts: z
+      .array(pricingScopeEntrySchema.extend({ percent: upliftPercent }))
+      .max(MANAGED_ACCOUNT_PRICING_LIMITS.maxUplifts),
+  }),
+  discounts: discountTreatmentSchema,
+  credits: discountTreatmentSchema,
+  commitmentBenefits: discountTreatmentSchema,
+});
+
+/** `POST /billing-rules/preview`. */
+export const pricingPreviewRequestSchema = z.object({
+  rule: billingRuleInputSchema.nullish(),
+  ruleId: z.string().min(1).nullish(),
+  managedAccountId: z.string().min(1).nullish(),
+  pricing: managedAccountPricingSchema.nullish(),
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM")
+    .nullish(),
 });
 
 /* ------------------------------------------------------------------ *
@@ -966,6 +1044,8 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof billingRuleMatchSchema>, BillingRuleMatch>,
   Exact<z.infer<typeof billingRuleAdjustmentSchema>, BillingRuleAdjustment>,
   Exact<z.infer<typeof billingRuleInputSchema>, BillingRuleInput>,
+  Exact<z.infer<typeof managedAccountPricingSchema>, ManagedAccountPricing>,
+  Exact<z.infer<typeof pricingPreviewRequestSchema>, PricingPreviewRequest>,
 ];
 
 /* ------------------------------------------------------------------ *
@@ -1077,6 +1157,7 @@ export const managedAccountInputSchema = z.object({
   billingCurrency: z.string().regex(CURRENCY_CODE_PATTERN),
   costBasis: z.enum(COST_BASES).optional(),
   applyBillingRules: z.boolean().optional(),
+  pricing: managedAccountPricingSchema.optional(),
   notes: z.string().max(MANAGED_ACCOUNT_LIMITS.maxNotesLength).nullish(),
   costCentreIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxCostCentres).default([]),
   accountIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxAccounts).default([]),

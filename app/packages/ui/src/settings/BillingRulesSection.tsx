@@ -1,32 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { T, Var, useGT } from "gt-react";
-import { useDataString } from "../i18n/data-strings.js";
 import {
-  BILLING_RULE_FIXED_PERIODS,
-  BILLING_RULE_KIND_DESCRIPTIONS,
-  BILLING_RULE_KIND_LABELS,
-  BILLING_RULE_KINDS,
-  COST_CHARGE_TYPE_LABELS,
-  COST_CHARGE_TYPES,
-  billingRuleInputError,
   costCentrePaths,
   describeBillingRuleAdjustment,
   describeBillingRuleMatch,
-  normalizeBillingRuleInput,
+  isInvoiceOnlyBillingRuleKind,
 } from "@infrawrench/client-core";
 import type {
   BillingRule,
-  BillingRuleInput,
-  BillingRuleKind,
   CostCentre,
-  CostCentrePathRow,
-  CostChargeType,
   CostDimensionOption,
+  ManagedAccount,
 } from "@infrawrench/client-core";
-import { useSettingsHost, type SettingsApi } from "./host.js";
-
-const selectClass =
-  "px-2.5 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong";
+import { useSettingsHost } from "./host.js";
+import { BillingRuleForm } from "./BillingRuleForm.js";
 
 /** A dimension value as its picker label, falling back to the raw id. */
 function labelFor(options: CostDimensionOption[], value: string): string {
@@ -56,10 +43,10 @@ function labelFor(options: CostDimensionOption[], value: string): string {
  */
 export function BillingRulesSection() {
   const gt = useGT();
-  const gtData = useDataString();
   const { orgId, api, has, openSection } = useSettingsHost();
   const canRead = has("costs:read");
   const canEdit = has("org:settings:write");
+  const canReadCustomers = has("invoices:read");
 
   const [rules, setRules] = useState<BillingRule[] | null>(null);
   const [centres, setCentres] = useState<CostCentre[]>([]);
@@ -67,6 +54,8 @@ export function BillingRulesSection() {
   const [providers, setProviders] = useState<CostDimensionOption[]>([]);
   const [services, setServices] = useState<CostDimensionOption[]>([]);
   const [tagKeys, setTagKeys] = useState<string[]>([]);
+  const [customers, setCustomers] = useState<ManagedAccount[] | null>(null);
+  const [editing, setEditing] = useState<BillingRule | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -100,7 +89,20 @@ export function BillingRulesSection() {
       (options) => setTagKeys(options.map((o) => o.value)),
       () => {},
     );
-  }, [api, orgId, canRead, load]);
+    // Customers, for scoping tiered and expression rules and for previewing
+    // one customer's invoice. Optional: without `invoices:read` the picker
+    // explains itself instead.
+    if (canReadCustomers) {
+      api
+        .get<ManagedAccount[]>(`/api/org/${orgId}/managed-accounts`)
+        .then(setCustomers, () => setCustomers(null));
+    }
+  }, [api, orgId, canRead, canReadCustomers, load]);
+
+  const customerName = useMemo(
+    () => new Map((customers ?? []).map((c) => [c.id, c.name])),
+    [customers],
+  );
 
   const centrePaths = useMemo(() => costCentrePaths(centres), [centres]);
 
@@ -121,10 +123,25 @@ export function BillingRulesSection() {
         priority: rule.priority,
         match: rule.match,
         adjustment: rule.adjustment,
+        managedAccountIds: rule.managedAccountIds ?? [],
       });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to update rule"));
+    }
+  }
+
+  /** Swap a rule with its neighbour and persist the whole order at once. */
+  async function move(index: number, delta: -1 | 1) {
+    if (!rules) return;
+    const target = index + delta;
+    if (target < 0 || target >= rules.length) return;
+    const ids = rules.map((r) => r.id);
+    [ids[index], ids[target]] = [ids[target]!, ids[index]!];
+    try {
+      setRules(await api.post<BillingRule[]>(`/api/org/${orgId}/billing-rules/reorder`, { ids }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Failed to reorder rules"));
     }
   }
 
@@ -202,8 +219,10 @@ export function BillingRulesSection() {
 
       {rules !== null && rules.length > 0 && (
         <ul className="space-y-2">
-          {rules.map((rule) => {
+          {rules.map((rule, index) => {
             const target = targetLabel(rule);
+            const invoiceOnly = isInvoiceOnlyBillingRuleKind(rule.adjustment.kind);
+            const scoped = rule.managedAccountIds ?? [];
             return (
               <li
                 key={rule.id}
@@ -226,6 +245,15 @@ export function BillingRulesSection() {
                       <Var>{describeBillingRuleMatch(rule.match)}</Var>
                     </span>
                   </T>
+                  {invoiceOnly && (
+                    <span className="block text-xs text-info">
+                      {scoped.length === 0
+                        ? gt("Invoices only · every customer")
+                        : gt("Invoices only · {customers}", {
+                            customers: scoped.map((id) => customerName.get(id) ?? id).join(", "),
+                          })}
+                    </span>
+                  )}
                   {rule.description && (
                     <span className="block text-xs text-on-surface-muted">{rule.description}</span>
                   )}
@@ -239,6 +267,31 @@ export function BillingRulesSection() {
                 </span>
                 {canEdit && (
                   <span className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void move(index, -1)}
+                      disabled={index === 0}
+                      aria-label={gt("Move up")}
+                      className="text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void move(index, 1)}
+                      disabled={index === rules.length - 1}
+                      aria-label={gt("Move down")}
+                      className="text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(rule)}
+                      className="text-xs text-on-surface-secondary hover:text-on-surface underline"
+                    >
+                      {gt("Edit")}
+                    </button>
                     <button
                       type="button"
                       onClick={() => void toggle(rule)}
@@ -266,22 +319,32 @@ export function BillingRulesSection() {
           <p className="text-xs text-on-surface-muted">
             Lower numbers evaluate first. Every matching markup or discount applies, so two 10%
             markups compound to 21% rather than 20%. Reallocation is first-match-wins, so a row
-            moves exactly once and the organisation&rsquo;s total is unchanged by it.
+            moves exactly once and the organisation&rsquo;s total is unchanged by it. Tiered and
+            expression rules price managed-account invoices only, in this same order.
           </p>
         </T>
       )}
 
       {canEdit && (
-        <NewRuleForm
+        <BillingRuleForm
+          // Remount per rule so the form's fields are the rule's, not the last one's.
+          key={editing?.id ?? "new"}
           api={api}
           orgId={orgId}
+          editing={editing}
           centres={centrePaths}
           accounts={accounts}
           providers={providers}
           services={services}
           tagKeys={tagKeys}
+          customers={canReadCustomers ? customers : null}
+          canPreviewCustomers={canReadCustomers}
           nextPriority={(rules ?? []).reduce((max, r) => Math.max(max, r.priority), -1) + 1}
-          onCreated={load}
+          onSaved={async () => {
+            setEditing(null);
+            await load();
+          }}
+          onCancel={() => setEditing(null)}
           onError={setError}
           onManageCentres={() => openSection("cost-centres")}
         />
@@ -296,327 +359,5 @@ export function BillingRulesSection() {
         </T>
       )}
     </section>
-  );
-}
-
-/**
- * Create form. Inline rather than a modal, matching the allocation-rule editor
- * next door; existing rules are enable/disable + delete, so a rule's wording
- * cannot drift out from under a figure somebody already reconciled.
- */
-function NewRuleForm({
-  api,
-  orgId,
-  centres,
-  accounts,
-  providers,
-  services,
-  tagKeys,
-  nextPriority,
-  onCreated,
-  onError,
-  onManageCentres,
-}: {
-  api: SettingsApi;
-  orgId: string;
-  centres: CostCentrePathRow[];
-  accounts: CostDimensionOption[];
-  providers: CostDimensionOption[];
-  services: CostDimensionOption[];
-  tagKeys: string[];
-  nextPriority: number;
-  onCreated: () => Promise<void>;
-  onError: (message: string) => void;
-  onManageCentres: () => void;
-}) {
-  const gt = useGT();
-  const gtData = useDataString();
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<BillingRuleKind>("percentage");
-  const [percent, setPercent] = useState("10");
-  const [amount, setAmount] = useState("1000");
-  const [currency, setCurrency] = useState("USD");
-  const [period, setPeriod] = useState<"daily" | "monthly">("monthly");
-  const [targetKind, setTargetKind] = useState<"cost_centre" | "account">("cost_centre");
-  const [targetId, setTargetId] = useState("");
-  const [tagKey, setTagKey] = useState("");
-  const [tagValue, setTagValue] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [pluginId, setPluginId] = useState("");
-  const [service, setService] = useState("");
-  const [chargeType, setChargeType] = useState<CostChargeType | "">("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const input: BillingRuleInput = useMemo(
-    () =>
-      normalizeBillingRuleInput({
-        name,
-        description: null,
-        enabled: true,
-        priority: nextPriority,
-        match: {
-          ...(tagKey ? { tagKey } : {}),
-          ...(tagKey && tagValue ? { tagValue } : {}),
-          ...(accountId ? { accountId } : {}),
-          ...(pluginId ? { pluginId } : {}),
-          ...(service ? { service } : {}),
-          ...(chargeType ? { chargeType } : {}),
-        },
-        adjustment: {
-          kind,
-          ...(kind === "percentage" ? { percent: Number(percent) } : {}),
-          ...(kind === "fixed" ? { amount: Number(amount), currency, period } : {}),
-          ...(kind !== "percentage" && targetId ? { targetKind, targetId } : {}),
-        },
-      }),
-    [
-      name,
-      nextPriority,
-      tagKey,
-      tagValue,
-      accountId,
-      pluginId,
-      service,
-      chargeType,
-      kind,
-      percent,
-      amount,
-      currency,
-      period,
-      targetKind,
-      targetId,
-    ],
-  );
-
-  // The same validator the API refuses with, so the button explains itself
-  // rather than the server doing it a round-trip later in identical words.
-  const blocker = billingRuleInputError(input);
-
-  async function submit() {
-    if (blocker) return;
-    setSubmitting(true);
-    try {
-      await api.post(`/api/org/${orgId}/billing-rules`, input);
-      setName("");
-      setTagKey("");
-      setTagValue("");
-      setAccountId("");
-      setPluginId("");
-      setService("");
-      setChargeType("");
-      setTargetId("");
-      await onCreated();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : gt("Failed to create rule"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const targetOptions =
-    targetKind === "account"
-      ? accounts
-      : centres.map((c) => ({ value: c.id, label: c.path }) as CostDimensionOption);
-
-  return (
-    <div className="flex flex-col gap-2 pt-3 border-t border-border">
-      <h3 className="text-sm font-medium text-on-surface">{gt("Add a rule")}</h3>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={gt("Rule name")}
-          aria-label={gt("Rule name")}
-          className={selectClass}
-        />
-        <select
-          value={kind}
-          onChange={(e) => setKind(e.target.value as BillingRuleKind)}
-          aria-label={gt("Adjustment")}
-          className={selectClass}
-        >
-          {BILLING_RULE_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {gtData(BILLING_RULE_KIND_LABELS[k])}
-            </option>
-          ))}
-        </select>
-
-        {kind === "percentage" && (
-          <input
-            type="number"
-            value={percent}
-            onChange={(e) => setPercent(e.target.value)}
-            aria-label={gt("Percent")}
-            className={`${selectClass} w-24`}
-          />
-        )}
-        {kind === "fixed" && (
-          <>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              aria-label={gt("Amount")}
-              className={`${selectClass} w-28`}
-            />
-            <input
-              type="text"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              aria-label={gt("Currency")}
-              className={`${selectClass} w-20`}
-            />
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as "daily" | "monthly")}
-              aria-label={gt("Period")}
-              className={selectClass}
-            >
-              {BILLING_RULE_FIXED_PERIODS.map((p) => (
-                <option key={p} value={p}>
-                  {p === "daily" ? gt("per day") : gt("per month")}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-
-        {kind !== "percentage" && (
-          <>
-            <select
-              value={targetKind}
-              onChange={(e) => setTargetKind(e.target.value as "cost_centre" | "account")}
-              aria-label={gt("Target kind")}
-              className={selectClass}
-            >
-              <option value="cost_centre">{gt("to cost centre")}</option>
-              <option value="account">{gt("to account")}</option>
-            </select>
-            <select
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              aria-label={gt("Target")}
-              className={selectClass}
-            >
-              <option value="">
-                {kind === "fixed" ? gt("unallocated (org-level)") : gt("pick a target…")}
-              </option>
-              {targetOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {gtData(o.label)}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-      </div>
-
-      <p className="text-xs text-on-surface-muted">
-        {gtData(BILLING_RULE_KIND_DESCRIPTIONS[kind])}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-on-surface-secondary">{gt("applies to")}</span>
-        <select
-          value={tagKey}
-          onChange={(e) => setTagKey(e.target.value)}
-          aria-label={gt("Tag key")}
-          className={selectClass}
-        >
-          <option value="">{gt("Any tag")}</option>
-          {tagKeys.map((key) => (
-            <option key={key} value={key}>
-              {gt("tag: {key}", { key })}
-            </option>
-          ))}
-        </select>
-        {tagKey && (
-          <input
-            type="text"
-            value={tagValue}
-            onChange={(e) => setTagValue(e.target.value)}
-            placeholder={gt("value (blank = any)")}
-            aria-label={gt("Tag value")}
-            className={selectClass}
-          />
-        )}
-        <select
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          aria-label={gt("Account")}
-          className={selectClass}
-        >
-          <option value="">{gt("Any account")}</option>
-          {accounts.map((a) => (
-            <option key={a.value} value={a.value}>
-              {gtData(a.label)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={pluginId}
-          onChange={(e) => setPluginId(e.target.value)}
-          aria-label={gt("Provider")}
-          className={selectClass}
-        >
-          <option value="">{gt("Any provider")}</option>
-          {providers.map((p) => (
-            <option key={p.value} value={p.value}>
-              {gtData(p.label)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={service}
-          onChange={(e) => setService(e.target.value)}
-          aria-label={gt("Service")}
-          className={selectClass}
-        >
-          <option value="">{gt("Any service")}</option>
-          {services.map((s) => (
-            <option key={s.value} value={s.value}>
-              {gtData(s.label)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={chargeType}
-          onChange={(e) => setChargeType(e.target.value as CostChargeType | "")}
-          aria-label={gt("Charge type")}
-          className={selectClass}
-        >
-          <option value="">{gt("Any charge type")}</option>
-          {COST_CHARGE_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {gtData(COST_CHARGE_TYPE_LABELS[t])}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={submitting || blocker !== null}
-          className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
-        >
-          {gt("Add rule")}
-        </button>
-        {blocker !== null && name.length > 0 && (
-          <span className="text-xs text-warning">{blocker}</span>
-        )}
-        <button
-          type="button"
-          onClick={onManageCentres}
-          className="text-xs text-on-surface-secondary hover:text-on-surface underline"
-        >
-          {gt("Manage cost centres →")}
-        </button>
-      </div>
-    </div>
   );
 }

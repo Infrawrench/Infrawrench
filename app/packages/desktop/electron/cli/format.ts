@@ -263,6 +263,10 @@ export function formatBillingRule(rule: {
     period?: string | null | undefined;
     targetKind?: string | null | undefined;
     targetId?: string | null | undefined;
+    tiers?: Array<{ upTo: number | null; percent: number }> | null | undefined;
+    tierMode?: string | null | undefined;
+    tierScope?: string | null | undefined;
+    expression?: string | null | undefined;
   };
 }): string {
   const m = rule.match;
@@ -284,6 +288,18 @@ export function formatBillingRule(rule: {
   } else if (a.kind === "fixed") {
     const per = a.period === "daily" ? "day" : "month";
     what = `${a.amount ?? 0} ${a.currency ?? ""}/${per}`.trim();
+  } else if (a.kind === "tiered") {
+    const signed = (p: number) => `${p > 0 ? "+" : ""}${p}%`;
+    const tiers = (a.tiers ?? [])
+      .map((t) =>
+        t.upTo === null ? `above ${signed(t.percent)}` : `<${t.upTo} ${signed(t.percent)}`,
+      )
+      .join(", ");
+    what =
+      `${a.tierMode === "volume" ? "whole-volume" : "marginal"} tiers on ` +
+      `${a.tierScope === "per_service" ? "per-service" : "monthly"} ${a.currency ?? ""} spend: ${tiers}`;
+  } else if (a.kind === "expression") {
+    what = `\`${a.expression ?? ""}\``;
   } else {
     what = `move to ${a.targetKind === "account" ? "account" : "cost centre"} ${a.targetId ?? "?"}`;
   }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.52.0",
+    "version": "1.53.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3687,7 +3687,9 @@
                   "enum": [
                     "percentage",
                     "fixed",
-                    "reallocation"
+                    "reallocation",
+                    "tiered",
+                    "expression"
                   ]
                 },
                 "summary": {
@@ -9790,6 +9792,31 @@
         "additionalProperties": false,
         "description": "All set fields must match (AND); a rule with no fields matches all spend. The same vocabulary allocation rules use, plus chargeType."
       },
+      "BillingRuleTier": {
+        "type": "object",
+        "properties": {
+          "upTo": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000,
+            "description": "Exclusive upper bound of monthly spend this tier covers, in the rule's `currency`. Null on the last tier, which is open-ended."
+          },
+          "percent": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 1000,
+            "description": "Signed: +8 marks up by 8%, -2 discounts by 2%."
+          }
+        },
+        "required": [
+          "upTo",
+          "percent"
+        ],
+        "additionalProperties": false
+      },
       "BillingRuleAdjustment": {
         "type": "object",
         "properties": {
@@ -9798,9 +9825,11 @@
             "enum": [
               "percentage",
               "fixed",
-              "reallocation"
+              "reallocation",
+              "tiered",
+              "expression"
             ],
-            "description": "`percentage` multiplies matched spend (every matching percentage rule applies, so two 10% markups compound to 21%). `fixed` adds a flat amount per period, pro-rated across the queried range, and is never multiplied by anything. `reallocation` moves matched spend onto another cost centre or account; the first matching reallocation rule wins, so a row moves exactly once and the organisation's total is unchanged."
+            "description": "`percentage` multiplies matched spend (every matching percentage rule applies, so two 10% markups compound to 21%). `fixed` adds a flat amount per period, pro-rated across the queried range, and is never multiplied by anything. `reallocation` moves matched spend onto another cost centre or account; the first matching reallocation rule wins, so a row moves exactly once and the organisation's total is unchanged.\n\n`tiered` and `expression` apply **only when a managed account's invoice is priced**: `tiered` marks a customer's matched monthly spend up or down by rate tiers on its volume, and `expression` computes each matched line's new cost with a sandboxed pricing expression. Neither ever changes the organisation's own graphs, budgets or showback."
           },
           "percent": {
             "type": [
@@ -9861,6 +9890,52 @@
             ],
             "minLength": 1,
             "default": null
+          },
+          "tiers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BillingRuleTier"
+            },
+            "maxItems": 20,
+            "default": null,
+            "description": "`tiered` only. Ascending, with strictly increasing `upTo`; only the last tier is open-ended. Thresholds are in `currency`, which a tiered rule requires."
+          },
+          "tierMode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "marginal",
+              "volume"
+            ],
+            "default": null,
+            "description": "`tiered` only. `marginal` charges each slice of the month's spend at its own tier's rate; `volume` charges the whole month at the rate of the tier the total falls in."
+          },
+          "tierScope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "overall",
+              "per_service"
+            ],
+            "default": null,
+            "description": "`tiered` only. Whether volume is the customer's matched spend overall or per service."
+          },
+          "expression": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "default": null,
+            "description": "`expression` only. A pricing expression giving the line's new cost, e.g. `if service == \"AmazonEC2\" and tag.env == \"prod\" then cost * 1.1`. Parsed and type-checked on save; a syntax or type error is a 400 naming the character it was found at. It is evaluated by a small interpreter over a closed set of fields and functions, never handed to a database or a script engine.",
+            "example": "if service == \"AmazonEC2\" and tag.env == \"prod\" then cost * 1.1"
           }
         },
         "required": [
@@ -9897,6 +9972,12 @@
           "adjustment": {
             "$ref": "#/components/schemas/BillingRuleAdjustment"
           },
+          "managedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -9914,6 +9995,7 @@
           "priority",
           "match",
           "adjustment",
+          "managedAccountIds",
           "createdAt",
           "updatedAt"
         ],
@@ -9952,6 +10034,15 @@
           },
           "adjustment": {
             "$ref": "#/components/schemas/BillingRuleAdjustment"
+          },
+          "managedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "description": "`tiered` and `expression` only: the managed accounts whose invoices this rule prices. Empty or absent means every customer whose billing rules are on."
           }
         },
         "required": [
@@ -9959,6 +10050,493 @@
           "priority",
           "match",
           "adjustment"
+        ],
+        "additionalProperties": false
+      },
+      "PricingEffect": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "A billing rule id, or one of `rerate:list`, `rerate:fallback`, `treatment:discounts`, `treatment:credits`, `treatment:commitment_benefits`."
+          },
+          "ruleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rerate_list",
+              "rerate_fallback",
+              "discounts",
+              "credits",
+              "commitment_benefits",
+              "percentage",
+              "fixed",
+              "reallocation",
+              "tiered",
+              "expression"
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Currency → what it added or removed."
+          }
+        },
+        "required": [
+          "key",
+          "ruleId",
+          "label",
+          "kind",
+          "totals"
+        ],
+        "additionalProperties": false,
+        "description": "One rule or setting that moved money, in pipeline order."
+      },
+      "RerateCoverage": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "byCurrency": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "listPriced": {
+                  "type": "number",
+                  "description": "Collected spend priced from a provider-reported list price."
+                },
+                "listTotal": {
+                  "type": "number",
+                  "description": "What that spend lists at."
+                },
+                "fallback": {
+                  "type": "number",
+                  "description": "Collected spend with no list price, priced at the uplift."
+                }
+              },
+              "required": [
+                "listPriced",
+                "listTotal",
+                "fallback"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "listPriced": {
+                  "type": "number"
+                },
+                "fallback": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pluginId",
+                "service",
+                "currency",
+                "listPriced",
+                "fallback"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "byCurrency",
+          "services"
+        ],
+        "additionalProperties": false
+      },
+      "PricingExpressionFailure": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruleId",
+          "name",
+          "lines",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "An expression rule that could not price some lines (division by zero, a non-finite result). Those lines kept their previous cost rather than becoming zero."
+      },
+      "PricingPreviewResult": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "managedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collected": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "before": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Priced without the candidate: the saved rules minus `ruleId`, with the saved settings."
+          },
+          "after": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Priced with the candidate swapped in."
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingEffect"
+            }
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/RerateCoverage"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expressionFailures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingExpressionFailure"
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                },
+                "accountName": {
+                  "type": "string"
+                },
+                "chargeType": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "collected": {
+                  "type": "number"
+                },
+                "before": {
+                  "type": "number"
+                },
+                "after": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pluginId",
+                "service",
+                "accountName",
+                "chargeType",
+                "currency",
+                "collected",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The lines that moved most, largest change first, at most 25."
+          },
+          "lineCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "from",
+          "to",
+          "managedAccountId",
+          "collected",
+          "before",
+          "after",
+          "effects",
+          "coverage",
+          "warnings",
+          "expressionFailures",
+          "changes",
+          "lineCount"
+        ],
+        "additionalProperties": false
+      },
+      "DiscountTreatment": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "pass_through",
+              "partial",
+              "retain"
+            ]
+          },
+          "passThroughPercent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "`partial` only: the share the customer receives, strictly between 0 and 100."
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "description": "Provider discounts: `commitment_discount` lines and negative `other`/`adjustment` lines (enterprise agreements, private pricing, Savings Plan negation)."
+      },
+      "ManagedAccountPricing": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "rerate": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "scope": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "pluginId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "example": "aws"
+                    },
+                    "service": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 256,
+                      "description": "Absent or null means every service of the provider."
+                    }
+                  },
+                  "required": [
+                    "pluginId"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 100,
+                "description": "Providers or services to re-rate. Empty means every provider."
+              },
+              "fallbackUpliftPercent": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 1000,
+                "description": "Applied to in-scope usage the provider reports no list price for: such a line is billed at collected plus this percentage, and counted as `fallback` in the coverage."
+              },
+              "uplifts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "pluginId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "example": "aws"
+                    },
+                    "service": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 256,
+                      "description": "Absent or null means every service of the provider."
+                    },
+                    "percent": {
+                      "type": "number",
+                      "minimum": -100,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [
+                    "pluginId",
+                    "percent"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 100,
+                "description": "Per-provider or per-service overrides of the fallback uplift; the most specific wins."
+              }
+            },
+            "required": [
+              "enabled",
+              "scope",
+              "fallbackUpliftPercent",
+              "uplifts"
+            ],
+            "additionalProperties": false,
+            "description": "Present usage at the provider's public on-demand list price instead of what the organisation actually paid. Applies to usage and commitment-covered usage lines only."
+          },
+          "discounts": {
+            "$ref": "#/components/schemas/DiscountTreatment"
+          },
+          "credits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTreatment"
+              },
+              {
+                "description": "Lines of charge type `credit`."
+              }
+            ]
+          },
+          "commitmentBenefits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiscountTreatment"
+              },
+              {
+                "description": "The difference between list price and the committed rate on covered usage. Measurable only where the provider reports a list price."
+              }
+            ]
+          }
+        },
+        "required": [
+          "rerate",
+          "discounts",
+          "credits",
+          "commitmentBenefits"
+        ],
+        "additionalProperties": false,
+        "description": "Customer settings to try instead of the saved ones."
+      },
+      "PricingPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillingRuleInput"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "A rule to try. Validated exactly as a create would validate it."
+              }
+            ]
+          },
+          "ruleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "With `rule`, the saved rule it replaces (an edit being previewed). Alone, previews the saved rule as it stands. Either way `before` is priced without this rule.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "managedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Price this customer's scope with their settings. Absent prices the organisation's whole spend as one customer. Naming a customer also needs `invoices:read`.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/ManagedAccountPricing"
+          },
+          "month": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "description": "`YYYY-MM`; defaults to last calendar month.",
+            "example": "2026-09"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingRuleOrder": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "ids"
         ],
         "additionalProperties": false
       },
@@ -10003,6 +10581,17 @@
           },
           "applyBillingRules": {
             "type": "boolean"
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManagedAccountPricing"
+              },
+              {
+                "type": "object",
+                "description": "How a customer's invoice is priced beyond the billing rules. Applied when an invoice is computed; collected spend is never rewritten."
+              }
+            ]
           },
           "notes": {
             "type": [
@@ -10049,6 +10638,7 @@
           "billingCurrency",
           "costBasis",
           "applyBillingRules",
+          "pricing",
           "notes",
           "costCentreIds",
           "accountIds",
@@ -10107,6 +10697,17 @@
           "applyBillingRules": {
             "type": "boolean",
             "description": "Defaults to true. False is a pass-through contract: the customer is billed exactly what the providers charged, with no markup, discount or fixed fee applied."
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManagedAccountPricing"
+              },
+              {
+                "type": "object",
+                "description": "Re-rating to public pricing and discount treatment. Absent on update leaves the saved settings unchanged; absent on create means nothing is re-rated and everything passes through."
+              }
+            ]
           },
           "notes": {
             "type": [
@@ -10431,6 +11032,26 @@
               "null"
             ],
             "description": "`adjusted × rate`, in the invoice currency."
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "key",
+                "amount"
+              ],
+              "additionalProperties": false
+            },
+            "description": "What moved this line, in pipeline order and in the line's currency: one entry per re-rating step, discount treatment or billing rule. Sums to `adjustment`. `key` matches an entry in the derivation's `effects`. Absent on invoices approved before the breakdown existed."
           }
         },
         "required": [
@@ -10518,7 +11139,9 @@
                   "enum": [
                     "percentage",
                     "fixed",
-                    "reallocation"
+                    "reallocation",
+                    "tiered",
+                    "expression"
                   ]
                 },
                 "summary": {
@@ -10588,6 +11211,46 @@
               "type": "string"
             },
             "description": "Scope entries that no longer exist. Recorded rather than silently skipped — an invoice that is quietly short is worse than one that says why."
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManagedAccountPricing"
+              },
+              {
+                "type": "object",
+                "description": "The customer's pricing settings at issue time, frozen with the figures."
+              }
+            ]
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingEffect"
+            },
+            "description": "Every rule or setting that moved money, in pipeline order, with its total per currency: the per-invoice answer to which rule changed what."
+          },
+          "rerateCoverage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RerateCoverage"
+              },
+              {
+                "description": "How much in-scope usage was re-rated from a list price. Null when off."
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expressionFailures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingExpressionFailure"
+            }
           }
         },
         "required": [
@@ -45579,6 +46242,121 @@
           }
         },
         "operationId": "postOrgOrgIdBillingRules",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/billing-rules/preview": {
+      "post": {
+        "tags": [
+          "Billing Rules"
+        ],
+        "summary": "Preview a rule or customer pricing against a month of spend",
+        "description": "Prices one calendar month (last month by default) twice: with the saved rules and settings, and with the candidate rule or customer settings swapped in. Nothing is written. Returns both totals, every effect, re-rating coverage, any expression failures and the lines that moved most.\n\nRequires `costs:read`, and `invoices:read` as well when a customer is named.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingPreviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBillingRulesPreview",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/billing-rules/reorder": {
+      "post": {
+        "tags": [
+          "Billing Rules"
+        ],
+        "summary": "Reorder billing rules",
+        "description": "Rewrites every rule's priority to match the given order (10, 20, 30…) in one transaction and one audit entry. The list must name every rule exactly once.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingRuleOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rules in their new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingRule"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBillingRulesReorder",
         "x-required-permission": "org:settings:write"
       }
     },
