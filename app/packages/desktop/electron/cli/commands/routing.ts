@@ -43,6 +43,8 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
       const schedule = data.onCallSchedules.find((sched) => sched.id === d.scheduleId);
       return schedule ? `on-call:${schedule.name}` : "on-call:(removed)";
     }
+    case "github-issues":
+      return "github issues";
   }
 }
 

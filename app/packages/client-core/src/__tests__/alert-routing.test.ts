@@ -363,8 +363,8 @@ describe("quiet hours", () => {
 });
 
 describe("the registry", () => {
-  it("mutes only drift by default", () => {
-    expect(DEFAULT_MUTED_TRIGGERS).toEqual(["resourceDrift"]);
+  it("mutes only drift and savings findings by default", () => {
+    expect(DEFAULT_MUTED_TRIGGERS).toEqual(["savingsFindings", "resourceDrift"]);
   });
 
   it("keeps the weekly digest off phones", () => {

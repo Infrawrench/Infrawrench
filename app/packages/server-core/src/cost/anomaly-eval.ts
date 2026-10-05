@@ -463,6 +463,30 @@ export async function detectCostAnomaliesForOrg(
             key: anomaly.dimensionKey,
             ...(dimension === "provider" ? { pluginId: anomaly.dimensionKey } : {}),
           },
+          // What a `github-issues` routing destination files.
+          finding: {
+            sourceKind: "cost_anomaly",
+            sourceId: anomaly.id,
+            title:
+              anomaly.kind === "new_source"
+                ? `${anomaly.dimensionKey} spend started on ${anomaly.day}`
+                : `${anomaly.dimensionKey} spend spiked on ${anomaly.day}`,
+            details: [
+              { label: "Day", value: anomaly.day },
+              { label: label === "provider" ? "Provider" : "Service", value: anomaly.dimensionKey },
+              { label: "Spend", value: formatAmount(anomaly.actual, anomaly.currency) },
+              ...(anomaly.kind === "new_source"
+                ? []
+                : [
+                    {
+                      label: `Baseline (${BASELINE_DAYS}d mean)`,
+                      value: formatAmount(anomaly.mean, anomaly.currency),
+                    },
+                  ]),
+            ],
+            note: hints.length > 0 ? `Around then: ${hints.join("; ")}.` : undefined,
+            appUrl: url,
+          },
         });
         // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
         // that has not happened yet, and stamping `notifiedAt` is what keeps

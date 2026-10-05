@@ -15,7 +15,7 @@ A rule has four parts:
 | Part            | What it says                                                                                    |
 | --------------- | ----------------------------------------------------------------------------------------------- |
 | **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.              |
-| **Send to**     | Slack channels, Teams channels, and mobile push, in any combination.                            |
+| **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations and GitHub issues, in any mix.   |
 | **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent. |
 | **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                 |
 
@@ -29,6 +29,8 @@ The first rule takes the expensive ones; whatever it does not take falls through
 A rule can also be a **tee** rather than a branch: untick _Stop here_ and evaluation continues past it, so an audit channel can copy every alert without shadowing the rules below it.
 
 ![The Alert routing card in Settings → Notifications, showing two rules — a narrow "anomalies over $500 on prod → #incidents" above a broad "everything → #infra-noise" — with the first rule expanded to show its conditions](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/two-rules.png)
+
+The **GitHub issues** destination files the alert's finding as an issue in the repository your [GitHub issue settings](./github-issues.md) route it to, one issue per finding. Only alerts that carry a finding (savings findings, anomalies, idle commitments) are filed; for other triggers it is skipped. The **Savings findings** trigger, one alert per new orphaned or oversized resource, is left out of the default rule and muted on phones, so it only goes where a rule sends it.
 
 ## Conditions
 

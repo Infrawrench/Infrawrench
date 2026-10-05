@@ -30,7 +30,7 @@ import { IacInputError, getIacState, getLatestIacState, loadIacStateResources } 
 let typeMapCache: TerraformTypeMapDerivation | null = null;
 let capabilityCache: Map<string, TerraformExportCapability | undefined> | null = null;
 
-async function loadCapabilities(): Promise<{
+export async function loadCapabilities(): Promise<{
   capabilityFor: (pluginId: string) => TerraformExportCapability | undefined;
   typeMap: TerraformTypeMapDerivation;
 }> {
@@ -56,7 +56,7 @@ export function resetIacTypeMapCache(): void {
   capabilityCache = null;
 }
 
-interface InventoryRow {
+export interface InventoryRow {
   id: string;
   pluginId: string;
   resourceTypeId: string;
@@ -73,7 +73,7 @@ interface InventoryRow {
  * eject-to-Terraform service does: mappers read primitives, so anything
  * structured is dropped rather than stringified.
  */
-function toResourceInstance(row: InventoryRow): ResourceInstance {
+export function toResourceInstance(row: InventoryRow): ResourceInstance {
   const fields: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(row.fieldsJson)) {
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {

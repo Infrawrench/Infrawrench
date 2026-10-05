@@ -220,6 +220,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewDigestRecipientResource,
 		NewJiraIntegrationResource,
 		NewLinearIntegrationResource,
+		NewGithubIssueSettingsResource,
 	}
 }
 

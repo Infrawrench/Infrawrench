@@ -8,6 +8,7 @@ import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
+import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runTrialExpiryPass } from "@infrawrench/server-core/trials/pass";
@@ -190,6 +191,11 @@ export class PollerLoop extends TickLoop {
     // (`org_posture_settings.last_notified_at`) makes it replica- and
     // restart-safe. Defensive like the others.
     await this.tickPostureAlerts();
+
+    // Savings scan: new orphaned/oversized findings raise `savingsFindings`
+    // (which a routing rule can send to GitHub issues), and findings that went
+    // away resolve their issues. Six-hourly per org, claimed like the radars.
+    await this.tickSavingsScan();
 
     // Eighth pass: sleep/wake schedules. Claims due transitions with the
     // accounts lease protocol (`resource_schedules.next_transition_at`
@@ -395,6 +401,14 @@ export class PollerLoop extends TickLoop {
       await runPostureAlerts({ limit: 4 });
     } catch (e) {
       console.error("[poller] posture alert tick failed:", e);
+    }
+  }
+
+  private async tickSavingsScan(): Promise<void> {
+    try {
+      await runSavingsFindingScan({ limit: 3 });
+    } catch (e) {
+      console.error("[poller] savings scan tick failed:", e);
     }
   }
 

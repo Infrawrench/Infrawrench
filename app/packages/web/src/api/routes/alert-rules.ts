@@ -131,7 +131,7 @@ const CONDITION_FIELDS = new Set([
   "text",
 ]);
 
-const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call"]);
+const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call", "github-issues"]);
 
 /**
  * Structural check before the semantic one.

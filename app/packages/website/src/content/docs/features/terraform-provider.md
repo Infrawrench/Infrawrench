@@ -82,7 +82,7 @@ Create the credential on **Settings → API keys**. The scope picker lists every
 
 Billing rules and cost exports are the odd ones: reading them needs only `costs:read`, but changing them needs org settings. A key scoped to `costs:write` will read them and fail to write them.
 
-Beyond cost, each area uses the permission the matching page in the app uses — `resources:write` for probes, status pages, sleep schedules and log queries; `metric-alerts:write` for metric alerts; `dashboards:write` for custom graphs; `freezes:write` for change freezes; `bastions:write`, `ssh-keys:write`, `apikeys:write` and `team:role:write` for the access resources; and `org:settings:write` for alert routing, Slack, Teams and the weekly digest. The full table is in the provider's README.
+Beyond cost, each area uses the permission the matching page in the app uses — `resources:write` for probes, status pages, sleep schedules and log queries; `metric-alerts:write` for metric alerts; `dashboards:write` for custom graphs; `freezes:write` for change freezes; `bastions:write`, `ssh-keys:write`, `apikeys:write` and `team:role:write` for the access resources; and `org:settings:write` for alert routing, Slack, Teams, the weekly digest and the GitHub issue settings (which read with `github-issues:read`). The full table is in the provider's README.
 
 Two of those need care. Alert routing, Slack, Teams and the digest have **no separate read permission** — their GET is gated on `org:settings:write` too, so a read-only key cannot even refresh them. And an account needs three: `accounts:write` to connect, `secrets:write` to rotate its credentials, `accounts:delete` to disconnect.
 
@@ -351,7 +351,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections.
+That covers [tag policy](./tag-policy-and-showback.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -445,16 +445,17 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Alert delivery
 
-| Resource                         | Manages                                                                                                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `infrawrench_alert_routing`      | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included |
-| `infrawrench_on_call_schedule`   | An [on-call rotation](./on-call.md) a routing rule can name as a destination                              |
-| `infrawrench_slack_channel`      | [Slack](./slack-alerts.md) channels as destinations                                                       |
-| `infrawrench_msteams_webhook`    | [Teams](./teams-alerts.md) webhooks as destinations                                                       |
-| `infrawrench_digest_settings`    | When the [weekly digest](./weekly-digest.md) is sent                                                      |
-| `infrawrench_digest_recipient`   | An email address the digest goes to                                                                       |
-| `infrawrench_jira_integration`   | The [Jira](./jira.md) connection                                                                          |
-| `infrawrench_linear_integration` | The [Linear](./linear.md) connection                                                                      |
+| Resource                            | Manages                                                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_alert_routing`         | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included                                |
+| `infrawrench_on_call_schedule`      | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                             |
+| `infrawrench_slack_channel`         | [Slack](./slack-alerts.md) channels as destinations                                                                                      |
+| `infrawrench_msteams_webhook`       | [Teams](./teams-alerts.md) webhooks as destinations                                                                                      |
+| `infrawrench_digest_settings`       | When the [weekly digest](./weekly-digest.md) is sent                                                                                     |
+| `infrawrench_digest_recipient`      | An email address the digest goes to                                                                                                      |
+| `infrawrench_jira_integration`      | The [Jira](./jira.md) connection                                                                                                         |
+| `infrawrench_linear_integration`    | The [Linear](./linear.md) connection                                                                                                     |
+| `infrawrench_github_issue_settings` | Filing findings as [GitHub issues](./github-issues.md): default repository, routes, labels, and the Terraform sources pull requests edit |
 
 ### Data sources
 

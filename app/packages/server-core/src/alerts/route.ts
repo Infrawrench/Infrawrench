@@ -56,6 +56,7 @@ import {
 import { sendMsTeamsToWebhooks } from "../msteams";
 import { resolveRoutingRules } from "./rules";
 import { resolveOnCallNow } from "../on-call/store";
+import type { GithubFinding } from "../github-issues/filing";
 
 /**
  * Everything a detector knows about the thing it is reporting.
@@ -104,6 +105,12 @@ export interface AlertEvent {
    * `COST_FIGURE_TRIGGERS`); null means the figures are org-wide.
    */
   costVisibilityUserId?: string | null;
+  /**
+   * The finding this alert is about, for triggers that have one (savings
+   * findings, anomalies, idle commitments). What a `github-issues`
+   * destination files; without it that destination is skipped.
+   */
+  finding?: GithubFinding;
 }
 
 /**
@@ -241,6 +248,7 @@ async function deliverDestinations(
   const teamsIds: string[] = [];
   const onCallScheduleIds: string[] = [];
   let wantsPush = false;
+  let wantsGithub = false;
 
   for (const d of destinations) {
     switch (d.kind) {
@@ -262,6 +270,11 @@ async function deliverDestinations(
         break;
       case "msteams":
         teamsIds.push(d.webhookId);
+        break;
+      case "github-issues":
+        // Only an alert that carries a finding can become an issue; for any
+        // other trigger the destination is skipped, not failed.
+        if (event.finding) wantsGithub = true;
         break;
     }
   }
@@ -292,7 +305,7 @@ async function deliverDestinations(
     }
   }
 
-  const [push, slack, teams, onCall] = await Promise.all([
+  const [push, slack, teams, onCall, github] = await Promise.all([
     wantsPush
       ? sendPushToOrg(
           event.organizationId,
@@ -344,6 +357,9 @@ async function deliverDestinations(
           succeeded: results.filter((r) => r.succeeded > 0).length,
         }))
       : Promise.resolve({ attempted: 0, succeeded: 0 }),
+    wantsGithub && event.finding
+      ? fileToGithub(event)
+      : Promise.resolve({ attempted: 0, succeeded: 0 }),
   ]);
 
   return {
@@ -352,8 +368,14 @@ async function deliverDestinations(
     // 40-person org look like it delivered 40 times to one destination. The
     // device count is still reported, under `counts.push`, because that is the
     // number the callers who show one to the user have always shown.
-    attempted: (wantsPush ? 1 : 0) + slack.attempted + teams.attempted + onCall.attempted,
-    succeeded: (push.succeeded > 0 ? 1 : 0) + slack.succeeded + teams.succeeded + onCall.succeeded,
+    attempted:
+      (wantsPush ? 1 : 0) + slack.attempted + teams.attempted + onCall.attempted + github.attempted,
+    succeeded:
+      (push.succeeded > 0 ? 1 : 0) +
+      slack.succeeded +
+      teams.succeeded +
+      onCall.succeeded +
+      github.succeeded,
     counts: { push: push.succeeded, slack: slack.succeeded, msTeams: teams.succeeded },
     attemptedCounts: {
       push: push.attempted,
@@ -362,6 +384,29 @@ async function deliverDestinations(
     },
     slackMessages: slack.messages,
   };
+}
+
+/**
+ * File the event's finding as a GitHub issue (or comment on its open one).
+ * Imported lazily: the filing module pulls in IaC reconciliation and the
+ * GitHub client, which nothing else on the alert path needs. A failure is
+ * logged and counted as an undelivered destination, never thrown.
+ */
+async function fileToGithub(event: AlertEvent): Promise<{ attempted: number; succeeded: number }> {
+  try {
+    const { fileFindingToGithub } = await import("../github-issues/filing.js");
+    await fileFindingToGithub(event.organizationId, event.finding!, {
+      userId: null,
+      autoFiled: true,
+    });
+    return { attempted: 1, succeeded: 1 };
+  } catch (err) {
+    console.error(
+      `[alerts] GitHub filing for ${event.trigger} in org ${event.organizationId} failed:`,
+      err instanceof Error ? err.message : err,
+    );
+    return { attempted: 1, succeeded: 0 };
+  }
 }
 
 function addCounts(into: AlertTransportCounts, from: AlertTransportCounts): void {

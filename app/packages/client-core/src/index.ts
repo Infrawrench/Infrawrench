@@ -11,6 +11,9 @@ export {
   SeatLimitReachedClientError,
   PlanRequiredClientError,
   type SeatLimitPayload,
+  isGithubPermissionRequiredResponse,
+  GithubPermissionRequiredClientError,
+  type GithubPermissionRequiredPayload,
 } from "./api-errors";
 export { parseSseStream, parseNdjsonStream } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
@@ -738,6 +741,7 @@ export * from "./iac";
 export * from "./jira";
 export * from "./linear";
 export * from "./issue-filing";
+export * from "./github-issues";
 export * from "./cost-exports";
 export * from "./change-cost-impact";
 export {

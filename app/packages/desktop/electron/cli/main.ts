@@ -35,6 +35,7 @@ import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoice
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
+import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
@@ -154,7 +155,10 @@ COMMANDS
   prices compare      the cheapest instance per provider meeting a spec   [--vcpus 4] [--memory 16]
                       [--gpus 1] [--gpu-model L4] [--area europe] [--rate spot], or a product's
                       specs: prices compare <sku> --provider <plugin>
-  carbon            estimated CO2e of the estate by provider, region and resource, with what
+  github-issues       findings filed as GitHub issues, open first, with any pull request
+  github-issues settings  repository routing, Terraform sources and each GitHub App
+                      installation's granted permissions (cloud only)
+  carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
@@ -572,6 +576,10 @@ export async function runCli(): Promise<void> {
         break;
       case "prices":
         await cmdPrices(ctx, rest[0] ?? "", rest.slice(1), parsed.prices, parsed.range);
+        break;
+      case "github-issues":
+        if (rest[0] === "settings") await cmdGithubIssueSettings(ctx);
+        else await cmdGithubIssues(ctx);
         break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);

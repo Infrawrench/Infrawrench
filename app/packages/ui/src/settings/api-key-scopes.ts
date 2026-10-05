@@ -122,6 +122,8 @@ export const API_KEY_SCOPE_GROUPS: readonly ApiKeyScopeGroup[] = [
       { value: "jira:write", label: "Jira (configure and file)" },
       { value: "linear:read", label: "Linear (read)" },
       { value: "linear:write", label: "Linear (configure and file)" },
+      { value: "github-issues:read", label: "GitHub issues (read)" },
+      { value: "github-issues:write", label: "GitHub issues (file and open pull requests)" },
     ],
   },
   {

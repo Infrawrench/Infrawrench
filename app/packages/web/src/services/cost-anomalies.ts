@@ -17,6 +17,7 @@ import {
   planAnomalyAcknowledgement,
   CostAnomalyAcknowledgeError,
 } from "@infrawrench/server-core/cost/anomaly-acknowledge";
+import { resolveFindingIssues } from "@infrawrench/server-core/github-issues/filing";
 import { db } from "../db/client";
 import { costAnnotations, costAnomalies } from "../db/schema";
 
@@ -143,7 +144,7 @@ export async function acknowledgeCostAnomaly(
         ? plan.text
         : explanation.trim();
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     let annotationId: string | null = existing.annotationId;
 
     if (plan.action === "create") {
@@ -193,4 +194,17 @@ export async function acknowledgeCostAnomaly(
       .returning();
     return row ? toCostAnomaly(row) : null;
   });
+
+  // An explained anomaly is a resolved finding: close (or comment on) the
+  // GitHub issue filed for it, per the org's GitHub issue settings. First
+  // acknowledgement only; a reworded explanation is not a second resolution.
+  // Fire-and-forget: GitHub being down must not fail the acknowledgement.
+  if (result && existing.acknowledgedAt === null) {
+    void resolveFindingIssues(
+      organizationId,
+      [{ sourceKind: "cost_anomaly", sourceId: anomalyId }],
+      `it was explained in Infrawrench: "${text.slice(0, 300)}"`,
+    );
+  }
+  return result;
 }

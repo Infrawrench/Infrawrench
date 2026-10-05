@@ -34,6 +34,8 @@ function destinationLabel(
       // rotation needs to see which one a rule points at.
       return schedule ? gt("On call: {name}", { name: schedule.name }) : gt("(removed rotation)");
     }
+    case "github-issues":
+      return gt("GitHub issues (one per finding)");
   }
 }
 
@@ -49,18 +51,7 @@ export function DestinationPicker({
   emptyLabel: string;
 }) {
   const gt = useGT();
-  const has = (d: AlertDestination): boolean =>
-    value.some((v) =>
-      v.kind !== d.kind
-        ? false
-        : v.kind === "push"
-          ? true
-          : v.kind === "slack" && d.kind === "slack"
-            ? v.channelId === d.channelId
-            : v.kind === "msteams" && d.kind === "msteams"
-              ? v.webhookId === d.webhookId
-              : false,
-    );
+  const has = (d: AlertDestination): boolean => value.some((v) => sameDestination(v, d));
 
   function toggle(d: AlertDestination, on: boolean): void {
     onChange(on ? [...value, d] : value.filter((v) => !sameDestination(v, d)));
@@ -77,6 +68,10 @@ export function DestinationPicker({
       kind: "on-call",
       scheduleId: sched.id,
     })),
+    // Files the alert's finding as a GitHub issue in the repository Settings →
+    // GitHub Issues routes it to. Only alerts that carry a finding (savings
+    // findings, anomalies, idle commitments) are filed; others skip it.
+    { kind: "github-issues" },
   ];
 
   // `push` is always an option, so the list is never empty and the checkboxes
@@ -111,6 +106,8 @@ function destKey(d: AlertDestination): string {
       return `teams:${d.webhookId}`;
     case "on-call":
       return `on-call:${d.scheduleId}`;
+    case "github-issues":
+      return "github-issues";
   }
 }
 

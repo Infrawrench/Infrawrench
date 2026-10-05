@@ -3,7 +3,7 @@
 page_title: "infrawrench_alert_routing Resource - infrawrench"
 subcategory: ""
 description: |-
-  The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks and phones.
+  The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations and GitHub issues.
   One resource holds every rule, in order, because order is the semantics. The list is evaluated top to bottom and is first-match-wins unless a rule sets continue_on_match, which is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written without saying where it sits, so per-rule resources would have had to invent a position attribute and then defend it against two configurations claiming the same slot.
   An organization singleton. terraform destroy restores the built-in default ruleset rather than leaving the organization with no rules at all — an organization that routes nothing is a worse state than the default, and is not what removing a resource block should mean.
   An organization that has saved nothing still reads back a full synthesized rule list, so a first terraform plan against a fresh organization shows your rules replacing the defaults rather than being added to an empty table.
@@ -11,7 +11,7 @@ description: |-
 
 # infrawrench_alert_routing (Resource)
 
-The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks and phones.
+The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations and GitHub issues.
 
 **One resource holds every rule, in order**, because order is the semantics. The list is evaluated top to bottom and is first-match-wins unless a rule sets `continue_on_match`, which is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written without saying where it sits, so per-rule resources would have had to invent a position attribute and then defend it against two configurations claiming the same slot.
 
@@ -150,7 +150,7 @@ Optional:
 - `cents` (Number) For `field = "amountCents"` — the money the alert is about, in cents.
 - `severity` (String) For `field = "severity"`. One of `info`, `warning`, `critical`, ordered info < warning < critical.
 - `value` (String) For `field = "key"` or `field = "text"`.
-- `values` (List of String) For `trigger`, `accountId`, `pluginId` and `resourceTypeId`. Trigger values are one of `syncIncidents`, `budgetAlerts`, `anomalyAlerts`, `costChangeAlerts`, `commitmentExpiryAlerts`, `commitmentIdleAlerts`, `unitCostRegressionAlerts`, `metricAlerts`, `resourceDrift`, `workflowPages`, `providerIncidents`, `expiryAlerts`, `logMatchAlerts`, `postureAlerts`, `probeAlerts`, `weeklyDigest`.
+- `values` (List of String) For `trigger`, `accountId`, `pluginId` and `resourceTypeId`. Trigger values are one of `syncIncidents`, `budgetAlerts`, `anomalyAlerts`, `costChangeAlerts`, `commitmentExpiryAlerts`, `commitmentIdleAlerts`, `unitCostRegressionAlerts`, `savingsFindings`, `metricAlerts`, `resourceDrift`, `workflowPages`, `providerIncidents`, `expiryAlerts`, `logMatchAlerts`, `postureAlerts`, `probeAlerts`, `weeklyDigest`.
 
 
 <a id="nestedblock--rule--destination"></a>
@@ -158,7 +158,9 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
+
+`github-issues` files the alert's finding as a GitHub issue, in the repository `infrawrench_github_issue_settings` routes it to, and comments on the open issue instead when one already exists for that finding. It takes no id. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for any other trigger the destination is skipped, and it does nothing while GitHub issue filing is disabled.
 
 Optional:
 
@@ -180,7 +182,7 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`.
 
 Optional:
 

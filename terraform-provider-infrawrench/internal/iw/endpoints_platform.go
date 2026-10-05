@@ -956,6 +956,29 @@ func (c *Client) DeleteLinearIntegration(ctx context.Context) error {
 	return c.Delete(ctx, "/linear")
 }
 
+/* ------------------------------ GitHub issues ------------------------------ */
+
+// GetGithubIssueSettings unwraps `.settings` from the status envelope. An
+// organization that never saved any reads back the shipped defaults, so there
+// is no 404 to synthesise.
+func (c *Client) GetGithubIssueSettings(ctx context.Context) (*GithubIssueSettings, error) {
+	var envelope GithubIssuesStatus
+	if err := c.Get(ctx, "/github-issues", &envelope); err != nil {
+		return nil, err
+	}
+	return &envelope.Settings, nil
+}
+
+// PutGithubIssueSettings replaces the whole document. There is no DELETE;
+// resetting is a PUT of DefaultGithubIssueSettings.
+func (c *Client) PutGithubIssueSettings(ctx context.Context, in GithubIssueSettingsInput) (*GithubIssueSettings, error) {
+	var out GithubIssueSettings
+	if err := c.Put(ctx, "/github-issues/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ---------------------------- workflow schedules --------------------------- */
 
 // GetWorkflowSchedule unwraps the {"schedule": …} envelope. A null schedule

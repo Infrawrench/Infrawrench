@@ -541,6 +541,25 @@ async function evaluateIdle(
             amountCents: Math.round(finding.wastedAmount * 100),
             ...(finding.currency ? { currency: finding.currency } : {}),
           },
+          // Keyed by commitment rather than month, so next month's repeat
+          // comments on the open issue instead of opening another.
+          finding: {
+            sourceKind: "commitment_idle",
+            sourceId: `${finding.accountId}:${finding.commitmentId}`,
+            title: `${finding.description} ran at ${Math.round(finding.utilization * 100)}% utilization`,
+            details: [
+              { label: "Commitment", value: finding.description },
+              { label: "Account", value: row.accountName },
+              { label: "Window", value: `${finding.window.from} to ${finding.window.to}` },
+              { label: "Utilization", value: `${Math.round(finding.utilization * 100)}%` },
+              {
+                label: "Wasted",
+                value: `${finding.wastedAmount.toFixed(2)}${finding.currency ? ` ${finding.currency}` : ""}`,
+              },
+            ],
+            note: idleBody(finding, row.accountName),
+            appUrl: url,
+          },
         });
         if (alertReached(routed)) {
           await db

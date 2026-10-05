@@ -720,7 +720,7 @@ type DigestRecipient struct {
 
 /* ------------------------------ alert routing ------------------------------ */
 
-// AlertDestination is a tagged union over the four delivery targets. It
+// AlertDestination is a tagged union over the five delivery targets. It
 // marshals to exactly the branch its Kind names, because the server's schema is
 // a strict oneOf and a push destination carrying a stray channelId is rejected.
 type AlertDestination struct {
@@ -766,8 +766,14 @@ func (d AlertDestination) MarshalJSON() ([]byte, error) {
 			Kind       string `json:"kind"`
 			ScheduleID string `json:"scheduleId"`
 		}{Kind: "on-call", ScheduleID: id})
+	case "github-issues":
+		// Carries no id: the repository comes from the organization's GitHub
+		// issue settings (routes, then the default repository), not the rule.
+		return json.Marshal(struct {
+			Kind string `json:"kind"`
+		}{Kind: "github-issues"})
 	default:
-		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\" or \"on-call\")", d.Kind)
+		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\", \"on-call\" or \"github-issues\")", d.Kind)
 	}
 }
 
@@ -1027,6 +1033,125 @@ type LinearIntegration struct {
 	KeyHint       string  `json:"keyHint"`
 	DefaultTeamID *string `json:"defaultTeamId"`
 	UpdatedAt     string  `json:"updatedAt"`
+}
+
+/* ------------------------------ GitHub issues ------------------------------ */
+
+// GithubRepoRef names a repository through the GitHub App installation that
+// can reach it. Both halves come from the `/github/repos` listing.
+type GithubRepoRef struct {
+	InstallationID int64  `json:"installationId"`
+	FullName       string `json:"fullName"`
+}
+
+// GithubIssueRouteMatch is a tagged union keyed on Kind, flattened the same
+// way AlertCondition is so Terraform can express it as plain attributes.
+type GithubIssueRouteMatch struct {
+	Kind         string  `json:"kind"`
+	CostCentreID *string `json:"costCentreId,omitempty"`
+	TagKey       *string `json:"tagKey,omitempty"`
+	// TagValue is nullable on the wire and means "any value of the key" when
+	// null, so the tag branch always emits it, explicitly null when unset.
+	TagValue *string `json:"tagValue,omitempty"`
+}
+
+// MarshalJSON emits only the keys belonging to the named branch: the server's
+// schema is a strict discriminated union, so a cost-centre match carrying a
+// stray tagKey is rejected.
+func (m GithubIssueRouteMatch) MarshalJSON() ([]byte, error) {
+	switch m.Kind {
+	case "cost_centre":
+		id := ""
+		if m.CostCentreID != nil {
+			id = *m.CostCentreID
+		}
+		return json.Marshal(struct {
+			Kind         string `json:"kind"`
+			CostCentreID string `json:"costCentreId"`
+		}{Kind: "cost_centre", CostCentreID: id})
+	case "tag":
+		key := ""
+		if m.TagKey != nil {
+			key = *m.TagKey
+		}
+		return json.Marshal(struct {
+			Kind     string  `json:"kind"`
+			TagKey   string  `json:"tagKey"`
+			TagValue *string `json:"tagValue"`
+		}{Kind: "tag", TagKey: key, TagValue: m.TagValue})
+	default:
+		return nil, fmt.Errorf("unknown GitHub issue route match kind %q (want \"cost_centre\" or \"tag\")", m.Kind)
+	}
+}
+
+// GithubIssueRoute is one entry of the ordered routing list. ID is optional on
+// input (the server mints one) and kept when supplied.
+type GithubIssueRoute struct {
+	ID        *string               `json:"id,omitempty"`
+	Match     GithubIssueRouteMatch `json:"match"`
+	Repo      GithubRepoRef         `json:"repo"`
+	Labels    []string              `json:"labels"`
+	Assignees []string              `json:"assignees"`
+}
+
+// GithubIacSource maps one IaC state scope to the repository holding its
+// Terraform, for pull requests. A null IacAccountID is the organization-wide
+// state; the server allows at most one source per scope.
+type GithubIacSource struct {
+	ID           *string       `json:"id,omitempty"`
+	IacAccountID *string       `json:"iacAccountId"`
+	Repo         GithubRepoRef `json:"repo"`
+	BaseBranch   *string       `json:"baseBranch"`
+	Directory    string        `json:"directory"`
+}
+
+// GithubIssueSettingsInput is the PUT body: a whole-document replace, because
+// route order is part of the meaning.
+type GithubIssueSettingsInput struct {
+	Enabled             bool               `json:"enabled"`
+	DefaultRepo         *GithubRepoRef     `json:"defaultRepo"`
+	Labels              []string           `json:"labels"`
+	Assignees           []string           `json:"assignees"`
+	Routes              []GithubIssueRoute `json:"routes"`
+	ResolveAction       string             `json:"resolveAction"`
+	PullRequestsEnabled bool               `json:"pullRequestsEnabled"`
+	IacSources          []GithubIacSource  `json:"iacSources"`
+}
+
+// GithubIssueSettings is the stored org singleton.
+type GithubIssueSettings struct {
+	Enabled             bool               `json:"enabled"`
+	DefaultRepo         *GithubRepoRef     `json:"defaultRepo"`
+	Labels              []string           `json:"labels"`
+	Assignees           []string           `json:"assignees"`
+	Routes              []GithubIssueRoute `json:"routes"`
+	ResolveAction       string             `json:"resolveAction"`
+	PullRequestsEnabled bool               `json:"pullRequestsEnabled"`
+	IacSources          []GithubIacSource  `json:"iacSources"`
+	UpdatedAt           *string            `json:"updatedAt"`
+}
+
+// GithubIssuesStatus is the GET envelope. Only Settings is configuration; what
+// each installation has accepted is GitHub-side state the provider cannot
+// change, so `installations` is not decoded.
+type GithubIssuesStatus struct {
+	AppConfigured bool                `json:"appConfigured"`
+	Settings      GithubIssueSettings `json:"settings"`
+}
+
+// DefaultGithubIssueSettings is the document an organization starts with,
+// which is what `terraform destroy` writes back: the route has no DELETE.
+func DefaultGithubIssueSettings() GithubIssueSettingsInput {
+	return GithubIssueSettingsInput{
+		Enabled:             false,
+		DefaultRepo:         nil,
+		Labels:              []string{"infrawrench"},
+		Assignees:           []string{},
+		Routes:              []GithubIssueRoute{},
+		ResolveAction:       "comment",
+		PullRequestsEnabled: false,
+		IacSources:          []GithubIacSource{},
+	}
 }
 
 /* ---------------------------- workflow schedules --------------------------- */

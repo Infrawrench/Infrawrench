@@ -67,6 +67,54 @@ async function gh(token: string, path: string, init?: RequestInit): Promise<Resp
   });
 }
 
+/**
+ * One REST call as the installation (the bot). Exported for the issue-filing
+ * helpers in `issues-api.ts`, which need the raw response to tell a missing
+ * permission apart from a missing repository.
+ */
+export async function githubInstallationFetch(
+  installationId: number,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const token = await getInstallationToken(installationId);
+  return gh(token, path, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(20_000),
+  });
+}
+
+/**
+ * The installation's granted permissions, suspension state and settings page,
+ * read as the app (`GET /app/installations/{id}`). The permissions here are
+ * what the installation has *accepted*: a permission the app requests but the
+ * account owner has not yet approved is absent. Null when GitHub cannot be
+ * asked.
+ */
+export async function getInstallationAccess(installationId: number): Promise<{
+  permissions: Record<string, string>;
+  suspended: boolean;
+  htmlUrl: string | null;
+  accountLogin: string | null;
+} | null> {
+  const res = await gh(appJwt(), `/app/installations/${installationId}`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as {
+    permissions?: Record<string, string>;
+    suspended_at?: string | null;
+    html_url?: string;
+    account?: { login?: string };
+  };
+  return {
+    permissions: body.permissions ?? {},
+    suspended: Boolean(body.suspended_at),
+    htmlUrl: body.html_url ?? null,
+    accountLogin: body.account?.login ?? null,
+  };
+}
+
 // installationId -> { token, expiresAt }. GitHub installation tokens last ~1h.
 const tokenCache = new Map<number, { token: string; expiresAt: number }>();
 
@@ -83,6 +131,16 @@ export async function getInstallationToken(installationId: number): Promise<stri
   const body = (await res.json()) as { token: string; expires_at: string };
   tokenCache.set(installationId, { token: body.token, expiresAt: Date.parse(body.expires_at) });
   return body.token;
+}
+
+/**
+ * Drop an installation's cached token. A token carries the permissions the
+ * installation had when it was minted, so after an owner approves new
+ * permissions the cached one keeps failing for up to an hour; callers that
+ * hit a permission 403 forget it so the next attempt mints a fresh one.
+ */
+export function forgetInstallationToken(installationId: number): void {
+  tokenCache.delete(installationId);
 }
 
 export interface GithubRepo {

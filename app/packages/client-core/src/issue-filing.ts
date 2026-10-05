@@ -10,12 +10,14 @@
  */
 import type { JiraIssueLink } from "./jira";
 import type { LinearIssueLink } from "./linear";
+import type { GithubIssueLink } from "./github-issues";
 
 /** The trackers a finding can be filed to. */
-export type IssueTracker = "jira" | "linear";
+export type IssueTracker = "jira" | "linear" | "github";
 
 /** What a findings row knows about where it has already been filed. */
 export interface IssueLinksForSource {
   jira?: JiraIssueLink | undefined;
   linear?: LinearIssueLink | undefined;
+  github?: GithubIssueLink | undefined;
 }

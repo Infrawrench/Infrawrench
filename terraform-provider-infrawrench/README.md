@@ -271,6 +271,7 @@ permissions.
 | Workflow schedules                                                                                                                        | `workflows:read`            | `workflows:write`                                                          |
 | Session recording settings                                                                                                                | `session-recordings:read`   | `session-recordings:write`                                                 |
 | Jira / Linear connections                                                                                                                 | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
+| GitHub issue settings                                                                                                                     | `github-issues:read`        | `org:settings:write`                                                       |
 | Alert routing, Slack channels, Teams webhooks, digest, drift / expiry / posture alert settings                                            | `org:settings:write`        | `org:settings:write`                                                       |
 
 Four shapes are worth noticing.
@@ -590,7 +591,7 @@ The full list: `tag_policy`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `drift_alert_settings`,
 `expiry_alert_settings`, `posture_alert_settings`,
 `session_recording_settings`, `network_flow_settings`, `digest_settings`, `jira_integration`,
-`linear_integration`.
+`linear_integration`, `github_issue_settings`.
 
 **Report notifications** hang off a report, so the notification's own id cannot
 build a URL. They import under a composite address:
@@ -708,16 +709,17 @@ secret store that consumes it rather than into an output.
 
 ### Alert delivery
 
-| Resource                         | Import    | Notes                                                       |
-| -------------------------------- | --------- | ----------------------------------------------------------- |
-| `infrawrench_alert_routing`      | by org id | The whole ordered table; destroy restores the defaults      |
-| `infrawrench_on_call_schedule`   | by id     | Rotation order is the list order; covers stay in the app    |
-| `infrawrench_slack_channel`      | by id     | The workspace connection is an OAuth flow, read not written |
-| `infrawrench_msteams_webhook`    | by id     | URL is write-only and Microsoft-host-restricted             |
-| `infrawrench_digest_settings`    | by org id | Org singleton; destinations come from the routing table     |
-| `infrawrench_digest_recipient`   | by id     | Address is normalized server-side                           |
-| `infrawrench_jira_integration`   | by org id | Org singleton; omitting the token keeps the stored one      |
-| `infrawrench_linear_integration` | by org id | Org singleton; omitting the key keeps the stored one        |
+| Resource                            | Import    | Notes                                                       |
+| ----------------------------------- | --------- | ----------------------------------------------------------- |
+| `infrawrench_alert_routing`         | by org id | The whole ordered table; destroy restores the defaults      |
+| `infrawrench_on_call_schedule`      | by id     | Rotation order is the list order; covers stay in the app    |
+| `infrawrench_slack_channel`         | by id     | The workspace connection is an OAuth flow, read not written |
+| `infrawrench_msteams_webhook`       | by id     | URL is write-only and Microsoft-host-restricted             |
+| `infrawrench_digest_settings`       | by org id | Org singleton; destinations come from the routing table     |
+| `infrawrench_digest_recipient`      | by id     | Address is normalized server-side                           |
+| `infrawrench_jira_integration`      | by org id | Org singleton; omitting the token keeps the stored one      |
+| `infrawrench_linear_integration`    | by org id | Org singleton; omitting the key keeps the stored one        |
+| `infrawrench_github_issue_settings` | by org id | Org singleton; destroy restores the defaults (filing off)   |
 
 ### Data sources
 

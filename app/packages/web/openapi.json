@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.53.0",
+    "version": "1.54.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -323,6 +323,10 @@
     {
       "name": "Linear",
       "description": "Linear workspace connection, team picker, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
+    },
+    {
+      "name": "GitHub issues",
+      "description": "Filing findings as GitHub issues through the organization's GitHub App installation: repository routing by cost centre or tag, label and assignee pickers, dedupe by finding fingerprint, and pull requests editing Terraform for IaC-managed findings."
     }
   ],
   "components": {
@@ -32283,6 +32287,8 @@
           "jira:write",
           "linear:read",
           "linear:write",
+          "github-issues:read",
+          "github-issues:write",
           "invoices:read",
           "invoices:write",
           "invoices:issue",
@@ -33946,6 +33952,7 @@
           "commitmentExpiryAlerts",
           "commitmentIdleAlerts",
           "unitCostRegressionAlerts",
+          "savingsFindings",
           "metricAlerts",
           "resourceDrift",
           "workflowPages",
@@ -34373,9 +34380,24 @@
               "scheduleId"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "github-issues"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
           }
         ],
-        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have."
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped."
       },
       "QuietHours": {
         "type": [
@@ -35538,6 +35560,991 @@
           "sourceId",
           "teamId",
           "title"
+        ],
+        "additionalProperties": false
+      },
+      "GithubInstallationAccess": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer"
+          },
+          "accountLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issues": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "pullRequests": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "contents": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "manageUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked": {
+            "type": "boolean",
+            "description": "False when GitHub could not be asked; the levels are then all `none`."
+          }
+        },
+        "required": [
+          "installationId",
+          "accountLogin",
+          "issues",
+          "pullRequests",
+          "contents",
+          "suspended",
+          "manageUrl",
+          "checked"
+        ],
+        "additionalProperties": false,
+        "description": "What an installation has **accepted**. An installation made before issue filing existed shows `issues: none` until an owner of the GitHub account approves the app's updated permissions."
+      },
+      "GithubRepoRef": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "A GitHub App installation connected to the organization (`/github/status`)."
+          },
+          "fullName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 201,
+            "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$",
+            "description": "`owner/name`, as listed by `/github/repos`.",
+            "example": "acme/infra"
+          }
+        },
+        "required": [
+          "installationId",
+          "fullName"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssueRouteMatch": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cost_centre"
+                ]
+              },
+              "costCentreId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "A cost centre id."
+              }
+            },
+            "required": [
+              "kind",
+              "costCentreId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tag"
+                ]
+              },
+              "tagKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "tagValue": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 256,
+                "description": "Null matches any value of the key."
+              }
+            },
+            "required": [
+              "kind",
+              "tagKey",
+              "tagValue"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "What sends a finding to this route's repository: the cost centre the organization's allocation rules place its resource in, or a tag on the resource. Allocation rules that match on `service` cannot be judged from a resource and never match here."
+      },
+      "GithubIssueRouteInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "match": {
+            "$ref": "#/components/schemas/GithubIssueRouteMatch"
+          },
+          "repo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubRepoRef"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "maxItems": 20,
+            "description": "Added to the organization-wide labels."
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 39
+            },
+            "maxItems": 10,
+            "description": "Replace the organization-wide assignees when non-empty."
+          }
+        },
+        "required": [
+          "match",
+          "repo",
+          "labels",
+          "assignees"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssueRoute": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubIssueRouteInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "GithubResolveAction": {
+        "type": "string",
+        "enum": [
+          "close",
+          "comment",
+          "none"
+        ],
+        "description": "What happens to an open issue when its finding goes away: close it with a comment, only comment, or leave it alone."
+      },
+      "GithubIacSourceInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "iacAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "The IaC state scope this maps: the account an uploaded state document covers, or null for the organization-wide state."
+          },
+          "repo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubRepoRef"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "baseBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255,
+            "description": "Branch pull requests target. Null means the repository's default branch."
+          },
+          "directory": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Directory holding the root module's `.tf` files. Empty for the repository root.",
+            "example": "infra/prod"
+          }
+        },
+        "required": [
+          "iacAccountId",
+          "repo",
+          "baseBranch",
+          "directory"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIacSource": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubIacSourceInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "GithubIssueSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "defaultRepo": {
+            "$ref": "#/components/schemas/GithubRepoRef"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubIssueRoute"
+            }
+          },
+          "resolveAction": {
+            "$ref": "#/components/schemas/GithubResolveAction"
+          },
+          "pullRequestsEnabled": {
+            "type": "boolean"
+          },
+          "iacSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubIacSource"
+            }
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "enabled",
+          "defaultRepo",
+          "labels",
+          "assignees",
+          "routes",
+          "resolveAction",
+          "pullRequestsEnabled",
+          "iacSources",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssuesStatus": {
+        "type": "object",
+        "properties": {
+          "appConfigured": {
+            "type": "boolean"
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubInstallationAccess"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/GithubIssueSettings"
+          }
+        },
+        "required": [
+          "appConfigured",
+          "installations",
+          "settings"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssueSettingsInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master switch for filing, manual and routed."
+          },
+          "defaultRepo": {
+            "$ref": "#/components/schemas/GithubRepoRef"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "maxItems": 20
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 39
+            },
+            "maxItems": 10
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubIssueRouteInput"
+            },
+            "maxItems": 50,
+            "description": "Ordered; the first match wins and no match falls back to `defaultRepo`."
+          },
+          "resolveAction": {
+            "$ref": "#/components/schemas/GithubResolveAction"
+          },
+          "pullRequestsEnabled": {
+            "type": "boolean",
+            "description": "Allow holders of `github-issues:write` to open pull requests editing Terraform for IaC-managed findings. Never auto-merged."
+          },
+          "iacSources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubIacSourceInput"
+            },
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "enabled",
+          "defaultRepo",
+          "labels",
+          "assignees",
+          "routes",
+          "resolveAction",
+          "pullRequestsEnabled",
+          "iacSources"
+        ],
+        "additionalProperties": false
+      },
+      "GithubLabel": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "color",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "GithubPermissionRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "github_permission_required"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "installationId": {
+            "type": "integer"
+          },
+          "accountLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "manageUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "permissions",
+          "installationId",
+          "accountLogin",
+          "manageUrl"
+        ],
+        "additionalProperties": false,
+        "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`."
+      },
+      "GithubAssignee": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "login",
+          "avatarUrl"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssueRouteResolution": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "$ref": "#/components/schemas/GithubRepoRef"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "repo",
+          "labels",
+          "assignees",
+          "routeId"
+        ],
+        "additionalProperties": false
+      },
+      "GithubIssueSourceKind": {
+        "type": "string",
+        "enum": [
+          "cost_anomaly",
+          "orphan",
+          "oversized",
+          "posture_finding",
+          "expiring",
+          "probe",
+          "commitment_idle"
+        ],
+        "description": "Which detector produced the finding the issue was filed from."
+      },
+      "GithubIssueLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/GithubIssueSourceKind"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "Hash of the finding; also written into the issue body as a hidden marker."
+          },
+          "repo": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "integer"
+          },
+          "issueNumber": {
+            "type": "integer"
+          },
+          "issueUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed"
+            ]
+          },
+          "autoFiled": {
+            "type": "boolean"
+          },
+          "pullRequestNumber": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pullRequestUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sourceKind",
+          "sourceId",
+          "fingerprint",
+          "repo",
+          "installationId",
+          "issueNumber",
+          "issueUrl",
+          "state",
+          "autoFiled",
+          "pullRequestNumber",
+          "pullRequestUrl",
+          "createdByUserId",
+          "createdAt",
+          "resolvedAt"
+        ],
+        "additionalProperties": false
+      },
+      "FileGithubIssueResult": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "created",
+              "commented"
+            ],
+            "description": "`commented` when an open issue for the finding already existed."
+          },
+          "link": {
+            "$ref": "#/components/schemas/GithubIssueLink"
+          }
+        },
+        "required": [
+          "action",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "FileGithubIssueInput": {
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/GithubIssueSourceKind"
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 30
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "resourceId": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "monthlyCost": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 3
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false
+          },
+          "remediation": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 20,
+            "description": "Shell commands that fix the finding, rendered as a code block to review."
+          },
+          "repo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubRepoRef"
+              },
+              {
+                "type": "object",
+                "description": "Override the routed repository."
+              }
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "maxItems": 20
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 39
+            },
+            "maxItems": 10
+          },
+          "appUrl": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          }
+        },
+        "required": [
+          "sourceKind",
+          "sourceId",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "GithubPullRequestPreview": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "eligible": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "repo": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubRepoRef"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "baseBranch": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "terraformAddress": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "diff": {
+                "type": "string",
+                "description": "Unified diff of the one file the PR changes."
+              }
+            },
+            "required": [
+              "eligible",
+              "repo",
+              "baseBranch",
+              "path",
+              "terraformAddress",
+              "title",
+              "body",
+              "diff"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eligible": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eligible",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "GithubPullRequestInput": {
+        "type": "object",
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/GithubIssueSourceKind"
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "resourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "change": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "resize"
+                    ]
+                  },
+                  "recommendedSizeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "kind",
+                  "recommendedSizeId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "remove"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourceKind",
+          "sourceId",
+          "resourceId",
+          "change"
+        ],
+        "additionalProperties": false
+      },
+      "GithubPullRequestResult": {
+        "type": "object",
+        "properties": {
+          "pullRequest": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "number",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          "link": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubIssueLink"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "pullRequest",
+          "link"
         ],
         "additionalProperties": false
       },
@@ -71071,6 +72078,771 @@
         "operationId": "getOrgOrgIdLinearLinks",
         "x-required-permission": "linear:read",
         "description": "_Requires permission: `linear:read`._"
+      }
+    },
+    "/api/org/{orgId}/github-issues": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Get GitHub issue settings and installation access",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIssuesStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssues",
+        "x-required-permission": "github-issues:read",
+        "description": "_Requires permission: `github-issues:read`._"
+      }
+    },
+    "/api/org/{orgId}/github-issues/settings": {
+      "put": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Replace the GitHub issue settings",
+        "description": "Whole-document replace: route order is part of the meaning. Route and source ids are kept when supplied.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubIssueSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIssueSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdGithubIssuesSettings",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/github-issues/labels": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "List a repository's labels",
+        "description": "Backs the label picker.\n\n_Requires permission: `github-issues:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 201
+            },
+            "required": true,
+            "name": "repo",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Labels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubLabel"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssuesLabels",
+        "x-required-permission": "github-issues:read"
+      }
+    },
+    "/api/org/{orgId}/github-issues/assignees": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "List a repository's assignable users",
+        "description": "Backs the assignee picker.\n\n_Requires permission: `github-issues:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 201
+            },
+            "required": true,
+            "name": "repo",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assignable users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubAssignee"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssuesAssignees",
+        "x-required-permission": "github-issues:read"
+      }
+    },
+    "/api/org/{orgId}/github-issues/branches": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "List a repository's branches",
+        "description": "Backs the base-branch picker for Terraform sources.\n\n_Requires permission: `github-issues:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 201
+            },
+            "required": true,
+            "name": "repo",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branch names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssuesBranches",
+        "x-required-permission": "github-issues:read"
+      }
+    },
+    "/api/org/{orgId}/github-issues/route": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Resolve where a finding would be filed",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "required": false,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The routed repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIssueRouteResolution"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssuesRoute",
+        "x-required-permission": "github-issues:read",
+        "description": "_Requires permission: `github-issues:read`._"
+      }
+    },
+    "/api/org/{orgId}/github-issues/issues": {
+      "post": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "File a finding as a GitHub issue",
+        "description": "Opens an issue in the routed repository, or comments on the open issue already filed for the same finding (matched by fingerprint, including a hidden marker in issue bodies).\n\n_Requires permission: `github-issues:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileGithubIssueInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Filed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileGithubIssueResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdGithubIssuesIssues",
+        "x-required-permission": "github-issues:write"
+      }
+    },
+    "/api/org/{orgId}/github-issues/links": {
+      "get": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Look up filed GitHub issues for a set of findings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/GithubIssueSourceKind"
+            },
+            "required": false,
+            "name": "sourceKind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ]
+            },
+            "required": false,
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "maxItems": 500
+            },
+            "required": false,
+            "name": "sourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Links, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubIssueLink"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdGithubIssuesLinks",
+        "x-required-permission": "github-issues:read",
+        "description": "_Requires permission: `github-issues:read`._"
+      }
+    },
+    "/api/org/{orgId}/github-issues/pull-requests/preview": {
+      "post": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Preview an IaC pull request for a finding",
+        "description": "Reads only. Says what the pull request would change (one file, as a diff), or why the change is not mechanical.\n\n_Requires permission: `github-issues:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubPullRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPullRequestPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdGithubIssuesPullRequestsPreview",
+        "x-required-permission": "github-issues:write"
+      }
+    },
+    "/api/org/{orgId}/github-issues/pull-requests": {
+      "post": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Open an IaC pull request for a finding",
+        "description": "Creates a branch, commits the one-file change and opens a pull request against the mapped base branch. Never merged automatically.\n\n_Requires permission: `github-issues:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubPullRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Opened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPullRequestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdGithubIssuesPullRequests",
+        "x-required-permission": "github-issues:write"
       }
     },
     "/api/org/{orgId}/digest": {

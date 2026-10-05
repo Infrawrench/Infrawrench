@@ -63,7 +63,9 @@ Applying goes through the same update path as the resource's Edit form, so it pl
 ## Filing a recommendation as an issue
 
 A resize is often somebody else's change to make, or one that needs scheduling. With
-[Jira](./jira.md) or [Linear](./linear.md) connected, each row in the Oversized section has a
+[Jira](./jira.md), [Linear](./linear.md) or [GitHub](./github-issues.md) connected, each row in the Oversized section has a
 file link that opens an issue prefilled with the resource, its current and recommended size,
 the p95 CPU and memory behind the recommendation, and the estimated monthly saving. Filed
-rows show their issue key from then on.
+rows show their issue key from then on. When Terraform manages the machine, **Open PR** proposes
+the size change in your repository instead; see
+[GitHub issues and pull requests](./github-issues.md#terraform-pull-requests).

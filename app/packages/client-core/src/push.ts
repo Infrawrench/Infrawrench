@@ -242,6 +242,19 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A new orphaned or oversized resource found by the savings scan (see
+       * server-core `github-issues/savings-scan.ts`). One per new finding;
+       * the trigger is push-muted by default.
+       *
+       * Target route: the Costs screen, whose savings sections list it.
+       */
+      type: "savings_finding";
+      orgId: string;
+      kind: "orphan" | "oversized";
+      resourceId: string;
+    }
+  | {
+      /**
        * A saved log-workspace query with alerting enabled found matching log
        * lines (see server-core `log-workspaces/pass.ts`). At most one
        * notification per cooldown window, never one per matching line.

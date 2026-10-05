@@ -245,6 +245,9 @@ export function pushDataToPath(data: MobilePushData): string {
     // A posture alert summarises the whole feed, so it opens the feed.
     case "posture_alert":
       return `/org/${data.orgId}/posture`;
+    // A savings finding is listed in the Costs screen's savings sections.
+    case "savings_finding":
+      return `/org/${data.orgId}/costs`;
     // A log-match alert names the saved query that fired; open its viewer so
     // the matching lines are one refresh away.
     case "log_match":
@@ -475,6 +478,14 @@ export function parsePushData(raw: unknown): MobilePushData | null {
     }
     case "posture_alert":
       return { type: "posture_alert", orgId };
+    case "savings_finding": {
+      const kind = data["kind"];
+      const resourceId = data["resourceId"];
+      if ((kind !== "orphan" && kind !== "oversized") || typeof resourceId !== "string") {
+        return null;
+      }
+      return { type: "savings_finding", orgId, kind, resourceId };
+    }
     case "probe_alert": {
       const probeId = data["probeId"];
       const status = data["status"];

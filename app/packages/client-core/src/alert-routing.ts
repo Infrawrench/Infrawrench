@@ -165,6 +165,22 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // One alert per *new* orphaned or oversized resource, raised by the
+    // savings scan. Per finding rather than a digest because its main
+    // consumer is the `github-issues` destination, which files one issue per
+    // finding; "every new finding over $200/month → GitHub" is
+    // `amountCents >= 20000`. Excluded from the shipped default rule (like
+    // drift) and push-muted: a busy estate produces these steadily, and an
+    // org that never asked must not start getting a Slack message per idle
+    // disk.
+    id: "savingsFindings",
+    label: "Savings findings",
+    description: "A new orphaned, idle or oversized resource was found.",
+    pushDefaultMuted: true,
+    channelOnly: false,
+    defaultSeverity: "info",
+  },
+  {
     id: "metricAlerts",
     label: "Metric alerts",
     description: "A metric threshold rule fired or recovered.",
@@ -285,6 +301,7 @@ export const COST_FIGURE_TRIGGERS: readonly AlertTrigger[] = [
   "commitmentExpiryAlerts",
   "commitmentIdleAlerts",
   "unitCostRegressionAlerts",
+  "savingsFindings",
   "weeklyDigest",
 ];
 
@@ -415,7 +432,16 @@ export type AlertDestination =
    * destinations still deliver: an alert lost to a misconfigured rotation
    * would be the worst outcome this feature could have.
    */
-  | { kind: "on-call"; scheduleId: string };
+  | { kind: "on-call"; scheduleId: string }
+  /**
+   * File the alert's finding as a GitHub issue, in the repository the org's
+   * GitHub issue settings route it to (`/github-issues`). Only alerts that
+   * carry a finding (savings findings, anomalies, idle commitments) can be
+   * filed; for any other trigger this destination is skipped and counts as
+   * neither attempted nor failed. Dedupe is by finding fingerprint, so a
+   * re-raised finding comments on its open issue instead of opening another.
+   */
+  | { kind: "github-issues" };
 
 export function destinationKey(d: AlertDestination): string {
   switch (d.kind) {
@@ -427,6 +453,8 @@ export function destinationKey(d: AlertDestination): string {
       return `msteams:${d.webhookId}`;
     case "on-call":
       return `on-call:${d.scheduleId}`;
+    case "github-issues":
+      return "github-issues";
   }
 }
 
@@ -850,7 +878,8 @@ export function quietHoldUntil(quiet: QuietHours, severity: AlertSeverity, now: 
  *
  * Drift is the exception, as it always was: it is excluded here and reachable
  * only by writing a rule for it, which is the same decision the `false` column
- * default used to encode.
+ * default used to encode. Savings findings join it for the same reason: they
+ * are steady rather than exceptional, and exist mainly to feed GitHub filing.
  */
 export function defaultAlertRule(destinations: AlertDestination[]): AlertRule {
   return {
@@ -862,7 +891,7 @@ export function defaultAlertRule(destinations: AlertDestination[]): AlertRule {
       {
         field: "trigger",
         op: "notIn",
-        values: ["resourceDrift"],
+        values: ["resourceDrift", "savingsFindings"],
       },
     ],
     destinations,

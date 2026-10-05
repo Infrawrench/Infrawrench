@@ -112,6 +112,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Infrawrench; an org that wants members filing grants `linear:write`
       // through a custom role.
       "linear:read",
+      // Same decision again: members see "already filed as #42", filing
+      // and pull requests stay with admins unless a custom role grants
+      // `github-issues:write`.
+      "github-issues:read",
       // `invoices:*` is deliberately absent: all three of them.
       //
       // Members get `costs:read` because the org's own spend is something the

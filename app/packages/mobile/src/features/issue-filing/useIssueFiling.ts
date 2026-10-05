@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createLinearIssue,
+  fetchGithubIssueLinks,
+  fetchGithubIssueRoute,
+  fetchGithubIssuesStatus,
+  fileGithubIssue,
+  githubLinkKey,
+  indexGithubLinks,
+  type FileGithubIssueArgs,
+  type GithubIssueLink,
   fetchLinearIntegration,
   fetchLinearIssueLinks,
   fetchLinearTeams,
@@ -85,6 +93,56 @@ export function useFileLinearIssue() {
   });
 }
 
+/** The org's GitHub issue settings and installation access. */
+export function useGithubIssuesStatus() {
+  const { api, orgId } = useOrgApi();
+  const { has } = useOrgPermissions();
+  return useQuery({
+    queryKey: ["github-issues-status", orgId],
+    queryFn: () => fetchGithubIssuesStatus(api, orgId),
+    enabled: has("github-issues:read"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+function useGithubLinks() {
+  const { api, orgId } = useOrgApi();
+  const { has } = useOrgPermissions();
+  const query = useQuery({
+    queryKey: ["github-issue-links", orgId],
+    queryFn: () => fetchGithubIssueLinks(api, orgId),
+    enabled: has("github-issues:read"),
+  });
+  const index = indexGithubLinks(query.data ?? []);
+  return {
+    linkFor: (sourceKind: JiraSourceKind, sourceId: string): GithubIssueLink | undefined =>
+      index.get(githubLinkKey(sourceKind, sourceId)),
+    ...query,
+  };
+}
+
+/** Where the org's routing would file a finding about `resourceId`. */
+export function useGithubIssueRoute(enabled: boolean, resourceId?: string) {
+  const { api, orgId } = useOrgApi();
+  return useQuery({
+    queryKey: ["github-issue-route", orgId, resourceId ?? ""],
+    queryFn: () => fetchGithubIssueRoute(api, orgId, resourceId),
+    enabled,
+  });
+}
+
+/** File into GitHub; a repeat comments on the open issue server-side. */
+export function useFileGithubIssue() {
+  const { api, orgId } = useOrgApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: FileGithubIssueArgs) => fileGithubIssue(api, orgId, args),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["github-issue-links", orgId] });
+    },
+  });
+}
+
 /**
  * Whether this viewer can file into Linear at all: Linear connected *and*
  * `linear:write`. Both halves matter: a button that opens a sheet which can
@@ -103,9 +161,12 @@ function useCanFileLinear(): boolean {
 export function useFilableTrackers(): IssueTracker[] {
   const jira = useCanFileJira();
   const linear = useCanFileLinear();
+  const { has } = useOrgPermissions();
+  const github = useGithubIssuesStatus();
   const trackers: IssueTracker[] = [];
   if (jira) trackers.push("jira");
   if (linear) trackers.push("linear");
+  if (has("github-issues:write") && github.data?.settings.enabled) trackers.push("github");
   return trackers;
 }
 
@@ -119,10 +180,16 @@ export type { IssueLinksForSource };
 export function useIssueLinks() {
   const jira = useJiraLinks();
   const linear = useLinearLinks();
+  const github = useGithubLinks();
   return {
-    linksFor: (sourceKind: JiraSourceKind, sourceId: string): IssueLinksForSource => ({
-      jira: jira.linkFor(sourceKind, sourceId),
-      linear: linear.linkFor(sourceKind, sourceId),
-    }),
+    linksFor: (sourceKind: JiraSourceKind, sourceId: string): IssueLinksForSource => {
+      const gh = github.linkFor(sourceKind, sourceId);
+      return {
+        jira: jira.linkFor(sourceKind, sourceId),
+        linear: linear.linkFor(sourceKind, sourceId),
+        // Only an open issue counts as filed; a closed one offers filing again.
+        github: gh?.state === "open" ? gh : undefined,
+      };
+    },
   };
 }

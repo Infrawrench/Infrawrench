@@ -49,6 +49,11 @@ vi.mock("../rightsizing", () => ({
     { name: "rz1", title: "RZ1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../github-issues", () => ({
+  githubIssueTools: () => [
+    { name: "gh1", title: "GH1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../carbon", () => ({
   carbonTools: () => [
     { name: "cb1", title: "CB1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -128,6 +133,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("m1");
     expect(names).toContain("cb1");
     expect(names).toContain("pc1");
+    expect(names).toContain("gh1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
     expect(names).toContain("d1");

@@ -1,10 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  githubLinkKey,
+  indexGithubLinks,
   indexJiraLinks,
   indexLinearLinks,
   jiraLinkKey,
   linearLinkKey,
+  type GithubIssueLink,
+  type GithubIssuesStatus,
   type IssueLinksForSource,
   type IssueTracker,
   type JiraIntegration,
@@ -38,6 +42,10 @@ export interface IssueFilingHostProps {
   canReadLinear: boolean;
   /** Caller holds `linear:write`. */
   canFileLinear: boolean;
+  /** Caller holds `github-issues:read`. Optional so older hosts keep compiling. */
+  canReadGithub?: boolean;
+  /** Caller holds `github-issues:write`: filing and IaC pull requests. */
+  canFileGithub?: boolean;
   /** Open the filed issue in a new tab (web) or the system browser (desktop). */
   openExternal: (url: string) => void;
   children: ReactNode;
@@ -50,12 +58,17 @@ export interface IssueFilingValue {
   /** Null until loaded, and stays null when the tracker is not connected. */
   jiraIntegration: JiraIntegration | null;
   linearIntegration: LinearIntegration | null;
+  /** GitHub issue settings and installation access; null until loaded or unreadable. */
+  githubStatus: GithubIssuesStatus | null;
+  /** True when IaC pull requests are enabled and the caller may open them. */
+  canOpenPullRequests: boolean;
   /** Trackers the caller can actually file to: connected AND `:write` held. */
   filableTrackers: IssueTracker[];
   /** Every tracker's link for one finding: both, when it was filed to both. */
   linksFor: (sourceKind: JiraSourceKind, sourceId: string) => IssueLinksForSource;
   onJiraFiled: (link: JiraIssueLink) => void;
   onLinearFiled: (link: LinearIssueLink) => void;
+  onGithubFiled: (link: GithubIssueLink) => void;
 }
 
 const IssueFilingContext = createContext<IssueFilingValue | null>(null);
@@ -83,6 +96,8 @@ export function IssueFilingProvider({
   canFileJira,
   canReadLinear,
   canFileLinear,
+  canReadGithub = false,
+  canFileGithub = false,
   openExternal,
   children,
 }: IssueFilingHostProps) {
@@ -90,6 +105,36 @@ export function IssueFilingProvider({
   const [linearIntegration, setLinearIntegration] = useState<LinearIntegration | null>(null);
   const [jiraLinks, setJiraLinks] = useState<Map<string, JiraIssueLink>>(() => new Map());
   const [linearLinks, setLinearLinks] = useState<Map<string, LinearIssueLink>>(() => new Map());
+  const [githubStatus, setGithubStatus] = useState<GithubIssuesStatus | null>(null);
+  const [githubLinks, setGithubLinks] = useState<Map<string, GithubIssueLink>>(() => new Map());
+
+  useEffect(() => {
+    if (!canReadGithub) {
+      setGithubStatus(null);
+      setGithubLinks(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api.get<GithubIssuesStatus>(`/api/org/${orgId}/github-issues`);
+        if (!cancelled) setGithubStatus(res);
+      } catch {
+        if (!cancelled) setGithubStatus(null);
+      }
+    })();
+    void (async () => {
+      try {
+        const rows = await api.get<GithubIssueLink[]>(`/api/org/${orgId}/github-issues/links`);
+        if (!cancelled) setGithubLinks(indexGithubLinks(rows));
+      } catch {
+        if (!cancelled) setGithubLinks(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId, canReadGithub]);
 
   useEffect(() => {
     if (!canReadJira) {
@@ -158,9 +203,18 @@ export function IssueFilingProvider({
     (sourceKind: JiraSourceKind, sourceId: string): IssueLinksForSource => ({
       jira: jiraLinks.get(jiraLinkKey(sourceKind, sourceId)),
       linear: linearLinks.get(linearLinkKey(sourceKind, sourceId)),
+      github: githubLinks.get(githubLinkKey(sourceKind, sourceId)),
     }),
-    [jiraLinks, linearLinks],
+    [jiraLinks, linearLinks, githubLinks],
   );
+
+  const onGithubFiled = useCallback((link: GithubIssueLink) => {
+    setGithubLinks((prev) => {
+      const next = new Map(prev);
+      next.set(githubLinkKey(link.sourceKind, link.sourceId), link);
+      return next;
+    });
+  }, []);
 
   const onJiraFiled = useCallback((link: JiraIssueLink) => {
     setJiraLinks((prev) => {
@@ -182,16 +236,23 @@ export function IssueFilingProvider({
     const filableTrackers: IssueTracker[] = [];
     if (jiraIntegration && canFileJira) filableTrackers.push("jira");
     if (linearIntegration && canFileLinear) filableTrackers.push("linear");
+    // Offered whenever filing is switched on, even before an installation
+    // has approved the `issues` permission: the modal then explains how to
+    // grant it, which is more useful than a button that never appears.
+    if (githubStatus?.settings.enabled && canFileGithub) filableTrackers.push("github");
     return {
       orgId,
       api,
       openExternal,
       jiraIntegration,
       linearIntegration,
+      githubStatus,
+      canOpenPullRequests: Boolean(githubStatus?.settings.pullRequestsEnabled && canFileGithub),
       filableTrackers,
       linksFor,
       onJiraFiled,
       onLinearFiled,
+      onGithubFiled,
     };
   }, [
     orgId,
@@ -201,9 +262,12 @@ export function IssueFilingProvider({
     linearIntegration,
     canFileJira,
     canFileLinear,
+    githubStatus,
+    canFileGithub,
     linksFor,
     onJiraFiled,
     onLinearFiled,
+    onGithubFiled,
   ]);
 
   return <IssueFilingContext.Provider value={value}>{children}</IssueFilingContext.Provider>;
