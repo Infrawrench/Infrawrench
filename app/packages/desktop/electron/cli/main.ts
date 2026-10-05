@@ -30,7 +30,7 @@ import {
   cmdRunExport,
 } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
-import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
+import { cmdBillingRules, cmdBillingRule, cmdBillingRulePreview } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
@@ -123,6 +123,9 @@ COMMANDS
   billing-rules       the org's own adjustments to collected spend (markups, discounts, fixed
                       charges, reallocations) — why a report may not match the invoice
   billing-rules <n>   one rule in full, by name or id
+  billing-rules preview <n>
+                      dry-run one rule against a month of real spend: totals without and
+                      with it, and the lines it moved   [--customer <name>] [--month YYYY-MM]
   invoices            invoices raised against managed accounts (customers), newest first — a
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
@@ -512,6 +515,13 @@ export async function runCli(): Promise<void> {
       // considered act with a form and an audit entry behind it, not something
       // to make one flag away in a shell.
       case "billing-rules":
+        if (rest[0] === "preview") {
+          await cmdBillingRulePreview(ctx, rest.slice(1).join(" "), {
+            customer: parsed.range.customer,
+            month: parsed.range.month,
+          });
+          break;
+        }
         if (rest.length > 0) {
           await cmdBillingRule(ctx, rest.join(" "));
           break;

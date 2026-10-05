@@ -18,6 +18,7 @@ import type {
   AlertCondition,
   AlertDestination,
   BillingRuleAdjustment,
+  ManagedAccountPricing,
   BillingRuleMatch,
   CostExportDestination,
   CostExportQuery,
@@ -975,6 +976,13 @@ export const costBillingRules = pgTable(
     priority: integer("priority").notNull().default(0),
     match: jsonb("match").$type<BillingRuleMatch>().notNull().default({}),
     adjustment: jsonb("adjustment").$type<BillingRuleAdjustment>().notNull(),
+    /**
+     * Tiered and expression rules only: the managed accounts whose invoices
+     * the rule prices. Empty means every customer with billing rules on. Ids
+     * rather than a join table because a customer is soft-deleted, never
+     * hard-deleted, and a stale id here simply matches nobody.
+     */
+    managedAccountIds: jsonb("managed_account_ids").$type<string[]>().notNull().default([]),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -1034,6 +1042,13 @@ export const managedAccounts = pgTable(
     costBasis: text("cost_basis").$type<"cash" | "amortized">().notNull().default("amortized"),
     /** Off means a pass-through contract: billed exactly what providers charged. */
     applyBillingRules: boolean("apply_billing_rules").notNull().default(true),
+    /**
+     * Re-rating to public pricing and discount treatment
+     * (`ManagedAccountPricing`). Null means the default: nothing re-rated,
+     * every discount and credit passed through, which is what every customer
+     * created before these settings existed was being billed.
+     */
+    pricing: jsonb("pricing").$type<ManagedAccountPricing>(),
     notes: text("notes"),
     costCentreIds: jsonb("cost_centre_ids").$type<string[]>().notNull().default([]),
     accountIds: jsonb("account_ids").$type<string[]>().notNull().default([]),

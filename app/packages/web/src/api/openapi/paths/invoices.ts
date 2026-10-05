@@ -1,6 +1,13 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import {
+  BILLING_RULE_KIND_ENUM,
+  ManagedAccountPricing,
+  PricingEffect,
+  PricingExpressionFailure,
+  RerateCoverage,
+} from "./billing-rules";
 
 const IsoDay = z
   .string()
@@ -46,6 +53,12 @@ const ManagedAccountInput = strict({
         "Defaults to true. False is a pass-through contract: the customer is billed exactly what " +
         "the providers charged, with no markup, discount or fixed fee applied.",
     }),
+  pricing: ManagedAccountPricing.optional().openapi({
+    description:
+      "Re-rating to public pricing and discount treatment. Absent on update leaves the saved " +
+      "settings unchanged; absent on create means nothing is re-rated and everything passes " +
+      "through.",
+  }),
   notes: z.string().max(4000).nullish(),
   costCentreIds: z
     .array(z.string().min(1))
@@ -84,6 +97,7 @@ const ManagedAccount = strict({
   billingCurrency: z.string(),
   costBasis: z.enum(["cash", "amortized"]),
   applyBillingRules: z.boolean(),
+  pricing: ManagedAccountPricing,
   notes: z.string().nullable(),
   costCentreIds: z.array(z.string()),
   accountIds: z.array(z.string()),
@@ -147,6 +161,16 @@ const InvoiceLine = strict({
     .number()
     .nullable()
     .openapi({ description: "`adjusted × rate`, in the invoice currency." }),
+  effects: z
+    .array(strict({ key: z.string(), amount: z.number() }))
+    .optional()
+    .openapi({
+      description:
+        "What moved this line, in pipeline order and in the line's currency: one entry per " +
+        "re-rating step, discount treatment or billing rule. Sums to `adjustment`. `key` " +
+        "matches an entry in the derivation's `effects`. Absent on invoices approved before the " +
+        "breakdown existed.",
+    }),
 }).openapi("InvoiceLine", {
   description:
     "One scope entry in one collected currency. Two currencies for one cost centre are two " +
@@ -189,7 +213,7 @@ const InvoiceDerivation = strict({
     strict({
       id: Uuid,
       name: z.string(),
-      kind: z.enum(["percentage", "fixed", "reallocation"]),
+      kind: z.enum(BILLING_RULE_KIND_ENUM),
       summary: z.string(),
     }),
   ),
@@ -202,6 +226,22 @@ const InvoiceDerivation = strict({
       "Scope entries that no longer exist. Recorded rather than silently skipped — an invoice " +
       "that is quietly short is worse than one that says why.",
   }),
+  pricing: ManagedAccountPricing.optional().openapi({
+    description: "The customer's pricing settings at issue time, frozen with the figures.",
+  }),
+  effects: z
+    .array(PricingEffect)
+    .optional()
+    .openapi({
+      description:
+        "Every rule or setting that moved money, in pipeline order, with its total per currency: " +
+        "the per-invoice answer to which rule changed what.",
+    }),
+  rerateCoverage: RerateCoverage.nullish().openapi({
+    description: "How much in-scope usage was re-rated from a list price. Null when off.",
+  }),
+  warnings: z.array(z.string()).optional(),
+  expressionFailures: z.array(PricingExpressionFailure).optional(),
 }).openapi("InvoiceDerivation", {
   description:
     "Everything needed to re-derive the invoice by hand. Not decoration: an invoice a customer " +

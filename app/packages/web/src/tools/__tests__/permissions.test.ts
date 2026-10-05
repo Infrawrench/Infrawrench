@@ -169,6 +169,9 @@ describe("tool registry permission declarations", () => {
     ["get_managed_account", "invoices:read"],
     ["list_invoices", "invoices:read"],
     ["get_invoice", "invoices:read"],
+    // A dry run: reads spend, writes nothing. Naming a customer also needs
+    // invoices:read, checked in the handler.
+    ["preview_billing_rule", "costs:read"],
     ["write_custom_graph", "dashboards:write"],
     ["delete_custom_graph", "dashboards:write"],
     // Workflows have their own family now: custom graphs above deliberately

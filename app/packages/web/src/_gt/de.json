@@ -13967,5 +13967,232 @@
         "v": "v"
       }
     ]
+  },
+  "8174595981e0925f": "Nichts hat einen Betrag verändert.",
+  "de2c77496139710d": "Keine Nutzung im Geltungsbereich, die neu bewertet werden könnte.",
+  "375c5be9e0bf24b8": "{share} % aus einem Listenpreis neu bewertet",
+  "d39b9d6b17a3095d": "Nach Service",
+  "e084e89e10fd6245": "Zum Listenpreis",
+  "c8378abe60e1b20c": "Ersatzwert",
+  "6413ab2635f48efc": "Keine Ausgaben im Geltungsbereich für diesen Monat.",
+  "036b72b5a3f9509c": "Ohne",
+  "a3f6533c62317d14": "Mit",
+  "34b2255f1fdae46c": "Differenz",
+  "46ba472e667dac9f": "{name}: {count} Zeile(n) behielten ihre Kosten, weil {message}",
+  "82f74920f744da4b": "Was in welcher Reihenfolge was geändert hat",
+  "9941fb21f99f8931": "Abdeckung der Neubewertung",
+  "dda47cac2ed494df": "Am stärksten veränderte Zeilen",
+  "edfc051ddb88a351": "Speichern Sie den Kunden, um seine Preisgestaltung anhand der Ausgaben eines Monats in der Vorschau zu sehen.",
+  "693d04f73948dc0d": "Anzeigen, was diese Zeile geändert hat",
+  "a9640d8138642eb4": "Anbieter auswählen…",
+  "da2bd46741ea0c63": "Alle Services",
+  "60a59fbd9419a334": "Aufschlag in Prozent",
+  "0ef098aa2c438553": "alle Services",
+  "051372274fca89e1": "Nutzung zu den öffentlichen On-Demand-Listenpreisen der Anbieter neu bewerten",
+  "24ca51678a4b8058": "Anbieter und Services für die Neubewertung (keine Angabe bedeutet alle)",
+  "6867c0b3b5892653": "Ersatzaufschlag, wenn kein Listenpreis existiert (%)",
+  "df80907f3e7bf0fb": "Ersatzaufschläge pro Anbieter oder pro Service (der spezifischste gilt)",
+  "f44833c6236e1314": "Anbieterrabatte und Gutschriften auf den Rechnungen dieses Kunden",
+  "67c7df4ab065d9e1": "% an den Kunden",
+  "d81ca5e6d40de342": "Vorschaumonat",
+  "058cb08641b0385d": "Preisgestaltung…",
+  "5e90be8844f7e4f0": "Vorschau für diesen Monat",
+  "30cf8f7a837fbccb": "über {from}",
+  "5b622db0f65b738c": "von {from} bis",
+  "decbb921bb2f0b64": "Obergrenze der Stufe {n}",
+  "d85d23e20ee9a996": "Prozentsatz der Stufe {n}",
+  "b679b2d77e9e5350": "Stufe hinzufügen",
+  "82285e0ac643a487": "Preisausdruck",
+  "f1bdf636181bd0b9": "Zeichen {n}: {message}",
+  "742488d8c86c39f1": "Der Ausdruck ist gültig.",
+  "e2130640d0fbc233": "Einfügen:",
+  "b9db13385d1cd9ec": "Servicebedingung einfügen",
+  "e5d76c5094b394a7": "Service…",
+  "67c7fb77b15ba892": "Anbieterbedingung einfügen",
+  "b1c368ecc4ad0137": "Anbieter…",
+  "88c1ce23d5934988": "Kontobedingung einfügen",
+  "faca07bc10ffaedf": "Konto…",
+  "2253d6c0f79796be": "Tag einfügen",
+  "1666bf55e692ebed": "Tag…",
+  "73cdbd0c36e5ecea": "Ausdrucksreferenz",
+  "4edf6fe7bc21c31c": "Der Wert eines Tags oder leer, wenn die Zeile es nicht trägt.",
+  "6e9fc4e824340c64": "Regel konnte nicht gespeichert werden",
+  "dd420bd9b4c8f356": "Vorschau fehlgeschlagen",
+  "1ae319394964b5d8": "„{name}“ bearbeiten",
+  "a12d2e8fb4d7e487": "Währung, in der die Stufen angegeben sind",
+  "8680d8b326341f8f": "Stufenmodus",
+  "6bd18b7dc2782cf8": "Stufenvolumen",
+  "b44e19626edf9c22": "Kunden, deren Rechnungen hiermit bepreist werden (keine Auswahl bedeutet alle Kunden)",
+  "6f73ed5df95f1095": "Noch keine verwalteten Konten; fügen Sie Kunden unter Rechnungen hinzu.",
+  "da4fde47c1d8fe1f": "Regel speichern",
+  "88b7f37ac993f1cf": "Vorschau mit realen Ausgaben",
+  "4250aa639a72808a": "Kunde in der Vorschau",
+  "ecc961d3100a7b45": "Gesamte Organisation",
+  "cdb715062114cc47": "Umverteilungs- und Festbetragsregeln ändern keine Zeilenpreise, daher zeigt die Vorschau nur die übrigen Regeln.",
+  "0340eea0fdec1bb8": "Regeln konnten nicht neu angeordnet werden",
+  "edc8970c74e49b07": "Nur Rechnungen · alle Kunden",
+  "2892443d8a6fc73f": "Nur Rechnungen · {customers}",
+  "b7a5989d96a178f3": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " % der Nutzung im Geltungsbereich wurden aus einem Anbieter-Listenpreis neu bewertet (",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " erfasst, zum Listenpreis von",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ");",
+      " ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      " hatten keinen Listenpreis und erhielten stattdessen einen Aufschlag."
+    ]
+  },
+  "a539e1e192f8d6af": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Bepreist: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " bis ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " über",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " gruppierte Kostenzeilen. Es wurde nichts gespeichert. Ohne: die geltenden Regeln und Einstellungen, abzüglich der Regel in der Vorschau. Mit: einschließlich dieser Regel bzw. mit den Einstellungen, die gerade ausprobiert werden."
+    ]
+  },
+  "2c7efcf4bcc8e69f": {
+    "t": "p",
+    "i": 1,
+    "c": "Wird angewendet, wenn die Rechnungen dieses Kunden berechnet werden. Erfasste Ausgaben werden nie überschrieben; jede Rechnung zeigt den erfassten Betrag und was jede Einstellung geändert hat."
+  },
+  "7a8361f91065db15": {
+    "t": "p",
+    "i": 1,
+    "c": "Die Nutzung wird zu dem Listenpreis abgerechnet, den der Anbieter dafür meldet, statt zu dem, was Sie bezahlt haben. Meldet ein Anbieter keinen Listenpreis, wird die Zeile mit ihrem erfassten Betrag plus dem Ersatzaufschlag abgerechnet, und die Rechnung zeigt, wie viel auf welchen Weg entfiel."
+  },
+  "8e6256d16f0cbfbd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Der Ausdruck liefert die neuen Kosten der Zeile. Schreiben Sie ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "if"
+      },
+      " Bedingung",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "then"
+      },
+      " Kosten, um nur passende Zeilen zu ändern; ohne ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "else"
+      },
+      " behalten andere Zeilen ihre Kosten. Bedingungen verwenden ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "=="
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "!="
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "<"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": ">"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "and"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "or"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "not"
+      },
+      " und ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "in […]"
+      },
+      ". Text wird exakt verglichen."
+    ]
+  },
+  "d84ec1e382811bd4": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Um eine Regel auf bestimmte Kunden zu beschränken, wird die Berechtigung ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "invoices:read"
+      },
+      " ",
+      "zum Auflisten benötigt."
+    ]
+  },
+  "b5428fafa700bd9b": {
+    "t": "p",
+    "i": 1,
+    "c": "Niedrigere Zahlen werden zuerst ausgewertet. Jeder passende Aufschlag und Rabatt wird angewendet, sodass zwei Aufschläge von 10 % zusammen 21 % statt 20 % ergeben. Die Umverteilung gilt nach dem Prinzip des ersten Treffers, sodass eine Zeile genau einmal verschoben wird und die Gesamtsumme der Organisation dadurch unverändert bleibt. Stufen- und Ausdrucksregeln bepreisen nur Rechnungen verwalteter Konten, in derselben Reihenfolge."
   }
 }

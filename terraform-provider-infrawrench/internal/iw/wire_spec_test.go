@@ -102,6 +102,7 @@ func specChecks() []specCheck {
 		{schema: "BillingRuleInput", value: BillingRuleInput{}},
 		{schema: "BillingRuleMatch", value: BillingRuleMatch{}},
 		{schema: "BillingRuleAdjustment", value: BillingRuleAdjustment{}},
+		{schema: "BillingRuleTier", value: BillingRuleTier{}},
 
 		{schema: "BusinessMetricInput", value: BusinessMetricInput{}},
 		{schema: "BusinessMetricScopeTerm", value: CostFilter{}},
@@ -194,6 +195,8 @@ func specChecks() []specCheck {
 
 		{schema: "ManagedAccount", value: ManagedAccount{}},
 		{schema: "ManagedAccountInput", value: ManagedAccountInput{}},
+		{schema: "ManagedAccountPricing", value: ManagedAccountPricing{}},
+		{schema: "DiscountTreatment", value: DiscountTreatment{}},
 
 		{schema: "DeployTrigger", value: DeployTrigger{}},
 		{schema: "DeployTriggerInput", value: DeployTriggerInput{}},

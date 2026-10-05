@@ -29,6 +29,11 @@ vi.mock("@infrawrench/server-core/commitments/feed", () => ({
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),
   listBillingRules: vi.fn(async () => []),
+  BillingRuleError: class BillingRuleError extends Error {},
+}));
+
+vi.mock("@infrawrench/server-core/cost/pricing-preview", () => ({
+  previewPricing: vi.fn(),
 }));
 
 vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({

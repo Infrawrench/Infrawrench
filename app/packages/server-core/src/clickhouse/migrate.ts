@@ -136,6 +136,8 @@ const ADDITIVE_COLUMNS: Array<[ClickHouseTable, ClickHouseColumn]> = [
   [costDaily, costDaily.amortized_amount],
   [costDaily, costDaily.amortized_reported],
   [costDaily, costDaily.commitment_id],
+  [costDaily, costDaily.list_amount],
+  [costDaily, costDaily.list_reported],
 ];
 
 function addColumnSQL(table: ClickHouseTable, column: ClickHouseColumn): string {

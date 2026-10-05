@@ -68,6 +68,10 @@ export interface RangeFlags {
    * budget referencing the same filter. Combines with `--where` by AND.
    */
   filter?: string | undefined;
+  /** `billing-rules preview --customer <name|id>`: price one managed account. */
+  customer?: string | undefined;
+  /** `billing-rules preview --month YYYY-MM`: which month to price. */
+  month?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -294,6 +298,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         where: { type: "string" },
         // `costs --filter <name|id>`: a saved filter, applied by reference.
         filter: { type: "string" },
+        // `billing-rules preview`: whose invoice, and which month.
+        customer: { type: "string" },
+        month: { type: "string" },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies`: same command, different question.
@@ -471,6 +478,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       currency: str("currency"),
       where: str("where"),
       filter: str("filter"),
+      customer: str("customer"),
+      month: str("month"),
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {

@@ -330,6 +330,10 @@ describe("normalizeBillingRuleInput", () => {
       period: null,
       targetKind: null,
       targetId: null,
+      tiers: null,
+      tierMode: null,
+      tierScope: null,
+      expression: null,
     });
   });
 

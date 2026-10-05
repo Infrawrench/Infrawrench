@@ -130,6 +130,10 @@ Three of those are worth a sentence:
 
 ![Cost graph for an AWS account grouped by Charge type, showing a usage band with smaller commitment fee, tax and credit bands stacked on it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/cost-graph.png)
 
+### List prices, for re-rating customer invoices
+
+On-demand usage (pass 1a) is billed at AWS's public rate, with enterprise-agreement, private-rate and bundled discounts arriving as their own `Discount`-family lines, so Infrawrench records each on-demand usage line's amount as its list price. That is what a [managed account](../features/managed-accounts.md#re-rating-to-public-pricing) re-rated to public pricing is billed from. Spot usage is a `Usage` line too and is re-rated at the Spot price it ran at. Reservation- and Savings-Plan-covered usage has no on-demand figure in Cost Explorer, so it falls back to the customer's uplift. No extra request or permission is involved.
+
 ### Amortized cost
 
 Both `UnblendedCost` and `AmortizedCost` come back on the same requests, so AWS accounts support the amortized [cost basis](../features/cloud-costs.md#cash-and-amortized) at no extra cost. This matters more than it sounds for reservations: the unblended rate of RI-covered usage is **zero** by AWS's own definition, so on a cash basis a reserved fleet looks free and the reservation looks like a pure expense. Amortized cost is what those hours are actually worth.

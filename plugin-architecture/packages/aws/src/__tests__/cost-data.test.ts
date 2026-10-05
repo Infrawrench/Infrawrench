@@ -345,6 +345,43 @@ describe("fetchAwsCostData rows", () => {
     expect(ec2.reduce((sum, r) => sum + (r.amortizedAmount ?? 0), 0)).toBe(10);
   });
 
+  it("states a list price on on-demand usage only", async () => {
+    // On-demand usage is billed at the public rate (negotiated discounts are
+    // their own record types), so its amount is its list price. Covered usage
+    // is priced at the commitment's rate and must not claim one.
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        ceResponse([
+          {
+            date: "2026-07-01",
+            groups: [{ keys: ["AmazonEC2", "us-east-1"], unblended: "4", amortized: "4" }],
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        ceResponse([
+          {
+            date: "2026-07-01",
+            groups: [{ keys: ["AmazonEC2", "us-east-1"], unblended: "0", amortized: "6" }],
+          },
+        ]),
+      )
+      .mockImplementation(async () =>
+        ceResponse([
+          { date: "2026-07-01", groups: [{ keys: ["AmazonEC2", "Tax"], unblended: "1" }] },
+        ]),
+      );
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+    expect(rows.find((r) => r.chargeType === "usage" && r.region === "us-east-1")?.listAmount).toBe(
+      4,
+    );
+    expect(
+      rows.find((r) => r.chargeType === "commitment_covered_usage")?.listAmount,
+    ).toBeUndefined();
+    expect(rows.find((r) => r.chargeType === "tax")?.listAmount).toBeUndefined();
+  });
+
   it("sums record types that share a charge type into one row", async () => {
     // An RI recurring fee and a Savings Plan upfront fee on the same service
     // and day are two CE groups but one `commitment_fee` row. Emitted

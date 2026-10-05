@@ -1,11 +1,19 @@
 import { useMemo, useState } from "react";
 import { T, useGT } from "gt-react";
 import {
+  DEFAULT_MANAGED_ACCOUNT_PRICING,
   costCentrePaths,
+  describeManagedAccountPricing,
+  managedAccountPricingError,
   type CostCentre,
+  type CostDimensionOption,
   type ManagedAccount,
   type ManagedAccountInput,
+  type ManagedAccountPricing,
+  type PricingPreviewResult,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
+import { PricingEditor } from "./PricingEditor.js";
 import { Modal } from "../components/Modal.js";
 import type { InvoiceScopeAccount } from "./types.js";
 import { toggle, lastMonth, BTN, FIELD } from "./shared.js";
@@ -32,6 +40,7 @@ export function CustomerList({
   onRaise: (account: ManagedAccount) => void;
 }) {
   const gt = useGT();
+  const gtData = useDataString();
   const centreName = useMemo(() => new Map(centres.map((c) => [c.id, c.name])), [centres]);
 
   return (
@@ -82,6 +91,13 @@ export function CustomerList({
                         ),
                       ].join(", ")}
                 </div>
+                {describeManagedAccountPricing(
+                  account.pricing ?? DEFAULT_MANAGED_ACCOUNT_PRICING,
+                ).map((line) => (
+                  <div key={line} className="truncate text-xs text-info">
+                    {gtData(line)}
+                  </div>
+                ))}
               </div>
               <span className="text-xs text-on-surface-faint">
                 {account.invoiceCount === 1
@@ -113,12 +129,20 @@ export function CustomerModal({
   account,
   centres,
   cloudAccounts,
+  providers = [],
+  services = [],
+  onPreview,
   onSave,
   onClose,
 }: {
   account: ManagedAccount | null;
   centres: CostCentre[];
   cloudAccounts: InvoiceScopeAccount[];
+  providers?: readonly CostDimensionOption[] | undefined;
+  services?: readonly CostDimensionOption[] | undefined;
+  /** Price a month with candidate settings; absent for a customer not yet saved. */
+  onPreview?:
+    ((pricing: ManagedAccountPricing, month: string) => Promise<PricingPreviewResult>) | undefined;
   onSave: (input: ManagedAccountInput) => Promise<void>;
   onClose: () => void;
 }) {
@@ -132,6 +156,9 @@ export function CustomerModal({
   const [applyRules, setApplyRules] = useState(account?.applyBillingRules ?? true);
   const [centreIds, setCentreIds] = useState<string[]>(account?.costCentreIds ?? []);
   const [accountIds, setAccountIds] = useState<string[]>(account?.accountIds ?? []);
+  const [pricing, setPricing] = useState<ManagedAccountPricing>(
+    account?.pricing ?? DEFAULT_MANAGED_ACCOUNT_PRICING,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -156,6 +183,7 @@ export function CustomerModal({
         billingCurrency: currency.trim().toUpperCase(),
         costBasis,
         applyBillingRules: applyRules,
+        pricing,
         costCentreIds: centreIds,
         accountIds,
       });
@@ -171,7 +199,7 @@ export function CustomerModal({
       ariaLabel={account ? gt("Edit {name}", { name: account.name }) : gt("New customer")}
       onClose={onClose}
     >
-      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[85vh] overflow-y-auto p-6">
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[640px] max-w-[92vw] max-h-[85vh] overflow-y-auto p-6">
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
             {gt("Name")}
@@ -294,6 +322,19 @@ export function CustomerModal({
             </div>
           </div>
 
+          <PricingEditor
+            value={pricing}
+            onChange={setPricing}
+            providers={providers}
+            services={services}
+            onPreview={onPreview}
+          />
+          {!onPreview && (
+            <p className="text-xs text-on-surface-faint">
+              {gt("Save the customer to preview its pricing against a month of spend.")}
+            </p>
+          )}
+
           {error !== null && (
             <p role="alert" className="text-sm text-danger">
               {error}
@@ -307,7 +348,7 @@ export function CustomerModal({
             <button
               type="button"
               className={BTN}
-              disabled={saving || !name.trim()}
+              disabled={saving || !name.trim() || managedAccountPricingError(pricing) !== null}
               onClick={() => void submit()}
             >
               {saving ? gt("Saving…") : gt("Save")}

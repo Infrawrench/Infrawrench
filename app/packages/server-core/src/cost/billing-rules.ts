@@ -19,7 +19,7 @@
  * what makes an opted-in budget measure exactly what the Costs panel shows.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import {
   BILLING_RULE_LIMITS,
   billingRuleInputError,
@@ -35,7 +35,7 @@ import {
   type CostAdjustmentRule,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { costBillingRules } from "../db/schema";
+import { costBillingRules, managedAccounts } from "../db/schema";
 
 export type { BillingRule, BillingRuleInput, BillingRuleMatch, BillingRuleAdjustment };
 export { BILLING_RULE_LIMITS };
@@ -66,6 +66,7 @@ function toWire(row: typeof costBillingRules.$inferSelect): BillingRule {
     priority: row.priority,
     match: row.match as BillingRuleMatch,
     adjustment: row.adjustment as BillingRuleAdjustment,
+    managedAccountIds: Array.isArray(row.managedAccountIds) ? row.managedAccountIds : [],
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -102,11 +103,41 @@ export async function getBillingRule(
  * made a mistake, and rejecting them for it would be pedantry. Everything
  * genuinely wrong is refused afterwards, in the same words the editor shows.
  */
-function prepare(input: BillingRuleInput): BillingRuleInput {
+export function prepareBillingRuleInput(input: BillingRuleInput): BillingRuleInput {
   const normalized = normalizeBillingRuleInput(input);
   const error = billingRuleInputError(normalized);
   if (error) throw new BillingRuleError(error);
   return normalized;
+}
+
+/**
+ * Every customer a rule names must be a live managed account in this org. A
+ * typo or another org's id would otherwise scope the rule to nobody, and the
+ * markup it describes would silently never apply.
+ */
+async function assertCustomersExist(organizationId: string, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const rows = await db
+    .select({ id: managedAccounts.id })
+    .from(managedAccounts)
+    .where(
+      and(
+        eq(managedAccounts.organizationId, organizationId),
+        inArray(managedAccounts.id, [...ids]),
+        isNull(managedAccounts.deletedAt),
+      ),
+    );
+  const found = new Set(rows.map((r) => r.id));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) {
+    throw new BillingRuleError(`Unknown managed account(s): ${missing.join(", ")}.`);
+  }
+}
+
+async function prepare(organizationId: string, input: BillingRuleInput): Promise<BillingRuleInput> {
+  const data = prepareBillingRuleInput(input);
+  await assertCustomersExist(organizationId, data.managedAccountIds ?? []);
+  return data;
 }
 
 /** Postgres' unique-violation code, for the org+name index. */
@@ -119,7 +150,7 @@ export async function createBillingRule(
   input: BillingRuleInput,
   createdByUserId?: string | undefined,
 ): Promise<BillingRule> {
-  const data = prepare(input);
+  const data = await prepare(organizationId, input);
 
   const existing = await db
     .select({ id: costBillingRules.id })
@@ -143,6 +174,7 @@ export async function createBillingRule(
         priority: data.priority,
         match: data.match,
         adjustment: data.adjustment,
+        managedAccountIds: data.managedAccountIds ?? [],
         createdByUserId: createdByUserId ?? null,
       })
       .returning();
@@ -160,7 +192,7 @@ export async function updateBillingRule(
   id: string,
   input: BillingRuleInput,
 ): Promise<BillingRule | null> {
-  const data = prepare(input);
+  const data = await prepare(organizationId, input);
   try {
     const [row] = await db
       .update(costBillingRules)
@@ -171,6 +203,12 @@ export async function updateBillingRule(
         priority: data.priority,
         match: data.match,
         adjustment: data.adjustment,
+        // Absent means "leave as saved", so a client written before customer
+        // scoping (an older Terraform provider, a script) cannot widen a
+        // customer-specific rule to everybody by editing its name.
+        ...(input.managedAccountIds === undefined
+          ? {}
+          : { managedAccountIds: data.managedAccountIds ?? [] }),
         updatedAt: new Date(),
       })
       .where(and(eq(costBillingRules.id, id), eq(costBillingRules.organizationId, organizationId)))
@@ -196,6 +234,45 @@ export async function deleteBillingRule(organizationId: string, id: string): Pro
     .where(and(eq(costBillingRules.id, id), eq(costBillingRules.organizationId, organizationId)))
     .returning({ id: costBillingRules.id });
   return deleted.length > 0;
+}
+
+/**
+ * Put the org's rules in the given order by rewriting their priorities to
+ * 10, 20, 30… in one transaction.
+ *
+ * The list must name every rule exactly once: a partial list would leave the
+ * unnamed rules' priorities colliding with the rewritten ones, and the order a
+ * user just chose would not be the order the query evaluates. Gaps of ten
+ * leave room for a hand-set priority between two rules.
+ */
+export async function reorderBillingRules(
+  organizationId: string,
+  ids: readonly string[],
+): Promise<BillingRule[]> {
+  const unique = new Set(ids);
+  if (unique.size !== ids.length) throw new BillingRuleError("A rule appears twice in the order.");
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: costBillingRules.id })
+      .from(costBillingRules)
+      .where(eq(costBillingRules.organizationId, organizationId))
+      .for("update");
+    const existing = new Set(rows.map((r) => r.id));
+    if (existing.size !== unique.size || [...unique].some((id) => !existing.has(id))) {
+      throw new BillingRuleError(
+        "The new order must name every billing rule exactly once; reload the list and try again.",
+      );
+    }
+    for (const [i, id] of ids.entries()) {
+      await tx
+        .update(costBillingRules)
+        .set({ priority: (i + 1) * 10, updatedAt: new Date() })
+        .where(
+          and(eq(costBillingRules.id, id), eq(costBillingRules.organizationId, organizationId)),
+        );
+    }
+  });
+  return listBillingRules(organizationId);
 }
 
 /** The rule set an adjusted query runs, plus what it should be labelled with. */

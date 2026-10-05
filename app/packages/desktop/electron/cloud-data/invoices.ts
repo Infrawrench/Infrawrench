@@ -122,3 +122,15 @@ ipcMain.handle(
     });
   },
 );
+
+// The pricing preview the customer editor runs: a dry run, nothing written.
+// Rides `costs:read` plus `invoices:read` on the cloud, which checks both.
+ipcMain.handle(
+  "cloud_preview_pricing",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetch(orgId, "/billing-rules/preview", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+);

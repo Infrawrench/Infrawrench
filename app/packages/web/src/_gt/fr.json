@@ -13967,5 +13967,232 @@
         "v": "v"
       }
     ]
+  },
+  "8174595981e0925f": "Rien n'a modifié aucun montant.",
+  "de2c77496139710d": "Aucune utilisation à retarifer dans le périmètre.",
+  "375c5be9e0bf24b8": "{share} % retarifé à partir d'un prix catalogue",
+  "d39b9d6b17a3095d": "Par service",
+  "e084e89e10fd6245": "Au prix catalogue",
+  "c8378abe60e1b20c": "Repli",
+  "6413ab2635f48efc": "Aucune dépense dans le périmètre pour ce mois.",
+  "036b72b5a3f9509c": "Sans",
+  "a3f6533c62317d14": "Avec",
+  "34b2255f1fdae46c": "Écart",
+  "46ba472e667dac9f": "{name} : {count} ligne(s) ont conservé leur coût car {message}",
+  "82f74920f744da4b": "Ce qui a modifié quoi, dans l'ordre",
+  "9941fb21f99f8931": "Couverture de la retarification",
+  "dda47cac2ed494df": "Lignes les plus modifiées",
+  "edfc051ddb88a351": "Enregistrez le client pour prévisualiser sa tarification sur un mois de dépenses.",
+  "693d04f73948dc0d": "Afficher ce qui a modifié cette ligne",
+  "a9640d8138642eb4": "Choisir un fournisseur…",
+  "da2bd46741ea0c63": "Tous les services",
+  "60a59fbd9419a334": "Pourcentage de majoration",
+  "0ef098aa2c438553": "tous les services",
+  "051372274fca89e1": "Retarifer l'utilisation aux prix catalogue publics à la demande des fournisseurs",
+  "24ca51678a4b8058": "Fournisseurs et services à retarifer (aucun indiqué signifie tous)",
+  "6867c0b3b5892653": "Majoration de repli lorsqu'aucun prix catalogue n'existe (%)",
+  "df80907f3e7bf0fb": "Majorations de repli par fournisseur ou par service (la plus spécifique l'emporte)",
+  "f44833c6236e1314": "Remises et crédits des fournisseurs sur les factures de ce client",
+  "67c7df4ab065d9e1": "% pour le client",
+  "d81ca5e6d40de342": "Mois de prévisualisation",
+  "058cb08641b0385d": "Tarification…",
+  "5e90be8844f7e4f0": "Prévisualiser sur ce mois",
+  "30cf8f7a837fbccb": "au-dessus de {from}",
+  "5b622db0f65b738c": "de {from} à",
+  "decbb921bb2f0b64": "Borne supérieure du palier {n}",
+  "d85d23e20ee9a996": "Pourcentage du palier {n}",
+  "b679b2d77e9e5350": "Ajouter un palier",
+  "82285e0ac643a487": "Expression de tarification",
+  "f1bdf636181bd0b9": "Caractère {n} : {message}",
+  "742488d8c86c39f1": "L'expression est valide.",
+  "e2130640d0fbc233": "Insérer :",
+  "b9db13385d1cd9ec": "Insérer une condition de service",
+  "e5d76c5094b394a7": "service…",
+  "67c7fb77b15ba892": "Insérer une condition de fournisseur",
+  "b1c368ecc4ad0137": "fournisseur…",
+  "88c1ce23d5934988": "Insérer une condition de compte",
+  "faca07bc10ffaedf": "compte…",
+  "2253d6c0f79796be": "Insérer une étiquette",
+  "1666bf55e692ebed": "étiquette…",
+  "73cdbd0c36e5ecea": "Référence des expressions",
+  "4edf6fe7bc21c31c": "La valeur d'une étiquette, ou vide lorsque la ligne n'en porte pas.",
+  "6e9fc4e824340c64": "Échec de l'enregistrement de la règle",
+  "dd420bd9b4c8f356": "Échec de la prévisualisation",
+  "1ae319394964b5d8": "Modifier « {name} »",
+  "a12d2e8fb4d7e487": "Devise dans laquelle les paliers sont exprimés",
+  "8680d8b326341f8f": "Mode des paliers",
+  "6bd18b7dc2782cf8": "Volume des paliers",
+  "b44e19626edf9c22": "Clients dont les factures sont tarifiées par cette règle (si aucun n'est coché, tous les clients)",
+  "6f73ed5df95f1095": "Aucun compte géré pour le moment ; ajoutez des clients dans Factures.",
+  "da4fde47c1d8fe1f": "Enregistrer la règle",
+  "88b7f37ac993f1cf": "Prévisualiser sur les dépenses réelles",
+  "4250aa639a72808a": "Prévisualiser le client",
+  "ecc961d3100a7b45": "Toute l'organisation",
+  "cdb715062114cc47": "Les règles de réaffectation et de montant fixe ne modifient pas les prix des lignes ; la prévisualisation n'affiche donc que les autres règles.",
+  "0340eea0fdec1bb8": "Échec de la réorganisation des règles",
+  "edc8970c74e49b07": "Factures uniquement · tous les clients",
+  "2892443d8a6fc73f": "Factures uniquement · {customers}",
+  "b7a5989d96a178f3": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " % de l'utilisation dans le périmètre retarifée à partir d'un prix catalogue du fournisseur (",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " facturé, au prix catalogue de",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ") ;",
+      " ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      " n'avait pas de prix catalogue et a reçu une majoration à la place."
+    ]
+  },
+  "a539e1e192f8d6af": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Tarifé ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " à ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " sur",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " lignes de coût regroupées. Rien n'a été enregistré. Sans : les règles et paramètres en vigueur, moins la règle prévisualisée. Avec : en l'incluant, ou avec les paramètres à l'essai."
+    ]
+  },
+  "2c7efcf4bcc8e69f": {
+    "t": "p",
+    "i": 1,
+    "c": "Appliqué lors du calcul des factures de ce client. Les dépenses facturées par le fournisseur ne sont jamais réécrites ; chaque facture affiche le montant facturé et ce que chaque paramètre a modifié."
+  },
+  "7a8361f91065db15": {
+    "t": "p",
+    "i": 1,
+    "c": "L'utilisation est facturée au prix catalogue indiqué par le fournisseur plutôt qu'au montant que vous avez payé. Lorsqu'un fournisseur n'indique aucun prix catalogue, la ligne est facturée à son montant facturé augmenté de la majoration de repli, et la facture indique la part de chaque cas."
+  },
+  "8e6256d16f0cbfbd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "L'expression donne le nouveau coût de la ligne. Écrivez ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "if"
+      },
+      " condition",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "then"
+      },
+      " coût pour ne modifier que les lignes correspondantes ; sans ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "else"
+      },
+      ", les autres lignes conservent leur coût. Les conditions utilisent ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "=="
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "!="
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "<"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": ">"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "and"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "or"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "not"
+      },
+      " et ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "in […]"
+      },
+      ". Le texte est comparé exactement."
+    ]
+  },
+  "d84ec1e382811bd4": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Limiter une règle à certains clients nécessite l'autorisation ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "invoices:read"
+      },
+      " ",
+      "pour les lister."
+    ]
+  },
+  "b5428fafa700bd9b": {
+    "t": "p",
+    "i": 1,
+    "c": "Les nombres les plus faibles sont évalués en premier. Toutes les majorations ou remises correspondantes s'appliquent, donc deux majorations de 10 % se cumulent en 21 % et non 20 %. La réaffectation s'applique à la première correspondance, de sorte qu'une ligne ne se déplace qu'une seule fois et que le total de l'organisation n'en est pas modifié. Les règles par paliers et par expression ne tarifent que les factures des comptes gérés, dans ce même ordre."
   }
 }

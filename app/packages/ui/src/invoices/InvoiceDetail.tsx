@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
+
 import {
   MANAGED_INVOICE_DELIVERY_STATUS_LABELS,
+  describeManagedAccountPricing,
   describeManagedInvoiceTotal,
   managedInvoiceBlocker,
   managedInvoiceDeliveryRetryable,
@@ -12,6 +14,8 @@ import { Modal } from "../components/Modal.js";
 import type { InvoicesClient } from "./types.js";
 import { StatusChip, money, BTN, FIELD } from "./shared.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
+import { useDataString } from "../i18n/data-strings.js";
+import { PricingEffectsList, RerateCoverageView } from "../cost/PricingPreview.js";
 
 /**
  * The delivery record, stated in full.
@@ -341,6 +345,18 @@ export function InvoiceDetail({
  */
 function LineTable({ invoice }: { invoice: ManagedInvoice }) {
   const gt = useGT();
+  const gtData = useDataString();
+  const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  // Effect keys resolve to the names frozen in the derivation, so a renamed
+  // rule cannot retitle a line's breakdown on an approved invoice.
+  const effectLabel = new Map((invoice.derivation.effects ?? []).map((e) => [e.key, e.label]));
+  const toggleLine = (i: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-on-surface">{gt("Lines")}</h2>
@@ -385,41 +401,73 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
                   the rows hold no state and the server sends them pre-sorted
                   (this table never filters or re-sorts). */}
               {invoice.lines.map((line, i) => (
-                <tr key={`${line.kind}:${line.refId ?? ""}:${line.currency}:${i}`}>
-                  <td className="px-3 py-2 text-on-surface">
-                    {line.label}
-                    <span className="ml-2 text-xs text-on-surface-faint">
-                      {line.kind === "cost_centre"
-                        ? gt("cost centre")
-                        : line.kind === "account"
-                          ? gt("account")
-                          : gt("fixed charge")}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
-                    {money(line.collected, line.currency)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
-                    {line.adjustment === 0 ? "—" : money(line.adjustment, line.currency)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-on-surface">
-                    {money(line.adjusted, line.currency)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
-                    {line.rate === null ? (
-                      <span className="text-warning">{gt("no rate")}</span>
-                    ) : line.rate === 1 ? (
-                      "—"
-                    ) : (
-                      line.rate.toFixed(4)
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-on-surface">
-                    {line.billed === null
-                      ? money(line.adjusted, line.currency)
-                      : money(line.billed, invoice.currency)}
-                  </td>
-                </tr>
+                <Fragment key={`${line.kind}:${line.refId ?? ""}:${line.currency}:${i}`}>
+                  <tr>
+                    <td className="px-3 py-2 text-on-surface">
+                      {line.effects && line.effects.length > 0 && (
+                        <button
+                          type="button"
+                          className="mr-1 text-xs text-on-surface-faint hover:text-on-surface"
+                          aria-expanded={open.has(i)}
+                          aria-label={gt("Show what changed this line")}
+                          onClick={() => toggleLine(i)}
+                        >
+                          {open.has(i) ? "▾" : "▸"}
+                        </button>
+                      )}
+                      {line.label}
+                      <span className="ml-2 text-xs text-on-surface-faint">
+                        {line.kind === "cost_centre"
+                          ? gt("cost centre")
+                          : line.kind === "account"
+                            ? gt("account")
+                            : gt("fixed charge")}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
+                      {money(line.collected, line.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
+                      {line.adjustment === 0 ? "—" : money(line.adjustment, line.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-on-surface">
+                      {money(line.adjusted, line.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
+                      {line.rate === null ? (
+                        <span className="text-warning">{gt("no rate")}</span>
+                      ) : line.rate === 1 ? (
+                        "—"
+                      ) : (
+                        line.rate.toFixed(4)
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-on-surface">
+                      {line.billed === null
+                        ? money(line.adjusted, line.currency)
+                        : money(line.billed, invoice.currency)}
+                    </td>
+                  </tr>
+                  {open.has(i) && line.effects && (
+                    <tr className="bg-surface-sunken">
+                      <td colSpan={6} className="px-6 py-2">
+                        <ul className="flex flex-col gap-0.5 text-xs">
+                          {line.effects.map((effect) => (
+                            <li key={effect.key} className="flex justify-between gap-3">
+                              <span className="text-on-surface-secondary">
+                                {gtData(effectLabel.get(effect.key) ?? effect.key)}
+                              </span>
+                              <span className="tabular-nums text-on-surface">
+                                {effect.amount > 0 ? "+" : ""}
+                                {money(effect.amount, line.currency)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
             <tfoot>
@@ -442,7 +490,9 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
 /** Everything needed to re-derive the total by hand. */
 function Derivation({ invoice }: { invoice: ManagedInvoice }) {
   const gt = useGT();
+  const gtData = useDataString();
   const d = invoice.derivation;
+  const pricingLines = d.pricing ? describeManagedAccountPricing(d.pricing) : [];
   const scope =
     d.scope.costCentres.length === 0 && d.scope.accounts.length === 0
       ? gt("nothing")
@@ -506,6 +556,41 @@ function Derivation({ invoice }: { invoice: ManagedInvoice }) {
             )}
           </p>
         )}
+        {pricingLines.length > 0 && (
+          <ul className="flex flex-col gap-0.5 text-on-surface-faint">
+            {pricingLines.map((line) => (
+              <li key={line}>{gtData(line)}</li>
+            ))}
+          </ul>
+        )}
+        {d.effects && d.effects.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-on-surface">
+              {gt("What changed what, in order")}
+            </span>
+            <PricingEffectsList effects={d.effects} />
+          </div>
+        )}
+        {d.rerateCoverage && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-on-surface">{gt("Re-rating coverage")}</span>
+            <RerateCoverageView coverage={d.rerateCoverage} />
+          </div>
+        )}
+        {(d.expressionFailures ?? []).map((f) => (
+          <p key={f.ruleId} className="text-warning">
+            {gt("{name}: {count} line(s) kept their cost because {message}", {
+              name: f.name,
+              count: f.lines,
+              message: f.message,
+            })}
+          </p>
+        ))}
+        {(d.warnings ?? []).map((w) => (
+          <p key={w} className="text-warning">
+            {gtData(w)}
+          </p>
+        ))}
       </div>
     </section>
   );

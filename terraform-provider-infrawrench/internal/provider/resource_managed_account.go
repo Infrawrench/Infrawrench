@@ -5,21 +5,26 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
 )
 
 var (
-	_ resource.Resource                = (*managedAccountResource)(nil)
-	_ resource.ResourceWithConfigure   = (*managedAccountResource)(nil)
-	_ resource.ResourceWithImportState = (*managedAccountResource)(nil)
+	_ resource.Resource                   = (*managedAccountResource)(nil)
+	_ resource.ResourceWithConfigure      = (*managedAccountResource)(nil)
+	_ resource.ResourceWithImportState    = (*managedAccountResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*managedAccountResource)(nil)
 )
 
 // NewManagedAccountResource constructs the infrawrench_managed_account resource.
@@ -40,9 +45,69 @@ type managedAccountResourceModel struct {
 	CostCentreIDs     types.Set    `tfsdk:"cost_centre_ids"`
 	AccountIDs        types.Set    `tfsdk:"account_ids"`
 	InvoiceCount      types.Int64  `tfsdk:"invoice_count"`
+
+	// Pricing, flattened so every attribute can carry its own default and a
+	// configuration that sets one of them plans cleanly against the rest.
+	RerateToListPrice               types.Bool    `tfsdk:"rerate_to_list_price"`
+	RerateProviders                 types.List    `tfsdk:"rerate_providers"`
+	RerateFallbackUpliftPercent     types.Float64 `tfsdk:"rerate_fallback_uplift_percent"`
+	RerateUplifts                   types.List    `tfsdk:"rerate_uplifts"`
+	DiscountTreatment               types.String  `tfsdk:"discount_treatment"`
+	DiscountPassThroughPercent      types.Float64 `tfsdk:"discount_pass_through_percent"`
+	CreditTreatment                 types.String  `tfsdk:"credit_treatment"`
+	CreditPassThroughPercent        types.Float64 `tfsdk:"credit_pass_through_percent"`
+	CommitmentBenefitTreatment      types.String  `tfsdk:"commitment_benefit_treatment"`
+	CommitmentBenefitPassThroughPct types.Float64 `tfsdk:"commitment_benefit_pass_through_percent"`
+}
+
+type pricingScopeModel struct {
+	PluginID types.String `tfsdk:"plugin_id"`
+	Service  types.String `tfsdk:"service"`
+}
+
+type pricingUpliftModel struct {
+	PluginID types.String  `tfsdk:"plugin_id"`
+	Service  types.String  `tfsdk:"service"`
+	Percent  types.Float64 `tfsdk:"percent"`
+}
+
+var pricingScopeAttrTypes = map[string]attr.Type{
+	"plugin_id": types.StringType,
+	"service":   types.StringType,
+}
+
+var pricingUpliftAttrTypes = map[string]attr.Type{
+	"plugin_id": types.StringType,
+	"service":   types.StringType,
+	"percent":   types.Float64Type,
 }
 
 var managedAccountCostBases = []string{"cash", "amortized"}
+
+// discountTreatmentModes is the closed set for the three *_treatment attributes.
+var discountTreatmentModes = []string{"pass_through", "partial", "retain"}
+
+func treatmentAttribute(what string) schema.StringAttribute {
+	return schema.StringAttribute{
+		Optional: true,
+		Computed: true,
+		Default:  stringdefault.StaticString("pass_through"),
+		MarkdownDescription: "What happens to " + what + " on this customer's invoices: `pass_through` " +
+			"(the default) gives the customer all of it, `retain` keeps all of it, `partial` gives the " +
+			"customer the share in the matching `*_pass_through_percent`.",
+		Validators: []validator.String{oneOfValidator(discountTreatmentModes...)},
+	}
+}
+
+func passThroughAttribute(what string) schema.Float64Attribute {
+	return schema.Float64Attribute{
+		Optional: true,
+		MarkdownDescription: "With a `partial` treatment, the share of " + what + " the customer " +
+			"receives, strictly between 0 and 100. Required with `partial` and refused with any other " +
+			"treatment, so a stale share cannot sit in configuration doing nothing.",
+		Validators: []validator.Float64{betweenFloat(0, 100)},
+	}
+}
 
 func (r *managedAccountResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_managed_account"
@@ -123,12 +188,130 @@ func (r *managedAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 					"billed twice and nothing goes missing.",
 			},
 
+			"rerate_to_list_price": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				MarkdownDescription: "Present this customer's usage at the providers' public on-demand list " +
+					"price instead of what the organization paid. Where a provider reports a list price for a " +
+					"line (GCP's `cost_at_list`, AWS on-demand usage, and providers whose amounts are list " +
+					"prices by construction) it is used; elsewhere the line is billed at its collected amount " +
+					"plus `rerate_fallback_uplift_percent`, and every invoice reports how much went each way. " +
+					"Applied when the invoice is computed; collected spend is never rewritten.",
+			},
+			"rerate_providers": schema.ListNestedAttribute{
+				Optional: true,
+				Computed: true,
+				Default: listdefault.StaticValue(types.ListValueMust(
+					types.ObjectType{AttrTypes: pricingScopeAttrTypes}, []attr.Value{})),
+				MarkdownDescription: "Providers, or single services of a provider, to re-rate, at most 100. " +
+					"Empty (the default) re-rates every provider. See the `infrawrench_plugins` data source " +
+					"for provider ids.",
+				Validators: []validator.List{sizeAtMost(100)},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"plugin_id": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Provider plugin id, e.g. `aws`.",
+						},
+						"service": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "One service as it appears in cost rows; unset means all of them.",
+						},
+					},
+				},
+			},
+			"rerate_fallback_uplift_percent": schema.Float64Attribute{
+				Optional: true,
+				Computed: true,
+				Default:  float64default.StaticFloat64(0),
+				MarkdownDescription: "Uplift applied to re-rated usage that has no reported list price, " +
+					"between -100 and 1000. Defaults to 0.",
+				Validators: []validator.Float64{betweenFloat(-100, 1000)},
+			},
+			"rerate_uplifts": schema.ListNestedAttribute{
+				Optional: true,
+				Computed: true,
+				Default: listdefault.StaticValue(types.ListValueMust(
+					types.ObjectType{AttrTypes: pricingUpliftAttrTypes}, []attr.Value{})),
+				MarkdownDescription: "Per-provider or per-service overrides of the fallback uplift, at most " +
+					"100. The most specific entry wins.",
+				Validators: []validator.List{sizeAtMost(100)},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"plugin_id": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Provider plugin id, e.g. `aws`.",
+						},
+						"service": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "One service; unset applies to the whole provider.",
+						},
+						"percent": schema.Float64Attribute{
+							Required:            true,
+							MarkdownDescription: "Uplift, between -100 and 1000.",
+							Validators:          []validator.Float64{betweenFloat(-100, 1000)},
+						},
+					},
+				},
+			},
+			"discount_treatment": treatmentAttribute("provider discounts (enterprise agreements, private " +
+				"pricing, Savings Plan negation lines)"),
+			"discount_pass_through_percent": passThroughAttribute("provider discounts"),
+			"credit_treatment":              treatmentAttribute("provider credits"),
+			"credit_pass_through_percent":   passThroughAttribute("credits"),
+			"commitment_benefit_treatment": treatmentAttribute("reservation and Savings Plan benefits on " +
+				"covered usage (measurable only where the provider reports a list price)"),
+			"commitment_benefit_pass_through_percent": passThroughAttribute("commitment benefits"),
+
 			"invoice_count": schema.Int64Attribute{
 				Computed: true,
 				MarkdownDescription: "How many invoices this customer has. Useful as a guard before a destroy: " +
 					"it is the count of financial records that exist against them.",
 			},
 		},
+	}
+}
+
+// ValidateConfig pairs each treatment with its percentage at plan time, so a
+// mismatch is a plan error rather than an apply that echoes back different
+// values.
+func (r *managedAccountResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config managedAccountResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	pairs := []struct {
+		mode    types.String
+		percent types.Float64
+		modeKey string
+		pctKey  string
+	}{
+		{config.DiscountTreatment, config.DiscountPassThroughPercent, "discount_treatment", "discount_pass_through_percent"},
+		{config.CreditTreatment, config.CreditPassThroughPercent, "credit_treatment", "credit_pass_through_percent"},
+		{config.CommitmentBenefitTreatment, config.CommitmentBenefitPassThroughPct, "commitment_benefit_treatment", "commitment_benefit_pass_through_percent"},
+	}
+	for _, p := range pairs {
+		if p.mode.IsUnknown() || p.percent.IsUnknown() {
+			continue
+		}
+		partial := p.mode.ValueString() == "partial"
+		if partial && p.percent.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root(p.pctKey), "Missing pass-through share",
+				"`"+p.modeKey+" = \"partial\"` needs `"+p.pctKey+"`.")
+		}
+		if !partial && !p.percent.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root(p.pctKey), "Pass-through share without partial",
+				"`"+p.pctKey+"` only applies when `"+p.modeKey+" = \"partial\"`.")
+		}
+		if partial && !p.percent.IsNull() {
+			v := p.percent.ValueFloat64()
+			if v <= 0 || v >= 100 {
+				resp.Diagnostics.AddAttributeError(path.Root(p.pctKey), "Pass-through share out of range",
+					"A partial share must be strictly between 0 and 100; use pass_through or retain for the ends.")
+			}
+		}
 	}
 }
 
@@ -268,7 +451,41 @@ func managedAccountInputFrom(ctx context.Context, model managedAccountResourceMo
 		return iw.ManagedAccountInput{}, diags
 	}
 
+	pricing := iw.ManagedAccountPricing{
+		Rerate: iw.ManagedAccountRerate{
+			Enabled:               model.RerateToListPrice.ValueBool(),
+			Scope:                 []iw.PricingScopeEntry{},
+			FallbackUpliftPercent: model.RerateFallbackUpliftPercent.ValueFloat64(),
+			Uplifts:               []iw.PricingUplift{},
+		},
+		Discounts:          treatmentFrom(model.DiscountTreatment, model.DiscountPassThroughPercent),
+		Credits:            treatmentFrom(model.CreditTreatment, model.CreditPassThroughPercent),
+		CommitmentBenefits: treatmentFrom(model.CommitmentBenefitTreatment, model.CommitmentBenefitPassThroughPct),
+	}
+	if !model.RerateProviders.IsNull() && !model.RerateProviders.IsUnknown() {
+		var scope []pricingScopeModel
+		diags.Append(model.RerateProviders.ElementsAs(ctx, &scope, false)...)
+		for _, s := range scope {
+			pricing.Rerate.Scope = append(pricing.Rerate.Scope, iw.PricingScopeEntry{
+				PluginID: s.PluginID.ValueString(),
+				Service:  stringPtr(s.Service),
+			})
+		}
+	}
+	if !model.RerateUplifts.IsNull() && !model.RerateUplifts.IsUnknown() {
+		var uplifts []pricingUpliftModel
+		diags.Append(model.RerateUplifts.ElementsAs(ctx, &uplifts, false)...)
+		for _, u := range uplifts {
+			pricing.Rerate.Uplifts = append(pricing.Rerate.Uplifts, iw.PricingUplift{
+				PluginID: u.PluginID.ValueString(),
+				Service:  stringPtr(u.Service),
+				Percent:  u.Percent.ValueFloat64(),
+			})
+		}
+	}
+
 	return iw.ManagedAccountInput{
+		Pricing:           &pricing,
 		Name:              model.Name.ValueString(),
 		ContactName:       stringPtr(model.ContactName),
 		ContactEmail:      stringPtr(model.ContactEmail),
@@ -297,6 +514,36 @@ func managedAccountStateFrom(ctx context.Context, remote *iw.ManagedAccount) (ma
 	accounts, d := nilStringSet(ctx, remote.AccountIDs)
 	diags.Append(d...)
 
+	p := remote.Pricing
+	if p.Discounts.Mode == "" {
+		p.Discounts.Mode = "pass_through"
+	}
+	if p.Credits.Mode == "" {
+		p.Credits.Mode = "pass_through"
+	}
+	if p.CommitmentBenefits.Mode == "" {
+		p.CommitmentBenefits.Mode = "pass_through"
+	}
+	scopeModels := make([]pricingScopeModel, 0, len(p.Rerate.Scope))
+	for _, s := range p.Rerate.Scope {
+		scopeModels = append(scopeModels, pricingScopeModel{
+			PluginID: types.StringValue(s.PluginID),
+			Service:  stringValue(s.Service),
+		})
+	}
+	scope, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: pricingScopeAttrTypes}, scopeModels)
+	diags.Append(d...)
+	upliftModels := make([]pricingUpliftModel, 0, len(p.Rerate.Uplifts))
+	for _, u := range p.Rerate.Uplifts {
+		upliftModels = append(upliftModels, pricingUpliftModel{
+			PluginID: types.StringValue(u.PluginID),
+			Service:  stringValue(u.Service),
+			Percent:  types.Float64Value(u.Percent),
+		})
+	}
+	uplifts, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: pricingUpliftAttrTypes}, upliftModels)
+	diags.Append(d...)
+
 	return managedAccountResourceModel{
 		ID:                types.StringValue(remote.ID),
 		Name:              types.StringValue(remote.Name),
@@ -310,5 +557,30 @@ func managedAccountStateFrom(ctx context.Context, remote *iw.ManagedAccount) (ma
 		CostCentreIDs:     centres,
 		AccountIDs:        accounts,
 		InvoiceCount:      types.Int64Value(remote.InvoiceCount),
+
+		RerateToListPrice:               types.BoolValue(p.Rerate.Enabled),
+		RerateProviders:                 scope,
+		RerateFallbackUpliftPercent:     types.Float64Value(p.Rerate.FallbackUpliftPercent),
+		RerateUplifts:                   uplifts,
+		DiscountTreatment:               types.StringValue(p.Discounts.Mode),
+		DiscountPassThroughPercent:      float64Value(p.Discounts.PassThroughPercent),
+		CreditTreatment:                 types.StringValue(p.Credits.Mode),
+		CreditPassThroughPercent:        float64Value(p.Credits.PassThroughPercent),
+		CommitmentBenefitTreatment:      types.StringValue(p.CommitmentBenefits.Mode),
+		CommitmentBenefitPassThroughPct: float64Value(p.CommitmentBenefits.PassThroughPercent),
 	}, diags
+}
+
+// treatmentFrom builds one discount treatment. The percentage is only sent for
+// `partial`; the API drops it otherwise, and sending it would read back as drift.
+func treatmentFrom(mode types.String, percent types.Float64) iw.DiscountTreatment {
+	m := mode.ValueString()
+	if m == "" {
+		m = "pass_through"
+	}
+	t := iw.DiscountTreatment{Mode: m}
+	if m == "partial" {
+		t.PassThroughPercent = float64Ptr(percent)
+	}
+	return t
 }

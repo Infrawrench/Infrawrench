@@ -161,6 +161,10 @@ Until all three steps are done, GCP cost graphs stay empty and the dashboard sho
 
 Expect one more wait after that. The table is created before it holds anything, so a correctly configured export still returns no rows for its first day or two — Google backfills nothing and starts writing only once its billing pipeline catches up. During that window the account reports no error and the dashboard says [there is nothing to collect yet](../features/cloud-costs.md#when-there-is-nothing-to-collect-yet) rather than showing a failure. If it has been longer than that, confirm the export is still enabled and writing to the dataset you pasted — an export can create its table and then never deliver if it is turned off again.
 
+### List prices
+
+The query also sums the export's `cost_at_list` column, the cost at Google's public list price, which [managed accounts](../features/managed-accounts.md#re-rating-to-public-pricing) use when re-rating a customer's invoice to public pricing. A day/service group is only given a list price when every export row in it carried one (the column is populated from 29 June 2023). An export table old enough to lack the column is retried without it, so cost collection never depends on it.
+
 ## Commitments
 
 GCP accounts feed the [Commitments](../features/commitments.md) section with **committed-use discounts**, listed daily via the Compute Engine commitments API (`compute.commitments.list`, included in `roles/compute.viewer` — no billing export required for this part).

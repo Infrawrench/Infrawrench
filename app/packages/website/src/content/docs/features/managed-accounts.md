@@ -45,6 +45,44 @@ On by default — a service provider's markup is the whole reason [billing rules
 
 Fixed-amount rules become their own invoice lines rather than being folded into a cost centre's spend. A management fee is something the customer agreed to pay, not something a provider charged, and burying it inside "Compute" is how an invoice becomes an argument.
 
+[Tiered and expression rules](./billing-rules.md#rules-that-price-customer-invoices) price customer invoices only, and can be limited to particular customers.
+
+## Pricing a customer
+
+The **Pricing** section of the customer editor decides how this customer's usage is priced beyond the billing rules. Like every rule, it is applied when an invoice is computed and **never written into collected spend**: every line still shows what the providers charged beside what the customer is billed.
+
+<insert [The customer editor's Pricing section with "Re-rate usage to the providers' public on-demand list prices" ticked, a 5% fallback uplift and one per-service uplift, discounts set to Retain and credits to Pass through partly at 50%, and the preview's re-rating coverage bar underneath] here>
+
+### Re-rating to public pricing
+
+Tick **Re-rate usage to the providers' public on-demand list prices** to present this customer's usage at list price instead of what you actually paid, which is how a reseller with negotiated rates usually bills.
+
+A list price is only used where the provider reports one for that line:
+
+| Provider                          | Where the list price comes from                                                                                                                                                   |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Cloud                      | The billing export's `cost_at_list` column (populated from 29 June 2023)                                                                                                          |
+| AWS                               | On-demand usage lines: negotiated discounts arrive as separate discount lines, so the usage line itself is at the public rate. Spot usage is re-rated at the Spot price it ran at |
+| Providers priced from a rate card | Their amounts are list prices by construction                                                                                                                                     |
+
+Everything else in scope (Azure, reservation-covered usage on AWS, any provider without a list price) falls back to **collected plus an uplift %**. Set the default uplift, and override it per provider or per service; the most specific entry wins. Limit re-rating to particular providers or services, or leave the list empty for all of them.
+
+Only usage lines are re-rated. Credits, taxes, discounts and commitment purchases are left to the next setting. Every invoice shows the **coverage**: how much of the in-scope usage was priced from a list price and how much fell back to the uplift, overall and per service.
+
+### Discounts, credits and commitment benefits
+
+Choose, per customer, what happens to three kinds of provider benefit: **pass through** (the customer gets all of it, the default), **retain** (you keep it), or **pass through partly** (the customer gets a percentage).
+
+- **Provider discounts**: enterprise-agreement, private-pricing and bundled discounts, and Savings Plan negation lines.
+- **Credits**: promotional and negotiated credits.
+- **Commitment benefits**: the difference between the list price and the reservation or Savings Plan rate on covered usage. This is only measurable where the provider reports a list price; elsewhere it passes through and the invoice says so. A line already re-rated to list price has no benefit left to retain.
+
+**Preview against that month** prices a month of this customer's spend with the settings as they are on screen, before you save them.
+
+## Which rule changed what
+
+Every invoice line carries the steps that moved it, in order: re-rating, discount treatment and each billing rule, with the amount each one added or removed. Expand a line (the ▸ beside its name) to see them. Under the lines, **How this total was reached** lists every rule and setting with its total effect on the invoice, the re-rating coverage, and anything that could not be priced. On an approved invoice all of this is frozen with the figures.
+
 ## Raising an invoice
 
 **Raise invoice** on a customer, pick the period (it defaults to last calendar month), and you get a **draft**.
@@ -88,13 +126,13 @@ One void gets one correction. If a corrective invoice already exists, raising a 
 
 An invoice a customer cannot reconcile is an invoice a customer does not pay, so every line carries the whole chain:
 
-| Column         | What it is                                              |
-| -------------- | ------------------------------------------------------- |
-| **Collected**  | What the providers charged, before any rule of yours    |
-| **Adjustment** | What your billing rules added or removed                |
-| **Subtotal**   | Collected + adjustment                                  |
-| **Rate**       | The exchange rate applied, and `—` when none was needed |
-| **Invoiced**   | The subtotal in the customer's currency                 |
+| Column         | What it is                                                    |
+| -------------- | ------------------------------------------------------------- |
+| **Collected**  | What the providers charged, before any rule of yours          |
+| **Adjustment** | What your billing rules and pricing settings added or removed |
+| **Subtotal**   | Collected + adjustment                                        |
+| **Rate**       | The exchange rate applied, and `—` when none was needed       |
+| **Invoiced**   | The subtotal in the customer's currency                       |
 
 `collected + adjustment = subtotal` holds on every line and in every total. Underneath, the invoice spells out which cost centres were in scope, which billing rules applied and what each one does, the exchange rates used, and **the date those rates were read** — always the last day of the period, so "January, at the 31 January rate" is a sentence you can reproduce.
 

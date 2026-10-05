@@ -18,7 +18,17 @@
  * Standard usage cost export schema fields used (verified against
  * https://cloud.google.com/billing/docs/how-to/export-data-bigquery-tables):
  * `usage_start_time` (TIMESTAMP), `service.description`, `location.region`,
- * `project.id`, `currency`, `cost` (FLOAT), `credits[].amount`.
+ * `project.id`, `currency`, `cost` (FLOAT), `credits[].amount`, and
+ * `cost_at_list` (FLOAT, "Cost at list price per the default consumption
+ * model", populated from 29 June 2023).
+ *
+ * `cost_at_list` becomes {@link CostRow.listAmount}, which is what lets a
+ * managed service provider re-rate a customer's invoice to public pricing.
+ * It is only reported for a group whose every export row carried it: a group
+ * straddling the column's first day would otherwise list at a fraction of its
+ * cost. An export table old enough to lack the column fails the query with
+ * "Unrecognized name"; that is retried once without it, so cost collection
+ * never depends on a column that only feeds an optional feature.
  */
 
 import { CostSetupError, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
@@ -77,6 +87,8 @@ function collectRows(page: BqQueryResponse, columns: string[], out: CostRow[]): 
   const projectIdx = columns.indexOf("project_id");
   const currencyIdx = columns.indexOf("currency");
   const costIdx = columns.indexOf("net_cost");
+  const listIdx = columns.indexOf("list_cost");
+  const listMissingIdx = columns.indexOf("list_missing");
 
   for (const r of page.rows ?? []) {
     const date = cell(r, dayIdx);
@@ -101,6 +113,10 @@ function collectRows(page: BqQueryResponse, columns: string[], out: CostRow[]): 
     if (projectId) {
       row.resourceId = projectId;
       row.tags = { project: projectId };
+    }
+    if (listIdx >= 0 && listMissingIdx >= 0 && Number(cell(r, listMissingIdx) || "1") === 0) {
+      const list = Number(cell(r, listIdx));
+      if (Number.isFinite(list)) row.listAmount = list;
     }
     out.push(row);
   }
@@ -136,13 +152,16 @@ export async function fetchGcpCostData(
   // usage_start_time is a TIMESTAMP; DATE() buckets it in UTC, matching the
   // contract's UTC billing days. BETWEEN is inclusive on both ends, matching
   // CostFetchRange semantics.
-  const query =
+  const buildQuery = (withList: boolean): string =>
     "SELECT DATE(usage_start_time) AS day, " +
     'IFNULL(service.description, "") AS service, ' +
     'IFNULL(location.region, "") AS region, ' +
     'IFNULL(project.id, "") AS project_id, ' +
     "currency, " +
-    "SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost " +
+    "SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost" +
+    (withList
+      ? ", SUM(cost_at_list) AS list_cost, COUNTIF(cost_at_list IS NULL) AS list_missing "
+      : " ") +
     `FROM \`${table}\` ` +
     "WHERE DATE(usage_start_time) BETWEEN @from_date AND @to_date " +
     "GROUP BY day, service, region, project_id, currency " +
@@ -153,31 +172,42 @@ export async function fetchGcpCostData(
 
   // jobs.query submits and (usually) returns the first page synchronously;
   // dates go through real query parameters, not string interpolation.
-  const res = await fetch(`${BQ_BASE}/projects/${ctx.project}/queries`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      query,
-      useLegacySql: false,
-      parameterMode: "NAMED",
-      queryParameters: [
-        {
-          name: "from_date",
-          parameterType: { type: "DATE" },
-          parameterValue: { value: range.fromDate },
-        },
-        {
-          name: "to_date",
-          parameterType: { type: "DATE" },
-          parameterValue: { value: range.toDate },
-        },
-      ],
-      maxResults: 10000,
-      timeoutMs: 30000,
-    }),
-  });
+  const submit = (query: string) =>
+    fetch(`${BQ_BASE}/projects/${ctx.project}/queries`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        parameterMode: "NAMED",
+        queryParameters: [
+          {
+            name: "from_date",
+            parameterType: { type: "DATE" },
+            parameterValue: { value: range.fromDate },
+          },
+          {
+            name: "to_date",
+            parameterType: { type: "DATE" },
+            parameterValue: { value: range.toDate },
+          },
+        ],
+        maxResults: 10000,
+        timeoutMs: 30000,
+      }),
+    });
+
+  let res = await submit(buildQuery(true));
   if (!res.ok) {
-    throw new Error(`GCP cost query failed ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    // An export table predating `cost_at_list` lacks the column. Re-rating is
+    // optional; collecting spend is not, so retry without it.
+    if (res.status === 400 && /cost_at_list/.test(body)) {
+      res = await submit(buildQuery(false));
+      if (!res.ok) throw new Error(`GCP cost query failed ${res.status}: ${await res.text()}`);
+    } else {
+      throw new Error(`GCP cost query failed ${res.status}: ${body}`);
+    }
   }
   let page = (await res.json()) as BqQueryResponse;
 

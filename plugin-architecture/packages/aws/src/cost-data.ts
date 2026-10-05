@@ -429,6 +429,16 @@ interface Bucket {
    * see {@link Buckets.rows}.
    */
   amortizedReported: boolean;
+  /**
+   * True only for pass 1a's buckets: `RECORD_TYPE = Usage`, billed on demand.
+   * Cost Explorer's unblended cost for those rows is the public on-demand
+   * rate, because enterprise-agreement, private-rate and bundled discounts
+   * arrive as their own `Discount`-family record types (pass 2), so the row's
+   * amount doubles as its list price. Nothing else qualifies: covered usage
+   * is priced at the commitment's rate (an RI's unblended rate is zero), and
+   * the degraded unattributed fallback mixes every record type together.
+   */
+  onDemand?: boolean | undefined;
 }
 
 function bucketKey(b: Omit<Bucket, "amount" | "amortizedAmount" | "amortizedReported">): string {
@@ -484,6 +494,7 @@ class Buckets {
       amount: b.amount,
       chargeType: b.chargeType,
       ...(b.amortizedReported ? { amortizedAmount: b.amortizedAmount } : {}),
+      ...(b.onDemand ? { listAmount: b.amount } : {}),
     }));
   }
 }
@@ -608,6 +619,7 @@ export async function fetchAwsCostData(
           amount: group.unblended,
           amortizedAmount: group.amortized,
           amortizedReported: group.amortizedReported,
+          onDemand: chargeType === "usage",
         });
       },
     );

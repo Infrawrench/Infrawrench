@@ -31,7 +31,7 @@ A rule **matches** spend and **adjusts** it.
 
 Matching uses the same vocabulary [allocation rules](./tag-policy-and-showback.md) already use — tag key and value, account, provider, service — plus **charge type**, so a markup that recovers overhead can apply to usage without also marking up credits, refunds and reservation purchases. Every field you set must match; a rule with no fields set matches all spend.
 
-There are three kinds of adjustment.
+There are three kinds of adjustment that apply everywhere adjusted spend is shown, and two more that only price [managed-account invoices](./managed-accounts.md) (see [Rules that price customer invoices](#rules-that-price-customer-invoices)).
 
 ### Markup or discount
 
@@ -54,6 +54,66 @@ Several rules can match one cost row, so the order is defined and total: **ascen
 - **Fixed amounts are not functions of any row.** They are pro-rated over the period and reported as their own figure.
 
 Markups and reallocations are order-independent with respect to each other, because one changes the amount and the other changes the label.
+
+To change the order, use the up and down arrows on a rule in **Settings → Billing Rules**. Reordering rewrites every rule's priority in one step and one audit entry, so there is never an intermediate order nobody chose.
+
+## Rules that price customer invoices
+
+If you bill customers through [managed accounts](./managed-accounts.md), two more kinds exist. They apply **only when a customer's invoice is computed**: they never move the Costs panel, a budget, showback or anything else that describes your own organization, and the "adjusted" caption on a graph never names them. Each can be limited to particular customers; with none ticked it applies to every customer whose billing rules are on.
+
+### Tiered rate
+
+A markup or discount by rate tiers on a customer's monthly spend, for example **+8% up to 10,000, +5% to 50,000, +3% above**. Thresholds are stated in one currency, and spend in other currencies is not tiered (the invoice says so).
+
+- **Marginal** (the default): each slice of the month's spend is charged at its own tier's rate, like income tax. At 60,000 that is 8% of the first 10,000, 5% of the next 40,000 and 3% of the last 10,000. Crossing a threshold never makes earlier spend dearer.
+- **Whole volume**: the whole month is charged at the rate of the tier the total falls in. Simpler to quote, with a cliff at every threshold. A tier's upper bound is exclusive, so exactly 10,000 is in the second tier.
+
+Volume can be measured over the customer's **overall** matched spend or **per service**. The amount a tier produces is spread over the lines that made up the volume in proportion to their cost, so every invoice line still carries its share.
+
+### Custom expression
+
+A small, safe formula that gives a line's new cost:
+
+```
+if service == "AmazonEC2" and tag.env == "prod" then cost * 1.1
+```
+
+The expression is **not** SQL and not code. It is parsed and type-checked when you save it, against a closed list of fields and functions, and evaluated by a small interpreter; nothing you type is ever handed to a database or a script engine. A mistake is refused with the character it was found at, in the editor as you type and from the API as a 400.
+
+| Fields                                                                                | What they are                                                                                                          |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `cost`                                                                                | The line's amount so far, after every earlier rule                                                                     |
+| `collected`                                                                           | What the provider charged for the line, before any rule                                                                |
+| `list_cost`, `has_list_price`                                                         | The provider's public on-demand price for the line when it reports one; `list_cost` falls back to the collected amount |
+| `usage`, `unit`                                                                       | The usage quantity and its unit                                                                                        |
+| `service`, `provider`, `account`, `account_name`, `region`, `charge_type`, `currency` | Where the line came from                                                                                               |
+| `month`                                                                               | The calendar month, `YYYY-MM`                                                                                          |
+| `customer`                                                                            | The customer being invoiced                                                                                            |
+| `tag.env`, `tag["cost-centre"]`                                                       | A tag's value, or empty when the line does not carry it                                                                |
+
+Operators are `+ - * /`, `== != < <= > >=`, `and or not`, and `in ["a", "b"]`. Functions are `min`, `max`, `abs`, `round(x, places)`, `contains`, `starts_with`, `ends_with`, `lower` and `has_tag("key")`. `if … then … else …` chooses between values; at the top level the `else` may be left out, and lines the condition does not match keep their cost.
+
+A line is one calendar month of one service in one account, region and charge type. If an expression cannot price a line (a division by zero, say), that line keeps its previous cost and the invoice and preview report how many lines failed and why; a line never silently becomes zero.
+
+The editor's **Insert** pickers add real service, provider, account and tag names, so you never have to know what a provider calls its services.
+
+### The order on an invoice
+
+Every invoice line goes through the same steps, in this order, and each step records what it changed:
+
+1. The customer's [re-rating to public pricing](./managed-accounts.md#re-rating-to-public-pricing), if on.
+2. The customer's [discount treatment](./managed-accounts.md#discounts-credits-and-commitment-benefits).
+3. Markups and discounts, tiered rules and expressions, **in rule order**. Markups still compound; an expression sees the running `cost` at its position; a tiered rule measures the running cost of the lines it matches.
+
+Reallocation still decides which customer a line belongs to before any of that, and fixed amounts are still their own invoice lines.
+
+<insert [Settings → Billing Rules with the editor open on a Custom expression rule: the expression box, the green "The expression is valid" note, the Insert pickers, the customer checkboxes, and a preview underneath showing Without/With totals for last month] here>
+
+### Previewing a rule
+
+**Preview** in the editor prices last month (or any month) twice, without the rule and with it, and shows both totals, every rule's effect in order, any expression failures and the lines that moved most. Pick a customer to preview against their invoice scope and settings, or leave it on the whole organisation. Nothing is saved.
+
+Existing rules can be edited in place with **Edit**; the save is one audited change of the whole rule.
 
 ## Where the rules live
 
@@ -117,18 +177,26 @@ infrawrench billing-rules --json
 
 The list prints in evaluation order with a one-line summary of what each rule does to which spend, and the same two reminders the docs give: that nothing was written into collected spend, and that markups compound while reallocation fires once. It is read-only — writing a markup is a considered act with a form and an audit entry behind it.
 
+```
+infrawrench billing-rules preview "Volume tiers" --customer northwind --month 2026-09
+infrawrench billing-rules preview "Prod EC2 surcharge" --json
+```
+
+`preview` is a dry run of one saved rule against a month of real spend: totals without and with it, and the lines it moved.
+
 See the [CLI reference](./cli.md).
 
 ## From the model
 
-The [MCP server and AI chat](./mcp.md) expose `list_billing_rules`, and `query_costs` / `query_showback` both take `adjusted`. The tools are instructed to quote collected spend unless you ask for the internal figure, and to state both when they report an adjusted one.
+The [MCP server and AI chat](./mcp.md) expose `list_billing_rules` and `preview_billing_rule` (a dry run of a rule or a customer's pricing against a month of spend), and `query_costs` / `query_showback` both take `adjusted`. The tools are instructed to quote collected spend unless you ask for the internal figure, and to state both when they report an adjusted one.
 
 `list_billing_rules` is the tool to reach for when a total does not match an invoice — the rules are the reason, and each row says what it does to which spend.
 
 ## API
 
 - `GET /billing-rules` — the rules in evaluation order (`costs:read`)
-- `POST /billing-rules`, `PUT /billing-rules/{id}`, `DELETE /billing-rules/{id}` (`org:settings:write`)
+- `POST /billing-rules`, `PUT /billing-rules/{id}`, `DELETE /billing-rules/{id}`, `POST /billing-rules/reorder` (`org:settings:write`)
+- `POST /billing-rules/preview` (`costs:read`, plus `invoices:read` when it names a customer)
 - `POST /costs/query` with `adjusted: true`, and `GET /costs/showback?adjusted=true`
 
 See the [OpenAPI reference](../team-and-billing/openapi.md).

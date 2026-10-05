@@ -46,6 +46,8 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/expiring/settings$`) },
   // Saved-filter picker on the Cost Visibility page.
   { methods: ["GET"], pattern: new RegExp(`${ORG}/saved-cost-filters$`) },
+  // Customer picker on the Billing Rules page (tiered and expression rules).
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/managed-accounts$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
 ];

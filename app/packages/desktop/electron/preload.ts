@@ -315,6 +315,7 @@ const INVOKE_CHANNELS = [
   "cloud_approve_invoice",
   "cloud_send_invoice",
   "cloud_void_invoice",
+  "cloud_preview_pricing",
   "cloud_list_cost_reports",
   "cloud_get_cost_report",
   "cloud_create_cost_report",

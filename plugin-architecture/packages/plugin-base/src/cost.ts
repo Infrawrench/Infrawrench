@@ -249,6 +249,24 @@ export interface CostRow {
    * rather than inventing a key that joins to nothing.
    */
   commitmentId?: string;
+  /**
+   * The same consumption priced at the provider's **public on-demand list
+   * price**, in `currency`, when the provider reports one: GCP's
+   * `cost_at_list`, or an on-demand usage line whose negotiated discounts
+   * arrive as separate rows.
+   *
+   * Used only when a managed service provider re-rates a customer's invoice
+   * to public pricing. Omit it whenever the provider does not say; the host
+   * then prices the line at the collected amount plus a configured uplift and
+   * reports the line as not re-rated, which is honest. Never copy `amount`
+   * into it on a guess: a negotiated rate presented as a list price is the
+   * one mistake that feature cannot detect. Zero is a real answer (free-tier
+   * usage) and is different from absent.
+   *
+   * Plugins that declare `estimated` need not set it: their amounts are list
+   * prices by construction, and the host records them as such.
+   */
+  listAmount?: number;
 }
 
 /**

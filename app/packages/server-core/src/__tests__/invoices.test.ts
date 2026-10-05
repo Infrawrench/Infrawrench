@@ -239,14 +239,45 @@ const deliverInvoiceEmail = vi.fn();
 vi.mock("../cost/invoice-delivery", () => ({ deliverInvoiceEmail }));
 
 const getShowbackSpend = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ getShowbackSpend }));
+/**
+ * The priced path's reader, fed from the same fixture as the classic one: each
+ * showback row becomes one usage line carrying its *collected* amount, and the
+ * engine applies the rules itself. Calling through to `getShowbackSpend` keeps
+ * every "it never asked ClickHouse" assertion meaningful on both paths.
+ */
+const getPricingLines = vi.fn(async (...args: unknown[]) => {
+  const rows = (await getShowbackSpend(...args)) as Array<{
+    costCentreId: string;
+    currency: string;
+    amount: number;
+    rawAmount?: number;
+  }>;
+  return rows.map((r) => ({
+    bucket: r.costCentreId,
+    currency: r.currency,
+    month: "2026-01",
+    accountId: "acct-1",
+    pluginId: "aws",
+    service: "AmazonEC2",
+    region: "",
+    chargeType: "usage",
+    unit: "",
+    usage: 0,
+    tags: {},
+    collected: r.rawAmount ?? r.amount,
+    listedCollected: 0,
+    listAmount: 0,
+  }));
+});
+vi.mock("../clickhouse/cost-readers", () => ({ getShowbackSpend, getPricingLines }));
 
 const listCostCentres = vi.fn();
 const listAllocationRules = vi.fn();
 vi.mock("../cost/allocation", () => ({ listCostCentres, listAllocationRules }));
 
 const resolveBillingAdjustments = vi.fn();
-vi.mock("../cost/billing-rules", () => ({ resolveBillingAdjustments }));
+const listBillingRules = vi.fn();
+vi.mock("../cost/billing-rules", () => ({ resolveBillingAdjustments, listBillingRules }));
 
 const listOrgExchangeRates = vi.fn();
 vi.mock("../cost/currency-settings", () => ({ listOrgExchangeRates }));
@@ -352,6 +383,20 @@ beforeEach(() => {
       { id: "b1", name: "Platform overhead", kind: "percentage", summary: "+15% on all spend" },
     ],
   });
+  listBillingRules.mockResolvedValue([
+    {
+      id: "b1",
+      name: "Platform overhead",
+      description: null,
+      enabled: true,
+      priority: 0,
+      match: {},
+      adjustment: { kind: "percentage", percent: 15 },
+      managedAccountIds: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
   getShowbackSpend.mockResolvedValue([
     { costCentreId: "cc-platform", currency: "USD", amount: 1150, rawAmount: 1000 },
     { costCentreId: "cc-search", currency: "USD", amount: 230, rawAmount: 200 },
@@ -411,7 +456,7 @@ describe("computeInvoiceFigures", () => {
 
   it("carries an unconvertible currency rather than dropping or inventing it", async () => {
     getShowbackSpend.mockResolvedValue([
-      { costCentreId: "cc-platform", currency: "SEK", amount: 4000, rawAmount: 4000 },
+      { costCentreId: "cc-platform", currency: "SEK", amount: 4600, rawAmount: 4000 },
     ]);
     const { computeInvoiceFigures } = await import("../cost/invoices");
     const figures = await computeInvoiceFigures(
@@ -424,7 +469,116 @@ describe("computeInvoiceFigures", () => {
     expect(figures.lines[0]!.billed).toBeNull();
     expect(figures.derivation.unconverted).toEqual(["SEK"]);
     // The amount is still in the total, in its own currency, never short.
-    expect(figures.totals.billed).toEqual({ SEK: 4000 });
+    expect(figures.totals.billed).toEqual({ SEK: 4600 });
+  });
+
+  it("says which rule changed what, per line and per invoice", async () => {
+    const { computeInvoiceFigures } = await import("../cost/invoices");
+    const figures = await computeInvoiceFigures(
+      ORG,
+      customer() as never,
+      "2026-01-01",
+      "2026-01-31",
+    );
+    const line = figures.lines[0]!;
+    expect(line.effects).toEqual([{ key: "b1", amount: 180 }]);
+    expect(figures.derivation.effects).toEqual([
+      {
+        key: "b1",
+        ruleId: "b1",
+        label: "Platform overhead",
+        kind: "percentage",
+        totals: { USD: 180 },
+      },
+    ]);
+  });
+
+  it("re-rates to public pricing and retains credits for a customer that asks", async () => {
+    listBillingRules.mockResolvedValue([]);
+    getShowbackSpend.mockResolvedValue([
+      { costCentreId: "cc-platform", currency: "USD", amount: 1000 },
+      { costCentreId: "cc-search", currency: "USD", amount: 200 },
+    ]);
+    // Platform's usage reports a list price; Search's does not.
+    getPricingLines.mockImplementationOnce(async () => [
+      {
+        bucket: "cc-platform",
+        currency: "USD",
+        month: "2026-01",
+        accountId: "acct-1",
+        pluginId: "gcp",
+        service: "Compute Engine",
+        region: "",
+        chargeType: "usage",
+        unit: "",
+        usage: 0,
+        tags: {},
+        collected: 1000,
+        listedCollected: 1000,
+        listAmount: 1250,
+      },
+      {
+        bucket: "cc-search",
+        currency: "USD",
+        month: "2026-01",
+        accountId: "acct-1",
+        pluginId: "aws",
+        service: "AmazonES",
+        region: "",
+        chargeType: "usage",
+        unit: "",
+        usage: 0,
+        tags: {},
+        collected: 200,
+        listedCollected: 0,
+        listAmount: 0,
+      },
+      {
+        bucket: "cc-platform",
+        currency: "USD",
+        month: "2026-01",
+        accountId: "acct-1",
+        pluginId: "gcp",
+        service: "Compute Engine",
+        region: "",
+        chargeType: "credit",
+        unit: "",
+        usage: 0,
+        tags: {},
+        collected: -100,
+        listedCollected: 0,
+        listAmount: 0,
+      },
+    ]);
+    const { computeInvoiceFigures } = await import("../cost/invoices");
+    const { managedInvoiceReconciles } = await import("@infrawrench/client-core");
+    const figures = await computeInvoiceFigures(
+      ORG,
+      customer({
+        pricing: {
+          rerate: { enabled: true, scope: [], fallbackUpliftPercent: 10, uplifts: [] },
+          discounts: { mode: "pass_through" },
+          credits: { mode: "retain" },
+          commitmentBenefits: { mode: "pass_through" },
+        },
+      }) as never,
+      "2026-01-01",
+      "2026-01-31",
+    );
+    const line = figures.lines[0]!;
+    expect(line.collected).toBe(1100);
+    expect(line.effects).toEqual([
+      { key: "rerate:list", amount: 250 },
+      { key: "rerate:fallback", amount: 20 },
+      { key: "treatment:credits", amount: 100 },
+    ]);
+    expect(line.adjusted).toBe(1470);
+    expect(figures.derivation.rerateCoverage!.byCurrency.USD).toEqual({
+      listPriced: 1000,
+      listTotal: 1250,
+      fallback: 200,
+    });
+    expect(managedInvoiceReconciles(figures.totals)).toBe(true);
   });
 
   it("does not read the billing rules for a pass-through customer", async () => {

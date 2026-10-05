@@ -798,3 +798,146 @@ export async function getCostCoverage(
   for (const r of rows) result.set(r.account_id, { firstDay: r.first_day, lastDay: r.last_day });
   return result;
 }
+
+/** One grouped row of {@link getPricingLines}. */
+export interface PricingLineRow {
+  /** The cost centre (or synthetic bucket) the row resolved to; '' when none. */
+  bucket: string;
+  currency: string;
+  /** `YYYY-MM`. */
+  month: string;
+  accountId: string;
+  pluginId: string;
+  service: string;
+  region: string;
+  chargeType: string;
+  unit: string;
+  usage: number;
+  /** Tag key → value, only for the requested keys the row carries. */
+  tags: Record<string, string>;
+  /** Collected on the requested basis, after reallocation, before any rule. */
+  collected: number;
+  /** The part of `collected` whose rows reported a list price. */
+  listedCollected: number;
+  /** That part's list price. */
+  listAmount: number;
+}
+
+/**
+ * The grouped cost lines a managed-account invoice is priced from.
+ *
+ * The same allocation `multiIf` and cost-centre reallocation `getShowbackSpend`
+ * compiles, so every row resolves to exactly the centre the showback report
+ * puts it in; but grouped finer, by calendar month, account, provider,
+ * service, region, charge type and unit, plus one column per tag key a rule
+ * reads. That is the grain the pricing engine (`client-core/msp-pricing.ts`)
+ * evaluates rules at, and it is fixed by the rules' own vocabulary rather than
+ * by anything a user typed: tag keys arrive as escaped literals, never as SQL.
+ *
+ * Nothing is multiplied here. Percentage, tiered and expression rules all run
+ * in the engine, which is what lets an invoice say which rule changed which
+ * amount; the scan only sums collected money and its list price.
+ *
+ * `buckets`, when given, keeps only rows resolving to those centre ids, so an
+ * invoice does not ship every other customer's lines back to the server.
+ *
+ * Each tag column is `'=' || value` when the row carries the key and `''` when
+ * it does not, so "has the tag with an empty value" and "does not have the
+ * tag" stay distinguishable, which is what `tagKey` without `tagValue` needs.
+ */
+export async function getPricingLines(
+  organizationId: string,
+  rules: ShowbackRule[],
+  from: string,
+  to: string,
+  options: {
+    costBasis?: CostBasis | undefined;
+    reallocations?: CompiledBillingAdjustments["reallocations"] | undefined;
+    tagKeys?: readonly string[] | undefined;
+    buckets?: readonly string[] | undefined;
+  } = {},
+): Promise<PricingLineRow[]> {
+  const branches = rules.map((rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`);
+  const allocationExpr =
+    branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
+  const centreExpr =
+    options.reallocations && options.reallocations.length > 0
+      ? reallocationExpr(options.reallocations, "cost_centre", allocationExpr)
+      : allocationExpr;
+  const rawExpr = amountExpr(options.costBasis);
+  const tagKeys = [...(options.tagKeys ?? [])];
+
+  const selection: Record<string, SQL.Aliased> = {
+    centre: centreExpr.as("centre"),
+    currency: sql`${costDaily.currency}`.as("currency"),
+    month: sql`formatDateTime(${costDaily.day}, '%Y-%m')`.as("month"),
+    account_id: sql`${costDaily.account_id}`.as("account_id"),
+    plugin_id: sql`${costDaily.plugin_id}`.as("plugin_id"),
+    service: sql`${costDaily.service}`.as("service"),
+    region: sql`${costDaily.region}`.as("region"),
+    charge_type: sql`${costDaily.charge_type}`.as("charge_type"),
+    usage_unit: sql`${costDaily.usage_unit}`.as("usage_unit"),
+  };
+  tagKeys.forEach((key, i) => {
+    selection[`t${i}`] =
+      sql`if(mapContains(${costDaily.tags}, ${key}), concat('=', ${costDaily.tags}[${key}]), '')`.as(
+        `t${i}`,
+      );
+  });
+  const groupKeys = Object.keys(selection);
+  const aggregates = {
+    collected: sql<number>`sum(${rawExpr})`.as("collected"),
+    listed_collected: sql<number>`sum(if(${costDaily.list_reported} != 0, ${rawExpr}, 0))`.as(
+      "listed_collected",
+    ),
+    list_amount_sum:
+      sql<number>`sum(if(${costDaily.list_reported} != 0, ${costDaily.list_amount}, 0))`.as(
+        "list_amount_sum",
+      ),
+    usage_sum: sql<number>`sum(${costDaily.usage_amount})`.as("usage_sum"),
+  };
+
+  const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
+  const buckets = options.buckets;
+  const having =
+    buckets && buckets.length > 0
+      ? sql`centre IN (${sql.join(
+          buckets.map((b) => sql`${b}`),
+          sql`, `,
+        )})`
+      : undefined;
+
+  const rows = (await query((db) => {
+    const q = db
+      .select({ ...selection, ...aggregates })
+      .from(costDaily)
+      .final()
+      .where(where)
+      .groupBy(...groupKeys.map((k) => sql.raw(k)));
+    return having ? q.having(having) : q;
+  })) as Array<Record<string, unknown>>;
+
+  return rows.map((r) => {
+    const tags: Record<string, string> = {};
+    tagKeys.forEach((key, i) => {
+      const v = String(r[`t${i}`] ?? "");
+      if (v.startsWith("=")) tags[key] = v.slice(1);
+    });
+    return {
+      bucket: String(r["centre"] ?? ""),
+      currency: String(r["currency"]),
+      month: String(r["month"]),
+      accountId: String(r["account_id"]),
+      pluginId: String(r["plugin_id"]),
+      service: String(r["service"]),
+      region: String(r["region"]),
+      chargeType: String(r["charge_type"]),
+      unit: String(r["usage_unit"]),
+      usage: Number(r["usage_sum"] ?? 0),
+      tags,
+      collected: Number(r["collected"] ?? 0),
+      listedCollected: Number(r["listed_collected"] ?? 0),
+      listAmount: Number(r["list_amount_sum"] ?? 0),
+    };
+  });
+}
