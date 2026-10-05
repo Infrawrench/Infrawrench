@@ -31,14 +31,21 @@ const retailPriceItemSchema = z.object({
   unitOfMeasure: z.string().default(""),
   type: z.string().default(""),
   armSkuName: z.string().default(""),
+  // Read by the price catalog only (price-catalog.ts). `reservationTerm` is
+  // set on Reservation rows; `savingsPlan` only comes back on the
+  // 2023-01-01-preview api-version, and only on savings-plan-eligible meters.
+  effectiveStartDate: z.string().nullish(),
+  reservationTerm: z.string().nullish(),
+  savingsPlan: z.array(z.object({ retailPrice: z.number(), term: z.string() })).nullish(),
 });
 
 const retailPricesPageSchema = z.object({
   Items: z.array(retailPriceItemSchema).optional(),
-  NextPageLink: z.string().optional(),
+  // The last page carries `"NextPageLink": null`, not an absent key.
+  NextPageLink: z.string().nullish(),
 });
 
-type RetailPriceItem = z.infer<typeof retailPriceItemSchema>;
+export type RetailPriceItem = z.infer<typeof retailPriceItemSchema>;
 
 export interface AzurePricingRates {
   /** armSkuName (e.g. "Standard_D2s_v5") -> Linux pay-as-you-go hourly USD */
@@ -103,10 +110,19 @@ const DISK_SAMPLES: Record<
   },
 };
 
-async function fetchPage(
+/** The estimator's page cap (the API returns 1,000 rows a page). */
+const DEFAULT_MAX_PAGES = 20;
+
+/**
+ * Page through one OData query. `truncated` is true when the page cap was hit
+ * with a NextPageLink still pending, so a caller that must not present a
+ * clipped list as complete (the price catalog) can say so.
+ */
+export async function fetchRetailPrices(
   filter: string,
   http: HttpHostServices | undefined,
-): Promise<RetailPriceItem[]> {
+  maxPages = DEFAULT_MAX_PAGES,
+): Promise<{ items: RetailPriceItem[]; truncated: boolean }> {
   const items: RetailPriceItem[] = [];
   let url: string =
     `${RETAIL_PRICES_ENDPOINT}?` +
@@ -116,14 +132,21 @@ async function fetchPage(
       $filter: filter,
     }).toString();
   // Cap pages to avoid runaway responses on a misfiled OData query.
-  for (let page = 0; page < 20 && url; page++) {
+  for (let page = 0; page < maxPages && url; page++) {
     const res = await azureRequest(http, url);
     if (!res.ok) throw new Error(`Azure Retail Prices ${res.status}: ${await res.text()}`);
     const body = retailPricesPageSchema.parse(await res.json());
     items.push(...(body.Items ?? []));
     url = body.NextPageLink ?? "";
   }
-  return items;
+  return { items, truncated: url !== "" };
+}
+
+async function fetchPage(
+  filter: string,
+  http: HttpHostServices | undefined,
+): Promise<RetailPriceItem[]> {
+  return (await fetchRetailPrices(filter, http)).items;
 }
 
 function parseVmRates(items: RetailPriceItem[]): Record<string, number> {

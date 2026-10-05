@@ -13566,5 +13566,193 @@
     "t": "p",
     "i": 1,
     "c": "Aún no hay exportaciones. Cree una para que Infrawrench escriba filas de costos en CSV o NDJSON en un bucket compatible con S3 (AWS S3, R2, Spaces, MinIO), las envíe por POST a un endpoint HTTPS o las cargue en una tabla de Snowflake o Databricks a través de una cuenta conectada."
+  },
+  "ae7a259c4b84e7d9": "AWS Price List Query API",
+  "35168be5c6c2ded7": "Azure Retail Prices API",
+  "b1ece9e0eb7c2def": "Cloud Billing Catalog API",
+  "1a4bf3c24cdc0ad4": "Cloud Servers",
+  "a32c2960a5349a0f": "Compute (formas de VM)",
+  "2c912fda4f8735fa": "Compute Engine",
+  "4f496eb8a432d5d9": "Página de precios de CoreWeave",
+  "d7e8eef6876b9b38": "Instancias de CPU",
+  "abf0c730de93b092": "DigitalOcean API: List All Droplet Sizes",
+  "ccc6f395365df7f3": "Instancias EC2",
+  "17e3700ee20e6844": "Instancias de GPU",
+  "350d801ae1af8a8d": "Hetzner Cloud API: List Server Types",
+  "6d23a14f74ff4c17": "Linode API: List types",
+  "aeaf3d7eb62c74a1": "Lista de precios de Oracle Cloud",
+  "ebd52b2cff3c7f95": "Scaleway Instance API: List Instance types",
+  "f4ed58cf92925bd3": "Máquinas virtuales",
+  "09887c763b8acdf2": "(requiere {permission})",
+  "622cd6551d22acae": "Fuentes:",
+  "63fdd53f08ae205d": "Conecta una cuenta de este proveedor para abrir su formulario de creación.",
+  "33aa33541fa2df25": "Sin cuenta",
+  "dc22770093714b0f": "Usar en la estimación",
+  "be184eece24c423d": "Crear mediante",
+  "41d13a5f564aeb8f": "Catálogo de precios",
+  "9e4459b6f405abe3": "Precios de lista publicados por los proveedores, normalizados para buscar y comparar tipos de instancia lado a lado. Son precios de lista: no se aplican tus descuentos, créditos ni tarifas negociadas.",
+  "6881519a13b939e7": "Comparar proveedores",
+  "0c36167349cae3f2": "Zona",
+  "7bba3b9caac386e1": "Tipo de instancia, familia, GPU",
+  "9b0277205d8a9b04": "Todos los proveedores",
+  "ba081271e5a0b263": "vCPU mínimas",
+  "7ef6b04d6fef14a6": "vCPU máximas",
+  "cc1632144fc2a3eb": "máx.",
+  "5ef3dd4c1e3309c8": "Memoria mínima en GB",
+  "87f456c5fadcf60b": "Memoria máxima en GB",
+  "c0b51f96627c600e": "Con GPU",
+  "eb13f1c433f0f9ee": "Sin GPU",
+  "3af483fd6839ac87": "Modelo de GPU",
+  "7eb9026c05d6f3e4": "Cualquier modelo",
+  "4a577d738064e947": "Máximo al mes",
+  "99cba7eceae86dcd": "Obteniendo listas de precios…",
+  "a5f8ac64928eb110": "Los precios están en más de una moneda ({currencies}) y se ordenan por su valor nominal. Configura una moneda de visualización y tipos de cambio en Ajustes para compararlos en una sola moneda.",
+  "496040a0c27ca113": "Actualizando…",
+  "8941c371b1954343": "{shown} de {total} tipos de instancia",
+  "502c49e054a354e8": "Nada del catálogo coincide con estos filtros.",
+  "5968bf00c195f99d": "Especificaciones",
+  "ecb94a922c5762dc": "Al mes",
+  "c31f80b032087b31": "Comparar",
+  "fab845f54ae10809": "Mostrar más",
+  "290a434854863067": "Introducir especificaciones",
+  "1d5d303cff7ca803": "Mínimo de vCPU",
+  "e5a50f33634cafc3": "Mínimo de memoria (GB)",
+  "136a836ed65e155a": "p. ej., L4",
+  "6b902a55c75444c7": "Los proveedores cotizan en monedas distintas y se ordenan por valor nominal. Configura una moneda de visualización y tipos de cambio en Ajustes para compararlos en una sola moneda.",
+  "ca3bbafcac29e56a": "Opción más barata",
+  "5b583b7d21e947c0": "Alternativas",
+  "dec85756210e5d8e": "No se buscó: la API de precios de este proveedor requiere una cuenta.",
+  "818377ffc285ff45": "No hay ninguna región en esta zona.",
+  "7412ff4d67c7c456": "Aún se están obteniendo; actualiza en un momento.",
+  "448fd6e42cb56d21": "No se pudieron leer los precios: {error}",
+  "9537c053d6a4f4c4": "Nada cumple todas las especificaciones con esta tarifa.",
+  "825d39d12287ac7a": "El catálogo de precios requiere el modo nube: inicia sesión para sincronizar. La nube obtiene y almacena en caché las listas de precios, usando las cuentas de tu organización para los proveedores cuya API de precios requiere credenciales.",
+  "a2018d4585c5412f": "Esta versión no puede abrir ese formulario de creación.",
+  "abe15f75ae4e4d03": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "No se buscó: sus API de precios requieren credenciales y esta organización no tiene cuenta en ellos: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Conecta una cuenta para incluirlos."
+    ]
+  },
+  "22ddb55074dbfa41": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aún se están obteniendo las listas de precios de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Actualiza en un momento."
+    ]
+  },
+  "b43b7406217f4aa5": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "No se pudieron leer los precios de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ": ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      }
+    ]
+  },
+  "a7d0a1f976f8e54b": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " no pudo actualizarse; se muestra la última lista de precios obtenida: ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "95f77303193230c8": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " devolvió más productos de los que lee una sola consulta; su lista está incompleta."
+    ]
+  },
+  "6a485c763e1bd384": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "No se pudo cargar el catálogo de precios: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "cf84169a7c420ea9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Equivalentes de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " (",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ")",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      }
+    ]
+  },
+  "19bf6bf149820f14": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "No se pudo comparar: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
   }
 }

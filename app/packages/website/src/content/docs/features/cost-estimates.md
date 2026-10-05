@@ -41,7 +41,7 @@ Estimates are **list-price projections, not bills**. Specifically:
 - They assume the resource runs for a whole month (730 hours). Something you stop, [put on a sleep schedule](./sleep-schedules.md), or delete mid-month costs less.
 - They price the resource's own standing components. Metered usage — data transfer, requests, IOPS, snapshots — is not included.
 
-For what you were actually charged, use [Cloud costs](./cloud-costs.md).
+For what you were actually charged, use [Cloud costs](./cloud-costs.md). To browse and compare list prices before you pick a configuration, use the [Price catalog](./price-catalog.md).
 
 ## When you see nothing
 

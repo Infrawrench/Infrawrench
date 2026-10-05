@@ -27,6 +27,7 @@ import {
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
+  priceCatalogTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -278,6 +279,12 @@ export function getWorkspaceNavigateArgs(
     case "quotas":
       return {
         to: "/org/$orgId/quotas",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "price-catalog":
+      return {
+        to: "/org/$orgId/price-catalog",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -560,6 +567,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "quotas") {
     return quotasTabTarget();
+  }
+  if (s[0] === "price-catalog") {
+    return priceCatalogTabTarget();
   }
   if (s[0] === "incidents") {
     return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);

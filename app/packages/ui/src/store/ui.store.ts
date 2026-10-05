@@ -32,6 +32,8 @@ export type WorkspaceTabTarget =
   | { kind: "probes" }
   | { kind: "status-pages" }
   | { kind: "quotas" }
+  /** Provider list prices: search, filter, compare. Single-instance. */
+  | { kind: "price-catalog" }
   /**
    * Declared incidents (incident mode). Single-instance like Probes; the
    * detail view is addressed inside the panel rather than by tab, so an
@@ -179,6 +181,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "status-pages";
     case "quotas":
       return "quotas";
+    case "price-catalog":
+      return "price-catalog";
     case "incidents":
       return "incidents";
     case "workflows":
@@ -268,6 +272,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Status pages";
     case "quotas":
       return "Quotas";
+    case "price-catalog":
+      return "Price catalog";
     case "incidents":
       return "Incidents";
     case "workflows":
@@ -319,6 +325,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "probes":
     case "status-pages":
     case "quotas":
+    case "price-catalog":
       return true;
     case "linux-app":
       return (

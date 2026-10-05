@@ -13,6 +13,7 @@ import {
   ProbesIcon,
   StatusPagesIcon,
   QuotasIcon,
+  PriceCatalogIcon,
   IncidentsIcon,
   DeployIcon,
   ExpiryIcon,
@@ -331,6 +332,12 @@ export function SidebarDashboards() {
             label: gt("Quotas"),
             icon: <QuotasIcon />,
             onClick: () => void navigate({ to: "/quotas" }),
+          },
+          {
+            key: "price-catalog",
+            label: gt("Price catalog"),
+            icon: <PriceCatalogIcon />,
+            onClick: () => void navigate({ to: "/price-catalog" }),
           },
           // Cloud-only for the same reason as Probes: an incident is
           // org-scoped and declaring one composes cloud features.

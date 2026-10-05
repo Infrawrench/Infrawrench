@@ -78,6 +78,27 @@ export type {
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
 
 export type {
+  PriceCatalogArea,
+  PriceCatalogDeclaration,
+  PriceCatalogPrice,
+  PriceCatalogProduct,
+  PriceCatalogProductFamily,
+  PriceCatalogRegionDeclaration,
+  PriceCatalogRequest,
+  PriceCatalogResult,
+  PriceCatalogServiceDeclaration,
+  PriceCatalogSpecs,
+  PriceRateType,
+  PriceUnit,
+} from "./price-catalog.js";
+export {
+  monthlyPriceAmount,
+  normalizePriceCatalogProducts,
+  PRICE_CATALOG_AREAS,
+  PRICE_CATALOG_HOURS_PER_MONTH,
+} from "./price-catalog.js";
+
+export type {
   NetworkFlowAttribution,
   NetworkFlowCapabilityDeclaration,
   NetworkFlowDirection,

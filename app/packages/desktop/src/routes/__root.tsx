@@ -174,6 +174,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "probes" ||
     target.kind === "status-pages" ||
     target.kind === "quotas" ||
+    target.kind === "price-catalog" ||
     target.kind === "incidents" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||

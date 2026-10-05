@@ -223,6 +223,14 @@ export interface PluginManifest {
    */
   statusFeed?: StatusFeedDeclaration;
   /**
+   * If present, this plugin can list its provider's published list prices as
+   * a normalized catalog (products with specs, prices per region and rate
+   * type) for the org-level Price catalog, via `Plugin.fetchPriceCatalog`
+   * when the source is public or `PluginClient.fetchPriceCatalog` when it
+   * needs credentials. See `price-catalog.ts`.
+   */
+  priceCatalog?: PriceCatalogDeclaration;
+  /**
    * If present, this plugin supports credential preflight: the host offers a
    * per-capability permission checklist at add-account time (backed by
    * `PluginClient.verifyCredentials`) and, when `templateFormat` is set, a
@@ -563,6 +571,15 @@ export interface PluginClient {
     accountId: string,
     target: Record<string, string>,
   ): Promise<WarehouseSetupGuide>;
+  /**
+   * The credentialed half of the price catalog: only called when the
+   * manifest declares `priceCatalog` with `requiresCredentials: true`. The
+   * host borrows any of the org's accounts on this plugin, caches the result
+   * for `refreshHours`, and never shows it to an org without such an account.
+   * Prices are the provider's published list prices, not the account's
+   * negotiated ones: the account only unlocks the API.
+   */
+  fetchPriceCatalog?(request: PriceCatalogRequest): Promise<PriceCatalogResult>;
   /**
    * Return **aggregated** source→destination flows for one closed UTC day.
    * Only called when the manifest declares `networkFlows`.
@@ -1072,6 +1089,18 @@ export interface Plugin {
    */
   parseStatusFeed?(body: string): StatusIncident[];
   /**
+   * The public half of the price catalog: required when the manifest declares
+   * `priceCatalog` with `requiresCredentials: false`. Lives on the Plugin
+   * (not the client) because a public price list needs no account, so the
+   * catalog works for an org that has never connected this provider. `services`
+   * carries the host's HTTP plumbing when it has one; a plugin may fall back
+   * to the global fetch.
+   */
+  fetchPriceCatalog?(
+    request: PriceCatalogRequest,
+    services?: HostServices,
+  ): Promise<PriceCatalogResult>;
+  /**
    * Build the paste-ready least-privilege credential document scoped to the
    * given capability ids (a subset of `manifest.preflight.capabilities`).
    * Required when `manifest.preflight.templateFormat` is set. Lives on the
@@ -1133,6 +1162,11 @@ import type {
   WarehouseSetupGuide,
   WarehouseSinkDeclaration,
 } from "./warehouse-sink.js";
+import type {
+  PriceCatalogDeclaration,
+  PriceCatalogRequest,
+  PriceCatalogResult,
+} from "./price-catalog.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

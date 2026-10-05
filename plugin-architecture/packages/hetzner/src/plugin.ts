@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HetznerClient } from "./client.js";
 import { hetznerTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { hetznerPriceCatalog } from "./price-catalog.js";
 import { ServerResourceType } from "./resources/server.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { FloatingIpResourceType } from "./resources/floating-ip.js";
@@ -71,6 +72,8 @@ const manifest: PluginManifest = {
     estimated: true,
   },
   statusFeed,
+  // Server type list prices, net of VAT, from /server_types. See price-catalog.ts.
+  priceCatalog: hetznerPriceCatalog,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

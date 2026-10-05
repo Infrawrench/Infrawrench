@@ -13780,5 +13780,192 @@
     "t": "p",
     "i": 1,
     "c": "Aucune exportation pour l'instant. Créez-en une pour qu'Infrawrench écrive des lignes de coûts CSV ou NDJSON dans un bucket compatible S3 (AWS S3, R2, Spaces, MinIO), les envoie par POST à un endpoint HTTPS, ou les charge dans une table Snowflake ou Databricks via un compte connecté."
+  },
+  "ae7a259c4b84e7d9": "AWS Price List Query API",
+  "35168be5c6c2ded7": "Azure Retail Prices API",
+  "b1ece9e0eb7c2def": "Cloud Billing Catalog API",
+  "1a4bf3c24cdc0ad4": "Cloud Servers",
+  "a32c2960a5349a0f": "Compute (formes de VM)",
+  "2c912fda4f8735fa": "Compute Engine",
+  "4f496eb8a432d5d9": "Page de tarifs CoreWeave",
+  "d7e8eef6876b9b38": "Instances CPU",
+  "abf0c730de93b092": "DigitalOcean API: List All Droplet Sizes",
+  "ccc6f395365df7f3": "Instances EC2",
+  "17e3700ee20e6844": "Instances GPU",
+  "350d801ae1af8a8d": "Hetzner Cloud API: List Server Types",
+  "6d23a14f74ff4c17": "Linode API: List types",
+  "aeaf3d7eb62c74a1": "Liste de prix Oracle Cloud",
+  "ebd52b2cff3c7f95": "Scaleway Instance API: List Instance types",
+  "f4ed58cf92925bd3": "Machines virtuelles",
+  "09887c763b8acdf2": "(nécessite {permission})",
+  "622cd6551d22acae": "Sources :",
+  "63fdd53f08ae205d": "Connectez un compte chez ce fournisseur pour ouvrir son formulaire de création.",
+  "33aa33541fa2df25": "Aucun compte",
+  "dc22770093714b0f": "Utiliser dans l'estimation",
+  "be184eece24c423d": "Créer via",
+  "b7813201d521aa7f": "La requête a échoué",
+  "41d13a5f564aeb8f": "Catalogue de prix",
+  "9e4459b6f405abe3": "Les prix catalogue publiés par les fournisseurs, normalisés pour rechercher et comparer les types d'instance côte à côte. Ce sont des prix catalogue : vos remises, crédits et tarifs négociés ne sont pas appliqués.",
+  "6881519a13b939e7": "Comparer les fournisseurs",
+  "0c36167349cae3f2": "Zone",
+  "7bba3b9caac386e1": "Type d'instance, famille, GPU",
+  "9b0277205d8a9b04": "Tous les fournisseurs",
+  "ba081271e5a0b263": "vCPU minimum",
+  "7ef6b04d6fef14a6": "vCPU maximum",
+  "cc1632144fc2a3eb": "max",
+  "5ef3dd4c1e3309c8": "Mémoire minimale en Go",
+  "87f456c5fadcf60b": "Mémoire maximale en Go",
+  "c0b51f96627c600e": "Avec GPU",
+  "eb13f1c433f0f9ee": "Sans GPU",
+  "3af483fd6839ac87": "Modèle de GPU",
+  "7eb9026c05d6f3e4": "Tout modèle",
+  "4a577d738064e947": "Maximum par mois",
+  "99cba7eceae86dcd": "Récupération des listes de prix…",
+  "a5f8ac64928eb110": "Les prix sont dans plusieurs devises ({currencies}) et triés selon leur valeur faciale. Définissez une devise d'affichage et des taux de change dans les paramètres pour les comparer dans une seule devise.",
+  "496040a0c27ca113": "Mise à jour…",
+  "8941c371b1954343": "{shown} sur {total} types d'instance",
+  "502c49e054a354e8": "Rien dans le catalogue ne correspond à ces filtres.",
+  "5968bf00c195f99d": "Caractéristiques",
+  "ecb94a922c5762dc": "Par mois",
+  "c31f80b032087b31": "Comparer",
+  "fab845f54ae10809": "Afficher plus",
+  "290a434854863067": "Saisir des caractéristiques",
+  "1d5d303cff7ca803": "vCPU minimum",
+  "e5a50f33634cafc3": "Mémoire minimale (Go)",
+  "136a836ed65e155a": "p. ex. L4",
+  "6b902a55c75444c7": "Les fournisseurs facturent dans des devises différentes et sont triés selon la valeur faciale. Définissez une devise d'affichage et des taux de change dans les paramètres pour les comparer dans une seule devise.",
+  "ca3bbafcac29e56a": "Option la moins chère",
+  "5b583b7d21e947c0": "Alternatives",
+  "dec85756210e5d8e": "Non recherché : l'API de prix de ce fournisseur nécessite un compte.",
+  "818377ffc285ff45": "Aucune région dans cette zone.",
+  "7412ff4d67c7c456": "Récupération en cours ; actualisez dans un instant.",
+  "448fd6e42cb56d21": "Impossible de lire les prix : {error}",
+  "9537c053d6a4f4c4": "Rien ne répond à toutes les caractéristiques à ce tarif.",
+  "abe15f75ae4e4d03": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Non recherchés, leurs API de prix nécessitent des identifiants et cette organisation n'y a aucun compte : ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Connectez un compte pour les inclure."
+    ]
+  },
+  "22ddb55074dbfa41": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Récupération des listes de prix de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " en cours. Actualisez dans un instant."
+    ]
+  },
+  "b43b7406217f4aa5": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Impossible de lire les prix de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " : ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      }
+    ]
+  },
+  "a7d0a1f976f8e54b": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " n'a pas pu être actualisé, affichage de la dernière liste de prix récupérée : ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "95f77303193230c8": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " a renvoyé plus de produits qu'une seule récupération n'en lit ; leur liste est incomplète."
+    ]
+  },
+  "6a485c763e1bd384": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Impossible de charger le catalogue de prix : ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "cf84169a7c420ea9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Équivalents de ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " (",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ")",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      }
+    ]
+  },
+  "19bf6bf149820f14": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Impossible de comparer : ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
   }
 }

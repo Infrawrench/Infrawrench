@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { gcpPriceCatalog } from "./price-catalog.js";
 import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
 import { gcpTerraformExport } from "./terraform.js";
 import { GcpProjectResourceType } from "./resources/project.js";
@@ -134,6 +135,7 @@ const manifest: PluginManifest = {
     increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
   },
   statusFeed,
+  priceCatalog: gcpPriceCatalog,
   preflight: gcpPreflight,
 };
 

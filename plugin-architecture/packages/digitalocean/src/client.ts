@@ -18,6 +18,8 @@ import type {
   CostFetchRange,
   CostRow,
   QuotaUsage,
+  PriceCatalogRequest,
+  PriceCatalogResult,
 } from "@infrawrench/plugin-base";
 import {
   buildCostEstimate,
@@ -71,6 +73,7 @@ import {
   renderDnsRecordDetail,
 } from "./detail-renderers.js";
 import { fetchDoQuotas } from "./quotas.js";
+import { fetchDoPriceCatalog } from "./price-catalog.js";
 import { fetchDoCostData } from "./cost-data.js";
 import { doStatusDot } from "./status-dots.js";
 import {
@@ -795,6 +798,14 @@ export class DigitalOceanClient implements PluginClient {
    */
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
     return fetchDoQuotas({ fetch: this.fetch.bind(this) });
+  }
+
+  /**
+   * Droplet list prices from every page of `/v2/sizes`. See `price-catalog.ts`
+   * for why the month price is quoted and which sizes are skipped.
+   */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    return fetchDoPriceCatalog({ fetch: this.fetch.bind(this) }, request);
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {

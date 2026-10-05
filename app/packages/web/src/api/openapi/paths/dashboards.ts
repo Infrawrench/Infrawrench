@@ -212,6 +212,7 @@ const TabTarget = strict({
     "probes",
     "status-pages",
     "quotas",
+    "price-catalog",
     "incidents",
     "workflows",
     "deployments",

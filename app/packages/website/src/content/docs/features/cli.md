@@ -247,6 +247,15 @@ infrawrench oversized
 infrawrench oversized --json
 ```
 
+`prices` searches the [price catalog](./price-catalog.md): providers' published list prices, filtered by provider, specs, GPU and price, cheapest first. `prices compare` finds the cheapest instance per provider that meets a vCPU / memory / GPU target, or that matches a product you name. Cloud-only; both take `--json`:
+
+```
+infrawrench prices search --min-vcpus 4 --min-memory 16 --area europe
+infrawrench prices search --gpu required --gpu-model H100 --rate spot
+infrawrench prices compare --vcpus 8 --memory 32
+infrawrench prices compare m7i.xlarge --provider aws --json
+```
+
 `carbon` prints the organization's [estimated carbon](./carbon.md) by provider, region and resource, with how many resources could not be estimated beside the total and the assumptions underneath. Cloud-only:
 
 ```

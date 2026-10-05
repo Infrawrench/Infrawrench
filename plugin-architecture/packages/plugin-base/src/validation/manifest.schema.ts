@@ -184,6 +184,60 @@ export const pluginManifestSchema = z.object({
         .min(1),
     })
     .optional(),
+  priceCatalog: z
+    .object({
+      requiresCredentials: z.boolean(),
+      permission: z.string().min(1).optional(),
+      source: z.object({
+        name: z.string().min(1),
+        // Rendered as a link on the catalog's coverage note, so the scheme is
+        // pinned like `quotas.increaseUrl`.
+        url: z
+          .string()
+          .url()
+          .refine((u) => u.startsWith("https://"), {
+            message: "priceCatalog.source.url must be an https:// URL",
+          }),
+      }),
+      refreshHours: z
+        .number()
+        .positive()
+        .max(24 * 31),
+      regionScoped: z.boolean().optional(),
+      services: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            family: z.enum(["compute", "gpu", "database", "kubernetes-node", "storage"]),
+          }),
+        )
+        .min(1)
+        .refine((list) => new Set(list.map((s) => s.id)).size === list.length, {
+          message: "priceCatalog service ids must be unique",
+        }),
+      regions: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            area: z.enum([
+              "north-america",
+              "south-america",
+              "europe",
+              "asia-pacific",
+              "middle-east",
+              "africa",
+              "oceania",
+            ]),
+          }),
+        )
+        .min(1)
+        .refine((list) => new Set(list.map((r) => r.id)).size === list.length, {
+          message: "priceCatalog region ids must be unique",
+        }),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

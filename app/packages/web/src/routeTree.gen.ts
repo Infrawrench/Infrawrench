@@ -39,6 +39,7 @@ import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
+import { Route as OrgOrgIdPriceCatalogRouteImport } from './routes/org.$orgId.price-catalog'
 import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
 import { Route as OrgOrgIdQueryMonitorsRouteImport } from './routes/org.$orgId.query-monitors'
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
@@ -233,6 +234,11 @@ const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
 const OrgOrgIdPostureRoute = OrgOrgIdPostureRouteImport.update({
   id: '/posture',
   path: '/posture',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdPriceCatalogRoute = OrgOrgIdPriceCatalogRouteImport.update({
+  id: '/price-catalog',
+  path: '/price-catalog',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
@@ -512,6 +518,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -587,6 +594,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -664,6 +672,7 @@ export interface FileRoutesById {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -743,6 +752,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/price-catalog'
     | '/org/$orgId/probes'
     | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
@@ -818,6 +828,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/price-catalog'
     | '/org/$orgId/probes'
     | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
@@ -894,6 +905,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
+    | '/org/$orgId/price-catalog'
     | '/org/$orgId/probes'
     | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
@@ -1163,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/posture'
       fullPath: '/org/$orgId/posture'
       preLoaderRoute: typeof OrgOrgIdPostureRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/price-catalog': {
+      id: '/org/$orgId/price-catalog'
+      path: '/price-catalog'
+      fullPath: '/org/$orgId/price-catalog'
+      preLoaderRoute: typeof OrgOrgIdPriceCatalogRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/probes': {
@@ -1626,6 +1645,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
+  OrgOrgIdPriceCatalogRoute: typeof OrgOrgIdPriceCatalogRoute
   OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
   OrgOrgIdQueryMonitorsRoute: typeof OrgOrgIdQueryMonitorsRoute
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
@@ -1664,6 +1684,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
+  OrgOrgIdPriceCatalogRoute: OrgOrgIdPriceCatalogRoute,
   OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
   OrgOrgIdQueryMonitorsRoute: OrgOrgIdQueryMonitorsRoute,
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,

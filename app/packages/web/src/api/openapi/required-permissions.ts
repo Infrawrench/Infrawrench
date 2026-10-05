@@ -575,6 +575,10 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // orphans; prices are provider catalog rates, not the org's billing data
   "GET /rightsizing": "resources:read",
   "GET /carbon": "costs:read",
+  // price catalog: provider list prices, no org billing data in it
+  "GET /price-catalog/providers": "resources:read",
+  "GET /price-catalog/search": "resources:read",
+  "GET /price-catalog/compare": "resources:read",
   // ssh keys
   "GET /ssh-keys": "ssh-keys:read",
   "POST /ssh-keys": "ssh-keys:write",

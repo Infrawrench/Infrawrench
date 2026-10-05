@@ -41,6 +41,13 @@ export interface CreateResourceCallbacks {
     fields: Record<string, string>,
     actionFields?: Record<string, string>,
   ) => Promise<{ value: string; option?: { id: string; label: string } }>;
+  /**
+   * Field values to start from instead of the config's defaults, e.g. the
+   * Price catalog's "use in estimate" (`{ region, instanceType }`). Applied
+   * once per config load, over the defaults; keys the form does not have are
+   * ignored by the create call like any other stray key.
+   */
+  initialFields?: Record<string, string>;
 }
 
 export interface CreateResourceFormState {
@@ -201,7 +208,7 @@ export function useCreateResourceForm(
         const cfg = await callbacksRef.current.loadConfig();
         if (cancelled) return;
         setConfig(cfg);
-        const init = buildDefaultFields(cfg.fields);
+        const init = { ...buildDefaultFields(cfg.fields), ...callbacksRef.current.initialFields };
         setFields(init);
 
         // Progressive pricing loading

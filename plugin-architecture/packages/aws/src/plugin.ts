@@ -6,6 +6,7 @@ import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { awsTerraformExport } from "./terraform.js";
 import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
 import { AWS_REGIONS } from "./constants.js";
+import { AWS_PRICE_CATALOG } from "./price-catalog.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
 import { VPCResourceType } from "./resources/vpc.js";
@@ -160,6 +161,11 @@ const manifest: PluginManifest = {
   // logs written to CloudWatch Logs in a custom record format can be read at
   // all. See `network-flows.ts` for both constraints.
   networkFlows: awsNetworkFlowCapability,
+  // Org-level price catalog: EC2 list prices (on-demand, Standard RIs, spot)
+  // per region. Credentialed because the Price List Query API needs a signed
+  // `pricing:GetProducts` call; spot additionally reads
+  // `ec2:DescribeSpotPriceHistory`. See `price-catalog.ts`.
+  priceCatalog: AWS_PRICE_CATALOG,
   statusFeed,
   preflight: awsPreflight,
 };

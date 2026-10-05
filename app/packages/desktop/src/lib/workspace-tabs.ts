@@ -27,6 +27,7 @@ import {
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
+  priceCatalogTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -69,6 +70,7 @@ export {
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
+  priceCatalogTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -195,6 +197,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/status-pages", ...(replace ? { replace: true } : {}) };
     case "quotas":
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
+    case "price-catalog":
+      return { to: "/price-catalog", ...(replace ? { replace: true } : {}) };
     case "incidents":
       // Search passed explicitly, the settings/chat rule: navigating from an
       // incident back to the list must CLEAR ?incident= or the route resolves
@@ -400,6 +404,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "quotas") {
     return quotasTabTarget();
+  }
+  if (segments[0] === "price-catalog") {
+    return priceCatalogTabTarget();
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");

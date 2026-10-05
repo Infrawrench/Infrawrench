@@ -3,6 +3,7 @@ import { DIGITALOCEAN_FOCUS } from "./focus-services.js";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { doPriceCatalog } from "./price-catalog.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -97,6 +98,8 @@ const manifest: PluginManifest = {
     partial: true,
   },
   statusFeed,
+  // Droplet list prices from /v2/sizes (`sizes:read`). See price-catalog.ts.
+  priceCatalog: doPriceCatalog,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

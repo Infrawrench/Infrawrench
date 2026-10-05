@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CoreWeaveClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { COREWEAVE_PREFLIGHT, coreweavePolicyTemplate } from "./preflight.js";
+import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { coreweaveTerraformExport } from "./terraform.js";
@@ -54,6 +55,8 @@ const manifest: PluginManifest = {
   },
   preflight: COREWEAVE_PREFLIGHT,
   statusFeed,
+  // Static list prices from catalog.ts, North American zones only.
+  priceCatalog,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
 };
 
@@ -62,6 +65,7 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CoreWeaveClient(credentials, services),
   parseStatusFeed,
+  fetchPriceCatalog,
   policyTemplate: coreweavePolicyTemplate,
   terraformExport: coreweaveTerraformExport,
 };

@@ -10,6 +10,7 @@ import "./orphans";
 import "./rightsizing";
 import "./expiring";
 import "./quotas";
+import "./price-catalog";
 import "./posture";
 import "./access-review";
 import "./backups";

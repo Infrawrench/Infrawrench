@@ -58,6 +58,7 @@ import { registerRunbookPaths } from "./paths/runbooks";
 import { registerOnCallPaths } from "./paths/on-call";
 import { registerQueryMonitorPaths } from "./paths/query-monitors";
 import { registerCarbonPaths } from "./paths/carbon";
+import { registerPriceCatalogPaths } from "./paths/price-catalog";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -198,6 +199,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOnCallPaths(ctx);
   registerQueryMonitorPaths(ctx);
   registerCarbonPaths(ctx);
+  registerPriceCatalogPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -497,6 +499,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Query monitors",
         description:
           "A SQL query on a schedule, with a threshold and an alert. Metric alerts watch what the provider reports \u2014 CPU, connections, queue depth. Nothing watched what the data itself says, which is where a whole class of incidents lives: the orders table stopped growing, the dead-letter queue has 4,000 rows in it, yesterday's ETL wrote nought. A monitor may only run a single read-only statement, enforced by an allowlist of leading keywords on every execution rather than only on save; a failed run is `unknown` rather than `ok`, because it has told you nothing about the data; and the alert fires on the run that reaches the consecutive-breach threshold and not on every run past it.",
+      },
+      {
+        name: "Price catalog",
+        description:
+          "Every catalog provider's published list prices, normalized: products with their specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where the provider publishes them). Search, filter and compare equivalent instances across providers by spec. Figures are list prices, never an org's negotiated rates; each provider names its source. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one.",
       },
       {
         name: "Carbon",

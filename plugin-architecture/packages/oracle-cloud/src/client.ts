@@ -19,7 +19,9 @@ import { externalIdOf } from "@infrawrench/plugin-base";
 import { OciApi, isAuthorizationGap } from "./api.js";
 import { fetchCarbonReport, fetchCommitmentBalances, fetchServiceLimits } from "./billing.js";
 import { fetchOciCostData, monthToDateWithForecast } from "./cost-data.js";
-import { createResource, getCreateConfig, type CreateContext } from "./create.js";
+import { createResource, getCreateConfig, listShapes, type CreateContext } from "./create.js";
+import { fetchOciPriceCatalog } from "./price-catalog.js";
+import type { PriceCatalogRequest, PriceCatalogResult } from "@infrawrench/plugin-base";
 import { OciInventory } from "./inventory.js";
 import {
   getBucket,
@@ -230,6 +232,15 @@ export class OracleCloudClient implements PluginClient {
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     return getCreateConfig(this.ctx(""), typeId, parentResourceId);
+  }
+
+  /** VM shapes at list price (the org-level price catalog). */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    const ctx = this.ctx("");
+    return fetchOciPriceCatalog(
+      { listShapes: () => listShapes(ctx), rates: () => priceRates(ctx.http) },
+      request,
+    );
   }
 
   async createResource(

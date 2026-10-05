@@ -34,6 +34,7 @@ import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
+import { cmdPrices } from "./commands/prices";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
@@ -142,7 +143,15 @@ COMMANDS
                       (--local scans this machine's workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
                       recommended smaller size and monthly saving (cloud only)
-  carbon              estimated CO2e of the estate by provider, region and resource, with what
+  prices search [q]   providers' list prices, filtered and sorted by monthly price (cloud only)
+                      [--provider aws,gcp] [--area europe] [--region <id>] [--min-vcpus 4]
+                      [--max-vcpus 8] [--min-memory 16] [--max-memory 64] [--gpu required|none]
+                      [--gpu-model H100] [--max-price 200] [--rate on-demand|spot|reserved|
+                      savings-plan] [--term 1yr|3yr] [--sort price|vcpus|memory|gpus|name] [--desc]
+  prices compare      the cheapest instance per provider meeting a spec   [--vcpus 4] [--memory 16]
+                      [--gpus 1] [--gpu-model L4] [--area europe] [--rate spot], or a product's
+                      specs: prices compare <sku> --provider <plugin>
+  carbon            estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
@@ -550,6 +559,9 @@ export async function runCli(): Promise<void> {
         break;
       case "oversized":
         await cmdOversized(ctx);
+        break;
+      case "prices":
+        await cmdPrices(ctx, rest[0] ?? "", rest.slice(1), parsed.prices, parsed.range);
         break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);

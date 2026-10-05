@@ -1,4 +1,4 @@
-interface CloudBillingSku {
+export interface CloudBillingSku {
   description?: string;
   serviceRegions?: string[];
   category?: {
@@ -7,6 +7,8 @@ interface CloudBillingSku {
   };
   pricingInfo?: Array<{
     pricingExpression?: {
+      /** `h` for vCPU and GPU hours, `GiBy.h` for memory, `GiBy.mo` for disk. */
+      usageUnit?: string;
       tieredRates?: Array<{
         unitPrice?: {
           units?: string;
@@ -48,14 +50,14 @@ export function geoFromRegion(region: string): GeoRegion {
   return "EMEA";
 }
 
-function unitPriceToUsd(unitPrice?: { units?: string; nanos?: number }): number {
+export function unitPriceToUsd(unitPrice?: { units?: string; nanos?: number }): number {
   if (!unitPrice) return 0;
   const units = Number(unitPrice.units ?? "0");
   const nanos = Number(unitPrice.nanos ?? 0);
   return units + nanos / 1_000_000_000;
 }
 
-function familyFromMachineType(machineType: string): string {
+export function familyFromMachineType(machineType: string): string {
   const lowered = machineType.toLowerCase();
   if (lowered.startsWith("n2d-")) return "n2d";
   const [family = ""] = lowered.split("-");
@@ -63,13 +65,13 @@ function familyFromMachineType(machineType: string): string {
 }
 
 /**
- * Fetch all Compute Engine billing SKUs for a geo and extract machine-type
- * family rates + PD Balanced disk rate.
+ * Every Compute Engine SKU in the public Cloud Billing Catalog, priced in
+ * USD. Shared by the per-geo estimate rates below and the price catalog
+ * (`price-catalog.ts`), so both read the same source the same way.
  */
-export async function fetchPricingRatesForGeo(
-  geo: GeoRegion,
+export async function fetchComputeSkus(
   apiGet: <T>(url: string) => Promise<T>,
-): Promise<PricingRates> {
+): Promise<CloudBillingSku[]> {
   let pageToken = "";
   const allSkus: CloudBillingSku[] = [];
   do {
@@ -84,6 +86,18 @@ export async function fetchPricingRatesForGeo(
     allSkus.push(...(page.skus ?? []));
     pageToken = page.nextPageToken ?? "";
   } while (pageToken);
+  return allSkus;
+}
+
+/**
+ * Fetch all Compute Engine billing SKUs for a geo and extract machine-type
+ * family rates + PD Balanced disk rate.
+ */
+export async function fetchPricingRatesForGeo(
+  geo: GeoRegion,
+  apiGet: <T>(url: string) => Promise<T>,
+): Promise<PricingRates> {
+  const allSkus = await fetchComputeSkus(apiGet);
 
   const machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }> = {};
   const diskGbMonthUsd: Partial<Record<GceDiskType, number>> = {};

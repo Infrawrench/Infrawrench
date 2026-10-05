@@ -178,4 +178,6 @@
 // tables): a `warehouse` branch on CostExportDestination, plus
 // `GET /cost-exports/warehouse-sinks`, `POST /cost-exports/warehouse-options`
 // and `POST /cost-exports/warehouse-setup`. Additive.
-export const API_VERSION = "1.51.0";
+// 1.52.0: price catalog. `GET /price-catalog/providers`, `/search` and
+// `/compare` (resources:read), and `price-catalog` on the TabTarget enum. Additive.
+export const API_VERSION = "1.52.0";

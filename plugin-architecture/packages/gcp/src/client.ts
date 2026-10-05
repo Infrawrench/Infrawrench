@@ -51,9 +51,12 @@ import {
   regionFromZone,
   geoFromRegion,
   fetchPricingRatesForGeo,
+  fetchComputeSkus,
   estimateMachineTypeMonthlyPrices,
   HOURS_PER_MONTH,
 } from "./pricing.js";
+import type { PriceCatalogRequest, PriceCatalogResult } from "@infrawrench/plugin-base";
+import { fetchGcpPriceCatalog } from "./price-catalog.js";
 
 /**
  * A `sizeGb × per-GB-month` disk line, or null when either half is unusable.
@@ -479,6 +482,24 @@ export class GcpClient implements PluginClient {
     }
 
     return runResolveOutput(this.sharedCtx, typeId, resourceId, outputKey, accountId);
+  }
+
+  /**
+   * Compute Engine machine types and their list prices for one region (the
+   * price catalog). The SKU list is fetched once per call; the host caches
+   * the result for the declared refresh cadence.
+   */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    const get = this.get.bind(this);
+    let skus: Promise<Awaited<ReturnType<typeof fetchComputeSkus>>> | null = null;
+    return fetchGcpPriceCatalog(
+      {
+        project: this.project,
+        get,
+        computeSkus: () => (skus ??= fetchComputeSkus(get)),
+      },
+      request,
+    );
   }
 
   private async getPricingRatesForGeo(geo: GeoRegion): Promise<PricingRates> {

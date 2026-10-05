@@ -15,7 +15,10 @@ import type {
   HostServices,
   LogsFetchParams,
   LogsFetchResult,
+  PriceCatalogRequest,
+  PriceCatalogResult,
 } from "@infrawrench/plugin-base";
+import { fetchScalewayPriceCatalog } from "./price-catalog.js";
 import {
   deleteS3Object,
   getS3BucketPolicy,
@@ -397,6 +400,20 @@ export class ScalewayClient implements PluginClient {
     }
 
     throw new Error(`Scaleway plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  /** Instance types and their hourly list prices for one zone. */
+  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
+    const api = this.instanceApi();
+    return fetchScalewayPriceCatalog(
+      {
+        listServersTypes: async ({ zone, page, perPage }) => {
+          const data = await api.listServersTypes({ zone: zone as Zone, page, perPage });
+          return { totalCount: data.totalCount, servers: data.servers };
+        },
+      },
+      request,
+    );
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {

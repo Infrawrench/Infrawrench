@@ -376,6 +376,7 @@ export {
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
+  priceCatalogTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -1285,3 +1286,13 @@ export {
   SshInstallConnectionFields,
   SshInstallKeyField,
 } from "./components/detail/SshInstallModal.js";
+
+/** Price catalog: published list prices, searchable and comparable across providers. */
+export { PriceCatalogPanel } from "./price-catalog/PriceCatalogPanel.js";
+export type {
+  PriceCatalogAccount,
+  PriceCatalogClient,
+  PriceCatalogEstimateTarget,
+  PriceCatalogPanelProps,
+} from "./price-catalog/PriceCatalogPanel.js";
+export { PriceCatalogIcon } from "./components/icons/PriceCatalogIcon.js";
