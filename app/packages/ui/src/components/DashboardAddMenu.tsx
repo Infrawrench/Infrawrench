@@ -13,6 +13,7 @@ export function DashboardAddMenu({
   onPickBudget,
   onPickExistingBudget,
   onPickCustomGraph,
+  onPickRealizedSavings,
   onClose,
 }: {
   onPickResource: () => void;
@@ -21,6 +22,8 @@ export function DashboardAddMenu({
   onPickBudget: () => void;
   onPickExistingBudget: () => void;
   onPickCustomGraph: () => void;
+  /** Omitted by a host with no realized savings report: the entry is hidden. */
+  onPickRealizedSavings?: (() => void) | undefined;
   onClose: () => void;
 }) {
   const gt = useGT();
@@ -63,6 +66,11 @@ export function DashboardAddMenu({
         <button type="button" onClick={onPickCustomGraph} className={itemClass}>
           <span className="text-on-surface-faint">◈</span> {gt("Custom graph")}
         </button>
+        {onPickRealizedSavings && (
+          <button type="button" onClick={onPickRealizedSavings} className={itemClass}>
+            <span className="text-on-surface-faint">▦</span> {gt("Realized savings")}
+          </button>
+        )}
       </div>
     </>
   );

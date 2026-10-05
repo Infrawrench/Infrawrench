@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 48 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 51 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -351,7 +351,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -409,6 +409,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                                       |
 | `infrawrench_anomaly_suppression`       | Expected-spend windows that keep known patterns from raising anomaly alerts                    |
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds              |
+| `infrawrench_realized_savings_settings` | How [realized savings](./realized-savings.md) are measured                                     |
 | `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                                  |
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by                    |
 | `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend               |
@@ -486,7 +487,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 **Singletons don't really get destroyed.** There is always exactly one anomaly settings row, one routing table, one tag policy — so `terraform destroy` can't remove them. Each one does the sensible thing instead, and it differs on purpose:
 
-- The cost settings and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
+- The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
 - Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
 - The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.

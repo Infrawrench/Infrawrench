@@ -478,6 +478,30 @@ describe("formatting", () => {
     expect(body).toContain("(amortized basis, 3d before/after; other changes overlapped)");
   });
 
+  it("reports realized savings beside the projection and names shortfalls", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          realizedSavings: {
+            currency: "USD",
+            week: 120,
+            yearToDate: 4200,
+            projectedYearToDate: 5000,
+            shortfallCount: 2,
+          },
+        }),
+      ),
+    );
+    expect(body).toContain(
+      "*Realized savings*: $120.00 last week, $4,200 this year, vs $5,000 projected",
+    );
+    expect(body).toContain("2 actions short of projection");
+  });
+
+  it("omits the realized savings line when nothing was realized", () => {
+    expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Realized savings");
+  });
+
   it("omits the cost-move line entirely when nothing could be measured", () => {
     // Not "no cost-moving changes": that would claim we looked and found
     // nothing, when in fact the provider's data had not arrived.

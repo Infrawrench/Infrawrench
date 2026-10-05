@@ -21,6 +21,7 @@ import type { CostReportWidgetConfig } from "./cost-reports";
 import type { BudgetAlertNote } from "./budget-alert-notes";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
 import type { CostCanvasWidgetConfig } from "./cost-canvases";
+import type { RealizedSavingsWidgetConfig } from "./realized-savings";
 // Type-only, and deliberately one-way at runtime: `cost-scenarios.ts` is the
 // module that knows what a scenario *is*, this one only knows that a query can
 // carry one and a response can come back with one.
@@ -686,6 +687,7 @@ export const DASHBOARD_WIDGET_KINDS = [
   "budget",
   "custom_graph",
   "cost_canvas",
+  "realized_savings",
 ] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 
@@ -700,7 +702,8 @@ export interface DashboardWidget {
     | CostReportWidgetConfig
     | BudgetWidgetConfig
     | CustomGraphWidgetConfig
-    | CostCanvasWidgetConfig;
+    | CostCanvasWidgetConfig
+    | RealizedSavingsWidgetConfig;
   gridX: number;
   gridY: number;
   gridW: number;

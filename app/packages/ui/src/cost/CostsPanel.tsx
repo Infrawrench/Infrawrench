@@ -8,6 +8,7 @@ import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
+import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
 import { NetworkFlowSection } from "./NetworkFlowSection.js";
 import { KubernetesNetworkSection } from "./KubernetesNetworkSection.js";
 import type {
@@ -472,6 +473,9 @@ export function CostsPanel({
         {schedules && (
           <SleepSchedulesSection client={schedules} onOpenResource={onOpenScheduledResource} />
         )}
+        {/* Last, after every finder: those sections say what could be saved,
+            this one is the receipt for what the actions taken did save. */}
+        <RealizedSavingsSection client={client} />
       </div>
 
       {editing && (

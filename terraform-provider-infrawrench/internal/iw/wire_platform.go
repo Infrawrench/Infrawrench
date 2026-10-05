@@ -1423,3 +1423,13 @@ type AIAttributionDimensionInput struct {
 	Label        string   `json:"label"`
 	MetadataKeys []string `json:"metadataKeys"`
 }
+
+// RealizedSavingsSettings is the org singleton that tunes how realized savings
+// are measured: what optimization actions actually saved against the spend
+// before them. The same shape is read and written, and every field is
+// required on PUT.
+type RealizedSavingsSettings struct {
+	HorizonMonths             int64 `json:"horizonMonths"`
+	ShortfallThresholdPercent int64 `json:"shortfallThresholdPercent"`
+	BaselineWindowDays        int64 `json:"baselineWindowDays"`
+}

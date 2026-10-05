@@ -91,6 +91,27 @@ export interface DigestCostMover {
   contested: boolean;
 }
 
+/**
+ * What the optimization actions taken actually saved: realized against each
+ * resource's pre-action baseline (see `savings/realized.ts`), in the org's
+ * primary savings currency.
+ *
+ * Omitted entirely when nothing was realized in the year so far: a line
+ * reading "saved $0" for an org that never resized anything would claim a
+ * measurement nobody made.
+ */
+export interface DigestRealizedSavings {
+  currency: string;
+  /** Realized during the reported week. */
+  week: number;
+  /** Realized from 1 January through the end of the reported week. */
+  yearToDate: number;
+  /** Projected over the same days, year to date. */
+  projectedYearToDate: number;
+  /** Actions currently realizing less than projected. */
+  shortfallCount: number;
+}
+
 export interface DigestInput {
   window: DigestWindow;
   /** Daily costs from `prevWeekStart` through `weekEnd`, grouped by provider. */
@@ -155,6 +176,8 @@ export interface DigestInput {
    * week could be measured, which is not the same as nothing having moved.
    */
   costMover?: DigestCostMover | null;
+  /** Realized savings, when anything was realized this year. */
+  realizedSavings?: DigestRealizedSavings | null;
 }
 
 export interface DigestTotal {
@@ -207,6 +230,8 @@ export interface WeeklyDigest {
   projection: DigestProjection | null;
   /** The week's largest measured cost-moving change, when one was measurable. */
   costMover: DigestCostMover | null;
+  /** Realized savings, when anything was realized this year. */
+  realizedSavings: DigestRealizedSavings | null;
 }
 
 const MAX_MOVERS = 3;
@@ -467,6 +492,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     backupsRpoBreached: input.backupsRpoBreached,
     projection: normalizeProjection(input.projection),
     costMover: input.costMover ?? null,
+    realizedSavings: input.realizedSavings ?? null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
 }
@@ -689,7 +715,35 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
   if (projectionLine) lines.push(projectionLine);
   const costMoverLine = costMoverSegments(digest.costMover);
   if (costMoverLine) lines.push(costMoverLine);
+  const savingsLine = realizedSavingsSegments(digest.realizedSavings);
+  if (savingsLine) lines.push(savingsLine);
   return lines;
+}
+
+/**
+ * The receipt line: what the actions taken actually saved, beside what they
+ * were projected to, and how many are falling short. Realized figures are
+ * measured against each resource's own pre-action spend, so "projected" is the
+ * comparison a reader needs to trust the first number.
+ */
+function realizedSavingsSegments(savings: DigestRealizedSavings | null): DigestLine | null {
+  if (!savings) return null;
+  const { currency } = savings;
+  const parts = [
+    `${formatAmount(savings.week, currency)} last week`,
+    `${formatAmount(savings.yearToDate, currency)} this year`,
+  ];
+  if (savings.projectedYearToDate > 0) {
+    parts.push(`vs ${formatAmount(savings.projectedYearToDate, currency)} projected`);
+  }
+  const short =
+    savings.shortfallCount > 0
+      ? `; ${pluralize(savings.shortfallCount, "action")} short of projection`
+      : "";
+  return [
+    { text: "Realized savings", bold: true },
+    { text: `: ${parts.join(", ")}${short}`, bold: false },
+  ];
 }
 
 /**

@@ -42,6 +42,7 @@ vi.mock("../../db/schema", mockSchema);
 vi.mock("@infrawrench/server-core/db/client", mockDb);
 vi.mock("@infrawrench/server-core/db/schema", mockSchema);
 vi.mock("@infrawrench/server-core/encryption", mockEncryption);
+vi.mock("@infrawrench/server-core/savings/capture", () => ({ captureDeletionSaving: vi.fn() }));
 
 const mockLoadPlugins = vi.fn();
 const mockGetPlugin = vi.fn();

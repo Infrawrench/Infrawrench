@@ -50,7 +50,12 @@ import {
   type CostCanvasWidgetConfig,
   type DashboardCardKind,
   type UnitCostQueryResponse,
+  REALIZED_SAVINGS_GROUPING_LABELS,
+  realizedSavingsRows,
+  realizedSavingsWidgetRange,
+  type RealizedSavingsWidgetConfig,
 } from "@infrawrench/client-core";
+import { getRealizedSavingsReport } from "@infrawrench/server-core/savings/realized";
 import {
   formatPdfValue,
   renderReportPdf,
@@ -466,6 +471,72 @@ export async function costConfigCard(
   };
 }
 
+/**
+ * A realized savings card: realized vs projected per currency, then the
+ * card's chosen breakdown in the primary currency. The same report the live
+ * card reads, over the same months.
+ */
+async function realizedSavingsCard(
+  organizationId: string,
+  title: string,
+  config: RealizedSavingsWidgetConfig,
+  now: Date,
+): Promise<CardRender> {
+  const range = realizedSavingsWidgetRange(config, now);
+  const report = await getRealizedSavingsReport(organizationId, { ...range, now });
+  const blocks: PdfBlock[] = [];
+  if (report.totals.length === 0) {
+    blocks.push({
+      kind: "text",
+      text: "No savings recorded in this period. Resizes, orphan cleanups and sleep schedules are recorded as they happen; anything else can be logged by hand.",
+      tone: "muted",
+    });
+  } else {
+    blocks.push({
+      kind: "stats",
+      items: report.totals.map((t) => ({
+        label: `Realized (${t.currency})`,
+        value: formatPdfValue(t.realized, { currency: t.currency }),
+        caption: `${formatPdfValue(t.projected, { currency: t.currency })} projected`,
+      })),
+    });
+    const primary = report.totals[0]!;
+    const rows = realizedSavingsRows(report, config.grouping, primary.currency);
+    if (rows.length > 0) {
+      blocks.push({
+        kind: "table",
+        columns: [REALIZED_SAVINGS_GROUPING_LABELS[config.grouping], "Realized", "Projected"],
+        rows: rows
+          .slice(0, MAX_TABLE_ROWS)
+          .map((r) => [
+            r.label,
+            formatPdfValue(r.realized, { currency: primary.currency }),
+            formatPdfValue(r.projected, { currency: primary.currency }),
+          ]),
+        align: ["left", "right", "right"],
+      });
+    }
+  }
+  if (report.shortfallCount > 0) {
+    blocks.push({
+      kind: "text",
+      text: `${report.shortfallCount} action(s) are realizing less than projected.`,
+      tone: "muted",
+    });
+  }
+  const primary = report.totals[0];
+  return {
+    section: {
+      title: title || "Realized savings",
+      subtitle: `Realized savings · ${range.from} to ${range.to}`,
+      blocks,
+    },
+    highlight: primary
+      ? `${formatPdfValue(primary.realized, { currency: primary.currency })} saved`
+      : null,
+  };
+}
+
 export async function budgetCard(
   organizationId: string,
   title: string,
@@ -862,7 +933,8 @@ async function widgetCard(
     widget.kind === "cost_graph" ||
     widget.kind === "cost_report" ||
     widget.kind === "budget" ||
-    widget.kind === "cost_canvas";
+    widget.kind === "cost_canvas" ||
+    widget.kind === "realized_savings";
   if (costKind && !canReadCosts) {
     return {
       section: {
@@ -947,6 +1019,13 @@ async function widgetCard(
         highlight: built.highlights[0] ?? null,
       };
     }
+    case "realized_savings":
+      return realizedSavingsCard(
+        organizationId,
+        widget.title,
+        widget.config as RealizedSavingsWidgetConfig,
+        now,
+      );
     default:
       return {
         section: {

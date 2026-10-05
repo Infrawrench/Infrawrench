@@ -73,12 +73,14 @@ import {
   isValidTimeZone,
   type DigestCostMover,
   type DigestProjection,
+  type DigestRealizedSavings,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
   type WeeklyDigest,
 } from "./compose";
 import { orgAppUrl } from "../app-url";
+import { getRealizedSavingsReport } from "../savings/realized";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -310,7 +312,42 @@ export async function buildWeeklyDigest(
     backupsRpoBreached: backupCounts.rpoBreached,
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
     costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
+    realizedSavings: await buildRealizedSavings(organizationId, window),
   });
+}
+
+/**
+ * The realized savings line: last week and the year to date, in the org's
+ * primary savings currency (the one with the most realized). Never the reason
+ * a digest fails to send: any error drops the line.
+ */
+async function buildRealizedSavings(
+  organizationId: string,
+  window: DigestWindow,
+): Promise<DigestRealizedSavings | null> {
+  try {
+    const yearStart = `${window.weekEnd.slice(0, 4)}-01-01`;
+    const ytd = await getRealizedSavingsReport(organizationId, {
+      from: yearStart <= window.weekStart ? yearStart : window.weekStart,
+      to: window.weekEnd,
+    });
+    const primary = ytd.totals[0];
+    if (!primary || primary.realized === 0) return null;
+    const week = await getRealizedSavingsReport(organizationId, {
+      from: window.weekStart,
+      to: window.weekEnd,
+    });
+    return {
+      currency: primary.currency,
+      week: week.totals.find((t) => t.currency === primary.currency)?.realized ?? 0,
+      yearToDate: primary.realized,
+      projectedYearToDate: primary.projected,
+      shortfallCount: ytd.shortfallCount,
+    };
+  } catch (err) {
+    console.error(`[digest] realized savings for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 /**

@@ -218,6 +218,14 @@ infrawrench credits
 infrawrench credits --json
 ```
 
+`savings` is [realized savings](./realized-savings.md): what resizes, orphan cleanups, sleep schedules, commitments and logged actions actually saved against each resource's own pre-action spend, beside the projection, with a breakdown (`--group-by month|kind|cost-centre|account`) and every action listed. `savings log` records a saving Infrawrench could not see happen (`costs:write`). Needs `costs:read`:
+
+```
+infrawrench savings
+infrawrench savings --group-by cost-centre --from 2026-01-01 --json
+infrawrench savings log "Cancelled the legacy CDN" --amount 420 --currency USD --from 2026-09-01
+```
+
 `hygiene` is the [credential hygiene](../team-and-billing/credential-hygiene.md) report: unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise. The `--json` form is the one worth scheduling — these accumulate slowly and nobody opens a settings page to check. Needs `audit:read`:
 
 ```

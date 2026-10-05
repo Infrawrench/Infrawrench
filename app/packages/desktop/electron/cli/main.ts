@@ -84,6 +84,7 @@ import { cmdHygiene } from "./commands/hygiene";
 import { cmdAgents } from "./commands/agents";
 import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
+import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdStatusPages } from "./commands/status-pages";
@@ -292,6 +293,9 @@ COMMANDS
   credits             prepaid balances with burn rate & runway ("6 days left")
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
+  savings             realized savings: what resizes, cleanups, schedules & commitments
+                      actually saved vs projected   [--from] [--to] [--group-by month|kind|cost-centre|account]
+  savings log "<what>" log a saving by hand   --amount <monthly> [--currency USD] [--from <day>] [--note]
   hygiene             unused API keys, unreferenced SSH keys & unexercised
                       write permissions   [--days 30|90|180|365]
   agents              agent credentials that can reach this org: who claimed
@@ -939,6 +943,23 @@ export async function runCli(): Promise<void> {
         break;
       case "commitments":
         await cmdCommitments(ctx);
+        break;
+      case "savings":
+        if (rest[0] === "log") {
+          await cmdSavingsLog(ctx, rest.slice(1).join(" "), {
+            amount: parsed.savings.amount,
+            currency: parsed.range.currency,
+            from: parsed.range.from,
+            note: parsed.savings.note,
+            resource: parsed.range.resource,
+          });
+        } else {
+          await cmdSavings(ctx, {
+            from: parsed.range.from,
+            to: parsed.range.to,
+            groupBy: parsed.range.groupBy,
+          });
+        }
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

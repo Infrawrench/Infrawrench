@@ -12,6 +12,7 @@ import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
 import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
+import { captureSavingsFromChanges } from "./savings/capture";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -168,16 +169,29 @@ async function recordChangeTimeline(
   prior: PriorResourceSnapshot[],
   fetched: ResourceInstance[],
   deletableTypeIds: string[],
+  savingsCtx: SavingsCaptureCtx,
   onChanges?: (events: ResourceChangeEvent[]) => void,
 ): Promise<void> {
   try {
     const events = computeResourceChangeEvents({ prior, fetched, deletableTypeIds });
     await recordResourceChanges(organizationId, accountId, events);
     onChanges?.(events);
+    // Savings someone made in the provider's own console: a right-sized
+    // instance, a deleted orphan. Never throws (see savings/capture.ts).
+    await captureSavingsFromChanges({
+      organizationId,
+      accountId,
+      ctx: savingsCtx,
+      prior,
+      fetched,
+      events,
+    });
   } catch (err) {
     console.error(`[sync] recording resource changes for account ${accountId} failed:`, err);
   }
 }
+
+type SavingsCaptureCtx = Parameters<typeof captureSavingsFromChanges>[0]["ctx"];
 
 /** Sync one resource type for an account. Returns the fresh resources. */
 export async function syncAccountResourceType(
@@ -199,7 +213,12 @@ export async function syncAccountResourceType(
 
   await Promise.all(fetched.map((r) => upsertResource(organizationId, accountId, r)));
 
-  if (prior) await recordChangeTimeline(organizationId, accountId, prior, fetched, [typeId]);
+  if (prior) {
+    await recordChangeTimeline(organizationId, accountId, prior, fetched, [typeId], {
+      client,
+      plugin,
+    });
+  }
 
   // Soft-delete resources of this type that no longer exist upstream.
   const liveIds = fetched.map((r) => r.id);
@@ -317,6 +336,7 @@ export async function syncAccountResources(
       prior,
       allResources,
       succeededTypeIds,
+      { client, plugin },
       options.onChanges,
     );
   }

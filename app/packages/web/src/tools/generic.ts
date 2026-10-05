@@ -8,6 +8,7 @@ import {
   getClientForResource,
   filterVisiblePeerIntegrations,
 } from "../services/plugin-clients";
+import { captureDeletionSaving } from "@infrawrench/server-core/savings/capture";
 import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
 import { listExpiring } from "@infrawrench/server-core/expiry/feed";
@@ -1274,6 +1275,19 @@ export function genericTools(): ToolDefinition[] {
           entityId: resourceId,
           metadata: { pluginId, resourceTypeId, source: auth.source },
         });
+        // Same as the HTTP delete: an orphan cleaned up is a realized saving.
+        if (ctx.account?.pluginId === pluginId) {
+          void captureDeletionSaving({
+            organizationId: auth.organizationId,
+            accountId,
+            resourceId,
+            resourceTypeId,
+            pluginId,
+            source: "in_app",
+            userId: auth.userId ?? null,
+            ctx: { client: ctx.client, plugin: ctx.plugin },
+          });
+        }
         return ok({ ok: true });
       },
     },

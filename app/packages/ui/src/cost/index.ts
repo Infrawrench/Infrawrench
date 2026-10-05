@@ -44,6 +44,15 @@ export { BudgetPickerModal, type BudgetPickerModalProps } from "./BudgetPickerMo
 export { CreditBurndownSection } from "./CreditBurndownSection.js";
 export { CommitmentsSection } from "./CommitmentsSection.js";
 export {
+  RealizedSavingsBars,
+  RealizedSavingsCard,
+  RealizedSavingsSection,
+  RealizedSavingsTotals,
+  RealizedSavingsWidgetConfigModal,
+  savingsGroupingLabel,
+  savingsKindLabel,
+} from "./RealizedSavingsSection.js";
+export {
   EfficiencyAlertsSection,
   type EfficiencyAlertsSectionProps,
 } from "./EfficiencyAlertsSection.js";

@@ -77,7 +77,15 @@ import {
   listCloudBusinessMetricValues,
   updateCloudBusinessMetric,
   writeCloudBusinessMetricValues,
+  annotateCloudSavingsEvent,
+  createCloudSavingsEvent,
+  deleteCloudSavingsEvent,
+  saveCloudSavingsSettings,
+  searchCloudSavingsResources,
+  updateCloudSavingsEvent,
 } from "./cloud-costs";
+import type { CostCentre } from "@infrawrench/client-core";
+import { invoke } from "./invoke";
 import { listCloudDashboards } from "./cloud-dashboards";
 import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-api";
 
@@ -226,5 +234,16 @@ export function createDesktopCostsClient(): CostsClient {
     getEfficiencyAlertSettings: () => loadCloudEfficiencySettings(requireOrgId()),
     updateEfficiencyAlertSettings: (settings) =>
       saveCloudEfficiencySettings(requireOrgId(), settings),
+    // Realized savings management: org-level cloud state like the rest, so
+    // desktop wires the full surface (the server enforces `costs:write`).
+    createSavingsEvent: (input) => createCloudSavingsEvent(requireOrgId(), input),
+    updateSavingsEvent: (eventId, input) => updateCloudSavingsEvent(requireOrgId(), eventId, input),
+    annotateSavingsEvent: (eventId, input) =>
+      annotateCloudSavingsEvent(requireOrgId(), eventId, input),
+    deleteSavingsEvent: (eventId) => deleteCloudSavingsEvent(requireOrgId(), eventId),
+    updateSavingsSettings: (settings) => saveCloudSavingsSettings(requireOrgId(), settings),
+    listSavingsCostCentres: async () =>
+      (await invoke<CostCentre[]>("cloud_list_cost_centres", { orgId: requireOrgId() })) ?? [],
+    searchSavingsResources: (query) => searchCloudSavingsResources(requireOrgId(), query),
   };
 }

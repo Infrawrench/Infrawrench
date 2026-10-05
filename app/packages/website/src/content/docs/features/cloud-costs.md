@@ -524,6 +524,10 @@ Cost graphs answer "what did we spend". For providers that work off a prepaid po
 
 The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md) — the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next — also on the Costs panel.
 
+## What the savings actually saved
+
+The finders on the Costs panel say what could be saved. **Realized savings**, the last section on the panel, says what the actions you took did save: each resize, orphan cleanup, sleep schedule, commitment discount and logged saving, measured against the resource's own spend before the action and shown beside its projection, with shortfalls flagged. See [Realized savings](./realized-savings.md).
+
 ## Where the egress went
 
 A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two services were talking, because every cost dimension describes one side of a transfer and a network charge is about a **pair**. See [Network costs](./network-costs.md) — priced source→destination attribution read from your VPC flow logs, on the same Costs panel.

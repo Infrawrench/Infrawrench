@@ -20,6 +20,7 @@ import { invoiceTools } from "./invoices";
 import { scheduleTools } from "./schedules";
 import { rightsizingTools } from "./rightsizing";
 import { githubIssueTools } from "./github-issues";
+import { savingsTools } from "./savings";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
 import { aiAttributionTools } from "./ai-attribution";
@@ -51,6 +52,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...scheduleTools(),
     ...rightsizingTools(),
     ...githubIssueTools(),
+    ...savingsTools(),
     ...carbonTools(),
     ...priceCatalogTools(),
     ...aiAttributionTools(),

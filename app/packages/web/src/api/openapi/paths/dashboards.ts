@@ -55,11 +55,13 @@ const WorkflowPin = strict({
 }).openapi("DashboardWorkflowPin");
 
 const WidgetKind = z
-  .enum(["cost_graph", "cost_report", "budget", "custom_graph", "cost_canvas"])
+  .enum(["cost_graph", "cost_report", "budget", "custom_graph", "cost_canvas", "realized_savings"])
   .describe(
     "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a " +
       "saved cost report by id, so editing the report updates every dashboard showing it. " +
-      "`cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way.",
+      "`cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way. " +
+      "`realized_savings` shows the org's realized savings report; its config is only a view " +
+      "choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36).",
   )
   .openapi("DashboardWidgetKind");
 

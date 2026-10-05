@@ -10,6 +10,7 @@ import {
   type CostGraphConfig,
   type CostReportWidgetConfig,
   type CustomGraphWidgetConfig,
+  type RealizedSavingsWidgetConfig,
   type DashboardCardRef,
   type DashboardWidget,
 } from "@infrawrench/client-core";
@@ -20,6 +21,7 @@ import { colors, spacing } from "@/lib/theme";
 import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
 import { CustomGraphCard } from "./CustomGraphCard";
+import { RealizedSavingsCard } from "./RealizedSavingsCard";
 import { useCostReportsById } from "@/features/cost-reports/useCostReports";
 import { useBudgets } from "./useBudgets";
 import { useCostStatus } from "./useCostStatus";
@@ -230,6 +232,8 @@ export function DashboardBody({
               on web/desktop, and the card's controls live on the card. */}
           {ref.kind === "widget" &&
           widgets.find((w) => w.id === ref.id)?.kind !== "custom_graph" &&
+          // A realized savings card's view choice is set on web/desktop.
+          widgets.find((w) => w.id === ref.id)?.kind !== "realized_savings" &&
           // A cost_report card holds only a reportId: there is nothing on it
           // to configure. Editing the report changes every dashboard showing
           // it, so it happens on the report's own page, not on one card.
@@ -357,6 +361,18 @@ export function DashboardBody({
             index,
             widgetRef,
             <CanvasWidgetCard key={widget.id} config={widget.config as CostCanvasWidgetConfig} />,
+          );
+        }
+
+        if (widget.kind === "realized_savings") {
+          return withControls(
+            index,
+            widgetRef,
+            <RealizedSavingsCard
+              key={widget.id}
+              title={widget.title}
+              config={widget.config as RealizedSavingsWidgetConfig}
+            />,
           );
         }
 

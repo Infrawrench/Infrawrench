@@ -52,7 +52,16 @@ import type {
   ShowbackReport,
   TagComplianceReport,
   UntaggedSpendReport,
+  SavingsResourceOption,
 } from "@infrawrench/ui/cost";
+import type {
+  CostCentre,
+  RealizedSavingsReport,
+  RealizedSavingsSettings,
+  SavingsEvent,
+  SavingsEventAnnotationInput,
+  SavingsEventInput,
+} from "@infrawrench/client-core";
 import { createSharingClient, type SharingClient } from "@infrawrench/ui";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
@@ -78,7 +87,7 @@ import type {
 } from "@infrawrench/client-core";
 import { pdfFileName, withPdfTimezone } from "@infrawrench/client-core";
 import { downloadBlob } from "@infrawrench/ui";
-import { apiDelete, apiGet, apiGetBlob, apiPost, apiPostText, apiPut } from "./api";
+import { apiDelete, apiGet, apiGetBlob, apiPatch, apiPost, apiPostText, apiPut } from "./api";
 
 /**
  * The read-only cost calls, shared by the dashboard's cost cards, the Costs
@@ -171,6 +180,12 @@ export function createWebCostApi(orgId: string): CostApi {
       );
       return res.labels;
     },
+    // Realized savings ride the base CostApi because the `realized_savings`
+    // dashboard card renders through it as well as the Costs panel.
+    getRealizedSavings: (range?: { from?: string; to?: string }) =>
+      apiGet<RealizedSavingsReport>(
+        `/api/org/${orgId}/savings/realized${rangeQuery(range?.from, range?.to)}`,
+      ),
   };
 }
 
@@ -455,6 +470,34 @@ export function createWebCostsClient(orgId: string): CostsClient {
       apiGet<CostEfficiencySettings>(`/api/org/${orgId}/costs/efficiency-alert-settings`),
     updateEfficiencyAlertSettings: (settings: CostEfficiencySettings) =>
       apiPut<CostEfficiencySettings>(`/api/org/${orgId}/costs/efficiency-alert-settings`, settings),
+    // Realized savings management. Included unconditionally like the
+    // annotation writes: the server enforces `costs:write`, and a viewer's 403
+    // surfaces as the action's error.
+    createSavingsEvent: (input: SavingsEventInput) =>
+      apiPost<SavingsEvent>(`/api/org/${orgId}/savings/events`, input),
+    updateSavingsEvent: (eventId: string, input: SavingsEventInput) =>
+      apiPut<SavingsEvent>(
+        `/api/org/${orgId}/savings/events/${encodeURIComponent(eventId)}`,
+        input,
+      ),
+    annotateSavingsEvent: (eventId: string, input: SavingsEventAnnotationInput) =>
+      apiPatch<SavingsEvent>(
+        `/api/org/${orgId}/savings/events/${encodeURIComponent(eventId)}`,
+        input,
+      ),
+    deleteSavingsEvent: async (eventId: string) => {
+      await apiDelete(`/api/org/${orgId}/savings/events/${encodeURIComponent(eventId)}`);
+    },
+    updateSavingsSettings: (settings: RealizedSavingsSettings) =>
+      apiPut<RealizedSavingsSettings>(`/api/org/${orgId}/savings/settings`, settings),
+    listSavingsCostCentres: () => apiGet<CostCentre[]>(`/api/org/${orgId}/cost-centres`),
+    searchSavingsResources: async (query: string) => {
+      const rows = await apiGet<Array<SavingsResourceOption & { pluginId: string }>>(
+        `/api/org/${orgId}/search?q=${encodeURIComponent(query)}`,
+      );
+      // The spotlight index also returns workflows; only resources can be linked.
+      return rows.filter((r) => r.pluginId !== "__workflows__");
+    },
   };
 }
 

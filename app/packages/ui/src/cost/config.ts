@@ -105,6 +105,13 @@ import {
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,
   type ManagedInvoiceUpdate,
+  REALIZED_SAVINGS_GROUPINGS,
+  REALIZED_SAVINGS_LIMITS,
+  REALIZED_SAVINGS_WIDGET_LIMITS,
+  type RealizedSavingsSettings,
+  type RealizedSavingsWidgetConfig,
+  type SavingsEventAnnotationInput,
+  type SavingsEventInput,
   COST_CANVAS_LIMITS,
   COST_CANVAS_TABLE_BINNINGS,
   costCanvasTextReferences,
@@ -1021,12 +1028,78 @@ export const costCanvasWidgetConfigSchema = z.object({
   canvasId: z.string().min(1),
 });
 
+/**
+ * A `realized_savings` card: a view choice over the org's realized savings
+ * report (which breakdown, how many months back). No ids: there is one report
+ * per org.
+ */
+export const realizedSavingsWidgetConfigSchema = z.object({
+  version: z.literal(1),
+  grouping: z.enum(REALIZED_SAVINGS_GROUPINGS),
+  months: z
+    .number()
+    .int()
+    .min(REALIZED_SAVINGS_WIDGET_LIMITS.minMonths)
+    .max(REALIZED_SAVINGS_WIDGET_LIMITS.maxMonths),
+});
+
+/** PUT /savings/settings. */
+export const realizedSavingsSettingsSchema = z.object({
+  horizonMonths: z
+    .number()
+    .int()
+    .min(REALIZED_SAVINGS_LIMITS.minHorizonMonths)
+    .max(REALIZED_SAVINGS_LIMITS.maxHorizonMonths),
+  shortfallThresholdPercent: z
+    .number()
+    .int()
+    .min(REALIZED_SAVINGS_LIMITS.minShortfallThresholdPercent)
+    .max(REALIZED_SAVINGS_LIMITS.maxShortfallThresholdPercent),
+  baselineWindowDays: z
+    .number()
+    .int()
+    .min(REALIZED_SAVINGS_LIMITS.minBaselineWindowDays)
+    .max(REALIZED_SAVINGS_LIMITS.maxBaselineWindowDays),
+});
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const savingsHorizon = z
+  .number()
+  .int()
+  .min(REALIZED_SAVINGS_LIMITS.minHorizonMonths)
+  .max(REALIZED_SAVINGS_LIMITS.maxHorizonMonths)
+  .nullable()
+  .optional();
+
+/** POST /savings/events and PUT /savings/events/:id (manual entries). */
+export const savingsEventInputSchema = z.object({
+  title: z.string().trim().min(1).max(REALIZED_SAVINGS_LIMITS.titleMaxLength),
+  note: z.string().max(REALIZED_SAVINGS_LIMITS.noteMaxLength).nullable().optional(),
+  occurredOn: isoDay,
+  endedOn: isoDay.nullable().optional(),
+  projectedMonthlyAmount: z.number().positive().max(REALIZED_SAVINGS_LIMITS.maxMonthlyAmount),
+  currency: z.string().regex(CURRENCY_CODE_PATTERN),
+  resourceId: z.string().min(1).nullable().optional(),
+  accountId: z.string().min(1).nullable().optional(),
+  costCentreId: z.string().min(1).nullable().optional(),
+  horizonMonths: savingsHorizon,
+});
+
+/** PATCH /savings/events/:id: context any event takes, automatic ones included. */
+export const savingsEventAnnotationSchema = z.object({
+  note: z.string().max(REALIZED_SAVINGS_LIMITS.noteMaxLength).nullable().optional(),
+  costCentreId: z.string().min(1).nullable().optional(),
+  horizonMonths: savingsHorizon,
+  endedOn: isoDay.nullable().optional(),
+});
+
 const widgetConfigSchemas = {
   cost_graph: costGraphConfigSchema,
   cost_report: costReportWidgetConfigSchema,
   budget: budgetWidgetConfigSchema,
   custom_graph: customGraphWidgetConfigSchema,
   cost_canvas: costCanvasWidgetConfigSchema,
+  realized_savings: realizedSavingsWidgetConfigSchema,
 } as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
 
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
@@ -1534,6 +1607,10 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof virtualTagAllocationSchema>, VirtualTagAllocation>,
   Exact<z.infer<typeof virtualTagRuleSchema>, VirtualTagRule>,
   Exact<z.infer<typeof virtualTagInputSchema>, VirtualTagInput>,
+  Exact<z.infer<typeof realizedSavingsWidgetConfigSchema>, RealizedSavingsWidgetConfig>,
+  Exact<z.infer<typeof realizedSavingsSettingsSchema>, RealizedSavingsSettings>,
+  Exact<z.infer<typeof savingsEventInputSchema>, SavingsEventInput>,
+  Exact<z.infer<typeof savingsEventAnnotationSchema>, SavingsEventAnnotationInput>,
 ];
 
 /* ------------------------------------------------------------------ *
