@@ -23,6 +23,10 @@ import {
 } from "@infrawrench/server-core/cost/budget-eval";
 import { resolveCostScenarioModel } from "@infrawrench/server-core/cost/scenario-forecast";
 import { resolveSavedCostFilters } from "@infrawrench/server-core/cost/saved-filters";
+import {
+  storedAlertEmailRecipients,
+  validateAlertEmailRecipients,
+} from "@infrawrench/server-core/alerts/email";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
 import {
@@ -258,6 +262,7 @@ async function toBudgetWithStatus(
     // spend, so a card can never render an adjusted amount without it.
     useAdjustedSpend: b.useAdjustedSpend,
     rawActualCents: status.rawActualCents,
+    emailRecipients: storedAlertEmailRecipients(b.emailRecipients),
     month: status.month,
     actualCents: status.actualCents,
     forecastCents: status.forecastCents,
@@ -342,6 +347,9 @@ export async function createBudget(
   if (input.scenarioModelId) {
     await resolveCostScenarioModel(organizationId, input.scenarioModelId);
   }
+  // Members must be members and extra addresses must pass the org's policy
+  // (AlertEmailRecipientsError → 400 in the route).
+  const emailRecipients = await validateAlertEmailRecipients(organizationId, input.emailRecipients);
   const [created] = await db
     .insert(budgets)
     .values({
@@ -361,6 +369,7 @@ export async function createBudget(
       // A cost-scoped creator's budget measures only what they can see.
       visibilityUserId: visibilityUserIdForCreate(organizationId),
       ...shapeColumns(input),
+      emailRecipients: emailRecipients ?? { userIds: [], addresses: [] },
       createdByUserId,
     })
     .returning();
@@ -378,6 +387,7 @@ export async function updateBudget(
   if (input.scenarioModelId) {
     await resolveCostScenarioModel(organizationId, input.scenarioModelId);
   }
+  const emailRecipients = await validateAlertEmailRecipients(organizationId, input.emailRecipients);
   const [updated] = await db
     .update(budgets)
     .set({
@@ -397,6 +407,9 @@ export async function updateBudget(
       // goes back to measuring what the providers actually charged.
       useAdjustedSpend: input.useAdjustedSpend ?? false,
       ...shapeColumns(input),
+      // Unlike every field above, absent leaves the stored list alone: an
+      // older client saving a budget must not silently stop somebody's email.
+      ...(emailRecipients !== undefined ? { emailRecipients } : {}),
       updatedAt: new Date(),
     })
     .where(

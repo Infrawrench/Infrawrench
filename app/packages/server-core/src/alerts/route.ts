@@ -34,6 +34,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   type AlertDestination,
+  type AlertEmailRecipients,
   type AlertFacts,
   type AlertSeverity,
   type AlertTrigger,
@@ -57,6 +58,7 @@ import { sendMsTeamsToWebhooks } from "../msteams";
 import { resolveRoutingRules } from "./rules";
 import { resolveOnCallNow } from "../on-call/store";
 import type { GithubFinding } from "../github-issues/filing";
+import { sendAlertEmail } from "./email";
 
 /**
  * Everything a detector knows about the thing it is reporting.
@@ -130,6 +132,8 @@ export interface AlertTransportCounts {
   push: number;
   slack: number;
   msTeams: number;
+  /** Addresses, not destinations: a member and an extra address are one each. */
+  email: number;
 }
 
 export interface AlertRouteResult {
@@ -175,8 +179,8 @@ function nothing(): AlertRouteResult {
   return {
     attempted: 0,
     succeeded: 0,
-    byTransport: { push: 0, slack: 0, msTeams: 0 },
-    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
     held: 0,
     unrouted: true,
     matchedRuleIds: [],
@@ -233,6 +237,24 @@ export interface RouteAlertOptions {
    * and a button that acknowledges only one of them.
    */
   ackDeliveryId?: string;
+  /**
+   * Email recipients configured on the object that raised the alert (a
+   * budget, a change alert, the anomaly or efficiency settings), delivered
+   * **in addition to** whatever the routing rules decide.
+   *
+   * Deliberately outside the rules: it is sent whether or not a rule matched,
+   * a swallow rule does not silence it, and quiet hours do not hold it. The
+   * person who put an address on a budget asked for exactly that budget's
+   * alerts at that address, and a routing rule somebody else maintains must
+   * not be able to cancel the request silently. A recipient who wants out has
+   * the unsubscribe link in every message. Not stored on held deliveries, so a
+   * replayed hold never re-sends it.
+   */
+  emailRecipients?: AlertEmailRecipients;
+  /** The footer's "why you got this", e.g. `you are on the recipient list of budget "Prod"`. */
+  emailReason?: string;
+  /** Where the footer's "Manage" link goes for `emailRecipients`. Defaults to Notifications settings. */
+  emailManageUrl?: string | null;
   /** Test seam. Defaults to the wall clock. */
   now?: Date;
 }
@@ -255,16 +277,25 @@ async function deliverDestinations(
   destinations: AlertDestination[],
   options: RouteAlertOptions,
   extraButtons: SlackMessageButton[],
+  emailSent: Set<string>,
+  ruleName?: string,
 ): Promise<DestinationOutcome> {
   const def = alertTriggerDef(event.trigger);
   const slackIds: string[] = [];
   const teamsIds: string[] = [];
   const onCallScheduleIds: string[] = [];
+  const emailTargets: AlertEmailRecipients = { userIds: [], addresses: [] };
   let wantsPush = false;
   let wantsGithub = false;
 
   for (const d of destinations) {
     switch (d.kind) {
+      case "email-member":
+        emailTargets.userIds.push(d.userId);
+        break;
+      case "email-address":
+        emailTargets.addresses.push(d.address);
+        break;
       case "on-call":
         // Resolved below, after the loop, because it needs a database read and
         // several rules may name the same rotation.
@@ -322,7 +353,8 @@ async function deliverDestinations(
     }
   }
 
-  const [push, slack, teams, onCall, github] = await Promise.all([
+  const severity = event.severity ?? def.defaultSeverity;
+  const [push, slack, teams, onCall, github, email] = await Promise.all([
     wantsPush
       ? sendPushToOrg(
           event.organizationId,
@@ -377,6 +409,27 @@ async function deliverDestinations(
     wantsGithub && event.finding
       ? fileToGithub(event)
       : Promise.resolve({ attempted: 0, succeeded: 0 }),
+    // Email is addressed per person, so it is counted per address. A member
+    // who left, an address the policy no longer allows, an unsubscribed one,
+    // or one this call already mailed contributes nothing to either count.
+    emailTargets.userIds.length + emailTargets.addresses.length > 0
+      ? sendAlertEmail(
+          {
+            organizationId: event.organizationId,
+            trigger: event.trigger,
+            severity,
+            title: event.title,
+            body: event.body,
+            ...(event.context ? { context: event.context } : {}),
+            url: event.url ?? null,
+          },
+          emailTargets,
+          ruleName
+            ? `the alert routing rule "${ruleName}" sends ${def.label.toLowerCase()} alerts to you`
+            : `an alert routing rule sends ${def.label.toLowerCase()} alerts to you`,
+          emailSent,
+        )
+      : Promise.resolve({ attempted: 0, succeeded: 0 }),
   ]);
 
   return {
@@ -386,18 +439,30 @@ async function deliverDestinations(
     // device count is still reported, under `counts.push`, because that is the
     // number the callers who show one to the user have always shown.
     attempted:
-      (wantsPush ? 1 : 0) + slack.attempted + teams.attempted + onCall.attempted + github.attempted,
+      (wantsPush ? 1 : 0) +
+      slack.attempted +
+      teams.attempted +
+      onCall.attempted +
+      github.attempted +
+      email.attempted,
     succeeded:
       (push.succeeded > 0 ? 1 : 0) +
       slack.succeeded +
       teams.succeeded +
       onCall.succeeded +
-      github.succeeded,
-    counts: { push: push.succeeded, slack: slack.succeeded, msTeams: teams.succeeded },
+      github.succeeded +
+      email.succeeded,
+    counts: {
+      push: push.succeeded,
+      slack: slack.succeeded,
+      msTeams: teams.succeeded,
+      email: email.succeeded,
+    },
     attemptedCounts: {
       push: push.attempted,
       slack: slack.attempted,
       msTeams: teams.attempted,
+      email: email.attempted,
     },
     slackMessages: slack.messages,
     msTeamsWebhookIds: options.track && teams.succeeded > 0 ? teamsIds : [],
@@ -431,6 +496,7 @@ function addCounts(into: AlertTransportCounts, from: AlertTransportCounts): void
   into.push += from.push;
   into.slack += from.slack;
   into.msTeams += from.msTeams;
+  into.email += from.email;
 }
 
 /**
@@ -542,7 +608,43 @@ export async function routeAlert(
           now,
         );
 
+    // The object's own email recipients go first and regardless of the rules
+    // (see `RouteAlertOptions.emailRecipients`). Sending them first also makes
+    // them the owner of each address in `emailSent`, so a rule naming the same
+    // person adds nothing.
+    const emailSent = new Set<string>();
+    const direct =
+      options.emailRecipients &&
+      options.emailRecipients.userIds.length + options.emailRecipients.addresses.length > 0
+        ? await sendAlertEmail(
+            {
+              organizationId: event.organizationId,
+              trigger: event.trigger,
+              severity,
+              title: event.title,
+              body: event.body,
+              ...(event.context ? { context: event.context } : {}),
+              url: event.url ?? null,
+            },
+            options.emailRecipients,
+            options.emailReason ?? "you are on this alert's email recipient list",
+            emailSent,
+            options.emailManageUrl,
+          )
+        : { attempted: 0, succeeded: 0 };
+
     if (decision.legs.length === 0) {
+      if (direct.attempted > 0) {
+        return {
+          ...nothing(),
+          attempted: direct.attempted,
+          succeeded: direct.succeeded,
+          byTransport: { push: 0, slack: 0, msTeams: 0, email: direct.succeeded },
+          attemptedByTransport: { push: 0, slack: 0, msTeams: 0, email: direct.attempted },
+          unrouted: decision.unrouted,
+          matchedRuleIds: decision.matchedRuleIds,
+        };
+      }
       if (decision.unrouted) {
         // Not an error (an org can legitimately route a trigger nowhere) but
         // it is the single most likely explanation for "why didn't I get
@@ -554,11 +656,21 @@ export async function routeAlert(
       return { ...nothing(), unrouted: decision.unrouted, matchedRuleIds: decision.matchedRuleIds };
     }
 
-    let attempted = 0;
-    let succeeded = 0;
+    let attempted = direct.attempted;
+    let succeeded = direct.succeeded;
     let held = 0;
-    const byTransport: AlertTransportCounts = { push: 0, slack: 0, msTeams: 0 };
-    const attemptedByTransport: AlertTransportCounts = { push: 0, slack: 0, msTeams: 0 };
+    const byTransport: AlertTransportCounts = {
+      push: 0,
+      slack: 0,
+      msTeams: 0,
+      email: direct.succeeded,
+    };
+    const attemptedByTransport: AlertTransportCounts = {
+      push: 0,
+      slack: 0,
+      msTeams: 0,
+      email: direct.attempted,
+    };
     const slackMessages: SlackPostedMessage[] = [];
     const msTeamsWebhookIds: string[] = [];
     const deliveryIds: string[] = [];
@@ -587,7 +699,7 @@ export async function routeAlert(
           // The queue insert is the only thing standing between a held alert
           // and silence, so when it fails we send now rather than lose it. A
           // 3am notification is a smaller problem than a missing one.
-          const out = await deliverDestinations(event, fresh, options, []);
+          const out = await deliverDestinations(event, fresh, options, [], emailSent, leg.ruleName);
           attempted += out.attempted;
           succeeded += out.succeeded;
           addCounts(byTransport, out.counts);
@@ -613,6 +725,8 @@ export async function routeAlert(
         fresh,
         options,
         ackId ? [ackButton(event.organizationId, ackId)] : [],
+        emailSent,
+        leg.ruleName,
       );
       attempted += out.attempted;
       succeeded += out.succeeded;

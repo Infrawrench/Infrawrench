@@ -297,6 +297,15 @@ func specChecks() []specCheck {
 		{schema: "AlertRuleInput", value: AlertRuleInput{}},
 		{schema: "AlertRulesResponse", value: AlertRulesResponse{}},
 
+		// Shared by budgets, cost change alerts, anomaly settings and
+		// efficiency settings; each of those checks also sees the field.
+		{schema: "AlertEmailRecipients", value: AlertEmailRecipients{}},
+		{schema: "AlertEmailMember", value: AlertEmailMember{}},
+		{schema: "AlertEmailOptions", value: AlertEmailOptions{}},
+		{schema: "AlertEmailSettings", value: AlertEmailSettings{}},
+		{schema: "AlertEmailSettingsView", value: AlertEmailSettingsView{}},
+		{schema: "AlertEmailSuppression", value: AlertEmailSuppression{}},
+
 		{schema: "OnCallSchedule", value: OnCallSchedule{}},
 		{schema: "OnCallScheduleCreate", value: OnCallScheduleCreate{}},
 		{schema: "OnCallScheduleUpdate", value: OnCallScheduleUpdate{}},

@@ -43,10 +43,22 @@ type efficiencyAlertSettingsResourceModel struct {
 	UnitCostWindowDays        types.Int64 `tfsdk:"unit_cost_window_days"`
 	UnitCostMinReportedDays   types.Int64 `tfsdk:"unit_cost_min_reported_days"`
 	UnitCostMinSpendCents     types.Int64 `tfsdk:"unit_cost_min_spend_cents"`
+
+	EmailMemberIDs types.Set `tfsdk:"email_member_ids"`
+	EmailAddresses types.Set `tfsdk:"email_addresses"`
 }
 
 // efficiencyDefaults are the server's documented defaults, restored on destroy.
-var efficiencyDefaults = iw.CostEfficiencySettings{
+// That includes the email recipients: the shipped default emails nobody
+// directly, so destroy clears them rather than leaving them behind.
+func efficiencyDefaults() iw.CostEfficiencySettings {
+	defaults := efficiencyDefaultValues
+	defaults.CommitmentExpiryHorizonDays = append([]int64(nil), efficiencyDefaultValues.CommitmentExpiryHorizonDays...)
+	defaults.EmailRecipients = clearedEmailRecipients()
+	return defaults
+}
+
+var efficiencyDefaultValues = iw.CostEfficiencySettings{
 	CommitmentExpiryEnabled:        true,
 	CommitmentExpiryHorizonDays:    []int64{60, 30, 7},
 	CommitmentExpiryAlertOnExpired: true,
@@ -71,8 +83,8 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 		MarkdownDescription: "Organization-wide tuning for the three efficiency alerts: a commitment approaching " +
 			"its term end, a commitment sitting idle, and cost per business-metric unit regressing.\n\n" +
 			"An organization **singleton**: the row always exists, so `terraform destroy` restores the " +
-			"shipped defaults rather than deleting anything.",
-		Attributes: map[string]schema.Attribute{
+			"shipped defaults rather than deleting anything, email recipients included.",
+		Attributes: withEmailRecipientAttributes(map[string]schema.Attribute{
 			"id": singletonIDAttribute("Efficiency alerting"),
 
 			"commitment_expiry_enabled": schema.BoolAttribute{
@@ -157,7 +169,7 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 					"per currency. 100–100000000; ships as 10000 ($100).",
 				Validators: []validatorInt64{between(100, 100000000)},
 			},
-		},
+		}, "any of the three efficiency alerts fires"),
 	}
 }
 
@@ -187,7 +199,7 @@ func (r *efficiencyAlertSettingsResource) Read(ctx context.Context, req resource
 		return
 	}
 
-	refreshed, diags := efficiencySettingsStateFrom(ctx, r.client.OrgID(), remote)
+	refreshed, diags := efficiencySettingsStateFrom(ctx, r.client.OrgID(), remote, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -205,7 +217,7 @@ func (r *efficiencyAlertSettingsResource) Update(ctx context.Context, req resour
 }
 
 func (r *efficiencyAlertSettingsResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
-	if _, err := r.client.PutEfficiencySettings(ctx, efficiencyDefaults); err != nil {
+	if _, err := r.client.PutEfficiencySettings(ctx, efficiencyDefaults()); err != nil {
 		resp.Diagnostics.AddError("Unable to reset efficiency alert settings", err.Error())
 	}
 }
@@ -221,7 +233,14 @@ func (r *efficiencyAlertSettingsResource) write(ctx context.Context, plan effici
 		return
 	}
 
+	recipients, d := emailRecipientsFrom(ctx, plan.EmailMemberIDs, plan.EmailAddresses)
+	diags.Append(d...)
+	if diags.HasError() {
+		return
+	}
+
 	saved, err := r.client.PutEfficiencySettings(ctx, iw.CostEfficiencySettings{
+		EmailRecipients:                recipients,
 		CommitmentExpiryEnabled:        plan.CommitmentExpiryEnabled.ValueBool(),
 		CommitmentExpiryHorizonDays:    horizons,
 		CommitmentExpiryAlertOnExpired: plan.CommitmentExpiryAlertOnExpired.ValueBool(),
@@ -241,7 +260,7 @@ func (r *efficiencyAlertSettingsResource) write(ctx context.Context, plan effici
 		return
 	}
 
-	next, d := efficiencySettingsStateFrom(ctx, r.client.OrgID(), saved)
+	next, d := efficiencySettingsStateFrom(ctx, r.client.OrgID(), saved, plan)
 	diags.Append(d...)
 	if diags.HasError() {
 		return
@@ -249,10 +268,13 @@ func (r *efficiencyAlertSettingsResource) write(ctx context.Context, plan effici
 	diags.Append(state.Set(ctx, &next)...)
 }
 
-func efficiencySettingsStateFrom(ctx context.Context, orgID string, remote *iw.CostEfficiencySettings) (efficiencyAlertSettingsResourceModel, diag.Diagnostics) {
+func efficiencySettingsStateFrom(ctx context.Context, orgID string, remote *iw.CostEfficiencySettings, prior efficiencyAlertSettingsResourceModel) (efficiencyAlertSettingsResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	horizons, d := int64List(ctx, remote.CommitmentExpiryHorizonDays)
+	diags.Append(d...)
+
+	memberIDs, addresses, d := emailRecipientsTo(ctx, remote.EmailRecipients, prior.EmailMemberIDs, prior.EmailAddresses)
 	diags.Append(d...)
 
 	return efficiencyAlertSettingsResourceModel{
@@ -270,5 +292,7 @@ func efficiencySettingsStateFrom(ctx context.Context, orgID string, remote *iw.C
 		UnitCostWindowDays:             types.Int64Value(remote.UnitCostWindowDays),
 		UnitCostMinReportedDays:        types.Int64Value(remote.UnitCostMinReportedDays),
 		UnitCostMinSpendCents:          types.Int64Value(remote.UnitCostMinSpendCents),
+		EmailMemberIDs:                 memberIDs,
+		EmailAddresses:                 addresses,
 	}, diags
 }

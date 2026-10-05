@@ -12,6 +12,7 @@ import {
   TAG_KEY_SETTINGS_LIMITS,
   tagKeyPatternError,
   type TagKeySettings,
+  ALERT_EMAIL_LIMITS,
   COST_ALERT_LIMITS,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
@@ -742,6 +743,20 @@ export const budgetThresholdSchema = z.object({
   percent: z.number().int().min(1).max(1000),
 });
 
+/**
+ * Alert email recipients on a cost object. Structural only: whether each user
+ * id is a member and each address passes the org's external-address policy
+ * needs the database, so the services run `alertEmailRecipientsError`
+ * (client-core) after this parses. Optional wherever it appears, and absent
+ * means "leave the stored list alone", never "clear it".
+ */
+export const alertEmailRecipientsSchema = z.object({
+  userIds: z.array(z.string().min(1).max(200)).max(ALERT_EMAIL_LIMITS.maxMembers),
+  addresses: z
+    .array(z.string().min(3).max(ALERT_EMAIL_LIMITS.maxAddressLength))
+    .max(ALERT_EMAIL_LIMITS.maxAddresses),
+});
+
 const budgetUsageAmount = z.number().positive().max(BUDGET_LIMITS.maxUsageAmount);
 
 /**
@@ -818,6 +833,8 @@ export const budgetInputSchema = z.object({
   period: budgetPeriodSchema.optional(),
   /** The budget this one rolls up into. A PUT that omits it makes it a root. */
   parentBudgetId: z.string().min(1).optional(),
+  /** Absent leaves the stored recipients alone (unlike the opt-ins above). */
+  emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
 /**
@@ -847,6 +864,8 @@ export const costAlertInputSchema = z
     thresholdAmountCents: z.number().int().positive().nullable().default(null),
     direction: z.enum(COST_CHANGE_DIRECTIONS),
     enabled: z.boolean().default(true),
+    /** Absent leaves the stored recipients alone. */
+    emailRecipients: alertEmailRecipientsSchema.optional(),
   })
   .refine((v) => v.thresholdPercent !== null || v.thresholdAmountCents !== null, {
     message: "Set a percent threshold, an amount threshold, or both",
@@ -902,6 +921,11 @@ export const costAnomalySettingsSchema = z.object({
    * stored one rather than resetting it.
    */
   feedbackTuning: z.boolean().optional(),
+  /**
+   * The one optional field: added after the schema shipped, so absent has to
+   * mean "unchanged" or every older client's save would clear it.
+   */
+  emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
 /**
@@ -1014,6 +1038,9 @@ export const costEfficiencySettingsSchema = z.object({
     .int()
     .min(COST_EFFICIENCY_LIMITS.minUnitCostSpendCents)
     .max(COST_EFFICIENCY_LIMITS.maxUnitCostSpendCents),
+
+  /** Optional for the same reason as the anomaly settings: absent is "unchanged". */
+  emailRecipients: alertEmailRecipientsSchema.optional(),
 });
 
 /** A custom-graph widget is a dashboard view onto a custom_graphs row. */

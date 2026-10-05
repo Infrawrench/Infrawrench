@@ -25,6 +25,11 @@ resource "infrawrench_budget" "platform" {
     type    = "forecast"
     percent = 100
   }
+
+  # Emailed on top of whatever the alert routing rules decide. Member ids come
+  # from data.infrawrench_members; addresses must pass the external-address
+  # policy in infrawrench_alert_email_settings.
+  email_addresses = ["finance@example.com"]
 }
 
 # A child budget rolls up into the one above: the parent's actual and forecast

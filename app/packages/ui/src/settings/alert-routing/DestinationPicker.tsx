@@ -1,5 +1,12 @@
 import { useGT } from "gt-react";
-import { type AlertDestination, type AlertRulesResponse } from "@infrawrench/client-core";
+import {
+  destinationKey,
+  type AlertDestination,
+  type AlertEmailOptions,
+  type AlertEmailRecipients,
+  type AlertRulesResponse,
+} from "@infrawrench/client-core";
+import { AlertEmailRecipientsField } from "../../cost/AlertEmailRecipientsField.js";
 
 /* -------------------------------------------------------------------------- */
 /* Destinations                                                               */
@@ -10,6 +17,15 @@ export interface DestinationCatalog {
   msTeamsWebhooks: AlertRulesResponse["msTeamsWebhooks"];
   /** On-call rotations, so an `on-call` destination renders by name. */
   onCallSchedules: Array<{ id: string; name: string }>;
+  /**
+   * Members and the external-address policy, for the email destinations.
+   * Optional so a host (or a test) that predates email still renders the
+   * channel checkboxes; without them the email picker is simply absent.
+   */
+  members?: AlertRulesResponse["members"];
+  emailAvailable?: boolean;
+  emailSettings?: AlertRulesResponse["emailSettings"];
+  memberDomains?: string[];
 }
 
 function destinationLabel(
@@ -36,7 +52,31 @@ function destinationLabel(
     }
     case "github-issues":
       return gt("GitHub issues (one per finding)");
+    case "email-member": {
+      const member = catalog.members?.find((m) => m.userId === d.userId);
+      return member ? member.name || member.email : gt("(former member)");
+    }
+    case "email-address":
+      return d.address;
   }
+}
+
+/** A rule's email destinations as the recipient field's shape. */
+function emailRecipientsOf(value: AlertDestination[]): AlertEmailRecipients {
+  return {
+    userIds: value.flatMap((d) => (d.kind === "email-member" ? [d.userId] : [])),
+    addresses: value.flatMap((d) => (d.kind === "email-address" ? [d.address] : [])),
+  };
+}
+
+function emailOptionsOf(catalog: DestinationCatalog): AlertEmailOptions | null {
+  if (!catalog.members || !catalog.emailSettings) return null;
+  return {
+    members: catalog.members,
+    emailAvailable: catalog.emailAvailable ?? false,
+    settings: catalog.emailSettings,
+    memberDomains: catalog.memberDomains ?? [],
+  };
 }
 
 export function DestinationPicker({
@@ -51,10 +91,21 @@ export function DestinationPicker({
   emptyLabel: string;
 }) {
   const gt = useGT();
-  const has = (d: AlertDestination): boolean => value.some((v) => sameDestination(v, d));
+  const selected = new Set(value.map(destinationKey));
+  const has = (d: AlertDestination): boolean => selected.has(destinationKey(d));
 
   function toggle(d: AlertDestination, on: boolean): void {
-    onChange(on ? [...value, d] : value.filter((v) => !sameDestination(v, d)));
+    const key = destinationKey(d);
+    onChange(on ? [...value, d] : value.filter((v) => destinationKey(v) !== key));
+  }
+
+  /** Replace the email half of the list, keeping every channel destination in place. */
+  function setEmail(next: AlertEmailRecipients): void {
+    onChange([
+      ...value.filter((d) => d.kind !== "email-member" && d.kind !== "email-address"),
+      ...next.userIds.map((userId): AlertDestination => ({ kind: "email-member", userId })),
+      ...next.addresses.map((address): AlertDestination => ({ kind: "email-address", address })),
+    ]);
   }
 
   const options: AlertDestination[] = [
@@ -80,37 +131,30 @@ export function DestinationPicker({
   // to build a working rule, and made an existing push destination invisible
   // and so unremovable. The hint is additional, not a replacement.
   const noChannels = catalog.slackChannels.length === 0 && catalog.msTeamsWebhooks.length === 0;
+  const emailOptions = emailOptionsOf(catalog);
+  const email = emailRecipientsOf(value);
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-on-surface-tertiary">
         {options.map((d) => (
-          <label key={destKey(d)} className="flex items-center gap-1.5 whitespace-nowrap">
+          <label key={destinationKey(d)} className="flex items-center gap-1.5 whitespace-nowrap">
             <input type="checkbox" checked={has(d)} onChange={(e) => toggle(d, e.target.checked)} />
             <span>{destinationLabel(d, catalog, gt)}</span>
           </label>
         ))}
       </div>
       {noChannels ? <p className="text-xs text-on-surface-faint">{emptyLabel}</p> : null}
+      {emailOptions ? (
+        <AlertEmailRecipientsField
+          value={email}
+          onChange={setEmail}
+          options={emailOptions}
+          description={gt(
+            "An HTML and plain-text email with a link back to Infrawrench and an unsubscribe link. Email has no acknowledge button.",
+          )}
+        />
+      ) : null}
     </div>
   );
-}
-
-function destKey(d: AlertDestination): string {
-  switch (d.kind) {
-    case "push":
-      return "push";
-    case "slack":
-      return `slack:${d.channelId}`;
-    case "msteams":
-      return `teams:${d.webhookId}`;
-    case "on-call":
-      return `on-call:${d.scheduleId}`;
-    case "github-issues":
-      return "github-issues";
-  }
-}
-
-function sameDestination(a: AlertDestination, b: AlertDestination): boolean {
-  return destKey(a) === destKey(b);
 }

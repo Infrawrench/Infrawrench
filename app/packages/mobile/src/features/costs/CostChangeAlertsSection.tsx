@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import {
   COST_CHANGE_CADENCE_DESCRIPTIONS,
+  alertEmailRecipientCount,
   costAlertEventDeltaLabel,
   formatMoney,
   type CostAlertEvent,
@@ -62,6 +63,9 @@ export function CostChangeAlertsSection() {
                   {alert.thresholdPercent !== null ? ` · ≥ ${alert.thresholdPercent}%` : ""}
                   {alert.thresholdAmountCents !== null
                     ? ` · ≥ ${formatMoney(alert.thresholdAmountCents / 100, "USD")}`
+                    : ""}
+                  {alertEmailRecipientCount(alert.emailRecipients) > 0
+                    ? ` · emails ${alertEmailRecipientCount(alert.emailRecipients)}`
                     : ""}
                   {!alert.enabled ? " · paused" : ""}
                 </Text>

@@ -578,5 +578,7 @@ export function budgetWithStatusToInput(budget: BudgetWithStatus): BudgetInput {
     ...(budget.usageAmount != null ? { usageAmount: budget.usageAmount } : {}),
     ...(budget.period ? { period: budget.period } : {}),
     ...(budget.parentBudgetId ? { parentBudgetId: budget.parentBudgetId } : {}),
+    // Carried so the editor shows (and can change) who this budget emails.
+    ...(budget.emailRecipients ? { emailRecipients: budget.emailRecipients } : {}),
   };
 }

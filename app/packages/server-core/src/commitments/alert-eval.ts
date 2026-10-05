@@ -55,6 +55,7 @@ import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "../cost/anomaly-detect";
 import { addDays, isoDay } from "../cost/dates";
 import { getOrgEfficiencySettings } from "../cost/efficiency-settings";
+import { efficiencyEmail } from "../alerts/object-email";
 import { computeCommitmentUtilization } from "./utilization";
 import {
   detectCommitmentExpiries,
@@ -385,31 +386,34 @@ async function evaluateExpiries(
           : `Commitment expires ${whenPhrase(finding.daysRemaining)}: ${finding.description}`;
 
       const amountCents = expiryAmountCents(finding);
-      const routed = await routeAlert({
-        organizationId,
-        trigger: "commitmentExpiryAlerts",
-        // An auto-renewal is news, not a problem; an expiry that already
-        // happened is the one nobody can plan around any more.
-        severity: finding.autoRenewing ? "info" : "warning",
-        title,
-        body: expiryBody(finding, row.accountName),
-        context: `${finding.termEndDay} · ${row.accountName} · ${finding.kind}`,
-        url,
-        pushData: {
-          type: "commitment_expiry",
-          orgId: organizationId,
-          accountId: finding.accountId,
-          commitmentId: finding.commitmentId,
-          horizonDays: finding.horizonDays,
+      const routed = await routeAlert(
+        {
+          organizationId,
+          trigger: "commitmentExpiryAlerts",
+          // An auto-renewal is news, not a problem; an expiry that already
+          // happened is the one nobody can plan around any more.
+          severity: finding.autoRenewing ? "info" : "warning",
+          title,
+          body: expiryBody(finding, row.accountName),
+          context: `${finding.termEndDay} · ${row.accountName} · ${finding.kind}`,
+          url,
+          pushData: {
+            type: "commitment_expiry",
+            orgId: organizationId,
+            accountId: finding.accountId,
+            commitmentId: finding.commitmentId,
+            horizonDays: finding.horizonDays,
+          },
+          facts: {
+            accountId: finding.accountId,
+            pluginId: row.pluginId,
+            key: finding.description,
+            ...(amountCents !== undefined ? { amountCents } : {}),
+            ...(finding.currency ? { currency: finding.currency } : {}),
+          },
         },
-        facts: {
-          accountId: finding.accountId,
-          pluginId: row.pluginId,
-          key: finding.description,
-          ...(amountCents !== undefined ? { amountCents } : {}),
-          ...(finding.currency ? { currency: finding.currency } : {}),
-        },
-      });
+        efficiencyEmail(settings, url, "commitment expiry"),
+      );
       // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
       // that has not happened yet, and the events row already deduplicates;
       // `notifiedAt` is bookkeeping for the UI, not a retry gate.
@@ -518,49 +522,52 @@ async function evaluateIdle(
         // daily event.
         if (!inserted) continue;
 
-        const routed = await routeAlert({
-          organizationId,
-          trigger: "commitmentIdleAlerts",
-          title: `Idle commitment (${Math.round(finding.utilization * 100)}%): ${finding.description}`,
-          body: idleBody(finding, row.accountName),
-          context: `${finding.window.from}–${finding.window.to} · ${row.accountName}`,
-          url,
-          pushData: {
-            type: "commitment_idle",
-            orgId: organizationId,
-            accountId: finding.accountId,
-            commitmentId: finding.commitmentId,
-            periodKey,
+        const routed = await routeAlert(
+          {
+            organizationId,
+            trigger: "commitmentIdleAlerts",
+            title: `Idle commitment (${Math.round(finding.utilization * 100)}%): ${finding.description}`,
+            body: idleBody(finding, row.accountName),
+            context: `${finding.window.from}–${finding.window.to} · ${row.accountName}`,
+            url,
+            pushData: {
+              type: "commitment_idle",
+              orgId: organizationId,
+              accountId: finding.accountId,
+              commitmentId: finding.commitmentId,
+              periodKey,
+            },
+            // The wasted money, not the commitment's price: "idle commitments
+            // over $1,000 → #finance" means the waste.
+            facts: {
+              accountId: finding.accountId,
+              pluginId: row.pluginId,
+              key: finding.description,
+              amountCents: Math.round(finding.wastedAmount * 100),
+              ...(finding.currency ? { currency: finding.currency } : {}),
+            },
+            // Keyed by commitment rather than month, so next month's repeat
+            // comments on the open issue instead of opening another.
+            finding: {
+              sourceKind: "commitment_idle",
+              sourceId: `${finding.accountId}:${finding.commitmentId}`,
+              title: `${finding.description} ran at ${Math.round(finding.utilization * 100)}% utilization`,
+              details: [
+                { label: "Commitment", value: finding.description },
+                { label: "Account", value: row.accountName },
+                { label: "Window", value: `${finding.window.from} to ${finding.window.to}` },
+                { label: "Utilization", value: `${Math.round(finding.utilization * 100)}%` },
+                {
+                  label: "Wasted",
+                  value: `${finding.wastedAmount.toFixed(2)}${finding.currency ? ` ${finding.currency}` : ""}`,
+                },
+              ],
+              note: idleBody(finding, row.accountName),
+              appUrl: url,
+            },
           },
-          // The wasted money, not the commitment's price: "idle commitments
-          // over $1,000 → #finance" means the waste.
-          facts: {
-            accountId: finding.accountId,
-            pluginId: row.pluginId,
-            key: finding.description,
-            amountCents: Math.round(finding.wastedAmount * 100),
-            ...(finding.currency ? { currency: finding.currency } : {}),
-          },
-          // Keyed by commitment rather than month, so next month's repeat
-          // comments on the open issue instead of opening another.
-          finding: {
-            sourceKind: "commitment_idle",
-            sourceId: `${finding.accountId}:${finding.commitmentId}`,
-            title: `${finding.description} ran at ${Math.round(finding.utilization * 100)}% utilization`,
-            details: [
-              { label: "Commitment", value: finding.description },
-              { label: "Account", value: row.accountName },
-              { label: "Window", value: `${finding.window.from} to ${finding.window.to}` },
-              { label: "Utilization", value: `${Math.round(finding.utilization * 100)}%` },
-              {
-                label: "Wasted",
-                value: `${finding.wastedAmount.toFixed(2)}${finding.currency ? ` ${finding.currency}` : ""}`,
-              },
-            ],
-            note: idleBody(finding, row.accountName),
-            appUrl: url,
-          },
-        });
+          efficiencyEmail(settings, url, "idle commitment"),
+        );
         if (alertReached(routed)) {
           await db
             .update(commitmentIdleEvents)

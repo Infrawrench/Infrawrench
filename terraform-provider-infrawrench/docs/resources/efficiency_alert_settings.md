@@ -4,14 +4,14 @@ page_title: "infrawrench_efficiency_alert_settings Resource - infrawrench"
 subcategory: ""
 description: |-
   Organization-wide tuning for the three efficiency alerts: a commitment approaching its term end, a commitment sitting idle, and cost per business-metric unit regressing.
-  An organization singleton: the row always exists, so terraform destroy restores the shipped defaults rather than deleting anything.
+  An organization singleton: the row always exists, so terraform destroy restores the shipped defaults rather than deleting anything, email recipients included.
 ---
 
 # infrawrench_efficiency_alert_settings (Resource)
 
 Organization-wide tuning for the three efficiency alerts: a commitment approaching its term end, a commitment sitting idle, and cost per business-metric unit regressing.
 
-An organization **singleton**: the row always exists, so `terraform destroy` restores the shipped defaults rather than deleting anything.
+An organization **singleton**: the row always exists, so `terraform destroy` restores the shipped defaults rather than deleting anything, email recipients included.
 
 
 
@@ -33,6 +33,15 @@ An organization **singleton**: the row always exists, so `terraform destroy` res
 - `unit_cost_regression_enabled` (Boolean) Whether rising cost per business-metric unit raises alerts. Ships as `true`.
 - `unit_cost_threshold_percent` (Number) Percent the unit cost must rise versus the prior window, 1–1000. Ships as 20.
 - `unit_cost_window_days` (Number) Length of each of the two compared windows, 7–90. Ships as 14 — two whole weekly cycles a side, so a weekday-shaped unit cost compares like with like.
+
+### Optional
+
+- `email_addresses` (Set of String) Extra addresses to email when any of the three efficiency alerts fires: a `finance@` alias, or someone without a login. At most 20. Each must pass the organization's external-address policy (`infrawrench_alert_email_settings`), checked when saved and again when sent. Emailed **in addition to** whatever the organization's `infrawrench_alert_routing` rules decide, whether or not a rule matched, and never held by quiet hours.
+
+Optional and computed: leave it out and the list is managed elsewhere (removing it from configuration leaves the stored list unchanged); set `[]` to clear it.
+- `email_member_ids` (Set of String) Organization members to email when any of the three efficiency alerts fires, by user id from the `infrawrench_members` data source. At most 50. The member's current login address is read when the alert is sent, so an address change follows them and a member who leaves stops receiving. Emailed **in addition to** whatever the organization's `infrawrench_alert_routing` rules decide, whether or not a rule matched, and never held by quiet hours.
+
+Optional and computed: leave it out and the list is managed elsewhere (removing it from configuration leaves the stored list unchanged); set `[]` to clear it.
 
 ### Read-Only
 

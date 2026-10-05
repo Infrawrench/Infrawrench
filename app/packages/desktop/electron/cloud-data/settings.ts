@@ -53,6 +53,11 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET"], pattern: new RegExp(`${ORG}/saved-cost-filters$`) },
   // Customer picker on the Billing Rules page (tiered and expression rules).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/managed-accounts$`) },
+  // The Email connection pane on the Notifications page: the external-address
+  // policy and lifting an unsubscribe. The picker options read (`/alert-email`
+  // itself) goes through the costs IPC instead.
+  { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/alert-email/settings$`) },
+  { methods: ["DELETE"], pattern: new RegExp(`${ORG}/alert-email/suppressions/[^/?]+$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
   // GitHub issues page: the repository picker, the connect link and the IaC

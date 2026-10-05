@@ -213,6 +213,15 @@ ipcMain.handle("cloud_costs_efficiency_settings", async (_e, { orgId }: { orgId:
   return cloudFetch(orgId, "/costs/efficiency-alert-settings");
 });
 
+/**
+ * Members, the external-address policy and email availability: the options
+ * behind every cost editor's alert email recipients field. `costs:read`, like
+ * the settings reads above.
+ */
+ipcMain.handle("cloud_alert_email_options", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/alert-email");
+});
+
 ipcMain.handle(
   "cloud_costs_update_efficiency_settings",
   async (_e, { orgId, settings }: { orgId: string; settings: unknown }) => {

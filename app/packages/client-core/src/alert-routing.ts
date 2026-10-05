@@ -22,6 +22,8 @@
  * what makes the rules testable and the preview honest.
  */
 
+import type { AlertEmailMember, AlertEmailSettings } from "./alert-email";
+
 // --- Triggers ---
 
 /**
@@ -457,7 +459,20 @@ export type AlertDestination =
    * neither attempted nor failed. Dedupe is by finding fingerprint, so a
    * re-raised finding comments on its open issue instead of opening another.
    */
-  | { kind: "github-issues" };
+  | { kind: "github-issues" }
+  /**
+   * One org member's inbox, by user id. The address is read at send time, so
+   * an email change follows the member and a leaver stops receiving. Email
+   * has no acknowledge surface, so a rule routed only to email always
+   * escalates (the same as Teams and push).
+   */
+  | { kind: "email-member"; userId: string }
+  /**
+   * An extra address (a `finance@` alias, someone without a login). Must pass
+   * the org's external-address policy (`AlertEmailSettings` in
+   * `alert-email.ts`), checked on save and again at send time.
+   */
+  | { kind: "email-address"; address: string };
 
 export function destinationKey(d: AlertDestination): string {
   switch (d.kind) {
@@ -471,6 +486,10 @@ export function destinationKey(d: AlertDestination): string {
       return `on-call:${d.scheduleId}`;
     case "github-issues":
       return "github-issues";
+    case "email-member":
+      return `email-member:${d.userId}`;
+    case "email-address":
+      return `email-address:${d.address.toLowerCase()}`;
   }
 }
 
@@ -1011,6 +1030,18 @@ export interface AlertRulesResponse {
    * out of `slackChannels`.
    */
   onCallSchedules: Array<{ id: string; name: string }>;
+  /**
+   * Current members, for the email destination picker and for naming an
+   * existing `email-member` destination. Leavers are absent, so a destination
+   * naming one renders as a former member and delivers nothing.
+   */
+  members: AlertEmailMember[];
+  /** Whether this deployment can send email at all. */
+  emailAvailable: boolean;
+  /** The org's external-address policy, so the editor can check an address before saving. */
+  emailSettings: AlertEmailSettings;
+  /** Domains the org's members use: the implicit half of `member-domains`. */
+  memberDomains: string[];
 }
 
 export type AlertRuleInput = Omit<AlertRule, "id"> & { id?: string };

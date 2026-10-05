@@ -68,7 +68,7 @@ import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
-import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
+import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdDns } from "./commands/dns";
@@ -273,6 +273,7 @@ COMMANDS
   alerts events       recent metric alert firings & recoveries   [--limit 50]
   routing             alert routing rules, in evaluation order
   routing queue       alerts held for quiet hours or awaiting ack [--limit 50]
+  routing email       alert email policy and unsubscribed addresses
   expiring            certificates, domains, tokens & keys approaching expiry, soonest first
                       (--local scans this machine's workspace)
   posture             security posture findings (public buckets, world-open ingress, unencrypted
@@ -894,6 +895,10 @@ export async function runCli(): Promise<void> {
       case "routing":
         if (rest[0] === "queue") {
           await cmdRoutingQueue(ctx, parsed.range.limit);
+          break;
+        }
+        if (rest[0] === "email") {
+          await cmdRoutingEmail(ctx);
           break;
         }
         await cmdRouting(ctx);

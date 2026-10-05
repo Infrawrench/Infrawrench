@@ -66,15 +66,16 @@ measuring against is judged as a spike, and only a key with no baseline can be a
 
 ## Tuning detection
 
-The **Tune detection** button on the Costs panel's Anomalies section opens four controls,
+The **Tune detection** button on the Costs panel's Anomalies section opens five controls,
 stored per organization:
 
-| Control                   | What it does                                                                               | Default | Range                                |
-| ------------------------- | ------------------------------------------------------------------------------------------ | ------- | ------------------------------------ |
-| **Sensitivity (σ)**       | Standard deviations above a key's own average before a day is a spike. Lower catches more. | 3       | 1 – 10                               |
-| **Spike floor**           | The minimum rise over the baseline a spike must also clear, in USD.                        | $10     | $1 – $100,000                        |
-| **New-source floor**      | The minimum first-day spend before a provider or service with no history alerts, in USD.   | $25     | $1 – $100,000                        |
-| **Text the on-call list** | Whether anomalies also send an SMS — see [Paging by SMS](#paging-by-sms).                  | Never   | Never / New sources only / Every one |
+| Control                   | What it does                                                                                       | Default | Range                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------- | ------- | ------------------------------------ |
+| **Sensitivity (σ)**       | Standard deviations above a key's own average before a day is a spike. Lower catches more.         | 3       | 1 – 10                               |
+| **Spike floor**           | The minimum rise over the baseline a spike must also clear, in USD.                                | $10     | $1 – $100,000                        |
+| **New-source floor**      | The minimum first-day spend before a provider or service with no history alerts, in USD.           | $25     | $1 – $100,000                        |
+| **Text the on-call list** | Whether anomalies also send an SMS — see [Paging by SMS](#paging-by-sms).                          | Never   | Never / New sources only / Every one |
+| **Email recipients**      | Members and approved addresses emailed about every anomaly; see [email alerts](./email-alerts.md). | Nobody  | Up to 50 members and 20 addresses    |
 
 The bounds are enforced by the server, not just the form. A sensitivity of 0 would flag every
 day a cent above average, and anything under 1σ flags roughly a third of ordinary days; a floor

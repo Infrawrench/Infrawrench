@@ -25,6 +25,12 @@ export {
   DEFAULT_BUDGET_INPUT,
   type BudgetConfigModalProps,
 } from "./BudgetConfigModal.js";
+export {
+  AlertEmailRecipientsField,
+  LoadedAlertEmailRecipientsField,
+  useAlertEmailOptions,
+  type AlertEmailRecipientsFieldProps,
+} from "./AlertEmailRecipientsField.js";
 export { CostsPanel, type CostsPanelProps } from "./CostsPanel.js";
 export { TagGovernanceSection } from "./TagGovernanceSection.js";
 export { CostAnomaliesSection, type CostAnomaliesSectionProps } from "./CostAnomaliesSection.js";

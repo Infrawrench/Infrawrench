@@ -103,6 +103,8 @@ type budgetResourceModel struct {
 	ParentBudgetID   types.String  `tfsdk:"parent_budget_id"`
 	RecurringPeriod  types.Object  `tfsdk:"recurring_period"`
 	ExplicitPeriod   types.List    `tfsdk:"explicit_period"`
+	EmailMemberIDs   types.Set     `tfsdk:"email_member_ids"`
+	EmailAddresses   types.Set     `tfsdk:"email_addresses"`
 }
 
 func (r *budgetResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -120,7 +122,7 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"Budgets carry live status (this period's actual and forecast) that this resource " +
 			"deliberately does not expose: it changes on every refresh and would make every plan " +
 			"noisy. Read it from the UI, the CLI, or the API.",
-		Attributes: map[string]schema.Attribute{
+		Attributes: withEmailRecipientAttributes(map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Server-assigned budget id. Use it with `terraform import`.",
@@ -197,7 +199,7 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Measure against spend restated by `infrawrench_billing_rule`s rather than raw spend.",
 			},
-		},
+		}, "the budget crosses one of its thresholds"),
 		Blocks: map[string]schema.Block{
 			"filter": costFilterBlockSchema("Restricts the budget to matching spend. Clauses are ANDed."),
 			"threshold": schema.ListNestedBlock{
@@ -437,7 +439,11 @@ func budgetInputFrom(ctx context.Context, model budgetResourceModel) (iw.BudgetI
 		measure = m
 	}
 
+	recipients, d := emailRecipientsFrom(ctx, model.EmailMemberIDs, model.EmailAddresses)
+	diags.Append(d...)
+
 	return iw.BudgetInput{
+		EmailRecipients:  recipients,
 		Name:             model.Name.ValueString(),
 		AmountCents:      model.AmountCents.ValueInt64(),
 		Currency:         model.Currency.ValueString(),
@@ -564,7 +570,12 @@ func budgetStateFrom(ctx context.Context, remote *iw.Budget, prior budgetResourc
 		}
 	}
 
+	memberIDs, addresses, d := emailRecipientsTo(ctx, remote.EmailRecipients, prior.EmailMemberIDs, prior.EmailAddresses)
+	diags.Append(d...)
+
 	return budgetResourceModel{
+		EmailMemberIDs:   memberIDs,
+		EmailAddresses:   addresses,
 		ID:               types.StringValue(remote.ID),
 		Name:             types.StringValue(remote.Name),
 		AmountCents:      types.Int64Value(remote.AmountCents),

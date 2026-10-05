@@ -50,6 +50,7 @@ import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import { getMetricValues } from "./metric-ingest";
 import { SavedCostFilterResolutionError, resolveSavedCostFilters } from "./saved-filters";
 import { getOrgEfficiencySettings } from "./efficiency-settings";
+import { efficiencyEmail } from "../alerts/object-email";
 import {
   detectUnitCostRegression,
   unitCostWindows,
@@ -286,30 +287,33 @@ async function evaluateMetric(
       if (await inCooldown(metric.id, finding.currency, windows.current.to)) continue;
 
       const percent = Math.round(finding.changePercent);
-      const routed = await routeAlert({
-        organizationId,
-        trigger: "unitCostRegressionAlerts",
-        title: `Unit cost up ${percent}%: ${metric.name}`,
-        body: regressionBody(finding, metric),
-        context: `${windows.current.from}–${windows.current.to} vs ${windows.previous.from}–${windows.previous.to}`,
-        url,
-        pushData: {
-          type: "unit_cost_regression",
-          orgId: organizationId,
-          metricId: metric.id,
-          windowTo: windows.current.to,
-          currency: finding.currency,
+      const routed = await routeAlert(
+        {
+          organizationId,
+          trigger: "unitCostRegressionAlerts",
+          title: `Unit cost up ${percent}%: ${metric.name}`,
+          body: regressionBody(finding, metric),
+          context: `${windows.current.from}–${windows.current.to} vs ${windows.previous.from}–${windows.previous.to}`,
+          url,
+          pushData: {
+            type: "unit_cost_regression",
+            orgId: organizationId,
+            metricId: metric.id,
+            windowTo: windows.current.to,
+            currency: finding.currency,
+          },
+          // The current window's spend, not the unit cost: a rule saying "unit
+          // cost regressions over $10,000 → #finance" means the size of the
+          // scope that regressed. A unit cost is routinely sub-cent and would
+          // make every such rule match nothing.
+          facts: {
+            amountCents: Math.round(finding.current.cost * 100),
+            currency: finding.currency,
+            key: metric.key,
+          },
         },
-        // The current window's spend, not the unit cost: a rule saying "unit
-        // cost regressions over $10,000 → #finance" means the size of the
-        // scope that regressed. A unit cost is routinely sub-cent and would
-        // make every such rule match nothing.
-        facts: {
-          amountCents: Math.round(finding.current.cost * 100),
-          currency: finding.currency,
-          key: metric.key,
-        },
-      });
+        efficiencyEmail(settings, url, "unit-cost regression"),
+      );
       if (alertReached(routed)) {
         await db
           .update(unitCostRegressionEvents)

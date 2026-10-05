@@ -1,6 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import { AlertEmailRecipients } from "./alert-email";
 
 const IsoDate = z
   .string()
@@ -80,6 +81,7 @@ const CostAlertInput = strict({
     .describe("Cents the change must reach."),
   direction: CostChangeDirection,
   enabled: z.boolean().optional(),
+  emailRecipients: AlertEmailRecipients.optional(),
 }).openapi("CostAlertInput");
 
 const CostAlert = strict({
@@ -95,6 +97,7 @@ const CostAlert = strict({
   enabled: z.boolean(),
   lastEvaluatedAt: IsoDateTime.nullable(),
   lastFiredAt: IsoDateTime.nullable(),
+  emailRecipients: AlertEmailRecipients,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 })

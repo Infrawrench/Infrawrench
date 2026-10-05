@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -31,17 +32,23 @@ type anomalySettingsResourceModel struct {
 	SMSAlerts         types.String  `tfsdk:"sms_alerts"`
 	SMSConfigured     types.Bool    `tfsdk:"sms_configured"`
 	FeedbackTuning    types.Bool    `tfsdk:"feedback_tuning"`
+	EmailMemberIDs    types.Set     `tfsdk:"email_member_ids"`
+	EmailAddresses    types.Set     `tfsdk:"email_addresses"`
 }
 
 // anomalyDefaults are the server's documented defaults, and what destroy
 // restores. There is no DELETE on this route (the settings row always exists)
 // so "remove it from Terraform" has to mean "put it back the way it shipped".
-var anomalyDefaults = iw.CostAnomalySettings{
-	Sigmas:            3,
-	MinDeltaCents:     1000,
-	NewSourceMinCents: 2500,
-	SMSAlerts:         "off",
-	FeedbackTuning:    &feedbackTuningDefault,
+// The shipped default emails nobody directly, so the recipients are cleared too.
+func anomalyDefaults() iw.CostAnomalySettings {
+	return iw.CostAnomalySettings{
+		Sigmas:            3,
+		MinDeltaCents:     1000,
+		NewSourceMinCents: 2500,
+		SMSAlerts:         "off",
+		FeedbackTuning:    &feedbackTuningDefault,
+		EmailRecipients:   clearedEmailRecipients(),
+	}
 }
 
 // feedbackTuningDefault is a variable rather than a literal so anomalyDefaults
@@ -61,8 +68,9 @@ func (r *anomalySettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 			"before anyone is told.\n\n" +
 			"This is an organization **singleton** — one row that always exists. `terraform destroy` " +
 			"therefore restores the shipped defaults rather than deleting anything, because an " +
-			"organization with no anomaly settings is not a state the API can be in.",
-		Attributes: map[string]schema.Attribute{
+			"organization with no anomaly settings is not a state the API can be in. The email " +
+			"recipients are cleared as part of that reset.",
+		Attributes: withEmailRecipientAttributes(map[string]schema.Attribute{
 			"id": singletonIDAttribute("Anomaly detection"),
 			"sigmas": schema.Float64Attribute{
 				Required: true,
@@ -117,7 +125,7 @@ func (r *anomalySettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 					"server-side — setting `sms_alerts` on an organization where this is `false` configures " +
 					"something that cannot fire.",
 			},
-		},
+		}, "an anomaly is detected"),
 	}
 }
 
@@ -149,7 +157,11 @@ func (r *anomalySettingsResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
-	refreshed := anomalySettingsStateFrom(r.client.OrgID(), remote)
+	refreshed, diags := anomalySettingsStateFrom(ctx, r.client.OrgID(), remote, state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
 }
 
@@ -165,7 +177,7 @@ func (r *anomalySettingsResource) Update(ctx context.Context, req resource.Updat
 // Delete restores the defaults. See the schema description for why it cannot
 // remove anything.
 func (r *anomalySettingsResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
-	if _, err := r.client.PutAnomalySettings(ctx, anomalyDefaults); err != nil {
+	if _, err := r.client.PutAnomalySettings(ctx, anomalyDefaults()); err != nil {
 		resp.Diagnostics.AddError("Unable to reset anomaly settings", err.Error())
 	}
 }
@@ -175,7 +187,14 @@ func (r *anomalySettingsResource) ImportState(ctx context.Context, _ resource.Im
 }
 
 func (r *anomalySettingsResource) write(ctx context.Context, plan anomalySettingsResourceModel, diags *diagnostics, state *tfState) {
+	recipients, d := emailRecipientsFrom(ctx, plan.EmailMemberIDs, plan.EmailAddresses)
+	diags.Append(d...)
+	if diags.HasError() {
+		return
+	}
+
 	saved, err := r.client.PutAnomalySettings(ctx, iw.CostAnomalySettings{
+		EmailRecipients:   recipients,
 		Sigmas:            plan.Sigmas.ValueFloat64(),
 		MinDeltaCents:     plan.MinDeltaCents.ValueInt64(),
 		NewSourceMinCents: plan.NewSourceMinCents.ValueInt64(),
@@ -186,12 +205,19 @@ func (r *anomalySettingsResource) write(ctx context.Context, plan anomalySetting
 		diags.AddError("Unable to write anomaly settings", err.Error())
 		return
 	}
-	next := anomalySettingsStateFrom(r.client.OrgID(), saved)
+	next, d := anomalySettingsStateFrom(ctx, r.client.OrgID(), saved, plan)
+	diags.Append(d...)
+	if diags.HasError() {
+		return
+	}
 	diags.Append(state.Set(ctx, &next)...)
 }
 
-func anomalySettingsStateFrom(orgID string, remote *iw.CostAnomalySettings) anomalySettingsResourceModel {
+func anomalySettingsStateFrom(ctx context.Context, orgID string, remote *iw.CostAnomalySettings, prior anomalySettingsResourceModel) (anomalySettingsResourceModel, diag.Diagnostics) {
+	memberIDs, addresses, diags := emailRecipientsTo(ctx, remote.EmailRecipients, prior.EmailMemberIDs, prior.EmailAddresses)
 	return anomalySettingsResourceModel{
+		EmailMemberIDs:    memberIDs,
+		EmailAddresses:    addresses,
 		ID:                types.StringValue(orgID),
 		Sigmas:            types.Float64Value(remote.Sigmas),
 		MinDeltaCents:     types.Int64Value(remote.MinDeltaCents),
@@ -201,5 +227,5 @@ func anomalySettingsStateFrom(orgID string, remote *iw.CostAnomalySettings) anom
 		// Always present on a read; an older server that predates the field
 		// behaves as if it were on, which is also the default.
 		FeedbackTuning: boolValueOrDefault(remote.FeedbackTuning, true),
-	}
+	}, diags
 }

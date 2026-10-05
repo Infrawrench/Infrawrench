@@ -48,6 +48,8 @@ type costAlertResourceModel struct {
 	ThresholdAmountCents types.Int64  `tfsdk:"threshold_amount_cents"`
 	Enabled              types.Bool   `tfsdk:"enabled"`
 	Filter               types.List   `tfsdk:"filter"`
+	EmailMemberIDs       types.Set    `tfsdk:"email_member_ids"`
+	EmailAddresses       types.Set    `tfsdk:"email_addresses"`
 }
 
 func (r *costAlertResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -66,7 +68,7 @@ func (r *costAlertResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"and this resource deliberately does not expose them — they change on nearly every " +
 			"refresh and would make every plan noisy, exactly as budget spend status would. Read " +
 			"them from the UI, the CLI, or the API.",
-		Attributes: map[string]schema.Attribute{
+		Attributes: withEmailRecipientAttributes(map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Server-assigned alert id. Use it with `terraform import`.",
@@ -122,7 +124,7 @@ func (r *costAlertResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				MarkdownDescription: "Whether the alert is evaluated. Defaults to `true`. Set it to " +
 					"`false` to silence an alert without losing its definition.",
 			},
-		},
+		}, "the alert fires"),
 		Blocks: map[string]schema.Block{
 			"filter": costFilterBlockSchema("Restricts the alert to matching spend. Clauses are ANDed."),
 		},
@@ -285,7 +287,11 @@ func costAlertInputFrom(ctx context.Context, model costAlertResourceModel) (iw.C
 	filters, d := costFiltersFrom(ctx, model.Filter)
 	diags.Append(d...)
 
+	recipients, d := emailRecipientsFrom(ctx, model.EmailMemberIDs, model.EmailAddresses)
+	diags.Append(d...)
+
 	return iw.CostAlertInput{
+		EmailRecipients:      recipients,
 		Name:                 model.Name.ValueString(),
 		Filters:              filters,
 		GroupBy:              stringPtr(model.GroupBy),
@@ -300,20 +306,25 @@ func costAlertInputFrom(ctx context.Context, model costAlertResourceModel) (iw.C
 
 // costAlertStateFrom maps a server alert into Terraform state.
 //
-// The prior model is not consulted, unlike in the budget resource: every
-// attribute this resource exposes is either non-nullable on the wire or
-// genuinely nullable in a way the practitioner can express, so the response is
-// always a complete answer and there is nothing for a fallback to repair.
+// The prior model is consulted only for the email recipients, and only against
+// a server old enough not to return them: every other attribute is either
+// non-nullable on the wire or genuinely nullable in a way the practitioner can
+// express, so the response is a complete answer.
 //
 // The evaluation timestamps the response also carries are dropped on the floor
 // here, for the reason given in the schema description.
-func costAlertStateFrom(ctx context.Context, remote *iw.CostAlert, _ costAlertResourceModel) (costAlertResourceModel, diag.Diagnostics) {
+func costAlertStateFrom(ctx context.Context, remote *iw.CostAlert, prior costAlertResourceModel) (costAlertResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	filters, d := costFiltersTo(ctx, remote.Filters)
 	diags.Append(d...)
 
+	memberIDs, addresses, d := emailRecipientsTo(ctx, remote.EmailRecipients, prior.EmailMemberIDs, prior.EmailAddresses)
+	diags.Append(d...)
+
 	return costAlertResourceModel{
+		EmailMemberIDs:       memberIDs,
+		EmailAddresses:       addresses,
 		ID:                   types.StringValue(remote.ID),
 		Name:                 types.StringValue(remote.Name),
 		Cadence:              types.StringValue(remote.Cadence),

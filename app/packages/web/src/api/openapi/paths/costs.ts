@@ -8,6 +8,7 @@ import {
   FindingRemediation,
 } from "../common";
 import type { BuildContext } from "../context";
+import { AlertEmailRecipients } from "./alert-email";
 // One definition of the shape that keeps the collected figure visible: see
 // `paths/billing-rules.ts`.
 import { CostAdjustmentSummary } from "./billing-rules";
@@ -521,6 +522,10 @@ const CostAnomalySettings = strict({
         "key. Defaults to true. Optional on PUT: omitting it keeps the stored value. Always " +
         "present on a read.",
     ),
+  emailRecipients: AlertEmailRecipients.optional().describe(
+    "Who is emailed about each anomaly, besides the alert routing rules. Optional on PUT: " +
+      "omitting it leaves the stored list unchanged. Always present in responses.",
+  ),
 }).openapi("CostAnomalySettings");
 
 /**
@@ -644,6 +649,11 @@ const CostEfficiencySettings = strict({
       "Least spend in the current window before alerting, in USD cents, restated per " +
         "currency. Defaults to 10000 ($100).",
     ),
+  emailRecipients: AlertEmailRecipients.optional().describe(
+    "Who is emailed about commitment expiry, idle commitment and unit-cost regression alerts, " +
+      "besides the alert routing rules. Optional on PUT: omitting it leaves the stored list " +
+      "unchanged. Always present in responses.",
+  ),
 }).openapi("CostEfficiencySettings");
 
 const EfficiencyAlertEvent = strict({

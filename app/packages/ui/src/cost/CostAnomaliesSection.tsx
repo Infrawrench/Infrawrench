@@ -22,6 +22,7 @@ import {
 import { formatFeedbackDay, useAnomalyFeedbackLabels } from "./anomaly-feedback-labels.js";
 import type { CostAnomalyVerdict } from "@infrawrench/client-core";
 import { formatMoney } from "./transform.js";
+import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js";
 import type { CostAnomalySettings, CostAnomalySettingsView, CostAnomalySmsMode } from "./config.js";
 import type { CostAnomaly, CostsClient } from "./types.js";
 
@@ -525,6 +526,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
         newSourceMinCents: draft.newSourceMinCents,
         smsAlerts: draft.smsAlerts,
         feedbackTuning: draft.feedbackTuning !== false,
+        ...(draft.emailRecipients ? { emailRecipients: draft.emailRecipients } : {}),
       });
       setDraft(next);
       setSaved(next);
@@ -557,7 +559,8 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
     draft.minDeltaCents !== saved.minDeltaCents ||
     draft.newSourceMinCents !== saved.newSourceMinCents ||
     draft.smsAlerts !== saved.smsAlerts ||
-    (draft.feedbackTuning !== false) !== (saved.feedbackTuning !== false);
+    (draft.feedbackTuning !== false) !== (saved.feedbackTuning !== false) ||
+    JSON.stringify(draft.emailRecipients ?? null) !== JSON.stringify(saved.emailRecipients ?? null);
 
   /**
    * Asking for texts an org cannot receive. Twilio is configured on a page a
@@ -713,6 +716,16 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             Notifications. Until then this setting is saved but nothing is sent.
           </div>
         </T>
+      )}
+
+      {client.getAlertEmailOptions && (
+        <LoadedAlertEmailRecipientsField
+          load={client.getAlertEmailOptions.bind(client)}
+          value={draft.emailRecipients ?? { userIds: [], addresses: [] }}
+          onChange={(emailRecipients) => set({ emailRecipients })}
+          disabled={!canEdit || busy}
+          description={gt("Emailed about every anomaly, in addition to your alert routing rules.")}
+        />
       )}
 
       {saveError !== null && (

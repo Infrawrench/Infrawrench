@@ -80,6 +80,7 @@ import type {
   CostAnomalySensitivity,
   CostAnomalySuppression,
   CostAnomalySuppressionInput,
+  AlertEmailOptions,
 } from "@infrawrench/client-core";
 import type {
   RealizedSavingsReport,
@@ -387,6 +388,11 @@ export async function loadCloudEfficiencyAlerts(
 
 export async function loadCloudEfficiencySettings(orgId: string): Promise<CostEfficiencySettings> {
   return invoke("cloud_costs_efficiency_settings", { orgId });
+}
+
+/** Members, policy and availability for the alert email recipients field. */
+export async function loadCloudAlertEmailOptions(orgId: string): Promise<AlertEmailOptions> {
+  return invoke("cloud_alert_email_options", { orgId });
 }
 
 export async function saveCloudEfficiencySettings(

@@ -118,6 +118,10 @@ to budgets and anomalies, and a rule can match on the size of the movement ("cos
 $500 → #incidents"). Push notifications deep-link to the Costs tab in the
 [mobile app](./mobile-app.md), where the alerts and their recent firings are listed read-only.
 
+An alert can also email people directly: the editor's **Email recipients** field takes members
+and approved extra addresses, emailed every time the alert fires on top of the routing rules. See
+[email alerts](./email-alerts.md).
+
 ## CLI and API
 
 The [CLI](./cli.md) lists alerts and recent firings:

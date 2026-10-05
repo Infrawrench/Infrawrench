@@ -12,6 +12,7 @@ import {
   updateBudget,
 } from "../../services/budgets";
 import { SavedCostFilterResolutionError } from "@infrawrench/server-core/cost/saved-filters";
+import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -48,6 +49,7 @@ app.post("/", async (c) => {
     // resolve: it would error every evaluation from day one.
     if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
     if (e instanceof BudgetValidationError) return c.json({ error: e.message }, 400);
+    if (e instanceof AlertEmailRecipientsError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });
@@ -79,6 +81,7 @@ app.put("/:id", async (c) => {
   } catch (e) {
     if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
     if (e instanceof BudgetValidationError) return c.json({ error: e.message }, 400);
+    if (e instanceof AlertEmailRecipientsError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });

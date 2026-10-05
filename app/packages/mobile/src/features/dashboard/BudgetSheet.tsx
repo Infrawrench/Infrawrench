@@ -31,6 +31,7 @@ import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor, useDimensionValues } from "./CostFilterEditor";
 import { ScenarioChip } from "./ScenarioChip";
 import { SavedFilterChip } from "./SavedFilterChip";
+import { EmailRecipientsField } from "./EmailRecipientsField";
 
 type PeriodMode = "monthly" | "recurring" | "explicit";
 
@@ -420,6 +421,10 @@ export function BudgetSheet({
           />
         ) : null}
       </Field>
+      <EmailRecipientsField
+        value={input.emailRecipients ?? { userIds: [], addresses: [] }}
+        onChange={(emailRecipients) => set({ emailRecipients })}
+      />
       <FormError message={error} />
     </Sheet>
   );

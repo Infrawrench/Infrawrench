@@ -52,6 +52,9 @@ const INTERNAL_PATHS: ReadonlySet<string> = new Set([
   "/api/slack/commands",
   "/api/slack/interactions",
   "/api/slack/link",
+  // The unsubscribe link inside alert emails: a browser page and the RFC 8058
+  // one-click POST mailbox providers send, never an API client.
+  "/api/alert-email/unsubscribe",
   "/api/org/{orgId}/ws-token",
   "/api/org/{orgId}/push/preferences",
   "/api/org/{orgId}/push/recipients",

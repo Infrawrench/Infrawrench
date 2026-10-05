@@ -1,6 +1,7 @@
 import type { CloudFetch } from "./fetch";
 
 import type { CostDimensionId, CostFilter } from "./costs";
+import type { AlertEmailRecipients } from "./alert-email";
 
 /* ------------------------------------------------------------------ *
  * Change-based cost alerts: GET/POST/PUT/DELETE /cost-alerts.
@@ -79,6 +80,11 @@ export interface CostAlert {
   lastEvaluatedAt: string | null;
   /** When the alert last fired an event, or null when it never has. */
   lastFiredAt: string | null;
+  /**
+   * Who is emailed when it fires, besides the routing rules. Optional so a
+   * client a release ahead of its server still renders the row.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +101,12 @@ export interface CostAlertInput {
   thresholdAmountCents: number | null;
   direction: CostChangeDirection;
   enabled: boolean;
+  /**
+   * Email recipients. A PUT that omits this leaves the stored list alone, so
+   * an older client cannot silently stop somebody's alert email; send an empty
+   * list to clear it.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
 }
 
 /** Bounds the API enforces; clients enforce the same ones locally. */

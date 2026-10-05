@@ -15423,5 +15423,85 @@
       " ",
       "pour un canal ou votre téléphone ci-dessus pour l'acheminer. Les résultats se trouvent dans Coûts."
     ]
+  },
+  "d93abae5916b2074": "Impossible de charger les destinataires e-mail : {error}",
+  "19abce6213b63c3f": "Chargement des destinataires e-mail…",
+  "38c37dc59f3ca7f9": "Cela ne ressemble pas à une adresse e-mail.",
+  "d0b7b918ca37af8b": "Cette organisation n'autorise les e-mails d'alerte que vers ses propres domaines. Un administrateur peut autoriser un autre domaine dans Paramètres → Notifications → E-mail.",
+  "2f248bd446954ba6": "L'e-mail n'est pas configuré sur ce déploiement : les destinataires sont enregistrés, mais rien n'est encore envoyé.",
+  "c925c296953d6ca7": "ancien membre",
+  "b04926922bc88339": "En dehors des domaines autorisés par cette organisation ; rien n'est envoyé ici.",
+  "af44c5553d9f32ad": "Personne ne reçoit d'e-mail.",
+  "3b5c7867eb200ae6": "Ajouter un membre",
+  "ac1cfe0a0d7035a6": "Tous les membres sont ajoutés",
+  "0763cf8cdbb7dba8": "Ajouter un membre…",
+  "8373a38cb1228f62": "Autre adresse",
+  "01231f0c7477cf6c": "Ajouter une adresse e-mail",
+  "81d4b27acb20a89e": "Envoyé par e-mail à chaque déclenchement d'un seuil, en plus de vos règles de routage des alertes.",
+  "1b413b37bd1e6842": "Envoyé par e-mail pour chaque anomalie, en plus de vos règles de routage des alertes.",
+  "dbbae21896ddb16f": "{count} e-mails",
+  "55e721b79384c82b": "Envoyé par e-mail à chaque déclenchement de cette alerte, en plus de vos règles de routage des alertes.",
+  "f73b738e76f846c3": "Envoyé par e-mail pour l'expiration des engagements, les engagements inactifs et les régressions de coût unitaire, en plus de vos règles de routage des alertes.",
+  "43f491e22d61ca04": "Membres et adresses supplémentaires",
+  "181f143d6adb9436": "(ancien membre)",
+  "281f61ff167a00e8": "Un e-mail HTML et en texte brut avec un lien vers Infrawrench et un lien de désabonnement. L'e-mail n'a pas de bouton d'accusé de réception.",
+  "f9a074bf1ee66efb": "Cela ne ressemble pas à un nom de domaine.",
+  "6ce2b975cdaff4f3": "E-mail d'alerte",
+  "b955528de686d20c": "Aucun fournisseur de messagerie n'est configuré sur ce déploiement : les e-mails d'alerte sont enregistrés mais jamais envoyés.",
+  "66eb94a8346ded9d": "Adresses supplémentaires",
+  "f22a3e712a79a34f": "Uniquement nos domaines",
+  "a0f8cc2791f5ae57": "Domaines avec lesquels vos membres se connectent ({domains}), plus ceux que vous autorisez ci-dessous.",
+  "4121e60e2f686291": "Domaines avec lesquels vos membres se connectent, plus ceux que vous autorisez ci-dessous.",
+  "6f6c2ba7b9f2f0fe": "N'importe quelle adresse",
+  "62ecdf5150690086": "Toute personne pouvant modifier un budget ou une alerte de coûts pourra alors envoyer ses alertes, et les chiffres de dépenses qu'elles contiennent, vers n'importe quelle boîte de réception.",
+  "4f78582a64104d4c": "Autoriser aussi ces domaines",
+  "c69f1565c594ae83": "Domaine à autoriser",
+  "3f05f5fe3cc05eb0": "Durcir ce réglage ne modifie jamais une liste de destinataires : une adresse qui ne remplit plus les conditions cesse simplement de recevoir des e-mails jusqu'à ce qu'elle les remplisse à nouveau.",
+  "2269bf38f20e0b7b": "Désabonné",
+  "84415b072529062d": "Personne ne s'est désabonné des e-mails d'alerte de cette organisation.",
+  "f120de8a004177a1": "Reprendre l'envoi",
+  "bfd6ea86ab2fd6b3": "Ne reprenez l'envoi que pour une personne qui l'a demandé : elle s'est désabonnée via le lien d'une de vos alertes.",
+  "ec7fdc8afc85f777": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Les adresses supplémentaires doivent appartenir à ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "5527d97523dc7617": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Alertez votre équipe lorsqu'un type de ressource échoue à se synchroniser de façon répétée, qu'un seuil de budget est franchi, que votre infrastructure dérive ou qu'un workflow appelle ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "infra.page()"
+      },
+      " ou",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "infra.waitForApproval()"
+      },
+      ". Les incidents sont déclenchés par le poller en arrière-plan ; les synchronisations manuelles depuis l'interface n'envoient jamais d'alerte. La diffusion se fait par push mobile (l'application Infrawrench), dans les canaux Slack ou Microsoft Teams que vous connectez ci-dessous, par e-mail et (lorsque des identifiants Twilio sont configurés) par SMS et appels vocaux."
+    ]
+  },
+  "4c576c506a970c8b": {
+    "t": "p",
+    "i": 1,
+    "c": "Ajoutez Slack, Teams, l'e-mail, les notifications push mobiles ou des numéros de téléphone, puis acheminez les alertes vers eux avec les règles ci-dessous."
+  },
+  "29016a8e1eaa050c": {
+    "t": "p",
+    "i": 1,
+    "c": "Envoyez des e-mails à des membres ou à des adresses supplémentaires depuis les règles de routage ci-dessous, ou directement depuis un budget, une alerte de variation des coûts ou les paramètres d'alerte d'anomalies et d'engagements de la page Coûts. Chaque message comporte une partie texte brut et une partie HTML, un lien vers Infrawrench et un lien de désabonnement en un clic."
   }
 }

@@ -96,6 +96,13 @@ export interface EmailMessage {
    * safe without one.
    */
   traceKey?: string;
+  /**
+   * Extra MIME headers, sent as Mailgun `h:<Name>` fields. Alert email uses it
+   * for RFC 8058 one-click unsubscribe (`List-Unsubscribe` +
+   * `List-Unsubscribe-Post`), which mailbox providers turn into a native
+   * "Unsubscribe" button and which bulk-sender rules now expect.
+   */
+  headers?: Record<string, string>;
 }
 
 export interface EmailFanOutResult {
@@ -132,6 +139,10 @@ async function sendOne(message: EmailMessage): Promise<void> {
   // `v:` prefixed fields are Mailgun custom variables: echoed back on log
   // entries and webhooks, invisible in the delivered message.
   if (message.traceKey) form.set("v:infrawrench-key", message.traceKey.slice(0, 256));
+  for (const [name, value] of Object.entries(message.headers ?? {})) {
+    // CR/LF would let a value start a second header; nothing legitimate needs one.
+    form.set(`h:${name}`, value.replace(/[\r\n]+/g, " "));
+  }
 
   const res = await fetch(messagesUrl(), {
     method: "POST",

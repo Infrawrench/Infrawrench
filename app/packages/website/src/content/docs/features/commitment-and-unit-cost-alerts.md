@@ -214,6 +214,9 @@ The three arrive through [alert routing](./alert-routing.md) as three trigger ki
 quiet hours and escalation apply exactly as they do to budgets and anomalies. Nothing is sent
 to a channel directly.
 
+The settings panel also has one **Email recipients** list for all three, emailed every time any
+of them fires, in addition to the routing rules. See [email alerts](./email-alerts.md).
+
 Rules can match on the money at stake, and each trigger carries the number a person would mean:
 
 - Commitment expiry carries the **monthly on-demand exposure**, so "commitment expiries over

@@ -15,6 +15,7 @@ import type {
   AlertCondition,
   AlertDeliveryRecord,
   AlertDestination,
+  AlertEmailSettingsView,
   AlertRule,
   AlertRulesResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
@@ -45,6 +46,13 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
     }
     case "github-issues":
       return "github issues";
+    case "email-member": {
+      // `members` is absent from a server that predates email destinations.
+      const member = (data.members ?? []).find((m) => m.userId === d.userId);
+      return member ? `email:${member.email}` : "email:(former member)";
+    }
+    case "email-address":
+      return `email:${d.address}`;
   }
 }
 
@@ -211,4 +219,47 @@ export async function cmdRoutingQueue(ctx: CliContext, limit?: number): Promise<
     },
   ];
   printTable(rows, columns);
+}
+
+/**
+ * `infrawrench routing email`: the alert email policy and who unsubscribed.
+ * The second question after "why didn't that page reach me" when the answer
+ * is an inbox: an address outside the allowed domains, or one that clicked
+ * the unsubscribe link, is silently skipped at send time.
+ */
+export async function cmdRoutingEmail(ctx: CliContext): Promise<void> {
+  if (ctx.flags.local) {
+    throw new CliError("Alert email is sent by Infrawrench Cloud. Drop --local.");
+  }
+  const org = await resolveOrg(ctx);
+  const view = await orgFetch<AlertEmailSettingsView>(org.id, "/alert-email/settings");
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, ...view });
+    return;
+  }
+
+  if (!view.emailAvailable) {
+    println(
+      c.yellow("This deployment has no mail provider configured: alert email is never sent."),
+    );
+    println("");
+  }
+  const policy =
+    view.externalPolicy === "any"
+      ? "any address"
+      : `member domains (${view.memberDomains.join(", ") || "none"})` +
+        (view.allowedDomains.length > 0 ? ` plus ${view.allowedDomains.join(", ")}` : "");
+  println(`${c.dim("extra addresses")}  ${policy}`);
+  println("");
+
+  if (view.suppressions.length === 0) {
+    println("Nobody has unsubscribed.");
+    return;
+  }
+  println(c.bold("Unsubscribed"));
+  printTable(view.suppressions, [
+    { header: "ADDRESS", value: (s) => s.email },
+    { header: "SINCE", value: (s) => formatChangeTime(s.createdAt) },
+  ]);
 }

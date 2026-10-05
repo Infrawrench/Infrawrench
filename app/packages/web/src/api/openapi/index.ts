@@ -111,6 +111,7 @@ import { registerWebhookPaths } from "./paths/webhooks";
 import { registerAdminPaths } from "./paths/admin";
 import { registerPushPaths } from "./paths/push";
 import { registerAlertRulePaths } from "./paths/alert-rules";
+import { registerAlertEmailPaths } from "./paths/alert-email";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
@@ -262,6 +263,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAdminPaths(ctx);
   registerPushPaths(ctx);
   registerAlertRulePaths(ctx);
+  registerAlertEmailPaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
   registerJiraPaths(ctx);

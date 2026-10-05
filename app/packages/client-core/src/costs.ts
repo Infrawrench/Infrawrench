@@ -32,6 +32,7 @@ import type { CostScenarioProjection } from "./cost-scenarios";
 import type { CostAdjustmentSummary } from "./billing-rules";
 import type { BudgetHierarchyWarning, BudgetMeasure, BudgetPeriod } from "./budgets";
 import type { ExchangeRateBasis, ExchangeRateSource } from "./currency";
+import type { AlertEmailRecipients } from "./alert-email";
 
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
@@ -586,6 +587,14 @@ export interface BudgetInput {
    * measure the same thing (currency, or usage unit) as its children.
    */
   parentBudgetId?: string | undefined;
+  /**
+   * Who is emailed when this budget crosses a threshold, on top of whatever
+   * the org's alert routing rules decide. Unlike the opt-ins above, a PUT that
+   * **omits** this leaves the stored list alone: an older client (or a phone
+   * build that predates the field) saving a budget must not silently stop
+   * somebody's alert email. Send an empty list to clear it.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
 }
 
 /** One selectable value in a dimension picker (GET /costs/dimensions). */
@@ -754,6 +763,11 @@ export interface BudgetWithStatus {
    * captioning every budget in the org would make the adjusted ones invisible.
    */
   rawActualCents?: number | null | undefined;
+  /**
+   * Who this budget emails when it fires, besides the routing rules. Optional
+   * so a client a release ahead of its server still renders the row.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
   /** Month the status covers, YYYY-MM. */
   month: string;
   actualCents: number;

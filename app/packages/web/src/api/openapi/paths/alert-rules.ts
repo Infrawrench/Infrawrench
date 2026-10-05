@@ -30,12 +30,28 @@ const AlertDestination = z
         .openapi({ description: "An on-call rotation id from /on-call/schedules" }),
     }),
     strict({ kind: z.literal("github-issues") }),
+    strict({
+      kind: z.literal("email-member"),
+      userId: z.string().openapi({
+        description:
+          "An organization member's user id (from `members` in this response, or GET /alert-email). Their current login address is read at send time.",
+      }),
+    }),
+    strict({
+      kind: z.literal("email-address"),
+      address: z.string().openapi({
+        description:
+          "An extra address. Must pass the organization's external-address policy (GET /alert-email/settings).",
+        example: "finance@example.com",
+      }),
+    }),
   ])
   .openapi("AlertDestination", {
     description:
       "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n" +
       '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n' +
-      "`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.",
+      "`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped." +
+      "\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates.",
   });
 
 const AlertCondition = z
@@ -160,6 +176,17 @@ const AlertRulesResponse = strict({
         "Disabled rotations are omitted for the same reason a disconnected Slack install is: " +
         "offering one would let the editor build a rule that routes nowhere.",
     ),
+  members: z
+    .array(strict({ userId: z.string(), name: z.string().nullable(), email: z.string() }))
+    .describe("Current members, for the email destination picker."),
+  emailAvailable: z.boolean().describe("Whether this deployment has a mail provider configured."),
+  emailSettings: strict({
+    externalPolicy: z.enum(["member-domains", "any"]),
+    allowedDomains: z.array(z.string()),
+  }).describe("The external-address policy an `email-address` destination must pass."),
+  memberDomains: z
+    .array(z.string())
+    .describe("Domains the organization's members sign in with: the implicit allowlist."),
 }).openapi("AlertRulesResponse");
 
 const AlertDelivery = strict({

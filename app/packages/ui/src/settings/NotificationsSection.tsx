@@ -8,13 +8,14 @@ import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 import { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
 import { DriftAlertsSection } from "./notifications/DriftAlertsSection.js";
 import { MsTeamsSection, TeamsMark } from "./notifications/MsTeamsSection.js";
+import { EmailSection } from "./notifications/EmailSection.js";
 import { PushPreferencesSection, PushRosterSection } from "./notifications/PushSections.js";
 import { SlackSection, SlackMark } from "./notifications/SlackSection.js";
 import { TwilioSection, type PagingSettings } from "./notifications/TwilioSection.js";
 
-type ConnectionId = "slack" | "teams" | "mobile" | "sms";
+type ConnectionId = "slack" | "teams" | "email" | "mobile" | "sms";
 
-const CONNECTION_IDS: ConnectionId[] = ["slack", "teams", "mobile", "sms"];
+const CONNECTION_IDS: ConnectionId[] = ["slack", "teams", "email", "mobile", "sms"];
 
 export function NotificationsSection() {
   const gt = useGT();
@@ -26,6 +27,8 @@ export function NotificationsSection() {
         return gt("Slack");
       case "teams":
         return gt("Microsoft Teams");
+      case "email":
+        return gt("Email");
       case "mobile":
         return gt("Mobile app");
       case "sms":
@@ -39,6 +42,8 @@ export function NotificationsSection() {
         return gt("Workspace channels via OAuth");
       case "teams":
         return gt("Channel webhooks");
+      case "email":
+        return gt("Members and extra addresses");
       case "mobile":
         return gt("Push to your devices");
       case "sms":
@@ -90,8 +95,8 @@ export function NotificationsSection() {
             crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
             <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
             manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
-            any Slack or Microsoft Teams channels you connect below, and — when Twilio credentials
-            are configured — SMS and voice calls.
+            any Slack or Microsoft Teams channels you connect below, email, and (when Twilio
+            credentials are configured) SMS and voice calls.
           </p>
         </T>
       </div>
@@ -107,8 +112,8 @@ export function NotificationsSection() {
           <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Connections")}</h2>
           <T>
             <p className="text-xs text-on-surface-muted mt-1">
-              Add Slack, Teams, mobile push, or phone numbers — then route alerts to them with the
-              rules below.
+              Add Slack, Teams, email, mobile push, or phone numbers, then route alerts to them with
+              the rules below.
             </p>
           </T>
         </div>
@@ -158,6 +163,9 @@ export function NotificationsSection() {
             </div>
             <div hidden={selectedConnection !== "teams"}>
               <MsTeamsSection orgId={orgId} embedded />
+            </div>
+            <div hidden={selectedConnection !== "email"}>
+              <EmailSection orgId={orgId} />
             </div>
             <div hidden={selectedConnection !== "mobile"} className="space-y-6">
               <PushPreferencesSection orgId={orgId} embedded />

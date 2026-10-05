@@ -226,6 +226,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 
 		// Alert delivery.
 		NewAlertRoutingResource,
+		NewAlertEmailSettingsResource,
 		NewSlackChannelResource,
 		NewMSTeamsWebhookResource,
 		NewDigestSettingsResource,
@@ -244,6 +245,7 @@ func (p *infrawrenchProvider) DataSources(_ context.Context) []func() datasource
 		NewResourcesDataSource,
 		NewPermissionsDataSource,
 		NewSlackInstallationsDataSource,
+		NewMembersDataSource,
 	}
 }
 

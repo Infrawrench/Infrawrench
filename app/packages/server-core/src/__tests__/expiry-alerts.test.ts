@@ -240,7 +240,7 @@ describe("release semantics", () => {
     // heard, or is guaranteed to".
     getExpirySettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
     routeAlert.mockResolvedValue(
-      routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0 }, held: 1 }),
+      routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 }, held: 1 }),
     );
     const spy = hushErrors();
     const result = await runExpiryAlerts({ limit: 4 }, NOW);

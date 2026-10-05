@@ -1,5 +1,6 @@
 import type { CloudFetch } from "./fetch";
 import type { CostAnomalyFeedback } from "./cost-anomaly-feedback";
+import type { AlertEmailRecipients } from "./alert-email";
 
 /* ------------------------------------------------------------------ *
  * Cost anomalies: GET /costs/anomalies.
@@ -290,6 +291,13 @@ export interface CostAnomalySettings {
    * the setting cannot switch it off by saving the thresholds.
    */
   feedbackTuning?: boolean | undefined;
+  /**
+   * Who is emailed about each anomaly, besides the routing rules. Optional on
+   * the PUT, unlike every other field here: omitting it leaves the stored list
+   * alone, so a client that predates email cannot silently clear it. The GET
+   * always carries it.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
 }
 
 /**
@@ -336,17 +344,18 @@ export const COST_ANOMALY_LIMITS = {
  * What an org that has never touched the settings gets: the values anomaly
  * detection shipped with, so leaving the form alone changes nothing.
  */
-export const DEFAULT_COST_ANOMALY_SETTINGS: Required<CostAnomalySettings> = {
-  sigmas: 3,
-  /** $10. */
-  minDeltaCents: 1000,
-  /**
-   * $25. Deliberately above the spike floor: a spike is corroborated by the
-   * key's own history, while a new source has none, so it should have to be
-   * worth more before it wakes anyone.
-   */
-  newSourceMinCents: 2500,
-  /** Opt-in. Turning an existing Twilio setup into a new pager is a surprise. */
-  smsAlerts: "off",
-  feedbackTuning: true,
-};
+export const DEFAULT_COST_ANOMALY_SETTINGS: Required<Omit<CostAnomalySettings, "emailRecipients">> =
+  {
+    sigmas: 3,
+    /** $10. */
+    minDeltaCents: 1000,
+    /**
+     * $25. Deliberately above the spike floor: a spike is corroborated by the
+     * key's own history, while a new source has none, so it should have to be
+     * worth more before it wakes anyone.
+     */
+    newSourceMinCents: 2500,
+    /** Opt-in. Turning an existing Twilio setup into a new pager is a surprise. */
+    smsAlerts: "off",
+    feedbackTuning: true,
+  };

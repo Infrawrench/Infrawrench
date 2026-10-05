@@ -42,6 +42,7 @@ import { db } from "../db/client";
 import { costAlertEvents, costAlerts } from "../db/schema";
 import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
+import { storedAlertEmailRecipients } from "../alerts/email";
 import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import {
@@ -262,33 +263,40 @@ export async function evaluateCostChangeAlertsForOrg(
           `${windowPhrase(alert.cadence, window)} — ` +
           `${formatCents(finding.previousAmountCents, finding.currency)} → ` +
           `${formatCents(finding.currentAmountCents, finding.currency)}`;
-        const routed = await routeAlert({
-          costVisibilityUserId: row.visibilityUserId ?? null,
-          organizationId,
-          trigger: "costChangeAlerts",
-          title: `Cost ${verb} ${deltaLabel(finding)}: ${finding.groupKey || alert.name}`,
-          body,
-          context: `${window.current.from}–${window.current.to} · ${alert.cadence}`,
-          url,
-          pushData: {
-            type: "cost_change",
-            orgId: organizationId,
-            alertId: alert.id,
-            periodKey: window.periodKey,
-            groupKey: finding.groupKey,
+        const routed = await routeAlert(
+          {
+            costVisibilityUserId: row.visibilityUserId ?? null,
+            organizationId,
+            trigger: "costChangeAlerts",
+            title: `Cost ${verb} ${deltaLabel(finding)}: ${finding.groupKey || alert.name}`,
+            body,
+            context: `${window.current.from}–${window.current.to} · ${alert.cadence}`,
+            url,
+            pushData: {
+              type: "cost_change",
+              orgId: organizationId,
+              alertId: alert.id,
+              periodKey: window.periodKey,
+              groupKey: finding.groupKey,
+            },
+            // `facts` are what routing rules match on. The amount is the
+            // *change*, not the total: "cost changes over $500 → #incidents"
+            // means the move, which is also the number in the message.
+            facts: {
+              amountCents: Math.abs(finding.currentAmountCents - finding.previousAmountCents),
+              currency: finding.currency,
+              key: finding.groupKey || alert.name,
+              ...(alert.groupBy === "provider" && finding.groupKey
+                ? { pluginId: finding.groupKey }
+                : {}),
+            },
           },
-          // `facts` are what routing rules match on. The amount is the
-          // *change*, not the total: "cost changes over $500 → #incidents"
-          // means the move, which is also the number in the message.
-          facts: {
-            amountCents: Math.abs(finding.currentAmountCents - finding.previousAmountCents),
-            currency: finding.currency,
-            key: finding.groupKey || alert.name,
-            ...(alert.groupBy === "provider" && finding.groupKey
-              ? { pluginId: finding.groupKey }
-              : {}),
+          {
+            emailRecipients: storedAlertEmailRecipients(row.emailRecipients),
+            emailReason: `you are on the recipient list of the cost change alert "${alert.name}"`,
+            emailManageUrl: url,
           },
-        });
+        );
         // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a
         // delivery that has not happened yet. The events row already
         // deduplicates, so an unreached firing stays eligible for nothing:

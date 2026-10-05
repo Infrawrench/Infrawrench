@@ -17,6 +17,7 @@ import {
   COST_EFFICIENCY_LIMITS,
   DEFAULT_COST_EFFICIENCY_SETTINGS,
   type CostEfficiencySettings,
+  normalizeAlertEmailRecipients,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
@@ -131,6 +132,10 @@ export function normalizeEfficiencySettings(
       L.maxUnitCostSpendCents,
       d.unitCostMinSpendCents,
     ),
+    // Carried through only when present: absent means "unchanged" on a save.
+    ...(input.emailRecipients !== undefined
+      ? { emailRecipients: normalizeAlertEmailRecipients(input.emailRecipients) }
+      : {}),
   };
 }
 
@@ -166,7 +171,12 @@ export async function getOrgEfficiencySettings(
     .select()
     .from(orgCostEfficiencySettings)
     .where(eq(orgCostEfficiencySettings.organizationId, organizationId));
-  if (!row) return reconcileWindowRequirements({ ...DEFAULT_COST_EFFICIENCY_SETTINGS });
+  if (!row) {
+    return reconcileWindowRequirements({
+      ...DEFAULT_COST_EFFICIENCY_SETTINGS,
+      emailRecipients: { userIds: [], addresses: [] },
+    });
+  }
   return reconcileWindowRequirements(
     normalizeEfficiencySettings({
       commitmentExpiryEnabled: row.commitmentExpiryEnabled,
@@ -182,6 +192,7 @@ export async function getOrgEfficiencySettings(
       unitCostWindowDays: row.unitCostWindowDays,
       unitCostMinReportedDays: row.unitCostMinReportedDays,
       unitCostMinSpendCents: row.unitCostMinSpendCents,
+      emailRecipients: row.emailRecipients,
     }),
   );
 }
@@ -202,6 +213,7 @@ export async function setOrgEfficiencySettings(
     })
     .returning();
   if (!row) throw new Error("Failed to save cost efficiency settings");
+  safe.emailRecipients = normalizeAlertEmailRecipients(row.emailRecipients);
   // Returned un-reconciled: the form should show what was stored, so a user
   // who set a 7-day window with a 10-day requirement sees their own numbers
   // and can fix them, rather than watching one silently change under them.
