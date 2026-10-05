@@ -160,6 +160,16 @@ describe("tool registry permission declarations", () => {
     ["create_business_metric", "costs:write"],
     ["write_business_metric_values", "costs:write"],
     ["delete_business_metric", "costs:write"],
+    // Importers run a query with an account's credentials, so configuring,
+    // previewing and running one is gated on the query monitors' permission
+    // (the handler also checks costs:write).
+    ["list_business_metric_sources", "costs:read"],
+    ["get_business_metric_importer", "costs:read"],
+    ["list_business_metric_source_options", "resources:execute"],
+    ["preview_business_metric_import", "resources:execute"],
+    ["set_business_metric_importer", "resources:execute"],
+    ["run_business_metric_importer", "resources:execute"],
+    ["delete_business_metric_importer", "costs:write"],
     // Invoices are their own family, not `costs:*`: a managed account holds a
     // customer's contact details and the price that customer was quoted, which
     // is commercial information about a third party rather than the org's own

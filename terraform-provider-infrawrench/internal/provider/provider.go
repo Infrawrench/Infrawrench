@@ -180,6 +180,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewBillingRuleResource,
 		NewCostExportResource,
 		NewBusinessMetricResource,
+		NewBusinessMetricImporterResource,
 		NewManagedAccountResource,
 		NewCurrencySettingsResource,
 		NewExchangeRateResource,

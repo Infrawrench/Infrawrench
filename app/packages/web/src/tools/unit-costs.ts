@@ -12,12 +12,31 @@
  */
 import { z } from "zod";
 
-import { businessMetricInputSchema, unitCostQueryRequestSchema } from "@infrawrench/ui/cost/config";
-import { BUSINESS_METRIC_LIMITS } from "@infrawrench/client-core";
+import {
+  businessMetricImporterInputSchema,
+  businessMetricInputSchema,
+  unitCostQueryRequestSchema,
+} from "@infrawrench/ui/cost/config";
+import {
+  BUSINESS_METRIC_IMPORT_AGGREGATIONS,
+  BUSINESS_METRIC_IMPORT_SCHEDULES,
+  BUSINESS_METRIC_LIMITS,
+} from "@infrawrench/client-core";
 import {
   BusinessMetricIngestError,
   ingestMetricValues,
 } from "@infrawrench/server-core/cost/metric-ingest";
+import {
+  BusinessMetricImporterError,
+  deleteBusinessMetricImporter,
+  getBusinessMetricImporter,
+  listBusinessMetricImportRuns,
+  listBusinessMetricSourceAccounts,
+  listBusinessMetricSourceOptions,
+  previewBusinessMetricImport,
+  runBusinessMetricImporterNow,
+  upsertBusinessMetricImporter,
+} from "@infrawrench/server-core/cost/metric-importers";
 
 import {
   BusinessMetricInputError,
@@ -47,8 +66,24 @@ function toolError(e: unknown) {
   if (e instanceof BusinessMetricInputError) return err(e.message);
   if (e instanceof BusinessMetricIngestError) return err(e.message);
   if (e instanceof CostQueryError) return err(e.message);
+  if (e instanceof BusinessMetricImporterError) return err(e.message);
   throw e;
 }
+
+/** Importer writes run queries with an account's credentials: both permissions, like the API. */
+async function denyUnlessImporterWrite(auth: Parameters<typeof denyUnlessPermitted>[0]) {
+  return (
+    (await denyUnlessPermitted(auth, "costs:write")) ??
+    (await denyUnlessPermitted(auth, "resources:execute"))
+  );
+}
+
+const sourceParams = z
+  .record(z.string(), z.string())
+  .describe(
+    "The source's form values, keyed by the field keys `list_business_metric_sources` returns. " +
+      "Fill `select` fields from `list_business_metric_source_options`, never by guessing ids.",
+  );
 
 export function unitCostTools(): ToolDefinition[] {
   return [
@@ -230,7 +265,17 @@ export function unitCostTools(): ToolDefinition[] {
       inputSchema: {
         metric: z.string().describe("Metric key or id."),
         values: z
-          .array(z.object({ date: isoDay, value: z.number() }))
+          .array(
+            z.object({
+              date: isoDay,
+              value: z.number(),
+              label: z
+                .string()
+                .max(BUSINESS_METRIC_LIMITS.maxLabelLength)
+                .optional()
+                .describe("Optional breakdown label; the day's total is the sum across labels."),
+            }),
+          )
           .max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
       },
       risk: "write",
@@ -244,7 +289,11 @@ export function unitCostTools(): ToolDefinition[] {
           const result = await ingestMetricValues({
             organizationId: auth.organizationId,
             metricId: metric.id,
-            values: (input["values"] ?? []) as Array<{ date: string; value: number }>,
+            values: (input["values"] ?? []) as Array<{
+              date: string;
+              value: number;
+              label?: string;
+            }>,
             source: {
               errorPrefix: "write_business_metric_values",
               source: "api",
@@ -290,6 +339,246 @@ export function unitCostTools(): ToolDefinition[] {
           organizationId: auth.organizationId,
           userId: auth.userId,
           action: "business_metric.delete",
+          entityType: "business_metric",
+          entityId: metric.id,
+          metadata: { key: metric.key, source: auth.source },
+        });
+        return ok({ ok: true });
+      },
+    },
+    {
+      name: "list_business_metric_sources",
+      title: "List business metric importer sources",
+      description:
+        "Connected accounts that can feed a business metric on a schedule (CloudWatch, BigQuery, " +
+        "Snowflake, ClickHouse, Postgres, MySQL, Metronome, …), each with its importer form: the " +
+        "field keys, which are pickers, which are SQL, whether read-only is enforced by the " +
+        "engine or only validated, and whether a dry run is available. Start here before " +
+        "`set_business_metric_importer`.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await listBusinessMetricSourceAccounts(auth.organizationId));
+      },
+    },
+    {
+      name: "list_business_metric_source_options",
+      title: "List an importer picker's choices",
+      description:
+        "The choices for one `select` field of a source's form (a CloudWatch namespace, a " +
+        "BigQuery dataset, a Snowflake warehouse), given the values picked so far. Calls the " +
+        "provider with the account's credentials.",
+      inputSchema: {
+        accountId: z.string(),
+        fieldKey: z.string(),
+        params: sourceParams.optional(),
+      },
+      risk: "read",
+      permission: "resources:execute",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessImporterWrite(auth);
+        if (denied) return denied;
+        try {
+          return ok(
+            await listBusinessMetricSourceOptions(
+              auth.organizationId,
+              String(input["accountId"] ?? ""),
+              String(input["fieldKey"] ?? ""),
+              (input["params"] ?? {}) as Record<string, string>,
+            ),
+          );
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+    {
+      name: "preview_business_metric_import",
+      title: "Preview a business metric import",
+      description:
+        "Run a source over a window (default: the 14 days ending yesterday) and return the daily " +
+        "values it would write, writing nothing. SQL must be one SELECT or WITH statement that " +
+        "returns `day` and `value` columns (and optionally `label`), using `{{from}}`, `{{to}}`, " +
+        "`{{to_exclusive}}` and `{{timezone}}` placeholders. `dryRun: true` validates the query " +
+        "with the provider without reading data, where the source supports it.",
+      inputSchema: {
+        accountId: z.string(),
+        params: sourceParams,
+        from: isoDay.optional(),
+        to: isoDay.optional(),
+        timezone: z.string().optional(),
+        aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
+        dryRun: z.boolean().optional(),
+      },
+      risk: "read",
+      permission: "resources:execute",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessImporterWrite(auth);
+        if (denied) return denied;
+        try {
+          return ok(
+            await previewBusinessMetricImport(auth.organizationId, {
+              accountId: String(input["accountId"] ?? ""),
+              params: (input["params"] ?? {}) as Record<string, string>,
+              from: input["from"] as string | undefined,
+              to: input["to"] as string | undefined,
+              timezone: input["timezone"] as string | undefined,
+              aggregation: input["aggregation"] as
+                (typeof BUSINESS_METRIC_IMPORT_AGGREGATIONS)[number] | undefined,
+              dryRun: input["dryRun"] as boolean | undefined,
+            }),
+          );
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+    {
+      name: "get_business_metric_importer",
+      title: "Get a business metric's importer",
+      description:
+        "The scheduled importer feeding a metric (source account, params, schedule, backfill " +
+        "window, timezone, aggregation, last status) plus its recent runs with their errors. " +
+        "`importer` is null when the metric's values are only pushed. A failing importer means " +
+        "the recent days are gaps, not zeros.",
+      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
+        if (!metric) return err(`No business metric "${String(input["metric"])}".`);
+        return ok({
+          importer: await getBusinessMetricImporter(auth.organizationId, metric.id),
+          runs: await listBusinessMetricImportRuns(auth.organizationId, metric.id, 10),
+        });
+      },
+    },
+    {
+      name: "set_business_metric_importer",
+      title: "Configure a business metric's importer",
+      description:
+        "Create or replace the importer feeding a metric: a full replace, so send every field you " +
+        "want kept. Each scheduled run restates the trailing `backfillDays` closed days (ending " +
+        "yesterday in `timezone`), replacing every label those days carried. Use " +
+        "`preview_business_metric_import` first to check the query returns what you expect.",
+      inputSchema: {
+        metric: z.string().describe("Metric key or id."),
+        accountId: z.string(),
+        params: sourceParams,
+        schedule: z.enum(BUSINESS_METRIC_IMPORT_SCHEDULES).optional(),
+        backfillDays: z.number().int().min(1).max(730).optional(),
+        timezone: z.string().optional(),
+        aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
+        enabled: z.boolean().optional(),
+      },
+      risk: "write",
+      permission: "resources:execute",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessImporterWrite(auth);
+        if (denied) return denied;
+        const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
+        if (!metric) return err(`No business metric "${String(input["metric"])}".`);
+        const { metric: _metric, ...rest } = input;
+        const parsed = businessMetricImporterInputSchema.safeParse(rest);
+        if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join("; "));
+        try {
+          const importer = await upsertBusinessMetricImporter(
+            auth.organizationId,
+            metric.id,
+            parsed.data,
+            auth.userId,
+          );
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: "business_metric.importer.save",
+            entityType: "business_metric",
+            entityId: metric.id,
+            metadata: {
+              key: metric.key,
+              accountId: importer.accountId,
+              pluginId: importer.pluginId,
+              source: auth.source,
+            },
+          });
+          return ok(importer);
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+    {
+      name: "run_business_metric_importer",
+      title: "Run a business metric's importer now",
+      description:
+        "Run the importer now and return the finished run (status, days written, error). With no " +
+        "`from`/`to` it reads the importer's own window; give them to backfill up to 730 days.",
+      inputSchema: {
+        metric: z.string().describe("Metric key or id."),
+        from: isoDay.optional(),
+        to: isoDay.optional(),
+      },
+      risk: "write",
+      permission: "resources:execute",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessImporterWrite(auth);
+        if (denied) return denied;
+        const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
+        if (!metric) return err(`No business metric "${String(input["metric"])}".`);
+        try {
+          const run = await runBusinessMetricImporterNow(
+            auth.organizationId,
+            metric.id,
+            auth.userId,
+            {
+              from: input["from"] as string | undefined,
+              to: input["to"] as string | undefined,
+            },
+          );
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: "business_metric.importer.run",
+            entityType: "business_metric",
+            entityId: metric.id,
+            metadata: {
+              key: metric.key,
+              status: run.status,
+              days: run.daysWritten,
+              source: auth.source,
+            },
+          });
+          return ok(run);
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+    {
+      name: "delete_business_metric_importer",
+      title: "Delete a business metric's importer",
+      description:
+        "Stop importing a metric and drop its run history. Values already imported stay; new days " +
+        "will be gaps unless something else reports them.",
+      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      risk: "destructive",
+      permission: "costs:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:write");
+        if (denied) return denied;
+        const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
+        if (!metric) return err(`No business metric "${String(input["metric"])}".`);
+        const deleted = await deleteBusinessMetricImporter(auth.organizationId, metric.id);
+        if (!deleted) return err(`"${metric.key}" has no importer.`);
+        void logAudit({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          action: "business_metric.importer.delete",
           entityType: "business_metric",
           entityId: metric.id,
           metadata: { key: metric.key, source: auth.source },

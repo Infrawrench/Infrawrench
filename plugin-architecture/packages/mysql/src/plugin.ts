@@ -33,6 +33,26 @@ const manifest: PluginManifest = {
       placeholder: "-----BEGIN CERTIFICATE-----\n...",
     },
   ],
+  businessMetricSource: {
+    label: "MySQL query",
+    description:
+      "Run a SELECT on a schedule and store one value per day. The query runs in a read-only transaction that is rolled back, so it cannot change data.",
+    kind: "sql",
+    sqlDialect: "MySQL",
+    readOnly: "enforced",
+    fields: [
+      {
+        key: "sql",
+        label: "Query",
+        type: "sql",
+        required: true,
+        description:
+          'Return a "day" column (date) and a "value" column (number), plus an optional "label" column for a breakdown. {{from}} and {{to}} are the first and last day of the window (inclusive), {{to_exclusive}} is the day after {{to}}, and {{timezone}} is the importer\'s timezone. Days are taken as written, so convert timestamps yourself, for example DATE(CONVERT_TZ(created_at, \'UTC\', {{timezone}})), which needs the server\'s time zone tables loaded.',
+        placeholder:
+          "SELECT DATE(created_at) AS day, COUNT(*) AS value\nFROM signups\nWHERE created_at >= {{from}} AND created_at < {{to_exclusive}}\nGROUP BY 1",
+      },
+    ],
+  },
   sqlDriver: {
     driver: "mysql",
     credentialKey: "connectionString",

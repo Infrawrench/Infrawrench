@@ -13,7 +13,7 @@ A **business metric** is the missing half: a number only you know — active cus
 ## The short version
 
 1. Declare a metric on the **Costs** panel — its name, its key, and what one of it is called.
-2. Report a value for each day, from a workflow, over the API, or by hand.
+2. Feed it a value for each day: import it on a schedule from a connected account, upload a CSV, or report it from a workflow, over the API, or by hand.
 3. On any cost graph, choose **Divide by a business metric**.
 
 ![Costs panel Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/metrics-list.png)
@@ -40,6 +40,60 @@ A **business metric** is the missing half: a number only you know — active cus
 ## Report values
 
 One value per UTC day. **Re-reporting a day replaces it rather than adding to it**, so a nightly job is safe to retry — an ingest that accumulated would double every number the first time the job re-ran, and nothing about the resulting chart would look wrong.
+
+### Import on a schedule
+
+Most of these numbers already live somewhere you have connected: a CloudWatch metric, a table in your warehouse, your billing platform. An **importer** reads them from there on a schedule, so nothing has to push.
+
+**Costs → Unit costs → Import…** on a metric's row. Pick a source account, fill in its form, preview, save.
+
+| Source                                                              | What it reads                                                                                      | Read-only                                             |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| [AWS](../plugins/aws.md)                                            | A CloudWatch metric: region, namespace, metric, dimensions and statistic are all pickers           | The API is read-only                                  |
+| [GCP](../plugins/gcp.md)                                            | BigQuery SQL, with project, dataset and table pickers and a **Dry run** that reports bytes scanned | Enforced: a dry run checks the statement type first   |
+| [Snowflake](../plugins/snowflake.md)                                | Snowflake SQL, with warehouse, role, database and schema pickers                                   | Statement validation; run it under a read-only role   |
+| [ClickHouse](../plugins/clickhouse.md)                              | ClickHouse SQL against the account's configured service                                            | Enforced with `readonly=1`                            |
+| [PostgreSQL](../plugins/postgres.md) / [MySQL](../plugins/mysql.md) | SQL over the account's connection                                                                  | Enforced: a read-only transaction that is rolled back |
+| [Datadog](../plugins/datadog.md)                                    | A Datadog metric: metric, scope and an optional tag to break it down by are pickers, read hourly   | The API is read-only                                  |
+| [Metronome](../plugins/metronome.md)                                | Usage of a billable metric, or invoiced revenue, optionally broken down by customer                | The API is read-only                                  |
+
+<insert [Importer modal for a business metric with a BigQuery account selected, the dataset picker open, a SQL query in the editor and the preview table showing 14 days of values] here>
+
+**SQL sources** run one `SELECT` or `WITH` statement that returns a `day` column and a `value` column, plus an optional `label` column for a breakdown. Four placeholders are replaced with quoted literals before the query runs:
+
+```sql
+SELECT created_at::date AS day, count(*) AS value
+FROM signups
+WHERE created_at >= {{from}} AND created_at < {{to_exclusive}}
+GROUP BY 1
+```
+
+`{{from}}` and `{{to}}` are the first and last day of the window, inclusive; `{{to_exclusive}}` is the day after `{{to}}`; `{{timezone}}` is the importer's timezone.
+
+The rest of the form is the same for every source:
+
+| Field                         | What it does                                                                                                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Schedule**                  | Every 6 or 12 hours, daily (the default) or weekly.                                                                                                                          |
+| **Days restated each run**    | How many closed days, ending yesterday, each run reads and restates. Raise it when the source revises recent days. Today is never imported: half a day reads as a low value. |
+| **Timezone**                  | Which calendar the days are counted in. Defaults to UTC.                                                                                                                     |
+| **Several points on one day** | Sum, average, minimum, maximum, last value or count. Matters for metric sources that return hourly points; a SQL query grouped by day gives one row per day anyway.          |
+
+**Preview** runs the query over the last 14 days and shows what would be written, writing nothing. **Run now** runs the saved importer; set **From** and **To** to backfill up to 730 days in one run. The **run history** keeps the last 50 runs with each failure's message, and the metric's row on the Costs panel says when the last run failed.
+
+How a run writes: each day the source returns **replaces** what was stored for that day, every label included. A day the source returns nothing for is left alone, so it stays a gap rather than becoming zero. Points outside the window are ignored. Every run has a 50,000-row limit and a two-minute timeout, and a run that hits either fails without writing anything.
+
+Configuring, previewing and running an importer needs `resources:execute` as well as `costs:write`, because the query runs with the account's credentials.
+
+### Upload a CSV
+
+**Upload CSV** on a metric's row takes a file with one row per day, or per day and label. Pick the day, value and optional label columns and the date format, check the preview and the rows it cannot read, then upload. Uploading a day again replaces it, so a corrected file can simply be uploaded again.
+
+<insert [CSV upload modal with a file selected, the day, value and label columns mapped and the preview table showing the first rows and one unreadable line] here>
+
+### Labels
+
+A value can carry an optional **label**, a customer or a region, so one metric holds a breakdown. A day's total is the sum of its labels, and that total is what unit costs divide by. Re-reporting `(day, label)` replaces that pair.
 
 ### From a workflow
 
@@ -145,13 +199,24 @@ infrawrench unit-costs mrr --margin --last 12w
 
 # Everything, as JSON.
 infrawrench unit-costs active-customers --json
+
+# Accounts that can feed a metric, and the fields each importer takes.
+infrawrench unit-costs sources
+
+# Configure, inspect and run an importer.
+infrawrench unit-costs importer api-requests set --account prod-aws \
+  --set namespace=AWS/ApplicationELB --set metricName=RequestCount --set stat=Sum
+infrawrench unit-costs importer signups set --account warehouse --set sql=@signups.sql
+infrawrench unit-costs importer signups              # config and recent runs
+infrawrench unit-costs importer signups run --from 2025-10-01 --to 2026-09-30
+infrawrench unit-costs importer signups disable
 ```
 
 Unreported periods print as `—` in the table, with the reason in the last column. See [CLI](./cli.md).
 
 ## Ask the model instead
 
-The MCP server and the in-app chat expose `list_business_metrics`, `get_business_metric_values`, `query_unit_costs`, and the metric write tools, so "what did a customer cost us last month, and is that up or down?" works without building a graph. The tool descriptions carry the gap rule and the summed-sides rule explicitly, so a model summarising the data does not turn a gap into a zero. See [MCP](./mcp.md) and [AI chat](./ai-chat.md).
+The MCP server and the in-app chat expose `list_business_metrics`, `get_business_metric_values`, `query_unit_costs`, the metric write tools, and the importer tools (`list_business_metric_sources`, `list_business_metric_source_options`, `preview_business_metric_import`, `get_business_metric_importer`, `set_business_metric_importer`, `run_business_metric_importer`, `delete_business_metric_importer`), so "what did a customer cost us last month, and is that up or down?" works without building a graph. The tool descriptions carry the gap rule and the summed-sides rule explicitly, so a model summarising the data does not turn a gap into a zero. See [MCP](./mcp.md) and [AI chat](./ai-chat.md).
 
 ## Being told, rather than looking
 
@@ -165,7 +230,7 @@ in each of the two 14-day windows before it can fire. See
 
 ## On your phone
 
-The [mobile app](./mobile-app.md)'s **Costs** tab shows a read-only card per metric: the trailing 30 days, the period figure, and a sparkline that **breaks on a gap** rather than bridging it. Declaring metrics and reporting values stay on web and desktop — both are finance-governance acts needing `costs:write` and the full cost-filter editor, the same deliberate omission as the tag policy and exchange rates.
+The [mobile app](./mobile-app.md)'s **Costs** tab shows a read-only card per metric: the trailing 30 days, the period figure, and a sparkline that **breaks on a gap** rather than bridging it. Each card also says what imports the metric and whether its last run failed. Declaring metrics, configuring importers and reporting values stay on web and desktop — both are finance-governance acts needing `costs:write` and the full cost-filter editor, the same deliberate omission as the tag policy and exchange rates.
 
 ## Permissions
 

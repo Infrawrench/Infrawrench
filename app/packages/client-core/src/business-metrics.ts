@@ -125,6 +125,25 @@ export interface BusinessMetric {
    * chart drawn from it is one continuous gap, so the surfaces say so.
    */
   coverage: BusinessMetricCoverage | null;
+  /**
+   * The scheduled importer feeding this metric, in summary, or null when its
+   * values are only pushed. The full configuration and run history are on
+   * `GET /business-metrics/{id}/importer`.
+   */
+  importer: BusinessMetricImporterSummary | null;
+}
+
+/** Enough about a metric's importer for a list row: what feeds it and whether that is working. */
+export interface BusinessMetricImporterSummary {
+  accountId: string;
+  accountName: string | null;
+  pluginId: string | null;
+  /** The plugin's name for the source, e.g. "CloudWatch metric". */
+  sourceLabel: string | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastStatus: "success" | "error" | null;
+  lastError: string | null;
 }
 
 /** What days a metric actually has numbers for. */
@@ -154,6 +173,12 @@ export interface BusinessMetricValue {
   /** UTC day, YYYY-MM-DD. */
   day: string;
   value: number;
+  /**
+   * Optional breakdown label (a customer, a region). Null for an unlabeled
+   * value. A day's total is the sum of its values across labels, which is what
+   * unit costs divide by.
+   */
+  label: string | null;
   /** Where the number came from, for "who wrote this" on a surprising point. */
   source: BusinessMetricValueSource;
   updatedAt: string;
@@ -164,7 +189,7 @@ export interface BusinessMetricValue {
  * upsert; this only exists so a reader can tell a nightly workflow's number
  * from a hand-corrected one.
  */
-export const BUSINESS_METRIC_VALUE_SOURCES = ["api", "workflow"] as const;
+export const BUSINESS_METRIC_VALUE_SOURCES = ["api", "workflow", "import"] as const;
 export type BusinessMetricValueSource = (typeof BUSINESS_METRIC_VALUE_SOURCES)[number];
 
 /** One value in a write batch (POST /business-metrics/{id}/values). */
@@ -177,6 +202,11 @@ export interface BusinessMetricValueInput {
    * double every number the first time a nightly job retried.
    */
   value: number;
+  /**
+   * Optional breakdown label. `(date, label)` is what a write restates; the
+   * day's total is the sum across labels. Omit it for a plain daily total.
+   */
+  label?: string | undefined;
 }
 
 /** Result of a value write, mirroring `infra.costs.write`'s. */
@@ -201,6 +231,8 @@ export const BUSINESS_METRIC_LIMITS = {
   maxScopeFilters: 50,
   /** GET /business-metrics/{id}/values?limit= */
   maxValuesPageSize: 1_000,
+  /** Longest breakdown label kept on a value. */
+  maxLabelLength: 120,
 } as const;
 
 /**

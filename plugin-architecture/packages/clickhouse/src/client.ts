@@ -1,6 +1,9 @@
 import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
   ActionNode,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
   CostFetchRange,
   CostRow,
   CreditBalance,
@@ -39,6 +42,11 @@ import {
   postgresToResource,
 } from "./resource-listers.js";
 import { fetchClickHouseCostData } from "./cost-data.js";
+import {
+  listClickHouseBusinessMetricOptions,
+  runClickHouseBusinessMetricSource,
+  type ClickHouseMetricContext,
+} from "./business-metric-source.js";
 import { clickPipeMetricSeries, serviceMetricSeries } from "./prometheus.js";
 import type { CloudActivity, PostgresLogEntry } from "./logs.js";
 import { POSTGRES_LOG_FILTERS, postgresLogLines, serviceActivityLines } from "./logs.js";
@@ -173,6 +181,39 @@ export class ClickHouseClient implements PluginClient {
       password: this.chPassword,
       request_timeout: SQL_REQUEST_TIMEOUT_MS,
     });
+  }
+
+  /** The configured SQL service, for business-metric importers. */
+  private get businessMetricCtx(): ClickHouseMetricContext {
+    return {
+      makeClient: ({ database, requestTimeoutMs }) => {
+        const url = this.normalizeChUrl(this.chHost);
+        if (!url) return null;
+        return createClient({
+          url,
+          username: this.chUser,
+          password: this.chPassword,
+          request_timeout: requestTimeoutMs,
+          ...(database ? { database } : {}),
+        });
+      },
+    };
+  }
+
+  async listBusinessMetricSourceOptions(
+    _accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]> {
+    return listClickHouseBusinessMetricOptions(this.businessMetricCtx, fieldKey, params);
+  }
+
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    return runClickHouseBusinessMetricSource(this.businessMetricCtx, params, range);
   }
 
   private async chQuery(sql: string): Promise<Record<string, unknown>[]> {

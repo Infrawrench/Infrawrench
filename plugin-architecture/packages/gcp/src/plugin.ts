@@ -5,6 +5,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gcpPriceCatalog } from "./price-catalog.js";
 import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
 import { gcpTerraformExport } from "./terraform.js";
+import { gcpBusinessMetricSource } from "./business-metric-source.js";
 import { GcpProjectResourceType } from "./resources/project.js";
 import { GceInstanceResourceType } from "./resources/gce-instance.js";
 import { GceDiskResourceType } from "./resources/gce-disk.js";
@@ -134,6 +135,10 @@ const manifest: PluginManifest = {
     label: "Quotas",
     increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
   },
+  // Scheduled BigQuery SQL importer for business metrics (unit-cost
+  // denominators). Needs BigQuery Job User on the picked project and Data
+  // Viewer on the data the query reads.
+  businessMetricSource: gcpBusinessMetricSource,
   statusFeed,
   priceCatalog: gcpPriceCatalog,
   preflight: gcpPreflight,

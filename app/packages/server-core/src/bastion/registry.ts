@@ -112,6 +112,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
   newrelic: ["api.newrelic.com", "api.eu.newrelic.com", "api.jp.newrelic.com"],
+  metronome: ["api.metronome.com"],
   sentry: ["sentry.io", "us.sentry.io", "de.sentry.io"],
   "mongodb-atlas": ["cloud.mongodb.com"],
   snowflake: ["*.snowflakecomputing.com"],

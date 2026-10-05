@@ -17,6 +17,8 @@ function buildGetMetricStatisticsParams(input: {
   EndTime: string;
   Period: number;
   Statistics: string[];
+  /** Percentiles (`p99`). CloudWatch takes these or `Statistics`, never both. */
+  ExtendedStatistics?: string[];
 }): Record<string, string> {
   const params: Record<string, string> = {
     Namespace: input.Namespace,
@@ -31,6 +33,9 @@ function buildGetMetricStatisticsParams(input: {
   });
   input.Statistics.forEach((s, i) => {
     params[`Statistics.member.${i + 1}`] = s;
+  });
+  input.ExtendedStatistics?.forEach((s, i) => {
+    params[`ExtendedStatistics.member.${i + 1}`] = s;
   });
   return params;
 }

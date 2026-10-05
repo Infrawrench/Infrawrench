@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.59.0",
+    "version": "1.60.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1259,6 +1259,7 @@
           "kubernetes",
           "linode",
           "memcached",
+          "metronome",
           "mistral",
           "modal",
           "mongodb",
@@ -2058,6 +2059,7 @@
           "bigquery-dataset",
           "bigquery-table",
           "bigtable-instance",
+          "billable-metric",
           "billing-account",
           "billing-group",
           "block-volume",
@@ -2125,6 +2127,7 @@
           "custom-enrichment",
           "custom-hostname",
           "custom-voice",
+          "customer",
           "d1-database",
           "dashboard",
           "database",
@@ -8077,6 +8080,74 @@
         "additionalProperties": false,
         "description": "Null when the metric has no values at all — not an error, but every unit-cost chart drawn from it is one continuous gap."
       },
+      "BusinessMetricImporterSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The source plugin's name for itself, e.g. \"CloudWatch metric\"."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "success",
+              "error"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "sourceLabel",
+          "enabled",
+          "lastRunAt",
+          "lastStatus",
+          "lastError"
+        ],
+        "additionalProperties": false,
+        "description": "The scheduled importer feeding this metric, or null when its values are only pushed."
+      },
       "BusinessMetric": {
         "type": "object",
         "properties": {
@@ -8139,6 +8210,9 @@
           },
           "coverage": {
             "$ref": "#/components/schemas/BusinessMetricCoverage"
+          },
+          "importer": {
+            "$ref": "#/components/schemas/BusinessMetricImporterSummary"
           }
         },
         "required": [
@@ -8154,7 +8228,8 @@
           "createdByUserId",
           "createdAt",
           "updatedAt",
-          "coverage"
+          "coverage",
+          "importer"
         ],
         "additionalProperties": false
       },
@@ -8226,11 +8301,19 @@
           "value": {
             "type": "number"
           },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional breakdown label; a day's total is the sum across its labels."
+          },
           "source": {
             "type": "string",
             "enum": [
               "api",
-              "workflow"
+              "workflow",
+              "import"
             ]
           },
           "updatedAt": {
@@ -8241,6 +8324,7 @@
         "required": [
           "day",
           "value",
+          "label",
           "source",
           "updatedAt"
         ],
@@ -8259,6 +8343,10 @@
                 },
                 "value": {
                   "type": "number"
+                },
+                "label": {
+                  "type": "string",
+                  "maxLength": 120
                 }
               },
               "required": [
@@ -8273,6 +8361,546 @@
         },
         "required": [
           "values"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricSourceField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "select",
+              "sql",
+              "text",
+              "number"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "defaultValue": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowCustom": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricSourceAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "sql",
+                  "metric"
+                ]
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BusinessMetricSourceField"
+                }
+              },
+              "sqlDialect": {
+                "type": "string"
+              },
+              "readOnly": {
+                "type": "string",
+                "enum": [
+                  "enforced",
+                  "validated"
+                ]
+              },
+              "supportsDryRun": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "label",
+              "kind",
+              "fields"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricImportPreview": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "date",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pointsRead": {
+            "type": "integer"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "dryRun": {
+            "type": "object",
+            "properties": {
+              "valid": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "bytesProcessed": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "valid",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "values",
+          "pointsRead",
+          "days",
+          "notes",
+          "durationMs"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricImportAggregation": {
+        "type": "string",
+        "enum": [
+          "sum",
+          "average",
+          "min",
+          "max",
+          "last",
+          "count"
+        ],
+        "description": "How several points the source returns for one day (and label) become that day's value. A SQL query grouped by day returns one row per day and every choice agrees."
+      },
+      "BusinessMetricImportPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The source plugin's form values, keyed by field (see `GET /business-metrics/importer-sources`). SQL fields must be a single SELECT or WITH statement; `{{from}}`, `{{to}}`, `{{to_exclusive}}` and `{{timezone}}` are replaced with quoted literals."
+          },
+          "from": {
+            "type": "string",
+            "description": "Default: 14 days ending yesterday."
+          },
+          "to": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "aggregation": {
+            "$ref": "#/components/schemas/BusinessMetricImportAggregation"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Validate with the provider without reading data, where the source supports it."
+          }
+        },
+        "required": [
+          "accountId",
+          "params"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricImportSchedule": {
+        "type": "string",
+        "enum": [
+          "every_6_hours",
+          "every_12_hours",
+          "daily",
+          "weekly"
+        ]
+      },
+      "BusinessMetricImporter": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "metricId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/BusinessMetricImportSchedule"
+          },
+          "backfillDays": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "aggregation": {
+            "$ref": "#/components/schemas/BusinessMetricImportAggregation"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "nextRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "success",
+              "error"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "consecutiveFailures": {
+            "type": "integer",
+            "description": "Failed runs in a row; scheduling backs off on it and a success resets it."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "metricId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "sourceLabel",
+          "params",
+          "schedule",
+          "backfillDays",
+          "timezone",
+          "aggregation",
+          "enabled",
+          "nextRunAt",
+          "lastRunAt",
+          "lastStatus",
+          "lastError",
+          "consecutiveFailures",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricImporterInput": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "A connected account whose plugin declares a business-metric source."
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The source plugin's form values, keyed by field (see `GET /business-metrics/importer-sources`). SQL fields must be a single SELECT or WITH statement; `{{from}}`, `{{to}}`, `{{to_exclusive}}` and `{{timezone}}` are replaced with quoted literals."
+          },
+          "schedule": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BusinessMetricImportSchedule"
+              },
+              {
+                "description": "Absent is `daily`."
+              }
+            ]
+          },
+          "backfillDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 730,
+            "description": "Trailing closed days each scheduled run restates, ending yesterday. Absent is 7."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone the days are counted in. Absent is `UTC`.",
+            "example": "America/New_York"
+          },
+          "aggregation": {
+            "$ref": "#/components/schemas/BusinessMetricImportAggregation"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Absent is true."
+          }
+        },
+        "required": [
+          "accountId",
+          "params"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessMetricImportRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "importerId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "manual"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "success",
+              "error"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "description": "First day, inclusive, in the importer's timezone."
+          },
+          "to": {
+            "type": "string"
+          },
+          "pointsRead": {
+            "type": "integer"
+          },
+          "daysWritten": {
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "importerId",
+          "trigger",
+          "status",
+          "from",
+          "to",
+          "pointsRead",
+          "daysWritten",
+          "error",
+          "notes",
+          "startedAt",
+          "finishedAt",
+          "durationMs"
         ],
         "additionalProperties": false
       },
@@ -48119,6 +48747,604 @@
         },
         "operationId": "postOrgOrgIdBusinessMetricsIdValues",
         "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/importer-sources": {
+      "get": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "List importer sources",
+        "description": "Connected accounts whose plugin can feed a business metric on a schedule, each with the plugin's importer form: which fields to fill and which are pickers.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessMetricSourceAccount"
+                      }
+                    }
+                  },
+                  "required": [
+                    "sources"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBusinessMetricsImporterSources",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/importer-options": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "List an importer picker's choices",
+        "description": "Choices for one `select` field of a source's form, given the values picked so far. Needs `resources:execute` and `costs:write`: it calls the provider with the account's credentials.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "fieldKey": {
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "The source plugin's form values, keyed by field (see `GET /business-metrics/importer-sources`). SQL fields must be a single SELECT or WITH statement; `{{from}}`, `{{to}}`, `{{to_exclusive}}` and `{{timezone}}` are replaced with quoted literals."
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "fieldKey",
+                  "params"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Choices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsImporterOptions",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/importer-preview": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Preview an importer",
+        "description": "Run a source over a window and return the values it would write, writing nothing; or, with `dryRun`, validate the query with the provider without reading data. Read-only queries only, with the same row limit and timeout as a scheduled run.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessMetricImportPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessMetricImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsImporterPreview",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/{id}/importer": {
+      "get": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Get a metric's importer",
+        "description": "`importer` is null when the metric's values are only pushed.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Importer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "importer": {
+                      "$ref": "#/components/schemas/BusinessMetricImporter"
+                    }
+                  },
+                  "required": [
+                    "importer"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBusinessMetricsIdImporter",
+        "x-required-permission": "costs:read"
+      },
+      "put": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Create or replace a metric's importer",
+        "description": "One importer per metric. A full replace: omitted fields take their defaults. Each run restates whole days (every label a day carried is replaced by what the source returned), never touches days the source returned nothing for, and ignores points outside the window. Changing the account, the params or the schedule makes it due immediately.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessMetricImporterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/BusinessMetricImporter"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdBusinessMetricsIdImporter",
+        "x-required-permission": "resources:execute"
+      },
+      "delete": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Delete a metric's importer",
+        "description": "Stops importing and drops the run history. Values already imported stay.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBusinessMetricsIdImporter",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/{id}/importer/run": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Run a metric's importer now",
+        "description": "Runs synchronously and returns the finished run, failed or not. With no body it reads the importer's own window; `from`/`to` backfill a wider one (at most 730 days).\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessMetricImportRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsIdImporterRun",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/{id}/importer/runs": {
+      "get": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "List a metric's import runs",
+        "description": "Newest first; the most recent 50 are kept.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Default 20."
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BusinessMetricImportRun"
+                      }
+                    }
+                  },
+                  "required": [
+                    "runs"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBusinessMetricsIdImporterRuns",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/business-metrics/{id}/unit-costs": {

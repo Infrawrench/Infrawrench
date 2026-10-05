@@ -18,6 +18,10 @@ import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
 import { cmdBudgets } from "./commands/budgets";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
+import {
+  cmdBusinessMetricImporter,
+  cmdBusinessMetricSources,
+} from "./commands/unit-cost-importers";
 import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
 import { cmdCanvasList, cmdCanvasRefresh, cmdCanvasShow } from "./commands/canvas";
@@ -160,6 +164,12 @@ COMMANDS
                       new team, a migration)
   scenarios <name>    apply one to the forecast; prints the unadjusted trend alongside, always
                       [--last 30d]
+  unit-costs sources  accounts that can feed a business metric on a schedule, and the fields
+                      each one's importer takes
+  unit-costs importer <key> [show|runs|run|set|enable|disable|delete]
+                      a metric's scheduled importer: config + recent runs, run now
+                      [--from --to to backfill], or set [--account <id|name>]
+                      [--set field=value …, @file reads a value] [--file importer.json]
   unit-costs <key>    cost per unit of a business metric over time — a period with no reported
                       value prints as "—", never as 0   [--last 30d]
                       [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized]
@@ -620,6 +630,21 @@ export async function runCli(): Promise<void> {
       // and taking it would break a shipped command. With no argument this
       // lists the org's business metrics; with a key it draws the ratio.
       case "unit-costs":
+        if (rest[0] === "sources" && rest.length === 1) {
+          await cmdBusinessMetricSources(ctx);
+          break;
+        }
+        if (rest[0] === "importer") {
+          if (!rest[1])
+            throw new CliError("Usage: infrawrench unit-costs importer <metric> [action]", 2);
+          await cmdBusinessMetricImporter(ctx, rest[1], rest[2], {
+            file: parsed.config.file,
+            set: parsed.deploy.set,
+            from: parsed.range.from,
+            to: parsed.range.to,
+          });
+          break;
+        }
         if (rest[0]) {
           await cmdUnitCosts(ctx, rest.join(" "), parsed.range, parsed.margin);
           break;

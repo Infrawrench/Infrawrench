@@ -42,6 +42,7 @@ To keep an account read-only, or as narrow as you like, use a **scoped applicati
 | Synthetic tests         | `synthetics_read`, plus `synthetics_write` to pause, run or delete              |
 | Hosts                   | `hosts_read`                                                                    |
 | Host and monitor charts | `timeseries_query`                                                              |
+| Business metric import  | `metrics_read`, `timeseries_query`                                              |
 | Users                   | `user_access_read`, plus `user_access_manage` to disable                        |
 | API keys                | `api_keys_read`, plus `api_keys_delete` to revoke                               |
 | Application keys        | `org_app_keys_read`, plus `org_app_keys_write` to revoke                        |
@@ -63,6 +64,18 @@ Amounts are recorded in US dollars, the currency Datadog prices contracts in; th
 <insert [Cost graph grouped by service for a Datadog account, showing Infrastructure Hosts, APM Hosts and Indexed Logs stacked by day] here>
 
 <insert [Datadog organization page showing month-to-date and projected month-end cost, the per-product table, and the cost attribution by tag table] here>
+
+## Business metrics
+
+A Datadog metric can feed a [unit cost](../features/unit-costs.md#import-on-a-schedule) on a schedule: requests served, orders placed, or any custom metric your application sends. On a metric's row under **Costs → Unit costs**, choose **Import…**, pick this account and fill in the form. Every field is a picker:
+
+- **Metric** lists the metrics that reported in the past week. Type a name to use one that is quieter.
+- **Scope** lists the metric's tags. Pick one, type several separated by commas to require all of them, or leave it at `*` for every source.
+- **Break down by** is an optional tag key. Each of its values becomes a label on the metric, and a day's total is the sum across them.
+- **Combine sources with** and **Hourly rollup** are Datadog's space and time aggregation. Sum and sum suit counts.
+- **Count metric**: for count and rate metrics, choose **Yes** to read the number of events rather than the per-second rate Datadog stores.
+
+Each run reads hourly buckets and files them under days in the importer's timezone. In timezones whose midnight is not on the hour, such as India or Nepal, it reads 15-minute buckets instead, so no bucket crosses midnight. Datadog keeps metrics for 15 months, so a backfill reaching further back leaves the older days empty.
 
 ## Export to Terraform
 

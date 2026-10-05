@@ -99,6 +99,12 @@ vi.mock("@infrawrench/server-core/environments/pass", () => ({
   runEnvironmentReconcilePass: (...a: unknown[]) => runEnvironmentReconcilePass(...a),
 }));
 
+// The importer pass reads customers' systems through plugin clients; the loop
+// suite only cares that a failing tick cannot take the loop down.
+vi.mock("@infrawrench/server-core/cost/metric-import-pass", () => ({
+  runBusinessMetricImportPass: vi.fn().mockResolvedValue(0),
+}));
+
 import { PollerLoop } from "./loop";
 
 function row(id: string) {

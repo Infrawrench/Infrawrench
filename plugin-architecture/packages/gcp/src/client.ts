@@ -27,6 +27,10 @@ import type {
   QuotaUsage,
   CostFetchRange,
   CostRow,
+  BusinessMetricSourceDryRun,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
 } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
@@ -112,6 +116,12 @@ import { executeCloudArmorCommand } from "./cloud-armor-handlers.js";
 import { publishPubsubTopic, publishCloudTasksQueue } from "./publish-handlers.js";
 import { fetchGcpCostData } from "./cost-data.js";
 import { fetchGcpCommitments } from "./commitments.js";
+import {
+  dryRunGcpBusinessMetricSource,
+  listGcpBusinessMetricOptions,
+  runGcpBusinessMetricSource,
+  type BigQueryMetricContext,
+} from "./business-metric-source.js";
 
 import type { GcpClientContext } from "./shared.js";
 import { fetchGcpQuotas, type GcpProject, type GcpRegionList } from "./quotas.js";
@@ -1080,6 +1090,34 @@ export class GcpClient implements PluginClient {
     // logs routed to Vertex can be reconciled against them (provider level:
     // the export's service grain does not name the model).
     return withAiCostTags(rows, (row) => classifyGcpAiService(row.service));
+  }
+
+  private get businessMetricCtx(): BigQueryMetricContext {
+    return { project: this.project, token: () => this.token() };
+  }
+
+  async listBusinessMetricSourceOptions(
+    _accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]> {
+    return listGcpBusinessMetricOptions(this.businessMetricCtx, fieldKey, params);
+  }
+
+  async runBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult> {
+    return runGcpBusinessMetricSource(this.businessMetricCtx, params, range);
+  }
+
+  async dryRunBusinessMetricSource(
+    _accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceDryRun> {
+    return dryRunGcpBusinessMetricSource(this.businessMetricCtx, params, range);
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {

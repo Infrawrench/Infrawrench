@@ -688,6 +688,46 @@ type BusinessMetric struct {
 	Coverage        *BusinessMetricCoverage `json:"coverage"`
 }
 
+/* ------------------------- business metric importers ----------------------- */
+
+// BusinessMetricImporterInput is the PUT /business-metrics/{id}/importer body.
+// A full replace: the server defaults whatever is omitted, so the provider
+// always sends every field.
+type BusinessMetricImporterInput struct {
+	AccountID    string            `json:"accountId"`
+	Params       map[string]string `json:"params"`
+	Schedule     string            `json:"schedule"`
+	BackfillDays int64             `json:"backfillDays"`
+	Timezone     string            `json:"timezone"`
+	Aggregation  string            `json:"aggregation"`
+	Enabled      bool              `json:"enabled"`
+}
+
+// BusinessMetricImporter is the scheduled importer feeding one business
+// metric from a connected account. One per metric.
+type BusinessMetricImporter struct {
+	ID                  string            `json:"id"`
+	MetricID            string            `json:"metricId"`
+	AccountID           string            `json:"accountId"`
+	AccountName         *string           `json:"accountName"`
+	PluginID            *string           `json:"pluginId"`
+	SourceLabel         *string           `json:"sourceLabel"`
+	Params              map[string]string `json:"params"`
+	Schedule            string            `json:"schedule"`
+	BackfillDays        int64             `json:"backfillDays"`
+	Timezone            string            `json:"timezone"`
+	Aggregation         string            `json:"aggregation"`
+	Enabled             bool              `json:"enabled"`
+	NextRunAt           *string           `json:"nextRunAt"`
+	LastRunAt           *string           `json:"lastRunAt"`
+	LastStatus          *string           `json:"lastStatus"`
+	LastError           *string           `json:"lastError"`
+	ConsecutiveFailures int64             `json:"consecutiveFailures"`
+	CreatedByUserID     *string           `json:"createdByUserId"`
+	CreatedAt           string            `json:"createdAt"`
+	UpdatedAt           string            `json:"updatedAt"`
+}
+
 /* ----------------------------- cost annotations ---------------------------- */
 
 // CostAnnotationInput is the POST/PUT body.

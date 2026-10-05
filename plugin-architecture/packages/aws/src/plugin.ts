@@ -8,6 +8,7 @@ import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./netwo
 import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
 import { awsAiRequestLogCapability } from "./ai-request-logs.js";
+import { AWS_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
 import { VPCResourceType } from "./resources/vpc.js";
@@ -173,6 +174,7 @@ const manifest: PluginManifest = {
   // s3:GetObject on the log bucket, and for the CloudWatch kind
   // logs:StartQuery / logs:GetQueryResults / logs:StopQuery.
   aiRequestLogs: awsAiRequestLogCapability,
+  businessMetricSource: AWS_BUSINESS_METRIC_SOURCE,
   statusFeed,
   preflight: awsPreflight,
 };

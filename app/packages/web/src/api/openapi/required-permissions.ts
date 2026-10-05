@@ -560,6 +560,16 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /business-metrics/{id}/values": "costs:read",
   "POST /business-metrics/{id}/values": "costs:write",
   "POST /business-metrics/{id}/unit-costs": "costs:read",
+  // importers: writes also check costs:write; the map records the stronger
+  // permission, since an importer runs a query with an account's credentials.
+  "GET /business-metrics/importer-sources": "costs:read",
+  "POST /business-metrics/importer-options": "resources:execute",
+  "POST /business-metrics/importer-preview": "resources:execute",
+  "GET /business-metrics/{id}/importer": "costs:read",
+  "PUT /business-metrics/{id}/importer": "resources:execute",
+  "DELETE /business-metrics/{id}/importer": "costs:write",
+  "POST /business-metrics/{id}/importer/run": "resources:execute",
+  "GET /business-metrics/{id}/importer/runs": "costs:read",
   // cost-report folders organize the Reports list and nothing else, so they
   // ride the same scopes the reports do.
   "GET /cost-report-folders": "costs:read",

@@ -4,6 +4,15 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   BusinessMetric,
+  BusinessMetricImporter,
+  BusinessMetricImporterInput,
+  BusinessMetricImportPreview,
+  BusinessMetricImportPreviewRequest,
+  BusinessMetricImportRun,
+  BusinessMetricImportRunRequest,
+  BusinessMetricSourceAccount,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
   BusinessMetricValue,
   BusinessMetricValueInput,
@@ -265,6 +274,51 @@ export function createWebCostsClient(orgId: string): CostsClient {
         `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/values`,
         { values },
       ),
+    listBusinessMetricSources: async () => {
+      const res = await apiGet<{ sources: BusinessMetricSourceAccount[] }>(
+        `/api/org/${orgId}/business-metrics/importer-sources`,
+      );
+      return res.sources;
+    },
+    listBusinessMetricSourceOptions: async (request: BusinessMetricSourceOptionsRequest) => {
+      const res = await apiPost<{ options: BusinessMetricSourceOption[] }>(
+        `/api/org/${orgId}/business-metrics/importer-options`,
+        request,
+      );
+      return res.options;
+    },
+    previewBusinessMetricImport: (request: BusinessMetricImportPreviewRequest) =>
+      apiPost<BusinessMetricImportPreview>(
+        `/api/org/${orgId}/business-metrics/importer-preview`,
+        request,
+      ),
+    getBusinessMetricImporter: async (metricId: string) => {
+      const res = await apiGet<{ importer: BusinessMetricImporter | null }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/importer`,
+      );
+      return res.importer;
+    },
+    saveBusinessMetricImporter: (metricId: string, input: BusinessMetricImporterInput) =>
+      apiPut<BusinessMetricImporter>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/importer`,
+        input,
+      ),
+    deleteBusinessMetricImporter: async (metricId: string) => {
+      await apiDelete(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/importer`,
+      );
+    },
+    runBusinessMetricImporter: (metricId: string, request?: BusinessMetricImportRunRequest) =>
+      apiPost<BusinessMetricImportRun>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/importer/run`,
+        request ?? {},
+      ),
+    listBusinessMetricImportRuns: async (metricId: string, limit = 20) => {
+      const res = await apiGet<{ runs: BusinessMetricImportRun[] }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/importer/runs?limit=${limit}`,
+      );
+      return res.runs;
+    },
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
     getCommitments: () => apiGet<CommitmentsFeed>(`/api/org/${orgId}/commitments`),
     getNetworkFlows: (options?: { from?: string; to?: string; scope?: string; limit?: number }) => {

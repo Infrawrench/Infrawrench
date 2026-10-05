@@ -64,6 +64,13 @@ export interface StatementOptions {
    * API request is its own session. 0 accepts any number of statements.
    */
   multiStatementCount?: number;
+  /**
+   * Extra session parameters, merged over the defaults (`timezone`,
+   * `query_tag`). Only the SQL API's allowlisted parameters are accepted.
+   */
+  parameters?: Record<string, string | number>;
+  /** Aborts the request; a running statement is cancelled best-effort. */
+  signal?: AbortSignal;
 }
 
 /** One SQL API bind value. */
@@ -162,7 +169,9 @@ async function send(
   method: "GET" | "POST",
   pathAndQuery: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<RawResponse> {
+  if (signal?.aborted) throw new SnowflakeError("Snowflake: the request was cancelled.", 499);
   const url = `https://${ctx.account.host}${pathAndQuery}`;
   const headers: Record<string, string> = {
     ...(await ctx.auth.headers()),
@@ -188,6 +197,7 @@ async function send(
     method,
     headers,
     ...(payload !== undefined ? { body: payload } : {}),
+    ...(signal ? { signal } : {}),
   });
   return { status: res.status, text: await res.text() };
 }
@@ -316,17 +326,25 @@ export async function runSql(
       ...(opts.multiStatementCount !== undefined
         ? { MULTI_STATEMENT_COUNT: String(opts.multiStatementCount) }
         : {}),
+      ...opts.parameters,
     },
   };
   if (opts.bindings && opts.multiStatementCount !== undefined) {
     throw new Error("Snowflake: bind variables are not supported in multi-statement requests.");
   }
+  const signal = opts.signal;
   const requestId = uuid();
 
   let res: RawResponse | undefined;
   for (let attempt = 0; attempt < 4; attempt++) {
     const retry = attempt > 0 ? "&retry=true" : "";
-    res = await send(ctx, "POST", `/api/v2/statements?requestId=${requestId}${retry}`, body);
+    res = await send(
+      ctx,
+      "POST",
+      `/api/v2/statements?requestId=${requestId}${retry}`,
+      body,
+      signal,
+    );
     if (res.status !== 429 && res.status !== 503 && res.status !== 504) break;
     await sleep(1000 * 2 ** attempt);
   }
@@ -344,7 +362,20 @@ export async function runSql(
     }
     await sleep(delay);
     delay = Math.min(delay * 2, 5000);
-    const poll = await send(ctx, "GET", `/api/v2/statements/${encodeURIComponent(handle)}`);
+    if (signal?.aborted) {
+      // Best effort: stop the warehouse work the caller no longer wants.
+      await send(ctx, "POST", `/api/v2/statements/${encodeURIComponent(handle)}/cancel`).catch(
+        () => undefined,
+      );
+      throw new SnowflakeError("Snowflake: the statement was cancelled.", 499);
+    }
+    const poll = await send(
+      ctx,
+      "GET",
+      `/api/v2/statements/${encodeURIComponent(handle)}`,
+      undefined,
+      signal,
+    );
     status = poll.status;
     parsed = parseBody(poll);
     if (status !== 200 && status !== 202) throw errorFor(poll, parsed);
@@ -372,6 +403,8 @@ export async function runSql(
       ctx,
       "GET",
       `/api/v2/statements/${encodeURIComponent(handle)}?partition=${p}`,
+      undefined,
+      signal,
     );
     const partBody = parseBody(part);
     if (part.status !== 200) throw errorFor(part, partBody);

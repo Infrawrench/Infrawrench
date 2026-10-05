@@ -9,6 +9,15 @@ import type {
   BudgetInput,
   BudgetWithStatus,
   BusinessMetric,
+  BusinessMetricImporter,
+  BusinessMetricImporterInput,
+  BusinessMetricImportPreview,
+  BusinessMetricImportPreviewRequest,
+  BusinessMetricImportRun,
+  BusinessMetricImportRunRequest,
+  BusinessMetricSourceAccount,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
   BusinessMetricValue,
   BusinessMetricValueInput,
@@ -636,6 +645,84 @@ export async function writeCloudBusinessMetricValues(
   values: BusinessMetricValueInput[],
 ): Promise<BusinessMetricWriteResult> {
   return invoke("cloud_write_business_metric_values", { orgId, metricId, values });
+}
+
+export async function listCloudBusinessMetricSources(
+  orgId: string,
+): Promise<BusinessMetricSourceAccount[]> {
+  return (
+    (await invoke<BusinessMetricSourceAccount[]>("cloud_list_business_metric_sources", {
+      orgId,
+    })) ?? []
+  );
+}
+
+export async function listCloudBusinessMetricSourceOptions(
+  orgId: string,
+  request: BusinessMetricSourceOptionsRequest,
+): Promise<BusinessMetricSourceOption[]> {
+  return (
+    (await invoke<BusinessMetricSourceOption[]>("cloud_list_business_metric_source_options", {
+      orgId,
+      request,
+    })) ?? []
+  );
+}
+
+export async function previewCloudBusinessMetricImport(
+  orgId: string,
+  request: BusinessMetricImportPreviewRequest,
+): Promise<BusinessMetricImportPreview> {
+  return invoke("cloud_preview_business_metric_import", { orgId, request });
+}
+
+export async function getCloudBusinessMetricImporter(
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricImporter | null> {
+  return (
+    (await invoke<BusinessMetricImporter | null>("cloud_get_business_metric_importer", {
+      orgId,
+      metricId,
+    })) ?? null
+  );
+}
+
+export async function saveCloudBusinessMetricImporter(
+  orgId: string,
+  metricId: string,
+  input: BusinessMetricImporterInput,
+): Promise<BusinessMetricImporter> {
+  return invoke("cloud_save_business_metric_importer", { orgId, metricId, input });
+}
+
+export async function deleteCloudBusinessMetricImporter(
+  orgId: string,
+  metricId: string,
+): Promise<void> {
+  await invoke("cloud_delete_business_metric_importer", { orgId, metricId });
+}
+
+export async function runCloudBusinessMetricImporter(
+  orgId: string,
+  metricId: string,
+  request?: BusinessMetricImportRunRequest,
+): Promise<BusinessMetricImportRun> {
+  return invoke("cloud_run_business_metric_importer", { orgId, metricId, request });
+}
+
+export async function listCloudBusinessMetricImportRuns(
+  orgId: string,
+  metricId: string,
+  limit?: number,
+): Promise<BusinessMetricImportRun[]> {
+  return (
+    (await invoke<BusinessMetricImportRun[]>("cloud_list_business_metric_import_runs", {
+      orgId,
+      metricId,
+      limit,
+    })) ?? []
+  );
 }
 
 export async function queryCloudUnitCosts(

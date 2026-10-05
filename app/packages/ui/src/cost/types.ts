@@ -23,6 +23,15 @@ import type {
 import type {
   BudgetInput,
   BusinessMetric,
+  BusinessMetricImporter,
+  BusinessMetricImporterInput,
+  BusinessMetricImportPreview,
+  BusinessMetricImportPreviewRequest,
+  BusinessMetricImportRun,
+  BusinessMetricImportRunRequest,
+  BusinessMetricSourceAccount,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
   BusinessMetricValue,
   BusinessMetricValueInput,
@@ -349,4 +358,29 @@ export interface CostsClient extends CostApi {
     metricId: string,
     values: BusinessMetricValueInput[],
   ): Promise<BusinessMetricWriteResult>;
+  /**
+   * Scheduled importers. Each is optional on the usual rule: the importer
+   * editor renders only when the host wires the source list and the save.
+   */
+  listBusinessMetricSources?(): Promise<BusinessMetricSourceAccount[]>;
+  listBusinessMetricSourceOptions?(
+    request: BusinessMetricSourceOptionsRequest,
+  ): Promise<BusinessMetricSourceOption[]>;
+  previewBusinessMetricImport?(
+    request: BusinessMetricImportPreviewRequest,
+  ): Promise<BusinessMetricImportPreview>;
+  getBusinessMetricImporter?(metricId: string): Promise<BusinessMetricImporter | null>;
+  saveBusinessMetricImporter?(
+    metricId: string,
+    input: BusinessMetricImporterInput,
+  ): Promise<BusinessMetricImporter>;
+  deleteBusinessMetricImporter?(metricId: string): Promise<void>;
+  runBusinessMetricImporter?(
+    metricId: string,
+    request?: BusinessMetricImportRunRequest,
+  ): Promise<BusinessMetricImportRun>;
+  listBusinessMetricImportRuns?(
+    metricId: string,
+    limit?: number,
+  ): Promise<BusinessMetricImportRun[]>;
 }

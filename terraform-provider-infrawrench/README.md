@@ -673,6 +673,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_billing_rule`              | by id     | Query-time restatement; `amount` is a major unit     |
 | `infrawrench_cost_export`               | by id     | Credentials are write-only and never imported        |
 | `infrawrench_business_metric`           | by id     | Definition only; values are a pushed time series     |
+| `infrawrench_business_metric_importer`  | by metric | Scheduled pull; destroy stops it, values stay        |
 | `infrawrench_managed_account`           | by id     | A centre or account belongs to at most one           |
 | `infrawrench_currency_settings`         | by org id | Org singleton; destroy clears, rates survive         |
 | `infrawrench_exchange_rate`             | by id     | Upsert keyed on (from, to, effective_from)           |

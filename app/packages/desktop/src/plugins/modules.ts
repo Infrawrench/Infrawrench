@@ -26,6 +26,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-mssql"),
   () => import("@infrawrench/plugin-neon"),
   () => import("@infrawrench/plugin-newrelic"),
+  () => import("@infrawrench/plugin-metronome"),
   () => import("@infrawrench/plugin-postgres"),
   () => import("@infrawrench/plugin-redis"),
   () => import("@infrawrench/plugin-scaleway"),

@@ -229,6 +229,14 @@ export interface PluginManifest {
    */
   aiModelRates?: AiModelRateCard;
   /**
+   * If present, this plugin's accounts can feed a business metric (the
+   * denominator a unit cost divides by) on a schedule, via
+   * `PluginClient.runBusinessMetricSource`. The declaration is the importer
+   * form; see `business-metric-source.ts` for the read-only and bounding rules
+   * every implementation keeps.
+   */
+  businessMetricSource?: BusinessMetricSourceDeclaration;
+  /**
    * If present, this plugin's provider publishes a public status feed. The
    * host polls `statusFeed.url` (no credentials: the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
@@ -275,6 +283,13 @@ export interface RateLimitDeclaration {
 export interface SqlHostServices {
   /** Run a SELECT and return rows */
   query(sql: string): Promise<Record<string, unknown>[]>;
+  /**
+   * Like {@link query}, but the database itself refuses any change (the
+   * driver's `queryReadOnly`). Present only when the host's driver implements
+   * it; callers that must not write treat its absence as "cannot guarantee a
+   * read" and refuse rather than falling back to {@link query}.
+   */
+  queryReadOnly?(sql: string): Promise<Record<string, unknown>[]>;
   /** Run an INSERT/UPDATE/DELETE and return affected row count */
   execute(sql: string, params: unknown[]): Promise<number>;
 }
@@ -647,6 +662,36 @@ export interface PluginClient {
     accountId: string,
     range: NetworkFlowFetchRange,
   ): Promise<NetworkFlowRecord[] | NetworkFlowFetchResult>;
+  /**
+   * Choices for a `select` field of `manifest.businessMetricSource`, given the
+   * values picked so far (`params`). Only called when the manifest declares a
+   * business-metric source and the field has no static `options`.
+   */
+  listBusinessMetricSourceOptions?(
+    accountId: string,
+    fieldKey: string,
+    params: Record<string, string>,
+  ): Promise<BusinessMetricSourceOption[]>;
+  /**
+   * Read a business metric's raw points over `range`. Only called when the
+   * manifest declares `businessMetricSource`. Read only, bounded by
+   * `range.maxRows` and `range.timeoutMs`, and must throw rather than return a
+   * partial answer: the host restates exactly the days returned.
+   */
+  runBusinessMetricSource?(
+    accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceResult>;
+  /**
+   * Validate the query with the provider without reading data (BigQuery's dry
+   * run). Only called when `businessMetricSource.supportsDryRun` is set.
+   */
+  dryRunBusinessMetricSource?(
+    accountId: string,
+    params: Record<string, string>,
+    range: BusinessMetricSourceRange,
+  ): Promise<BusinessMetricSourceDryRun>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -1171,6 +1216,13 @@ export interface Plugin {
 }
 
 // Forward declarations: defined in their own modules but used here
+import type {
+  BusinessMetricSourceDeclaration,
+  BusinessMetricSourceDryRun,
+  BusinessMetricSourceOption,
+  BusinessMetricSourceRange,
+  BusinessMetricSourceResult,
+} from "./business-metric-source.js";
 import type {
   CommitmentRecord,
   CommitmentsCapabilityDeclaration,

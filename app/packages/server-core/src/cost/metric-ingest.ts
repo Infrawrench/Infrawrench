@@ -29,7 +29,7 @@
  * the same metric they are, by construction, making claims about the same
  * number, and the last claim wins, which is what restatement means.
  */
-import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import type { BusinessMetricValueSource } from "@infrawrench/client-core";
@@ -41,6 +41,8 @@ import { businessMetricValues, businessMetrics } from "../db/schema";
 export interface IngestMetricValue {
   date: string;
   value: number;
+  /** Optional breakdown label; absent or empty is the day's plain total. */
+  label?: string | undefined;
 }
 
 /** Where a batch came from. */
@@ -61,6 +63,9 @@ export class BusinessMetricIngestError extends Error {
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Longest breakdown label kept; matches `BUSINESS_METRIC_LIMITS.maxLabelLength`. */
+const MAX_LABEL_LENGTH = 120;
 
 /** True for a `YYYY-MM-DD` string that is also a real calendar date. */
 function isRealDay(day: string): boolean {
@@ -128,7 +133,7 @@ export async function ingestMetricValues(opts: {
    * *within* a batch that restatement applies *between* batches, which is the
    * only reading that is consistent.
    */
-  const byDay = new Map<string, number>();
+  const byDay = new Map<string, { day: string; label: string; value: number }>();
   values.forEach((entry, index) => {
     const fail = (detail: string): never => {
       throw new BusinessMetricIngestError(`${source.errorPrefix}: value ${index} ${detail}`);
@@ -140,15 +145,23 @@ export async function ingestMetricValues(opts: {
     if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
       fail("has a non-finite value.");
     }
-    byDay.set(entry.date, entry.value);
+    if (entry.label !== undefined && entry.label !== null && typeof entry.label !== "string") {
+      fail("has a label that is not a string.");
+    }
+    const label = (entry.label ?? "").trim();
+    if (label.length > MAX_LABEL_LENGTH) {
+      fail(`has a label longer than ${MAX_LABEL_LENGTH} characters.`);
+    }
+    byDay.set(`${entry.date}\u0000${label}`, { day: entry.date, label, value: entry.value });
   });
 
   const now = new Date();
-  const rows = [...byDay.entries()].map(([day, value]) => ({
+  const rows = [...byDay.values()].map(({ day, label, value }) => ({
     id: randomUUID(),
     organizationId,
     metricId,
     day,
+    label,
     value,
     source: source.source,
     updatedByUserId: source.userId,
@@ -159,7 +172,7 @@ export async function ingestMetricValues(opts: {
     .insert(businessMetricValues)
     .values(rows)
     .onConflictDoUpdate({
-      target: [businessMetricValues.metricId, businessMetricValues.day],
+      target: [businessMetricValues.metricId, businessMetricValues.day, businessMetricValues.label],
       set: {
         value: sql`excluded.value`,
         source: sql`excluded.source`,
@@ -169,6 +182,60 @@ export async function ingestMetricValues(opts: {
     });
 
   return { written: rows.length };
+}
+
+/**
+ * Restate whole days from an importer run: every label a day carried before is
+ * replaced by exactly what the source returned for it, in one transaction.
+ *
+ * Unlike {@link ingestMetricValues}, which restates `(day, label)` pairs, an
+ * import owns the whole day: a customer that dropped out of the source's
+ * answer must drop out of the stored breakdown too, or the day's total would
+ * keep counting it. Days the source returned nothing for are left alone, so a
+ * gap stays a gap rather than becoming a zero.
+ */
+export async function restateImportedDays(opts: {
+  organizationId: string;
+  metricId: string;
+  values: Array<{ date: string; value: number; label?: string | undefined }>;
+  userId: string | null;
+}): Promise<{ days: number }> {
+  const { organizationId, metricId, values, userId } = opts;
+  const days = [...new Set(values.map((v) => v.date))];
+  if (days.length === 0) return { days: 0 };
+  for (const day of days) {
+    if (!isRealDay(day))
+      throw new BusinessMetricIngestError(`Invalid day "${day}" from the source.`);
+  }
+  const now = new Date();
+  const rows = values.map((v) => ({
+    id: randomUUID(),
+    organizationId,
+    metricId,
+    day: v.date,
+    label: (v.label ?? "").slice(0, MAX_LABEL_LENGTH),
+    value: v.value,
+    source: "import" as const,
+    updatedByUserId: userId,
+    updatedAt: now,
+  }));
+  await db.transaction(async (tx) => {
+    // Chunked so a two-year backfill stays well inside the parameter limit.
+    for (let i = 0; i < days.length; i += 500) {
+      await tx
+        .delete(businessMetricValues)
+        .where(
+          and(
+            eq(businessMetricValues.metricId, metricId),
+            inArray(businessMetricValues.day, days.slice(i, i + 500)),
+          ),
+        );
+    }
+    for (let i = 0; i < rows.length; i += 1000) {
+      await tx.insert(businessMetricValues).values(rows.slice(i, i + 1000));
+    }
+  });
+  return { days: days.length };
 }
 
 /** One day of one metric, as the readers consume it. */
@@ -191,8 +258,13 @@ export async function getMetricValues(
   from: string,
   to: string,
 ): Promise<StoredMetricValue[]> {
+  // A labeled day is a breakdown; its total (what a unit cost divides by) is
+  // the sum across labels, so the read collapses labels here.
   const rows = await db
-    .select({ day: businessMetricValues.day, value: businessMetricValues.value })
+    .select({
+      day: businessMetricValues.day,
+      value: sql<number>`sum(${businessMetricValues.value})`,
+    })
     .from(businessMetricValues)
     .where(
       and(
@@ -201,6 +273,7 @@ export async function getMetricValues(
         lte(businessMetricValues.day, to),
       ),
     )
+    .groupBy(businessMetricValues.day)
     .orderBy(asc(businessMetricValues.day));
   return rows.map((r) => ({ day: r.day, value: Number(r.value) }));
 }
@@ -213,7 +286,7 @@ export async function getMetricCoverage(
     .select({
       firstDay: sql<string | null>`min(${businessMetricValues.day})::text`,
       lastDay: sql<string | null>`max(${businessMetricValues.day})::text`,
-      reportedDays: sql<number>`count(*)::int`,
+      reportedDays: sql<number>`count(distinct ${businessMetricValues.day})::int`,
     })
     .from(businessMetricValues)
     .where(eq(businessMetricValues.metricId, metricId));

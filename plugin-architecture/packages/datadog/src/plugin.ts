@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
+import { DATADOG_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
 import { DatadogClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { DATADOG_PREFLIGHT, datadogPolicyTemplate } from "./preflight.js";
@@ -75,6 +76,9 @@ const manifest: PluginManifest = {
     restatementDays: 35,
   },
   preflight: DATADOG_PREFLIGHT,
+  // A metric as a unit-cost denominator, read hourly and folded into the
+  // importer's local days. Needs metrics_read (pickers) and timeseries_query.
+  businessMetricSource: DATADOG_BUSINESS_METRIC_SOURCE,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
 };

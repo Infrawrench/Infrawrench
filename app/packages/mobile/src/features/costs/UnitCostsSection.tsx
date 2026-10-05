@@ -4,6 +4,7 @@ import {
   describeUnitCostCaveats,
   formatUnitCostValue,
   unitCostUnitLabel,
+  type BusinessMetric,
   type UnitCostQueryResponse,
   type UnitCostSeries,
 } from "@infrawrench/client-core";
@@ -96,6 +97,7 @@ export function UnitCostsSection() {
             <UnitCostCard
               key={metric.id}
               name={metric.name}
+              importer={metric.importer}
               response={query.data ?? null}
               loading={query.isLoading}
               error={query.isError}
@@ -105,20 +107,44 @@ export function UnitCostsSection() {
       )}
 
       <Text style={styles.footnote}>
-        Last 30 days. Business metrics are declared and reported from the web or desktop app; this
-        list is read-only.
+        Last 30 days. Business metrics, their importers and CSV uploads are managed from the web or
+        desktop app; this list is read-only.
       </Text>
     </>
   );
 }
 
+/**
+ * One line on what feeds the metric. A failing importer is the usual reason a
+ * sparkline has broken off at the right-hand edge, so it is said in red.
+ */
+function ImporterLine({ importer }: { importer: BusinessMetric["importer"] }) {
+  if (!importer) return null;
+  const source = `${importer.sourceLabel ?? "Importer"} · ${importer.accountName ?? "removed account"}`;
+  if (importer.lastStatus === "error") {
+    return (
+      <Text style={styles.error} numberOfLines={2}>
+        {source}: last import failed. {importer.lastError ?? ""}
+      </Text>
+    );
+  }
+  return (
+    <Text style={styles.importer} numberOfLines={1}>
+      Imported from {source}
+      {importer.enabled ? "" : " (paused)"}
+    </Text>
+  );
+}
+
 function UnitCostCard({
   name,
+  importer,
   response,
   loading,
   error,
 }: {
   name: string;
+  importer: BusinessMetric["importer"];
   response: UnitCostQueryResponse | null;
   loading: boolean;
   error: boolean;
@@ -168,6 +194,7 @@ function UnitCostCard({
       ))}
 
       {caveat && <Text style={styles.caveat}>{caveat}</Text>}
+      <ImporterLine importer={importer} />
     </Card>
   );
 }
@@ -189,4 +216,5 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 13 },
   error: { color: colors.danger, fontSize: 13 },
   footnote: { color: colors.textFaint, fontSize: 11 },
+  importer: { color: colors.textFaint, fontSize: 11, marginTop: spacing.sm },
 });

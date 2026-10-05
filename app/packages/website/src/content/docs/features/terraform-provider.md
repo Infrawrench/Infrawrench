@@ -402,6 +402,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                    |
 | `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                            |
 | `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values             |
+| `infrawrench_business_metric_importer`  | A metric's [scheduled importer](./unit-costs.md#import-on-a-schedule) from an account  |
 | `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                 |
 | `infrawrench_currency_settings`         | The organization's display currency                                                    |
 | `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                  |

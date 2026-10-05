@@ -51,6 +51,18 @@ for (const plugin of BUNDLED_PLUGINS) {
     add(field.placeholder);
     add(field.emptyLabel);
   }
+  // The business-metric importer form, rendered generically by the shared
+  // importer editor through useDataString.
+  const metricSource = manifest.businessMetricSource;
+  if (metricSource) {
+    add(metricSource.label);
+    add(metricSource.description);
+    for (const field of metricSource.fields) {
+      add(field.label);
+      add(field.description);
+      for (const option of field.options ?? []) add(option.label);
+    }
+  }
   for (const field of manifest.credentialFields) {
     add(field.label);
     add(field.description);

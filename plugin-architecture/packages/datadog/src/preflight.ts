@@ -137,6 +137,20 @@ const PROBES: CapabilityProbe[] = [
   },
   {
     capability: {
+      id: "business-metrics",
+      label: "Business metric import",
+      description:
+        "Reading a metric on a schedule as a unit-cost denominator: listing metrics and their tags, then querying the series.",
+      requiredPermissions: [
+        perm("metrics_read", "Metrics Read"),
+        perm("timeseries_query", "Timeseries Query"),
+      ],
+    },
+    path: "/api/v1/metrics",
+    query: { from: Math.floor(Date.now() / 1000) - 300 },
+  },
+  {
+    capability: {
       id: "users",
       label: "Users",
       description: "List users and disable them from the access review.",

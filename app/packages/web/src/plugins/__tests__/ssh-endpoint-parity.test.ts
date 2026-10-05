@@ -138,6 +138,7 @@ describe("SSH endpoint parity", () => {
     "cloudflare",
     "neon",
     "newrelic",
+    "metronome",
     "sentry",
     "mongodb-atlas",
     "circleci",

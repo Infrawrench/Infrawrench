@@ -4542,7 +4542,14 @@ export const businessMetricValues = pgTable(
     /** The UTC day this value belongs to. Daily, to match `cost_daily`. */
     day: date("day").notNull(),
     value: doublePrecision("value").notNull(),
-    /** "api" | "workflow": who wrote it, for reading a surprising point. */
+    /**
+     * Optional breakdown label (a customer, a region); `''` for a plain daily
+     * total. Not nullable on purpose: it is part of the restatement key, and a
+     * NULL in a unique index never collides, so two unlabeled writes of one
+     * day would both land instead of the second restating the first.
+     */
+    label: text("label").notNull().default(""),
+    /** "api" | "workflow" | "import": who wrote it, for reading a surprising point. */
     source: text("source").notNull().default("api"),
     updatedByUserId: text("updated_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -4556,10 +4563,110 @@ export const businessMetricValues = pgTable(
      * appending, which is what makes a nightly job safe to retry: an ingest
      * that accumulated would double every number the first time it re-ran.
      */
-    metricDayUnique: uniqueIndex("business_metric_values_metric_day_unique").on(t.metricId, t.day),
+    metricDayUnique: uniqueIndex("business_metric_values_metric_day_label_unique").on(
+      t.metricId,
+      t.day,
+      t.label,
+    ),
     /** The read: one metric's values across a date range, in day order. */
     metricDayIdx: index("business_metric_values_metric_day_idx").on(t.metricId, t.day),
     orgIdx: index("business_metric_values_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * A scheduled importer feeding one business metric from a connected account.
+ *
+ * One per metric (`metric_id` is unique): two importers restating the same
+ * days would just overwrite each other on alternate runs. The provider half
+ * (what `params` means, how the query runs) belongs to the account's plugin
+ * through its `businessMetricSource` capability; this row is only the host's
+ * half: the schedule, the window, the timezone, the aggregation, and the
+ * claim columns the poller pass uses.
+ */
+export const businessMetricImporters = pgTable(
+  "business_metric_importers",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => businessMetrics.id, { onDelete: "cascade" }),
+    /**
+     * No foreign key, matching query monitors: removing an account leaves the
+     * importer in place so its runs fail loudly ("the account is no longer
+     * connected") instead of the metric silently going unfed.
+     */
+    accountId: text("account_id").notNull(),
+    /** The plugin's form values, keyed by field. */
+    params: jsonb("params").notNull().default({}),
+    /** "every_6_hours" | "every_12_hours" | "daily" | "weekly". */
+    schedule: text("schedule").notNull().default("daily"),
+    /** Trailing days each scheduled run restates, ending yesterday. */
+    backfillDays: integer("backfill_days").notNull().default(7),
+    timezone: text("timezone").notNull().default("UTC"),
+    /** "sum" | "average" | "min" | "max" | "last" | "count". */
+    aggregation: text("aggregation").notNull().default("sum"),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: timestamp("next_run_at").notNull().defaultNow(),
+    lastRunAt: timestamp("last_run_at"),
+    /** "success" | "error"; null before the first run. */
+    lastStatus: text("last_status"),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    metricUnique: uniqueIndex("business_metric_importers_metric_unique").on(t.metricId),
+    orgIdx: index("business_metric_importers_org_idx").on(t.organizationId),
+    /** The poller's claim: enabled importers by due time. */
+    dueIdx: index("business_metric_importers_due_idx").on(t.enabled, t.nextRunAt),
+  }),
+);
+
+/**
+ * One run of an importer: scheduled or "run now". Kept to the most recent
+ * `BUSINESS_METRIC_IMPORT_LIMITS.runHistory` per importer, because the point
+ * is "why is yesterday missing", not an archive.
+ */
+export const businessMetricImportRuns = pgTable(
+  "business_metric_import_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    importerId: text("importer_id")
+      .notNull()
+      .references(() => businessMetricImporters.id, { onDelete: "cascade" }),
+    /** "schedule" | "manual". */
+    trigger: text("trigger").notNull(),
+    /** "running" | "success" | "error". */
+    status: text("status").notNull(),
+    fromDay: date("from_day").notNull(),
+    toDay: date("to_day").notNull(),
+    pointsRead: integer("points_read").notNull().default(0),
+    daysWritten: integer("days_written").notNull().default(0),
+    error: text("error"),
+    notes: jsonb("notes").notNull().default([]),
+    triggeredByUserId: text("triggered_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+    durationMs: integer("duration_ms"),
+  },
+  (t) => ({
+    importerStartedIdx: index("business_metric_import_runs_importer_started_idx").on(
+      t.importerId,
+      t.startedAt,
+    ),
   }),
 );
 
