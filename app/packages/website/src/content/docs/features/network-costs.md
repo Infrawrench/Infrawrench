@@ -64,6 +64,10 @@ GCP VPC Flow Logs land in Cloud Logging. The Cloud Logging API cannot aggregate 
 
 NSG and VNet flow logs are written as JSON blobs to a storage account, one file per hour per NSG. The only aggregatable form is Traffic Analytics, which is a paid add-on that processes them into a Log Analytics workspace — so support would need the add-on enabled, a workspace id we don't hold, and a different authentication scope. Enabling all three on a customer's behalf to produce an estimate is not a trade worth making silently.
 
+### Kubernetes clusters
+
+A Kubernetes account reports its pods' traffic through the same collection, but it is **left out of the totals on this page**: those bytes also leave through the node interfaces an AWS flow log already counts, and adding both would count them twice. Each cluster gets its own view, by namespace and workload, with its billed data transfer split across it. See [Kubernetes network costs](./kubernetes-costs.md#network-costs).
+
 ## Turning it on
 
 **Collection is off by default, and turning it on spends your money.** Answering "which two things are talking" means running a query against your provider's own log store, and AWS bills CloudWatch Logs Insights **to your account, per gigabyte scanned** — a busy VPC's flow log group is not small. Nothing runs until somebody enables it.

@@ -304,6 +304,7 @@ func specChecks() []specCheck {
 		{schema: "SessionRecordingUsage", value: SessionRecordingUsage{}},
 
 		{schema: "NetworkFlowSettings", value: NetworkFlowSettings{}},
+		{schema: "KubernetesNetworkSettings", value: KubernetesNetworkSettings{}},
 
 		{schema: "JiraIntegration", value: JiraIntegration{}},
 		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},

@@ -239,6 +239,17 @@ export interface PluginManifest {
    */
   businessMetricSource?: BusinessMetricSourceDeclaration;
   /**
+   * This provider's published data-transfer rate card, for pricing traffic
+   * that *another* plugin observes on this provider's network.
+   *
+   * A Kubernetes cluster running on GKE moves bytes across GCP's zones and
+   * GCP's internet edge, so GCP's rates price them, but the numbers belong
+   * with the GCP plugin, not inside the Kubernetes one. A plugin that also
+   * declares `networkFlows` may leave this unset; its flow rate card is used.
+   * Declaring it schedules nothing: it is a price list, not a capability.
+   */
+  transferRates?: NetworkFlowRateCard;
+  /**
    * If present, this plugin's provider publishes a public status feed. The
    * host polls `statusFeed.url` (no credentials: the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
@@ -1239,6 +1250,7 @@ import type {
   NetworkFlowCapabilityDeclaration,
   NetworkFlowFetchRange,
   NetworkFlowFetchResult,
+  NetworkFlowRateCard,
   NetworkFlowRecord,
 } from "./network-flow.js";
 import type {

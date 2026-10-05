@@ -35,6 +35,10 @@ import {
   loadCloudBillingRules,
   loadCloudShowback,
   loadCloudCommitments,
+  loadCloudNetworkFlows,
+  saveCloudNetworkFlowSettings,
+  loadCloudKubernetesNetwork,
+  saveCloudKubernetesNetworkSettings,
   loadCloudEfficiencyAlerts,
   loadCloudEfficiencySettings,
   saveCloudEfficiencySettings,
@@ -209,6 +213,15 @@ export function createDesktopCostsClient(): CostsClient {
     listBillingRules: () => loadCloudBillingRules(requireOrgId()),
     getCreditBurndown: () => loadCloudCreditBurndown(requireOrgId()),
     getCommitments: () => loadCloudCommitments(requireOrgId()),
+    // Network costs, mirroring web: the server enforces `org:settings:write`
+    // for the switch and `costs:write` for a cluster's billed source, and a
+    // viewer's 403 surfaces as the control's error.
+    getNetworkFlows: (options) => loadCloudNetworkFlows(requireOrgId(), options),
+    updateNetworkFlowSettings: (settings) => saveCloudNetworkFlowSettings(requireOrgId(), settings),
+    getKubernetesNetwork: (accountId, options) =>
+      loadCloudKubernetesNetwork(requireOrgId(), accountId, options),
+    updateKubernetesNetworkSettings: (accountId, settings) =>
+      saveCloudKubernetesNetworkSettings(requireOrgId(), accountId, settings),
     listEfficiencyAlerts: (options) => loadCloudEfficiencyAlerts(requireOrgId(), options ?? {}),
     getEfficiencyAlertSettings: () => loadCloudEfficiencySettings(requireOrgId()),
     updateEfficiencyAlertSettings: (settings) =>

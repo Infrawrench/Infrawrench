@@ -48,3 +48,7 @@ export {
   type EfficiencyAlertsSectionProps,
 } from "./EfficiencyAlertsSection.js";
 export { NetworkFlowSection, type NetworkFlowSectionProps } from "./NetworkFlowSection.js";
+export {
+  KubernetesNetworkSection,
+  type KubernetesNetworkSectionProps,
+} from "./KubernetesNetworkSection.js";

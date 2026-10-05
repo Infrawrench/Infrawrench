@@ -129,6 +129,7 @@
     "./network-flow/collect": "./src/network-flow/collect.ts",
     "./network-flow/aggregate": "./src/network-flow/aggregate.ts",
     "./network-flow/pricing": "./src/network-flow/pricing.ts",
+    "./network-flow/kubernetes": "./src/network-flow/kubernetes.ts",
     "./report-delivery/compose": "./src/report-delivery/compose.ts",
     "./report-delivery/store": "./src/report-delivery/store.ts",
     "./report-delivery/deliver": "./src/report-delivery/deliver.ts",

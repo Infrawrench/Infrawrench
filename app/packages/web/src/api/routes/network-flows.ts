@@ -2,6 +2,12 @@ import { Hono, type Context } from "hono";
 
 import { getNetworkFlowFeed } from "@infrawrench/server-core/network-flow/feed";
 import {
+  getKubernetesNetworkReport,
+  getKubernetesNetworkSettings,
+  KubernetesNetworkError,
+  setKubernetesNetworkSettings,
+} from "@infrawrench/server-core/network-flow/kubernetes";
+import {
   getNetworkFlowSettings,
   setNetworkFlowSettings,
   NetworkFlowSettingsError,
@@ -73,6 +79,88 @@ app.get("/", async (c: Context) => {
       ...(c.req.query("accountId") ? { accountId: c.req.query("accountId") } : {}),
     }),
   );
+});
+
+function kubernetesError(c: Context, e: unknown) {
+  if (e instanceof KubernetesNetworkError) return c.json({ error: e.message }, e.status);
+  throw e;
+}
+
+/**
+ * GET /kubernetes/:accountId; one cluster's network costs by namespace,
+ * workload and boundary. `costs:read`, like the org-wide screen.
+ */
+app.get("/kubernetes/:accountId", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  const range = parseRange(c);
+  if (!range) return c.json({ error: "from/to must be YYYY-MM-DD with from <= to" }, 400);
+  const rawLimit = c.req.query("limit");
+  const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    return c.json({ error: "limit must be an integer between 1 and 200" }, 400);
+  }
+  try {
+    return c.json(
+      await getKubernetesNetworkReport(
+        c.get("organizationId") as string,
+        c.req.param("accountId") as string,
+        { ...range, limit },
+      ),
+    );
+  } catch (e) {
+    return kubernetesError(c, e);
+  }
+});
+
+app.get("/kubernetes/:accountId/settings", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  try {
+    return c.json(
+      await getKubernetesNetworkSettings(
+        c.get("organizationId") as string,
+        c.req.param("accountId") as string,
+      ),
+    );
+  } catch (e) {
+    return kubernetesError(c, e);
+  }
+});
+
+/**
+ * PUT /kubernetes/:accountId/settings; the cluster's billed data-transfer
+ * source. `costs:write`: it changes how collected money is apportioned on
+ * screen, never what is collected or spent. Audit-logged because it moves
+ * money between teams' views.
+ */
+app.put("/kubernetes/:accountId/settings", async (c: Context) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId") as string;
+  const accountId = c.req.param("accountId") as string;
+  const session = c.get("session");
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const billedQuery = body?.["billedQuery"];
+  if (billedQuery !== null && typeof billedQuery !== "string") {
+    return c.json({ error: "billedQuery must be a string or null" }, 400);
+  }
+  try {
+    const settings = await setKubernetesNetworkSettings(
+      organizationId,
+      accountId,
+      { billedQuery },
+      session.userId,
+    );
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "network_flows.kubernetes_settings.update",
+      entityType: "account",
+      entityId: accountId,
+      metadata: { billedQuery: settings.billedQuery },
+    });
+    return c.json(settings);
+  } catch (e) {
+    return kubernetesError(c, e);
+  }
 });
 
 /** GET /settings: the org's collection switch, without the data. */

@@ -9,6 +9,7 @@ import { OversizedSection } from "../savings/OversizedSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
 import { NetworkFlowSection } from "./NetworkFlowSection.js";
+import { KubernetesNetworkSection } from "./KubernetesNetworkSection.js";
 import type {
   OrphanedResource,
   OrphansClient,
@@ -450,6 +451,12 @@ export function CostsPanel({
             below both act on a *resource*, while an egress bill is a property
             of a conversation between two of them. */}
         <NetworkFlowSection client={client} />
+
+        {/* Directly under the org-wide network section it is deliberately
+            kept out of: a cluster's pod traffic leaves through the same node
+            interfaces a VPC flow log counts, so it is its own per-cluster
+            view rather than more rows in that total. */}
+        <KubernetesNetworkSection client={client} />
 
         {/* Carbon sits with the other whole-estate figures rather than beside
             the per-resource findings below: it is a property of the estate the

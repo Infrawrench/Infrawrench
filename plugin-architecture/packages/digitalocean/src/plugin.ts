@@ -35,6 +35,7 @@ import { VpcNatGatewayResourceType } from "./resources/vpc-nat-gateway.js";
 import { VpcPeeringResourceType } from "./resources/vpc-peering.js";
 import { AppResourceType } from "./resources/app.js";
 import { AutoscalePoolResourceType } from "./resources/autoscale-pool.js";
+import { DIGITALOCEAN_TRANSFER_RATES } from "./transfer-rates.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -100,6 +101,9 @@ const manifest: PluginManifest = {
   statusFeed,
   // Droplet list prices from /v2/sizes (`sizes:read`). See price-catalog.ts.
   priceCatalog: doPriceCatalog,
+  // Published transfer rates, for pricing a Kubernetes cluster's traffic on
+  // this provider's network. A price list, not a capability: schedules nothing.
+  transferRates: DIGITALOCEAN_TRANSFER_RATES,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

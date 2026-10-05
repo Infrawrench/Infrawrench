@@ -53,6 +53,9 @@ import type {
   UntaggedSpendReport,
   CommitmentsFeed,
   CreditBurndown,
+  KubernetesNetworkReport,
+  KubernetesNetworkSettings,
+  NetworkFlowFeed,
 } from "@infrawrench/ui/cost";
 import type {
   BudgetAlertEvent,
@@ -276,6 +279,36 @@ export async function loadCloudCreditBurndown(orgId: string): Promise<CreditBurn
 
 export async function loadCloudCommitments(orgId: string): Promise<CommitmentsFeed> {
   return invoke("cloud_commitments", { orgId });
+}
+
+export async function loadCloudNetworkFlows(
+  orgId: string,
+  options?: { from?: string; to?: string; scope?: string; limit?: number },
+): Promise<NetworkFlowFeed> {
+  return invoke("cloud_network_flows", { orgId, ...(options ? { options } : {}) });
+}
+
+export async function saveCloudNetworkFlowSettings(
+  orgId: string,
+  settings: { enabled: boolean; initialLookbackDays?: number },
+): Promise<{ enabled: boolean; initialLookbackDays: number }> {
+  return invoke("cloud_network_flow_settings_update", { orgId, settings });
+}
+
+export async function loadCloudKubernetesNetwork(
+  orgId: string,
+  accountId: string,
+  options?: { from?: string; to?: string; limit?: number },
+): Promise<KubernetesNetworkReport> {
+  return invoke("cloud_kubernetes_network", { orgId, accountId, ...(options ? { options } : {}) });
+}
+
+export async function saveCloudKubernetesNetworkSettings(
+  orgId: string,
+  accountId: string,
+  settings: { billedQuery: string | null },
+): Promise<KubernetesNetworkSettings> {
+  return invoke("cloud_kubernetes_network_settings_update", { orgId, accountId, settings });
 }
 
 export async function loadCloudEfficiencyAlerts(

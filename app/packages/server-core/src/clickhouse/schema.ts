@@ -400,6 +400,14 @@ export const networkFlowDaily = clickhouseTable(
     currency: label("currency").notNull(),
     rate_per_gb: float64().notNull(),
     estimated_cost: float64().notNull(),
+    /**
+     * How the row's bytes and boundary were established (`flow_log`,
+     * `in_cluster_flows`, `counter_estimate`), or "" for a plugin with only one
+     * method and for residual rows. Added after the table shipped, so it carries
+     * a DEFAULT and is outside the sort key: it describes a row, it does not
+     * distinguish one.
+     */
+    method: label("method").notNull().default(""),
     ingested_at: dateTime()
       .notNull()
       .default(sql`now()`),

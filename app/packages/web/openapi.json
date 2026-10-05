@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.66.0",
+    "version": "1.67.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -30886,6 +30886,10 @@
             "type": "boolean",
             "description": "False when the account's provider has no flow source we can read. Such accounts are listed and excluded from the totals rather than contributing zero bytes — zero would be a claim about their network, this is a statement about our coverage."
           },
+          "recut": {
+            "type": "boolean",
+            "description": "True when the account's flows re-cut traffic another account may already report (a Kubernetes cluster's pods). Left out of this feed's totals unless asked for by `accountId`; see `GET /network-flows/kubernetes/{accountId}`."
+          },
           "collectedThrough": {
             "type": [
               "string",
@@ -30932,6 +30936,7 @@
           "pluginId",
           "displayName",
           "supportsFlows",
+          "recut",
           "collectedThrough",
           "lastPolledAt",
           "failureCount",
@@ -31075,6 +31080,329 @@
           "accounts",
           "rateCards",
           "totals"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesNetworkRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "workload",
+              "namespace",
+              "node",
+              "truncated"
+            ]
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "estimatedCost": {
+            "type": "number",
+            "description": "Bytes × the published rate for each boundary crossed."
+          },
+          "allocatedCost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "This row's share of the cluster's billed data transfer. Null when no billed source is configured. The rows never add up to more than was billed."
+          },
+          "byScope": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Bytes by boundary."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "flow_log",
+              "in_cluster_flows",
+              "counter_estimate",
+              ""
+            ],
+            "description": "How the bytes and boundary were established, strongest first: `flow_log` (the cloud's VPC flow log for the node, split across its pods by their counters), `in_cluster_flows` (Cilium Hubble named the peers; the boundary follows from where they run), `counter_estimate` (the kubelet's per-pod byte counter alone, no destination, boundary unknown). Empty for residual rows."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "namespace",
+          "kind",
+          "bytes",
+          "estimatedCost",
+          "allocatedCost",
+          "byScope",
+          "method"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesNetworkReport": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          },
+          "estimated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "bytes": {
+                "type": "number"
+              },
+              "estimatedCost": {
+                "type": "number"
+              },
+              "allocatedCost": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "unallocatedCost": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "Billed money no observed traffic accounted for. Never spread across rows."
+              }
+            },
+            "required": [
+              "bytes",
+              "estimatedCost",
+              "allocatedCost",
+              "unallocatedCost"
+            ],
+            "additionalProperties": false
+          },
+          "billed": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "billedCost": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "basis": {
+                "type": "string",
+                "enum": [
+                  "cost",
+                  "bytes",
+                  "none"
+                ],
+                "description": "`cost`: apportioned by list-priced traffic. `bytes`: nothing in the range could be priced, so apportioned by bytes alone (weakest). `none`: nothing apportioned."
+              },
+              "scaledDays": {
+                "type": "integer"
+              },
+              "daysWithoutBilled": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query",
+              "error",
+              "billedCost",
+              "basis",
+              "scaledDays",
+              "daysWithoutBilled"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "intra_zone",
+                    "cross_zone",
+                    "cross_region",
+                    "internet_egress",
+                    "internet_ingress",
+                    "provider_service",
+                    "nat_gateway",
+                    "private_interconnect",
+                    "unknown"
+                  ],
+                  "description": "Which billing boundary the traffic crossed. `unknown` means the provider's record did not determine one — it is priced at zero and labelled rather than folded into a neighbouring boundary."
+                },
+                "bytes": {
+                  "type": "number"
+                },
+                "estimatedCost": {
+                  "type": "number"
+                },
+                "allocatedCost": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "scope",
+                "bytes",
+                "estimatedCost",
+                "allocatedCost"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "flow_log",
+                    "in_cluster_flows",
+                    "counter_estimate",
+                    ""
+                  ],
+                  "description": "How the bytes and boundary were established, strongest first: `flow_log` (the cloud's VPC flow log for the node, split across its pods by their counters), `in_cluster_flows` (Cilium Hubble named the peers; the boundary follows from where they run), `counter_estimate` (the kubelet's per-pod byte counter alone, no destination, boundary unknown). Empty for residual rows."
+                },
+                "bytes": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "method",
+                "bytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "namespaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KubernetesNetworkRow"
+            }
+          },
+          "workloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KubernetesNetworkRow"
+            }
+          },
+          "topTalkers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowPair"
+            }
+          },
+          "collection": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkFlowAccountStatus"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "displayName",
+          "range",
+          "estimated",
+          "currency",
+          "totals",
+          "billed",
+          "scopes",
+          "methods",
+          "namespaces",
+          "workloads",
+          "topTalkers",
+          "collection"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesNetworkSettings": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "billedQuery": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000,
+            "description": "Cost query language text selecting this cluster's billed data-transfer rows, for example `account = 'prod-aws' AND service = 'AWS Data Transfer'`. Null: none."
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "billedQuery",
+          "updatedAt"
         ],
         "additionalProperties": false
       },
@@ -70262,6 +70590,244 @@
         },
         "operationId": "getOrgOrgIdNetworkFlows",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows/kubernetes/{accountId}": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Kubernetes network costs for one cluster",
+        "description": "Pod-level network attribution for a Kubernetes account: bytes by namespace, workload and boundary (same zone, cross-zone, cross-region, internet), the largest workload → peer pairs, and which sources the figures came from.\n\n`estimatedCost` is bytes at the published rate of the cloud the nodes run on, with any per-cluster overrides from the account's rates field. When a billed source is configured (`PUT .../settings`), `allocatedCost` apportions that real billed spend across the rows day by day, never handing out more than was billed; the rest is `unallocatedCost`.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive start day. Defaults to 13 days ago."
+            },
+            "required": false,
+            "description": "Inclusive start day. Defaults to 13 days ago.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive end day. Defaults to today."
+            },
+            "required": false,
+            "description": "Inclusive end day. Defaults to today.",
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Pairs to return in `topTalkers`. Defaults to 25."
+            },
+            "required": false,
+            "description": "Pairs to return in `topTalkers`. Defaults to 25.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cluster's network costs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesNetworkReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsKubernetesAccountId",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows/kubernetes/{accountId}/settings": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Read a cluster's network cost settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesNetworkSettings"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsKubernetesAccountIdSettings",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Set the billed data-transfer source for a cluster",
+        "description": "Say which billed cost rows are this cluster's data transfer, in the cost query language. An empty or null query clears it. A query that narrows nothing is refused: it would apportion the whole bill across one cluster.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "billedQuery": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "billedQuery"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesNetworkSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdNetworkFlowsKubernetesAccountIdSettings",
+        "x-required-permission": "costs:write"
       }
     },
     "/api/org/{orgId}/network-flows/settings": {

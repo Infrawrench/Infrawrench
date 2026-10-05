@@ -65,6 +65,7 @@ import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
 import { cmdCarbon } from "./commands/carbon";
+import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
@@ -251,6 +252,10 @@ COMMANDS
                       installation's granted permissions (cloud only)
   carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
+  k8s-network [cluster]
+                      a Kubernetes cluster's network costs by traffic class (same zone,
+                      cross-zone, cross-region, internet), namespace and workload, top talkers,
+                      and its billed data transfer apportioned   [--last 14d] (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
   routing             alert routing rules, in evaluation order
@@ -847,6 +852,9 @@ export async function runCli(): Promise<void> {
         break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);
+        break;
+      case "k8s-network":
+        await cmdK8sNetwork(ctx, rest.join(" "), parsed.range);
         break;
       case "alerts":
         if (rest[0] === "events") {

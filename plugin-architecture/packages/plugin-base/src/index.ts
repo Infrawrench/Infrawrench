@@ -130,14 +130,18 @@ export type {
   NetworkFlowEndpoint,
   NetworkFlowFetchRange,
   NetworkFlowFetchResult,
+  NetworkFlowMethod,
   NetworkFlowRateCard,
   NetworkFlowRecord,
   NetworkFlowScope,
   NetworkFlowSource,
   NetworkFlowTotal,
+  ObservedEgress,
 } from "./network-flow.js";
 export {
+  applyNetworkRateOverrides,
   BYTES_PER_PRICING_GB,
+  NETWORK_FLOW_METHODS,
   NETWORK_FLOW_SCOPES,
   NetworkFlowSetupError,
   normalizeNetworkFlowResult,

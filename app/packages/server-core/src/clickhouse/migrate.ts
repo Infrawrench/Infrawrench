@@ -13,6 +13,7 @@ import {
   metricPoints1h,
   metricPoints1m,
   metricPointsRaw,
+  networkFlowDaily,
 } from "./schema";
 
 const dialect = new ClickHouseDialect();
@@ -138,6 +139,7 @@ const ADDITIVE_COLUMNS: Array<[ClickHouseTable, ClickHouseColumn]> = [
   [costDaily, costDaily.commitment_id],
   [costDaily, costDaily.list_amount],
   [costDaily, costDaily.list_reported],
+  [networkFlowDaily, networkFlowDaily.method],
 ];
 
 function addColumnSQL(table: ClickHouseTable, column: ClickHouseColumn): string {

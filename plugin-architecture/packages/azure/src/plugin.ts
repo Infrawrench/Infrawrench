@@ -41,6 +41,7 @@ import { ContainerAppEnvironmentResourceType } from "./resources/container-app-e
 import { ContainerAppJobResourceType } from "./resources/container-app-job.js";
 import { ManagedRedisResourceType } from "./resources/managed-redis.js";
 import { AIServicesAccountResourceType } from "./resources/ai-services.js";
+import { AZURE_TRANSFER_RATES } from "./transfer-rates.js";
 
 const manifest: PluginManifest = {
   id: "azure",
@@ -118,6 +119,9 @@ const manifest: PluginManifest = {
   commitments: { kinds: ["reservation", "savings_plan"] },
   statusFeed,
   priceCatalog,
+  // Published transfer rates, for pricing a Kubernetes cluster's traffic on
+  // this provider's network. A price list, not a capability: schedules nothing.
+  transferRates: AZURE_TRANSFER_RATES,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

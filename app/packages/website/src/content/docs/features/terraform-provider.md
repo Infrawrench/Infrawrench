@@ -427,15 +427,16 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Lifecycle governance
 
-| Resource                                 | Manages                                                         |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| `infrawrench_schedule`                   | [Sleep schedules](./sleep-schedules.md)                         |
-| `infrawrench_change_freeze`              | [Change freezes](../team-and-billing/change-freeze.md)          |
-| `infrawrench_drift_alert_settings`       | What the [change timeline](./change-timeline.md) notifies about |
-| `infrawrench_expiry_alert_settings`      | [Expiry radar](./expiry-radar.md) lead time                     |
-| `infrawrench_posture_alert_settings`     | Whether [posture findings](./posture-checks.md) notify          |
-| `infrawrench_session_recording_settings` | [Session recording](./session-recording.md) and retention       |
-| `infrawrench_network_flow_settings`      | Whether [network flow costs](./network-costs.md) are collected  |
+| Resource                                  | Manages                                                                                       |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `infrawrench_schedule`                    | [Sleep schedules](./sleep-schedules.md)                                                       |
+| `infrawrench_change_freeze`               | [Change freezes](../team-and-billing/change-freeze.md)                                        |
+| `infrawrench_drift_alert_settings`        | What the [change timeline](./change-timeline.md) notifies about                               |
+| `infrawrench_expiry_alert_settings`       | [Expiry radar](./expiry-radar.md) lead time                                                   |
+| `infrawrench_posture_alert_settings`      | Whether [posture findings](./posture-checks.md) notify                                        |
+| `infrawrench_session_recording_settings`  | [Session recording](./session-recording.md) and retention                                     |
+| `infrawrench_network_flow_settings`       | Whether [network flow costs](./network-costs.md) are collected                                |
+| `infrawrench_kubernetes_network_settings` | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
 
 ### Accounts and access
 

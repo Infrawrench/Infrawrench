@@ -208,6 +208,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // its own cloud account every day until somebody turns it off, which is a
   // governance act rather than an edit to a cost object.
   "PUT /network-flows/settings": "org:settings:write",
+  // Kubernetes network costs. The per-cluster billed source changes how money
+  // is *shown*, never what is collected or spent, so it is a cost-object edit.
+  "GET /network-flows/kubernetes/{accountId}": "costs:read",
+  "GET /network-flows/kubernetes/{accountId}/settings": "costs:read",
+  "PUT /network-flows/kubernetes/{accountId}/settings": "costs:write",
   "GET /credential-hygiene": "audit:read",
   "GET /access-requests": "access:read",
   "GET /access-requests/catalog": "access:read",

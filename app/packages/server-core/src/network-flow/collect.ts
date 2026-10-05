@@ -13,17 +13,22 @@
  * would then be watermarked as complete.
  */
 import {
+  applyNetworkRateOverrides,
   normalizeNetworkFlowResult,
   NetworkFlowSetupError,
   type NetworkFlowCapabilityDeclaration,
   type NetworkFlowFetchResult,
+  type NetworkFlowRateCard,
+  type NetworkFlowScope,
   type NetworkFlowRecord,
 } from "@infrawrench/plugin-base";
 import { and, eq } from "drizzle-orm";
 
+import { readObservedEgress } from "../clickhouse/network-flow-readers";
 import { insertNetworkFlowRows, toNetworkFlowRows } from "../clickhouse/network-flow-writers";
 import { db } from "../db/client";
 import { accountNetworkFlowPolls } from "../db/schema";
+import { getPlugin } from "../plugin-loader";
 import { loadAccountClient } from "../sync-resources";
 import { addDays, isoDay } from "../cost/dates";
 
@@ -51,6 +56,35 @@ export interface NetworkFlowCollectionResult {
   /** True when at least one day came back flagged degraded by the plugin. */
   degraded: boolean;
   sources: ReturnType<typeof normalizeNetworkFlowResult>["sources"];
+}
+
+/**
+ * The rate card one account's day is priced at.
+ *
+ * Normally the plugin's own declared card. A plugin whose accounts run on
+ * somebody else's network (Kubernetes on EKS, GKE, AKS) names the provider
+ * whose card applies, and may carry per-account overrides; both are resolved
+ * here so the pricing arithmetic stays the one tested implementation in
+ * `pricing.ts`. A named plugin that is not loaded, or publishes no card, falls
+ * back to the declaring plugin's own card rather than to nothing.
+ */
+export async function resolveFlowRates(
+  capability: NetworkFlowCapabilityDeclaration,
+  answer: {
+    ratesFromPlugin?: string | undefined;
+    rateOverrides?: Partial<Record<NetworkFlowScope, number>> | undefined;
+  },
+  lookup: (pluginId: string) => Promise<NetworkFlowRateCard | undefined> = async (pluginId) => {
+    const loaded = await getPlugin(pluginId);
+    const manifest = loaded?.plugin.manifest;
+    return manifest?.transferRates ?? manifest?.networkFlows?.rates;
+  },
+): Promise<NetworkFlowRateCard> {
+  let card = capability.rates;
+  if (answer.ratesFromPlugin) {
+    card = (await lookup(answer.ratesFromPlugin).catch(() => undefined)) ?? card;
+  }
+  return applyNetworkRateOverrides(card, answer.rateOverrides);
 }
 
 /**
@@ -162,6 +196,14 @@ export async function collectAccountNetworkFlows(
       fetched = await client.fetchNetworkFlows(accountId, {
         day,
         ...(options.lease ? { signal: options.lease.signal } : {}),
+        // Other accounts' classified egress for the same day, so a cluster can
+        // borrow the boundary its cloud account's flow log already observed.
+        observedEgress: async (refs) =>
+          (await readObservedEgress(organizationId, day, refs, accountId)).map((row) => ({
+            ref: row.ref,
+            scope: row.scope as NetworkFlowScope,
+            bytes: row.bytes,
+          })),
       });
     } catch (e) {
       // A day we cut short is not a failing account, so it must not be reported
@@ -194,9 +236,10 @@ export async function collectAccountNetworkFlows(
     if (answer.degraded) result.degraded = true;
     if (answer.queryBytesScanned) result.queryBytesScanned += answer.queryBytesScanned;
 
+    const rates = await resolveFlowRates(capability, answer);
     const aggregated = aggregateNetworkFlows(
       day,
-      { flows: answer.flows, totals: answer.totals, rates: capability.rates },
+      { flows: answer.flows, totals: answer.totals, rates },
       { maxPairs },
     );
     result.droppedPairs += aggregated.droppedPairs;

@@ -135,3 +135,46 @@ export const accountNetworkFlowPolls = pgTable(
     orgIdx: index("account_network_flow_polls_org_idx").on(t.organizationId),
   }),
 );
+
+/**
+ * Per-cluster settings for Kubernetes network cost allocation.
+ *
+ * One row per Kubernetes account, created the first time someone saves it.
+ * It holds the one thing the cluster cannot know about itself: **which billed
+ * cost rows are this cluster's data transfer**. A cluster's pod traffic is
+ * billed to the cloud account that owns its nodes, on a line whose shape
+ * differs per provider (`AWS Data Transfer` and part of `EC2 - Other` on AWS,
+ * `Bandwidth` on Azure, a SKU inside `Compute Engine` on GCP), so the user
+ * picks it with the cost query language rather than us guessing at service
+ * names that would be wrong for half the orgs reading them.
+ *
+ * With a billed source, the report apportions that real money across the
+ * cluster's workloads by their list-priced traffic, day by day, and never
+ * hands out more than was billed. Without one, the report shows the list
+ * estimate and says so.
+ *
+ * The query is stored as **text**, not compiled filters, so it reads back the
+ * way it was typed and an edit starts from the user's own words; it is
+ * compiled on every read by the same parser the cost graphs use.
+ */
+export const kubernetesNetworkSettings = pgTable(
+  "kubernetes_network_settings",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Cost query language text selecting the billed data-transfer rows. Null: none. */
+    billedQuery: text("billed_query"),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("kubernetes_network_settings_org_idx").on(t.organizationId),
+  }),
+);
