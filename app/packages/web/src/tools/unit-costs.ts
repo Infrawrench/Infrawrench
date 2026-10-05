@@ -43,6 +43,7 @@ import {
   BusinessMetricKeyConflictError,
   createBusinessMetric,
   getBusinessMetric,
+  listBusinessMetricLabels,
   listBusinessMetricValues,
   listBusinessMetrics,
   softDeleteBusinessMetric,
@@ -51,7 +52,9 @@ import {
 import {
   BusinessMetricNotFoundError,
   CostQueryError,
+  listUsageUnits,
   runUnitCostQuery,
+  runUsageUnitCostQuery,
 } from "../services/unit-cost-query";
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
@@ -158,9 +161,22 @@ export function unitCostTools(): ToolDefinition[] {
         "added together.\n\n" +
         "`gapBuckets` and `partialBuckets` summarise how much of the answer is unreliable — a " +
         "partial bucket has spend for the whole period but volume for only part of it, so its " +
-        "ratio reads high. Margin is a 400 for a metric whose kind is not `currency`.",
+        "ratio reads high. Margin is a 400 for a metric whose kind is not `currency`.\n\n" +
+        "Calculations (`mode`): `unit_cost` (default), `margin` (fraction, with " +
+        "`absoluteMargin` = revenue − spend on every point), `raw_metric` (the metric itself " +
+        "beside spend; zero is a real value there), and `usage_unit_cost` (spend ÷ the usage " +
+        "providers report in `usageUnit`; omit `metric` — find units with `list_usage_units`). " +
+        "`scale` (1, 100, 1000, 1e6, 1e9) expresses a ratio per that many units, so cost per " +
+        "1,000 requests is `scale: 1000`; values come back already scaled.\n\n" +
+        "Labels: `groupByLabel` returns one series per label value (e.g. per customer) with " +
+        "`series[].label`; `labelFilters` keeps only some values. In a ratio mode the label must " +
+        "be mapped to a cost dimension on the metric (see `list_business_metric_labels`), " +
+        "otherwise the query is refused — an unmapped label has no per-value spend to divide.",
       inputSchema: {
-        metric: z.string().describe("Metric key or id."),
+        metric: z
+          .string()
+          .optional()
+          .describe("Metric key or id. Omit only for `mode: usage_unit_cost`."),
         ...unitCostQueryRequestSchema.shape,
       },
       risk: "read",
@@ -171,12 +187,50 @@ export function unitCostTools(): ToolDefinition[] {
         const parsed = unitCostQueryRequestSchema.safeParse(input);
         if (!parsed.success) return err(`Invalid unit-cost query: ${parsed.error.message}`);
         try {
-          return ok(
-            await runUnitCostQuery(auth.organizationId, String(input["metric"] ?? ""), parsed.data),
-          );
+          if (parsed.data.mode === "usage_unit_cost") {
+            return ok(await runUsageUnitCostQuery(auth.organizationId, parsed.data));
+          }
+          const metric = typeof input["metric"] === "string" ? input["metric"] : "";
+          if (!metric) return err("`metric` is required for this calculation.");
+          return ok(await runUnitCostQuery(auth.organizationId, metric, parsed.data));
         } catch (e) {
           return toolError(e);
         }
+      },
+    },
+    {
+      name: "list_business_metric_labels",
+      title: "List business metric labels",
+      description:
+        "The label keys a metric's values carry (customer, plan, region), each with its " +
+        "distinct values and its `mapping`: the cost dimension (tag, virtual tag, account, " +
+        "service…, or cost centre) whose values the label names. Only a mapped label can split " +
+        "or filter a unit cost or margin; any label can split the raw metric.",
+      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
+        if (!metric) return err(`No business metric "${String(input["metric"])}".`);
+        return ok({ metric: metric.key, labels: await listBusinessMetricLabels(metric) });
+      },
+    },
+    {
+      name: "list_usage_units",
+      title: "List usage units",
+      description:
+        "The provider usage units the organization's cost rows report (GB-Mo, Hrs, Requests…) " +
+        "over the last 90 days, most spend first, with some of the services reporting each. " +
+        "Pass one as `usageUnit` to `query_unit_costs` with `mode: usage_unit_cost`.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await listUsageUnits(auth.organizationId));
       },
     },
     {
@@ -261,7 +315,9 @@ export function unitCostTools(): ToolDefinition[] {
         "Write daily values for a metric. **Re-reporting a day restates it rather than adding " +
         "to it**, so this is safe to call twice — and it is the only correct way to fix a bad " +
         "number: send the day again with the right value. Dates are UTC YYYY-MM-DD. Nothing " +
-        "lands unless the whole batch validates.",
+        "lands unless the whole batch validates. Optional `labels` (e.g. " +
+        '`{"customer": "acme"}`) break a day down; the same day with the same labels restates, ' +
+        "and a day's total is the sum of its rows, so send a breakdown or a total, never both.",
       inputSchema: {
         metric: z.string().describe("Metric key or id."),
         values: z
@@ -271,9 +327,10 @@ export function unitCostTools(): ToolDefinition[] {
               value: z.number(),
               label: z
                 .string()
-                .max(BUSINESS_METRIC_LIMITS.maxLabelLength)
+                .max(BUSINESS_METRIC_LIMITS.maxLabelValueLength)
                 .optional()
-                .describe("Optional breakdown label; the day's total is the sum across labels."),
+                .describe("A single breakdown label, stored as the `label` key of `labels`."),
+              labels: z.record(z.string(), z.string()).optional(),
             }),
           )
           .max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
@@ -293,6 +350,7 @@ export function unitCostTools(): ToolDefinition[] {
               date: string;
               value: number;
               label?: string;
+              labels?: Record<string, string>;
             }>,
             source: {
               errorPrefix: "write_business_metric_values",

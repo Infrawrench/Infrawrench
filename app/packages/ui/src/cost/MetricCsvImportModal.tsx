@@ -7,7 +7,9 @@ import {
   BUSINESS_METRIC_LIMITS,
   CSV_DATE_FORMATS,
   CSV_DATE_FORMAT_LABELS,
+  csvLabelColumnKey,
   csvRowsToMetricValues,
+  formatBusinessMetricLabels,
   guessCsvMapping,
   parseMetricCsv,
   type BusinessMetric,
@@ -22,6 +24,16 @@ const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /** Largest file the browser parses: past this it belongs in an importer. */
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** A mapping with `column` no longer a named label (it was just picked for another role). */
+function withoutLabelColumn(
+  mapping: MetricCsvColumnMapping,
+  column: number | undefined,
+): MetricCsvColumnMapping {
+  if (column === undefined || !mapping.labelColumns) return mapping;
+  const labelColumns = mapping.labelColumns.filter((c) => c.column !== column);
+  return { ...mapping, labelColumns: labelColumns.length > 0 ? labelColumns : undefined };
+}
 
 /**
  * Upload a CSV of daily values: map the columns, preview what will be written
@@ -59,10 +71,36 @@ export function MetricCsvImportModal({
     header?.[i]?.trim() ? header[i]!.trim() : gt("Column {n}", { n: i + 1 }),
   );
 
-  const result = useMemo(
-    () => (rows ? csvRowsToMetricValues(body, mapping, format, hasHeader ? 2 : 1) : null),
-    [rows, body, mapping, format, hasHeader],
+  // Named label columns need a header to name them; without one they are off.
+  const effectiveMapping = useMemo(
+    () => (hasHeader ? mapping : { ...mapping, labelColumns: undefined }),
+    [mapping, hasHeader],
   );
+  const result = useMemo(
+    () => (rows ? csvRowsToMetricValues(body, effectiveMapping, format, hasHeader ? 2 : 1) : null),
+    [rows, body, effectiveMapping, format, hasHeader],
+  );
+  /** Columns that could be named labels: not the day, value or unnamed label column. */
+  const labelCandidates = header
+    ? header
+        .map((h, column) => ({ column, name: h.trim(), key: csvLabelColumnKey(h) }))
+        .filter(
+          (c) =>
+            c.column !== mapping.date && c.column !== mapping.value && c.column !== mapping.label,
+        )
+    : [];
+  const checkedLabels = new Set((mapping.labelColumns ?? []).map((c) => c.column));
+  const labelLimitReached = checkedLabels.size >= BUSINESS_METRIC_LIMITS.maxLabelsPerValue;
+
+  function toggleLabelColumn(column: number, key: string, on: boolean) {
+    setMapping((m) => {
+      const rest = (m.labelColumns ?? []).filter((c) => c.column !== column);
+      const labelColumns = on
+        ? [...rest, { column, key }].sort((a, b) => a.column - b.column)
+        : rest;
+      return { ...m, labelColumns: labelColumns.length > 0 ? labelColumns : undefined };
+    });
+  }
   const days = result ? new Set(result.values.map((v) => v.date)).size : 0;
 
   async function pickFile(file: File | undefined) {
@@ -186,7 +224,7 @@ export function MetricCsvImportModal({
                   {columnSelect(
                     `${uid}-date`,
                     mapping.date,
-                    (v) => setMapping((m) => ({ ...m, date: v ?? 0 })),
+                    (v) => setMapping((m) => withoutLabelColumn({ ...m, date: v ?? 0 }, v)),
                     false,
                   )}
                 </div>
@@ -214,7 +252,7 @@ export function MetricCsvImportModal({
                   {columnSelect(
                     `${uid}-value`,
                     mapping.value,
-                    (v) => setMapping((m) => ({ ...m, value: v ?? 0 })),
+                    (v) => setMapping((m) => withoutLabelColumn({ ...m, value: v ?? 0 }, v)),
                     false,
                   )}
                 </div>
@@ -227,12 +265,52 @@ export function MetricCsvImportModal({
                     mapping.label,
                     (v) =>
                       setMapping((m) =>
-                        v === undefined ? { date: m.date, value: m.value } : { ...m, label: v },
+                        v === undefined
+                          ? { date: m.date, value: m.value, labelColumns: m.labelColumns }
+                          : withoutLabelColumn({ ...m, label: v }, v),
                       ),
                     true,
                   )}
                 </div>
               </div>
+
+              {labelCandidates.length > 0 && (
+                <fieldset>
+                  <legend className={labelClass}>{gt("Label columns")}</legend>
+                  <p className="text-[11px] text-on-surface-faint mb-1.5">
+                    {gt(
+                      "Each checked column becomes a label named after its header, so values can be split and filtered by it. An empty cell leaves that label off the row.",
+                    )}
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {labelCandidates.map((c) => (
+                      <label
+                        key={c.column}
+                        className="flex items-center gap-1.5 text-sm text-on-surface"
+                        title={
+                          c.key === null
+                            ? gt(
+                                "This header cannot be a label name: use letters, digits, - and _.",
+                              )
+                            : undefined
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={
+                            c.key === null || (labelLimitReached && !checkedLabels.has(c.column))
+                          }
+                          checked={checkedLabels.has(c.column)}
+                          onChange={(e) =>
+                            c.key && toggleLabelColumn(c.column, c.key, e.target.checked)
+                          }
+                        />
+                        {c.name || columns[c.column]}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
 
               {result && (
                 <div className="rounded-lg border border-border">
@@ -265,7 +343,9 @@ export function MetricCsvImportModal({
                       {result.values.slice(0, 15).map((v, i) => (
                         <tr key={i} className="border-t border-border">
                           <td className="px-3 py-1 text-on-surface-secondary">{v.date}</td>
-                          <td className="px-3 py-1 text-on-surface-faint">{v.label ?? ""}</td>
+                          <td className="px-3 py-1 text-on-surface-faint">
+                            {v.labels ? formatBusinessMetricLabels(v.labels) : (v.label ?? "")}
+                          </td>
                           <td className="px-3 py-1 text-right tabular-nums text-on-surface">
                             {v.value}
                           </td>

@@ -121,6 +121,23 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A metric's unit cost or margin crossed a threshold the org set on it,
+       * optionally for one label value: see server-core
+       * `cost/unit-cost-threshold-eval.ts`.
+       *
+       * Target route: the Costs tab, like the regression.
+       */
+      type: "unit_cost_threshold";
+      orgId: string;
+      metricId: string;
+      /** Last day of the evaluated window, YYYY-MM-DD (UTC). */
+      windowTo: string;
+      currency: string;
+      /** The label value the threshold fired for; "" when not grouped. */
+      labelValue: string;
+    }
+  | {
+      /**
        * A metric threshold alert rule fired (or recovered) on one resource:
        * "CPU > 90% for 15 minutes" (see server-core `metric-alerts/eval.ts`).
        *

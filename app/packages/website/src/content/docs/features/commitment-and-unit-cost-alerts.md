@@ -159,6 +159,37 @@ Because a regression is a level shift rather than a spike — the elevated fortn
 elevated until it rolls out of both windows — a metric stays quiet for **14 days** after
 notifying. Every firing is still stored and listed, whether or not it notified.
 
+## Unit-cost and margin thresholds
+
+A regression asks "did this move?". A **threshold** asks "is this over the line?": cost per
+1,000 requests above $0.40, or gross margin below 30%, optionally **per label value**, so each
+customer is judged on their own margin.
+
+Thresholds are set on the metric itself: **Costs → Unit costs → Edit → Alert thresholds**. Each
+one names:
+
+| Field           | What it is                                                                                                      |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Calculation** | Cost per unit, or margin (revenue metrics only).                                                                |
+| **Direction**   | Above or below.                                                                                                 |
+| **Limit**       | Currency per unit (at the chosen scale) for a unit cost; a percentage for margin.                               |
+| **Scale**       | Per unit, hundred, thousand, million or billion.                                                                |
+| **Window**      | Trailing complete days the ratio is summed over (1 to 90, default 7).                                           |
+| **Per label**   | Judge each value of a label separately. The label must be [mapped to a cost dimension](./unit-costs.md#labels). |
+
+<insert [Business metric editor's Alert thresholds section with two rows: "Margin below 30% over 7 days per customer" and "Cost per 1K request above 0.40 USD over 14 days"] here>
+
+Each threshold is evaluated once a day, after cost collection, by the same calculation the
+[unit-cost chart](./unit-costs.md) draws: the window's **summed** spend over its **summed** metric,
+never the worst single day. The gap rules carry over: a window with fewer than half its days
+reported is not judged at all, and the "Other" fold of a label split never fires, because it is
+a different set of values every day.
+
+A breach fires once per window end and then stays quiet for **7 days** for that threshold, label
+value and currency. Editing a threshold makes it a new one, so a limit you just moved can fire
+immediately. Firings appear in the same list as everything else on this page, with the observed
+value beside the limit.
+
 ## Managing these alerts
 
 All three live in the **Commitment & unit-cost alerts** section of the Costs panel, below the
@@ -179,7 +210,7 @@ organization's whole cost feed alerts on rather than editing one cost object.
 ## Notifications
 
 The three arrive through [alert routing](./alert-routing.md) as three trigger kinds —
-**Commitment expiry**, **Idle commitments** and **Unit-cost regressions** — so routing rules,
+**Commitment expiry**, **Idle commitments** and **Unit-cost alerts** (regressions and thresholds) — so routing rules,
 quiet hours and escalation apply exactly as they do to budgets and anomalies. Nothing is sent
 to a channel directly.
 
@@ -188,7 +219,7 @@ Rules can match on the money at stake, and each trigger carries the number a per
 - Commitment expiry carries the **monthly on-demand exposure**, so "commitment expiries over
   $5,000 → #finance" means the size of the problem, not the size of the invoice ending.
 - Idle commitments carry the **wasted amount**.
-- Unit-cost regressions carry the **current window's spend** — the size of the scope that
+- Unit-cost regressions and thresholds carry the **window's spend** — the size of the scope that
   regressed. (Not the unit cost itself, which is routinely sub-cent and would make every such
   rule match nothing.)
 

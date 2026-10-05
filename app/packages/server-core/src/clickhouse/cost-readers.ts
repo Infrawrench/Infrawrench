@@ -91,6 +91,13 @@ export type CostQuery = Omit<
    * degrades to unfiltered spend.
    */
   virtualTags?: VirtualTagDefinitions | undefined;
+  /**
+   * Group by cost centre, through these allocation rules (already in
+   * evaluation order), instead of by `groupBy`. Rows no rule claims group
+   * under `''`. Server-only: it is how a business-metric label mapped to cost
+   * centres gets a per-centre numerator in the same single scan.
+   */
+  groupByAllocation?: ShowbackRule[] | undefined;
 };
 
 /**
@@ -633,7 +640,14 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   const scope = new VirtualTagScope(
     await resolveVirtualTags(
       organizationId,
-      referencedVirtualTagKeys(q.filters, q.groupBy, q.groupByTagKey),
+      [
+        ...referencedVirtualTagKeys(q.filters, q.groupBy, q.groupByTagKey),
+        // A cost-centre grouping through rules that match on a virtual tag
+        // needs that tag in scope, exactly as `getShowbackSpend` does.
+        ...(q.groupByAllocation ?? []).flatMap((r) =>
+          r.match.virtualTagKey ? [r.match.virtualTagKey] : [],
+        ),
+      ],
       q.from,
       q.to,
       q.virtualTags,
@@ -657,6 +671,9 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   if (adjustments && q.groupBy === "account") {
     groupExpr = reallocationExpr(adjustments.reallocations, "account", groupExpr);
   }
+  if (q.groupByAllocation) {
+    groupExpr = allocationExpr(q.groupByAllocation, scope);
+  }
 
   const where = and(
     costDailyOrgCondition(organizationId),
@@ -665,7 +682,12 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
       membershipCondition(dimensionExpr(f.dimension, f.tagKey, scope), f.op, f.values),
     ),
     chargeTypeCondition(q.chargeTypes),
-    usage ? eq(costDaily.usage_unit, q.usageUnit ?? "") : undefined,
+    // `usageUnit` restricts rows to one provider unit: always for the usage
+    // measure (quantities in different units cannot be added), and for a cost
+    // read only when the server sets it, for per-usage-unit cost, where the
+    // numerator must be exactly the spend that bought the usage divided by.
+    // The wire path refuses a unit on the cost measure (`costDisplayProblem`).
+    usage || q.usageUnit !== undefined ? eq(costDaily.usage_unit, q.usageUnit ?? "") : undefined,
   );
 
   // Money is computed after every expression that can mention a virtual tag,
@@ -1269,6 +1291,114 @@ export interface ShowbackRule {
 }
 
 /**
+ * The first-match-wins allocation `multiIf`: one cost centre id per row, `''`
+ * for rows no rule claims. Shared by showback and by `queryCosts`'
+ * `groupByAllocation`, so "which centre does this row belong to" has one
+ * answer everywhere.
+ */
+function allocationExpr(rules: ShowbackRule[], scope: VirtualTagScope): SQL {
+  const branches = rules.map(
+    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
+  );
+  return branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
+}
+
+/**
+ * Daily usage quantity reported in one usage unit: the denominator of
+ * per-usage-unit cost. Summed across currencies (a quantity has none) and
+ * restricted by the same filters and charge types as the numerator, so both
+ * sides of the ratio describe the same rows.
+ */
+export async function queryUsageQuantities(
+  organizationId: string,
+  q: {
+    from: string;
+    to: string;
+    filters: CostFilter[];
+    usageUnit: string;
+    chargeTypes?: CostChargeType[] | undefined;
+  },
+): Promise<Array<{ day: string; value: number }>> {
+  // `queryUsageDaily` with the numerator's charge types: a split virtual tag in
+  // the filters weights the quantity exactly as it weights the spend above it.
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(
+      organizationId,
+      referencedVirtualTagKeys(q.filters, "none", undefined),
+      q.from,
+      q.to,
+    ),
+  );
+  const filterConds = q.filters.map((f) =>
+    membershipCondition(dimensionExpr(f.dimension, f.tagKey, scope), f.op, f.values),
+  );
+  const quantity = scope.weighted(sql`${costDaily.usage_amount}`);
+  const rows = await query((db) =>
+    withVirtualTagJoins(
+      db
+        .select({
+          day: sql<string>`toString(${costDaily.day})`.as("d"),
+          value: sql<number>`sum(${quantity})`.as("value"),
+        })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      scope,
+    )
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(q.from, q.to),
+          ...filterConds,
+          chargeTypeCondition(q.chargeTypes),
+          eq(costDaily.usage_unit, q.usageUnit),
+        ),
+      )
+      .groupBy(sql`d`)
+      .orderBy(asc(sql`d`)),
+  );
+  return rows.map((r) => ({ day: String(r.day), value: Number(r.value) }));
+}
+
+/**
+ * The usage units an org's cost rows are reported in, most spend first, for
+ * the per-usage-unit picker. Only units with non-zero usage in the trailing
+ * window are offered: a unit no row carries a quantity for can only divide
+ * into gaps.
+ */
+export async function getCostUsageUnitSummaries(
+  organizationId: string,
+  opts: { from: string; to: string },
+): Promise<Array<{ unit: string; usage: number; services: string[] }>> {
+  const rows = await query((db) =>
+    db
+      .select({
+        unit: costDaily.usage_unit,
+        usage: sql<number>`sum(${costDaily.usage_amount})`.as("usage"),
+        spend: sql<number>`sum(${costDaily.amount})`.as("spend"),
+        services: sql<string[]>`groupUniqArray(5)(${costDaily.service})`.as("services"),
+      })
+      .from(costDaily)
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(opts.from, opts.to),
+          sql`${costDaily.usage_unit} != ''`,
+        ),
+      )
+      .groupBy(costDaily.usage_unit)
+      .having(sql`usage > 0`)
+      .orderBy(desc(sql`spend`))
+      .limit(200),
+  );
+  return rows.map((r) => ({
+    unit: String(r.unit),
+    usage: Number(r.usage),
+    services: Array.isArray(r.services) ? r.services.map(String) : [],
+  }));
+}
+
+/**
  * Spend per cost centre via first-match-wins allocation rules, compiled into
  * one `multiIf` so ClickHouse walks `cost_daily` once. `rules` must already be
  * in evaluation order (ascending priority). Rows no rule claims come back
@@ -1317,14 +1447,10 @@ export async function getShowbackSpend(
   const scope = new VirtualTagScope(
     await resolveVirtualTags(organizationId, keys, from, to, virtualTags),
   );
-  const branches = rules.map(
-    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
-  );
-  const allocationExpr =
-    branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
+  const allocated = allocationExpr(rules, scope);
   const centreExpr = adjustments
-    ? reallocationExpr(adjustments.reallocations, "cost_centre", allocationExpr)
-    : allocationExpr;
+    ? reallocationExpr(adjustments.reallocations, "cost_centre", allocated)
+    : allocated;
 
   const rawExpr = scope.weighted(amountExpr(costBasis));
   const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;

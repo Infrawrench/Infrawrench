@@ -43,6 +43,7 @@ import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
+  BusinessMetricLabelSummary,
   BusinessMetricValue,
   BusinessMetricValueInput,
   BusinessMetricWriteResult,
@@ -165,6 +166,15 @@ export interface CostApi {
    * a gap, never a zero), and there are no groups to stack.
    */
   queryUnitCosts?(metricId: string, request: UnitCostQueryRequest): Promise<UnitCostQueryResponse>;
+  /**
+   * Spend ÷ provider-reported usage in one unit: the metric-free calculation.
+   * Optional like the rest: without it the editor does not offer that mode.
+   */
+  queryUsageUnitCosts?(request: UnitCostQueryRequest): Promise<UnitCostQueryResponse>;
+  /** The usage units the org's cost rows carry, for the per-usage-unit picker. */
+  listUsageUnits?(): Promise<Array<{ unit: string; usage: number; services: string[] }>>;
+  /** A metric's label keys, values and mappings, for the label filter and group-by pickers. */
+  listBusinessMetricLabels?(metricId: string): Promise<BusinessMetricLabelSummary[]>;
 }
 
 /** A dashboard a budget card can be added to, for the Costs panel's picker. */

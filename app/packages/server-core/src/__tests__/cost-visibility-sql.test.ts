@@ -90,6 +90,20 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
       }),
   ],
   ["getCostUsageUnits", () => readers.getCostUsageUnits(ORG)],
+  [
+    "getCostUsageUnitSummaries",
+    () => readers.getCostUsageUnitSummaries(ORG, { from: "2026-09-01", to: "2026-09-30" }),
+  ],
+  [
+    "queryUsageQuantities",
+    () =>
+      readers.queryUsageQuantities(ORG, {
+        from: "2026-09-01",
+        to: "2026-09-30",
+        filters: [],
+        usageUnit: "tokens",
+      }),
+  ],
   ["getUntaggedSpend", () => readers.getUntaggedSpend(ORG, ["team"], "2026-09-01", "2026-09-30")],
   ["getShowbackSpend", () => readers.getShowbackSpend(ORG, [], "2026-09-01", "2026-09-30")],
   ["getCostCoverage", () => readers.getCostCoverage(ORG)],

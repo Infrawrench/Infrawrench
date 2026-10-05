@@ -14,7 +14,7 @@ A **business metric** is the missing half: a number only you know — active cus
 
 1. Declare a metric on the **Costs** panel — its name, its key, and what one of it is called.
 2. Feed it a value for each day: import it on a schedule from a connected account, upload a CSV, or report it from a workflow, over the API, or by hand.
-3. On any cost graph, choose **Divide by a business metric**.
+3. On any cost graph, pick a **Calculation**: cost per unit, gross margin, cost per usage unit, or the raw metric.
 
 ![Costs panel Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/metrics-list.png)
 
@@ -87,13 +87,17 @@ Configuring, previewing and running an importer needs `resources:execute` as wel
 
 ### Upload a CSV
 
-**Upload CSV** on a metric's row takes a file with one row per day, or per day and label. Pick the day, value and optional label columns and the date format, check the preview and the rows it cannot read, then upload. Uploading a day again replaces it, so a corrected file can simply be uploaded again.
+**Upload CSV** on a metric's row takes a file with one row per day, or per day and [labels](#labels). Pick the day and value columns and the date format, tick the **label columns** (each becomes a label named after its header; every other column with a usable header is ticked for you), check the preview and the rows it cannot read, then upload. Uploading a day again replaces it, so a corrected file can simply be uploaded again.
+
+```csv
+date,value,customer,plan
+2026-08-09,412,acme,enterprise
+2026-08-09,96,globex,pro
+```
+
+An empty cell in a label column leaves that label off the row. A file without a header can still carry one unnamed breakdown in the **Label column**, stored as the `label` label.
 
 <insert [CSV upload modal with a file selected, the day, value and label columns mapped and the preview table showing the first rows and one unreadable line] here>
-
-### Labels
-
-A value can carry an optional **label**, a customer or a region, so one metric holds a breakdown. A day's total is the sum of its labels, and that total is what unit costs divide by. Re-reporting `(day, label)` replaces that pair.
 
 ### From a workflow
 
@@ -123,18 +127,69 @@ Needs `costs:write`. The endpoint accepts the metric's key or its id.
 
 **Values** on a metric's row opens the reported days and lets you type one in. This is mostly for confirming the metric is wired up at all, and for correcting a bad number — send the day again with the right value.
 
+## Labels
+
+A value can carry **labels** that break the day down: `customer`, `plan`, `region`, or anything else your data has. One metric then answers "how many customers" and "how many enterprise customers in eu-west" at once.
+
+```bash
+curl -X POST "$INFRAWRENCH/api/org/$ORG/business-metrics/revenue/values" \
+  -H "Authorization: Bearer $INFRAWRENCH_API_KEY" -H "Content-Type: application/json" \
+  -d '{"values":[
+        {"date":"2026-08-09","value":18200,"labels":{"customer":"acme"}},
+        {"date":"2026-08-09","value":4100,"labels":{"customer":"globex"}}
+      ]}'
+```
+
+From a workflow, pass `labels` on each value of `infra.businessMetrics.write`. Up to 8 labels per value; keys are lowercase slugs like metric keys. A scheduled importer's breakdown arrives as the single label `label` (a value sent with a plain `"label": "acme"` string is the same thing), so imported and pushed values filter and split alike.
+
+**Rows partition the metric.** A day's total is the sum of every row for that day, labelled or not. Report either the breakdown or the total, never both, or the day counts twice. The same day with the same labels restates; the same day with different labels is a separate row.
+
+### Mapping a label to spend
+
+To compute a unit cost or margin **per label value** (cost per customer, margin per customer) the spend has to be split the same way as the volume. A **label mapping** says where a label's values live on the cost side:
+
+- a **tag** (or virtual tag): label `customer` maps to the `customer` tag, so `customer=acme` divides spend tagged `customer=acme`;
+- any other **cost dimension** (account, service, region, ...), matched by value;
+- the org's **cost centres**, matched by centre id or (case-insensitively) by name.
+
+Set mappings in the metric editor under **Label mappings**; the label picker lists the labels your values already carry, and the tag-key picker lists your own tags.
+
+<insert [Business metric editor's Label mappings section with "customer" mapped to Tag → customer and "team" mapped to Cost centre] here>
+
+An **unmapped** label can still split or filter the raw metric, but a ratio refuses it: without a per-value numerator the only spend available is the whole scope's, and dividing that by one customer's volume gives a number per customer that sums to nothing.
+
 ![Values modal for a business metric showing recent days with an api/workflow source column and the add-a-day form at the top](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/values-modal.png)
 
 ## Draw it
 
-Open any cost graph's editor and pick a metric under **Divide by a business metric**. It is a mode of the graph you already have, not a different chart: the date range, the binning, the filters and the cost basis all still describe the numerator.
+Open any cost graph's editor and pick a **Calculation**. It is a mode of the graph you already have, not a different chart: the date range, the binning, the filters and the cost basis all still describe the spend side.
 
-Four options stop applying, and the editor says so:
+| Calculation             | What it draws                                                                                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cost per unit**       | Spend ÷ the metric.                                                                                                                                                                                |
+| **Gross margin**        | `(revenue − spend) ÷ revenue` for a revenue metric, with the absolute margin (revenue − spend) in the headline and tooltip. See [Margin](#margin).                                                 |
+| **Cost per usage unit** | Spend ÷ the usage quantity your providers report, in one unit (GB-month, vCPU-hour, request). **No business metric needed**: pick the unit from the list of units your cost data actually carries. |
+| **Raw metric**          | The metric itself, with spend on a second axis. Nothing is divided, so a zero is a real zero here.                                                                                                 |
 
-- **Group by** and **Top groups** — a per-group ratio needs a per-group denominator. Dividing each service's spend by the whole customer count gives five numbers that do not sum to the real one.
+Every calculation except margin takes a **scale**: per unit, per hundred, per thousand, per million or per billion. A cost per API request is a string of zeros; a cost per million requests is a number you can compare. For the raw metric the scale sets the unit it is shown in ("thousands of requests").
+
+For a metric with labels, two more pickers appear:
+
+- **Split by label** draws one line per label value (the 25 largest by volume; the rest fold into "Other").
+- **Only label** keeps some values (`plan is enterprise`) or drops them (`plan is not free`).
+
+In a ratio calculation both list only [mapped labels](#mapping-a-label-to-spend); unmapped ones are shown but disabled, with the reason.
+
+<insert [Cost graph config modal with Calculation set to Gross margin, metric Revenue, Split by label set to customer, and the margin-per-customer chart behind it] here>
+
+Four spend-graph options stop applying, and the editor says so:
+
+- **Group by** and **Top groups** — a per-group ratio needs a per-group denominator, which is what a label split gives you instead. Dividing each service's spend by the whole customer count gives five numbers that do not sum to the real one.
 - **Compare** and **Forecast** — projecting a ratio means projecting two independent series and dividing, which is a different thing from projecting one.
 
-![Cost graph config modal with the "Divide by a business metric" picker set to Active customers and the explanatory note beneath it](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/divide-by-metric.png)
+### Cost per usage unit
+
+The numerator and the denominator come from the **same cost rows**: only rows reported in the chosen unit count on either side, so "cost per GB-month" divides exactly the spend that bought those GB-months, not your whole bill. A period with no usage in that unit is a gap, never zero. Narrow it with the graph's filters (one service, one account) like any other cost graph.
 
 ![A unit-cost line chart showing cost per customer over 30 days with a visible break in the line where two days were not reported](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/unit-cost-chart.png)
 
@@ -172,7 +227,9 @@ For a metric declared **Revenue (money)**, choose **Margin** instead of **Cost p
 margin(period) = (revenue − spend) ÷ revenue
 ```
 
-It is a fraction, shown as a percentage, and it goes negative when spend exceeds revenue rather than clamping at zero.
+It is a fraction, shown as a percentage, and it goes negative when spend exceeds revenue rather than clamping at zero. The **absolute margin**, `revenue − spend` in the metric's currency, is reported beside it on every period and for the whole range.
+
+Split by a mapped label (say `customer`), margin becomes each customer's revenue against each customer's spend: the margin per customer.
 
 Margin is offered only for revenue metrics. Against a count metric it would subtract dollars from requests and divide by requests — a number that computes cleanly and means nothing — so both the editor and the API refuse it.
 
@@ -210,13 +267,31 @@ infrawrench unit-costs importer signups set --account warehouse --set sql=@signu
 infrawrench unit-costs importer signups              # config and recent runs
 infrawrench unit-costs importer signups run --from 2025-10-01 --to 2026-09-30
 infrawrench unit-costs importer signups disable
+
+# Cost per 1,000 requests.
+infrawrench unit-costs api-requests --scale 1k
+
+# Margin per customer (needs `customer` mapped on the metric), only enterprise plans.
+infrawrench unit-costs revenue --margin --split customer --label plan=enterprise
+
+# The raw metric, split by region.
+infrawrench unit-costs active-customers --mode raw --split region
+
+# The metric's labels and what each maps to.
+infrawrench unit-costs revenue --labels
+
+# Cost per provider usage unit: list the units, then divide by one.
+infrawrench unit-costs --usage-units
+infrawrench unit-costs --usage-unit GB-Mo --where "service = 'AmazonS3'"
 ```
+
+`--label key=a,b` keeps those values and `--label key!=a` drops them; repeat it for several labels. A `--split` prints one summary row per label value with a trend sparkline; `--json` carries every point.
 
 Unreported periods print as `—` in the table, with the reason in the last column. See [CLI](./cli.md).
 
 ## Ask the model instead
 
-The MCP server and the in-app chat expose `list_business_metrics`, `get_business_metric_values`, `query_unit_costs`, the metric write tools, and the importer tools (`list_business_metric_sources`, `list_business_metric_source_options`, `preview_business_metric_import`, `get_business_metric_importer`, `set_business_metric_importer`, `run_business_metric_importer`, `delete_business_metric_importer`), so "what did a customer cost us last month, and is that up or down?" works without building a graph. The tool descriptions carry the gap rule and the summed-sides rule explicitly, so a model summarising the data does not turn a gap into a zero. See [MCP](./mcp.md) and [AI chat](./ai-chat.md).
+The MCP server and the in-app chat expose `list_business_metrics`, `get_business_metric_values`, `list_business_metric_labels`, `list_usage_units`, `query_unit_costs` (every calculation, scale, label split and filter above), the metric write tools (labels included), and the importer tools (`list_business_metric_sources`, `list_business_metric_source_options`, `preview_business_metric_import`, `get_business_metric_importer`, `set_business_metric_importer`, `run_business_metric_importer`, `delete_business_metric_importer`), so "what did a customer cost us last month, and is that up or down?" works without building a graph. The tool descriptions carry the gap rule and the summed-sides rule explicitly, so a model summarising the data does not turn a gap into a zero. See [MCP](./mcp.md) and [AI chat](./ai-chat.md).
 
 ## Being told, rather than looking
 
@@ -225,12 +300,23 @@ fortnight — the business signal a spend-versus-spend alert cannot see, because
 while cost-per-customer falls is good news. The gap rule above carries straight through: a day
 with no reported value contributes to neither side, and a window that is mostly gaps produces no
 comparison at all rather than an invented regression. A metric needs at least 10 reported days
-in each of the two 14-day windows before it can fire. See
-[Commitment & unit-cost alerts](./commitment-and-unit-cost-alerts.md).
+in each of the two 14-day windows before it can fire.
+
+You can also set **thresholds** on a metric: alert when cost per unit goes above a limit, or margin
+drops below one, over a trailing window and optionally per label value (margin per customer
+below 30%). See [Commitment & unit-cost alerts](./commitment-and-unit-cost-alerts.md).
+
+## As code
+
+The [Terraform provider](./terraform-provider.md)'s `infrawrench_business_metric` manages the
+definition, including `label_mapping` and `threshold` blocks, and `infrawrench_cost_report`
+carries every calculation field (`unit_cost_mode`, `unit_cost_scale`, `unit_cost_usage_unit`,
+`unit_cost_group_by_label`, `unit_cost_label_filter`). Values stay out of Terraform: they are a
+time series, not configuration.
 
 ## On your phone
 
-The [mobile app](./mobile-app.md)'s **Costs** tab shows a read-only card per metric: the trailing 30 days, the period figure, and a sparkline that **breaks on a gap** rather than bridging it. Each card also says what imports the metric and whether its last run failed. Declaring metrics, configuring importers and reporting values stay on web and desktop — both are finance-governance acts needing `costs:write` and the full cost-filter editor, the same deliberate omission as the tag policy and exchange rates.
+The [mobile app](./mobile-app.md)'s **Costs** tab shows a read-only card per metric: the trailing 30 days, the period figure (gross margin with the absolute margin beside it, for a revenue metric), and a sparkline that **breaks on a gap** rather than bridging it. Each card also says what imports the metric and whether its last run failed. Declaring metrics, configuring importers and reporting values stay on web and desktop — both are finance-governance acts needing `costs:write` and the full cost-filter editor, the same deliberate omission as the tag policy and exchange rates.
 
 ## Permissions
 

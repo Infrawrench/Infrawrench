@@ -438,11 +438,22 @@ export interface CostGraphConfig {
    */
   unitCostMetricId?: string | undefined;
   /**
-   * `unit_cost` (the default when a metric is set) or `margin`. Only meaningful
-   * alongside `unitCostMetricId`, and margin is refused server-side for a
-   * metric that is not revenue-shaped.
+   * Which calculation: `unit_cost` (the default when a metric is set),
+   * `margin`, `raw_metric`, or `usage_unit_cost`. The first three need
+   * `unitCostMetricId`; margin is refused server-side for a metric that is not
+   * revenue-shaped. `usage_unit_cost` needs no metric, only
+   * `unitCostUsageUnit`, and setting it is what turns the card into a unit-cost
+   * card on its own.
    */
   unitCostMode?: UnitCostGraphMode | undefined;
+  /** "Per N units" for a ratio, or "in Ns" for a raw metric. Absent is 1. */
+  unitCostScale?: UnitCostGraphScale | undefined;
+  /** `usage_unit_cost` only: the provider usage unit divided by. */
+  unitCostUsageUnit?: string | undefined;
+  /** Keep only metric values carrying these labels. */
+  unitCostLabelFilters?: Array<{ key: string; op: "in" | "not_in"; values: string[] }> | undefined;
+  /** One line per value of this metric label. */
+  unitCostGroupByLabel?: string | undefined;
   /**
    * Draw the org's billing rules applied: markups, discounts, reallocations.
    *
@@ -474,11 +485,14 @@ export interface CostGraphConfig {
 }
 
 /**
- * The two ratios a unit-cost graph can draw. Spelled out here rather than
+ * The calculations a unit-cost graph can draw. Spelled out here rather than
  * imported from `business-metrics.ts` so `CostGraphConfig` stays free of a
  * circular import; `UNIT_COST_MODES` there is asserted against it.
  */
-export type UnitCostGraphMode = "unit_cost" | "margin";
+export type UnitCostGraphMode = "unit_cost" | "margin" | "usage_unit_cost" | "raw_metric";
+
+/** Same arrangement for the scale; `UNIT_COST_SCALES` is asserted against it. */
+export type UnitCostGraphScale = 1 | 100 | 1_000 | 1_000_000 | 1_000_000_000;
 
 /** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
 export interface BudgetWidgetConfig {
@@ -1189,15 +1203,18 @@ export function costDisplayProblem(q: {
   scenarioModelId?: string | undefined;
   adjusted?: boolean | undefined;
   unitCostMetricId?: string | undefined;
+  unitCostMode?: string | undefined;
 }): string | null {
   const measure = q.measure ?? "cost";
+  // Cost per usage unit is a unit-cost chart with no metric behind it.
+  const unitCost = Boolean(q.unitCostMetricId) || q.unitCostMode === "usage_unit_cost";
   if (measure === "cost") {
     if (q.usageUnit) return "A usage unit only applies to the usage measure.";
     // The legacy `binning: "cumulative"` stays valid for a unit-cost chart
     // (it divides running totals by running totals); the toggle is not
     // offered there because a running ratio at weekly or quarterly bins has
     // no denominator series to match it.
-    if (q.unitCostMetricId && q.cumulative) {
+    if (unitCost && q.cumulative) {
       return "Unit costs are a ratio per bin, so the cumulative toggle does not apply to them.";
     }
     return null;
@@ -1219,7 +1236,7 @@ export function costDisplayProblem(q: {
     return "Scenarios adjust a spend forecast, so they only apply to the cost measure.";
   }
   if (q.adjusted) return "Billing rules adjust money, so they only apply to the cost measure.";
-  if (q.unitCostMetricId) return "Unit costs divide spend, so they only apply to the cost measure.";
+  if (unitCost) return "Unit costs divide spend, so they only apply to the cost measure.";
   return null;
 }
 

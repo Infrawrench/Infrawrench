@@ -28,16 +28,22 @@ process.env["DATABASE_URL"] ??= "postgres://test:test@localhost:5432/test";
  */
 
 const mockQueryCosts = vi.fn();
+const mockQueryUsage = vi.fn(async () => [] as Array<{ day: string; value: number }>);
 vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
+  queryUsageQuantities: (...args: unknown[]) => mockQueryUsage(...(args as [])),
+  getCostUsageUnitSummaries: vi.fn(async () => []),
   getCostCoverage: vi.fn(async () => new Map()),
   getCostDimensionValues: vi.fn(async () => []),
   getCostTagKeys: vi.fn(async () => []),
 }));
 
-const mockGetMetricValues = vi.fn(async () => [] as Array<{ day: string; value: number }>);
+type Row = { day: string; value: number; labels?: Record<string, string> };
+const mockGetMetricValues = vi.fn(async () => [] as Row[]);
 vi.mock("@infrawrench/server-core/cost/metric-ingest", () => ({
   getMetricValues: (...args: unknown[]) => mockGetMetricValues(...(args as [])),
+  getLabeledMetricValues: async (...args: unknown[]) =>
+    (await mockGetMetricValues(...(args as []))).map((v) => ({ labels: {}, ...v })),
   getMetricCoverage: vi.fn(async () => null),
 }));
 
@@ -69,7 +75,8 @@ vi.mock("../../plugins/loader", () => ({
   loadPlugins: vi.fn(async () => []),
 }));
 
-const { runUnitCostQuery, BusinessMetricNotFoundError } = await import("../unit-cost-query");
+const { runUnitCostQuery, runUsageUnitCostQuery, BusinessMetricNotFoundError } =
+  await import("../unit-cost-query");
 const { CostQueryError } = await import("../cost-query");
 
 const scopeFilter: CostFilter = { dimension: "service", op: "in", values: ["AmazonEC2"] };
@@ -85,6 +92,8 @@ function metric(overrides: Partial<BusinessMetric> = {}): BusinessMetric {
     currency: null,
     costScope: [scopeFilter],
     savedFilterId: null,
+    labelMappings: [],
+    thresholds: [],
     createdByUserId: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -180,7 +189,7 @@ describe("runUnitCostQuery — the numerator's scope", () => {
 describe("runUnitCostQuery — the ratio", () => {
   it("divides at the bucket and reports the metric alongside", async () => {
     const res = await runUnitCostQuery("org1", "active-customers", request);
-    expect(res.metric.key).toBe("active-customers");
+    expect(res.metric?.key).toBe("active-customers");
     expect(res.mode).toBe("unit_cost");
     expect(res.series[0]!.points.map((p) => p.value)).toEqual([10, 10]);
     expect(res.series[0]!.overallValue).toBe(10); // 300 / 30
@@ -297,5 +306,104 @@ describe("runUnitCostQuery — range guards", () => {
         binning: "daily",
       }),
     ).rejects.toThrow(/Date range too large/);
+  });
+});
+
+describe("runUnitCostQuery — labels", () => {
+  const labelled: Row[] = [
+    { day: "2026-07-01", value: 10, labels: { customer: "acme" } },
+    { day: "2026-07-01", value: 30, labels: { customer: "globex" } },
+  ];
+
+  it("refuses to split a ratio by a label with no cost mapping", async () => {
+    mockGetMetricValues.mockResolvedValue(labelled);
+    await expect(
+      runUnitCostQuery("org1", "active-customers", { ...request, groupByLabel: "customer" }),
+    ).rejects.toThrow(/not mapped to a cost dimension/);
+  });
+
+  it("splits by a mapped label with a per-value numerator from the tag", async () => {
+    mockGetBusinessMetric.mockResolvedValue(
+      metric({
+        labelMappings: [
+          {
+            label: "customer",
+            target: { kind: "dimension", dimension: "tag", tagKey: "customer" },
+          },
+        ],
+      }),
+    );
+    mockGetMetricValues.mockResolvedValue(labelled);
+    mockQueryCosts.mockResolvedValue([
+      { key: "acme", currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
+      { key: "globex", currency: "USD", points: [{ bucket: "2026-07-01", amount: 60 }] },
+    ]);
+    const res = await runUnitCostQuery("org1", "active-customers", {
+      ...request,
+      to: "2026-07-01",
+      groupByLabel: "customer",
+    });
+    expect(mockQueryCosts.mock.calls[0]?.[1]).toMatchObject({
+      groupBy: "tag",
+      groupByTagKey: "customer",
+    });
+    expect(res.costPerLabel).toBe(true);
+    const byLabel = Object.fromEntries(res.series.map((s) => [s.label?.value, s.overallValue]));
+    expect(byLabel).toEqual({ globex: 2, acme: 10 });
+  });
+
+  it("lets the raw metric split by an unmapped label, sharing the scope's spend", async () => {
+    mockGetMetricValues.mockResolvedValue(labelled);
+    const res = await runUnitCostQuery("org1", "active-customers", {
+      ...request,
+      mode: "raw_metric",
+      groupByLabel: "customer",
+    });
+    expect(res.costPerLabel).toBe(false);
+    expect(res.series.map((s) => s.label?.value)).toEqual(["globex", "acme"]);
+  });
+
+  it("filters the volume by label value", async () => {
+    mockGetBusinessMetric.mockResolvedValue(
+      metric({
+        labelMappings: [
+          {
+            label: "customer",
+            target: { kind: "dimension", dimension: "tag", tagKey: "customer" },
+          },
+        ],
+      }),
+    );
+    mockGetMetricValues.mockResolvedValue(labelled);
+    await runUnitCostQuery("org1", "active-customers", {
+      ...request,
+      labelFilters: [{ key: "customer", op: "in", values: ["acme"] }],
+    });
+    // The spend is narrowed to the same value on the mapped dimension.
+    const filters = mockQueryCosts.mock.calls[0]?.[1]?.filters as CostFilter[];
+    expect(filters).toContainEqual({
+      dimension: "tag",
+      tagKey: "customer",
+      op: "in",
+      values: ["acme"],
+    });
+  });
+});
+
+describe("runUsageUnitCostQuery", () => {
+  it("divides spend in one usage unit by the usage reported in it", async () => {
+    mockQueryUsage.mockResolvedValue([
+      { day: "2026-07-01", value: 50 },
+      { day: "2026-07-02", value: 100 },
+    ]);
+    const res = await runUsageUnitCostQuery("org1", { ...request, usageUnit: "GB-Mo" });
+    expect(mockQueryCosts.mock.calls[0]?.[1]).toMatchObject({ usageUnit: "GB-Mo" });
+    expect(res.metric).toBeNull();
+    expect(res.usageUnit).toBe("GB-Mo");
+    expect(res.series[0]?.points.map((p) => p.value)).toEqual([2, 2]);
+  });
+
+  it("needs a usage unit", async () => {
+    await expect(runUsageUnitCostQuery("org1", request)).rejects.toThrow(/needs a usage unit/);
   });
 });

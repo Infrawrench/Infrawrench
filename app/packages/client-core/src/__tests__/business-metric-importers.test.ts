@@ -71,8 +71,45 @@ describe("CSV upload", () => {
   });
 
   it("guesses the mapping from common header names", () => {
-    expect(guessCsvMapping(["Date", "Customer", "Count"])).toEqual({ date: 0, value: 2, label: 1 });
+    expect(guessCsvMapping(["Date", "Customer", "Count"])).toEqual({
+      date: 0,
+      value: 2,
+      labelColumns: [{ column: 1, key: "customer" }],
+    });
+    expect(guessCsvMapping(["day", "value"])).toEqual({ date: 0, value: 1 });
     expect(guessCsvMapping(["a", "b"])).toBeNull();
+  });
+
+  it("skips header cells that cannot be label keys", () => {
+    expect(guessCsvMapping(["date", "value", "Plan", "!!", ""])).toEqual({
+      date: 0,
+      value: 1,
+      labelColumns: [{ column: 2, key: "plan" }],
+    });
+  });
+
+  it("writes named label columns as labels, leaving empty cells off", () => {
+    const result = csvRowsToMetricValues(
+      [
+        ["2026-07-01", "10", "acme", "pro"],
+        ["2026-07-01", "4", "globex", ""],
+        ["2026-07-02", "1", "", ""],
+      ],
+      {
+        date: 0,
+        value: 1,
+        labelColumns: [
+          { column: 2, key: "customer" },
+          { column: 3, key: "plan" },
+        ],
+      },
+      "auto",
+    );
+    expect(result.values).toEqual([
+      { date: "2026-07-01", value: 10, labels: { customer: "acme", plan: "pro" } },
+      { date: "2026-07-01", value: 4, labels: { customer: "globex" } },
+      { date: "2026-07-02", value: 1 },
+    ]);
   });
 
   it("maps rows and reports unreadable ones by spreadsheet line", () => {

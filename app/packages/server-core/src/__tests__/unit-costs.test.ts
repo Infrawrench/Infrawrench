@@ -484,10 +484,10 @@ describe("computeUnitCosts — margin", () => {
 });
 
 describe("computeUnitCosts — restatement is invisible here by construction", () => {
-  it("uses the last value given for a day, never their sum", () => {
-    // The store's (metric, day) unique index means the reader can never see two
-    // rows for one day; this pins the behaviour anyway, because summing would
-    // be the failure that restatement exists to prevent.
+  it("sums the rows given for a day: labelled rows partition it", () => {
+    // Restatement lives in the store: its (metric, day, label) key means one
+    // row per label set. Several rows for a day are a breakdown (a customer
+    // each), so the day is their sum.
     const result = computeUnitCosts(
       input({
         from: "2026-07-01",
@@ -499,7 +499,7 @@ describe("computeUnitCosts — restatement is invisible here by construction", (
         ],
       }),
     );
-    expect(pointAt(result, "2026-07-01").metricValue).toBe(10);
-    expect(pointAt(result, "2026-07-01").value).toBe(10);
+    expect(pointAt(result, "2026-07-01").metricValue).toBe(15);
+    expect(pointAt(result, "2026-07-01").value).toBeCloseTo(100 / 15, 8);
   });
 });

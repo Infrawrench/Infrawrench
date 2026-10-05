@@ -66,6 +66,7 @@ const KIND_TONE: Record<EfficiencyAlertKind, string> = {
   commitment_expiry: colors.warning,
   commitment_idle: colors.textMuted,
   unit_cost_regression: colors.danger,
+  unit_cost_threshold: colors.warning,
 };
 
 function formatWhen(iso: string): string {
@@ -97,6 +98,15 @@ function describe(event: EfficiencyAlertEvent): string {
       const percent = typeof d["changePercent"] === "number" ? d["changePercent"] : null;
       const unit = typeof d["unit"] === "string" && d["unit"] ? d["unit"] : "unit";
       return `cost per ${unit} up ${percent ?? "?"}%`;
+    }
+    case "unit_cost_threshold": {
+      const observed = typeof d["observedDisplay"] === "string" ? d["observedDisplay"] : "?";
+      const threshold = typeof d["thresholdDisplay"] === "string" ? d["thresholdDisplay"] : "?";
+      const label =
+        typeof d["labelKey"] === "string" && typeof d["labelValue"] === "string" && d["labelKey"]
+          ? ` · ${d["labelKey"]}=${d["labelValue"] || "(no label)"}`
+          : "";
+      return `${observed}, ${d["direction"] === "below" ? "below" : "above"} the ${threshold} limit${label}`;
     }
     default:
       return "";

@@ -204,6 +204,7 @@ export function pushDataToPath(data: MobilePushData): string {
     case "commitment_expiry":
     case "commitment_idle":
     case "unit_cost_regression":
+    case "unit_cost_threshold":
       return `/org/${data.orgId}/costs`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
     // moment view centred on the tap: the anomaly event, plus whatever else
@@ -385,6 +386,27 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "unit_cost_regression", orgId, metricId, windowTo, currency };
+    }
+    case "unit_cost_threshold": {
+      const metricId = data["metricId"];
+      const windowTo = data["windowTo"];
+      const currency = data["currency"];
+      const labelValue = data["labelValue"];
+      if (
+        typeof metricId !== "string" ||
+        typeof windowTo !== "string" ||
+        typeof currency !== "string"
+      ) {
+        return null;
+      }
+      return {
+        type: "unit_cost_threshold",
+        orgId,
+        metricId,
+        windowTo,
+        currency,
+        labelValue: typeof labelValue === "string" ? labelValue : "",
+      };
     }
     case "metric_alert": {
       const ruleId = data["ruleId"];

@@ -290,6 +290,12 @@ export interface WorkflowBusinessMetricValue {
    * it, so a cron that re-reports a trailing window is safe to run repeatedly.
    */
   value: number;
+  /**
+   * Optional labels breaking the day down: `{ customer: "acme" }`. The same
+   * day with the same labels restates; a day's total is the sum of its rows,
+   * so report a breakdown or a total, never both.
+   */
+  labels?: Record<string, string>;
 }
 
 /** Outcome of an `infra.businessMetrics.write(...)` call. */

@@ -102,6 +102,8 @@
     "./cost/currency-convert": "./src/cost/currency-convert.ts",
     "./cost/currency-settings": "./src/cost/currency-settings.ts",
     "./cost/unit-costs": "./src/cost/unit-costs.ts",
+    "./cost/unit-cost-run": "./src/cost/unit-cost-run.ts",
+    "./cost/unit-cost-threshold-eval": "./src/cost/unit-cost-threshold-eval.ts",
     "./cost/metric-ingest": "./src/cost/metric-ingest.ts",
     "./cost/metric-importers": "./src/cost/metric-importers.ts",
     "./cost/metric-import-pass": "./src/cost/metric-import-pass.ts",

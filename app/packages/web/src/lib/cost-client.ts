@@ -14,6 +14,7 @@ import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
+  BusinessMetricLabelSummary,
   BusinessMetricValue,
   BusinessMetricValueInput,
   BusinessMetricWriteResult,
@@ -153,6 +154,23 @@ export function createWebCostApi(orgId: string): CostApi {
         `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/unit-costs`,
         request,
       ),
+    queryUsageUnitCosts: (request: UnitCostQueryRequest) =>
+      apiPost<UnitCostQueryResponse>(
+        `/api/org/${orgId}/business-metrics/usage-unit-costs`,
+        request,
+      ),
+    listUsageUnits: async () => {
+      const res = await apiGet<{
+        units: Array<{ unit: string; usage: number; services: string[] }>;
+      }>(`/api/org/${orgId}/business-metrics/usage-units`);
+      return res.units;
+    },
+    listBusinessMetricLabels: async (metricId: string) => {
+      const res = await apiGet<{ labels: BusinessMetricLabelSummary[] }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/labels`,
+      );
+      return res.labels;
+    },
   };
 }
 

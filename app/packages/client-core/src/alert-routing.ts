@@ -155,11 +155,14 @@ export const ALERT_TRIGGERS = [
   {
     // The business signal the other four cost triggers cannot see. Spend
     // rising while cost-per-customer falls is growth; this is the trigger that
-    // fires on the case that is actually bad.
+    // fires on the case that is actually bad. Standing thresholds set on a
+    // metric (unit cost above, margin below, per label value) ride the same
+    // trigger: they are the same reading, stated as a limit instead of a move,
+    // and one routing rule should cover both.
     id: "unitCostRegressionAlerts",
-    label: "Unit-cost regressions",
+    label: "Unit-cost alerts",
     description:
-      "Cost per unit of a business metric rose past its threshold versus the prior window.",
+      "Cost per unit of a business metric rose past its threshold versus the prior window, or a unit cost or margin crossed a limit set on the metric.",
     pushDefaultMuted: false,
     channelOnly: false,
     defaultSeverity: "warning",

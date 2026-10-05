@@ -27,20 +27,19 @@ function upsert() {
 
 /**
  * The value tuples of the upsert, sliced out of the positional params. Each row
- * binds 9 params in column order (id, organization_id, metric_id, day, value,
- * label, source, updated_by_user_id, updated_at: created_at renders as
- * `default`); the trailing param is the conflict clause's updated_at.
+ * binds 10 params in column order (id, organization_id, metric_id, day, value,
+ * labels, label, source, updated_by_user_id, updated_at: created_at renders as
+ * `default`);
+ * the trailing param is the conflict clause's updated_at.
  */
 function inserted(): Array<Record<string, unknown>> {
   const q = upsert();
   if (!q) return [];
   const rows: Array<Record<string, unknown>> = [];
-  for (let i = 0; i + 9 <= q.params.length; i += 9) {
-    const [, organizationId, metricId, day, value, label, source, updatedByUserId] = q.params.slice(
-      i,
-      i + 9,
-    );
-    rows.push({ organizationId, metricId, day, value, label, source, updatedByUserId });
+  for (let i = 0; i + 10 <= q.params.length; i += 10) {
+    const [, organizationId, metricId, day, value, labels, label, source, updatedByUserId] =
+      q.params.slice(i, i + 10);
+    rows.push({ organizationId, metricId, day, value, labels, label, source, updatedByUserId });
   }
   return rows;
 }
@@ -72,7 +71,7 @@ afterEach(() => {
 });
 
 describe("ingestMetricValues — restatement", () => {
-  it("upserts on (metric, day) so re-reporting a day replaces it", async () => {
+  it("upserts on (metric, day, label) so re-reporting a day replaces it", async () => {
     await write([{ date: "2026-07-01", value: 10 }]);
     // The conflict target *is* the restatement guarantee: without it the write
     // would append a second row for the same day and every reader would see the
@@ -119,8 +118,9 @@ describe("ingestMetricValues — restatement", () => {
   });
 
   it("rejects an over-long label", async () => {
-    await expect(write([{ date: "2026-07-01", value: 1, label: "x".repeat(121) }])).rejects.toThrow(
-      /label longer than 120/,
+    // A bare `label` is the label set `{ label }`, so it takes the label-value bound.
+    await expect(write([{ date: "2026-07-01", value: 1, label: "x".repeat(201) }])).rejects.toThrow(
+      /"label" label longer than 200/,
     );
   });
 
@@ -182,5 +182,36 @@ describe("ingestMetricValues — validation", () => {
     const result = await write([]);
     expect(result.written).toBe(0);
     expect(pg.queries).toHaveLength(0);
+  });
+});
+
+describe("ingestMetricValues — labels", () => {
+  it("keeps the same day with different labels as separate rows", async () => {
+    const result = await write([
+      { date: "2026-07-01", value: 1, labels: { customer: "acme" } },
+      { date: "2026-07-01", value: 2, labels: { customer: "globex" } },
+    ]);
+    expect(result.written).toBe(2);
+  });
+
+  it("canonicalises label sets, so key order and case name one row", async () => {
+    const result = await write([
+      { date: "2026-07-01", value: 1, labels: { Plan: "pro", customer: "acme" } },
+      { date: "2026-07-01", value: 5, labels: { customer: "acme", plan: "pro" } },
+    ]);
+    expect(result.written).toBe(1);
+    expect(inserted()[0]?.["value"]).toBe(5);
+    expect(inserted()[0]?.["label"]).toBe('{"customer":"acme","plan":"pro"}');
+  });
+
+  it("stores a bare breakdown label as itself, the importers' shape", async () => {
+    await write([{ date: "2026-07-01", value: 1, label: "acme" }]);
+    expect(inserted()[0]?.["label"]).toBe("acme");
+  });
+
+  it("refuses a label key that is not a slug", async () => {
+    await expect(
+      write([{ date: "2026-07-01", value: 1, labels: { "bad key": "x" } }]),
+    ).rejects.toThrow(/invalid label key/);
   });
 });

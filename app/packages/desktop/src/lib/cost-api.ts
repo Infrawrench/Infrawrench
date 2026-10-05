@@ -15,6 +15,9 @@ import {
   loadCloudCostStatus,
   queryCloudCosts,
   queryCloudUnitCosts,
+  queryCloudUsageUnitCosts,
+  listCloudUsageUnits,
+  listCloudBusinessMetricLabels,
   updateCloudCostAnnotation,
 } from "./cloud-costs";
 
@@ -106,5 +109,9 @@ export function createDesktopCostApi(): CostApi {
     },
     queryUnitCosts: async (metricId, request) =>
       queryCloudUnitCosts(requireCloudOrgId(), metricId, request),
+    queryUsageUnitCosts: async (request) => queryCloudUsageUnitCosts(requireCloudOrgId(), request),
+    listUsageUnits: async () => listCloudUsageUnits(requireCloudOrgId()),
+    listBusinessMetricLabels: async (metricId) =>
+      listCloudBusinessMetricLabels(requireCloudOrgId(), metricId),
   };
 }

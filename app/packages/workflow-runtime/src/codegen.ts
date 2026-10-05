@@ -630,6 +630,12 @@ const BUSINESS_METRICS_INTERFACE = `interface BusinessMetricValueInput {
   date: string;
   /** The day's value — customers, requests, GB. */
   value: number;
+  /**
+   * Optional breakdown, e.g. \`{ customer: "acme", plan: "pro" }\`. The same day
+   * with the same labels replaces; a day's total is the sum of its rows, so
+   * report a breakdown or a total, never both.
+   */
+  labels?: Record<string, string>;
 }
 
 interface InfraBusinessMetrics {

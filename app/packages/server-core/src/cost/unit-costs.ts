@@ -83,6 +83,13 @@ export interface UnitCostComputeInput {
    * rather than a plausible-looking wrong number.
    */
   metricCurrency: string | null;
+  /**
+   * "Per N units". Multiplies a ratio (`unit_cost`, `usage_unit_cost`) and
+   * divides a `raw_metric` value; margin ignores it. Absent is 1. Applied to the
+   * quotient only: `cost` and `metricValue` stay the literal sums so a reader
+   * can still check the arithmetic.
+   */
+  scale?: number | undefined;
 }
 
 export interface UnitCostComputeResult {
@@ -155,10 +162,11 @@ function buildDenominators(
   const byDay = new Map<string, number>();
   for (const v of values) {
     if (v.day < from || v.day > to) continue;
-    // Last write wins; the store's (metric, day) unique index means duplicates
-    // cannot reach here from the database, but a caller passing them should not
-    // silently double a day.
-    byDay.set(v.day, v.value);
+    // Summed. Several entries for one day are several labelled rows of it (a
+    // customer each, say), and rows partition the metric, so the day's value is
+    // their sum. The store's `(metric, day, labels)` key means the same row
+    // cannot arrive twice.
+    byDay.set(v.day, (byDay.get(v.day) ?? 0) + v.value);
   }
 
   const axis: string[] = [];
@@ -198,12 +206,31 @@ function buildDenominators(
 }
 
 /** The gap reason for a denominator, or null when it is usable. */
-function gapFor(value: number | null): UnitCostGapReason | null {
+function gapFor(value: number | null, mode: UnitCostMode): UnitCostGapReason | null {
+  // Usage has one reason for both cases: a bucket with no usage rows in the
+  // unit and one whose usage summed to zero are the same fact to a reader.
+  if (mode === "usage_unit_cost") return value !== null && value > 0 ? null : "no_usage";
   if (value === null) return "no_metric_value";
+  // Nothing is divided in raw mode, so zero and negative values are real
+  // points: a day with no signups plots at 0, honestly.
+  if (mode === "raw_metric") return null;
   // Zero is the ∞ case and a negative is the sign-flip case; both are "we
   // cannot divide by this", and neither is a number worth putting on a chart.
   if (!(value > 0)) return "non_positive_metric_value";
   return null;
+}
+
+/** The plotted value for one bucket (or the period), already scaled. */
+function valueFor(mode: UnitCostMode, cost: number, metricValue: number, scale: number): number {
+  switch (mode) {
+    case "margin":
+      return (metricValue - cost) / metricValue;
+    case "raw_metric":
+      return metricValue / scale;
+    case "unit_cost":
+    case "usage_unit_cost":
+      return (cost / metricValue) * scale;
+  }
 }
 
 /**
@@ -214,6 +241,7 @@ function gapFor(value: number | null): UnitCostGapReason | null {
  */
 export function computeUnitCosts(input: UnitCostComputeInput): UnitCostComputeResult {
   const { from, to, binning, mode, costGroups, values, metricCurrency } = input;
+  const scale = mode === "margin" ? 1 : input.scale && input.scale > 0 ? input.scale : 1;
   const { axis, denominators } = buildDenominators(from, to, binning, values);
 
   if (costGroups.length === 0) return { series: [], gapBuckets: 0, partialBuckets: 0 };
@@ -261,8 +289,12 @@ export function computeUnitCosts(input: UnitCostComputeInput): UnitCostComputeRe
         bucketDays: denominator.bucketDays,
       };
 
-      const gap = currencyMismatch ? "unconvertible_currency" : gapFor(denominator.value);
-      if (gap) return { ...base, value: null, gap };
+      const gap = currencyMismatch ? "unconvertible_currency" : gapFor(denominator.value, mode);
+      if (gap) {
+        return mode === "margin"
+          ? { ...base, value: null, absoluteMargin: null, gap }
+          : { ...base, value: null, gap };
+      }
 
       const metricValue = denominator.value!;
       // Rule 3: only buckets that produced a ratio contribute to the period
@@ -271,28 +303,31 @@ export function computeUnitCosts(input: UnitCostComputeInput): UnitCostComputeRe
       overallCost += cost;
       overallMetricValue = (overallMetricValue ?? 0) + metricValue;
 
-      const ratio = mode === "margin" ? (metricValue - cost) / metricValue : cost / metricValue;
-      return { ...base, value: roundRatio(ratio) };
+      const value = roundRatio(valueFor(mode, cost, metricValue, scale));
+      return mode === "margin"
+        ? { ...base, value, absoluteMargin: roundRatio(metricValue - cost) }
+        : { ...base, value };
     });
 
     // Rule 1, at the period level: summed numerator over summed denominator,
-    // never the mean of `points[].value`.
-    const overallValue =
-      overallMetricValue !== null && overallMetricValue > 0
-        ? roundRatio(
-            mode === "margin"
-              ? (overallMetricValue - overallCost) / overallMetricValue
-              : overallCost / overallMetricValue,
-          )
-        : null;
+    // never the mean of `points[].value`. Raw mode has no division, so any
+    // reported total (zero and negative included) is its period value.
+    const usable = overallMetricValue !== null && (mode === "raw_metric" || overallMetricValue > 0);
+    const overallValue = usable
+      ? roundRatio(valueFor(mode, overallCost, overallMetricValue!, scale))
+      : null;
 
-    return {
+    const result: UnitCostSeries = {
       currency: group.currency,
       points,
       overallValue,
       overallCost,
       overallMetricValue,
     };
+    if (mode === "margin") {
+      result.overallAbsoluteMargin = usable ? roundRatio(overallMetricValue! - overallCost) : null;
+    }
+    return result;
   });
 
   // Counted on the axis rather than per series: with more than one currency the

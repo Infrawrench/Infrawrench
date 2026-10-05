@@ -8,6 +8,7 @@ import { evaluateCostChangeAlertsForOrg } from "@infrawrench/server-core/cost/ch
 import { evaluateCommitmentAlertsForOrg } from "@infrawrench/server-core/commitments/alert-eval";
 import { evaluateUnitCostRegressionsForOrg } from "@infrawrench/server-core/cost/unit-cost-regression-eval";
 import { reattributeAfterCostCollection } from "@infrawrench/server-core/ai-attribution/run";
+import { evaluateUnitCostThresholdsForOrg } from "@infrawrench/server-core/cost/unit-cost-threshold-eval";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -76,6 +77,10 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // caller: re-split the trailing days. No-op for orgs without request-log
     // sources; rate-limited per org and never throws.
     await reattributeAfterCostCollection(account.organizationId);
+
+    // Standing limits set on a metric (unit cost above, margin below, per
+    // label value): the same engine as the chart, judged over a trailing window.
+    await evaluateUnitCostThresholdsForOrg(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;

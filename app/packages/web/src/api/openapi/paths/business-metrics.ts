@@ -19,6 +19,93 @@ const BusinessMetricScopeTerm = strict({
   tagKey: z.string().optional(),
 }).openapi("BusinessMetricScopeTerm");
 
+const UnitCostMode = z
+  .enum(["unit_cost", "margin", "usage_unit_cost", "raw_metric"])
+  .openapi("UnitCostMode", {
+    description:
+      "`unit_cost` is spend ÷ metric value. `margin` is `(revenue − spend) ÷ revenue` as a " +
+      "fraction, with the absolute margin beside it, and needs a `currency` metric. " +
+      "`usage_unit_cost` is spend ÷ the usage quantity providers report in one `usageUnit`, and " +
+      "needs no metric (use `POST /business-metrics/usage-unit-costs`). `raw_metric` plots the " +
+      "metric itself beside spend, where zero and negative values are real points.",
+  });
+
+const UnitCostScale = z
+  .union([z.literal(1), z.literal(100), z.literal(1000), z.literal(1000000), z.literal(1000000000)])
+  .openapi("UnitCostScale", {
+    description:
+      '"Per N units": multiplies a ratio (cost per 1,000 requests) and divides a raw metric. ' +
+      "Margin ignores it. Absent is 1.",
+  });
+
+const BusinessMetricLabelKey = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe("A label key: a lowercase slug, normalised (trimmed, lowercased) on write.")
+  .openapi({ example: "customer" });
+
+const BusinessMetricLabels = z.record(z.string(), z.string()).openapi("BusinessMetricLabels", {
+  description:
+    'A value\'s labels, e.g. `{ "customer": "acme", "plan": "pro" }`. At most 8, keys are ' +
+    "slugs, values up to 200 characters. Rows partition the metric: a day's total is the sum of " +
+    "every row for it, so report a breakdown or a total, never both. The same day with the " +
+    "same labels restates; different labels are a different row.",
+});
+
+const BusinessMetricLabelTarget = z
+  .discriminatedUnion("kind", [
+    strict({
+      kind: z.literal("dimension"),
+      dimension: BusinessMetricScopeTerm.shape.dimension,
+      tagKey: z.string().optional().describe("Required for keyed dimensions (tags)."),
+    }),
+    strict({ kind: z.literal("cost_centre") }),
+  ])
+  .openapi("BusinessMetricLabelTarget", {
+    description:
+      "Where a label's values live on the cost side. A `dimension` target matches label values to " +
+      "dimension values exactly; `cost_centre` matches a centre by id or, case-insensitively, by " +
+      "name.",
+  });
+
+const BusinessMetricLabelMapping = strict({
+  label: BusinessMetricLabelKey,
+  target: BusinessMetricLabelTarget,
+}).openapi("BusinessMetricLabelMapping", {
+  description:
+    "Joins a label to a cost dimension so unit cost and margin can be computed per label value " +
+    "(cost per customer). Ratio modes refuse an unmapped label: without a per-value numerator " +
+    "the only spend available is the whole scope's.",
+});
+
+const UnitCostThreshold = strict({
+  mode: z.enum(["unit_cost", "margin"]),
+  direction: z.enum(["above", "below"]),
+  value: z
+    .number()
+    .describe(
+      "Currency units per `scale` metric units for `unit_cost`; a percentage (30 for 30%) for " +
+        "`margin`.",
+    ),
+  scale: UnitCostScale.optional(),
+  groupByLabel: BusinessMetricLabelKey.optional().describe(
+    "Evaluate per value of this label. The label must be mapped.",
+  ),
+  windowDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(90)
+    .optional()
+    .describe("Trailing complete days the ratio is summed over. Default 7."),
+}).openapi("UnitCostThreshold", {
+  description:
+    "A standing limit, evaluated daily on the summed ratio over the trailing window and routed " +
+    "under the unit-cost alert trigger. A window with fewer than half its days reported is not " +
+    "judged.",
+});
+
 const BusinessMetricKind = z.enum(["count", "currency"]).openapi("BusinessMetricKind", {
   description:
     "What the metric's numbers are. `count` is a unit-less quantity (customers, requests, GB) " +
@@ -72,6 +159,16 @@ const BusinessMetricInput = strict({
       "reference that fails to resolve errors the unit-cost query rather than silently widening " +
       "the numerator to all spend.",
   ),
+  labelMappings: z
+    .array(BusinessMetricLabelMapping)
+    .max(8)
+    .optional()
+    .describe("Which value labels name a cost dimension. One mapping per label."),
+  thresholds: z
+    .array(UnitCostThreshold)
+    .max(10)
+    .optional()
+    .describe("Standing unit-cost or margin limits. Margin thresholds need a `currency` metric."),
 }).openapi("BusinessMetricInput");
 
 const BusinessMetricCoverage = strict({
@@ -107,6 +204,8 @@ const BusinessMetric = strict({
   currency: z.string().nullable(),
   costScope: z.array(BusinessMetricScopeTerm),
   savedFilterId: Uuid.nullable(),
+  labelMappings: z.array(BusinessMetricLabelMapping),
+  thresholds: z.array(UnitCostThreshold),
   createdByUserId: z.string().nullable(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -272,33 +371,79 @@ const BusinessMetricValue = strict({
   label: z
     .string()
     .nullable()
-    .describe("Optional breakdown label; a day's total is the sum across its labels."),
+    .describe(
+      "The single breakdown label: the `label` key of `labels`, or null. Kept for clients that predate multi-dimensional labels.",
+    ),
+  labels: BusinessMetricLabels,
   source: z.enum(["api", "workflow", "import"]),
   updatedAt: IsoDateTime,
 }).openapi("BusinessMetricValue");
 
 const BusinessMetricValuesInput = strict({
   values: z
-    .array(strict({ date: z.string(), value: z.number(), label: z.string().max(120).optional() }))
+    .array(
+      strict({
+        date: z.string(),
+        value: z.number(),
+        label: z
+          .string()
+          .max(200)
+          .optional()
+          .describe("A single breakdown label, stored as `{ label: <value> }`; `labels` wins."),
+        labels: BusinessMetricLabels.optional(),
+      }),
+    )
     .max(5000)
     .describe(
-      "Days to report. **Re-reporting a day restates it rather than adding to it**, so an " +
-        "unattended nightly job is safe to retry — an accumulating write would double every " +
-        "number the first time the job re-ran. A batch naming the same day twice keeps the last " +
-        "value, applying the same rule within a batch that restatement applies between them.",
+      "Days to report. **Re-reporting a day (with the same labels) restates it rather than " +
+        "adding to it**, so an unattended nightly job is safe to retry — an accumulating write " +
+        "would double every number the first time the job re-ran. A batch naming the same day " +
+        "and labels twice keeps the last value, applying the same rule within a batch that " +
+        "restatement applies between them.",
     ),
 }).openapi("BusinessMetricValuesInput");
+
+const BusinessMetricLabelSummary = strict({
+  key: z.string(),
+  values: z.array(z.string()).describe("Distinct values, alphabetical, at most 500."),
+  truncated: z.boolean(),
+  mapping: BusinessMetricLabelTarget.nullable(),
+}).openapi("BusinessMetricLabelSummary");
+
+const UnitCostLabelFilter = strict({
+  key: BusinessMetricLabelKey,
+  op: z.enum(["in", "not_in"]),
+  values: z.array(z.string()).min(1).max(200),
+}).openapi("UnitCostLabelFilter");
 
 const UnitCostQueryRequest = strict({
   from: z.string().describe("Inclusive, YYYY-MM-DD."),
   to: z.string(),
   binning: z.enum(["hourly", "daily", "weekly", "monthly", "quarterly", "cumulative"]),
-  mode: z
-    .enum(["unit_cost", "margin"])
+  mode: UnitCostMode.optional().describe(
+    "Absent is `unit_cost` on the metric route and `usage_unit_cost` on the usage route. " +
+      "`margin` is a 400 for a metric whose `kind` is not `currency`.",
+  ),
+  scale: UnitCostScale.optional(),
+  labelFilters: z
+    .array(UnitCostLabelFilter)
+    .max(10)
     .optional()
     .describe(
-      "Absent is `unit_cost` (spend ÷ metric value). `margin` is `(revenue − spend) ÷ revenue` " +
-        "as a fraction, and is a 400 for a metric whose `kind` is not `currency`.",
+      "Keep only values carrying these labels. In a ratio mode each label must be mapped, and " +
+        "the spend is narrowed to the same values on the mapped dimension.",
+    ),
+  groupByLabel: BusinessMetricLabelKey.optional().describe(
+    "One series per value of this label (the 25 largest by metric total; the rest fold into " +
+      "`Other`). In a ratio mode the label must be mapped.",
+  ),
+  usageUnit: z
+    .string()
+    .max(120)
+    .optional()
+    .describe(
+      "`usage_unit_cost` only, and required there: the provider usage unit to divide by. " +
+        "See `GET /business-metrics/usage-units`.",
     ),
   filters: z
     .array(BusinessMetricScopeTerm)
@@ -338,9 +483,17 @@ const UnitCostPoint = strict({
   metricValue: z
     .number()
     .nullable()
-    .describe("Metric value summed over the bucket, or null when nothing was reported."),
+    .describe(
+      "The denominator summed over the bucket (the metric, or usage for `usage_unit_cost`), " +
+        "unscaled, or null when nothing was reported.",
+    ),
+  absoluteMargin: z
+    .number()
+    .nullable()
+    .optional()
+    .describe("`margin` only: revenue − spend in the series currency; null on a gap."),
   gap: z
-    .enum(["no_metric_value", "non_positive_metric_value", "unconvertible_currency"])
+    .enum(["no_metric_value", "non_positive_metric_value", "unconvertible_currency", "no_usage"])
     .optional()
     .describe("Set exactly when `value` is null."),
   reportedDays: z
@@ -355,6 +508,16 @@ const UnitCostPoint = strict({
 
 const UnitCostSeries = strict({
   currency: z.string(),
+  label: strict({
+    key: z.string(),
+    value: z
+      .string()
+      .nullable()
+      .describe("Null for values carrying no such label, or for `Other`."),
+    other: z.boolean().optional().describe("True for the fold of values past the group cap."),
+  })
+    .optional()
+    .describe("Set when the query grouped by a label."),
   points: z.array(UnitCostPoint),
   overallValue: z
     .number()
@@ -366,6 +529,7 @@ const UnitCostSeries = strict({
     ),
   overallCost: z.number(),
   overallMetricValue: z.number().nullable(),
+  overallAbsoluteMargin: z.number().nullable().optional(),
 }).openapi("UnitCostSeries");
 
 const UnitCostQueryResponse = strict({
@@ -376,9 +540,21 @@ const UnitCostQueryResponse = strict({
     unit: z.string(),
     kind: BusinessMetricKind,
     currency: z.string().nullable(),
-  }),
-  mode: z.enum(["unit_cost", "margin"]),
+  })
+    .nullable()
+    .describe("Null for `usage_unit_cost`, which divides by provider usage instead."),
+  mode: UnitCostMode,
   binning: z.enum(["hourly", "daily", "weekly", "monthly", "quarterly", "cumulative"]),
+  scale: UnitCostScale,
+  usageUnit: z.string().optional(),
+  groupByLabel: z.string().optional(),
+  costPerLabel: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set when grouped. False means every label series carries the whole scope's spend (a raw " +
+        "metric grouped by an unmapped label), so draw that spend once.",
+    ),
   series: z
     .array(UnitCostSeries)
     .describe(
@@ -794,9 +970,10 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       "never 0 and never infinite.\n" +
       "- **Currencies are never merged.** Spend in a currency with no stated rate keeps its own " +
       "series rather than being dropped or added to another.\n\n" +
-      "There is no `groupBy`: a per-group ratio would need a per-group denominator, and dividing " +
-      "each service's spend by the whole customer count produces numbers that do not sum to the " +
-      "real one.",
+      "There is no spend `groupBy`: a per-group ratio needs a per-group denominator. Split by a " +
+      "metric label with `groupByLabel` instead; in a ratio mode the label must be mapped to the " +
+      "cost dimension its values name (`labelMappings` on the metric), so each label value's " +
+      "spend is divided by its own volume.",
     request: {
       params: idParam(),
       body: { content: { "application/json": { schema: UnitCostQueryRequest } }, required: true },
@@ -808,6 +985,78 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/business-metrics/{id}/labels",
+    tags: ["Business metrics"],
+    summary: "List a metric's labels",
+    description:
+      "The label keys the metric's values carry, each with its distinct values (at most 500) and " +
+      "its cost mapping. A mapped label nobody has reported yet is listed with no values.",
+    request: { params: idParam() },
+    responses: {
+      200: {
+        description: "Labels, by key",
+        content: {
+          "application/json": { schema: strict({ labels: z.array(BusinessMetricLabelSummary) }) },
+        },
+      },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/business-metrics/usage-units",
+    tags: ["Business metrics"],
+    summary: "List usage units",
+    description:
+      "The provider usage units the organization's cost rows carry over the last 90 days, most " +
+      "spend first, with a few of the services reporting each. Backs the per-usage-unit picker.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Usage units",
+        content: {
+          "application/json": {
+            schema: strict({
+              units: z.array(
+                strict({
+                  unit: z.string(),
+                  usage: z.number(),
+                  services: z.array(z.string()),
+                }),
+              ),
+            }),
+          },
+        },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/usage-unit-costs",
+    tags: ["Business metrics"],
+    summary: "Query cost per usage unit",
+    description:
+      "Spend divided by the usage quantity providers report in one `usageUnit`, with no business " +
+      "metric involved. Both halves come from the same cost rows (those reported in that unit), " +
+      "so the numerator is exactly the spend that bought the denominator. A bucket with no usage " +
+      "is a gap (`no_usage`), never 0. Labels do not apply.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: UnitCostQueryRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Unit-cost series",
+        content: { "application/json": { schema: UnitCostQueryResponse } },
+      },
+      400: ErrorResponses[400],
     },
   });
 }

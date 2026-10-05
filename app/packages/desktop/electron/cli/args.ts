@@ -299,6 +299,24 @@ export interface AnomalyFeedbackFlags {
   months?: number | undefined;
 }
 
+/** `unit-costs` calculation flags, kept as typed strings for the command to validate. */
+export interface UnitCostFlags {
+  /** `--mode unit|margin|usage|raw` (long names accepted too). */
+  mode?: string | undefined;
+  /** `--scale 1|100|1k|1m|1b`. */
+  scale?: string | undefined;
+  /** Repeatable `--label key=value[,value]`, or `--label key!=value`. */
+  labels: string[];
+  /** `--split <label>`: one series per value of a metric label. */
+  split?: string | undefined;
+  /** `--usage-unit <unit>`: cost per provider usage unit, no metric needed. */
+  usageUnit?: string | undefined;
+  /** `unit-costs <key> --labels`: list the metric's labels and mappings. */
+  listLabels: boolean;
+  /** `unit-costs --usage-units`: list the usage units the org's cost rows carry. */
+  listUsageUnits: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
@@ -326,6 +344,8 @@ export interface ParsedCli {
    * for a count metric rather than returning a plausible wrong number.
    */
   margin: boolean;
+  /** `unit-costs` calculation flags: raw strings, validated by the command. */
+  unitCost: UnitCostFlags;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -392,6 +412,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         alerts: { type: "boolean", default: false },
         // `unit-costs <metric> --margin`: the ratio's other form.
         margin: { type: "boolean", default: false },
+        // `unit-costs` calculation selectors: which calculation, at what scale,
+        // narrowed to and split by which metric labels.
+        mode: { type: "string" },
+        scale: { type: "string" },
+        label: { type: "string", multiple: true },
+        split: { type: "string" },
+        "usage-unit": { type: "string" },
+        labels: { type: "boolean", default: false },
+        "usage-units": { type: "boolean", default: false },
         // `posture dismiss`: why the finding is an accepted risk.
         reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
@@ -673,6 +702,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     },
     alerts: values.alerts === true,
     margin: values.margin === true,
+    unitCost: {
+      mode: str("mode"),
+      scale: str("scale"),
+      labels: multi["label"] ?? [],
+      split: str("split"),
+      usageUnit: str("usage-unit"),
+      listLabels: values.labels === true,
+      listUsageUnits: values["usage-units"] === true,
+    },
   };
 }
 

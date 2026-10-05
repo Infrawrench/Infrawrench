@@ -35,9 +35,11 @@ import type {
   CostBinningId,
   CostChargeType,
   CostConversion,
+  CostDimensionId,
   CostFilter,
   CostGraphConfig,
   UnitCostGraphMode,
+  UnitCostGraphScale,
 } from "./costs";
 import type { CloudFetch } from "./fetch";
 
@@ -116,6 +118,19 @@ export interface BusinessMetric {
    * resolve errors the query rather than silently widening it to all spend.
    */
   savedFilterId: string | null;
+  /**
+   * Which value labels correspond to a cost dimension, so a unit cost can be
+   * computed *per label value*: "customer" mapped to the `customer` tag turns
+   * one revenue series into a margin per customer. A label with no mapping can
+   * still be filtered and grouped when plotting the raw metric, but never
+   * divides spend: see {@link BusinessMetricLabelMapping}.
+   */
+  labelMappings: BusinessMetricLabelMapping[];
+  /**
+   * Standing limits on this metric's unit cost or margin, evaluated daily and
+   * routed like every other cost alert. Empty is none.
+   */
+  thresholds: UnitCostThreshold[];
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -166,6 +181,84 @@ export interface BusinessMetricInput {
   currency?: string | undefined;
   costScope?: CostFilter[] | undefined;
   savedFilterId?: string | undefined;
+  /** Absent is none. A full replace, like every other field. */
+  labelMappings?: BusinessMetricLabelMapping[] | undefined;
+  /** Absent is none. A full replace, like every other field. */
+  thresholds?: UnitCostThreshold[] | undefined;
+}
+
+/* ------------------------------------------------------------------ *
+ * Labels: one metric, many dimensions.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A value's labels: `{ customer: "acme", plan: "pro" }`. Empty is an unlabelled
+ * value, which is what every value written before labels existed is.
+ *
+ * **Rows partition the metric.** A day's total is the sum of every row for that
+ * day, labelled or not, so a breakdown must not be reported alongside the total
+ * it breaks down (that would count the day twice). An unlabelled row reads as
+ * "the part not attributed to any label value", and groups under "(no label)".
+ *
+ * The identity of a stored value is `(metric, day, labels)`: re-reporting the
+ * same day with the same labels restates it, while the same day with different
+ * labels is a different row. Keys follow the metric-key slug rule so a label is
+ * typed the same way in a workflow, a CSV header and a CLI flag.
+ */
+export type BusinessMetricLabels = Record<string, string>;
+
+/**
+ * Where a label's values live on the cost side.
+ *
+ * - `dimension`: a cost dimension, the same vocabulary filters and group-bys
+ *   use. A label value matches the dimension value exactly: label `customer`
+ *   mapped to the `customer` tag joins `customer=acme` to spend tagged
+ *   `customer=acme`. Keyed dimensions (tags) carry `tagKey`.
+ * - `cost_centre`: the org's cost centres. A label value matches a centre by
+ *   its id or, case-insensitively, by its name, so a metric can be reported
+ *   against the names people already use.
+ */
+export type BusinessMetricLabelTarget =
+  | { kind: "dimension"; dimension: CostDimensionId; tagKey?: string | undefined }
+  | { kind: "cost_centre" };
+
+export const BUSINESS_METRIC_LABEL_TARGET_KINDS = ["dimension", "cost_centre"] as const;
+export type BusinessMetricLabelTargetKind = (typeof BUSINESS_METRIC_LABEL_TARGET_KINDS)[number];
+
+/**
+ * A label joined to a cost dimension.
+ *
+ * Why unit costs need one: grouping "cost per customer" by customer needs a
+ * per-customer *numerator* as well as a per-customer denominator. Without a
+ * mapping the only spend available is the metric's whole scope, and dividing
+ * that by one customer's volume produces a number per customer that sums to
+ * nothing and means nothing. So a ratio mode refuses an unmapped label, and
+ * the mapping is what turns it on.
+ */
+export interface BusinessMetricLabelMapping {
+  /** The label key, e.g. `customer`. */
+  label: string;
+  target: BusinessMetricLabelTarget;
+}
+
+/**
+ * Cost dimensions whose filter needs a key as well as a value. A string test
+ * rather than a narrowing on `CostDimensionId` so a keyed dimension added to
+ * the vocabulary later is recognised without touching this file.
+ */
+export function costDimensionNeedsKey(dimension: string): boolean {
+  return dimension === "tag" || dimension === "virtual_tag";
+}
+
+/** One label key a metric's values carry, and the values seen for it. */
+export interface BusinessMetricLabelSummary {
+  key: string;
+  /** Distinct values, alphabetical, capped at `maxLabelValuesListed`. */
+  values: string[];
+  /** True when more values exist than were listed. */
+  truncated: boolean;
+  /** The mapping for this label, when one is declared. */
+  mapping: BusinessMetricLabelTarget | null;
 }
 
 /** One reported day (GET /business-metrics/{id}/values). */
@@ -174,11 +267,13 @@ export interface BusinessMetricValue {
   day: string;
   value: number;
   /**
-   * Optional breakdown label (a customer, a region). Null for an unlabeled
-   * value. A day's total is the sum of its values across labels, which is what
-   * unit costs divide by.
+   * The single breakdown label (a customer, a region): the `label` key of
+   * {@link labels}, as the importers write it. Null when the value has none.
+   * Kept beside `labels` for clients that predate multi-dimensional labels.
    */
   label: string | null;
+  /** Empty for an unlabelled value. */
+  labels: BusinessMetricLabels;
   /** Where the number came from, for "who wrote this" on a surprising point. */
   source: BusinessMetricValueSource;
   updatedAt: string;
@@ -203,10 +298,15 @@ export interface BusinessMetricValueInput {
    */
   value: number;
   /**
-   * Optional breakdown label. `(date, label)` is what a write restates; the
-   * day's total is the sum across labels. Omit it for a plain daily total.
+   * A single breakdown label, stored as `{ label: <value> }`; `labels` wins
+   * when both are sent. Omit both for a plain daily total.
    */
   label?: string | undefined;
+  /**
+   * Optional labels. The same day with the same labels restates; the same day
+   * with different labels is a separate row. See {@link BusinessMetricLabels}.
+   */
+  labels?: BusinessMetricLabels | undefined;
 }
 
 /** Result of a value write, mirroring `infra.costs.write`'s. */
@@ -231,8 +331,22 @@ export const BUSINESS_METRIC_LIMITS = {
   maxScopeFilters: 50,
   /** GET /business-metrics/{id}/values?limit= */
   maxValuesPageSize: 1_000,
-  /** Longest breakdown label kept on a value. */
-  maxLabelLength: 120,
+  /** Labels on one value. A value with more is a row from a warehouse. */
+  maxLabelsPerValue: 8,
+  maxLabelKeyLength: 64,
+  maxLabelValueLength: 200,
+  /** Mappings on one metric: one per label key at most. */
+  maxLabelMappings: 8,
+  /** Values listed per label key by GET /business-metrics/{id}/labels. */
+  maxLabelValuesListed: 500,
+  /** Series one grouped unit-cost query returns, per currency. */
+  maxLabelGroups: 25,
+  /** Standing thresholds on one metric. */
+  maxThresholds: 10,
+  minThresholdWindowDays: 1,
+  maxThresholdWindowDays: 90,
+  /** Rows one CSV import may carry; the same cap as one value write. */
+  maxCsvRows: 5_000,
 } as const;
 
 /**
@@ -264,19 +378,113 @@ export function normalizeBusinessMetricKey(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * Label keys use the metric-key slug rule. Normalised the same way (trimmed,
+ * lowercased) so `Customer` in a CSV header and `customer` in a workflow are
+ * one label rather than two that each hold half the data.
+ */
+export const BUSINESS_METRIC_LABEL_KEY_PATTERN = BUSINESS_METRIC_KEY_PATTERN;
+
+export function normalizeBusinessMetricLabelKey(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+/**
+ * The canonical form of a label set: keys normalised, values trimmed, empty
+ * values dropped (an empty label is the same as no label), keys sorted. Two
+ * label sets that mean the same thing serialise identically, which is what the
+ * storage identity `(metric, day, labels)` relies on.
+ */
+export function canonicalBusinessMetricLabels(
+  labels: BusinessMetricLabels | undefined | null,
+): BusinessMetricLabels {
+  if (!labels) return {};
+  const entries: Array<[string, string]> = [];
+  for (const [rawKey, rawValue] of Object.entries(labels)) {
+    if (typeof rawValue !== "string") continue;
+    const key = normalizeBusinessMetricLabelKey(rawKey);
+    const value = rawValue.trim();
+    if (!key || !value) continue;
+    entries.push([key, value]);
+  }
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return Object.fromEntries(entries);
+}
+
+/**
+ * The label key a single, unnamed breakdown label is stored under: a value
+ * written with just a breakdown string (as the scheduled importers do) is the
+ * label set `{ label: "<value>" }`.
+ */
+export const BUSINESS_METRIC_DEFAULT_LABEL_KEY = "label";
+
+/**
+ * The stable string a canonical label set is stored and compared under (the
+ * `business_metric_values.label` column). `''` for no labels; the bare value
+ * for a set holding only the default `label` key, so a single breakdown label
+ * reads as itself; canonical JSON for anything richer.
+ */
+export function businessMetricLabelsKey(labels: BusinessMetricLabels | undefined | null): string {
+  const canonical = canonicalBusinessMetricLabels(labels);
+  const keys = Object.keys(canonical);
+  if (keys.length === 0) return "";
+  if (keys.length === 1 && keys[0] === BUSINESS_METRIC_DEFAULT_LABEL_KEY) {
+    const value = canonical[BUSINESS_METRIC_DEFAULT_LABEL_KEY]!;
+    // A bare value that happens to look like JSON would read back as a label
+    // set, so it is stored in the JSON form instead.
+    if (!value.startsWith("{")) return value;
+  }
+  return JSON.stringify(canonical);
+}
+
+/** The inverse of {@link businessMetricLabelsKey}, for rows read without their jsonb. */
+export function businessMetricLabelsFromKey(key: string): BusinessMetricLabels {
+  if (!key) return {};
+  if (key.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(key) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return canonicalBusinessMetricLabels(parsed as BusinessMetricLabels);
+      }
+    } catch {
+      // Fall through: a malformed key is a bare value.
+    }
+  }
+  return { [BUSINESS_METRIC_DEFAULT_LABEL_KEY]: key };
+}
+
+/** `customer=acme, plan=pro`, or the empty string for no labels. */
+export function formatBusinessMetricLabels(
+  labels: BusinessMetricLabels | undefined | null,
+): string {
+  return Object.entries(canonicalBusinessMetricLabels(labels))
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+}
+
 /* ------------------------------------------------------------------ *
- * The unit-cost query: POST /business-metrics/{id}/unit-costs.
+ * The unit-cost query: POST /business-metrics/{id}/unit-costs, and
+ * POST /business-metrics/usage-unit-costs for the metric-free mode.
  * ------------------------------------------------------------------ */
 
 /**
- * Which ratio to compute.
+ * Which calculation to draw.
  *
  * - `unit_cost`: spend ÷ metric value. Available for every metric.
- * - `margin`: (revenue − spend) ÷ revenue, as a fraction (0.42 is 42%).
- *   Available only for a `currency` metric, and only when the whole numerator
- *   can be expressed in that metric's currency: see {@link UnitCostQueryResponse}.
+ * - `margin`: (revenue − spend) ÷ revenue, as a fraction (0.42 is 42%), with
+ *   the absolute margin (revenue − spend, in the metric's currency) beside it
+ *   on every point. Available only for a `currency` metric, and only where the
+ *   numerator can be expressed in that metric's currency.
+ * - `usage_unit_cost`: spend ÷ the usage quantity the providers themselves
+ *   report, in one usage unit (GB-month, vCPU-hour, request). Needs no business
+ *   metric: both sides come from the same cost rows, restricted to the rows
+ *   reported in that unit, so the numerator is exactly the spend that bought the
+ *   denominator.
+ * - `raw_metric`: the metric itself, plotted beside the spend of its scope.
+ *   No division at all, so zero and negative values are real points here rather
+ *   than gaps.
  */
-export const UNIT_COST_MODES = ["unit_cost", "margin"] as const;
+export const UNIT_COST_MODES = ["unit_cost", "margin", "usage_unit_cost", "raw_metric"] as const;
 export type UnitCostMode = (typeof UNIT_COST_MODES)[number];
 
 /**
@@ -291,8 +499,78 @@ true satisfies UnitCostMode extends UnitCostGraphMode
 
 export const UNIT_COST_MODE_LABELS: Record<UnitCostMode, string> = {
   unit_cost: "Cost per unit",
-  margin: "Margin",
+  margin: "Gross margin",
+  usage_unit_cost: "Cost per usage unit",
+  raw_metric: "Raw metric",
 };
+
+export const UNIT_COST_MODE_DESCRIPTIONS: Record<UnitCostMode, string> = {
+  unit_cost: "Spend divided by the metric.",
+  margin: "Revenue minus spend, as a percentage of revenue and as an amount.",
+  usage_unit_cost: "Spend divided by the usage quantity providers report, in one unit.",
+  raw_metric: "The metric itself, plotted beside spend.",
+};
+
+/** Modes that divide by a business metric (and so need one). */
+export function unitCostModeNeedsMetric(mode: UnitCostMode): boolean {
+  return mode !== "usage_unit_cost";
+}
+
+/**
+ * "Per N units": the block a ratio is expressed against. A cost per API
+ * request is a string of zeros; a cost per million requests is a number a
+ * person can compare. For `raw_metric` the same scale divides the plotted value
+ * ("thousands of requests"). Margin is a fraction and ignores it.
+ */
+export const UNIT_COST_SCALES = [1, 100, 1_000, 1_000_000, 1_000_000_000] as const;
+export type UnitCostScale = (typeof UNIT_COST_SCALES)[number];
+
+true satisfies UnitCostScale extends UnitCostGraphScale
+  ? UnitCostGraphScale extends UnitCostScale
+    ? true
+    : never
+  : never;
+
+export const UNIT_COST_SCALE_LABELS: Record<`${UnitCostScale}`, string> = {
+  "1": "Per unit",
+  "100": "Per hundred",
+  "1000": "Per thousand",
+  "1000000": "Per million",
+  "1000000000": "Per billion",
+};
+
+/** The scale words used inside a unit label: "", "100 ", "1K ", "1M ", "1B ". */
+function scalePrefix(scale: UnitCostScale): string {
+  switch (scale) {
+    case 1:
+      return "";
+    case 100:
+      return "100 ";
+    case 1_000:
+      return "1K ";
+    case 1_000_000:
+      return "1M ";
+    case 1_000_000_000:
+      return "1B ";
+  }
+}
+
+/** Narrow an arbitrary number to a scale, falling back to per-unit. */
+export function toUnitCostScale(value: number | undefined | null): UnitCostScale {
+  return (UNIT_COST_SCALES as readonly number[]).includes(value ?? 1)
+    ? (value as UnitCostScale)
+    : 1;
+}
+
+/**
+ * Narrow a unit-cost query to some label values. `in` keeps rows carrying one
+ * of `values` for `key`; `not_in` drops them (and keeps rows without the label).
+ */
+export interface UnitCostLabelFilter {
+  key: string;
+  op: "in" | "not_in";
+  values: string[];
+}
 
 export interface UnitCostQueryRequest {
   /** Inclusive, YYYY-MM-DD. */
@@ -301,6 +579,8 @@ export interface UnitCostQueryRequest {
   binning: CostBinningId;
   /** Absent is `unit_cost`. */
   mode?: UnitCostMode | undefined;
+  /** Absent is 1 (per unit). Ignored for `margin`. */
+  scale?: UnitCostScale | undefined;
   /**
    * Extra filters AND-composed with the metric's own `costScope`: narrowing
    * only. There is no way to widen past the scope, because the scope is part of
@@ -324,16 +604,36 @@ export interface UnitCostQueryRequest {
    * subtracting spend from revenue is only defined in one currency.
    */
   displayCurrency?: string | undefined;
+  /**
+   * Keep only values carrying these labels. In a ratio mode every filtered
+   * label must be mapped to a cost dimension, so the spend is narrowed to the
+   * same slice as the volume; `raw_metric` accepts any label.
+   */
+  labelFilters?: UnitCostLabelFilter[] | undefined;
+  /**
+   * One series per value of this label. Same mapping rule as `labelFilters`:
+   * in a ratio mode the label must be mapped, because a per-customer ratio needs
+   * per-customer spend. The largest `maxLabelGroups` values by metric total are
+   * kept; the rest fold into one "Other" series.
+   */
+  groupByLabel?: string | undefined;
+  /**
+   * `usage_unit_cost` only, and required there: which provider usage unit to
+   * divide by (`GB-Mo`, `Hrs`, `Requests`, ...). Pick one from
+   * `GET /business-metrics/usage-units`.
+   */
+  usageUnit?: string | undefined;
 }
 
 /**
- * Why a bucket has no ratio. Never rendered as a number by any surface: a gap
+ * Why a bucket has no value. Never rendered as a number by any surface: a gap
  * is drawn as a gap and explained in words.
  */
 export const UNIT_COST_GAP_REASONS = [
   "no_metric_value",
   "non_positive_metric_value",
   "unconvertible_currency",
+  "no_usage",
 ] as const;
 export type UnitCostGapReason = (typeof UNIT_COST_GAP_REASONS)[number];
 
@@ -341,6 +641,7 @@ export const UNIT_COST_GAP_REASON_LABELS: Record<UnitCostGapReason, string> = {
   no_metric_value: "No metric value reported",
   non_positive_metric_value: "Metric value was zero or negative",
   unconvertible_currency: "Spend in a currency with no rate to the metric's currency",
+  no_usage: "No usage reported in this unit",
 };
 
 /**
@@ -356,12 +657,22 @@ export const UNIT_COST_GAP_REASON_LABELS: Record<UnitCostGapReason, string> = {
 export interface UnitCostPoint {
   /** Bucket start date, YYYY-MM-DD. */
   bucket: string;
-  /** The ratio, or null when this bucket is a gap. Never ±Infinity, never NaN. */
+  /**
+   * The ratio (already multiplied by the response's `scale`), the margin
+   * fraction, or for `raw_metric` the metric value (already divided by
+   * `scale`). Null when this bucket is a gap. Never ±Infinity, never NaN.
+   */
   value: number | null;
   /** Spend summed over the bucket, in `UnitCostSeries.currency`. */
   cost: number;
-  /** Metric value summed over the bucket, or null when nothing was reported. */
+  /**
+   * The denominator summed over the bucket (the metric, or for
+   * `usage_unit_cost` the usage quantity), unscaled. Null when nothing was
+   * reported.
+   */
   metricValue: number | null;
+  /** `margin` only: revenue − spend, in the series currency. Null on a gap. */
+  absoluteMargin?: number | null | undefined;
   /** Set exactly when `value` is null. */
   gap?: UnitCostGapReason | undefined;
   /**
@@ -386,7 +697,7 @@ export function isPartialUnitCostPoint(point: UnitCostPoint): boolean {
 }
 
 /**
- * One unit-cost series, in one currency.
+ * One unit-cost series, in one currency, and (when grouped) for one label value.
  *
  * There is one series per currency the numerator ended up in: usually exactly
  * one. More than one means the org has spend in a currency it holds no rate
@@ -397,12 +708,17 @@ export function isPartialUnitCostPoint(point: UnitCostPoint): boolean {
 export interface UnitCostSeries {
   /** ISO-4217 code the numerator (and therefore the ratio) is expressed in. */
   currency: string;
+  /**
+   * Set when the query grouped by a label. `value: null` is the rows carrying
+   * no value for that label; `other: true` folds the values past the group cap.
+   */
+  label?: { key: string; value: string | null; other?: boolean | undefined } | undefined;
   points: UnitCostPoint[];
   /**
    * The period ratio: **summed numerator ÷ summed denominator** across every
    * bucket, not the mean of the per-bucket ratios. The two differ whenever
    * volume moves, and the mean is the wrong one: it weights a quiet Sunday the
-   * same as a peak Monday.
+   * same as a peak Monday. Scaled like the points.
    *
    * Null when nothing in the range had a usable denominator.
    */
@@ -410,17 +726,36 @@ export interface UnitCostSeries {
   /** Numerator and denominator behind `overallValue`. */
   overallCost: number;
   overallMetricValue: number | null;
+  /** `margin` only: summed revenue − summed spend over the same buckets. */
+  overallAbsoluteMargin?: number | null | undefined;
 }
 
 export interface UnitCostQueryResponse {
-  /** The metric this was divided by, so a client needs no second fetch. */
-  metric: Pick<BusinessMetric, "id" | "key" | "name" | "unit" | "kind" | "currency">;
+  /**
+   * The metric this was divided by, so a client needs no second fetch. Null for
+   * `usage_unit_cost`, which divides by provider usage instead; `usageUnit`
+   * names that denominator.
+   */
+  metric: Pick<BusinessMetric, "id" | "key" | "name" | "unit" | "kind" | "currency"> | null;
   mode: UnitCostMode;
   binning: CostBinningId;
+  /** The scale the values are expressed against (always 1 for `margin`). */
+  scale: UnitCostScale;
+  /** `usage_unit_cost` only: the usage unit divided by. */
+  usageUnit?: string | undefined;
+  /** The label the series are grouped by, when they are. */
+  groupByLabel?: string | undefined;
+  /**
+   * True when each label series carries its own spend (the label is mapped to
+   * a cost dimension). False on a `raw_metric` grouped by an unmapped label,
+   * where every series' `cost` is the whole scope's spend; a surface should
+   * draw that spend once rather than once per label.
+   */
+  costPerLabel?: boolean | undefined;
   series: UnitCostSeries[];
   /** Set when spend currencies were folded together: same shape as a cost query. */
   conversion?: CostConversion;
-  /** Buckets in the queried range that produced no ratio at all. */
+  /** Buckets in the queried range that produced no value at all (summed across label series). */
   gapBuckets: number;
   /** Buckets whose denominator covers only part of the bucket. */
   partialBuckets: number;
@@ -433,39 +768,71 @@ export interface UnitCostQueryResponse {
  * that describe the *numerator*: the resolved date range, the binning, the
  * filters, the saved filter, the cost basis. It deliberately drops `groupBy`,
  * `topN`, `comparePreviousPeriod` and `showForecast`: the four options that
- * presuppose a stack of series or a projection, neither of which survives being
- * divided by a single declared denominator. Dropping them here, in one shared
- * place, is what stops each surface from inventing its own answer to "what does
- * top-5 mean for a ratio".
+ * presuppose a stack of spend series or a projection, neither of which
+ * survives being divided by a declared denominator. Grouping here is by a
+ * *label* (`unitCostGroupByLabel`), which has its own field because it splits
+ * both sides of the ratio at once.
  */
 export function unitCostQueryForConfig(
   config: CostGraphConfig,
   today = new Date(),
 ): UnitCostQueryRequest {
   const { from, to } = resolveCostDateRange(config.dateRange, today);
+  const mode = config.unitCostMode;
   return {
     from,
     to,
     binning: config.binning,
-    ...(config.unitCostMode ? { mode: config.unitCostMode } : {}),
+    ...(mode ? { mode } : {}),
+    ...(config.unitCostScale && config.unitCostScale !== 1 && mode !== "margin"
+      ? { scale: config.unitCostScale }
+      : {}),
     filters: config.filters,
     ...(config.savedFilterId ? { savedFilterId: config.savedFilterId } : {}),
     ...(config.costBasis ? { costBasis: config.costBasis } : {}),
+    ...(config.unitCostLabelFilters &&
+    config.unitCostLabelFilters.length > 0 &&
+    mode !== "usage_unit_cost"
+      ? { labelFilters: config.unitCostLabelFilters }
+      : {}),
+    ...(config.unitCostGroupByLabel && mode !== "usage_unit_cost"
+      ? { groupByLabel: config.unitCostGroupByLabel }
+      : {}),
+    ...(mode === "usage_unit_cost" && config.unitCostUsageUnit
+      ? { usageUnit: config.unitCostUsageUnit }
+      : {}),
   };
 }
 
+/** True when a cost graph config draws a unit-cost calculation rather than spend. */
+export function isUnitCostConfig(config: CostGraphConfig): boolean {
+  return Boolean(config.unitCostMetricId) || config.unitCostMode === "usage_unit_cost";
+}
+
 /**
- * The unit a ratio is expressed in, as one short string: "USD per customer",
- * or "%" for a margin. Shared so the chart axis, the CLI, the tooltip and the
- * MCP tool all name the same number the same way.
+ * The unit a value is expressed in, as one short string: "USD per customer",
+ * "USD per 1K requests", "%" for a margin, or "1K requests" for a raw metric.
+ * Shared so the chart axis, the CLI, the tooltip and the MCP tool all name the
+ * same number the same way.
  */
 export function unitCostUnitLabel(
-  metric: Pick<BusinessMetric, "unit">,
+  metric: Pick<BusinessMetric, "unit"> | null,
   mode: UnitCostMode,
   currency: string,
+  scale: UnitCostScale = 1,
+  usageUnit?: string,
 ): string {
   if (mode === "margin") return "%";
-  return `${currency} per ${metric.unit || "unit"}`;
+  const unit = mode === "usage_unit_cost" ? usageUnit || "unit" : metric?.unit || "unit";
+  if (mode === "raw_metric") return `${scalePrefix(scale)}${unit}`.trim();
+  return `${currency} per ${scalePrefix(scale)}${unit}`;
+}
+
+/** A label series' display name: the label value, "(no label)" or "Other". */
+export function unitCostSeriesLabel(series: UnitCostSeries): string {
+  if (!series.label) return series.currency;
+  if (series.label.other) return "Other";
+  return series.label.value ?? "(no label)";
 }
 
 /**
@@ -481,6 +848,11 @@ export function formatUnitCostValue(value: number | null, mode: UnitCostMode): s
   if (mode === "margin") return `${(value * 100).toFixed(1)}%`;
   const magnitude = Math.abs(value);
   if (magnitude === 0) return "0";
+  if (mode === "raw_metric") {
+    return magnitude >= 100
+      ? Math.round(value).toLocaleString("en-US")
+      : String(Math.round(value * 100) / 100);
+  }
   if (magnitude >= 100) return value.toFixed(0);
   if (magnitude >= 1) return value.toFixed(2);
   if (magnitude >= 0.01) return value.toFixed(4);
@@ -497,10 +869,11 @@ export function formatUnitCostValue(value: number | null, mode: UnitCostMode): s
  */
 export function describeUnitCostCaveats(response: UnitCostQueryResponse): string | null {
   const parts: string[] = [];
+  const subject = response.mode === "usage_unit_cost" ? "usage" : "metric value";
   if (response.gapBuckets > 0) {
     parts.push(
       `${response.gapBuckets} ${response.gapBuckets === 1 ? "period has" : "periods have"} ` +
-        "no metric value — shown as a gap, not as zero.",
+        `no ${subject} — shown as a gap, not as zero.`,
     );
   }
   if (response.partialBuckets > 0) {
@@ -509,13 +882,71 @@ export function describeUnitCostCaveats(response: UnitCostQueryResponse): string
         "only partly reported, so the ratio there reads high.",
     );
   }
-  if (response.series.length > 1) {
+  const currencies = new Set(response.series.map((s) => s.currency));
+  if (currencies.size > 1) {
     parts.push(
       "Spend spans currencies with no stated rate, so each currency divides the metric on " +
         "its own — the series are not comparable to each other.",
     );
   }
   return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Thresholds: standing limits on a unit cost or a margin.
+ * ------------------------------------------------------------------ */
+
+/** The calculations a threshold can watch. */
+export const UNIT_COST_THRESHOLD_MODES = ["unit_cost", "margin"] as const;
+export type UnitCostThresholdMode = (typeof UNIT_COST_THRESHOLD_MODES)[number];
+
+export const UNIT_COST_THRESHOLD_DIRECTIONS = ["above", "below"] as const;
+export type UnitCostThresholdDirection = (typeof UNIT_COST_THRESHOLD_DIRECTIONS)[number];
+
+/**
+ * "Alert when cost per 1K requests goes above $0.40", or "when margin per
+ * customer drops below 30%".
+ *
+ * Evaluated once a day over the trailing `windowDays` complete days, as one
+ * summed ratio per series (the same rule the chart's headline follows), never
+ * the worst single day. A series fires once per window end and then stays quiet
+ * for a cooldown, like a unit-cost regression.
+ *
+ * `value` is in the threshold's own terms: currency units per `scale` metric
+ * units for `unit_cost` (in the org's display currency when one is set, else
+ * per spend currency), and a **percentage** (30 for 30%) for `margin`.
+ *
+ * `groupByLabel` evaluates the threshold per value of that label (each
+ * customer separately), and needs the label to be mapped to a cost dimension.
+ */
+export interface UnitCostThreshold {
+  mode: UnitCostThresholdMode;
+  direction: UnitCostThresholdDirection;
+  value: number;
+  /** Ignored for `margin`. Absent is 1. */
+  scale?: UnitCostScale | undefined;
+  groupByLabel?: string | undefined;
+  /** Trailing complete days the ratio is summed over. Absent is 7. */
+  windowDays?: number | undefined;
+}
+
+export const DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS = 7;
+
+/** "Cost per 1K request above 0.4 USD over 7 days, per customer". */
+export function describeUnitCostThreshold(
+  threshold: UnitCostThreshold,
+  metric: Pick<BusinessMetric, "unit" | "currency">,
+): string {
+  const window = threshold.windowDays ?? DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS;
+  const per = threshold.groupByLabel ? `, per ${threshold.groupByLabel}` : "";
+  if (threshold.mode === "margin") {
+    return `Margin ${threshold.direction} ${threshold.value}% over ${window} days${per}`;
+  }
+  const scale = toUnitCostScale(threshold.scale);
+  return (
+    `Cost per ${scalePrefix(scale)}${metric.unit || "unit"} ${threshold.direction} ` +
+    `${threshold.value}${metric.currency ? ` ${metric.currency}` : ""} over ${window} days${per}`
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -546,4 +977,17 @@ export async function queryUnitCosts(
     `/business-metrics/${encodeURIComponent(metricId)}/unit-costs`,
     { method: "POST", body: JSON.stringify(request) },
   );
+}
+
+/** A metric's label keys and values (`GET /business-metrics/{id}/labels`). */
+export async function listBusinessMetricLabels(
+  api: CloudFetch,
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricLabelSummary[]> {
+  const res = await api.org<{ labels: BusinessMetricLabelSummary[] }>(
+    orgId,
+    `/business-metrics/${encodeURIComponent(metricId)}/labels`,
+  );
+  return res?.labels ?? [];
 }

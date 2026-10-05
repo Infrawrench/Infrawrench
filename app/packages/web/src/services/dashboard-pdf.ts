@@ -35,6 +35,10 @@ import {
   describeCostConversion,
   orderDashboardCards,
   unitCostQueryForConfig,
+  isUnitCostConfig,
+  formatUnitCostValue,
+  unitCostSeriesLabel,
+  unitCostUnitLabel,
   type BudgetWidgetConfig,
   type CostBinSize,
   type CostDimensionId,
@@ -75,7 +79,7 @@ import {
 } from "../db/schema";
 import { getPlugin } from "../plugins/loader";
 import { runCostQuery } from "./cost-query";
-import { runUnitCostQuery } from "./unit-cost-query";
+import { runUnitCostQuery, runUsageUnitCostQuery } from "./unit-cost-query";
 import { getBudgetWithStatus } from "./budgets";
 import { getCostReport } from "./cost-reports";
 import { renderOrgCustomGraph } from "./custom-graphs";
@@ -362,19 +366,29 @@ export function costResponseBlocks(
   };
 }
 
-/** Map a unit-cost response onto blocks: the ratio line, then whole-period tiles. */
+/**
+ * Map a unit-cost response onto blocks: the ratio line (one series per label
+ * value when split), then whole-period tiles with the absolute margin beside a
+ * margin. Shared by dashboard cards and cost canvases.
+ */
 export function unitCostResponseBlocks(response: UnitCostQueryResponse): {
   blocks: PdfBlock[];
-  unitLabel: string;
+  /** A whole-period value with its unit, for a highlight line. */
+  show: (v: number | null, currency: string) => string;
+  /** What the series divides by (or plots): the metric, or the usage unit. */
+  denominator: string;
 } {
   const buckets = [
     ...new Set(response.series.flatMap((s) => s.points.map((p) => p.bucket))),
   ].sort();
   const index = new Map(buckets.map((b, i) => [b, i]));
-  const unitLabel =
-    response.mode === "margin"
-      ? "Margin"
-      : `Cost per ${response.metric.unit || response.metric.name}`;
+  const unitFor = (currency: string) =>
+    unitCostUnitLabel(response.metric, response.mode, currency, response.scale, response.usageUnit);
+  const nameFor = (s: (typeof response.series)[number]) =>
+    s.label ? `${unitCostSeriesLabel(s)} (${s.currency})` : `${unitFor(s.currency)}`;
+  const show = (v: number | null, currency: string) =>
+    v === null ? "-" : `${formatUnitCostValue(v, response.mode)} ${unitFor(currency)}`;
+  const denominator = response.metric?.name ?? response.usageUnit ?? "usage";
   const blocks: PdfBlock[] = [
     {
       kind: "chart",
@@ -383,21 +397,24 @@ export function unitCostResponseBlocks(response: UnitCostQueryResponse): {
       series: response.series.map((s) => {
         const values = new Array<number | null>(buckets.length).fill(null);
         for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.value;
-        return { label: `${unitLabel} (${s.currency})`, values };
+        return { label: nameFor(s), values };
       }),
-      format: response.series[0] ? { currency: response.series[0].currency } : {},
+      format: {},
     },
     {
       kind: "stats",
-      items: response.series.map((s) => ({
-        label: `${unitLabel}, whole period`,
-        value:
-          s.overallValue === null ? "-" : formatPdfValue(s.overallValue, { currency: s.currency }),
-        caption: `${formatPdfValue(s.overallCost, { currency: s.currency })} spend`,
+      items: response.series.slice(0, 12).map((s) => ({
+        label: s.label ? `${unitCostSeriesLabel(s)}, whole period` : "Whole period",
+        value: show(s.overallValue, s.currency),
+        caption:
+          `${formatPdfValue(s.overallCost, { currency: s.currency })} spend` +
+          (s.overallAbsoluteMargin !== undefined && s.overallAbsoluteMargin !== null
+            ? ` · ${formatPdfValue(s.overallAbsoluteMargin, { currency: s.currency })} margin`
+            : ""),
       })),
     },
   ];
-  return { blocks, unitLabel };
+  return { blocks, show, denominator };
 }
 
 export async function costConfigCard(
@@ -407,23 +424,26 @@ export async function costConfigCard(
   displayCurrency: string | null,
   now: Date,
 ): Promise<CardRender> {
-  if (config.unitCostMetricId) {
-    const request = unitCostQueryForConfig(config, now);
-    const response = await runUnitCostQuery(organizationId, config.unitCostMetricId, {
-      ...request,
+  if (isUnitCostConfig(config)) {
+    const request = {
+      ...unitCostQueryForConfig(config, now),
       ...(displayCurrency ? { displayCurrency } : {}),
-    });
-    const { blocks, unitLabel } = unitCostResponseBlocks(response);
+    };
+    const response =
+      config.unitCostMode === "usage_unit_cost"
+        ? await runUsageUnitCostQuery(organizationId, request)
+        : await runUnitCostQuery(organizationId, config.unitCostMetricId!, request);
+    const { blocks, show, denominator } = unitCostResponseBlocks(response);
     const first = response.series[0];
     return {
       section: {
         title,
-        subtitle: `${describeConfig(config, request.from, request.to)} · divided by ${response.metric.name}`,
+        subtitle: `${describeConfig(config, request.from, request.to)} · ${response.mode === "raw_metric" ? "plotting" : "divided by"} ${denominator}`,
         blocks,
       },
       highlight:
         first && first.overallValue !== null
-          ? `${title}: ${formatPdfValue(first.overallValue, { currency: first.currency })} ${unitLabel.toLowerCase()}`
+          ? `${title}: ${show(first.overallValue, first.currency)}`
           : null,
     };
   }

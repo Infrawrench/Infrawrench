@@ -93,6 +93,46 @@ export const CostGraphConfig = strict({
   measure: CostMeasure.optional(),
   usageUnit: CostUsageUnit.optional(),
   cumulative: CostCumulative.optional(),
+  unitCostMetricId: z
+    .string()
+    .optional()
+    .describe(
+      "Divide spend by this business metric (an id, so a key rename never re-points the graph).",
+    ),
+  unitCostMode: z
+    .enum(["unit_cost", "margin", "usage_unit_cost", "raw_metric"])
+    .optional()
+    .describe(
+      "The calculation. `usage_unit_cost` needs `unitCostUsageUnit` instead of a metric; the " +
+        "others need `unitCostMetricId`.",
+    ),
+  unitCostScale: z
+    .union([
+      z.literal(1),
+      z.literal(100),
+      z.literal(1000),
+      z.literal(1000000),
+      z.literal(1000000000),
+    ])
+    .optional()
+    .describe('"Per N units" for a ratio, or the unit a raw metric is shown in. Absent is 1.'),
+  unitCostUsageUnit: z
+    .string()
+    .optional()
+    .describe("`usage_unit_cost` only: the provider usage unit to divide by."),
+  unitCostLabelFilters: z
+    .array(
+      strict({
+        key: z.string(),
+        op: z.enum(["in", "not_in"]),
+        values: z.array(z.string()).min(1),
+      }),
+    )
+    .max(10)
+    .optional()
+    .describe("Keep only metric values carrying these labels."),
+  unitCostGroupByLabel: z.string().optional().describe("One line per value of this metric label."),
+  adjusted: z.boolean().optional().describe("Draw the org's billing rules applied."),
 })
   .describe(
     "The saved graph. Identical to the config an ad-hoc `cost_graph` dashboard widget stores " +
