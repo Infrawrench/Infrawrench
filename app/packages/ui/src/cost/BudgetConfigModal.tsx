@@ -80,7 +80,7 @@ export function BudgetConfigModal({
    * from what is on screen, for a budget, an alert-firing difference.
    */
   const [filterError, setFilterError] = useState<string | null>(null);
-  const basis = useCostBasisChoice(api, initialInput.costBasis === "amortized");
+  const basis = useCostBasisChoice(api, initialInput.costBasis);
 
   const set = (patch: Partial<BudgetInput>) =>
     setInput((prev) => ({ ...prev, ...patch }) as BudgetInput);
@@ -303,6 +303,7 @@ export function BudgetConfigModal({
               value={input.costBasis}
               onChange={(costBasis) => set({ costBasis })}
               available={basis.available}
+              blendingAvailable={basis.blendingAvailable}
               hint={m(COST_BASIS_UNAVAILABLE_HINT)}
             />
           )}

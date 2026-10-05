@@ -243,4 +243,5 @@
 // collection; their rows re-cut node traffic and are left out of the org-wide
 // `GET /network-flows` totals unless that account is asked about by
 // `accountId`. `recut` on NetworkFlowAccountStatus. Additive.
-export const API_VERSION = "1.67.0";
+// 1.68.0: `blended` cost basis (commitment discounts spread evenly over eligible usage) on every costBasis/basis enum, and an optional `blending` capability flag on cost status. Additive.
+export const API_VERSION = "1.68.0";

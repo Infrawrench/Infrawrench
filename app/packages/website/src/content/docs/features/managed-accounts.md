@@ -37,7 +37,7 @@ If a customer has their own dedicated cloud account, you can name the **account*
 
 ### Cost basis
 
-Defaults to **amortized**, and that is the defensible choice for a managed service: charging a customer the whole cash value of a three-year reservation in the month you signed it is not a bill anyone can budget against. Cash basis is there if your contract genuinely says so.
+Choose **cash**, **amortized** or **blended**. **Blended** spreads each shared commitment's discount evenly across all the usage it could cover, so a customer is never billed more or less because of which account the provider happened to apply your commitment to. Defaults to **amortized**, and that is the defensible choice for a managed service: charging a customer the whole cash value of a three-year reservation in the month you signed it is not a bill anyone can budget against. Cash basis is there if your contract genuinely says so.
 
 ### Billing rules on or off
 

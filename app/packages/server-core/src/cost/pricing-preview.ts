@@ -205,7 +205,9 @@ export async function previewPricing(
     buckets && buckets.length === 0
       ? []
       : await getPricingLines(organizationId, rules, from, to, {
-          costBasis: customer ? (customer.costBasis as "cash" | "amortized") : "amortized",
+          costBasis: customer
+            ? (customer.costBasis as "cash" | "amortized" | "blended")
+            : "amortized",
           reallocations: customer ? billing?.adjustments.reallocations : undefined,
           tagKeys: pricingTagKeys([...beforeRules, ...afterRules]),
           buckets,

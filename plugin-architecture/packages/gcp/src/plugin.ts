@@ -120,6 +120,9 @@ const manifest: PluginManifest = {
     dimensions: ["service", "region", "resource", "tag"],
     maxHistoryDays: 365,
     restatementDays: 5,
+    // Committed-use discount credits spread evenly over eligible usage; see
+    // "Blended committed-use discounts" in cost-data.ts.
+    blending: true,
   },
   // Committed-use discounts via compute.regionCommitments.aggregatedList.
   // Needs compute.commitments.list (in roles/compute.viewer).

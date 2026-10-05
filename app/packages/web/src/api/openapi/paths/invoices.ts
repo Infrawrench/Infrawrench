@@ -38,12 +38,15 @@ const ManagedAccountInput = strict({
       example: "GBP",
     }),
   costBasis: z
-    .enum(["cash", "amortized"])
+    .enum(["cash", "amortized", "blended"])
     .optional()
     .openapi({
       description:
         "Defaults to `amortized`. Charging a customer the whole cash value of a three-year " +
-        "commitment in the month it was signed is not a bill anyone can budget against.",
+        "commitment in the month it was signed is not a bill anyone can budget against. " +
+        "`blended` spreads each commitment's discount evenly over all the usage it could " +
+        "cover, so a customer is not billed more or less depending on which account the " +
+        "provider happened to apply a shared commitment to.",
     }),
   applyBillingRules: z
     .boolean()
@@ -95,7 +98,7 @@ const ManagedAccount = strict({
   contactEmail: z.string().nullable(),
   billingAddress: z.string().nullable(),
   billingCurrency: z.string(),
-  costBasis: z.enum(["cash", "amortized"]),
+  costBasis: z.enum(["cash", "amortized", "blended"]),
   applyBillingRules: z.boolean(),
   pricing: ManagedAccountPricing,
   notes: z.string().nullable(),
@@ -194,7 +197,7 @@ const InvoiceTotals = strict({
 });
 
 const InvoiceDerivation = strict({
-  costBasis: z.enum(["cash", "amortized"]),
+  costBasis: z.enum(["cash", "amortized", "blended"]),
   applyBillingRules: z.boolean(),
   rateDate: IsoDay.openapi({
     description:

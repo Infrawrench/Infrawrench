@@ -168,6 +168,33 @@ const COST_VIEW_COLUMNS = [
   "commitment_id",
 ] as const;
 
+/**
+ * `cost_daily` columns the caller splits have no counterpart for, with the
+ * value the split half projects in their place. A zero `*_reported` flag makes
+ * a split read as its amortized amount on the blended basis and as unlisted
+ * for re-rating: a split is a share of a billed AI row, which is never a
+ * commitment-blended or list-priced line.
+ */
+const BILLED_ONLY_COLUMNS = {
+  list_amount: sql`toFloat64(0)`,
+  list_reported: sql`toUInt8(0)`,
+  blended_amount: sql`toFloat64(0)`,
+  blended_reported: sql`toUInt8(0)`,
+} as const;
+
+/** The split half's projection: its own columns, then the billed-only defaults. */
+function splitColumns(a: typeof aiCostAttributed): SQL {
+  return sql.join(
+    [
+      ...COST_VIEW_COLUMNS.map((c) => sql`${a[c]}`),
+      ...Object.entries(BILLED_ONLY_COLUMNS).map(
+        ([name, value]) => sql`${value} AS ${sql.identifier(name)}`,
+      ),
+    ],
+    sql`, `,
+  );
+}
+
 /** True when any of these tag keys names an AI caller dimension. */
 export function referencesCallerTags(tagKeys: Array<string | undefined>): boolean {
   return tagKeys.some((k) => typeof k === "string" && k.startsWith(CALLER_TAG_PREFIX));
@@ -188,13 +215,15 @@ export function referencesCallerTags(tagKeys: Array<string | undefined>): boolea
  */
 export function attributedCostSource(organizationId: string, from: string, to: string): SQL {
   const billedCols = sql.join(
-    COST_VIEW_COLUMNS.map((c) => sql`${costDaily[c]}`),
+    [
+      ...COST_VIEW_COLUMNS.map((c) => sql`${costDaily[c]}`),
+      ...(Object.keys(BILLED_ONLY_COLUMNS) as Array<keyof typeof BILLED_ONLY_COLUMNS>).map(
+        (c) => sql`${costDaily[c]}`,
+      ),
+    ],
     sql`, `,
   );
-  const splitCols = sql.join(
-    COST_VIEW_COLUMNS.map((c) => sql`${aiCostAttributed[c]}`),
-    sql`, `,
-  );
+  const splitCols = splitColumns(aiCostAttributed);
   const runDays = sql`SELECT ${aiCostAttributed.day} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`}`;
   return sql`(SELECT ${billedCols} FROM ${costDaily} FINAL WHERE ${costDailyOrgCondition(organizationId)} AND ${dayRange(from, to)} AND NOT (mapContains(${costDaily.tags}, 'ai:provider') AND ${costDaily.day} IN (${runDays})) UNION ALL SELECT ${splitCols} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} AND (${aiCostAttributed.day}, ${aiCostAttributed.run_at}) IN (SELECT ${aiCostAttributed.day}, max(${aiCostAttributed.run_at}) FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} GROUP BY ${aiCostAttributed.day})) AS ${sql.identifier("cost_daily")}`;
 }
@@ -208,10 +237,7 @@ export function attributedCostSource(organizationId: string, from: string, to: s
  */
 export function callerSplitsSource(organizationId: string, from?: string, to?: string): SQL {
   const a = aiCostAttributed;
-  const cols = sql.join(
-    COST_VIEW_COLUMNS.map((c) => sql`${a[c]}`),
-    sql`, `,
-  );
+  const cols = splitColumns(a);
   const range = sql.join(
     [
       sql`${a.organization_id} = ${organizationId}`,
@@ -304,10 +330,31 @@ export function amortizedAmountExpr(): SQL {
   return sql`if(${costDaily.amortized_reported} != 0 OR ${costDaily.amortized_amount} != 0, ${costDaily.amortized_amount}, ${costDaily.amount})`;
 }
 
-/** The money expression a query sums, per {@link CostBasis}. */
-function amountExpr(basis: CostBasis | undefined): SQL {
+/**
+ * The blended money expression: commitment discounts spread evenly across
+ * the usage they were eligible to cover (plugin-base `cost-blending.ts`).
+ *
+ * Falls back to {@link amortizedAmountExpr} for a row with no blended opinion,
+ * for the same reason amortized falls back to cash: plugins only stamp the
+ * rows they blended, and a pool's blended amounts sum to its amortized ones,
+ * so every unblended row reading as amortized is what makes the blended
+ * total equal the amortized total for any day, any filter that keeps whole
+ * pools, and every provider mix.
+ */
+export function blendedAmountExpr(): SQL {
+  return sql`if(${costDaily.blended_reported} != 0, ${costDaily.blended_amount}, ${amortizedAmountExpr()})`;
+}
+
+/**
+ * The money expression a query sums, per {@link CostBasis}. Exported so every
+ * reader that offers a basis (exports included) resolves it identically.
+ */
+export function costBasisAmountExpr(basis: CostBasis | undefined): SQL {
+  if (basis === "blended") return blendedAmountExpr();
   return basis === "amortized" ? amortizedAmountExpr() : sql`${costDaily.amount}`;
 }
+
+const amountExpr = costBasisAmountExpr;
 
 /**
  * `charge_type IN (...)` when the caller narrowed the charge types, otherwise

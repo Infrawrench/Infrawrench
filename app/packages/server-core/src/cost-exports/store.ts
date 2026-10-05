@@ -122,7 +122,7 @@ function normalizeQuery(raw: unknown): CostExportQuery {
     ...(virtualTagKeys.length > 0 ? { virtualTagKeys: [...new Set(virtualTagKeys)] } : {}),
     filters,
     ...(chargeTypes && chargeTypes.length > 0 ? { chargeTypes } : {}),
-    ...(q.costBasis === "amortized" ? { costBasis: "amortized" as const } : {}),
+    ...(q.costBasis === "amortized" || q.costBasis === "blended" ? { costBasis: q.costBasis } : {}),
   };
 }
 

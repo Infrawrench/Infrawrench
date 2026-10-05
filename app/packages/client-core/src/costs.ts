@@ -66,6 +66,12 @@ export interface CostAccountStatus {
    */
   amortization: boolean;
   /**
+   * Whether this account's plugin reports blended commitment discounts. Gates
+   * the blended view the same way {@link amortization} gates the amortized
+   * one. Optional because an older server omits it; absent reads as false.
+   */
+  blending?: boolean | undefined;
+  /**
    * Whether this account's amounts are computed by the plugin (inventory × a
    * rate card, or usage × published list prices) rather than reported as billed
    * spend by the provider.
@@ -214,6 +220,12 @@ export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
  *   bank statement, and it is what every query did before amortization existed.
  * - `amortized`: commitment fees spread across the term they buy, so a year of
  *   capacity bought on one day is counted on the days it covers.
+ * - `blended`: amortized, with each commitment's discount then spread evenly
+ *   over all the usage it was eligible to cover, so every eligible hour in the
+ *   commitment's scope carries the same effective rate whichever account or
+ *   resource the provider applied the discount to. The fair basis for
+ *   chargeback. Day totals equal the amortized totals exactly; only the split
+ *   between rows moves.
  *
  * Neither is wrong; they answer different questions. Cash answers "what left
  * the account in July"; amortized answers "what did July cost us". For an org
@@ -222,15 +234,34 @@ export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
  * catastrophe and every month after it look free.
  *
  * Providers that report no amortized amount fall back to their cash amount, so
- * an amortized query over a mixed estate is never missing their spend.
+ * an amortized query over a mixed estate is never missing their spend, and
+ * rows a provider did not blend fall back to their amortized amount the same
+ * way.
  */
-export const COST_BASES = ["cash", "amortized"] as const;
+export const COST_BASES = ["cash", "amortized", "blended"] as const;
 export type CostBasis = (typeof COST_BASES)[number];
 
 export const COST_BASIS_LABELS: Record<CostBasis, string> = {
   cash: "Cash",
   amortized: "Amortized",
+  blended: "Blended",
 };
+
+/**
+ * One-sentence explanation of each basis, for the tooltip beside every basis
+ * picker (web, desktop and mobile) and the CLI's `--help`.
+ */
+export const COST_BASIS_DESCRIPTIONS: Record<CostBasis, string> = {
+  cash: "What the provider charged on the day it charged it.",
+  amortized: "Commitment fees spread across the days they cover.",
+  blended:
+    "Amortized, with each commitment's discount shared evenly across all the usage it could cover, so every team pays the same effective rate.",
+};
+
+/** Narrow an untrusted value to a {@link CostBasis}, or `null`. */
+export function isCostBasis(value: unknown): value is CostBasis {
+  return typeof value === "string" && (COST_BASES as readonly string[]).includes(value);
+}
 
 export interface CostFilter {
   dimension: CostDimensionId;

@@ -111,6 +111,9 @@ const manifest: PluginManifest = {
     restatementDays: 3,
     chargeTypes: true,
     amortization: true,
+    // Reservation and savings plan discounts spread evenly over eligible
+    // usage; see "Blended commitment discounts" in cost-data.ts.
+    blending: true,
   },
   // Tenant-level Microsoft.Capacity reservation list and
   // Microsoft.BillingBenefits savings-plan list. Needs the service principal

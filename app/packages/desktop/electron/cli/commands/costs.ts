@@ -60,7 +60,7 @@ const KEYED_DIMENSIONS: readonly KeyedCostDimensionId[] = KEYED_GROUP_DIMENSIONS
  * caught at build time anyway: the values are assigned to the imported types
  * below, so removing a charge type upstream fails this file's typecheck.
  */
-const COST_BASES: readonly CostBasis[] = ["cash", "amortized"];
+const COST_BASES: readonly CostBasis[] = ["cash", "amortized", "blended"];
 const CHARGE_TYPES: readonly CostChargeType[] = [
   "usage",
   "commitment_covered_usage",
@@ -263,7 +263,7 @@ function printConversionNotice(conversion: CostConversion | undefined): void {
   println();
 }
 
-/** `--basis cash|amortized`, defaulting to cash. */
+/** `--basis cash|amortized|blended`, defaulting to cash. */
 function parseBasis(raw: string | undefined): CostBasis | undefined {
   if (raw === undefined) return undefined;
   const match = COST_BASES.find((b) => b === raw);
@@ -431,6 +431,8 @@ interface CollectionState {
   estimated: CostAccountStatus[];
   /** True when some account's plugin reports amortized cost at all. */
   amortizing: boolean;
+  /** True when some account's plugin reports blended commitment discounts. */
+  blending: boolean;
 }
 
 async function loadCollectionState(orgId: string): Promise<CollectionState> {
@@ -445,6 +447,8 @@ async function loadCollectionState(orgId: string): Promise<CollectionState> {
     // `amortization` is optional on older servers' responses; absent reads as
     // "doesn't report one", which is what such a server was doing.
     amortizing: accounts.some((a) => a.supportsCosts && a.amortization),
+    // Same posture for `blending`, which older servers never send.
+    blending: accounts.some((a) => a.supportsCosts && a.blending === true),
   };
 }
 
@@ -599,7 +603,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // not say so gets quoted as the whole bill.
     ...(savedFilter ? [`filter "${savedFilter.name}"`] : []),
     ...(filters.length > 0 ? [range.where!.trim()] : []),
-    ...(basis === "amortized" ? ["amortized"] : []),
+    ...(basis === "amortized" || basis === "blended" ? [basis] : []),
     ...(chargeTypes.length > 0 ? [chargeTypes.join(", ")] : []),
     // On the same line as the number, like the basis: a converted total that
     // does not say so gets quoted as if it were a collected one.
@@ -616,6 +620,15 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     println(
       c.dim(
         "no connected provider reports amortized cost — these are the amounts you were charged",
+      ),
+    );
+  }
+  if (basis === "blended") {
+    println(
+      c.dim(
+        collection.blending
+          ? "blended: each commitment's discount shared evenly across all the usage it could cover; day totals match amortized"
+          : "no connected provider reports blended commitment discounts, so these are the amortized amounts",
       ),
     );
   }

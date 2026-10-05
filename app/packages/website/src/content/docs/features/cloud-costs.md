@@ -34,19 +34,19 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 
 ### What you can configure
 
-| Option     | Choices                                                                                                   |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| Chart type | Stacked bar, bar, line, area, pie, donut, or a table — see [display options](#display-options)            |
-| Measure    | **Cost** (money), **Usage quantity** in one unit, or **Count** of distinct group values billed per bin    |
-| Binning    | Daily, weekly, monthly, quarterly (hourly shows disabled — see below)                                     |
-| Cumulative | Running totals from the start of the range, at any bin size                                               |
-| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                |
-| Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                             |
-| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)      |
-| Cost basis | **Cash** (what you were charged) or **Amortized** (commitments spread over the term they buy) — see below |
-| Top groups | Show the top N groups (default 5); the rest fold into **Other**                                           |
-| Compare    | Overlay the previous period as a dashed line, with a % change badge                                       |
-| Forecast   | Project the recent trend forward as a dashed continuation                                                 |
+| Option     | Choices                                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chart type | Stacked bar, bar, line, area, pie, donut, or a table — see [display options](#display-options)                                                                                                    |
+| Measure    | **Cost** (money), **Usage quantity** in one unit, or **Count** of distinct group values billed per bin                                                                                            |
+| Binning    | Daily, weekly, monthly, quarterly (hourly shows disabled — see below)                                                                                                                             |
+| Cumulative | Running totals from the start of the range, at any bin size                                                                                                                                       |
+| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                                                                                                        |
+| Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                                                                                                                     |
+| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)                                                                                              |
+| Cost basis | **Cash** (what you were charged), **Amortized** (commitments spread over the term they buy) or **Blended** (amortized, with commitment discounts shared evenly across eligible usage) — see below |
+| Top groups | Show the top N groups (default 5); the rest fold into **Other**                                                                                                                                   |
+| Compare    | Overlay the previous period as a dashed line, with a % change badge                                                                                                                               |
+| Forecast   | Project the recent trend forward as a dashed continuation                                                                                                                                         |
 
 ![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-service-forecast.png)
 
@@ -212,9 +212,9 @@ Group by **Charge type** to see the split, or filter on it to answer a specific 
 
 Not every provider distinguishes these. Where a provider doesn't, or where the data predates this, its rows are **Usage** — which is what they were always assumed to be.
 
-### Cash and amortized
+### Cash, amortized and blended
 
-**Cost basis** decides which number the graph sums.
+**Cost basis** decides which number the graph sums. Hover the select (or read the line under it) for a one-sentence reminder of what the selected basis means.
 
 - **Cash** is what the provider charged, on the day it charged it. This is your bank statement, and it is what every graph showed before this existed.
 - **Amortized** spreads a commitment's up-front fee across the term it actually buys. A one-year reservation paid up front is one enormous charge on the purchase day and 1/365th of it on each of the 365 days it covers.
@@ -225,7 +225,21 @@ Providers that don't report an amortized amount fall back to their cash amount r
 
 Budgets take the same setting, and it's the same reasoning: a budget tracking amortized spend keeps alerting sensibly through the term of a commitment.
 
-From the terminal the same two questions are `infrawrench costs --basis amortized` and `infrawrench costs --charge-type usage` (repeat the flag for more than one kind); `--group-by charge_type` prints the split. The text output names the basis next to the total, so a number copied out of it says what it is.
+#### Blended
+
+**Blended** starts from amortized and then spreads each commitment's _discount_ evenly across all the usage it was eligible to cover. Providers apply a shared commitment wherever they like: AWS lands a Savings Plan on the hours with the deepest discount first and a regional reservation on whichever matching hours ran first, and a GCP committed-use discount goes to the projects that happened to be consuming when it had headroom. On the amortized basis, two teams running identical workloads in the same account or billing scope can therefore pay very different effective rates, purely by accident of scheduling.
+
+On the blended basis every eligible hour in the commitment's scope carries the same effective rate. For each day, Infrawrench takes the usage a set of commitments could have covered (what it was billed at, and what it would have cost on demand), works out one effective rate for the whole pool, and re-prices each row at that rate in proportion to its on-demand cost. Covered rows get more expensive, uncovered rows get cheaper, and **every day's total is exactly the amortized total**: only the split between teams, accounts, regions and resources moves. That makes it the fair basis for [showback](./tag-policy-and-showback.md), team budgets and [invoices](./managed-accounts.md) when commitments are bought centrally.
+
+| Provider  | Pool                                                                                                                      | On-demand equivalent of covered usage                                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AWS**   | One per day and service: Compute Savings Plans span regions, and Cost Explorer cannot break usage down by instance family | Savings Plan covered usage reports its on-demand cost directly; reservation-covered hours use Cost Explorer's reservation utilization ("on-demand cost of RI hours used") |
+| **Azure** | One per day and service within the subscription                                                                           | Covered usage per meter, priced at the subscription's own on-demand rate for that meter, or the public retail price when it never ran on demand                           |
+| **GCP**   | Resource-based committed-use discounts: one per day and region. Spend-based: one per day                                  | Each line's cost before credits, for every SKU that received that kind of committed-use credit that day                                                                   |
+
+Rows outside any pool (fees, tax, credits, other services) keep their amortized amount, and so does any pool a provider couldn't price fully, so blended never guesses. Like the amortized option, **Blended** only appears when at least one connected account's provider reports it.
+
+From the terminal the same two questions are `infrawrench costs --basis amortized` and `infrawrench costs --charge-type usage` (repeat the flag for more than one kind); `--group-by charge_type` prints the split, and `--basis blended` prints the blended view. The text output names the basis next to the total, so a number copied out of it says what it is.
 
 ![Cost graph config modal showing the Cost basis select set to Amortized, next to the Group by select set to Charge type](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/config-amortized-charge-type.png)
 
@@ -324,7 +338,7 @@ The gate is that equality because rates point _to_ the display currency in one h
 
 ## Budgets & alerts
 
-A budget is an amount tracked against a scope (all spend, or a filtered slice: one provider, one account, a tag) for each period it covers. By default that is monthly spend; a budget can also [count a usage quantity](#usage-budgets), run on a [custom period](#budget-periods), and [roll up child budgets](#budget-hierarchies). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-and-amortized): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
+A budget is an amount tracked against a scope (all spend, or a filtered slice: one provider, one account, a tag) for each period it covers. By default that is monthly spend; a budget can also [count a usage quantity](#usage-budgets), run on a [custom period](#budget-periods), and [roll up child budgets](#budget-hierarchies). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-amortized-and-blended): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
 
 Each budget has one or more thresholds:
 
@@ -484,7 +498,7 @@ Forecasts are a least-squares fit over the trailing 30 days of daily totals, pro
 
 The things a trend cannot see are exactly what a **scenario model** is for: known future cost, written down once and overlaid on the projection _beside_ the trend rather than instead of it. See [Scenario models](./scenario-models.md).
 
-The fit follows the graph's [cost basis](#cash-and-amortized), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
+The fit follows the graph's [cost basis](#cash-amortized-and-blended), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
 
 ## Tags you compute yourself
 

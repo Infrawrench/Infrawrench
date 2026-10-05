@@ -184,11 +184,12 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					"budget's forecast.",
 			},
 			"cost_basis": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("cash"),
-				MarkdownDescription: "`cash` to measure against invoiced spend, `amortized` to spread commitment fees.",
-				Validators:          []validator.String{oneOfValidator("cash", "amortized")},
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("cash"),
+				MarkdownDescription: "`cash` to measure against invoiced spend, `amortized` to spread commitment " +
+					"fees, " + blendedBasisDescription,
+				Validators: []validator.String{oneOfValidator("cash", "amortized", "blended")},
 			},
 			"use_adjusted_spend": schema.BoolAttribute{
 				Optional:            true,

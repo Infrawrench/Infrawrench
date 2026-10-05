@@ -82,7 +82,7 @@ var pricingUpliftAttrTypes = map[string]attr.Type{
 	"percent":   types.Float64Type,
 }
 
-var managedAccountCostBases = []string{"cash", "amortized"}
+var managedAccountCostBases = []string{"cash", "amortized", "blended"}
 
 // discountTreatmentModes is the closed set for the three *_treatment attributes.
 var discountTreatmentModes = []string{"pass_through", "partial", "retain"}
@@ -155,7 +155,9 @@ func (r *managedAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Default:  stringdefault.StaticString("amortized"),
 				MarkdownDescription: "One of `" + joinBackticked(managedAccountCostBases) + "`. Defaults to " +
 					"`amortized`: charging a customer the whole cash value of a three-year commitment in the " +
-					"month it was signed is not a bill anyone can budget against.",
+					"month it was signed is not a bill anyone can budget against. `blended` also shares each " +
+					"commitment's discount evenly across all the usage it could cover, so a customer is not " +
+					"billed more or less depending on which account the provider applied it to.",
 				Validators: []validatorString{oneOfValidator(managedAccountCostBases...)},
 			},
 			"apply_billing_rules": schema.BoolAttribute{

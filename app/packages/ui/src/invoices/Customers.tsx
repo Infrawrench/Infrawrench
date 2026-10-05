@@ -247,9 +247,19 @@ export function CustomerModal({
               <select
                 className={FIELD}
                 value={costBasis}
-                onChange={(e) => setCostBasis(e.target.value as "cash" | "amortized")}
+                title={
+                  costBasis === "blended"
+                    ? gt(
+                        "Each commitment's discount shared evenly across all the usage it could cover, so a customer's bill does not depend on which account the provider applied a shared commitment to.",
+                      )
+                    : costBasis === "cash"
+                      ? gt("What the providers charged, on the day they charged it.")
+                      : gt("Commitment fees spread across the days they cover.")
+                }
+                onChange={(e) => setCostBasis(e.target.value as "cash" | "amortized" | "blended")}
               >
                 <option value="amortized">{gt("Amortized")}</option>
+                <option value="blended">{gt("Blended")}</option>
                 <option value="cash">{gt("Cash")}</option>
               </select>
             </label>

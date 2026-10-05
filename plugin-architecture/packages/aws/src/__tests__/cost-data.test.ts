@@ -1,3 +1,4 @@
+import type { CostRow } from "@infrawrench/plugin-base";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -695,5 +696,179 @@ describe("fetchAwsCostData degradation", () => {
     );
 
     await expect(fetchAwsCostData(creds, RANGE)).rejects.toThrow(/LimitExceededException/);
+  });
+});
+
+// ─── Blended commitment discounts ───────────────────────────────────────────
+
+describe("fetchAwsCostData blended basis", () => {
+  /**
+   * Route each request by what it asks for rather than by call order: the
+   * blending requests come after the three attributed passes.
+   */
+  function routeCe(routes: {
+    onDemand: GroupSpec[];
+    covered: GroupSpec[];
+    pass2: GroupSpec[];
+    savingsPlan: GroupSpec[];
+    riOnDemand?: Record<string, string> | "refuse";
+  }) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as {
+        Filter?: { Not?: unknown; Dimensions?: { Key: string; Values: string[] } };
+        Metrics?: string[];
+      };
+      if (!body.Metrics) {
+        if (routes.riOnDemand === "refuse") {
+          return new Response(JSON.stringify({ __type: "AccessDeniedException" }), {
+            status: 400,
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            UtilizationsByTime: Object.entries(routes.riOnDemand ?? {}).map(([date, cost]) => ({
+              TimePeriod: { Start: date },
+              Total: { OnDemandCostOfRIHoursUsed: cost },
+            })),
+          }),
+          { status: 200 },
+        );
+      }
+      const date = "2026-07-01";
+      if (body.Filter?.Not) return ceResponse([{ date, groups: routes.pass2 }]);
+      const values = body.Filter?.Dimensions?.Values ?? [];
+      if (values.length === 1 && values[0] === "Usage") {
+        return ceResponse([{ date, groups: routes.onDemand }]);
+      }
+      if (values.length === 1 && values[0] === "SavingsPlanCoveredUsage") {
+        return ceResponse([{ date, groups: routes.savingsPlan }]);
+      }
+      return ceResponse([{ date, groups: routes.covered }]);
+    });
+  }
+
+  const EC2 = "Amazon Elastic Compute Cloud - Compute";
+
+  /** What a reader sums on each basis, per row, with the host's fallbacks. */
+  const amortizedOf = (r: CostRow) => r.amortizedAmount ?? r.amount;
+  const blendedOf = (r: CostRow) => r.blendedAmount ?? amortizedOf(r);
+
+  function sumByDay(rows: CostRow[], f: (r: CostRow) => number): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const r of rows) out.set(r.date, (out.get(r.date) ?? 0) + f(r));
+    return out;
+  }
+
+  it("re-prices on-demand, SP- and RI-covered usage at one rate and preserves the day", async () => {
+    routeCe({
+      onDemand: [{ keys: [EC2, "us-east-1"], unblended: "100", amortized: "100" }],
+      // SP half: 50 on demand, 30 effective. RI half: 0 unblended, 40 effective.
+      covered: [{ keys: [EC2, "us-west-2"], unblended: "50", amortized: "70" }],
+      pass2: [
+        { keys: [EC2, "SavingsPlanNegation"], unblended: "-50", amortized: "0" },
+        { keys: [EC2, "SavingsPlanRecurringFee"], unblended: "30", amortized: "0" },
+        { keys: ["AmazonS3", "Tax"], unblended: "5", amortized: "5" },
+      ],
+      savingsPlan: [{ keys: [EC2, "us-west-2"], unblended: "50", amortized: "30" }],
+      // The RI hours would have cost 100 on demand.
+      riOnDemand: { "2026-07-01": "100" },
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    // Weights: usage 100; covered 50 (SP) + 40 × 100/40 (RI) = 150.
+    // Pool effective 170 over 250 on demand: rate 0.68.
+    const usage = rows.find((r) => r.service === EC2 && r.chargeType === "usage" && r.amount)!;
+    const covered = rows.find((r) => r.chargeType === "commitment_covered_usage")!;
+    expect(usage.blendedAmount).toBeCloseTo(68, 9);
+    expect(covered.blendedAmount).toBeCloseTo(102, 9);
+    // Rows outside the pool carry no blended opinion and read as amortized.
+    expect(rows.find((r) => r.chargeType === "tax")!.blendedAmount).toBeUndefined();
+    expect(rows.find((r) => r.chargeType === "commitment_discount")!.blendedAmount).toBeUndefined();
+
+    const amortized = sumByDay(rows, amortizedOf);
+    const blended = sumByDay(rows, blendedOf);
+    expect(amortized.size).toBeGreaterThan(0);
+    for (const [day, total] of amortized) expect(blended.get(day)).toBeCloseTo(total, 9);
+  });
+
+  it("asks utilization only for services with RI coverage, one service per request", async () => {
+    const spy = routeCe({
+      onDemand: [],
+      covered: [
+        { keys: [EC2, "us-east-1"], unblended: "0", amortized: "40" },
+        { keys: ["AWS Lambda", "us-east-1"], unblended: "10", amortized: "6" },
+      ],
+      pass2: [],
+      savingsPlan: [{ keys: ["AWS Lambda", "us-east-1"], unblended: "10", amortized: "6" }],
+      riOnDemand: { "2026-07-01": "100" },
+    });
+
+    await fetchAwsCostData(creds, RANGE);
+
+    const util = sentBodies(spy).filter((b) => !b["Metrics"]);
+    expect(util).toHaveLength(1);
+    expect(util[0]!["Filter"]).toEqual({ Dimensions: { Key: "SERVICE", Values: [EC2] } });
+    expect(util[0]!["Granularity"]).toBe("DAILY");
+  });
+
+  it("makes no blending request when nothing was covered", async () => {
+    const spy = routeCe({
+      onDemand: [{ keys: [EC2, "us-east-1"], unblended: "10" }],
+      covered: [],
+      pass2: [],
+      savingsPlan: [],
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(rows.every((r) => r.blendedAmount === undefined)).toBe(true);
+  });
+
+  it("leaves a pool unblended when utilization is refused, and still collects", async () => {
+    routeCe({
+      onDemand: [{ keys: [EC2, "us-east-1"], unblended: "100", amortized: "100" }],
+      covered: [{ keys: [EC2, "us-west-2"], unblended: "0", amortized: "40" }],
+      pass2: [],
+      savingsPlan: [],
+      riOnDemand: "refuse",
+    });
+
+    const result = await fetchAwsCostData(creds, RANGE);
+
+    expect(result.degraded).toBeFalsy();
+    expect(result.rows.every((r) => r.blendedAmount === undefined)).toBe(true);
+  });
+
+  it("rejects an RI ratio below one as a scope mismatch", async () => {
+    routeCe({
+      onDemand: [{ keys: [EC2, "us-east-1"], unblended: "100", amortized: "100" }],
+      covered: [{ keys: [EC2, "us-west-2"], unblended: "0", amortized: "40" }],
+      pass2: [],
+      savingsPlan: [],
+      // 10 on demand for 40 effective: not the same reservations.
+      riOnDemand: { "2026-07-01": "10" },
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    expect(rows.every((r) => r.blendedAmount === undefined)).toBe(true);
+  });
+
+  it("blends SP-only pools across regions without any utilization request", async () => {
+    const spy = routeCe({
+      onDemand: [{ keys: [EC2, "eu-west-1"], unblended: "60", amortized: "60" }],
+      covered: [{ keys: [EC2, "us-east-1"], unblended: "40", amortized: "20" }],
+      pass2: [],
+      savingsPlan: [{ keys: [EC2, "us-east-1"], unblended: "40", amortized: "20" }],
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    expect(sentBodies(spy).filter((b) => !b["Metrics"])).toHaveLength(0);
+    // 80 effective over 100 on demand: both rows at 0.8.
+    expect(rows.find((r) => r.region === "eu-west-1")!.blendedAmount).toBeCloseTo(48, 9);
+    expect(rows.find((r) => r.region === "us-east-1")!.blendedAmount).toBeCloseTo(32, 9);
   });
 });

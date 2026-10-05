@@ -29,6 +29,12 @@ type (
 // value is a guaranteed 400. Catching it at plan time turns a failed apply
 // (which may already have created half the resources in a graph) into a plan
 // error that costs nothing.
+// blendedBasisDescription ends every cost_basis attribute's description, so
+// the four resources that take a basis explain the blended one identically.
+const blendedBasisDescription = "or `blended` to also share each commitment's discount evenly across " +
+	"all the usage it could cover, so every team or customer pays the same effective rate (day " +
+	"totals match amortized)."
+
 func oneOfValidator(allowed ...string) validator.String {
 	return stringvalidator.OneOf(allowed...)
 }

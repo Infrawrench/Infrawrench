@@ -61,6 +61,8 @@ export {
   otherFocusSubcategory,
   resolveFocusService,
 } from "./focus.js";
+export type { BlendMember } from "./cost-blending.js";
+export { allocateProportionally, blendCommitmentPools } from "./cost-blending.js";
 export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 
 export type {

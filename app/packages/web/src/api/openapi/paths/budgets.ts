@@ -30,12 +30,14 @@ const CostFilterRef = strict({
 }).openapi("BudgetCostFilter");
 
 const BudgetCostBasis = z
-  .enum(["cash", "amortized"])
+  .enum(["cash", "amortized", "blended"])
   .describe(
     "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it " +
       "charged it. An organization holding reservations or savings plans usually wants " +
       "`amortized`: a cash budget is blown the month a commitment is bought and then reads as " +
-      "under-spent for the rest of the term it paid for.",
+      "under-spent for the rest of the term it paid for. `blended` additionally spreads each " +
+      "commitment's discount evenly over all the usage it could cover, which is the fair " +
+      "basis for a team's budget when commitments are bought centrally.",
   )
   .openapi("BudgetCostBasis");
 

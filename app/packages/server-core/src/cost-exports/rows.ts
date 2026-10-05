@@ -25,7 +25,7 @@ import { and, asc, inArray, sql, type SQL } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/clickhouse-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
 import {
-  amortizedAmountExpr,
+  costBasisAmountExpr,
   costDailyOrgCondition,
   dayRange,
   membershipCondition,
@@ -121,7 +121,7 @@ function dimensionColumn(dimension: string): string {
  * amortized slices while the graph beside it did not.
  */
 function amountExpr(basis: CostBasis | undefined): SQL {
-  return basis === "amortized" ? amortizedAmountExpr() : sql`${costDaily.amount}`;
+  return costBasisAmountExpr(basis);
 }
 
 /** Sanitise a tag key into a column name a CSV header and a warehouse both accept. */

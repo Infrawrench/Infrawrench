@@ -61,7 +61,7 @@ Evaluated **after** every allocation rule, so an account in scope claims only th
 - `commitment_benefit_treatment` (String) What happens to reservation and Savings Plan benefits on covered usage (measurable only where the provider reports a list price) on this customer's invoices: `pass_through` (the default) gives the customer all of it, `retain` keeps all of it, `partial` gives the customer the share in the matching `*_pass_through_percent`.
 - `contact_email` (String) Where invoices are sent, up to 254 characters.
 - `contact_name` (String) Billing contact, up to 120 characters.
-- `cost_basis` (String) One of `cash`, `amortized`. Defaults to `amortized`: charging a customer the whole cash value of a three-year commitment in the month it was signed is not a bill anyone can budget against.
+- `cost_basis` (String) One of `cash`, `amortized`, `blended`. Defaults to `amortized`: charging a customer the whole cash value of a three-year commitment in the month it was signed is not a bill anyone can budget against. `blended` also shares each commitment's discount evenly across all the usage it could cover, so a customer is not billed more or less depending on which account the provider applied it to.
 - `cost_centre_ids` (Set of String) Cost centres whose spend belongs to this customer, at most 100.
 
 **Subtrees are included** — naming a parent bills every descendant, and naming both a parent and its child bills the child once, not twice.

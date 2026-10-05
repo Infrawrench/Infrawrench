@@ -64,6 +64,18 @@ export interface CostCapabilityDeclaration {
    */
   amortization?: boolean;
   /**
+   * True when this provider reports {@link CostRow.blendedAmount}: each
+   * commitment's discount spread evenly across all the usage it was eligible
+   * to cover, instead of landing on whichever rows the provider applied it
+   * to. See `cost-blending.ts` for the arithmetic every plugin shares.
+   *
+   * Defaults to false, and false means blended queries fall back to the
+   * amortized amount (and through it to cash) for this provider. The host
+   * offers the blended view only when at least one connected account
+   * declares this, for the same reason it gates the amortized view.
+   */
+  blending?: boolean;
+  /**
    * True when this plugin *derives* its amounts rather than reading billed
    * spend from the provider. Two shapes qualify: inventory × a rate card (the
    * provider has no billing API at all, so the only available number is "what
@@ -230,6 +242,20 @@ export interface CostRow {
    * `amount` must therefore treat only *absent* as "no opinion".
    */
   amortizedAmount?: number;
+  /**
+   * The row's amount with commitment discounts blended: re-priced at the
+   * effective rate shared by every row in its pool (the usage the same
+   * commitments were eligible to cover, on this day, in this currency), in
+   * `currency`. Absent means "same as the amortized amount".
+   *
+   * Only set it on rows a plugin actually blended, and only through
+   * `blendCommitmentPools` / `allocateProportionally`, which guarantee that a
+   * pool's blended amounts sum to its amortized amounts: the blended basis
+   * moves money between rows, never into or out of a day. A row whose share
+   * of a fully-used discount is zero carries `0`, which, like
+   * {@link amortizedAmount}, is meaningful and not the same as absent.
+   */
+  blendedAmount?: number;
   /**
    * Provider-native id of the reservation, savings plan, or committed-use
    * discount this row is attributable to: the purchase itself, the discount it

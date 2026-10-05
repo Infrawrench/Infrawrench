@@ -870,6 +870,7 @@ export async function getOrgCostStatus(organizationId: string): Promise<CostAcco
         // amortizes has no second number to show.
         chargeTypes: capability?.chargeTypes ?? false,
         amortization: capability?.amortization ?? false,
+        blending: capability?.blending ?? false,
         // False means the provider reported the money. True means we priced it
         // ourselves, which the surfaces have to say out loud.
         estimated: capability?.estimated ?? false,

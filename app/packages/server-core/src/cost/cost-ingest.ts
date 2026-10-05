@@ -306,6 +306,11 @@ export async function validateCostRows(opts: {
       // to the uplift.
       list_amount: 0,
       list_reported: 0,
+      // No blended share is computed for pushed or uploaded rows: blended
+      // readers fall back to the amortized amount (an uploaded FOCUS
+      // EffectiveCost, or cash), which is what the row already states.
+      blended_amount: 0,
+      blended_reported: 0,
     };
   });
 

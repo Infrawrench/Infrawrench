@@ -40,14 +40,19 @@ const CostChargeType = z
   .openapi("CostChargeType");
 
 const CostBasis = z
-  .enum(["cash", "amortized"])
+  .enum(["cash", "amortized", "blended"])
   .describe(
     "Which number to sum. `cash` is what the provider charged on the day it charged it — the " +
       "default, and what every query returned before this existed. `amortized` spreads a " +
       "commitment's up-front fee across the term it buys, so a year of capacity bought on one " +
       "day is counted on the days it covers. Providers that report no amortized amount fall " +
       "back to their cash amount, so an amortized query over a mixed estate never drops their " +
-      "spend.",
+      "spend. `blended` is amortized with each commitment's discount (reservations, savings " +
+      "plans, committed-use discounts) spread evenly over all the usage it was eligible to " +
+      "cover, so every eligible hour in the commitment's scope carries the same effective rate " +
+      "whichever account or resource the provider applied it to: the fair basis for chargeback. " +
+      "Day totals equal the amortized totals exactly; rows a provider did not blend fall back " +
+      "to their amortized amount.",
   )
   .openapi("CostBasis");
 
@@ -323,6 +328,14 @@ const CostAccountStatus = strict({
       "Whether this account's plugin reports an amortized amount distinct from the cash " +
         "amount. Clients offer the amortized cost basis only when at least one account says " +
         "yes; elsewhere the amortized view is the cash numbers under another name.",
+    ),
+  blending: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this account's plugin reports blended commitment discounts. Clients offer the " +
+        "blended cost basis only when at least one account says yes; elsewhere it reads as " +
+        "the amortized numbers.",
     ),
   estimated: z
     .boolean()

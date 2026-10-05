@@ -68,6 +68,10 @@ describe("migrateMetrics", () => {
     // reproduces exactly what those rows read before the column existed.
     expect(added.some((q) => /amortized_reported` UInt8 DEFAULT 0/.test(q))).toBe(true);
     expect(added.some((q) => /commitment_id` .*DEFAULT ''/.test(q))).toBe(true);
+    // blended_reported = 0 means "no blended opinion": every row written before
+    // the blended basis existed reads as its amortized amount.
+    expect(added.some((q) => /blended_amount` .*DEFAULT 0/.test(q))).toBe(true);
+    expect(added.some((q) => /blended_reported` UInt8 DEFAULT 0/.test(q))).toBe(true);
     for (const q of added) expect(q).toMatch(/DEFAULT/);
   });
 

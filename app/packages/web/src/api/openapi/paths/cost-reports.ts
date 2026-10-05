@@ -89,7 +89,7 @@ export const CostGraphConfig = strict({
         "trend cannot see, drawn as a second dashed line beside the trend rather than instead " +
         "of it. Only meaningful alongside `showForecast`.",
     ),
-  costBasis: z.enum(["cash", "amortized"]).optional(),
+  costBasis: z.enum(["cash", "amortized", "blended"]).optional(),
   measure: CostMeasure.optional(),
   usageUnit: CostUsageUnit.optional(),
   cumulative: CostCumulative.optional(),

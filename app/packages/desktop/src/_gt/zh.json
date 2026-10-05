@@ -15133,5 +15133,11 @@
   "e9c401359b94bac5": "按命名空间和工作负载统计的 Pod 流量，分为同可用区、跨可用区、跨区域和互联网。由于相同的字节也会经由节点自身的网络接口流出，因此不计入上方的网络总计。",
   "642136f767b147c7": "按工作负载",
   "829c010cfa2b8eec": "{from} 至 {to} 期间 {bytes} 按标价估算为 {estimate}。",
-  "a5eee63f188e33f1": "可选。此集群的成本，用于推算工作负载成本。从云账户（DigitalOcean、GCP、AWS、Azure、Scaleway、OVHcloud、CoreWeave）打开的集群会自动获取节点价格。否则请列出实例类型：s-2vcpu-4gb=0.0357, m5.large=0.096。同一字段也可为集群的其余部分定价：controlPlane=0.10 表示托管集群的固定费用，loadBalancer=0.0149 表示每个 LoadBalancer Service 的费用，storage/*=0.10 表示每个已配置 GiB-month 的费用（单一存储类可用 storage/gp3=0.08），network/cross_zone=0.01 或 network/internet_egress=0.09 用于覆盖云平台按 GB 计费的传输价格以计算网络成本。在 GPU 节点上，gpu/a100-80gb=3.93（或 gpu/*=2.50）设置单个 GPU 每小时的价格，这决定了节点中按 GPU 请求计费的比例。留空时仍会显示容量、卷大小和效率；仅省略费用信息。"
+  "a5eee63f188e33f1": "可选。此集群的成本，用于推算工作负载成本。从云账户（DigitalOcean、GCP、AWS、Azure、Scaleway、OVHcloud、CoreWeave）打开的集群会自动获取节点价格。否则请列出实例类型：s-2vcpu-4gb=0.0357, m5.large=0.096。同一字段也可为集群的其余部分定价：controlPlane=0.10 表示托管集群的固定费用，loadBalancer=0.0149 表示每个 LoadBalancer Service 的费用，storage/*=0.10 表示每个已配置 GiB-month 的费用（单一存储类可用 storage/gp3=0.08），network/cross_zone=0.01 或 network/internet_egress=0.09 用于覆盖云平台按 GB 计费的传输价格以计算网络成本。在 GPU 节点上，gpu/a100-80gb=3.93（或 gpu/*=2.50）设置单个 GPU 每小时的价格，这决定了节点中按 GPU 请求计费的比例。留空时仍会显示容量、卷大小和效率；仅省略费用信息。",
+  "06be49474208867c": "提供商收取的费用，按收费当天计。",
+  "ba2703f756daee17": "将承诺费用分摊到其覆盖的各天。",
+  "5548b423974f922d": "在摊销的基础上，将每项承诺的折扣平均分摊到其可覆盖的全部用量上，使每个团队支付相同的有效费率。",
+  "5d1b74089c746f62": "将每项承诺的折扣平均分摊到其可覆盖的全部用量上，使客户的账单不取决于提供商将共享承诺应用到了哪个账户。",
+  "9684755144a7f7a9": "各提供商收取的费用，按收费当天计。",
+  "cd24262b5635925f": "混合"
 }

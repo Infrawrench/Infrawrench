@@ -95,7 +95,7 @@ Optional:
 
 - `adjusted` (Boolean) Apply billing rules to the figures, charting spend as restated by your `infrawrench_billing_rule`s rather than as invoiced.
 - `compare_previous_period` (Boolean) Overlay the equivalent preceding window so the chart shows change rather than level. Defaults to `false`.
-- `cost_basis` (String) `cash` to chart invoiced spend, `amortized` to spread commitment fees across the term they cover.
+- `cost_basis` (String) `cash` to chart invoiced spend, `amortized` to spread commitment fees across the term they cover, or `blended` to also share each commitment's discount evenly across all the usage it could cover, so every team or customer pays the same effective rate (day totals match amortized).
 - `cumulative` (Boolean) Draw running totals from the start of the range instead of per-bin values, at any bin size. Omitted is off.
 - `date_range` (Block, Optional) The window the report covers. Required, and a tagged union: `kind` selects which of the other attributes apply, and the provider sends only that branch because the server's schema is strict — an absolute range carrying a stray `preset` key is rejected outright. (see [below for nested schema](#nestedblock--config--date_range))
 - `filter` (Block List) Restricts the report to matching spend. Clauses are ANDed. (see [below for nested schema](#nestedblock--config--filter))

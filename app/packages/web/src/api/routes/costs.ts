@@ -378,7 +378,7 @@ app.put("/efficiency-alert-settings", async (c) => {
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * `?basis=cash|amortized` for the reports that follow one. Anything else (an
+ * `?basis=cash|amortized|blended` for the reports that follow one. Anything else (an
  * absent param, or a typo) reads as cash, the basis these reports have always
  * been computed on. A typo silently changing which money is reported would be
  * worse than ignoring it.
@@ -386,7 +386,8 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 function parseBasis(c: {
   req: { query(name: string): string | undefined };
 }): CostBasis | undefined {
-  return c.req.query("basis") === "amortized" ? "amortized" : undefined;
+  const basis = c.req.query("basis");
+  return basis === "amortized" || basis === "blended" ? basis : undefined;
 }
 
 /** Parse `?from&to` (both YYYY-MM-DD); defaults to the trailing 30 days. */

@@ -202,13 +202,56 @@
  * pass groups `[ChargeType, BenefitId]` and so cannot name the service a stale
  * row is filed under, which is exactly the kind of key-space knowledge a plugin
  * does not have and the host does.
+ *
+ * ─── Blended commitment discounts ────────────────────────────────────────
+ *
+ * The blended basis (`CostRow.blendedAmount`, arithmetic in plugin-base's
+ * `cost-blending.ts`) re-prices the usage a benefit was eligible to cover at
+ * one effective rate per pool, weighted by on-demand-equivalent cost. A pool
+ * here is `(day, currency, service)` within the subscription: a shared-scope
+ * reservation or savings plan applies across the subscription, and
+ * `ServiceName` (the meter category) is the finest grain the consumption
+ * passes keep. Members are the `usage` and `commitment_covered_usage` rows
+ * the decomposition above emits; purchases, unused hours and the rest of the
+ * attribution pass keep their amortized amounts, so the day total is exactly
+ * the amortized total.
+ *
+ * On-demand rows weigh their own cash amount. Covered rows have no on-demand
+ * figure in this API (`ActualCost` prices them at zero, `AmortizedCost` at
+ * the benefit's effective rate), so each service-day gets a ratio of
+ * on-demand-equivalent to effective cost, built per meter from two extra
+ * queries that run only when a chunk had covered usage:
+ *
+ * - `AmortizedCost` grouped `[ServiceName, MeterId]`, filtered to
+ *   `PricingModel In (Reservation, SavingsPlan)` and `ChargeType In (Usage)`,
+ *   summing `Cost` and `UsageQuantity`: what each covered meter consumed and
+ *   what it was charged at the benefit's rate.
+ * - The same dataset grouped `[MeterId]` with `PricingModel In (OnDemand)`:
+ *   the subscription's own on-demand price per meter (cost ÷ quantity), which
+ *   includes any negotiated rate.
+ *
+ * A covered meter the subscription never ran on demand is priced from the
+ * public Retail Prices API (`prices.azure.com/api/retail/prices`, filtered by
+ * `meterId`, `type eq 'Consumption'`), whose `unitOfMeasure` is the meter's
+ * own, so quantity × price needs no unit conversion
+ * (https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices).
+ * Pricing model values are Cost Analysis's own ("on-demand, reservation, or
+ * spot usage",
+ * https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter).
+ *
+ * All of it is best effort. A refused query, a meter with no price anywhere,
+ * or a ratio outside [1, 20] (a benefit never costs more than on demand)
+ * leaves the affected pools unblended, and their blended view reads as
+ * amortized rather than as a guess.
  */
 
-import type {
-  CostChargeType,
-  CostFetchRange,
-  CostFetchResult,
-  CostRow,
+import {
+  blendCommitmentPools,
+  type BlendMember,
+  type CostChargeType,
+  type CostFetchRange,
+  type CostFetchResult,
+  type CostRow,
 } from "@infrawrench/plugin-base";
 import { normalizeAzureCommitmentId } from "./commitments.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
@@ -366,6 +409,9 @@ async function runQuery(
   filter: unknown,
   onPage: (rows: Array<Array<string | number>>, idx: ColumnIndices) => void,
   type: "ActualCost" | "AmortizedCost" = "ActualCost",
+  aggregation: Record<string, { name: string; function: string }> = {
+    totalCost: { name: "Cost", function: "Sum" },
+  },
 ): Promise<void> {
   // Both timePeriod bounds are inclusive, matching the host's range semantics.
   const body = {
@@ -377,7 +423,7 @@ async function runQuery(
     },
     dataset: {
       granularity: "Daily",
-      aggregation: { totalCost: { name: "Cost", function: "Sum" } },
+      aggregation,
       grouping,
       ...(filter ? { filter } : {}),
     },
@@ -413,6 +459,8 @@ interface ColumnIndices {
   currency: number;
   chargeType: number;
   benefit: number;
+  meter: number;
+  quantity: number;
 }
 
 /** Column index resolution, shared by every pass. */
@@ -426,6 +474,8 @@ function indices(columns: QueryColumn[]): ColumnIndices {
     currency: columns.findIndex((c) => c.name === "Currency"),
     chargeType: columns.findIndex((c) => c.name === "ChargeType"),
     benefit: columns.findIndex((c) => c.name === "BenefitId"),
+    meter: columns.findIndex((c) => c.name === "MeterId"),
+    quantity: columns.findIndex((c) => c.name === "UsageQuantity"),
   };
 }
 
@@ -585,6 +635,240 @@ function accumulateConsumption(into: Map<string, ConsumptionCell>) {
       else into.set(key, { ...dims, amount });
     }
   };
+}
+
+// ─── Blending ─────────────────────────────────────────────────────────────
+
+/** Covered consumption of one meter on one service-day. */
+export interface AzureCoveredMeter {
+  date: string;
+  service: string;
+  currency: string;
+  meterId: string;
+  /** `UsageQuantity`, in the meter's own unit of measure. */
+  quantity: number;
+  /** Amortized `Cost` at the benefit's effective rate. */
+  cost: number;
+}
+
+/** Bounds on the on-demand/effective ratio; see the module header. */
+const RATIO_MIN = 1;
+const RATIO_MAX = 20;
+
+function serviceDayKey(date: string, service: string, currency: string): string {
+  return [date, service, currency].join("\u0000");
+}
+
+/**
+ * On-demand-equivalent over effective cost for each service-day's covered
+ * usage, or `null` for a service-day with a meter nobody could price. Pure.
+ */
+export function azureCoveredRatios(
+  covered: readonly AzureCoveredMeter[],
+  meterPrice: ReadonlyMap<string, number>,
+): Map<string, number | null> {
+  const acc = new Map<string, { onDemand: number; cost: number; unpriced: boolean }>();
+  for (const m of covered) {
+    const key = serviceDayKey(m.date, m.service, m.currency);
+    const a = acc.get(key) ?? { onDemand: 0, cost: 0, unpriced: false };
+    const price = meterPrice.get(m.meterId.toLowerCase());
+    if (price === undefined) a.unpriced = true;
+    else a.onDemand += m.quantity * price;
+    a.cost += m.cost;
+    acc.set(key, a);
+  }
+  const out = new Map<string, number | null>();
+  for (const [key, a] of acc) {
+    const ratio = a.cost > 0 ? a.onDemand / a.cost : NaN;
+    out.set(
+      key,
+      !a.unpriced && Number.isFinite(ratio) && ratio >= RATIO_MIN && ratio <= RATIO_MAX
+        ? ratio
+        : null,
+    );
+  }
+  return out;
+}
+
+/**
+ * Blended amounts for the consumption rows of one collection, by index into
+ * `rows`. `ratios` comes from {@link azureCoveredRatios}; a covered row whose
+ * service-day has no ratio leaves its whole pool unblended. Pure.
+ */
+export function blendAzureRows(
+  rows: readonly CostRow[],
+  ratios: ReadonlyMap<string, number | null>,
+): Array<number | undefined> {
+  const members: Array<BlendMember | null> = rows.map((r) => {
+    const service = r.service ?? "";
+    const pool = serviceDayKey(r.date, service, r.currency);
+    const effective = r.amortizedAmount ?? r.amount;
+    if (r.chargeType === "usage") return { pool, effective, weight: r.amount };
+    if (r.chargeType !== "commitment_covered_usage") return null;
+    const ratio = ratios.get(pool);
+    return {
+      pool,
+      effective,
+      weight: ratio === undefined || ratio === null ? null : effective * ratio,
+      covered: true,
+    };
+  });
+  return blendCommitmentPools(members);
+}
+
+const RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices";
+
+/**
+ * Public list price per meter for the meters the subscription never ran on
+ * demand. Unauthenticated; batched a few meters per request because the
+ * filter is a URL parameter.
+ */
+async function retailMeterPrices(
+  meterIds: string[],
+  currency: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < meterIds.length; i += 10) {
+    const batch = meterIds.slice(i, i + 10);
+    const filter =
+      `(${batch.map((id) => `meterId eq '${id.replace(/'/g, "")}'`).join(" or ")})` +
+      " and type eq 'Consumption'";
+    let url: string | undefined =
+      `${RETAIL_PRICES_URL}?currencyCode='${encodeURIComponent(currency)}'` +
+      `&$filter=${encodeURIComponent(filter)}`;
+    // Lowest tier per meter: tiered meters start at tierMinimumUnits 0.
+    const tier = new Map<string, number>();
+    while (url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Azure retail prices ${res.status}`);
+      const data = (await res.json()) as {
+        Items?: Array<{ meterId?: string; retailPrice?: number; tierMinimumUnits?: number }>;
+        NextPageLink?: string | null;
+      };
+      for (const item of data.Items ?? []) {
+        const id = item.meterId?.toLowerCase();
+        const price = Number(item.retailPrice);
+        if (!id || !Number.isFinite(price)) continue;
+        const min = Number(item.tierMinimumUnits ?? 0);
+        if (!tier.has(id) || min < tier.get(id)!) {
+          tier.set(id, min);
+          out.set(id, price);
+        }
+      }
+      url = data.NextPageLink || undefined;
+    }
+  }
+  return out;
+}
+
+const COVERED_USAGE_FILTER = {
+  and: [
+    {
+      dimensions: { name: "PricingModel", operator: "In", values: ["Reservation", "SavingsPlan"] },
+    },
+    CONSUMPTION_FILTER,
+  ],
+};
+
+const ON_DEMAND_USAGE_FILTER = {
+  and: [
+    { dimensions: { name: "PricingModel", operator: "In", values: ["OnDemand"] } },
+    CONSUMPTION_FILTER,
+  ],
+};
+
+const COST_AND_QUANTITY = {
+  totalCost: { name: "Cost", function: "Sum" },
+  totalQuantity: { name: "UsageQuantity", function: "Sum" },
+};
+
+/**
+ * Blended amounts for `rows`, by index: the two meter queries and any retail
+ * lookups, then {@link blendAzureRows}. Skipped when nothing was covered; any
+ * failure blends nothing.
+ */
+async function blendedAmounts(
+  ctx: AzureHttpContext,
+  range: CostFetchRange,
+  rows: readonly CostRow[],
+): Promise<Array<number | undefined> | undefined> {
+  if (!rows.some((r) => r.chargeType === "commitment_covered_usage")) return undefined;
+  try {
+    const covered: AzureCoveredMeter[] = [];
+    await runQuery(
+      ctx,
+      range,
+      [
+        { type: "Dimension", name: "ServiceName" },
+        { type: "Dimension", name: "MeterId" },
+      ],
+      COVERED_USAGE_FILTER,
+      (page, idx) => {
+        assertCoreColumns(idx);
+        for (const row of page) {
+          const date = formatUsageDate(row[idx.date]);
+          const meterId = cell(row, idx.meter);
+          const quantity = Number(row[idx.quantity] ?? 0);
+          const cost = Number(row[idx.cost] ?? 0);
+          if (!date || !meterId || !Number.isFinite(quantity) || !Number.isFinite(cost)) continue;
+          covered.push({
+            date,
+            service: cell(row, idx.service),
+            currency: cell(row, idx.currency) || "USD",
+            meterId,
+            quantity,
+            cost,
+          });
+        }
+      },
+      "AmortizedCost",
+      COST_AND_QUANTITY,
+    );
+    if (covered.length === 0) return undefined;
+
+    const onDemand = new Map<string, { cost: number; quantity: number }>();
+    await runQuery(
+      ctx,
+      range,
+      [{ type: "Dimension", name: "MeterId" }],
+      ON_DEMAND_USAGE_FILTER,
+      (page, idx) => {
+        for (const row of page) {
+          const id = cell(row, idx.meter).toLowerCase();
+          const quantity = Number(row[idx.quantity] ?? 0);
+          const cost = Number(row[idx.cost] ?? 0);
+          if (!id || !Number.isFinite(quantity) || !Number.isFinite(cost)) continue;
+          const a = onDemand.get(id) ?? { cost: 0, quantity: 0 };
+          a.cost += cost;
+          a.quantity += quantity;
+          onDemand.set(id, a);
+        }
+      },
+      "AmortizedCost",
+      COST_AND_QUANTITY,
+    );
+
+    const meterPrice = new Map<string, number>();
+    for (const [id, a] of onDemand) {
+      if (a.quantity > 0 && a.cost > 0) meterPrice.set(id, a.cost / a.quantity);
+    }
+    const unpriced = [
+      ...new Set(covered.map((m) => m.meterId.toLowerCase()).filter((id) => !meterPrice.has(id))),
+    ];
+    if (unpriced.length > 0) {
+      try {
+        const currency = covered[0]!.currency;
+        for (const [id, price] of await retailMeterPrices(unpriced, currency)) {
+          if (price > 0) meterPrice.set(id, price);
+        }
+      } catch {
+        // No list price: those service-days stay unblended.
+      }
+    }
+    return blendAzureRows(rows, azureCoveredRatios(covered, meterPrice));
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Promise<CostRow[]> {
@@ -826,7 +1110,12 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     });
   }
 
-  return rows;
+  const blended = await blendedAmounts(ctx, range, rows);
+  if (!blended) return rows;
+  return rows.map((r, i) => {
+    const b = blended[i];
+    return b === undefined ? r : { ...r, blendedAmount: b };
+  });
 }
 
 /**

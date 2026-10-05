@@ -247,7 +247,8 @@ describe("parseCostBasis", () => {
     expect(parseCostBasis("amortized")).toBe("amortized");
     // Not a fall-through to the default: a caller who asked for a basis we do
     // not have must be told, not silently answered on a different one.
-    expect(parseCostBasis("blended")).toBeNull();
+    expect(parseCostBasis("blended")).toBe("blended");
+    expect(parseCostBasis("unblended")).toBeNull();
   });
 });
 
@@ -255,5 +256,6 @@ describe("costBasisLabel", () => {
   it("is the one spelling every surface prints", () => {
     expect(costBasisLabel("cash")).toBe("cash basis");
     expect(costBasisLabel("amortized")).toBe("amortized basis");
+    expect(costBasisLabel("blended")).toBe("blended basis");
   });
 });

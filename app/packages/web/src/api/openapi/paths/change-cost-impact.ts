@@ -12,11 +12,12 @@ import { strict, ErrorResponses, OrgIdParam, ResourceId, Uuid } from "../common"
 import type { BuildContext } from "../context";
 
 const ChangeCostBasis = z
-  .enum(["cash", "amortized"])
+  .enum(["cash", "amortized", "blended"])
   .describe(
     "Which charge-type basis both windows are read on. `cash` (the default) is what the provider " +
       "charged on the day it charged it; `amortized` spreads a commitment's up-front fee across " +
-      "the term it buys. It is echoed on every response because a delta whose basis is unstated " +
+      "the term it buys; `blended` also spreads each commitment's discount evenly over the " +
+      "usage it could cover. It is echoed on every response because a delta whose basis is unstated " +
       "is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving.",
   )
   .openapi("ChangeCostBasis");

@@ -39,7 +39,9 @@ export { DEFAULT_COST_GRAPH_CONFIG } from "./config.js";
 
 /**
  * Whether the amortized cost basis is worth offering: true once any connected
- * account's plugin declares `amortization`.
+ * account's plugin declares `amortization`. `blendingAvailable` is the same
+ * question for the blended basis (`blending`): without a provider that blends,
+ * blended is the amortized graph under another name.
  *
  * Offering it unconditionally would be a lie by omission. Without a provider
  * that reports an amortized number, every row falls back to its cash amount and
@@ -54,27 +56,49 @@ export { DEFAULT_COST_GRAPH_CONFIG } from "./config.js";
  */
 export function useCostBasisChoice(
   api: CostApi,
-  force = false,
-): { available: boolean; loading: boolean } {
-  const [available, setAvailable] = useState<boolean | null>(null);
+  current?: CostBasis,
+): { available: boolean; blendingAvailable: boolean; loading: boolean } {
+  const [state, setState] = useState<{ amortization: boolean; blending: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void api
       .loadCostStatus()
       .then((statuses) => {
-        if (!cancelled) setAvailable(statuses.some((s) => s.supportsCosts && s.amortization));
+        if (cancelled) return;
+        const costed = statuses.filter((s) => s.supportsCosts);
+        setState({
+          amortization: costed.some((s) => s.amortization),
+          blending: costed.some((s) => s.blending === true),
+        });
       })
       .catch(() => {
-        if (!cancelled) setAvailable(false);
+        if (!cancelled) setState({ amortization: false, blending: false });
       });
     return () => {
       cancelled = true;
     };
   }, [api]);
 
-  return { available: force || available === true, loading: available === null };
+  const force = current === "amortized" || current === "blended";
+  return {
+    available: force || state?.amortization === true || state?.blending === true,
+    blendingAvailable: current === "blended" || state?.blending === true,
+    loading: state === null,
+  };
 }
+
+/**
+ * One sentence per basis, shown under the select and as its tooltip. msg()
+ * because this is module scope; render through `useMessages()`.
+ */
+export const COST_BASIS_HINTS = {
+  cash: msg("What the provider charged, on the day it charged it."),
+  amortized: msg("Commitment fees spread across the days they cover."),
+  blended: msg(
+    "Amortized, with each commitment's discount shared evenly across all the usage it could cover, so every team pays the same effective rate.",
+  ),
+} satisfies Record<CostBasis, string>;
 
 /** The Cost basis select, shared by the graph and budget editors. */
 export function CostBasisField({
@@ -82,16 +106,23 @@ export function CostBasisField({
   value,
   onChange,
   available,
+  blendingAvailable = false,
   hint,
 }: {
   id: string;
   value: CostBasis | undefined;
   onChange: (basis: CostBasis) => void;
   available: boolean;
+  /** Offer `blended`; see {@link useCostBasisChoice}. */
+  blendingAvailable?: boolean;
   hint: string;
 }) {
   const gt = useGT();
   const gtData = useDataString();
+  const m = useMessages();
+  const selected = value ?? "cash";
+  const description = m(COST_BASIS_HINTS[selected]) ?? "";
+  const options = COST_BASES.filter((b) => b !== "blended" || blendingAvailable);
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
@@ -100,17 +131,21 @@ export function CostBasisField({
       <select
         id={id}
         className={selectClass}
-        value={value ?? "cash"}
+        value={selected}
         disabled={!available}
+        title={description}
+        aria-describedby={`${id}-description`}
         onChange={(e) => onChange(e.target.value as CostBasis)}
       >
-        {COST_BASES.map((b) => (
-          <option key={b} value={b}>
+        {options.map((b) => (
+          <option key={b} value={b} title={m(COST_BASIS_HINTS[b]) ?? undefined}>
             {gtData(COST_BASIS_LABELS[b])}
           </option>
         ))}
       </select>
-      {!available && <p className="mt-1 text-xs text-on-surface-faint">{hint}</p>}
+      <p id={`${id}-description`} className="mt-1 text-xs text-on-surface-faint">
+        {available ? description : hint}
+      </p>
     </div>
   );
 }
@@ -200,7 +235,7 @@ export function CostGraphConfigModal({
    * silently store a different filter from the one on screen.
    */
   const [filterError, setFilterError] = useState<string | null>(null);
-  const basis = useCostBasisChoice(api, initialConfig.costBasis === "amortized");
+  const basis = useCostBasisChoice(api, initialConfig.costBasis);
   /**
    * The org's business metrics, for the unit-cost picker. `null` while loading
    * or when the host hasn't wired the endpoint: in both cases the picker is
@@ -493,6 +528,7 @@ export function CostGraphConfigModal({
               value={config.costBasis}
               onChange={(costBasis) => set({ costBasis })}
               available={basis.available}
+              blendingAvailable={basis.blendingAvailable}
               hint={m(COST_BASIS_UNAVAILABLE_HINT)}
             />
           </div>
