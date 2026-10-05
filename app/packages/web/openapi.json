@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.64.0",
+    "version": "1.65.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4095,6 +4095,82 @@
         ],
         "additionalProperties": false
       },
+      "CostAnomalyFeedbackReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "planned_launch",
+          "migration",
+          "seasonal",
+          "pricing_change",
+          "data_issue",
+          "other"
+        ]
+      },
+      "CostAnomalyFeedback": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "expected",
+              "unexpected"
+            ]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CostAnomalyFeedbackReason"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the current verdict was recorded; restamped on every save."
+          },
+          "byUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "byName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name (or email) of whoever gave the verdict, while they are still known."
+          },
+          "suppressionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The suppression this verdict created, or null (none was asked for, or it was deleted).",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "verdict",
+          "reason",
+          "note",
+          "at",
+          "byUserId",
+          "byName",
+          "suppressionId"
+        ],
+        "additionalProperties": false,
+        "description": "Whether somebody marked this finding expected (planned or known) or unexpected (a real problem), with who and when; null while nobody has. See POST /costs/anomalies/{anomalyId}/feedback."
+      },
       "CostAnomaly": {
         "type": "object",
         "properties": {
@@ -4200,6 +4276,18 @@
             ],
             "additionalProperties": false,
             "description": "Present once somebody has explained this finding, null while it is still an open question. Acknowledging does not suppress detection — the same key spiking again on a later day is a new anomaly and fires as normal."
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/CostAnomalyFeedback"
+          },
+          "suppressionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The suppression that explained this finding when detection judged it. A suppressed finding is stored but never alerted on, so its `notifiedAt` stays null. Null once the suppression is deleted.",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
         "required": [
@@ -4215,7 +4303,9 @@
           "detectedAt",
           "notifiedAt",
           "hints",
-          "acknowledgement"
+          "acknowledgement",
+          "feedback",
+          "suppressionId"
         ],
         "additionalProperties": false
       },
@@ -4248,6 +4338,10 @@
               "all"
             ],
             "description": "Which anomalies also text the organization's Twilio recipients. Defaults to `off` — an organization with Twilio configured for budgets does not start receiving anomaly texts until it asks to. `new_source` texts only about spend appearing from nothing, which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. Delivery is batched — one SMS per detection pass summarizing what it alerted on, at most one every six hours per organization — and never places a voice call. Push, Slack and Teams delivery is unaffected by this setting."
+          },
+          "feedbackTuning": {
+            "type": "boolean",
+            "description": "Whether repeated `expected` feedback on a provider or service raises its spike threshold: half a standard deviation per expected verdict after the first within 90 days, at most +2σ and never past 10σ, cancelled by any `unexpected` verdict on the same key. Defaults to true. Optional on PUT: omitting it keeps the stored value. Always present on a read."
           }
         },
         "required": [
@@ -4616,6 +4710,467 @@
           "costPollFailureCount",
           "costPollError",
           "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalySuppressionScope": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "service",
+          "account",
+          "tag",
+          "cost_centre"
+        ],
+        "description": "What the suppression covers. On a covered day the scope's spend is set aside before the day is judged; a finding that only existed because of it is stored as suppressed and never alerted on, and one that survives (spend beyond the expected slice) alerts as normal."
+      },
+      "CostAnomalyRecurrence": {
+        "type": "string",
+        "enum": [
+          "one_off",
+          "weekly",
+          "monthly",
+          "seasonal"
+        ],
+        "description": "How the suppression repeats. `one_off` covers every day from `startsOn` to `expiresOn`; `weekly` the anchor day's weekday; `monthly` the anchor day's day of the month, give or take a day (an anchor past the end of a shorter month falls on its last day); `seasonal` the anchor day's calendar date, give or take three days, every year."
+      },
+      "CostAnomalySuppression": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CostAnomalySuppressionScope"
+          },
+          "scopeKey": {
+            "type": "string"
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopeLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account or cost centre name for id-valued scopes; null otherwise."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/CostAnomalyRecurrence"
+          },
+          "anchorDay": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "expiresOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CostAnomalyFeedbackReason"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceAnomalyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The anomaly whose `expected` verdict created this; null for one made by hand.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether it still covers today or a later day. Read-only."
+          },
+          "suppressedCount": {
+            "type": "integer",
+            "description": "How many detected findings it has suppressed so far. Read-only."
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "scopeKey",
+          "tagKey",
+          "scopeLabel",
+          "recurrence",
+          "anchorDay",
+          "startsOn",
+          "expiresOn",
+          "reason",
+          "note",
+          "sourceAnomalyId",
+          "createdByUserId",
+          "createdByName",
+          "createdAt",
+          "updatedAt",
+          "active",
+          "suppressedCount"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalyFeedbackResult": {
+        "type": "object",
+        "properties": {
+          "anomaly": {
+            "$ref": "#/components/schemas/CostAnomaly"
+          },
+          "suppression": {
+            "$ref": "#/components/schemas/CostAnomalySuppression"
+          }
+        },
+        "required": [
+          "anomaly",
+          "suppression"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalyFeedbackInput": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "expected",
+              "unexpected"
+            ],
+            "description": "`expected`: planned or known. `unexpected`: a real problem."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CostAnomalyFeedbackReason"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "explain": {
+            "type": "boolean",
+            "description": "Also record the note as the anomaly's explanation, which publishes it as an annotation on every chart covering the day (the same as POST …/acknowledge). Ignored without a note."
+          },
+          "suppress": {
+            "type": "object",
+            "properties": {
+              "recurrence": {
+                "$ref": "#/components/schemas/CostAnomalyRecurrence"
+              },
+              "scope": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CostAnomalySuppressionScope"
+                  },
+                  {
+                    "description": "Defaults to the anomaly's own provider or service."
+                  }
+                ]
+              },
+              "scopeKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "tagKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "expiresOn": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "description": "Defaults by recurrence: 7 days (one-off), 90 (weekly), 180 (monthly), 730 (seasonal), counted from the later of the anomaly's day and today.",
+                "example": "2026-10-01"
+              }
+            },
+            "required": [
+              "recurrence"
+            ],
+            "additionalProperties": false,
+            "description": "Only with `verdict: expected`. Creates a suppression anchored to the anomaly's day so the same pattern does not alert again; re-sending updates it rather than adding another."
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalySuppressionInput": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/CostAnomalySuppressionScope"
+          },
+          "scopeKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The scope's value: a plugin id (`provider`), a service name, an account id, a tag value, or a cost centre id. Accounts and cost centres must belong to the organization."
+          },
+          "tagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Required when `scope` is `tag`."
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/CostAnomalyRecurrence"
+          },
+          "anchorDay": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day the pattern is anchored to.",
+            "example": "2026-10-01"
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day covered. Defaults to `anchorDay`.",
+            "example": "2026-10-01"
+          },
+          "expiresOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day covered, inclusive. At most three years after `startsOn`, and not before it.",
+            "example": "2026-10-01"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CostAnomalyFeedbackReason"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "scope",
+          "scopeKey",
+          "recurrence",
+          "anchorDay",
+          "expiresOn"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalySensitivity": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "The `feedbackTuning` setting; false means no key moves."
+          },
+          "windowDays": {
+            "type": "integer"
+          },
+          "baseSigmas": {
+            "type": "number"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "enum": [
+                    "provider",
+                    "service"
+                  ]
+                },
+                "dimensionKey": {
+                  "type": "string"
+                },
+                "baseSigmas": {
+                  "type": "number"
+                },
+                "sigmas": {
+                  "type": "number",
+                  "description": "The σ this key's spikes are judged against."
+                },
+                "expectedCount": {
+                  "type": "integer"
+                },
+                "unexpectedCount": {
+                  "type": "integer"
+                },
+                "explanation": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "dimension",
+                "dimensionKey",
+                "baseSigmas",
+                "sigmas",
+                "expectedCount",
+                "unexpectedCount",
+                "explanation"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "windowDays",
+          "baseSigmas",
+          "adjustments"
+        ],
+        "additionalProperties": false
+      },
+      "CostAnomalyPrecisionReport": {
+        "type": "object",
+        "properties": {
+          "months": {
+            "type": "integer"
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string"
+                },
+                "detected": {
+                  "type": "integer"
+                },
+                "suppressed": {
+                  "type": "integer"
+                },
+                "expected": {
+                  "type": "integer"
+                },
+                "unexpected": {
+                  "type": "integer"
+                },
+                "precision": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "unexpected / (expected + unexpected); null when nothing has a verdict."
+                }
+              },
+              "required": [
+                "month",
+                "detected",
+                "suppressed",
+                "expected",
+                "unexpected",
+                "precision"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "detected": {
+                "type": "integer"
+              },
+              "suppressed": {
+                "type": "integer"
+              },
+              "expected": {
+                "type": "integer"
+              },
+              "unexpected": {
+                "type": "integer"
+              },
+              "precision": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "unexpected / (expected + unexpected); null when nothing has a verdict."
+              }
+            },
+            "required": [
+              "detected",
+              "suppressed",
+              "expected",
+              "unexpected",
+              "precision"
+            ],
+            "additionalProperties": false
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CostAnomalyFeedbackReason"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "reason",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "months",
+          "periods",
+          "totals",
+          "reasons"
         ],
         "additionalProperties": false
       },
@@ -44523,7 +45078,7 @@
           "Costs"
         ],
         "summary": "Update the organization's anomaly detection thresholds",
-        "description": "Takes effect on the next detection pass (which runs after each cost collection). Anomalies already stored are not re-judged. All four fields are required — this is a PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no server-side default, so a client that omits it is rejected rather than silently switching an organization's SMS paging back off. `smsConfigured` is derived and is not accepted here.\n\n_Requires permission: `costs:write`._",
+        "description": "Takes effect on the next detection pass (which runs after each cost collection). Anomalies already stored are not re-judged. The four threshold fields are required — this is a PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no server-side default, so a client that omits it is rejected rather than silently switching an organization's SMS paging back off. `smsConfigured` is derived and is not accepted here.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {
@@ -44793,6 +45348,566 @@
           }
         },
         "operationId": "getOrgOrgIdCostsStatus",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/anomalies/{anomalyId}/feedback": {
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Mark a cost anomaly expected or unexpected",
+        "description": "Record whether a finding was expected (planned or known) or unexpected (a real problem), with an optional reason category and note. The verdict tunes detection: repeated `expected` verdicts on a provider or service raise its spike threshold within bounds (see GET /costs/anomaly-sensitivity), and an `expected` verdict with `suppress` creates a suppression so the same pattern does not alert again. `unexpected` keeps sensitivity where it is and removes any suppression an earlier `expected` verdict on the same anomaly created. Sending again replaces the verdict.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "anomalyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAnomalyFeedbackInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated anomaly and its suppression",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomalyFeedbackResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsAnomaliesAnomalyIdFeedback",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Withdraw a cost anomaly verdict",
+        "description": "Clears the verdict and deletes the suppression it created, if any. Suppressions made by hand are never touched.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "anomalyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated anomaly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomaly"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostsAnomaliesAnomalyIdFeedback",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/costs/anomaly-suppressions": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "List anomaly suppressions",
+        "description": "Every suppression of the organization, active ones first (soonest expiry first), then expired ones, most recent first. Expired suppressions are kept so the list can show what they suppressed.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suppressions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "suppressions": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/CostAnomalySuppression"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "suppressions"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalySuppressions",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Create an anomaly suppression",
+        "description": "Declare that spend in a scope is expected on a pattern of days until an expiry. An organization can hold at most 100 active suppressions (409 past that).\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAnomalySuppressionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CostAnomalySuppression"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsAnomalySuppressions",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/costs/anomaly-suppressions/{suppressionId}": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get an anomaly suppression",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "suppressionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The suppression",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CostAnomalySuppression"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalySuppressionsSuppressionId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Update an anomaly suppression",
+        "description": "Replaces the whole object. Takes effect on the next detection pass.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "suppressionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostAnomalySuppressionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CostAnomalySuppression"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostsAnomalySuppressionsSuppressionId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Delete an anomaly suppression",
+        "description": "The findings it suppressed keep their rows. Any whose day detection still re-judges (the last three days) becomes eligible to alert on the next pass.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "suppressionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostsAnomalySuppressionsSuppressionId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/costs/anomaly-sensitivity": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Per-key sensitivity learned from feedback",
+        "description": "Every provider or service with a verdict in the last 90 days, the σ its spikes are judged against, and one sentence saying why.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sensitivity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomalySensitivity"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalySensitivity",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/anomaly-precision": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Anomaly detection precision over time",
+        "description": "Per month of the anomalous day: findings detected, suppressed, and marked expected or unexpected, and precision (the share of reviewed findings that were real problems).\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Months to cover, 1-24. Defaults to 6."
+            },
+            "required": false,
+            "description": "Months to cover, 1-24. Defaults to 6.",
+            "name": "months",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Precision report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomalyPrecisionReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsAnomalyPrecision",
         "x-required-permission": "costs:read"
       }
     },

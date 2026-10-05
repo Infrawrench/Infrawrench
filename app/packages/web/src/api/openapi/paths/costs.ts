@@ -355,7 +355,26 @@ const CostAccountStatus = strict({
   coverage: strict({ firstDay: IsoDate, lastDay: IsoDate }).nullable(),
 }).openapi("CostAccountStatus");
 
-const CostAnomaly = strict({
+export const CostAnomalyFeedbackReason = z
+  .enum(["planned_launch", "migration", "seasonal", "pricing_change", "data_issue", "other"])
+  .openapi("CostAnomalyFeedbackReason");
+
+const CostAnomalyFeedback = strict({
+  verdict: z.enum(["expected", "unexpected"]),
+  reason: CostAnomalyFeedbackReason.nullable(),
+  note: z.string().nullable(),
+  at: IsoDateTime.describe("When the current verdict was recorded; restamped on every save."),
+  byUserId: z.string().nullable(),
+  byName: z
+    .string()
+    .nullable()
+    .describe("Display name (or email) of whoever gave the verdict, while they are still known."),
+  suppressionId: Uuid.nullable().describe(
+    "The suppression this verdict created, or null (none was asked for, or it was deleted).",
+  ),
+}).openapi("CostAnomalyFeedback");
+
+export const CostAnomaly = strict({
   id: Uuid,
   day: IsoDate.describe("The anomalous UTC day."),
   kind: z
@@ -419,6 +438,16 @@ const CostAnomaly = strict({
         "question. Acknowledging does not suppress detection — the same key spiking again " +
         "on a later day is a new anomaly and fires as normal.",
     ),
+  feedback: CostAnomalyFeedback.nullable().describe(
+    "Whether somebody marked this finding expected (planned or known) or unexpected (a real " +
+      "problem), with who and when; null while nobody has. See POST " +
+      "/costs/anomalies/{anomalyId}/feedback.",
+  ),
+  suppressionId: Uuid.nullable().describe(
+    "The suppression that explained this finding when detection judged it. A suppressed " +
+      "finding is stored but never alerted on, so its `notifiedAt` stays null. Null once the " +
+      "suppression is deleted.",
+  ),
 }).openapi("CostAnomaly");
 
 const CostAnomalySettings = strict({
@@ -461,6 +490,16 @@ const CostAnomalySettings = strict({
         "Delivery is batched — one SMS per detection pass summarizing what it alerted on, at " +
         "most one every six hours per organization — and never places a voice call. Push, " +
         "Slack and Teams delivery is unaffected by this setting.",
+    ),
+  feedbackTuning: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether repeated `expected` feedback on a provider or service raises its spike " +
+        "threshold: half a standard deviation per expected verdict after the first within 90 " +
+        "days, at most +2σ and never past 10σ, cancelled by any `unexpected` verdict on the same " +
+        "key. Defaults to true. Optional on PUT: omitting it keeps the stored value. Always " +
+        "present on a read.",
     ),
 }).openapi("CostAnomalySettings");
 
@@ -918,7 +957,7 @@ export function registerCostPaths(ctx: BuildContext) {
     summary: "Update the organization's anomaly detection thresholds",
     description:
       "Takes effect on the next detection pass (which runs after each cost collection). " +
-      "Anomalies already stored are not re-judged. All four fields are required — this is a " +
+      "Anomalies already stored are not re-judged. The four threshold fields are required — this is a " +
       "PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no " +
       "server-side default, so a client that omits it is rejected rather than silently " +
       "switching an organization's SMS paging back off. `smsConfigured` is derived and is not " +

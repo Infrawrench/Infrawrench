@@ -13,6 +13,7 @@ describe("normalizeAnomalySettings", () => {
       minDeltaCents: 500,
       newSourceMinCents: 10_000,
       smsAlerts: "all",
+      feedbackTuning: false,
     } as const;
     expect(normalizeAnomalySettings(input)).toEqual(input);
   });

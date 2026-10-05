@@ -41,6 +41,7 @@ const DEFAULTS: CostAnomalySettings = {
   minDeltaCents: 1000,
   newSourceMinCents: 2500,
   smsAlerts: "off",
+  feedbackTuning: true,
 };
 
 /** What the settings endpoint answers with: the stored fields plus the derived one. */
@@ -373,5 +374,44 @@ describe("CostAnomaliesSection — explaining a finding", () => {
     const submit = screen.getByText("Explain", { selector: "button.bg-blue-600" });
     fireEvent.click(submit);
     expect(acknowledgeAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("marks a row expected with a weekly suppression and shows who said so", async () => {
+    const updated = anomaly({
+      feedback: {
+        verdict: "expected",
+        reason: "planned_launch",
+        note: null,
+        at: "2026-08-01T09:00:00.000Z",
+        byUserId: "u1",
+        byName: "Astrid",
+        suppressionId: "s1",
+      },
+    });
+    const submitAnomalyFeedback = vi.fn(async () => ({ anomaly: updated, suppression: null }));
+    const client = makeClient([anomaly()], {
+      submitAnomalyFeedback,
+      loadDimensionValues: vi.fn(async () => [{ value: "Amazon EC2", label: "Amazon EC2" }]),
+    });
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Expected" }));
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "planned_launch" } });
+    fireEvent.change(screen.getByLabelText("Stop the same pattern alerting"), {
+      target: { value: "weekly" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save feedback" }));
+    await waitFor(() => expect(submitAnomalyFeedback).toHaveBeenCalled());
+    expect(submitAnomalyFeedback).toHaveBeenCalledWith("a1", {
+      verdict: "expected",
+      reason: "planned_launch",
+      note: null,
+      suppress: { recurrence: "weekly", scope: "service", scopeKey: "Amazon EC2" },
+    });
+    expect(await screen.findByText(/Marked Expected by Astrid/)).toBeTruthy();
+  });
+
+  it("shows a suppressed badge for a finding a suppression kept quiet", async () => {
+    render(<CostAnomaliesSection client={makeClient([anomaly({ suppressionId: "s1" })])} />);
+    expect(await screen.findByText("Suppressed")).toBeTruthy();
   });
 });

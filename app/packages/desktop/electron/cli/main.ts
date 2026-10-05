@@ -16,6 +16,13 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
+import {
+  cmdAnomalyFeedback,
+  cmdAnomalyPrecision,
+  cmdAnomalySensitivity,
+  cmdAnomalySuppressions,
+  cmdDeleteAnomalySuppression,
+} from "./commands/anomaly-feedback";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
 import {
   cmdBusinessMetricImporter,
@@ -122,7 +129,18 @@ COMMANDS
                       [--filter <name|id>  a saved cost filter, resolved server-side; ANDs with --where]
                       [--measure cost|usage|count] [--unit <usage unit>] [--bin day|week|month|quarter|hour]
                       [--cumulative]
-  costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
+  costs --anomalies   days a provider or service spiked past its own baseline, with any
+                      verdict or suppression in the feedback column   [--days 30]
+    feedback <id>     tell detection what a spike was (id or its first characters, from the
+                      listing's id column): --expected | --unexpected | --clear
+                      [--reason planned_launch|migration|seasonal|pricing_change|data_issue|other]
+                      [--note <text>] [--explain  publish the note as the explanation]
+                      [--recurrence one_off|weekly|monthly|seasonal  expected only: stop the
+                      pattern alerting] [--expires YYYY-MM-DD  when that suppression ends]
+    suppressions      what is kept from alerting: scope, recurrence, window, hits, reason
+    suppressions delete <id>   remove one; matching spikes alert again
+    precision         per-month share of reviewed findings marked unexpected   [--months 6]
+    sensitivity       providers/services whose threshold feedback has raised, and why
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period" — distinct from budgets and anomalies)   [--limit 20]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
@@ -322,7 +340,15 @@ FLAGS
   --type <typeId>     filter resources by resource type
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
                       costs push: json (default), csv or focus
-  --reason <text>     posture dismiss: why the finding is an accepted risk
+  --reason <text>     posture dismiss: why the finding is an accepted risk; costs --anomalies
+                      feedback: the reason category (planned_launch, migration, …)
+  --expected / --unexpected / --clear   costs --anomalies feedback: the verdict, or withdraw it
+  --note <text>       costs --anomalies feedback: context for the verdict (max 500 chars)
+  --explain           costs --anomalies feedback: also publish --note as the explanation
+  --recurrence <r>    costs --anomalies feedback --expected: suppress the pattern
+                      (one_off | weekly | monthly | seasonal)
+  --expires <date>    costs --anomalies feedback: last day the suppression covers (YYYY-MM-DD)
+  --months <n>        costs --anomalies precision: months to report (default 6, max 24)
   --where <query>     costs: filter in the cost query language — terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
                       tag['key'] = 'v'. Dimensions: provider, account, service, region,
@@ -531,7 +557,37 @@ export async function runCli(): Promise<void> {
           break;
         }
         if (parsed.anomalies) {
-          await cmdCostAnomalies(ctx, parsed.range);
+          // Verbs after `--anomalies`, like `posture dismiss`: the flag picks
+          // the question, the verb what to do about it. Bare lists.
+          switch (rest[0]) {
+            case undefined:
+              await cmdCostAnomalies(ctx, parsed.range);
+              break;
+            case "feedback":
+              await cmdAnomalyFeedback(ctx, rest[1], parsed.anomalyFeedback);
+              break;
+            case "suppressions":
+              if (rest[1] === "delete") await cmdDeleteAnomalySuppression(ctx, rest[2]);
+              else if (rest[1] === undefined) await cmdAnomalySuppressions(ctx);
+              else {
+                throw new CliError(
+                  `Unknown "${rest[1]}". Try \`infrawrench costs --anomalies suppressions [delete <id>]\`.`,
+                  2,
+                );
+              }
+              break;
+            case "precision":
+              await cmdAnomalyPrecision(ctx, parsed.anomalyFeedback.months);
+              break;
+            case "sensitivity":
+              await cmdAnomalySensitivity(ctx);
+              break;
+            default:
+              throw new CliError(
+                `Unknown "${rest[0]}". \`costs --anomalies\` takes feedback, suppressions, precision or sensitivity.`,
+                2,
+              );
+          }
           break;
         }
         if (parsed.alerts) {

@@ -475,6 +475,17 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Retuning detection changes what the org's whole cost feed alerts on, so it
   // rides the cost write scope rather than the budget one.
   "PUT /costs/anomaly-settings": "costs:write",
+  // anomaly feedback: verdicts and suppressions change what the cost feed
+  // alerts on, so they ride the same write scope as the settings.
+  "POST /costs/anomalies/{anomalyId}/feedback": "costs:write",
+  "DELETE /costs/anomalies/{anomalyId}/feedback": "costs:write",
+  "GET /costs/anomaly-suppressions": "costs:read",
+  "POST /costs/anomaly-suppressions": "costs:write",
+  "GET /costs/anomaly-suppressions/{suppressionId}": "costs:read",
+  "PUT /costs/anomaly-suppressions/{suppressionId}": "costs:write",
+  "DELETE /costs/anomaly-suppressions/{suppressionId}": "costs:write",
+  "GET /costs/anomaly-sensitivity": "costs:read",
+  "GET /costs/anomaly-precision": "costs:read",
   // efficiency alerts: commitment expiry, idle commitments, unit-cost
   // regression. Same split as anomaly settings and for the same reason:
   // reading what fired is cost data, retuning it changes what the org's whole

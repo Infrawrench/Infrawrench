@@ -19,6 +19,11 @@ vi.mock("../costs", () => ({
 // services it wraps, which import `db/client`, which throws at import time
 // without DATABASE_URL. A module added to the registry and missed here fails
 // the whole file at collection rather than at an assertion.
+vi.mock("../cost-anomaly-feedback", () => ({
+  costAnomalyFeedbackTools: () => [
+    { name: "af1", title: "AF1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../unit-costs", () => ({
   unitCostTools: () => [
     { name: "u1", title: "U1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },

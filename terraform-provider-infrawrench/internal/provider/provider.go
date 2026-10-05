@@ -187,6 +187,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewCurrencySettingsResource,
 		NewExchangeRateResource,
 		NewAnomalySettingsResource,
+		NewAnomalySuppressionResource,
 		NewEfficiencyAlertSettingsResource,
 		NewAIRequestSourceResource,
 		NewAIAttributionDimensionResource,

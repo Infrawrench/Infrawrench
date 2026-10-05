@@ -276,6 +276,8 @@ export interface OrgConfigAlertSettings {
         minDeltaCents: number;
         newSourceMinCents: number;
         smsAlerts: "off" | "new_source" | "all";
+        /** Optional: omitted keeps the stored value (default true). */
+        feedbackTuning?: boolean | undefined;
       }
     | undefined;
   drift?:

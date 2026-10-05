@@ -10,16 +10,20 @@
  * file is where they meet the tables.
  */
 import { withholdOrgWideFindings } from "./cost-visibility-filter";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import type { CostAnomaly, CostAnomalyAcknowledgement } from "@infrawrench/client-core";
+import type {
+  CostAnomaly,
+  CostAnomalyAcknowledgement,
+  CostAnomalyFeedback,
+} from "@infrawrench/client-core";
 import {
   planAnomalyAcknowledgement,
   CostAnomalyAcknowledgeError,
 } from "@infrawrench/server-core/cost/anomaly-acknowledge";
 import { resolveFindingIssues } from "@infrawrench/server-core/github-issues/filing";
 import { db } from "../db/client";
-import { costAnnotations, costAnomalies } from "../db/schema";
+import { costAnnotations, costAnomalies, users } from "../db/schema";
 
 export { CostAnomalyAcknowledgeError };
 
@@ -46,7 +50,31 @@ function toAcknowledgement(row: CostAnomalyRow): CostAnomalyAcknowledgement | nu
   };
 }
 
-function toCostAnomaly(row: CostAnomalyRow): CostAnomaly {
+/**
+ * The verdict half of a row, or null while nobody has given one. `byName`
+ * comes from a join on `users` (display name, else email) and is null once
+ * the person is gone, the same way `feedbackByUserId` is.
+ */
+function toFeedback(row: CostAnomalyRow, byName: string | null): CostAnomalyFeedback | null {
+  if (!row.feedbackVerdict || !row.feedbackAt) return null;
+  return {
+    verdict: row.feedbackVerdict,
+    reason: row.feedbackReason ?? null,
+    note: row.feedbackNote ?? null,
+    at: row.feedbackAt.toISOString(),
+    byUserId: row.feedbackByUserId,
+    byName,
+    suppressionId: row.feedbackSuppressionId,
+  };
+}
+
+/** `coalesce(display_name, email)` of whoever gave the verdict. */
+export const feedbackByNameSql = sql<string | null>`coalesce(${users.displayName}, ${users.email})`;
+
+export function toCostAnomaly(
+  row: CostAnomalyRow,
+  feedbackByName: string | null = null,
+): CostAnomaly {
   return {
     id: row.id,
     day: row.day,
@@ -63,7 +91,23 @@ function toCostAnomaly(row: CostAnomalyRow): CostAnomaly {
     // detection time) hold null; the wire contract is always an array.
     hints: row.hints ?? [],
     acknowledgement: toAcknowledgement(row),
+    feedback: toFeedback(row, feedbackByName),
+    suppressionId: row.suppressedById,
   };
+}
+
+/** One anomaly of this org as the API answers it, or null. */
+export async function getCostAnomalyView(
+  organizationId: string,
+  anomalyId: string,
+): Promise<CostAnomaly | null> {
+  const [hit] = await db
+    .select({ row: costAnomalies, byName: feedbackByNameSql })
+    .from(costAnomalies)
+    .leftJoin(users, eq(users.id, costAnomalies.feedbackByUserId))
+    .where(and(eq(costAnomalies.id, anomalyId), eq(costAnomalies.organizationId, organizationId)))
+    .limit(1);
+  return hit ? toCostAnomaly(hit.row, hit.byName ?? null) : null;
 }
 
 /**
@@ -85,13 +129,14 @@ export async function listRecentCostAnomalies(
   if (withholdOrgWideFindings(organizationId)) return [];
   const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
   const rows = await db
-    .select()
+    .select({ row: costAnomalies, byName: feedbackByNameSql })
     .from(costAnomalies)
+    .leftJoin(users, eq(users.id, costAnomalies.feedbackByUserId))
     .where(and(eq(costAnomalies.organizationId, organizationId), gte(costAnomalies.day, since)))
     .orderBy(desc(costAnomalies.day), desc(costAnomalies.actualAmountCents))
     .limit(MAX_ROWS);
 
-  return rows.map(toCostAnomaly);
+  return rows.map((r) => toCostAnomaly(r.row, r.byName ?? null));
 }
 
 /**
@@ -144,56 +189,58 @@ export async function acknowledgeCostAnomaly(
         ? plan.text
         : explanation.trim();
 
-  const result = await db.transaction(async (tx) => {
-    let annotationId: string | null = existing.annotationId;
+  const result = await db
+    .transaction(async (tx) => {
+      let annotationId: string | null = existing.annotationId;
 
-    if (plan.action === "create") {
-      const [created] = await tx
-        .insert(costAnnotations)
-        .values({
-          id: uuidv4(),
-          organizationId,
-          costReportId: plan.input.costReportId ?? null,
-          startDate: plan.input.startDate,
-          endDate: null,
-          text: plan.input.text,
-          createdByUserId: userId,
+      if (plan.action === "create") {
+        const [created] = await tx
+          .insert(costAnnotations)
+          .values({
+            id: uuidv4(),
+            organizationId,
+            costReportId: plan.input.costReportId ?? null,
+            startDate: plan.input.startDate,
+            endDate: null,
+            text: plan.input.text,
+            createdByUserId: userId,
+          })
+          .returning({ id: costAnnotations.id });
+        annotationId = created?.id ?? null;
+      } else if (plan.action === "update") {
+        // Text only. The date and the scope may have been edited deliberately in
+        // the annotation editor since, and a correction to the wording is not a
+        // licence to move somebody's note back.
+        const [updated] = await tx
+          .update(costAnnotations)
+          .set({ text: plan.text, updatedAt: new Date() })
+          .where(
+            and(
+              eq(costAnnotations.id, plan.annotationId),
+              eq(costAnnotations.organizationId, organizationId),
+            ),
+          )
+          .returning({ id: costAnnotations.id });
+        // Deleted between the read and the write: the foreign key has already
+        // nulled the link, so record that rather than pointing at a dead row.
+        annotationId = updated?.id ?? null;
+      }
+
+      const [row] = await tx
+        .update(costAnomalies)
+        .set({
+          explanation: text,
+          // Restamped by a correction: this is when the *current* explanation was
+          // recorded, not when the finding was first closed.
+          acknowledgedAt: new Date(),
+          acknowledgedByUserId: userId,
+          annotationId,
         })
-        .returning({ id: costAnnotations.id });
-      annotationId = created?.id ?? null;
-    } else if (plan.action === "update") {
-      // Text only. The date and the scope may have been edited deliberately in
-      // the annotation editor since, and a correction to the wording is not a
-      // licence to move somebody's note back.
-      const [updated] = await tx
-        .update(costAnnotations)
-        .set({ text: plan.text, updatedAt: new Date() })
-        .where(
-          and(
-            eq(costAnnotations.id, plan.annotationId),
-            eq(costAnnotations.organizationId, organizationId),
-          ),
-        )
-        .returning({ id: costAnnotations.id });
-      // Deleted between the read and the write: the foreign key has already
-      // nulled the link, so record that rather than pointing at a dead row.
-      annotationId = updated?.id ?? null;
-    }
-
-    const [row] = await tx
-      .update(costAnomalies)
-      .set({
-        explanation: text,
-        // Restamped by a correction: this is when the *current* explanation was
-        // recorded, not when the finding was first closed.
-        acknowledgedAt: new Date(),
-        acknowledgedByUserId: userId,
-        annotationId,
-      })
-      .where(eq(costAnomalies.id, anomalyId))
-      .returning();
-    return row ? toCostAnomaly(row) : null;
-  });
+        .where(eq(costAnomalies.id, anomalyId))
+        .returning({ id: costAnomalies.id });
+      return row ? row.id : null;
+    })
+    .then((id) => (id ? getCostAnomalyView(organizationId, id) : null));
 
   // An explained anomaly is a resolved finding: close (or comment on) the
   // GitHub issue filed for it, per the org's GitHub issue settings. First

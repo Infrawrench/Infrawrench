@@ -87,6 +87,21 @@ ipcMain.handle(
   },
 );
 
+/**
+ * Anomaly feedback: a verdict on a finding (optionally creating a
+ * suppression), the suppression list and editor, and the two read models.
+ * Org-level cloud state like the tuning, so desktop gets all of it.
+ */
+ipcMain.handle(
+  "cloud_costs_anomaly_feedback",
+  async (_e, { orgId, anomalyId, input }: { orgId: string; anomalyId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/costs/anomalies/${encodeURIComponent(anomalyId)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
 ipcMain.handle(
   "cloud_budget_alert_note",
   async (
@@ -103,6 +118,64 @@ ipcMain.handle(
       `/budgets/${encodeURIComponent(budgetId)}/events/${encodeURIComponent(eventId)}/note`,
       { method: "POST", body: JSON.stringify({ note }) },
     );
+  },
+);
+
+ipcMain.handle(
+  "cloud_costs_clear_anomaly_feedback",
+  async (_e, { orgId, anomalyId }: { orgId: string; anomalyId: string }) => {
+    return cloudFetch(orgId, `/costs/anomalies/${encodeURIComponent(anomalyId)}/feedback`, {
+      method: "DELETE",
+    });
+  },
+);
+
+ipcMain.handle("cloud_costs_anomaly_suppressions", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/costs/anomaly-suppressions");
+});
+
+ipcMain.handle(
+  "cloud_costs_create_anomaly_suppression",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/costs/anomaly-suppressions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_costs_update_anomaly_suppression",
+  async (
+    _e,
+    { orgId, suppressionId, input }: { orgId: string; suppressionId: string; input: unknown },
+  ) => {
+    return cloudFetch(orgId, `/costs/anomaly-suppressions/${encodeURIComponent(suppressionId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_costs_delete_anomaly_suppression",
+  async (_e, { orgId, suppressionId }: { orgId: string; suppressionId: string }) => {
+    await cloudFetch(orgId, `/costs/anomaly-suppressions/${encodeURIComponent(suppressionId)}`, {
+      method: "DELETE",
+    });
+    return null;
+  },
+);
+
+ipcMain.handle("cloud_costs_anomaly_sensitivity", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/costs/anomaly-sensitivity");
+});
+
+ipcMain.handle(
+  "cloud_costs_anomaly_precision",
+  async (_e, { orgId, months }: { orgId: string; months?: number }) => {
+    const m = Number.isInteger(months) ? `?months=${months}` : "";
+    return cloudFetch(orgId, `/costs/anomaly-precision${m}`);
   },
 );
 

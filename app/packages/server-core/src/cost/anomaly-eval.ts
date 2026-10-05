@@ -54,6 +54,15 @@ import {
 } from "./anomaly-detect";
 import { buildAnomalyHints } from "./anomaly-hints";
 import {
+  EMPTY_FEEDBACK_CONTEXT,
+  anomalyFeedbackButtons,
+  anomalyFeedbackTeamsActions,
+  loadAnomalyFeedbackContext,
+  setAsideFor,
+  sigmasFor,
+  type AnomalyFeedbackContext,
+} from "./anomaly-feedback";
+import {
   anomalyOptionsFor,
   getOrgAnomalySettings,
   smsWantsKind,
@@ -215,6 +224,7 @@ async function detectForDimension(
   days: string[],
   options: AnomalyDetectionOptions,
   firstCostDay: string | null,
+  feedback: AnomalyFeedbackContext = EMPTY_FEEDBACK_CONTEXT,
 ): Promise<PendingAnomaly[]> {
   const newest = days[days.length - 1];
   const oldest = days[0];
@@ -236,7 +246,13 @@ async function detectForDimension(
 
     // The noise floor is denominated in USD; a series billed in a currency
     // with much smaller units needs it scaled or the floor stops filtering.
-    const scoped = optionsForCurrency(group.currency, options);
+    // Feedback can raise one key's σ (repeated `expected` verdicts); the
+    // floors and the new-source rule are untouched. See `anomaly-feedback.ts`.
+    const currencyScoped = optionsForCurrency(group.currency, options);
+    const scoped = {
+      ...currencyScoped,
+      sigmas: sigmasFor(feedback, dimension, group.key, currencyScoped.sigmas),
+    };
 
     for (const day of days) {
       const baseline = fillDailySeries(byDay, addDays(day, -BASELINE_DAYS), addDays(day, -1));
@@ -246,6 +262,16 @@ async function detectForDimension(
       const coverageDays = firstCostDay === null ? 0 : daysBetween(firstCostDay, day);
       const finding = judgeDay(baseline, actual, coverageDays, scoped);
       if (!finding) continue;
+
+      // A suppression covering this key and day sets its scope's spend aside.
+      // Judged again on what is left: if the finding goes away it existed only
+      // because of spend somebody said was expected, and is stored suppressed;
+      // if it survives, the excess is news and alerts as normal.
+      const aside = setAsideFor(feedback, dimension, group.key, group.currency, day);
+      const suppressedById =
+        aside && !judgeDay(baseline, Math.max(0, actual - aside.amount), coverageDays, scoped)
+          ? aside.suppressionId
+          : null;
 
       const amounts = {
         kind: finding.kind,
@@ -277,8 +303,21 @@ async function detectForDimension(
           // accurate reading of it, including which detection it belongs to.
           set: amounts,
         })
-        .returning({ id: costAnomalies.id, notifiedAt: costAnomalies.notifiedAt });
+        .returning({
+          id: costAnomalies.id,
+          notifiedAt: costAnomalies.notifiedAt,
+          suppressedById: costAnomalies.suppressedById,
+        });
       if (!row || row.notifiedAt) continue; // already delivered for this day
+
+      // Undelivered rows track the current answer either way: a suppression
+      // edited or expired since the last pass un-suppresses the row (and it
+      // becomes a candidate below), a new one suppresses it. Written only on
+      // change, so a steady state costs no extra statement.
+      if ((row.suppressedById ?? null) !== suppressedById) {
+        await db.update(costAnomalies).set({ suppressedById }).where(eq(costAnomalies.id, row.id));
+      }
+      if (suppressedById) continue; // expected: stored, never alerted on
 
       pending.push({
         id: row.id,
@@ -374,10 +413,26 @@ export async function detectCostAnomaliesForOrg(
   // its rows stamped: by the text itself, once it lands.
   const paged: Array<{ anomaly: PendingAnomaly; delivered: boolean }> = [];
 
+  // Feedback: suppressions covering the window, and σ nudged by repeated
+  // `expected` verdicts. Read once per pass; never throws, and a failure
+  // degrades to the behaviour that predates feedback (alerting as normal).
+  const feedback = await loadAnomalyFeedbackContext(organizationId, days, {
+    baseSigmas: tuning.sigmas,
+    feedbackTuning: settings.feedbackTuning !== false,
+    now,
+  });
+
   for (const dimension of DIMENSIONS) {
     let pending: PendingAnomaly[];
     try {
-      pending = await detectForDimension(organizationId, dimension, days, tuning, firstCostDay);
+      pending = await detectForDimension(
+        organizationId,
+        dimension,
+        days,
+        tuning,
+        firstCostDay,
+        feedback,
+      );
     } catch (err) {
       console.error(`[anomaly-eval] ${dimension} detection failed for org ${organizationId}:`, err);
       continue;
@@ -441,53 +496,63 @@ export async function detectCostAnomaliesForOrg(
         // The amount is the *actual* spend rather than the excess over
         // baseline, because that is the number in the message and the one a
         // person means when they say "over $500".
-        const routed = await routeAlert({
-          organizationId,
-          trigger: "anomalyAlerts",
-          title,
-          body: hintedBody,
-          pushBody,
-          context,
-          url,
-          pushData: {
-            type: "cost_anomaly",
-            orgId: organizationId,
-            day: anomaly.day,
-            kind: anomaly.kind,
-            dimension,
-            dimensionKey: anomaly.dimensionKey,
+        const routed = await routeAlert(
+          {
+            organizationId,
+            trigger: "anomalyAlerts",
+            title,
+            body: hintedBody,
+            pushBody,
+            context,
+            url,
+            pushData: {
+              type: "cost_anomaly",
+              orgId: organizationId,
+              day: anomaly.day,
+              kind: anomaly.kind,
+              dimension,
+              dimensionKey: anomaly.dimensionKey,
+            },
+            facts: {
+              amountCents: Math.round(anomaly.actual * 100),
+              currency: anomaly.currency,
+              key: anomaly.dimensionKey,
+              ...(dimension === "provider" ? { pluginId: anomaly.dimensionKey } : {}),
+            },
+            // Expected / Unexpected, answered in the channel: the verdict tunes
+            // detection (`anomaly-feedback.ts`). Teams cards are one-way
+            // webhooks and get a link to the same choice instead.
+            teamsActions: anomalyFeedbackTeamsActions(organizationId, anomaly.id),
+            // What a `github-issues` routing destination files.
+            finding: {
+              sourceKind: "cost_anomaly",
+              sourceId: anomaly.id,
+              title:
+                anomaly.kind === "new_source"
+                  ? `${anomaly.dimensionKey} spend started on ${anomaly.day}`
+                  : `${anomaly.dimensionKey} spend spiked on ${anomaly.day}`,
+              details: [
+                { label: "Day", value: anomaly.day },
+                {
+                  label: label === "provider" ? "Provider" : "Service",
+                  value: anomaly.dimensionKey,
+                },
+                { label: "Spend", value: formatAmount(anomaly.actual, anomaly.currency) },
+                ...(anomaly.kind === "new_source"
+                  ? []
+                  : [
+                      {
+                        label: `Baseline (${BASELINE_DAYS}d mean)`,
+                        value: formatAmount(anomaly.mean, anomaly.currency),
+                      },
+                    ]),
+              ],
+              note: hints.length > 0 ? `Around then: ${hints.join("; ")}.` : undefined,
+              appUrl: url,
+            },
           },
-          facts: {
-            amountCents: Math.round(anomaly.actual * 100),
-            currency: anomaly.currency,
-            key: anomaly.dimensionKey,
-            ...(dimension === "provider" ? { pluginId: anomaly.dimensionKey } : {}),
-          },
-          // What a `github-issues` routing destination files.
-          finding: {
-            sourceKind: "cost_anomaly",
-            sourceId: anomaly.id,
-            title:
-              anomaly.kind === "new_source"
-                ? `${anomaly.dimensionKey} spend started on ${anomaly.day}`
-                : `${anomaly.dimensionKey} spend spiked on ${anomaly.day}`,
-            details: [
-              { label: "Day", value: anomaly.day },
-              { label: label === "provider" ? "Provider" : "Service", value: anomaly.dimensionKey },
-              { label: "Spend", value: formatAmount(anomaly.actual, anomaly.currency) },
-              ...(anomaly.kind === "new_source"
-                ? []
-                : [
-                    {
-                      label: `Baseline (${BASELINE_DAYS}d mean)`,
-                      value: formatAmount(anomaly.mean, anomaly.currency),
-                    },
-                  ]),
-            ],
-            note: hints.length > 0 ? `Around then: ${hints.join("; ")}.` : undefined,
-            appUrl: url,
-          },
-        });
+          { slackButtons: anomalyFeedbackButtons(organizationId, anomaly.id) },
+        );
         // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
         // that has not happened yet, and stamping `notifiedAt` is what keeps
         // the next pass from raising the same anomaly again. Treating a held

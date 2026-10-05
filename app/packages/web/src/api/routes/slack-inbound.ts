@@ -6,7 +6,8 @@
  *  - `POST /slack/commands`: the `/infrawrench` slash command (`costs`,
  *    `status <resource>`, `link`, `unlink`, `help`).
  *  - `POST /slack/interactions`: `block_actions` payloads: the Approve/Deny
- *    buttons on approval messages and the status disambiguation picker.
+ *    buttons on approval messages, the status disambiguation picker, alert
+ *    acknowledgement, and the Expected/Unexpected buttons on anomaly alerts.
  *  - `GET /slack/link` + `POST /slack/link`: the browser half of account
  *    linking; session-authed (bounces through sign-in). The GET renders a
  *    confirmation page for a signed token minted for exactly one (org,
@@ -41,6 +42,11 @@ import {
   parseAlertAckButtonValue,
 } from "@infrawrench/server-core/alerts/route";
 import { acknowledgeAlert } from "@infrawrench/server-core/alerts/ack";
+import {
+  ANOMALY_EXPECTED_ACTION_ID,
+  ANOMALY_UNEXPECTED_ACTION_ID,
+  parseAnomalyFeedbackButtonValue,
+} from "@infrawrench/server-core/cost/anomaly-feedback";
 
 import {
   escapeMrkdwn,
@@ -77,6 +83,9 @@ import {
   users,
 } from "../../db/schema";
 import { CostQueryError, runCostQuery } from "../../services/cost-query";
+import { getCostAnomalyView } from "../../services/cost-anomalies";
+import { submitCostAnomalyFeedback } from "../../services/cost-anomaly-feedback";
+import { logAudit } from "../../services/audit";
 import { withPrincipalCostVisibility } from "../../auth/cost-visibility";
 import { getPlugin } from "../../plugins/loader";
 import { executePendingAction, rejectPendingAction, runAgentTurn } from "../../chat/agent";
@@ -701,6 +710,88 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
       return;
     }
     await respond(ephemeral("Someone already acknowledged that alert."));
+    return;
+  }
+
+  /* ---- anomaly feedback ---- */
+  if (
+    action.action_id === ANOMALY_EXPECTED_ACTION_ID ||
+    action.action_id === ANOMALY_UNEXPECTED_ACTION_ID
+  ) {
+    const value = parseAnomalyFeedbackButtonValue(action.value);
+    if (!value) return;
+    const member = await linkedMemberForOrg(value.organizationId, teamId, slackUserId);
+    if (!member) {
+      const installs = await liveInstallOrgs(teamId);
+      await respond(linkPrompt(installs, teamId, slackUserId));
+      return;
+    }
+    // Same gate as POST /costs/anomalies/:id/feedback: a verdict tunes what
+    // the whole org's cost feed alerts on.
+    if (
+      !hasPermission(await memberPermissions(value.organizationId, member.userId), "costs:write")
+    ) {
+      await respond(ephemeral("You need the costs:write permission to give anomaly feedback."));
+      return;
+    }
+    const verdict = action.action_id === ANOMALY_EXPECTED_ACTION_ID ? "expected" : "unexpected";
+    // The verdict alone. A recurring suppression needs a choice (how often,
+    // until when) a button cannot ask for; the reply links to where it can.
+    // Re-pressing keeps any reason and note given elsewhere.
+    // Inside the member's cost visibility, like every other route: a
+    // cost-scoped member cannot see (or answer) org-wide findings.
+    const result = await withPrincipalCostVisibility(
+      value.organizationId,
+      { userId: member.userId },
+      async () => {
+        const current = await getCostAnomalyView(value.organizationId, value.anomalyId);
+        if (!current) return null;
+        const keep = current.feedback;
+        return submitCostAnomalyFeedback(
+          value.organizationId,
+          value.anomalyId,
+          {
+            verdict,
+            ...(keep?.reason ? { reason: keep.reason } : {}),
+            ...(keep?.note ? { note: keep.note } : {}),
+          },
+          member.userId,
+        );
+      },
+    );
+    if (!result) {
+      await respond(ephemeral("That anomaly no longer exists."));
+      return;
+    }
+    void logAudit({
+      organizationId: value.organizationId,
+      userId: member.userId,
+      action: "cost_anomaly.feedback",
+      entityType: "cost_anomaly",
+      entityId: result.anomaly.id,
+      metadata: {
+        day: result.anomaly.day,
+        dimension: result.anomaly.dimension,
+        dimensionKey: result.anomaly.dimensionKey,
+        verdict,
+        via: "slack",
+      },
+    });
+    const costsUrl = `${appUrl()}/org/${value.organizationId}/costs`;
+    const who = escapeMrkdwn(memberName(member));
+    const what = escapeMrkdwn(`${result.anomaly.dimensionKey} on ${result.anomaly.day}`);
+    // In the channel, threaded under nothing: the people who saw the alert
+    // are the ones who need to know somebody answered it, and by whom.
+    await respond({
+      response_type: "in_channel",
+      replace_original: false,
+      text:
+        verdict === "expected"
+          ? `${who} marked the ${what} anomaly as *expected*. ` +
+            `<${costsUrl}|Add a recurring suppression> if this will happen again.`
+          : `${who} marked the ${what} anomaly as *unexpected*. ` +
+            `<${costsUrl}|Open it in Infrawrench> to file it in Jira or Linear.`,
+    });
     return;
   }
 

@@ -1263,7 +1263,13 @@ function planAlertSettings(plan: PlanBuilder, args: AlertSettingsArgs): void {
   };
 
   if (incoming.costAnomaly) {
-    const next = normalizeAnomalySettings(incoming.costAnomaly);
+    // An omitted `feedbackTuning` keeps the org's current value rather than
+    // resetting it, so a document exported before the setting existed plans clean.
+    const next = normalizeAnomalySettings({
+      ...incoming.costAnomaly,
+      feedbackTuning:
+        incoming.costAnomaly.feedbackTuning ?? current.costAnomaly?.feedbackTuning ?? true,
+    });
     singleton("cost-anomaly", "Cost anomaly detection", next, current.costAnomaly, async (tx) => {
       await tx
         .insert(orgCostAnomalySettings)

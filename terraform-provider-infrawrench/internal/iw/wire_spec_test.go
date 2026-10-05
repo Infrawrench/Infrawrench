@@ -149,6 +149,8 @@ func specChecks() []specCheck {
 		{schema: "CostCanvasNotification", value: CostCanvasNotification{}},
 
 		{schema: "CostAnomalySettings", value: CostAnomalySettings{}},
+		{schema: "CostAnomalySuppression", value: CostAnomalySuppression{}},
+		{schema: "CostAnomalySuppressionInput", value: CostAnomalySuppressionInput{}},
 		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},
 
 		{schema: "CurrencyConfig", value: CurrencyConfig{}},

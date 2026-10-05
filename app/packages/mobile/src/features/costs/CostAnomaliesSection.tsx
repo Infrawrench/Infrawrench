@@ -1,17 +1,27 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Linking from "expo-linking";
 import {
   COST_ANOMALY_DIMENSION_LABELS,
+  COST_ANOMALY_FEEDBACK_REASON_LABELS,
+  COST_ANOMALY_VERDICT_LABELS,
   costAnomalyDeltaPercent,
   formatMoney,
   type CostAnomaly,
+  type CostAnomalyVerdict,
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
 import { FileIssueSheet } from "@/features/issue-filing/FileIssueSheet";
 import { useFilableTrackers, useIssueLinks } from "@/features/issue-filing/useIssueFiling";
+import { useOrgPermissions } from "@/lib/permissions";
 import { colors, radii, spacing } from "@/lib/theme";
-import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
+import { AnomalyFeedbackSheet } from "./AnomalyFeedbackSheet";
+import {
+  ANOMALY_WINDOW_DAYS,
+  costAnomalyFeedbackErrorMessage,
+  useCostAnomalies,
+  useCostAnomalyFeedback,
+} from "./useCostAnomalies";
 
 /**
  * Native counterpart to `CostAnomaliesSection` on web and desktop: the last
@@ -34,10 +44,22 @@ import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
  * so it shows a badge, `none`, and `new`. Never a percentage: see
  * `costAnomalyDeltaPercent`, which the three surfaces share precisely because
  * that rule is easy to get subtly wrong.
+ *
+ * **Feedback is writable here**, unlike the explanation: "was this expected?"
+ * is a one-tap answer the person holding the push is best placed to give.
+ * A row shows the verdict (who, when, why) and a Suppressed badge when
+ * detection matched an expected-pattern suppression and stored the finding
+ * without alerting. The suppression list editor, the sensitivity panel and
+ * the precision report stay on web and desktop: they are org-wide policy and
+ * reporting, the same line as detection tuning.
  */
 export function CostAnomaliesSection() {
   const anomalies = useCostAnomalies();
   const rows = anomalies.data ?? [];
+  // Presentation only: the server enforces `costs:write` and a 403 reads as a
+  // friendly message. While loading, offer the buttons rather than flicker.
+  const { has, loading: permsLoading } = useOrgPermissions();
+  const canGiveFeedback = permsLoading || has("costs:write");
 
   return (
     <>
@@ -65,15 +87,16 @@ export function CostAnomaliesSection() {
       ) : (
         <Card list>
           {rows.map((a) => (
-            <AnomalyRow key={a.id} anomaly={a} />
+            <AnomalyRow key={a.id} anomaly={a} canGiveFeedback={canGiveFeedback} />
           ))}
         </Card>
       )}
 
       {rows.length > 0 && (
         <Text style={styles.footnote}>
-          Detection thresholds — and whether anomalies also text the on-call list — are per
-          organization; tune them from the web or desktop app.
+          Detection thresholds, whether anomalies also text the on-call list, the suppression list,
+          the feedback sensitivity panel and the precision report are per organization; manage them
+          from the web or desktop app.
         </Text>
       )}
     </>
@@ -87,15 +110,53 @@ function formatDay(day: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
+/** "Oct 3" in the reader's own zone: a moment somebody acted, not a cost day. */
+function formatMoment(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function AnomalyRow({
+  anomaly,
+  canGiveFeedback,
+}: {
+  anomaly: CostAnomaly;
+  canGiveFeedback: boolean;
+}) {
   const isNew = anomaly.kind === "new_source";
   const delta = costAnomalyDeltaPercent(anomaly);
   // Optional on the wire: an app a release ahead of its server still renders.
   const hints = anomaly.hints ?? [];
+  const feedback = anomaly.feedback ?? null;
+  const suppressed = Boolean(anomaly.suppressionId);
 
   const { linksFor } = useIssueLinks();
   const trackers = useFilableTrackers();
   const [filing, setFiling] = useState(false);
+  const [verdictSheet, setVerdictSheet] = useState<CostAnomalyVerdict | null>(null);
+  const { clear } = useCostAnomalyFeedback();
+
+  const runClear = () =>
+    clear.mutate(anomaly.id, {
+      onError: (e) => Alert.alert("Couldn't clear feedback", costAnomalyFeedbackErrorMessage(e)),
+    });
+  const confirmClear = () => {
+    // Withdrawing an expected verdict also deletes the suppression it made,
+    // which changes what alerts next time: worth a second tap.
+    if (feedback?.suppressionId) {
+      Alert.alert(
+        "Clear feedback?",
+        "This also removes the suppression this verdict created, so the pattern can alert again.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Clear", style: "destructive", onPress: runClear },
+        ],
+      );
+    } else {
+      runClear();
+    }
+  };
   const links = linksFor("cost_anomaly", anomaly.id);
   const fileLabel =
     trackers.length > 1
@@ -123,6 +184,28 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
               <Text style={styles.explainedBadgeText}>Explained</Text>
             </View>
           )}
+          {feedback && (
+            <View
+              style={
+                feedback.verdict === "expected" ? styles.expectedBadge : styles.unexpectedBadge
+              }
+            >
+              <Text
+                style={
+                  feedback.verdict === "expected"
+                    ? styles.expectedBadgeText
+                    : styles.unexpectedBadgeText
+                }
+              >
+                {COST_ANOMALY_VERDICT_LABELS[feedback.verdict]}
+              </Text>
+            </View>
+          )}
+          {suppressed && (
+            <View style={styles.suppressedBadge}>
+              <Text style={styles.suppressedBadgeText}>Suppressed</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.subtitle} numberOfLines={1}>
           {formatDay(anomaly.day)} · {COST_ANOMALY_DIMENSION_LABELS[anomaly.dimension]}
@@ -143,6 +226,21 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             · {hint}
           </Text>
         ))}
+        {suppressed && <Text style={styles.hint}>Matched an expected pattern, not alerted.</Text>}
+        {feedback && (
+          <>
+            <Text style={styles.feedbackMeta} numberOfLines={1}>
+              {COST_ANOMALY_VERDICT_LABELS[feedback.verdict]}
+              {feedback.byName ? ` by ${feedback.byName}` : ""} · {formatMoment(feedback.at)}
+              {feedback.reason ? ` · ${COST_ANOMALY_FEEDBACK_REASON_LABELS[feedback.reason]}` : ""}
+            </Text>
+            {feedback.note ? (
+              <Text style={styles.explanation} numberOfLines={3}>
+                {feedback.note}
+              </Text>
+            ) : null}
+          </>
+        )}
         {/* Filed → the issue key/identifier, which opens the tracker: one
             badge per tracker holding a link (both, if both do). Not filed but
             filable → the offer, labelled by what is connected. Neither →
@@ -176,10 +274,37 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             )}
           </View>
         ) : trackers.length > 0 ? (
+          // An unexpected verdict says "this is a real problem", which is
+          // exactly when filing it is the next step: the offer gets louder.
           <Pressable accessibilityRole="button" onPress={() => setFiling(true)}>
-            <Text style={styles.issueAction}>{fileLabel}</Text>
+            <Text
+              style={
+                feedback?.verdict === "unexpected" ? styles.issueActionStrong : styles.issueAction
+              }
+            >
+              {fileLabel}
+            </Text>
           </Pressable>
         ) : null}
+        {canGiveFeedback && (
+          <View style={styles.feedbackActions}>
+            <FeedbackAction
+              label={feedback?.verdict === "expected" ? "Edit expected" : "Expected"}
+              onPress={() => setVerdictSheet("expected")}
+            />
+            <FeedbackAction
+              label={feedback?.verdict === "unexpected" ? "Edit unexpected" : "Unexpected"}
+              onPress={() => setVerdictSheet("unexpected")}
+            />
+            {feedback && (
+              <FeedbackAction
+                label={clear.isPending ? "Clearing…" : "Clear feedback"}
+                disabled={clear.isPending}
+                onPress={confirmClear}
+              />
+            )}
+          </View>
+        )}
       </View>
       <View style={styles.rowAmount}>
         <Text style={styles.amount}>
@@ -223,7 +348,35 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
           onClose={() => setFiling(false)}
         />
       )}
+      {verdictSheet && (
+        <AnomalyFeedbackSheet
+          anomaly={anomaly}
+          verdict={verdictSheet}
+          onClose={() => setVerdictSheet(null)}
+        />
+      )}
     </View>
+  );
+}
+
+function FeedbackAction({
+  label,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.feedbackAction, (pressed || disabled) && { opacity: 0.6 }]}
+    >
+      <Text style={styles.feedbackActionText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -260,6 +413,43 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   explainedBadgeText: { color: colors.success, fontSize: 10, fontWeight: "600" },
+  expectedBadge: {
+    borderColor: "rgba(59, 130, 246, 0.4)",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  expectedBadgeText: { color: colors.accent, fontSize: 10, fontWeight: "600" },
+  unexpectedBadge: {
+    borderColor: "rgba(248, 113, 113, 0.4)",
+    backgroundColor: "rgba(248, 113, 113, 0.1)",
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  unexpectedBadgeText: { color: colors.danger, fontSize: 10, fontWeight: "600" },
+  suppressedBadge: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  suppressedBadgeText: { color: colors.textMuted, fontSize: 10, fontWeight: "600" },
+  feedbackMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  issueActionStrong: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
+  feedbackActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: 4 },
+  feedbackAction: {
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  feedbackActionText: { color: colors.textSecondary, fontSize: 11, fontWeight: "500" },
   muted: { color: colors.textMuted, fontSize: 13 },
   error: { color: colors.danger, fontSize: 13 },
   footnote: { color: colors.textFaint, fontSize: 11 },

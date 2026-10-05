@@ -149,6 +149,39 @@ func TestAnomalySettingsOmitsDerivedFlagWhenUnset(t *testing.T) {
 	}
 }
 
+// FeedbackTuning is optional on PUT and omitting it keeps the stored value, so
+// an unset pointer must not reach the wire as false.
+func TestAnomalySettingsOmitsUnsetFeedbackTuning(t *testing.T) {
+	got := decode(t, CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off"})
+	if _, present := got["feedbackTuning"]; present {
+		t.Errorf("an unset feedbackTuning must be omitted, not sent as false: %v", got)
+	}
+	off := false
+	got = decode(t, CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off", FeedbackTuning: &off})
+	if v, ok := got["feedbackTuning"].(bool); !ok || v {
+		t.Errorf("an explicit false must be sent: %v", got)
+	}
+}
+
+// PUT on a suppression is a full replace: reason and note must be explicit
+// nulls so a stored value is cleared, while tagKey and startsOn are omitted so
+// the server applies its own defaults.
+func TestAnomalySuppressionInputNullsAndOmissions(t *testing.T) {
+	got := decode(t, CostAnomalySuppressionInput{
+		Scope: "provider", ScopeKey: "aws", Recurrence: "one_off", AnchorDay: "2026-11-27", ExpiresOn: "2026-11-30",
+	})
+	for _, key := range []string{"reason", "note"} {
+		if v, present := got[key]; !present || v != nil {
+			t.Errorf("%s must be an explicit null, got %#v (present=%v)", key, v, present)
+		}
+	}
+	for _, key := range []string{"tagKey", "startsOn"} {
+		if _, present := got[key]; present {
+			t.Errorf("%s must be omitted when unset: %v", key, got)
+		}
+	}
+}
+
 // The three destination lists on a report notification are required keys. A nil
 // slice would marshal as null and be refused, so the provider always builds
 // them as empty slices: this is the shape that has to hold.

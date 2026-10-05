@@ -681,6 +681,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_currency_settings`         | by org id | Org singleton; destroy clears, rates survive         |
 | `infrawrench_exchange_rate`             | by id     | Upsert keyed on (from, to, effective_from)           |
 | `infrawrench_anomaly_settings`          | by org id | Org singleton; destroy restores the defaults         |
+| `infrawrench_anomaly_suppression`       | by id     | `starts_on` defaults to `anchor_day`; expiry kept    |
 | `infrawrench_efficiency_alert_settings` | by org id | Org singleton; destroy restores the defaults         |
 | `infrawrench_ai_request_source`         | by id     | LiteLLM `api_key` is write-only; lookback is clamped |
 | `infrawrench_ai_attribution_dimension`  | by id     | No single-GET route; becomes tag key `caller:<key>`  |

@@ -10,6 +10,7 @@ import { genericTools } from "./generic";
 import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
+import { costAnomalyFeedbackTools } from "./cost-anomaly-feedback";
 import { unitCostTools } from "./unit-costs";
 import { virtualTagTools } from "./virtual-tags";
 import { costReportTools } from "./cost-reports";
@@ -39,6 +40,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...genericTools(),
     ...connectionTools(),
     ...costTools(),
+    ...costAnomalyFeedbackTools(),
     ...unitCostTools(),
     ...virtualTagTools(),
     ...costReportTools(),

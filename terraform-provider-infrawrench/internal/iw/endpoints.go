@@ -779,6 +779,39 @@ func (c *Client) PutAnomalySettings(ctx context.Context, in CostAnomalySettings)
 	return &out, nil
 }
 
+/* --------------------------- anomaly suppressions -------------------------- */
+
+// GetAnomalySuppression reads by the single-GET route, which 404s once the
+// suppression is deleted. An expired suppression is still returned (with
+// active false); expiry is not deletion.
+func (c *Client) GetAnomalySuppression(ctx context.Context, id string) (*CostAnomalySuppression, error) {
+	var out CostAnomalySuppression
+	if err := c.Get(ctx, "/costs/anomaly-suppressions/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateAnomalySuppression(ctx context.Context, in CostAnomalySuppressionInput) (*CostAnomalySuppression, error) {
+	var out CostAnomalySuppression
+	if err := c.Post(ctx, "/costs/anomaly-suppressions", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateAnomalySuppression(ctx context.Context, id string, in CostAnomalySuppressionInput) (*CostAnomalySuppression, error) {
+	var out CostAnomalySuppression
+	if err := c.Put(ctx, "/costs/anomaly-suppressions/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteAnomalySuppression(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/costs/anomaly-suppressions/"+seg(id))
+}
+
 func (c *Client) GetEfficiencySettings(ctx context.Context) (*CostEfficiencySettings, error) {
 	var out CostEfficiencySettings
 	if err := c.Get(ctx, "/costs/efficiency-alert-settings", &out); err != nil {

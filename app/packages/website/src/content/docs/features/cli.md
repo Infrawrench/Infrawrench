@@ -114,6 +114,8 @@ Accounts whose daily cost collection is failing are called out above the chart, 
 ```
 infrawrench costs --anomalies
 infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
+infrawrench costs --anomalies feedback <id> --expected|--unexpected [--reason r] [--note text] [--recurrence weekly]
+infrawrench costs --anomalies suppressions | precision | sensitivity
 ```
 
 `reports` lists the org's saved [cost reports](./cost-reports.md) — each one's shape and how many dashboards carry a card for it — and running one by name charts it without you restating a single filter:

@@ -13,6 +13,10 @@ import type {
   SavedCostFilterInput,
   CostScenarioModelInput,
 } from "@infrawrench/ui/cost";
+import type {
+  CostAnomalyFeedbackInput,
+  CostAnomalySuppressionInput,
+} from "@infrawrench/client-core";
 import {
   acknowledgeCloudCostAnomaly,
   annotateCloudBudgetAlert,
@@ -38,6 +42,15 @@ import {
   loadCloudTagCompliance,
   loadCloudUntaggedSpend,
   saveCloudAnomalySettings,
+  submitCloudAnomalyFeedback,
+  clearCloudAnomalyFeedback,
+  listCloudAnomalySuppressions,
+  createCloudAnomalySuppression,
+  updateCloudAnomalySuppression,
+  deleteCloudAnomalySuppression,
+  loadCloudAnomalySensitivity,
+  loadCloudAnomalyPrecision,
+  listCloudCostCentresForCosts,
   updateCloudBudget,
   updateCloudCostAlert,
   deleteCloudSavedCostFilter,
@@ -142,6 +155,22 @@ export function createDesktopCostsClient(): CostsClient {
     getAnomalySettings: () => loadCloudAnomalySettings(requireOrgId()),
     updateAnomalySettings: (settings: CostAnomalySettings) =>
       saveCloudAnomalySettings(requireOrgId(), settings),
+    // Anomaly feedback and suppressions: org-level cloud state like the
+    // tuning above, so desktop gets the same verdicts, list and editor.
+    submitAnomalyFeedback: (anomalyId: string, input: CostAnomalyFeedbackInput) =>
+      submitCloudAnomalyFeedback(requireOrgId(), anomalyId, input),
+    clearAnomalyFeedback: (anomalyId: string) =>
+      clearCloudAnomalyFeedback(requireOrgId(), anomalyId),
+    listAnomalySuppressions: () => listCloudAnomalySuppressions(requireOrgId()),
+    createAnomalySuppression: (input: CostAnomalySuppressionInput) =>
+      createCloudAnomalySuppression(requireOrgId(), input),
+    updateAnomalySuppression: (suppressionId: string, input: CostAnomalySuppressionInput) =>
+      updateCloudAnomalySuppression(requireOrgId(), suppressionId, input),
+    deleteAnomalySuppression: (suppressionId: string) =>
+      deleteCloudAnomalySuppression(requireOrgId(), suppressionId),
+    getAnomalySensitivity: () => loadCloudAnomalySensitivity(requireOrgId()),
+    getAnomalyPrecision: (months?: number) => loadCloudAnomalyPrecision(requireOrgId(), months),
+    listCostCentres: () => listCloudCostCentresForCosts(requireOrgId()),
     // Change-based cost alerts are org-level cloud state like anomaly
     // settings, so desktop wires the full editing surface too.
     listCostAlerts: () => listCloudCostAlerts(requireOrgId()),

@@ -232,4 +232,5 @@
 // folders), `POST /budgets/{id}/events/{eventId}/note` (a note on a fired budget
 // alert), and `note` on BudgetAlertEvent and on BudgetWithStatus's
 // currentMonthEvents. Additive.
-export const API_VERSION = "1.64.0";
+// 1.65.0: anomaly feedback. Verdict and suppression routes, sensitivity and precision reads, feedback/suppressionId on CostAnomaly, optional feedbackTuning on anomaly settings. Additive.
+export const API_VERSION = "1.65.0";

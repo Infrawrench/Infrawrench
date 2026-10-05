@@ -837,6 +837,7 @@ export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
 export * from "./pricing-expression";
 export * from "./msp-pricing";
+export * from "./cost-anomaly-feedback";
 export * from "./orphans";
 // CO2e beside the cost, with its assumptions on the response.
 export * from "./carbon-factors";

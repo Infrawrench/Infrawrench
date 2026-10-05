@@ -155,6 +155,27 @@ vi.mock("@infrawrench/server-core/alerts/ack", () => ({
 }));
 
 let memberPermissions: string[] = ["*"];
+const submitCostAnomalyFeedback = vi.fn();
+const getCostAnomalyView = vi.fn();
+vi.mock("@/services/cost-anomaly-feedback", () => ({
+  submitCostAnomalyFeedback: (...a: unknown[]) => submitCostAnomalyFeedback(...a),
+}));
+vi.mock("@/services/cost-anomalies", () => ({
+  getCostAnomalyView: (...a: unknown[]) => getCostAnomalyView(...a),
+}));
+vi.mock("@/services/audit", () => ({ logAudit: vi.fn(async () => true) }));
+vi.mock("@infrawrench/server-core/cost/anomaly-feedback", () => ({
+  ANOMALY_EXPECTED_ACTION_ID: "infrawrench_anomaly_expected",
+  ANOMALY_UNEXPECTED_ACTION_ID: "infrawrench_anomaly_unexpected",
+  parseAnomalyFeedbackButtonValue: (raw: string | undefined) => {
+    try {
+      const v = JSON.parse(raw ?? "") as { o?: string; a?: string };
+      return v.o && v.a ? { organizationId: v.o, anomalyId: v.a } : null;
+    } catch {
+      return null;
+    }
+  },
+}));
 vi.mock("@infrawrench/server-core/permissions", () => ({
   resolveEffectivePermissions: vi.fn(async () => ({
     permissions: memberPermissions,
@@ -1005,5 +1026,49 @@ describe("GET + POST /api/slack/link", () => {
     );
     expect(posted.headers.get("location")).toContain("slack=error");
     expect(inserted).toHaveLength(0);
+  });
+});
+
+describe("POST /api/slack/interactions — anomaly feedback buttons", () => {
+  const VALUE = { o: "org-1", a: "anom-1" };
+  const ANOMALY = {
+    id: "anom-1",
+    day: "2026-10-01",
+    dimension: "service",
+    dimensionKey: "Amazon EC2",
+    feedback: null,
+  };
+
+  it("sends an unlinked clicker the link prompt and records nothing", async () => {
+    await interactionRequest("infrawrench_anomaly_expected", VALUE);
+    await flushAsync();
+    expect(submitCostAnomalyFeedback).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("isn't linked");
+  });
+
+  it("needs costs:write, like the HTTP route", async () => {
+    linkedAstrid();
+    memberPermissions = ["costs:read"];
+    await interactionRequest("infrawrench_anomaly_unexpected", VALUE);
+    await flushAsync();
+    expect(submitCostAnomalyFeedback).not.toHaveBeenCalled();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("costs:write");
+  });
+
+  it("records the verdict as the linked member and says so in the channel", async () => {
+    linkedAstrid();
+    getCostAnomalyView.mockResolvedValue(ANOMALY);
+    submitCostAnomalyFeedback.mockResolvedValue({ anomaly: ANOMALY, suppression: null });
+    await interactionRequest("infrawrench_anomaly_expected", VALUE);
+    await flushAsync();
+    expect(submitCostAnomalyFeedback).toHaveBeenCalledWith(
+      "org-1",
+      "anom-1",
+      { verdict: "expected" },
+      "user-1",
+    );
+    const reply = JSON.stringify(postToSlackResponseUrl.mock.calls[0]);
+    expect(reply).toContain("in_channel");
+    expect(reply).toContain("Astrid marked the Amazon EC2 on 2026-10-01 anomaly as *expected*");
   });
 });
