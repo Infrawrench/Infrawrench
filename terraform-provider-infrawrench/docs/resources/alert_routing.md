@@ -158,7 +158,7 @@ Optional:
 - `cents` (Number) For `field = "amountCents"` — the money the alert is about, in cents.
 - `severity` (String) For `field = "severity"`. One of `info`, `warning`, `critical`, ordered info < warning < critical.
 - `value` (String) For `field = "key"` or `field = "text"`.
-- `values` (List of String) For `trigger`, `accountId`, `pluginId` and `resourceTypeId`. Trigger values are one of `syncIncidents`, `budgetAlerts`, `anomalyAlerts`, `costChangeAlerts`, `commitmentExpiryAlerts`, `commitmentIdleAlerts`, `unitCostRegressionAlerts`, `savingsFindings`, `metricAlerts`, `resourceDrift`, `workflowPages`, `providerIncidents`, `expiryAlerts`, `logMatchAlerts`, `postureAlerts`, `probeAlerts`, `weeklyDigest`.
+- `values` (List of String) For `trigger`, `accountId`, `pluginId` and `resourceTypeId`. Trigger values are one of `syncIncidents`, `budgetAlerts`, `anomalyAlerts`, `costChangeAlerts`, `commitmentExpiryAlerts`, `commitmentIdleAlerts`, `unitCostRegressionAlerts`, `savingsFindings`, `metricAlerts`, `resourceDrift`, `workflowPages`, `providerIncidents`, `expiryAlerts`, `logMatchAlerts`, `postureAlerts`, `probeAlerts`, `quotaAlerts`, `extendedSupportAlerts`, `incidentAlerts`, `weeklyDigest`.
 
 
 <a id="nestedblock--rule--destination"></a>
