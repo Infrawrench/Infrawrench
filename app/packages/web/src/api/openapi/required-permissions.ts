@@ -397,6 +397,19 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /linear/teams": "linear:read",
   "POST /linear/issues": "linear:write",
   "GET /linear/links": "linear:read",
+  // github issues; reads take read, filing and pull requests take write, and
+  // the settings document (which holds the pull-request switch) takes
+  // org:settings:write.
+  "GET /github-issues": "github-issues:read",
+  "PUT /github-issues/settings": "org:settings:write",
+  "GET /github-issues/labels": "github-issues:read",
+  "GET /github-issues/assignees": "github-issues:read",
+  "GET /github-issues/route": "github-issues:read",
+  "GET /github-issues/branches": "github-issues:read",
+  "POST /github-issues/issues": "github-issues:write",
+  "GET /github-issues/links": "github-issues:read",
+  "POST /github-issues/pull-requests/preview": "github-issues:write",
+  "POST /github-issues/pull-requests": "github-issues:write",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

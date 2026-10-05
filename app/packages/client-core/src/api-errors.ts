@@ -55,3 +55,44 @@ export class PlanRequiredClientError extends Error {
     this.name = "PlanRequiredClientError";
   }
 }
+
+/**
+ * Payload of the structured 409 a GitHub filing or pull request gets when the
+ * org's GitHub App installation has not been granted the permission it needs.
+ *
+ * GitHub applies a GitHub App's newly requested permissions to an existing
+ * installation only once an owner of that GitHub account approves them, so an
+ * installation made before issue filing existed keeps working for workflows
+ * and agents but answers 403 here until then. The UI turns this into a
+ * "grant the permission" prompt linking to {@link manageUrl}.
+ */
+export interface GithubPermissionRequiredPayload {
+  error: string;
+  code: "github_permission_required";
+  /** GitHub permission names missing write access, e.g. `["issues"]`. */
+  permissions: string[];
+  installationId: number;
+  accountLogin: string | null;
+  /** Where an owner reviews and approves the requested permissions. */
+  manageUrl: string | null;
+}
+
+export function isGithubPermissionRequiredResponse(
+  parsed: unknown,
+): parsed is GithubPermissionRequiredPayload {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { code?: unknown }).code === "github_permission_required"
+  );
+}
+
+/** Thrown for the structured `github_permission_required` 409. */
+export class GithubPermissionRequiredClientError extends Error {
+  readonly payload: GithubPermissionRequiredPayload;
+  constructor(payload: GithubPermissionRequiredPayload) {
+    super(payload.error || "The GitHub App needs more permissions");
+    this.name = "GithubPermissionRequiredClientError";
+    this.payload = payload;
+  }
+}

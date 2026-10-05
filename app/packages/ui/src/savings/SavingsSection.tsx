@@ -6,6 +6,7 @@ import {
   type ResourceOwnerAnnotation,
 } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
+import { OpenPullRequestButton } from "../issue-filing/OpenPullRequestButton.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
@@ -226,31 +227,48 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                       </td>
                     )}
                     <td className="px-3 py-2.5 whitespace-nowrap text-right">
-                      <FileIssueButton
-                        sourceKind="orphan"
-                        sourceId={r.id}
-                        draft={{
-                          title: gt("{name} ({type}) looks orphaned", {
-                            name: r.displayName,
-                            type: gtData(r.resourceTypeName),
-                          }),
-                          details: [
-                            { label: gt("Resource"), value: r.displayName },
-                            { label: gt("Type"), value: gtData(r.resourceTypeName) },
-                            { label: gt("Provider"), value: gtData(group.pluginName) },
-                            { label: gt("Account"), value: group.accountName },
-                            { label: gt("Provider id"), value: r.externalId },
-                            {
-                              label: gt("Spend / {days}d", { days: data.costWindowDays }),
-                              value: r.cost
-                                ? formatMoney(r.cost.amount, r.cost.currency)
-                                : undefined,
-                            },
-                            { label: gt("Last synced"), value: r.lastSyncedAt },
-                          ],
-                          note: r.reason,
-                        }}
-                      />
+                      <span className="inline-flex items-center gap-3">
+                        <OpenPullRequestButton
+                          sourceKind="orphan"
+                          sourceId={r.id}
+                          resourceId={r.id}
+                          change={{ kind: "remove" }}
+                        />
+                        <FileIssueButton
+                          sourceKind="orphan"
+                          sourceId={r.id}
+                          resourceId={r.id}
+                          monthlyCost={
+                            r.cost
+                              ? {
+                                  amount: (r.cost.amount * 30) / data.costWindowDays,
+                                  currency: r.cost.currency,
+                                }
+                              : undefined
+                          }
+                          draft={{
+                            title: gt("{name} ({type}) looks orphaned", {
+                              name: r.displayName,
+                              type: gtData(r.resourceTypeName),
+                            }),
+                            details: [
+                              { label: gt("Resource"), value: r.displayName },
+                              { label: gt("Type"), value: gtData(r.resourceTypeName) },
+                              { label: gt("Provider"), value: gtData(group.pluginName) },
+                              { label: gt("Account"), value: group.accountName },
+                              { label: gt("Provider id"), value: r.externalId },
+                              {
+                                label: gt("Spend / {days}d", { days: data.costWindowDays }),
+                                value: r.cost
+                                  ? formatMoney(r.cost.amount, r.cost.currency)
+                                  : undefined,
+                              },
+                              { label: gt("Last synced"), value: r.lastSyncedAt },
+                            ],
+                            note: r.reason,
+                          }}
+                        />
+                      </span>
                     </td>
                   </tr>
                 ))}

@@ -73,6 +73,7 @@ import { Route as OrgOrgIdSettingsCostVisibilityRouteImport } from './routes/org
 import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
+import { Route as OrgOrgIdSettingsGithubIssuesRouteImport } from './routes/org.$orgId.settings.github-issues'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
 import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
 import { Route as OrgOrgIdSettingsOnCallRouteImport } from './routes/org.$orgId.settings.on-call'
@@ -422,6 +423,12 @@ const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   path: '/freezes',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsGithubIssuesRoute =
+  OrgOrgIdSettingsGithubIssuesRouteImport.update({
+    id: '/github-issues',
+    path: '/github-issues',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsJiraRoute = OrgOrgIdSettingsJiraRouteImport.update({
   id: '/jira',
   path: '/jira',
@@ -551,6 +558,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
@@ -626,6 +634,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
@@ -705,6 +714,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
@@ -785,6 +795,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
@@ -860,6 +871,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
@@ -938,6 +950,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
@@ -1415,6 +1428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/github-issues': {
+      id: '/org/$orgId/settings/github-issues'
+      path: '/github-issues'
+      fullPath: '/org/$orgId/settings/github-issues'
+      preLoaderRoute: typeof OrgOrgIdSettingsGithubIssuesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/jira': {
       id: '/org/$orgId/settings/jira'
       path: '/jira'
@@ -1565,6 +1585,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
+  OrgOrgIdSettingsGithubIssuesRoute: typeof OrgOrgIdSettingsGithubIssuesRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
   OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
   OrgOrgIdSettingsOnCallRoute: typeof OrgOrgIdSettingsOnCallRoute
@@ -1595,6 +1616,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
     OrgOrgIdSettingsCredentialHygieneRoute,
   OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
+  OrgOrgIdSettingsGithubIssuesRoute: OrgOrgIdSettingsGithubIssuesRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
   OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
   OrgOrgIdSettingsOnCallRoute: OrgOrgIdSettingsOnCallRoute,

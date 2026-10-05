@@ -102,7 +102,9 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
       ? "File an issue"
       : trackers[0] === "jira"
         ? "File in Jira"
-        : "File in Linear";
+        : trackers[0] === "linear"
+          ? "File in Linear"
+          : "File in GitHub";
 
   return (
     <View style={styles.row}>
@@ -146,7 +148,7 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             filable → the offer, labelled by what is connected. Neither →
             nothing, rather than a control that can only fail. Same three
             states as the web button. */}
-        {links.jira || links.linear ? (
+        {links.jira || links.linear || links.github ? (
           <View style={styles.linkRow}>
             {links.jira && (
               <Pressable
@@ -162,6 +164,14 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
                 onPress={() => void Linking.openURL(links.linear!.issueUrl)}
               >
                 <Text style={styles.issueLink}>{links.linear.issueIdentifier}</Text>
+              </Pressable>
+            )}
+            {links.github && (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => void Linking.openURL(links.github!.issueUrl)}
+              >
+                <Text style={styles.issueLink}>#{links.github.issueNumber}</Text>
               </Pressable>
             )}
           </View>

@@ -1,4 +1,6 @@
 import {
+  GithubPermissionRequiredClientError,
+  isGithubPermissionRequiredResponse,
   isSeatLimitResponse,
   PlanRequiredClientError,
   SeatLimitReachedClientError,
@@ -38,6 +40,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (status === 409 && isSeatLimitResponse(parsed)) {
     throw new SeatLimitReachedClientError(parsed);
+  }
+  if (status === 409 && isGithubPermissionRequiredResponse(parsed)) {
+    throw new GithubPermissionRequiredClientError(parsed);
   }
   let message = bodyText;
   if (parsed && typeof parsed === "object" && "error" in parsed) {

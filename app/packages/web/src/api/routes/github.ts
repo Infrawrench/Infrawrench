@@ -88,7 +88,7 @@ app.get("/status", async (c) => {
 });
 
 /** Pages the setup callback may send the user back to (path under /org/:orgId). */
-const INSTALL_RETURN_PAGES = new Set(["agents", "workflows"]);
+const INSTALL_RETURN_PAGES = new Set(["agents", "workflows", "settings/github-issues"]);
 
 /** GET install-url: the GitHub "install this app" URL with a signed state. */
 app.get("/install-url", async (c) => {

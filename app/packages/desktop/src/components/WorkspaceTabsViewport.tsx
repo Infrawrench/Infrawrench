@@ -213,6 +213,8 @@ function IssueFiling({ orgId, children }: { orgId: string | null; children: Reac
       canFileJira={hasPermission(permissions, "jira:write")}
       canReadLinear={hasPermission(permissions, "linear:read")}
       canFileLinear={hasPermission(permissions, "linear:write")}
+      canReadGithub={hasPermission(permissions, "github-issues:read")}
+      canFileGithub={hasPermission(permissions, "github-issues:write")}
       openExternal={(url) => void invoke("open_external_url", { url })}
     >
       {children}

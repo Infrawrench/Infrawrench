@@ -65,6 +65,15 @@ func TestAlertDestinationMarshalsOnlyItsBranch(t *testing.T) {
 		}
 	})
 
+	t.Run("github-issues carries nothing else", func(t *testing.T) {
+		// The repository is decided by the GitHub issue settings, so a stray id
+		// from an edited slack destination must not reach the strict schema.
+		got := decode(t, AlertDestination{Kind: "github-issues", ChannelID: strptr("c1"), ScheduleID: strptr("s1")})
+		if len(got) != 1 || got["kind"] != "github-issues" {
+			t.Errorf("github-issues destination must be exactly {kind}, got %v", got)
+		}
+	})
+
 	t.Run("an unknown kind fails loudly", func(t *testing.T) {
 		if _, err := json.Marshal(AlertDestination{Kind: "email"}); err == nil {
 			t.Error("an unknown destination kind must be an error, not a silently dropped destination")
@@ -193,6 +202,57 @@ func TestUpdateAccountSendsAnExplicitNullBastion(t *testing.T) {
 	}
 	if value != nil {
 		t.Errorf("bastionId should be null, got %v", value)
+	}
+}
+
+// The route match is a strict discriminated union server-side, and a tag
+// match's value is nullable-but-required: null means "any value of the key".
+func TestGithubIssueRouteMatchMarshalsOnlyItsBranch(t *testing.T) {
+	t.Run("cost centre carries only its id", func(t *testing.T) {
+		got := decode(t, GithubIssueRouteMatch{Kind: "cost_centre", CostCentreID: strptr("cc-1"), TagKey: strptr("team")})
+		if len(got) != 2 || got["costCentreId"] != "cc-1" {
+			t.Errorf("cost centre match must be exactly {kind, costCentreId}, got %v", got)
+		}
+	})
+
+	t.Run("tag sends an explicit null value", func(t *testing.T) {
+		got := decode(t, GithubIssueRouteMatch{Kind: "tag", TagKey: strptr("team"), CostCentreID: strptr("cc-1")})
+		value, present := got["tagValue"]
+		if !present || value != nil {
+			t.Errorf("tagValue must be present as an explicit null, got %v", got)
+		}
+		if _, present := got["costCentreId"]; present {
+			t.Errorf("a tag match must not carry costCentreId: %v", got)
+		}
+	})
+
+	t.Run("an unknown kind fails loudly", func(t *testing.T) {
+		if _, err := json.Marshal(GithubIssueRouteMatch{Kind: "service"}); err == nil {
+			t.Error("an unknown match kind must be an error")
+		}
+	})
+}
+
+// Destroy writes this document back, so it must be exactly the shipped
+// defaults, with every list an array and the default repository an explicit
+// null rather than an omitted key.
+func TestDefaultGithubIssueSettingsMarshal(t *testing.T) {
+	got := decode(t, DefaultGithubIssueSettings())
+	if value, present := got["defaultRepo"]; !present || value != nil {
+		t.Errorf("defaultRepo must be an explicit null, got %v", got)
+	}
+	if got["enabled"] != false || got["pullRequestsEnabled"] != false || got["resolveAction"] != "comment" {
+		t.Errorf("default scalars wrong: %v", got)
+	}
+	labels, _ := got["labels"].([]any)
+	if len(labels) != 1 || labels[0] != "infrawrench" {
+		t.Errorf("default labels must be [\"infrawrench\"], got %v", got["labels"])
+	}
+	for _, key := range []string{"assignees", "routes", "iacSources"} {
+		list, ok := got[key].([]any)
+		if !ok || len(list) != 0 {
+			t.Errorf("%s must be an empty array, got %v", key, got[key])
+		}
 	}
 }
 

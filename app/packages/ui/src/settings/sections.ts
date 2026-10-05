@@ -57,6 +57,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "paging", label: msg("Notifications") },
   { key: "jira", label: msg("Jira"), requiresPermission: "jira:read" },
   { key: "linear", label: msg("Linear"), requiresPermission: "linear:read" },
+  { key: "github-issues", label: msg("GitHub Issues"), requiresPermission: "github-issues:read" },
   { key: "billing", label: msg("Billing") },
   { key: "audit-log", label: msg("Audit Log") },
 ];

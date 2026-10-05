@@ -10,6 +10,8 @@ import {
   REAUTHENTICATION_REQUIRED,
   isSeatLimitResponse,
   SeatLimitReachedClientError,
+  isGithubPermissionRequiredResponse,
+  GithubPermissionRequiredClientError,
   PlanRequiredClientError,
 } from "@infrawrench/ui";
 
@@ -112,6 +114,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     }
     if (res.status === 409 && isSeatLimitResponse(parsed)) {
       throw new SeatLimitReachedClientError(parsed);
+    }
+    if (res.status === 409 && isGithubPermissionRequiredResponse(parsed)) {
+      throw new GithubPermissionRequiredClientError(parsed);
     }
     if (res.status === 423 && isChangeFreezeBlockedResponse(parsed)) {
       throw new ChangeFreezeBlockedClientError(parsed);

@@ -185,4 +185,5 @@
 // accounts (re-rating to public pricing, discount treatment); per-line `effects` and
 // `effects`/`rerateCoverage`/`warnings`/`expressionFailures` on invoice derivations;
 // `POST /billing-rules/preview` and `POST /billing-rules/reorder`. Additive.
-export const API_VERSION = "1.53.0";
+// 1.54.0: GitHub issue filing (`/github-issues/*`), the `github-issues` alert routing destination, the `savingsFindings` trigger, the `savings_finding` push payload and the `github-issues:read`/`:write` permissions. Additive.
+export const API_VERSION = "1.54.0";

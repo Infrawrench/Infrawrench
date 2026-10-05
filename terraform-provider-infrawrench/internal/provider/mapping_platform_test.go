@@ -505,3 +505,161 @@ func TestAlertRoutingCarriesQuietHoursAndEscalation(t *testing.T) {
 		t.Error("a rule with no quiet hours or escalation must send neither")
 	}
 }
+
+// A github-issues destination carries no id, and must read back and write out
+// as exactly that rather than being dropped as an unknown kind.
+func TestAlertRoutingCarriesGithubIssuesDestination(t *testing.T) {
+	ctx := context.Background()
+
+	state, diags := alertRoutingStateFrom(ctx, "org_1", []iw.AlertRule{{
+		ID: "rule-1", Name: "File savings", Enabled: true,
+		Conditions: []iw.AlertCondition{
+			{Field: "trigger", Op: "in", Values: []string{"savingsFindings"}},
+		},
+		Destinations: []iw.AlertDestination{{Kind: "github-issues"}},
+	}})
+	if diags.HasError() {
+		t.Fatalf("alertRoutingStateFrom: %v", diags)
+	}
+
+	rules, diags := alertRulesFrom(ctx, state.Rule)
+	if diags.HasError() {
+		t.Fatalf("alertRulesFrom: %v", diags)
+	}
+	if len(rules) != 1 || len(rules[0].Destinations) != 1 {
+		t.Fatalf("destination lost: %+v", rules)
+	}
+	dest := rules[0].Destinations[0]
+	if dest.Kind != "github-issues" || dest.ChannelID != nil || dest.WebhookID != nil || dest.ScheduleID != nil {
+		t.Errorf("github-issues destination must be only its kind, got %+v", dest)
+	}
+
+	found := false
+	for _, kind := range alertDestinationKind {
+		if kind == "github-issues" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("github-issues is missing from the destination kinds the schema accepts")
+	}
+}
+
+// The GitHub issue settings document is a whole-document replace, so every
+// field must survive a read/write round trip, and a route's match must surface
+// only its own branch.
+func TestGithubIssueSettingsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	updated := "2026-10-05T12:00:00Z"
+	remote := &iw.GithubIssueSettings{
+		Enabled:     true,
+		DefaultRepo: &iw.GithubRepoRef{InstallationID: 42, FullName: "acme/infra"},
+		Labels:      []string{"infrawrench", "cost"},
+		Assignees:   []string{},
+		Routes: []iw.GithubIssueRoute{
+			{
+				ID:        ptr("route-1"),
+				Match:     iw.GithubIssueRouteMatch{Kind: "cost_centre", CostCentreID: ptr("cc-1")},
+				Repo:      iw.GithubRepoRef{InstallationID: 42, FullName: "acme/payments"},
+				Labels:    []string{"payments"},
+				Assignees: []string{"octocat"},
+			},
+			{
+				ID:        ptr("route-2"),
+				Match:     iw.GithubIssueRouteMatch{Kind: "tag", TagKey: ptr("team")},
+				Repo:      iw.GithubRepoRef{InstallationID: 7, FullName: "acme/search"},
+				Labels:    []string{},
+				Assignees: []string{},
+			},
+		},
+		ResolveAction:       "close",
+		PullRequestsEnabled: true,
+		IacSources: []iw.GithubIacSource{
+			{ID: ptr("src-1"), Repo: iw.GithubRepoRef{InstallationID: 42, FullName: "acme/infra"}, Directory: ""},
+			{
+				ID: ptr("src-2"), IacAccountID: ptr("acct-1"),
+				Repo:       iw.GithubRepoRef{InstallationID: 42, FullName: "acme/infra"},
+				BaseBranch: ptr("main"), Directory: "infra/prod",
+			},
+		},
+		UpdatedAt: &updated,
+	}
+
+	state, diags := githubIssueSettingsStateFrom(ctx, "org_1", remote)
+	if diags.HasError() {
+		t.Fatalf("githubIssueSettingsStateFrom: %v", diags)
+	}
+	if state.DefaultRepository.ValueString() != "acme/infra" || state.DefaultInstallationID.ValueInt64() != 42 {
+		t.Errorf("default repository lost: %v / %v", state.DefaultRepository, state.DefaultInstallationID)
+	}
+
+	var routes []githubIssueRouteModel
+	diags = state.Route.ElementsAs(ctx, &routes, false)
+	if diags.HasError() {
+		t.Fatalf("routes: %v", diags)
+	}
+	if !routes[0].TagKey.IsNull() || !routes[0].TagValue.IsNull() {
+		t.Error("a cost centre route must not read back tag fields")
+	}
+	if !routes[1].CostCentreID.IsNull() || !routes[1].TagValue.IsNull() {
+		t.Error("a tag route with no value must read back a null tag_value and no cost centre")
+	}
+
+	input, diags := githubIssueSettingsInputFrom(ctx, state)
+	if diags.HasError() {
+		t.Fatalf("githubIssueSettingsInputFrom: %v", diags)
+	}
+	if !input.Enabled || input.ResolveAction != "close" || !input.PullRequestsEnabled {
+		t.Errorf("scalars mangled: %+v", input)
+	}
+	if input.DefaultRepo == nil || input.DefaultRepo.FullName != "acme/infra" {
+		t.Errorf("default repository not sent: %+v", input.DefaultRepo)
+	}
+	if len(input.Routes) != 2 || *input.Routes[0].ID != "route-1" || input.Routes[1].Repo.FullName != "acme/search" {
+		t.Errorf("routes mangled: %+v", input.Routes)
+	}
+	if input.Routes[1].Match.TagValue != nil {
+		t.Error("an unset tag value must be sent as null, meaning any value")
+	}
+	if len(input.IacSources) != 2 || input.IacSources[0].IacAccountID != nil ||
+		input.IacSources[1].Directory != "infra/prod" || *input.IacSources[1].BaseBranch != "main" {
+		t.Errorf("iac sources mangled: %+v", input.IacSources)
+	}
+	if input.Assignees == nil || input.Routes[1].Labels == nil {
+		t.Error("empty lists must be sent as [], never null")
+	}
+}
+
+// With no default repository the document reads back with both halves null,
+// which is what an omitted pair in configuration plans as.
+func TestGithubIssueSettingsNoDefaultRepository(t *testing.T) {
+	ctx := context.Background()
+
+	defaults := iw.DefaultGithubIssueSettings()
+	state, diags := githubIssueSettingsStateFrom(ctx, "org_1", &iw.GithubIssueSettings{
+		Enabled:       defaults.Enabled,
+		Labels:        defaults.Labels,
+		Assignees:     defaults.Assignees,
+		Routes:        defaults.Routes,
+		ResolveAction: defaults.ResolveAction,
+		IacSources:    defaults.IacSources,
+	})
+	if diags.HasError() {
+		t.Fatalf("githubIssueSettingsStateFrom: %v", diags)
+	}
+	if !state.DefaultRepository.IsNull() || !state.DefaultInstallationID.IsNull() {
+		t.Error("no default repository must read back as null")
+	}
+	if !state.UpdatedAt.IsNull() {
+		t.Error("a never-saved document has no updated_at")
+	}
+
+	input, diags := githubIssueSettingsInputFrom(ctx, state)
+	if diags.HasError() {
+		t.Fatalf("githubIssueSettingsInputFrom: %v", diags)
+	}
+	if input.DefaultRepo != nil {
+		t.Error("an absent default repository must be sent as null")
+	}
+}

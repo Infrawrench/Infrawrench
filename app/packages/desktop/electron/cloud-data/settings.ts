@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear|github-issues)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
@@ -50,6 +50,10 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET"], pattern: new RegExp(`${ORG}/managed-accounts$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
+  // GitHub issues page: the repository picker, the connect link and the IaC
+  // state scope picker (all reads; connecting happens in the browser).
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/github/(status|repos|install-url)(\\?|$)`) },
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/iac/states$`) },
 ];
 
 interface SettingsRequestArgs {

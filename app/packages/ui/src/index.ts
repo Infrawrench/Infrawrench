@@ -1041,6 +1041,9 @@ export {
   SeatLimitReachedClientError,
   PlanRequiredClientError,
   type SeatLimitPayload,
+  isGithubPermissionRequiredResponse,
+  GithubPermissionRequiredClientError,
+  type GithubPermissionRequiredPayload,
 } from "@infrawrench/client-core";
 
 export {

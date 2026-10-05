@@ -29,11 +29,13 @@ const AlertDestination = z
         .string()
         .openapi({ description: "An on-call rotation id from /on-call/schedules" }),
     }),
+    strict({ kind: z.literal("github-issues") }),
   ])
   .openapi("AlertDestination", {
     description:
       "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n" +
-      '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.',
+      '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n' +
+      "`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.",
   });
 
 const AlertCondition = z

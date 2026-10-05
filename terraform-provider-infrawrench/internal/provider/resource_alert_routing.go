@@ -138,10 +138,10 @@ var (
 		"in", "notIn", "gte", "eq", "lt", "contains", "notContains",
 	}
 	alertSeverities      = []string{"info", "warning", "critical"}
-	alertDestinationKind = []string{"push", "slack", "msteams", "on-call"}
+	alertDestinationKind = []string{"push", "slack", "msteams", "on-call", "github-issues"}
 	alertTriggers        = []string{
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
-		"commitmentIdleAlerts", "unitCostRegressionAlerts", "metricAlerts", "resourceDrift", "workflowPages",
+		"commitmentIdleAlerts", "unitCostRegressionAlerts", "savingsFindings", "metricAlerts", "resourceDrift", "workflowPages",
 		"providerIncidents", "expiryAlerts", "logMatchAlerts", "postureAlerts", "probeAlerts", "weeklyDigest",
 	}
 )
@@ -153,7 +153,7 @@ func (r *alertRoutingResource) Metadata(_ context.Context, req resource.Metadata
 func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "The organization's alert routing table: which alerts go to which Slack channels, " +
-			"Teams webhooks and phones.\n\n" +
+			"Teams webhooks, phones, on-call rotations and GitHub issues.\n\n" +
 			"**One resource holds every rule, in order**, because order is the semantics. The list is " +
 			"evaluated top to bottom and is first-match-wins unless a rule sets `continue_on_match`, which " +
 			"is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written " +
@@ -269,7 +269,14 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 										MarkdownDescription: "One of `" + joinBackticked(alertDestinationKind) + "`. " +
 											"`push` reaches the organization's phones, still filtered by each " +
 											"member's own mutes — an organization rule decides whether the org is " +
-											"told, a member decides whether their phone rings.",
+											"told, a member decides whether their phone rings.\n\n" +
+											"`github-issues` files the alert's finding as a GitHub issue, in the " +
+											"repository `infrawrench_github_issue_settings` routes it to, and " +
+											"comments on the open issue instead when one already exists for that " +
+											"finding. It takes no id. Only alerts that carry a finding (savings " +
+											"findings, cost anomalies, idle commitments) can be filed; for any other " +
+											"trigger the destination is skipped, and it does nothing while GitHub " +
+											"issue filing is disabled.",
 										Validators: []validatorString{oneOfValidator(alertDestinationKind...)},
 									},
 									"channel_id": schema.StringAttribute{

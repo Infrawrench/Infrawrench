@@ -23,6 +23,7 @@ import { NotificationsSection } from "./NotificationsSection.js";
 import { OnCallSection } from "./OnCallSection.js";
 import { JiraSection } from "./JiraSection.js";
 import { LinearSection } from "./LinearSection.js";
+import { GithubIssuesSection } from "./GithubIssuesSection.js";
 import { BillingSection } from "./BillingSection.js";
 import { AuditLogSection } from "./AuditLogSection.js";
 
@@ -82,6 +83,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <JiraSection />;
     case "linear":
       return <LinearSection />;
+    case "github-issues":
+      return <GithubIssuesSection />;
     case "billing":
       return <BillingSection />;
     case "audit-log":

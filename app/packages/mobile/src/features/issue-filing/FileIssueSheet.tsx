@@ -12,13 +12,20 @@ import {
   useJiraProjects,
 } from "../jira/useJira";
 import {
+  useFileGithubIssue,
   useFileLinearIssue,
+  useGithubIssueRoute,
+  useGithubIssuesStatus,
   useLinearIntegration,
   useLinearTeams,
   type IssueTracker,
 } from "./useIssueFiling";
 
-const TRACKER_LABELS: Record<IssueTracker, string> = { jira: "Jira", linear: "Linear" };
+const TRACKER_LABELS: Record<IssueTracker, string> = {
+  jira: "Jira",
+  linear: "Linear",
+  github: "GitHub",
+};
 
 /**
  * File a finding as an issue: the native counterpart of web's
@@ -39,6 +46,7 @@ export function FileIssueSheet({
   sourceId,
   draft,
   trackers,
+  resourceId,
   onClose,
 }: {
   visible: boolean;
@@ -47,6 +55,8 @@ export function FileIssueSheet({
   draft: Omit<BuildJiraIssueDraftArgs, "sourceKind">;
   /** Trackers to offer: from `useFilableTrackers`. */
   trackers: readonly IssueTracker[];
+  /** The finding's resource, for GitHub's repository routing. */
+  resourceId?: string;
   onClose: () => void;
 }) {
   const [tracker, setTracker] = useState<IssueTracker | null>(
@@ -76,6 +86,19 @@ export function FileIssueSheet({
   const issueTypes = useJiraIssueTypes(tracker === "jira" ? projectKey : "");
   const fileJira = useFileJiraIssue();
   const fileLinear = useFileLinearIssue();
+  const fileGithub = useFileGithubIssue();
+  const githubStatus = useGithubIssuesStatus();
+  const githubRoute = useGithubIssueRoute(visible && tracker === "github", resourceId);
+  const githubRepo = githubRoute.data?.repo ?? null;
+  const githubAccess = githubStatus.data?.installations.find(
+    (i) => i.installationId === githubRepo?.installationId,
+  );
+  // An installation that predates issue filing has not accepted `issues`
+  // write yet; say so up front instead of failing the create.
+  const githubBlocked =
+    Boolean(githubAccess?.checked) &&
+    githubAccess?.issues !== "write" &&
+    githubAccess?.issues !== "admin";
 
   // Both destinations are *derived* from the loaded rows rather than corrected
   // by an effect after they arrive: an effect renders the stale choice once
@@ -116,6 +139,17 @@ export function FileIssueSheet({
           description,
           labels: prefill.labels,
         });
+      } else if (tracker === "github") {
+        await fileGithub.mutateAsync({
+          sourceKind,
+          sourceId,
+          title: summary,
+          details: (draft.details ?? []).filter(
+            (d) => d.value !== null && d.value !== undefined && d.value !== "",
+          ),
+          ...(draft.note ? { note: draft.note } : {}),
+          ...(resourceId ? { resourceId } : {}),
+        });
       } else if (tracker === "linear") {
         // No labels: Linear's issueCreate takes label ids of existing labels,
         // and the draft's labels are free text meant for Jira.
@@ -135,15 +169,21 @@ export function FileIssueSheet({
 
   const ready =
     Boolean(summary.trim()) &&
-    (tracker === "jira" ? Boolean(projectKey && issueTypeId) : Boolean(tracker && teamId));
-  const pending = fileJira.isPending || fileLinear.isPending;
+    (tracker === "jira"
+      ? Boolean(projectKey && issueTypeId)
+      : tracker === "github"
+        ? Boolean(githubRepo) && !githubBlocked
+        : Boolean(tracker && teamId));
+  const pending = fileJira.isPending || fileLinear.isPending || fileGithub.isPending;
 
   const title =
     tracker === "jira"
       ? "File a Jira issue"
       : tracker === "linear"
         ? "File a Linear issue"
-        : "File an issue";
+        : tracker === "github"
+          ? "File a GitHub issue"
+          : "File an issue";
   const description_ =
     tracker === "jira"
       ? jiraIntegration.data
@@ -151,7 +191,15 @@ export function FileIssueSheet({
         : "Connect Jira from the web or desktop app first."
       : tracker === "linear"
         ? "Creates an issue in your Linear workspace and keeps the link on this finding."
-        : "Both trackers are connected — pick where this finding should be tracked.";
+        : tracker === "github"
+          ? githubBlocked
+            ? `The GitHub App on ${githubAccess?.accountLogin ?? "this account"} has not been granted issues write access yet. An owner of that GitHub account needs to approve the app's updated permissions.`
+            : githubRepo
+              ? `Files into ${githubRepo.fullName}, or comments on the open issue already filed for this finding.`
+              : githubRoute.isLoading
+                ? "Finding the repository…"
+                : "Choose a default repository in Settings → GitHub Issues on the web or desktop app first."
+          : "Several trackers are connected. Pick where this finding should be tracked.";
 
   return (
     <Sheet
@@ -214,7 +262,15 @@ export function FileIssueSheet({
           onChange={setTeamChoice}
         />
       )}
-      {tracker && (
+      {tracker === "github" && (
+        <TextField
+          label="Title"
+          value={summary}
+          onChangeText={setSummary}
+          autoCapitalize="sentences"
+        />
+      )}
+      {tracker && tracker !== "github" && (
         <>
           <TextField
             label={tracker === "jira" ? "Summary" : "Title"}

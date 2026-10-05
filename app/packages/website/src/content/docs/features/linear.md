@@ -118,3 +118,5 @@ The API key never appears in any of them.
 
 Issues are created by the one Linear user behind the key, so Linear attributes them all to
 that user — Infrawrench's audit log is where you see which person actually filed which issue.
+
+Prefer GitHub for this work? The same findings can be filed as [GitHub issues](./github-issues.md), with repository routing, one issue per finding, and Terraform pull requests.

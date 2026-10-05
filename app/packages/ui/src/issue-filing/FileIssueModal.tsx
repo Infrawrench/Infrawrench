@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
+import {
+  GithubPermissionRequiredClientError,
+  type BuildJiraIssueDraftArgs,
+  type FileGithubIssueResult,
+  type GithubIssueRouteResolution,
+  type GithubPermissionRequiredPayload,
+  type GithubRepoRef,
+} from "@infrawrench/client-core";
 import type {
   CreateJiraIssueResult,
   CreateLinearIssueResult,
@@ -12,6 +20,15 @@ import type {
 
 import { Modal } from "../components/Modal.js";
 import { useIssueFiling, type IssueFilingApi, type IssueTracker } from "./host.js";
+import {
+  GithubAssigneesPicker,
+  GithubLabelsPicker,
+  GithubPermissionPrompt,
+  GithubRepoPicker,
+  missingGithubPermissions,
+  permissionPayloadFor,
+  useGithubRepos,
+} from "./github.js";
 
 export interface FileIssueModalProps {
   sourceKind: JiraSourceKind;
@@ -23,10 +40,24 @@ export interface FileIssueModalProps {
    * choice; with exactly one it goes straight to that tracker's form.
    */
   trackers: readonly IssueTracker[];
+  /**
+   * The raw finding, for GitHub: its issue body is built server-side from the
+   * evidence (a table) rather than from the plain-text draft.
+   */
+  finding?:
+    | (Omit<BuildJiraIssueDraftArgs, "sourceKind"> & {
+        resourceId?: string | undefined;
+        monthlyCost?: { amount: number; currency: string } | undefined;
+      })
+    | undefined;
   onClose: () => void;
 }
 
-const TRACKER_LABELS: Record<IssueTracker, string> = { jira: "Jira", linear: "Linear" };
+const TRACKER_LABELS: Record<IssueTracker, string> = {
+  jira: "Jira",
+  linear: "Linear",
+  github: "GitHub",
+};
 
 /**
  * File one finding as an issue, in whichever tracker the org has connected.
@@ -48,6 +79,7 @@ export function FileIssueModal({
   sourceId,
   draft,
   trackers,
+  finding,
   onClose,
 }: FileIssueModalProps) {
   const gt = useGT();
@@ -65,6 +97,16 @@ export function FileIssueModal({
   // Linear destination state.
   const [teams, setTeams] = useState<LinearTeam[] | null>(null);
   const [teamId, setTeamId] = useState(filing?.linearIntegration?.defaultTeamId ?? "");
+
+  // GitHub destination state: preselected from the org's routing.
+  const githubRepos = useGithubRepos(filing?.api, filing?.orgId ?? "", trackers.includes("github"));
+  const [githubRepo, setGithubRepo] = useState<GithubRepoRef | null>(null);
+  const [githubLabels, setGithubLabels] = useState<string[]>([]);
+  const [githubAssignees, setGithubAssignees] = useState<string[]>([]);
+  const [githubNote, setGithubNote] = useState(finding?.note ?? "");
+  const [permissionError, setPermissionError] = useState<GithubPermissionRequiredPayload | null>(
+    null,
+  );
 
   // Finding state, shared by both trackers.
   const [summary, setSummary] = useState(draft.summary);
@@ -126,6 +168,34 @@ export function FileIssueModal({
   }, [api, orgId, tracker, projectKey]);
 
   useEffect(() => {
+    if (!api || !orgId || tracker !== "github") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const q = finding?.resourceId
+          ? `?resourceId=${encodeURIComponent(finding.resourceId)}`
+          : "";
+        const route = await api.get<GithubIssueRouteResolution>(
+          `/api/org/${orgId}/github-issues/route${q}`,
+        );
+        if (cancelled) return;
+        setGithubRepo((current) => current ?? route.repo);
+        setGithubLabels(
+          [...route.labels, "infrawrench", sourceKind.replace(/_/g, "-")].filter(
+            (v, i, a) => a.indexOf(v) === i,
+          ),
+        );
+        setGithubAssignees(route.assignees);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId, tracker, finding?.resourceId, sourceKind]);
+
+  useEffect(() => {
     if (!api || !orgId || tracker !== "linear") return;
     let cancelled = false;
     void (async () => {
@@ -156,7 +226,27 @@ export function FileIssueModal({
     setBusy(true);
     setError(null);
     try {
-      if (tracker === "jira") {
+      if (tracker === "github") {
+        const res = await api.post<FileGithubIssueResult>(
+          `/api/org/${orgId}/github-issues/issues`,
+          {
+            sourceKind,
+            sourceId,
+            title: summary,
+            details: (finding?.details ?? []).filter(
+              (d) => d.value !== null && d.value !== undefined && d.value !== "",
+            ),
+            ...(githubNote.trim() ? { note: githubNote } : {}),
+            ...(finding?.resourceId ? { resourceId: finding.resourceId } : {}),
+            ...(finding?.monthlyCost ? { monthlyCost: finding.monthlyCost } : {}),
+            ...(finding?.appUrl ? { appUrl: finding.appUrl } : {}),
+            ...(githubRepo ? { repo: githubRepo } : {}),
+            labels: githubLabels,
+            assignees: githubAssignees,
+          },
+        );
+        filing?.onGithubFiled(res.link);
+      } else if (tracker === "jira") {
         const res = await api.post<CreateJiraIssueResult>(`/api/org/${orgId}/jira/issues`, {
           sourceKind,
           sourceId,
@@ -181,10 +271,23 @@ export function FileIssueModal({
       }
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof GithubPermissionRequiredClientError) {
+        setPermissionError(e.payload);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
       setBusy(false);
     }
   }
+
+  const githubAccess = filing.githubStatus?.installations.find(
+    (i) => i.installationId === githubRepo?.installationId,
+  );
+  const githubPrompt =
+    tracker === "github"
+      ? (permissionError ??
+        permissionPayloadFor(githubAccess, missingGithubPermissions(githubAccess, "issues")))
+      : null;
 
   const inputClass =
     "w-full px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60";
@@ -194,18 +297,24 @@ export function FileIssueModal({
       ? Boolean(projectKey && issueTypeId)
       : tracker === "linear"
         ? Boolean(teamId)
-        : false);
+        : tracker === "github"
+          ? Boolean(githubRepo) && !githubPrompt
+          : false);
 
   const heading =
     tracker === "jira"
       ? gt("File a Jira issue")
       : tracker === "linear"
         ? gt("File a Linear issue")
-        : gt("File an issue");
+        : tracker === "github"
+          ? gt("File a GitHub issue")
+          : gt("File an issue");
   const destination =
     tracker === "jira"
       ? (filing.jiraIntegration?.siteUrl ?? gt("your Jira site"))
-      : gt("your Linear workspace");
+      : tracker === "github"
+        ? (githubRepo?.fullName ?? gt("your GitHub repository"))
+        : gt("your Linear workspace");
 
   return (
     <Modal onClose={onClose} ariaLabel={heading}>
@@ -217,7 +326,7 @@ export function FileIssueModal({
                 "Creates an issue in {destination} and keeps the link on this finding, so it will show as filed instead of offering this button again.",
                 { destination },
               )
-            : gt("Both trackers are connected — pick where this finding should be tracked.")}
+            : gt("Several trackers are connected. Pick where this finding should be tracked.")}
         </p>
 
         {error !== null && (
@@ -318,6 +427,64 @@ export function FileIssueModal({
             </label>
           )}
 
+          {tracker === "github" && (
+            <>
+              <label className="block">
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Repository")}
+                </span>
+                <GithubRepoPicker
+                  repos={githubRepos}
+                  value={githubRepo}
+                  disabled={busy}
+                  onChange={(r) => {
+                    setGithubRepo(r);
+                    setPermissionError(null);
+                  }}
+                />
+              </label>
+              {githubPrompt && (
+                <GithubPermissionPrompt
+                  accountLogin={githubPrompt.accountLogin}
+                  permissions={githubPrompt.permissions}
+                  manageUrl={githubPrompt.manageUrl}
+                  openExternal={filing.openExternal}
+                />
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="block text-xs text-on-surface-tertiary mb-1">
+                    {gt("Labels")}
+                  </span>
+                  <GithubLabelsPicker
+                    api={api}
+                    orgId={orgId}
+                    repo={githubRepo}
+                    value={githubLabels}
+                    onChange={setGithubLabels}
+                  />
+                </div>
+                <div>
+                  <span className="block text-xs text-on-surface-tertiary mb-1">
+                    {gt("Assignees")}
+                  </span>
+                  <GithubAssigneesPicker
+                    api={api}
+                    orgId={orgId}
+                    repo={githubRepo}
+                    value={githubAssignees}
+                    onChange={setGithubAssignees}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-on-surface-muted">
+                {gt(
+                  "If an open issue already exists for this finding, Infrawrench comments on it instead of opening another.",
+                )}
+              </p>
+            </>
+          )}
+
           {tracker && (
             <>
               <label className="block">
@@ -336,13 +503,19 @@ export function FileIssueModal({
 
               <label className="block">
                 <span className="block text-xs text-on-surface-tertiary mb-1">
-                  {gt("Description")}
+                  {tracker === "github"
+                    ? gt("Note (the evidence table is added for you)")
+                    : gt("Description")}
                 </span>
                 <textarea
-                  value={description}
+                  value={tracker === "github" ? githubNote : description}
                   disabled={busy}
-                  rows={8}
-                  onChange={(e) => setDescription(e.target.value)}
+                  rows={tracker === "github" ? 4 : 8}
+                  onChange={(e) =>
+                    tracker === "github"
+                      ? setGithubNote(e.target.value)
+                      : setDescription(e.target.value)
+                  }
                   className={`${inputClass} font-mono text-xs`}
                 />
               </label>

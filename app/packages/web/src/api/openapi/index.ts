@@ -107,6 +107,7 @@ import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
 import { registerLinearPaths } from "./paths/linear";
+import { registerGithubIssuesPaths } from "./paths/github-issues";
 import { registerDigestPaths } from "./paths/digest";
 import { REQUIRED_PERMISSION, normalizePathForPermissionLookup } from "./required-permissions";
 
@@ -249,6 +250,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerMsTeamsPaths(ctx);
   registerJiraPaths(ctx);
   registerLinearPaths(ctx);
+  registerGithubIssuesPaths(ctx);
   registerDigestPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
@@ -611,6 +613,14 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Linear workspace connection, team picker, and filing a finding (cost anomaly, " +
           "orphan, oversized resource, posture finding, expiring credential, failed probe) " +
           "as a tracked issue.",
+      },
+      {
+        name: "GitHub issues",
+        description:
+          "Filing findings as GitHub issues through the organization's GitHub App " +
+          "installation: repository routing by cost centre or tag, label and assignee " +
+          "pickers, dedupe by finding fingerprint, and pull requests editing Terraform for " +
+          "IaC-managed findings.",
       },
     ],
   });

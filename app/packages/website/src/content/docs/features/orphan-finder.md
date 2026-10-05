@@ -112,7 +112,9 @@ Waste is not always a resource doing nothing — sometimes it is a machine doing
 ## Filing a flagged resource as an issue
 
 Deleting something is a decision, and often not yours alone to make. With
-[Jira](./jira.md) or [Linear](./linear.md) connected, each flagged row carries a file link
+[Jira](./jira.md), [Linear](./linear.md) or [GitHub](./github-issues.md) connected, each flagged row carries a file link
 that opens an issue prefilled with the resource, its type, account and provider id, the
 trailing spend, and the plugin's reason for flagging it. Filed rows show their issue key
-instead of the link.
+instead of the link. A GitHub issue is closed (or commented on) by itself once the resource
+stops being flagged, and a resource managed by Terraform can get an **Open PR** link that
+deletes its block; see [GitHub issues and pull requests](./github-issues.md).

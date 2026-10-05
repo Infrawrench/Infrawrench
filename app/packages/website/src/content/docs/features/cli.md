@@ -384,6 +384,8 @@ infrawrench routing            # rules, top to bottom, first match wins
 infrawrench routing queue      # held and escalating alerts   [--limit 50]
 ```
 
+Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
+
 Both are read-only and need the **Organization settings** permission; editing rules lives on the web and desktop Notifications page.
 
 ## Config as code

@@ -251,6 +251,23 @@ func specChecks() []specCheck {
 		{schema: "LinearIntegration", value: LinearIntegration{}},
 		{schema: "LinearIntegrationInput", value: LinearIntegrationInput{}},
 
+		// GithubIssueRoute and GithubIacSource are `allOf` extensions of their
+		// Input schemas (adding a required id) and GithubIssueRouteMatch is a
+		// `oneOf`, so none of the three has top-level properties to compare;
+		// the Input schemas below carry every field they do.
+		{schema: "GithubIssueSettings", value: GithubIssueSettings{}},
+		{schema: "GithubIssueSettingsInput", value: GithubIssueSettingsInput{}},
+		{schema: "GithubIssueRouteInput", value: GithubIssueRoute{}},
+		{schema: "GithubIacSourceInput", value: GithubIacSource{}},
+		{schema: "GithubRepoRef", value: GithubRepoRef{}},
+		{
+			schema: "GithubIssuesStatus",
+			value:  GithubIssuesStatus{},
+			// What each GitHub App installation has accepted. GitHub-side state
+			// an owner approves on GitHub, not configuration Terraform can write.
+			ignored: []string{"installations"},
+		},
+
 		{
 			schema: "WorkflowSchedule",
 			value:  WorkflowSchedule{},

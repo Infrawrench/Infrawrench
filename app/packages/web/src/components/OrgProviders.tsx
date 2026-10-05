@@ -65,6 +65,8 @@ function IssueFiling({ orgId, children }: { orgId: string; children: ReactNode }
       canFileJira={has("jira:write")}
       canReadLinear={has("linear:read")}
       canFileLinear={has("linear:write")}
+      canReadGithub={has("github-issues:read")}
+      canFileGithub={has("github-issues:write")}
       openExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
     >
       {children}

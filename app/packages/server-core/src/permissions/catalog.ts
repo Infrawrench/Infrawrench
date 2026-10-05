@@ -132,6 +132,15 @@ export const ALL_PERMISSIONS = [
   // under the org's shared credential and cannot be retracted from here.
   "linear:read",
   "linear:write",
+  // GitHub issue filing through the org's GitHub App: the same read/write
+  // split as Jira and Linear. `read` covers the settings document, the
+  // installations' granted permissions and the finding→issue links; `write`
+  // covers filing an issue and opening an IaC pull request. Changing the
+  // settings themselves (routes, the pull-request switch) takes
+  // `org:settings:write`, because turning pull requests on lets every holder
+  // of `write` propose infrastructure changes.
+  "github-issues:read",
+  "github-issues:write",
   // Managed accounts and their invoices: the managed-service-provider surface.
   //
   // Its own family rather than more `costs:*` because the acts are of a
