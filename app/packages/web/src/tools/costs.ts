@@ -333,7 +333,9 @@ export function costTools(): ToolDefinition[] {
         "the anomalous day ('12 gce-instance resources appeared'); they are leads, not " +
         "conclusions. `acknowledgement` is present when somebody has already established what " +
         "the finding was — say so rather than re-deriving it, and never contradict it without " +
-        "saying you are. Use an id from here with acknowledge_cost_anomaly.",
+        "saying you are. Use an id from here with acknowledge_cost_anomaly or " +
+        "give_cost_anomaly_feedback. `feedback` is the verdict (expected or unexpected) and who " +
+        "gave it; `suppressionId` is set when a suppression kept the finding from alerting.",
       inputSchema: {
         days: z
           .number()

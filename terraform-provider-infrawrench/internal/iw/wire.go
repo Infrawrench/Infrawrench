@@ -1007,10 +1007,64 @@ type CostAnomalySettings struct {
 	NewSourceMinCents int64   `json:"newSourceMinCents"`
 	SMSAlerts         string  `json:"smsAlerts"`
 
+	// FeedbackTuning is optional on PUT, where omitting it keeps the stored
+	// value, and always present on a read. It is a pointer with omitempty so a
+	// caller that has no opinion (the zero struct) does not switch it off.
+	FeedbackTuning *bool `json:"feedbackTuning,omitempty"`
+
 	// SMSConfigured is derived and returned on GET only; the PUT schema is
 	// strict, so it must never be sent back. Its json tag has omitempty and the
 	// input path builds a fresh struct rather than echoing this one.
 	SMSConfigured *bool `json:"smsConfigured,omitempty"`
+}
+
+/* --------------------------- anomaly suppressions -------------------------- */
+
+// CostAnomalySuppressionInput is the POST/PUT body. PUT replaces the whole
+// object.
+//
+// TagKey and StartsOn are omitempty because the server reads an absent key as
+// "not applicable" (a non-tag scope) or "the anchor day" respectively. Reason
+// and Note are explicit nulls rather than omissions: PUT is a full replace, so
+// null is how a previously stored reason or note is cleared.
+type CostAnomalySuppressionInput struct {
+	Scope      string  `json:"scope"`
+	ScopeKey   string  `json:"scopeKey"`
+	TagKey     *string `json:"tagKey,omitempty"`
+	Recurrence string  `json:"recurrence"`
+	AnchorDay  string  `json:"anchorDay"`
+	StartsOn   *string `json:"startsOn,omitempty"`
+	ExpiresOn  string  `json:"expiresOn"`
+	Reason     *string `json:"reason"`
+	Note       *string `json:"note"`
+}
+
+// CostAnomalySuppression declares that spend in a scope is expected on a
+// pattern of days until an expiry. On a covered day detection sets the scope's
+// spend aside before judging the day, and a finding that only existed because
+// of it is stored as suppressed rather than alerted on.
+//
+// ScopeLabel, SourceAnomalyID, the creator fields, the timestamps, Active and
+// SuppressedCount are read-only and have no counterpart on the input.
+type CostAnomalySuppression struct {
+	ID              string  `json:"id"`
+	Scope           string  `json:"scope"`
+	ScopeKey        string  `json:"scopeKey"`
+	TagKey          *string `json:"tagKey"`
+	ScopeLabel      *string `json:"scopeLabel"`
+	Recurrence      string  `json:"recurrence"`
+	AnchorDay       string  `json:"anchorDay"`
+	StartsOn        string  `json:"startsOn"`
+	ExpiresOn       string  `json:"expiresOn"`
+	Reason          *string `json:"reason"`
+	Note            *string `json:"note"`
+	SourceAnomalyID *string `json:"sourceAnomalyId"`
+	CreatedByUserID *string `json:"createdByUserId"`
+	CreatedByName   *string `json:"createdByName"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
+	Active          bool    `json:"active"`
+	SuppressedCount int64   `json:"suppressedCount"`
 }
 
 // CostEfficiencySettings is the org singleton tuning the three efficiency

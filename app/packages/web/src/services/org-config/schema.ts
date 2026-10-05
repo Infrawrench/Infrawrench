@@ -297,6 +297,7 @@ const alertSettingsSchema = z
           .min(COST_ANOMALY_LIMITS.newSourceMinCentsMin)
           .max(COST_ANOMALY_LIMITS.newSourceMinCentsMax),
         smsAlerts: z.enum(COST_ANOMALY_SMS_MODES),
+        feedbackTuning: z.boolean().optional(),
       })
       .strict()
       .optional(),

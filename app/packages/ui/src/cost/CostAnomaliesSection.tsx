@@ -13,6 +13,14 @@ import { T, useGT } from "gt-react";
 
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { CostAnomalyExplainModal } from "./CostAnomalyExplainModal.js";
+import { CostAnomalyFeedbackModal } from "./CostAnomalyFeedbackModal.js";
+import {
+  AnomalyPrecisionReport,
+  AnomalySensitivityList,
+  AnomalySuppressionsPanel,
+} from "./CostAnomalyFeedbackPanels.js";
+import { formatFeedbackDay, useAnomalyFeedbackLabels } from "./anomaly-feedback-labels.js";
+import type { CostAnomalyVerdict } from "@infrawrench/client-core";
 import { formatMoney } from "./transform.js";
 import type { CostAnomalySettings, CostAnomalySettingsView, CostAnomalySmsMode } from "./config.js";
 import type { CostAnomaly, CostsClient } from "./types.js";
@@ -44,6 +52,14 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
   const [tuning, setTuning] = useState(false);
   /** The row whose explanation is being written, or null. */
   const [explaining, setExplaining] = useState<CostAnomaly | null>(null);
+  /** The row being given a verdict, and which button opened it. */
+  const [judging, setJudging] = useState<{
+    anomaly: CostAnomaly;
+    verdict: CostAnomalyVerdict;
+  } | null>(null);
+  const [showSuppressions, setShowSuppressions] = useState(false);
+  const [showPrecision, setShowPrecision] = useState(false);
+  const feedbackLabels = useAnomalyFeedbackLabels();
 
   const acknowledge = client.acknowledgeAnomaly;
   /**
@@ -80,6 +96,60 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
     };
   }, [client]);
 
+  /**
+   * The row's "File in Jira/Linear" action, shared with the feedback modal so
+   * an unexpected finding can be filed from where it was judged.
+   */
+  function renderFileIssue(a: CostAnomaly) {
+    const delta = costAnomalyDeltaPercent(a);
+    const isNew = a.kind === "new_source";
+    const hints = a.hints ?? [];
+    return (
+      <FileIssueButton
+        sourceKind="cost_anomaly"
+        sourceId={a.id}
+        draft={{
+          title: isNew
+            ? gt("{dimension} spend started on {day}", {
+                dimension: a.dimensionKey,
+                day: a.day,
+              })
+            : gt("{dimension} spend up {delta} on {day}", {
+                dimension: a.dimensionKey,
+                delta: delta ?? "",
+                day: a.day,
+              }),
+          details: [
+            { label: gt("Day"), value: a.day },
+            {
+              label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
+              value: a.dimensionKey,
+            },
+            {
+              label: gt("Spend"),
+              value: formatMoney(a.actualCents / 100, a.currency),
+            },
+            {
+              label: gt("Baseline / day"),
+              value: isNew
+                ? gt("none (new source)")
+                : formatMoney(a.baselineCents / 100, a.currency),
+            },
+            { label: gt("Change"), value: delta },
+            { label: gt("Detected"), value: a.detectedAt },
+          ],
+          ...(hints.length > 0
+            ? {
+                note: gt("What changed around this window:\n{hints}", {
+                  hints: hints.join("\n"),
+                }),
+              }
+            : {}),
+        }}
+      />
+    );
+  }
+
   if (!client.listAnomalies) return null;
 
   return (
@@ -101,19 +171,45 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             </span>
           )}
         </h2>
-        {client.getAnomalySettings && (
-          <button
-            type="button"
-            onClick={() => setTuning((open) => !open)}
-            aria-expanded={tuning}
-            className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
-          >
-            {tuning ? gt("Hide tuning") : gt("Tune detection")}
-          </button>
-        )}
+        <span className="flex flex-wrap items-center gap-2">
+          {client.listAnomalySuppressions && (
+            <button
+              type="button"
+              onClick={() => setShowSuppressions((open) => !open)}
+              aria-expanded={showSuppressions}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              {gt("Suppressions")}
+            </button>
+          )}
+          {client.getAnomalyPrecision && (
+            <button
+              type="button"
+              onClick={() => setShowPrecision((open) => !open)}
+              aria-expanded={showPrecision}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              {gt("Precision")}
+            </button>
+          )}
+          {client.getAnomalySettings && (
+            <button
+              type="button"
+              onClick={() => setTuning((open) => !open)}
+              aria-expanded={tuning}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              {tuning ? gt("Hide tuning") : gt("Tune detection")}
+            </button>
+          )}
+        </span>
       </div>
 
       {tuning && client.getAnomalySettings && <AnomalyTuningPanel client={client} />}
+      {showSuppressions && client.listAnomalySuppressions && (
+        <AnomalySuppressionsPanel client={client} />
+      )}
+      {showPrecision && client.getAnomalyPrecision && <AnomalyPrecisionReport client={client} />}
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
@@ -185,6 +281,46 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                           {gt("Explained")}
                         </span>
                       )}
+                      {a.feedback && (
+                        <span
+                          className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                            a.feedback.verdict === "expected"
+                              ? "border-border bg-surface-sunken text-on-surface-secondary"
+                              : "border-red-500/40 bg-red-500/10 text-danger"
+                          }`}
+                        >
+                          {feedbackLabels.verdict(a.feedback.verdict)}
+                        </span>
+                      )}
+                      {a.suppressionId && (
+                        <span
+                          className="ml-2 rounded-full border border-border bg-surface-sunken px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-on-surface-faint"
+                          title={gt(
+                            "Matched an expected pattern, so it was recorded but not alerted on",
+                          )}
+                        >
+                          {gt("Suppressed")}
+                        </span>
+                      )}
+                      {a.feedback && (
+                        <p className="mt-1 text-xs text-on-surface-faint">
+                          {a.feedback.byName
+                            ? gt("Marked {verdict} by {name} on {day}", {
+                                verdict: feedbackLabels.verdict(a.feedback.verdict),
+                                name: a.feedback.byName,
+                                day: formatFeedbackDay(a.feedback.at),
+                              })
+                            : gt("Marked {verdict} on {day}", {
+                                verdict: feedbackLabels.verdict(a.feedback.verdict),
+                                day: formatFeedbackDay(a.feedback.at),
+                              })}
+                          {a.feedback.reason
+                            ? ` · ${feedbackLabels.reason(a.feedback.reason)}`
+                            : ""}
+                          {a.feedback.note ? ` · ${a.feedback.note}` : ""}
+                          {a.feedback.suppressionId ? ` · ${gt("future alerts suppressed")}` : ""}
+                        </p>
+                      )}
                       {/*
                         The answer, next to the question. Shown before the hints
                         because a hint is a guess detection made and this is what
@@ -236,48 +372,25 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         the row's life and should read as the closing move.
                       */}
                       <span className="inline-flex items-center gap-3">
-                        <FileIssueButton
-                          sourceKind="cost_anomaly"
-                          sourceId={a.id}
-                          draft={{
-                            title: isNew
-                              ? gt("{dimension} spend started on {day}", {
-                                  dimension: a.dimensionKey,
-                                  day: a.day,
-                                })
-                              : gt("{dimension} spend up {delta} on {day}", {
-                                  dimension: a.dimensionKey,
-                                  delta: delta ?? "",
-                                  day: a.day,
-                                }),
-                            details: [
-                              { label: gt("Day"), value: a.day },
-                              {
-                                label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
-                                value: a.dimensionKey,
-                              },
-                              {
-                                label: gt("Spend"),
-                                value: formatMoney(a.actualCents / 100, a.currency),
-                              },
-                              {
-                                label: gt("Baseline / day"),
-                                value: isNew
-                                  ? gt("none (new source)")
-                                  : formatMoney(a.baselineCents / 100, a.currency),
-                              },
-                              { label: gt("Change"), value: delta },
-                              { label: gt("Detected"), value: a.detectedAt },
-                            ],
-                            ...(hints.length > 0
-                              ? {
-                                  note: gt("What changed around this window:\n{hints}", {
-                                    hints: hints.join("\n"),
-                                  }),
-                                }
-                              : {}),
-                          }}
-                        />
+                        {renderFileIssue(a)}
+                        {client.submitAnomalyFeedback && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setJudging({ anomaly: a, verdict: "expected" })}
+                              className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
+                            >
+                              {gt("Expected")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setJudging({ anomaly: a, verdict: "unexpected" })}
+                              className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
+                            >
+                              {gt("Unexpected")}
+                            </button>
+                          </>
+                        )}
                         {acknowledge && (
                           <button
                             type="button"
@@ -295,6 +408,17 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {judging && (
+        <CostAnomalyFeedbackModal
+          client={client}
+          anomaly={judging.anomaly}
+          initialVerdict={judging.verdict}
+          onChanged={applyAcknowledgement}
+          onClose={() => setJudging(null)}
+          fileIssue={renderFileIssue(judging.anomaly)}
+        />
       )}
 
       {explaining && acknowledge && (
@@ -400,6 +524,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
         minDeltaCents: draft.minDeltaCents,
         newSourceMinCents: draft.newSourceMinCents,
         smsAlerts: draft.smsAlerts,
+        feedbackTuning: draft.feedbackTuning !== false,
       });
       setDraft(next);
       setSaved(next);
@@ -431,7 +556,8 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
     draft.sigmas !== saved.sigmas ||
     draft.minDeltaCents !== saved.minDeltaCents ||
     draft.newSourceMinCents !== saved.newSourceMinCents ||
-    draft.smsAlerts !== saved.smsAlerts;
+    draft.smsAlerts !== saved.smsAlerts ||
+    (draft.feedbackTuning !== false) !== (saved.feedbackTuning !== false);
 
   /**
    * Asking for texts an org cannot receive. Twilio is configured on a page a
@@ -560,6 +686,24 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
           </span>
         </T>
       </label>
+
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-xs font-medium text-on-surface-secondary">
+          <input
+            type="checkbox"
+            disabled={!canEdit || busy}
+            checked={draft.feedbackTuning !== false}
+            onChange={(e) => set({ feedbackTuning: e.target.checked })}
+          />
+          {gt("Learn from feedback")}
+        </label>
+        <span className="text-[11px] text-on-surface-faint">
+          {gt(
+            "When a provider or service keeps being marked expected, raise its spike threshold by half a deviation per verdict after the first, at most two more, within 90 days. Any unexpected verdict holds it at the threshold above.",
+          )}
+        </span>
+        <AnomalySensitivityList client={client} />
+      </div>
 
       {smsUnreachable && (
         <T>

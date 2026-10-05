@@ -51,6 +51,7 @@ import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
+import { costAnomalyFeedbackRoutes } from "./routes/cost-anomaly-feedback";
 import { costReportRoutes } from "./routes/cost-reports";
 import { costCanvasRoutes } from "./routes/cost-canvases";
 import {
@@ -145,6 +146,7 @@ import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
 import { slackRoutes, slackOauthRoute } from "./routes/slack";
 import { slackInboundRoutes } from "./routes/slack-inbound";
+import { anomalyFeedbackLinkRoutes } from "./routes/anomaly-feedback-link";
 import { msteamsRoutes } from "./routes/msteams";
 import { jiraRoutes } from "./routes/jira";
 import { linearRoutes } from "./routes/linear";
@@ -197,6 +199,8 @@ api.route("/api", slackOauthRoute);
 // Inbound Slack: slash commands + interactivity (signature-verified), and the
 // session-authed account-link landing (it bounces through sign-in itself).
 api.route("/api", slackInboundRoutes);
+// The page behind the Expected/Unexpected links on Teams anomaly cards.
+api.route("/api", anomalyFeedbackLinkRoutes);
 api.route("/.well-known", wellKnownRoutes);
 // `auth.md` at the domain root: the agent-registration skill document the
 // `agent_auth` discovery block points at.
@@ -367,6 +371,8 @@ orgScoped.use("*", costVisibilityMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
+// Anomaly verdicts, suppressions, sensitivity and precision share the prefix.
+orgScoped.route("/costs", costAnomalyFeedbackRoutes);
 orgScoped.route("/cost-reports", costReportRoutes);
 // Delivery schedules share the /cost-reports prefix (their paths are all
 // /:id/notifications…); the org-wide list lives on its own prefix so it can

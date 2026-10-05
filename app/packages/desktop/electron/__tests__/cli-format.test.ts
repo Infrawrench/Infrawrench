@@ -2,6 +2,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   anomalyDeltaPercent,
+  anomalyFeedbackLabel,
+  matchIdPrefix,
+  precisionChart,
+  shortId,
+  suppressionCoverLabel,
   formatBillingRule,
   formatChangeTime,
   formatMetricAlertCondition,
@@ -554,5 +559,99 @@ describe("matchVirtualTag", () => {
     const found = matchVirtualTag(tags, "tea");
     expect(found.match).toBeNull();
     expect(!found.match && found.candidates.map((t) => t.id)).toEqual(["t1", "t3"]);
+  });
+});
+
+describe("anomalyFeedbackLabel", () => {
+  it("names the verdict and who gave it", () => {
+    expect(anomalyFeedbackLabel({ feedback: { verdict: "expected", byName: "Astrid" } })).toBe(
+      "expected by Astrid",
+    );
+    expect(anomalyFeedbackLabel({ feedback: { verdict: "unexpected", byName: null } })).toBe(
+      "unexpected",
+    );
+  });
+
+  it("prefers a verdict over a suppression, and falls back to a dash", () => {
+    expect(
+      anomalyFeedbackLabel({
+        feedback: { verdict: "expected", byName: null },
+        suppressionId: "s1",
+      }),
+    ).toBe("expected");
+    expect(anomalyFeedbackLabel({ feedback: null, suppressionId: "s1" })).toBe("suppressed");
+    expect(anomalyFeedbackLabel({})).toBe("-");
+  });
+
+  it("strips control characters from the name and clips long ones", () => {
+    const label = anomalyFeedbackLabel({
+      feedback: { verdict: "expected", byName: "A\u001b[2Jvery long display name indeed" },
+    });
+    expect(label).not.toContain("\u001b");
+    expect(label.length).toBeLessThanOrEqual(32);
+    expect(label.endsWith("…")).toBe(true);
+  });
+});
+
+describe("matchIdPrefix", () => {
+  const rows = [{ id: "abcd1234-0000" }, { id: "abcd9999-0000" }, { id: "ffff0000-0000" }];
+
+  it("matches an exact id, then a unique prefix", () => {
+    expect(matchIdPrefix(rows, "ffff0000-0000")).toEqual({ match: rows[2] });
+    expect(matchIdPrefix(rows, "abcd1")).toEqual({ match: rows[0] });
+  });
+
+  it("returns the candidates for an ambiguous prefix and none for no match", () => {
+    expect(matchIdPrefix(rows, "abcd")).toEqual({ match: null, candidates: [rows[0], rows[1]] });
+    expect(matchIdPrefix(rows, "zzz")).toEqual({ match: null, candidates: [] });
+    expect(matchIdPrefix(rows, "  ")).toEqual({ match: null, candidates: [] });
+  });
+
+  it("shortId is the first eight characters", () => {
+    expect(shortId("abcd1234-0000")).toBe("abcd1234");
+  });
+});
+
+describe("suppressionCoverLabel", () => {
+  it("prints tag scopes as key=value and prefers a resolved label", () => {
+    expect(
+      suppressionCoverLabel({ scope: "tag", scopeKey: "prod", tagKey: "env", scopeLabel: null }),
+    ).toBe("env=prod");
+    expect(
+      suppressionCoverLabel({
+        scope: "cost_centre",
+        scopeKey: "cc_1",
+        tagKey: null,
+        scopeLabel: "Platform",
+      }),
+    ).toBe("Platform");
+    expect(
+      suppressionCoverLabel({ scope: "provider", scopeKey: "aws", tagKey: null, scopeLabel: null }),
+    ).toBe("aws");
+  });
+});
+
+describe("precisionChart", () => {
+  const period = (month: string, precision: number | null, expected = 1, unexpected = 1) => ({
+    month,
+    detected: 5,
+    suppressed: 1,
+    expected,
+    unexpected,
+    precision,
+  });
+
+  it("draws a bar against 100% with the counts beside it", () => {
+    const [line] = precisionChart([period("2026-09", 0.5)], 10);
+    expect(line).toBe("2026-09 █████░░░░░  50%  2 of 5 reviewed · 1 unexpected · 1 suppressed");
+  });
+
+  it("says 'no verdicts' rather than drawing an empty (0%) bar", () => {
+    const [line] = precisionChart([period("2026-08", null, 0, 0)], 4);
+    expect(line).toBe("2026-08 ···· no verdicts  0 of 5 reviewed · 0 unexpected · 1 suppressed");
+  });
+
+  it("handles an empty report", () => {
+    expect(precisionChart([])).toEqual(["(no months)"]);
   });
 });

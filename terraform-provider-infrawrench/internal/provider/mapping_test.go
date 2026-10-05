@@ -344,6 +344,39 @@ func TestSavedFilterStateTakesServerClausesWhenBlocksOwnTheResource(t *testing.T
 	}
 }
 
+func TestAnomalySuppressionRoundTrip(t *testing.T) {
+	remote := &iw.CostAnomalySuppression{
+		ID: "s1", Scope: "tag", ScopeKey: "prod", TagKey: ptr("env"), Recurrence: "weekly",
+		AnchorDay: "2026-10-05", StartsOn: "2026-10-05", ExpiresOn: "2027-01-04",
+		Reason: ptr("planned_launch"), CreatedAt: "2026-10-05T00:00:00Z", UpdatedAt: "2026-10-05T00:00:00Z",
+		Active: true, SuppressedCount: 3,
+	}
+	state := anomalySuppressionStateFrom(remote)
+	if !state.Note.IsNull() || !state.ScopeLabel.IsNull() || !state.SourceAnomalyID.IsNull() {
+		t.Error("absent nullable fields must map to null, not empty strings")
+	}
+	if state.SuppressedCount.ValueInt64() != 3 || !state.Active.ValueBool() {
+		t.Errorf("read-only fields lost: %+v", state)
+	}
+	in := anomalySuppressionInputFrom(state)
+	if in.TagKey == nil || *in.TagKey != "env" || in.StartsOn == nil || *in.StartsOn != "2026-10-05" {
+		t.Errorf("input lost tag key or start: %+v", in)
+	}
+	if in.Note != nil || in.Reason == nil || *in.Reason != "planned_launch" {
+		t.Errorf("reason or note mapped wrong: %+v", in)
+	}
+}
+
+func TestAnomalySettingsFeedbackTuningDefaultsOn(t *testing.T) {
+	state := anomalySettingsStateFrom("org", &iw.CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off"})
+	if !state.FeedbackTuning.ValueBool() {
+		t.Error("a read without feedbackTuning must default to true")
+	}
+	if anomalyDefaults.FeedbackTuning == nil || !*anomalyDefaults.FeedbackTuning {
+		t.Error("destroy must restore feedback tuning to on")
+	}
+}
+
 /* --------------------------------- helpers -------------------------------- */
 
 func ptr(s string) *string        { return &s }

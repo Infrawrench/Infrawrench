@@ -163,7 +163,13 @@ notification opens the [moment view](./moment.md) — the anomaly in context wit
 that happened around it, with Costs one tap away. An anomaly somebody has
 [explained](#explaining-an-anomaly) carries an **Explained** badge and the sentence, so the
 person who gets the push at 7am is not working out a spike that was settled yesterday.
-Detection thresholds, and writing an explanation, are read-only there — see below.
+Rows also show any [feedback](#expected-or-unexpected-feedback) (Expected or Unexpected, by whom
+and when, with the reason and note) and a **Suppressed** badge for findings an expected pattern
+kept quiet. You can give feedback from the phone: **Expected** and **Unexpected** on each row
+open a sheet with a reason, a note and, for expected findings, a "stop this alerting again"
+recurrence scoped to the row's own provider or service. Detection thresholds, the suppression
+list, the learned sensitivity and the precision report, and writing an explanation, are web and
+desktop only.
 
 <insert [Mobile app Costs tab scrolled to the Anomalies section, showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
 
@@ -184,6 +190,24 @@ An `explained` column carries the first line of the explanation for any finding 
 [explained](#explaining-an-anomaly), or a dash for one nobody has. Explaining itself is a web and
 desktop action — it publishes a note onto charts, which is not a thing to do blind from a
 terminal — but the [MCP tool](./mcp.md) `acknowledge_cost_anomaly` covers scripted and agent use.
+
+A `feedback` column shows the verdict and who gave it ("expected by Astrid"), or `suppressed` for
+a finding a suppression kept quiet, and the first column is a short id you can pass to the
+feedback commands:
+
+```sh
+infrawrench costs --anomalies feedback 3f2a91c0 --expected --reason planned_launch --note "Launch week load test"
+infrawrench costs --anomalies feedback 3f2a91c0 --expected --reason seasonal --recurrence monthly --expires 2027-06-30
+infrawrench costs --anomalies feedback 3f2a91c0 --expected --note "EU migration cutover" --explain
+infrawrench costs --anomalies feedback 3f2a91c0 --unexpected --reason data_issue
+infrawrench costs --anomalies feedback 3f2a91c0 --clear
+infrawrench costs --anomalies suppressions                  # list
+infrawrench costs --anomalies suppressions delete 8c1d22ab
+infrawrench costs --anomalies precision --months 12
+infrawrench costs --anomalies sensitivity
+```
+
+Ids can be a unique prefix. Every one of these takes `--json`.
 
 The `--json` output carries a `kind` field on every row (`spike` or `new_source`), so a script can route the two differently, and the full `acknowledgement` object where there is one.
 
@@ -207,7 +231,19 @@ lives under **Settings → Notifications**, in two places:
 
 <insert [Settings → Notifications with an Alert routing rule whose Trigger condition names Anomalies, and the Mobile app pane's "Anomalies" push toggle] here>
 
-Slack and Teams messages carry a "View in Infrawrench" button that opens the Costs panel.
+Slack and Teams messages carry a "View in Infrawrench" button that opens the Costs panel, and
+**Expected** / **Unexpected** buttons for [feedback](#expected-or-unexpected-feedback):
+
+- In **Slack** the buttons answer in place. Your Slack account must be
+  [linked](./slack-alerts.md) to an Infrawrench member with the `costs:write` permission; the
+  verdict is recorded as you, and a message in the channel says who marked the anomaly and how,
+  so the people who saw the alert see it was answered. A recurring suppression needs choices a
+  button cannot ask for, so the reply links to the Costs panel for that.
+- **Teams** cards are delivered through one-way incoming webhooks, so the buttons open a short
+  signed-in page in Infrawrench with the verdict preselected, where you can add a reason, a note
+  and a recurrence before saving. Nothing is recorded by opening the link alone.
+
+<insert [Slack anomaly alert showing the Expected and Unexpected buttons, and the in-channel reply "Astrid marked the Amazon EC2 on 2026-10-01 anomaly as expected"] here>
 
 ## Paging by SMS
 
@@ -285,6 +321,35 @@ sentence and rewords the note rather than filing a second one, and will not recr
 has been deleted. It does not suppress anything: a later spike on the same key is a new
 anomaly.
 
+Feedback, suppressions and the two reports that come from them:
+
+```
+POST   /api/org/{orgId}/costs/anomalies/{anomalyId}/feedback
+DELETE /api/org/{orgId}/costs/anomalies/{anomalyId}/feedback
+GET    /api/org/{orgId}/costs/anomaly-suppressions
+POST   /api/org/{orgId}/costs/anomaly-suppressions
+GET    /api/org/{orgId}/costs/anomaly-suppressions/{suppressionId}
+PUT    /api/org/{orgId}/costs/anomaly-suppressions/{suppressionId}
+DELETE /api/org/{orgId}/costs/anomaly-suppressions/{suppressionId}
+GET    /api/org/{orgId}/costs/anomaly-sensitivity
+GET    /api/org/{orgId}/costs/anomaly-precision?months=6
+```
+
+```
+POST /api/org/{orgId}/costs/anomalies/{anomalyId}/feedback
+{ "verdict": "expected", "reason": "seasonal", "note": "Black Friday",
+  "suppress": { "recurrence": "seasonal" } }
+```
+
+The reply is `{ anomaly, suppression }`. `suppress` is only accepted with `"verdict":
+"expected"`; its `scope` and `scopeKey` default to the anomaly's own provider or service and
+its `expiresOn` to the recurrence's default lifetime. Anomaly rows carry `feedback` (the
+verdict, reason, note, who and when, and the suppression it created) and `suppressionId` (the
+suppression that kept the finding from alerting), both `null` when absent. Writes need
+`costs:write`. Suppressions are also a [Terraform resource](./terraform-provider.md),
+`infrawrench_anomaly_suppression`, and the MCP tools `give_cost_anomaly_feedback`,
+`list_cost_anomaly_suppressions` and `get_cost_anomaly_precision` cover agents.
+
 The thresholds are readable and writable too:
 
 ```
@@ -293,7 +358,8 @@ PUT /api/org/{orgId}/costs/anomaly-settings
 ```
 
 `GET` needs `costs:read` and answers with the defaults for an organization that has never
-changed them. `PUT` needs `costs:write` and replaces the whole object — `sigmas`,
+changed them. Both carry `feedbackTuning` (the [Learn from feedback](#learning-from-feedback)
+switch); it is optional on `PUT`, and omitting it keeps the stored value. `PUT` needs `costs:write` and replaces the whole object — `sigmas`,
 `minDeltaCents`, `newSourceMinCents`, and `smsAlerts` (`off` | `new_source` | `all`) are all
 required, and out-of-range values are rejected with a 400 rather than clamped. `smsAlerts`
 deliberately has no server-side default: a client that omits it is rejected rather than
@@ -333,9 +399,9 @@ A few consequences worth stating plainly:
   hiding it would lose the history and invite somebody to work the same spike out from scratch.
 - **Explaining does not suppress detection.** If the same provider or service spikes again on a
   later day, that is a new finding and it is detected and alerted on exactly as before. An
-  explained spike is explained, not exempt. There is deliberately no "mute this key" — the
-  silencing that does exist is the [7-day notification cooldown](#deduplication-and-cooldown),
-  which is about not paging twice for one level shift and knows nothing about explanations.
+  explained spike is explained, not exempt. Silencing a pattern is a separate, deliberate act:
+  mark the finding [expected with a recurrence](#suppressions), which creates a suppression
+  with an expiry you can see and edit.
 - **Deleting the annotation does not reopen the anomaly.** The marker disappears from the
   charts, the row keeps its explanation and stays out of the unexplained count, and the list
   says the note was removed. Somebody did work out what that spike was, and deleting their chart
@@ -357,6 +423,94 @@ looking at from a phone, and the answer is what mobile owes you at 7am.
 ![The Explain composer open over the Anomalies list, showing the read-only day/service/spend facts, the note box prefilled with "Amazon EC2 spend +173% — ", and a root-cause hint offered as a one-click suggestion](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/explain-composer.png)
 
 ![A cost chart with an annotation marker on the anomalous day, its popover open showing the explanation text and the "Explains a detected anomaly" line](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/annotation-chart.png)
+
+## Expected or unexpected: feedback
+
+An explanation says what the spend was. Feedback says whether detection was right to raise it,
+and detection learns from it. Each row on the Anomalies table has **Expected** and **Unexpected**
+actions:
+
+- **Expected**: planned or known. A launch, a migration, a seasonal peak, a price change.
+- **Unexpected**: a real problem somebody needed to hear about.
+
+Both take an optional **reason** (planned launch, migration, seasonal, pricing change, data
+issue, other) and an optional **note**. With a note you can also tick "put this note on every
+cost chart", which [explains](#explaining-an-anomaly) the anomaly in the same step. The row then
+shows the verdict, who gave it and when. Giving feedback again replaces it, and **Clear
+feedback** withdraws it.
+
+What each verdict does:
+
+- **Unexpected** keeps detection exactly as sensitive as it is, and offers the
+  [Jira or Linear](#filing-an-anomaly-as-an-issue) file action right in the dialog, since a real
+  problem usually needs somebody to go and look. If an earlier expected verdict on the same
+  anomaly created a suppression, it is removed.
+- **Expected** can stop the same pattern alerting again: choose a recurrence and it creates a
+  [suppression](#suppressions). It also counts towards [learning from
+  feedback](#learning-from-feedback).
+
+<insert [The feedback dialog with Expected selected, reason "Seasonal", a note, recurrence "Recurring weekly", the scope picker on the anomaly's own service, the expiry date, and the "Next covered" preview line] here>
+
+### Suppressions
+
+A suppression says "spend in this scope is expected on these days, until this date". Mark an
+anomaly expected and pick how the pattern repeats:
+
+| Recurrence            | Covers                                                | Default lifetime |
+| --------------------- | ----------------------------------------------------- | ---------------- |
+| **One-off**           | Every day from the anomaly's day until it expires     | 7 days           |
+| **Recurring weekly**  | The anomaly's weekday, every week                     | 90 days          |
+| **Recurring monthly** | The anomaly's day of the month, give or take a day    | 180 days         |
+| **Seasonal (yearly)** | The anomaly's date each year, give or take three days | 2 years          |
+
+Lifetimes count from the anomaly's day or from today, whichever is later, and can be changed in
+the dialog; a suppression can last at most three years. Monthly patterns anchored on the 29th to
+31st fall on the last day of shorter months.
+
+The **scope** defaults to the anomaly's own provider or service, and can instead be an
+**account**, a **tag** value or a **cost centre**, all picked from what your organization has.
+On a covered day, detection sets the scope's spend aside before judging the day:
+
+- If the finding only existed because of that spend, it is still recorded, marked
+  **Suppressed**, and not alerted on anywhere (push, Slack, Teams or SMS).
+- If the rest of the day still clears the bar on its own, it alerts as normal. Declaring a
+  migration in one account expected does not hide a spike somewhere else in the same service.
+
+**Suppressions** on the Anomalies section lists every suppression: what it covers, how it
+repeats, its window, the reason and note, who added it, the next days it covers, and how many
+findings it has suppressed. Edit or delete any of them, or **Add suppression** by hand for a
+launch you know is coming. Expired suppressions stay listed, greyed out, as a record. Deleting
+one never deletes the findings it suppressed; any whose day is still being re-judged (the last
+three days) can alert on the next pass. An organization can hold at most 100 active
+suppressions.
+
+<insert [The Suppressions panel listing an active weekly service suppression with its next covered days and "suppressed 3", an account-scoped one-off suppression, and an expired one greyed out] here>
+
+### Learning from feedback
+
+When the same provider or service keeps being marked expected, detection becomes slightly less
+sensitive to it. From the second expected verdict on a key within 90 days, its spike threshold
+rises by half a standard deviation per verdict, at most two more than the organization's
+setting and never past 10. Any unexpected verdict on the key in the same window holds it at the
+organization's setting. New spend sources are unaffected: they have no threshold to raise.
+
+**Tune detection** shows each key feedback has moved, its threshold, and why ("raised from 3σ
+to 4σ: 3 marked expected in the last 90 days"), and has a **Learn from feedback** switch (on by
+default) that turns the adjustment off without losing the verdicts.
+
+### Precision
+
+**Precision** on the Anomalies section shows, month by month, how many anomalies were found and
+suppressed, how many were marked expected and unexpected, and the share of reviewed anomalies
+that were unexpected: how often an alert was a real problem. It also counts the reasons given.
+A month with low precision and many expected verdicts is the cue to add a suppression or retune
+detection.
+
+<insert [The Precision panel showing six months of bars with percentages, the per-month counts, the overall line and the reasons breakdown] here>
+
+Feedback needs the `costs:write` permission, the same as explaining; reading it needs
+`costs:read`. Every verdict and every suppression change is written to the
+[audit log](../team-and-billing/audit-log.md).
 
 ## Filing an anomaly as an issue
 

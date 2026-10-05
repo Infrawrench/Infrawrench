@@ -11,6 +11,12 @@ import type {
   CostAnomaly,
   CostAnomalySettings,
   CostAnomalySettingsView,
+  CostAnomalyFeedbackInput,
+  CostAnomalyFeedbackResult,
+  CostAnomalyPrecisionReport,
+  CostAnomalySensitivity,
+  CostAnomalySuppression,
+  CostAnomalySuppressionInput,
   CostEfficiencySettings,
   EfficiencyAlertEvent,
   EfficiencyAlertKind,
@@ -202,6 +208,34 @@ export interface CostsClient extends CostApi {
    * failing on save: the same rule the budget half of this client follows.
    */
   updateAnomalySettings?(settings: CostAnomalySettings): Promise<CostAnomalySettingsView>;
+  /**
+   * Anomaly feedback: mark a finding expected or unexpected, optionally
+   * creating a suppression, and withdraw it again. Optional on the usual
+   * rule: a host that hasn't wired them renders the list without the
+   * Expected/Unexpected actions. The server enforces `costs:write`.
+   */
+  submitAnomalyFeedback?(
+    anomalyId: string,
+    input: CostAnomalyFeedbackInput,
+  ): Promise<CostAnomalyFeedbackResult>;
+  clearAnomalyFeedback?(anomalyId: string): Promise<CostAnomaly>;
+  /**
+   * The suppression list in the tuning panel. The list alone renders it
+   * read-only; the mutating three add the editor.
+   */
+  listAnomalySuppressions?(): Promise<CostAnomalySuppression[]>;
+  createAnomalySuppression?(input: CostAnomalySuppressionInput): Promise<CostAnomalySuppression>;
+  updateAnomalySuppression?(
+    suppressionId: string,
+    input: CostAnomalySuppressionInput,
+  ): Promise<CostAnomalySuppression>;
+  deleteAnomalySuppression?(suppressionId: string): Promise<void>;
+  /** Which keys feedback has moved, and why: shown in the tuning panel. */
+  getAnomalySensitivity?(): Promise<CostAnomalySensitivity>;
+  /** Precision over time (share of reviewed findings marked unexpected). */
+  getAnomalyPrecision?(months?: number): Promise<CostAnomalyPrecisionReport>;
+  /** Cost centres, for the suppression scope picker. */
+  listCostCentres?(): Promise<Array<{ id: string; name: string }>>;
   /**
    * Change-based cost alerts: the third alert family (configured relative
    * change on a chosen scope and cadence, vs budgets' absolute totals and

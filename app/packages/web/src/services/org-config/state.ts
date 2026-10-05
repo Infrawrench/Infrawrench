@@ -378,6 +378,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
         minDeltaCents: costAnomaly.minDeltaCents,
         newSourceMinCents: costAnomaly.newSourceMinCents,
         smsAlerts: costAnomaly.smsAlerts,
+        feedbackTuning: costAnomaly.feedbackTuning !== false,
       },
       drift: {
         notifyCreated: drift.notifyCreated,

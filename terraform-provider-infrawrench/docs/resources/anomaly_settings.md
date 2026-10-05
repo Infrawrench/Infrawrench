@@ -27,6 +27,12 @@ This is an organization **singleton** — one row that always exists. `terraform
 
 `off` is the default: an organization with Twilio configured for budgets does not start receiving anomaly texts until it asks to. `new_source` texts only about spend appearing from nothing, which is what a leaked key looks like on a bill. Delivery is batched — one SMS per detection pass, at most one every six hours — and never places a voice call. Push, Slack and Teams delivery is unaffected by this setting.
 
+### Optional
+
+- `feedback_tuning` (Boolean) Whether repeated `expected` feedback on a provider or service raises its spike threshold. Each `expected` verdict after the first within 90 days adds half a standard deviation to that key's `sigmas`, at most +2 in total and never past 10, and any `unexpected` verdict on the same key in that window cancels the nudge. The default is `true`, and omitting the attribute applies that default.
+
+Turning it off stops feedback from moving any key's threshold; verdicts are still recorded, and `infrawrench_anomaly_suppression` objects still apply, because a suppression is an explicit decision with an expiry rather than a learned adjustment.
+
 ### Read-Only
 
 - `id` (String) The organization id. Anomaly detection is an organization singleton, so this is the only value it ever takes and it is what `terraform import` addresses.

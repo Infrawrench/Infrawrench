@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
@@ -29,6 +30,7 @@ type anomalySettingsResourceModel struct {
 	NewSourceMinCents types.Int64   `tfsdk:"new_source_min_cents"`
 	SMSAlerts         types.String  `tfsdk:"sms_alerts"`
 	SMSConfigured     types.Bool    `tfsdk:"sms_configured"`
+	FeedbackTuning    types.Bool    `tfsdk:"feedback_tuning"`
 }
 
 // anomalyDefaults are the server's documented defaults, and what destroy
@@ -39,7 +41,12 @@ var anomalyDefaults = iw.CostAnomalySettings{
 	MinDeltaCents:     1000,
 	NewSourceMinCents: 2500,
 	SMSAlerts:         "off",
+	FeedbackTuning:    &feedbackTuningDefault,
 }
+
+// feedbackTuningDefault is a variable rather than a literal so anomalyDefaults
+// can point at it.
+var feedbackTuningDefault = true
 
 var smsAlertModes = []string{"off", "new_source", "all"}
 
@@ -88,6 +95,20 @@ func (r *anomalySettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 					"SMS per detection pass, at most one every six hours — and never places a voice call. " +
 					"Push, Slack and Teams delivery is unaffected by this setting.",
 				Validators: []validatorString{oneOfValidator(smsAlertModes...)},
+			},
+			"feedback_tuning": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(true),
+				MarkdownDescription: "Whether repeated `expected` feedback on a provider or service raises its " +
+					"spike threshold. Each `expected` verdict after the first within 90 days adds half a " +
+					"standard deviation to that key's `sigmas`, at most +2 in total and never past 10, and any " +
+					"`unexpected` verdict on the same key in that window cancels the nudge. The default is " +
+					"`true`, and omitting the attribute applies that default.\n\n" +
+					"Turning it off stops feedback from moving any key's threshold; verdicts are still " +
+					"recorded, and `infrawrench_anomaly_suppression` objects still " +
+					"apply, because a suppression is an explicit decision with an expiry rather than a " +
+					"learned adjustment.",
 			},
 			"sms_configured": schema.BoolAttribute{
 				Computed: true,
@@ -159,6 +180,7 @@ func (r *anomalySettingsResource) write(ctx context.Context, plan anomalySetting
 		MinDeltaCents:     plan.MinDeltaCents.ValueInt64(),
 		NewSourceMinCents: plan.NewSourceMinCents.ValueInt64(),
 		SMSAlerts:         plan.SMSAlerts.ValueString(),
+		FeedbackTuning:    boolPtr(plan.FeedbackTuning),
 	})
 	if err != nil {
 		diags.AddError("Unable to write anomaly settings", err.Error())
@@ -176,5 +198,8 @@ func anomalySettingsStateFrom(orgID string, remote *iw.CostAnomalySettings) anom
 		NewSourceMinCents: types.Int64Value(remote.NewSourceMinCents),
 		SMSAlerts:         types.StringValue(remote.SMSAlerts),
 		SMSConfigured:     boolValueOrDefault(remote.SMSConfigured, false),
+		// Always present on a read; an older server that predates the field
+		// behaves as if it were on, which is also the default.
+		FeedbackTuning: boolValueOrDefault(remote.FeedbackTuning, true),
 	}
 }

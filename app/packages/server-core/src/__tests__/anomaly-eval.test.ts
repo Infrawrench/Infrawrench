@@ -37,6 +37,21 @@ vi.mock("../twilio-pager", () => ({ sendOneShotPage }));
 const buildAnomalyHints = vi.fn(async (): Promise<string[]> => []);
 vi.mock("../cost/anomaly-hints", () => ({ buildAnomalyHints }));
 
+/**
+ * Feedback (suppressions and σ nudges) is read once per pass through its own
+ * module, mocked here at the boundary like the hints: its reads have their own
+ * suite (`anomaly-feedback.test.ts`). Default: an empty context, which is
+ * exactly what a failed read degrades to. The pure helpers run for real.
+ */
+const loadAnomalyFeedbackContext = vi.fn(async () => ({
+  sigmas: new Map<string, number>(),
+  setAside: new Map<string, { amount: number; suppressionId: string }>(),
+}));
+vi.mock("../cost/anomaly-feedback", async (importActual) => ({
+  ...(await importActual<typeof import("../cost/anomaly-feedback")>()),
+  loadAnomalyFeedbackContext,
+}));
+
 import { fakePostgres } from "./helpers/fake-postgres";
 
 const pg = fakePostgres();
@@ -242,7 +257,16 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
       dimensionKey: "gcp",
       actualAmountCents: 500_000,
     });
-    expect(routeAlert).toHaveBeenCalledWith(expect.objectContaining({ trigger: "anomalyAlerts" }));
+    expect(routeAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "anomalyAlerts" }),
+      // Expected / Unexpected ride every anomaly alert into Slack.
+      expect.objectContaining({
+        slackButtons: [
+          expect.objectContaining({ actionId: "infrawrench_anomaly_expected" }),
+          expect.objectContaining({ actionId: "infrawrench_anomaly_unexpected" }),
+        ],
+      }),
+    );
   });
 
   it("fires at exactly minBaselineDays of coverage and not a day sooner", async () => {
@@ -699,5 +723,67 @@ describe("detectCostAnomaliesForOrg — an explained anomaly is not a suppressed
     for (const row of inserted()) {
       expect(row).toMatchObject({ kind: "spike", dimensionKey: "aws" });
     }
+  });
+});
+
+describe("detectCostAnomaliesForOrg — feedback", () => {
+  it("stores a finding a suppression explains as suppressed and never alerts on it", async () => {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    loadAnomalyFeedbackContext.mockResolvedValueOnce({
+      sigmas: new Map(),
+      setAside: new Map([
+        [`provider\0gcp\0*\0${YESTERDAY}`, { amount: Infinity, suppressionId: "sup-1" }],
+      ]),
+    });
+    queuePass(1);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-suppressed", NOW, OPTS, true);
+
+    expect(inserted()).toHaveLength(1);
+    const linkWrite = pg.queries.find(
+      (q) => q.sql.startsWith('update "cost_anomalies"') && q.sql.includes('"suppressed_by_id"'),
+    );
+    expect(linkWrite?.params).toContain("sup-1");
+    expect(routeAlert).not.toHaveBeenCalled();
+    expect(stampedCount()).toBe(0);
+  });
+
+  it("still alerts when spend beyond the set-aside slice clears the bar on its own", async () => {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    loadAnomalyFeedbackContext.mockResolvedValueOnce({
+      sigmas: new Map(),
+      setAside: new Map([
+        [`provider\0gcp\0USD\0${YESTERDAY}`, { amount: 100, suppressionId: "s" }],
+      ]),
+    });
+    queuePass(1);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-slice", NOW, OPTS, true);
+
+    expect(routeAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it("judges a key's spikes against the σ feedback raised", async () => {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    // A flat $100/day with a little noise, then $160: well past 3σ, under 50σ.
+    const from = addDays(YESTERDAY, -40);
+    const points = flatPoints(from, addDays(YESTERDAY, -1), 100).map((p, i) => ({
+      ...p,
+      amount: 100 + (i % 2 === 0 ? 2 : -2),
+    }));
+    points.push({ bucket: YESTERDAY, amount: 160 });
+    providerCosts([{ key: "aws", currency: "USD", points }]);
+    loadAnomalyFeedbackContext.mockResolvedValueOnce({
+      sigmas: new Map([["provider\0aws", 50]]),
+      setAside: new Map(),
+    });
+    queuePass(0);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-nudged", NOW, OPTS, true);
+
+    expect(inserted()).toEqual([]);
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import { registerInvitationPaths } from "./paths/invitations";
 import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
+import { registerCostAnomalyFeedbackPaths } from "./paths/cost-anomaly-feedback";
 import { registerCostReportPaths } from "./paths/cost-reports";
 import { registerCostCanvasPaths } from "./paths/cost-canvases";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
@@ -162,6 +163,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccountPaths(ctx);
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
+  registerCostAnomalyFeedbackPaths(ctx);
   registerCostReportPaths(ctx);
   registerCostCanvasPaths(ctx);
   registerCostReportNotificationPaths(ctx);

@@ -249,6 +249,8 @@ export interface MsTeamsAlert {
   url?: string;
   /** Small trailing context line, e.g. the workflow or account name. */
   context?: string;
+  /** Extra link buttons, rendered before "View in Infrawrench". */
+  actions?: Array<{ title: string; url: string }>;
 }
 
 function truncate(s: string, max: number): string {
@@ -297,9 +299,15 @@ function alertCard(alert: MsTeamsAlert): Record<string, unknown> {
     version: "1.4",
     body,
   };
+  const actions: unknown[] = (alert.actions ?? []).map((a) => ({
+    type: "Action.OpenUrl",
+    title: truncate(a.title, 40),
+    url: a.url,
+  }));
   if (alert.url) {
-    card["actions"] = [{ type: "Action.OpenUrl", title: "View in Infrawrench", url: alert.url }];
+    actions.push({ type: "Action.OpenUrl", title: "View in Infrawrench", url: alert.url });
   }
+  if (actions.length > 0) card["actions"] = actions;
 
   return {
     type: "message",

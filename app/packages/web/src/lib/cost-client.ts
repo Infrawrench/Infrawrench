@@ -66,6 +66,12 @@ import type {
   ReportNotification,
   ReportNotificationInput,
   ReportNotificationSendResult,
+  CostAnomalyFeedbackInput,
+  CostAnomalyFeedbackResult,
+  CostAnomalyPrecisionReport,
+  CostAnomalySensitivity,
+  CostAnomalySuppression,
+  CostAnomalySuppressionInput,
 } from "@infrawrench/client-core";
 import { pdfFileName, withPdfTimezone } from "@infrawrench/client-core";
 import { downloadBlob } from "@infrawrench/ui";
@@ -190,6 +196,43 @@ export function createWebCostsClient(orgId: string): CostsClient {
       apiGet<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`),
     updateAnomalySettings: (settings: CostAnomalySettings) =>
       apiPut<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`, settings),
+    // Feedback and suppressions: offered unconditionally like the
+    // acknowledgement; the server enforces `costs:write`.
+    submitAnomalyFeedback: (anomalyId: string, input: CostAnomalyFeedbackInput) =>
+      apiPost<CostAnomalyFeedbackResult>(
+        `/api/org/${orgId}/costs/anomalies/${encodeURIComponent(anomalyId)}/feedback`,
+        input,
+      ),
+    clearAnomalyFeedback: (anomalyId: string) =>
+      apiDelete<CostAnomaly>(
+        `/api/org/${orgId}/costs/anomalies/${encodeURIComponent(anomalyId)}/feedback`,
+      ),
+    listAnomalySuppressions: async () => {
+      const res = await apiGet<{ suppressions: CostAnomalySuppression[] }>(
+        `/api/org/${orgId}/costs/anomaly-suppressions`,
+      );
+      return res.suppressions;
+    },
+    createAnomalySuppression: (input: CostAnomalySuppressionInput) =>
+      apiPost<CostAnomalySuppression>(`/api/org/${orgId}/costs/anomaly-suppressions`, input),
+    updateAnomalySuppression: (suppressionId: string, input: CostAnomalySuppressionInput) =>
+      apiPut<CostAnomalySuppression>(
+        `/api/org/${orgId}/costs/anomaly-suppressions/${encodeURIComponent(suppressionId)}`,
+        input,
+      ),
+    deleteAnomalySuppression: async (suppressionId: string) => {
+      await apiDelete(
+        `/api/org/${orgId}/costs/anomaly-suppressions/${encodeURIComponent(suppressionId)}`,
+      );
+    },
+    getAnomalySensitivity: () =>
+      apiGet<CostAnomalySensitivity>(`/api/org/${orgId}/costs/anomaly-sensitivity`),
+    getAnomalyPrecision: (months = 6) =>
+      apiGet<CostAnomalyPrecisionReport>(
+        `/api/org/${orgId}/costs/anomaly-precision?months=${months}`,
+      ),
+    listCostCentres: () =>
+      apiGet<Array<{ id: string; name: string }>>(`/api/org/${orgId}/cost-centres`),
     listCostAlerts: async () => {
       const res = await apiGet<{ alerts: CostAlert[] }>(`/api/org/${orgId}/cost-alerts`);
       return res.alerts;

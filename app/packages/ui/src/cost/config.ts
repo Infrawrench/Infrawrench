@@ -119,6 +119,15 @@ import {
   type VirtualTagRule,
   type VirtualTagSource,
 } from "@infrawrench/client-core";
+import {
+  COST_ANOMALY_FEEDBACK_LIMITS,
+  COST_ANOMALY_FEEDBACK_REASONS,
+  COST_ANOMALY_RECURRENCES,
+  COST_ANOMALY_SUPPRESSION_SCOPES,
+  COST_ANOMALY_VERDICTS,
+  type CostAnomalyFeedbackInput,
+  type CostAnomalySuppressionInput,
+} from "@infrawrench/client-core";
 
 export {
   COST_DIMENSIONS,
@@ -817,6 +826,47 @@ export const costAnomalySettingsSchema = z.object({
    * switch a deliberate opt-in back off on every save).
    */
   smsAlerts: z.enum(COST_ANOMALY_SMS_MODES),
+  /**
+   * Optional, unlike everything above: it arrived after clients that PUT the
+   * whole object were already shipping, and an omitted value keeps the
+   * stored one rather than resetting it.
+   */
+  feedbackTuning: z.boolean().optional(),
+});
+
+/**
+ * `POST /costs/suppressions` and `PUT /costs/anomaly-suppressions/:id`. The
+ * cross-field rules (tag key for tag scope, expiry after start, the
+ * three-year cap) are `costAnomalySuppressionInputError`, which the route runs
+ * after this and the editor runs before sending.
+ */
+export const costAnomalySuppressionInputSchema = z.object({
+  scope: z.enum(COST_ANOMALY_SUPPRESSION_SCOPES),
+  scopeKey: z.string().min(1).max(COST_ANOMALY_FEEDBACK_LIMITS.scopeKeyMaxLength),
+  tagKey: z.string().min(1).max(COST_ANOMALY_FEEDBACK_LIMITS.scopeKeyMaxLength).optional(),
+  recurrence: z.enum(COST_ANOMALY_RECURRENCES),
+  anchorDay: isoDate,
+  startsOn: isoDate.optional(),
+  expiresOn: isoDate,
+  reason: z.enum(COST_ANOMALY_FEEDBACK_REASONS).nullable().optional(),
+  note: z.string().max(COST_ANOMALY_FEEDBACK_LIMITS.noteMaxLength).nullable().optional(),
+});
+
+/** `POST /costs/anomalies/:id/feedback`. */
+export const costAnomalyFeedbackSchema = z.object({
+  verdict: z.enum(COST_ANOMALY_VERDICTS),
+  reason: z.enum(COST_ANOMALY_FEEDBACK_REASONS).nullable().optional(),
+  note: z.string().max(COST_ANOMALY_FEEDBACK_LIMITS.noteMaxLength).nullable().optional(),
+  explain: z.boolean().optional(),
+  suppress: z
+    .object({
+      recurrence: z.enum(COST_ANOMALY_RECURRENCES),
+      scope: z.enum(COST_ANOMALY_SUPPRESSION_SCOPES).optional(),
+      scopeKey: z.string().min(1).max(COST_ANOMALY_FEEDBACK_LIMITS.scopeKeyMaxLength).optional(),
+      tagKey: z.string().min(1).max(COST_ANOMALY_FEEDBACK_LIMITS.scopeKeyMaxLength).optional(),
+      expiresOn: isoDate.optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -1397,6 +1447,8 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof budgetPeriodSchema>, BudgetPeriod>,
   Exact<z.infer<typeof costAlertInputSchema>, CostAlertInput>,
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
+  Exact<z.infer<typeof costAnomalySuppressionInputSchema>, CostAnomalySuppressionInput>,
+  Exact<z.infer<typeof costAnomalyFeedbackSchema>, CostAnomalyFeedbackInput>,
   Exact<z.infer<typeof costEfficiencySettingsSchema>, CostEfficiencySettings>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,

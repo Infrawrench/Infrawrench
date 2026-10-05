@@ -85,6 +85,7 @@
     "./cost/anomaly-acknowledge": "./src/cost/anomaly-acknowledge.ts",
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
     "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",
+    "./cost/anomaly-feedback": "./src/cost/anomaly-feedback.ts",
     "./cost/anomaly-settings": "./src/cost/anomaly-settings.ts",
     "./cost/efficiency-settings": "./src/cost/efficiency-settings.ts",
     "./cost/unit-cost-regression": "./src/cost/unit-cost-regression.ts",

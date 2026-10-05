@@ -1,4 +1,5 @@
 import type { CloudFetch } from "./fetch";
+import type { CostAnomalyFeedback } from "./cost-anomaly-feedback";
 
 /* ------------------------------------------------------------------ *
  * Cost anomalies: GET /costs/anomalies.
@@ -100,6 +101,18 @@ export interface CostAnomaly {
    * rather than crashing on a missing field.
    */
   acknowledgement?: CostAnomalyAcknowledgement | null;
+  /**
+   * Whether somebody said this finding was expected (planned or known) or
+   * unexpected (a real problem), or null while nobody has. Optional on the
+   * wire like `acknowledgement`.
+   */
+  feedback?: CostAnomalyFeedback | null;
+  /**
+   * The suppression that explained this finding when it was detected, or
+   * null. A suppressed finding is stored (the record stays complete) but is
+   * never alerted on; `notifiedAt` stays null.
+   */
+  suppressionId?: string | null;
 }
 
 export const COST_ANOMALY_DIMENSION_LABELS: Record<CostAnomalyDimension, string> = {
@@ -270,6 +283,13 @@ export interface CostAnomalySettings {
    * thirty text messages.
    */
   smsAlerts: CostAnomalySmsMode;
+  /**
+   * Whether repeated `expected` feedback on a provider or service raises its
+   * spike threshold (see `costAnomalySigmaNudge`). Defaults to true. Optional
+   * on a PUT: omitting it keeps the stored value, so a client that predates
+   * the setting cannot switch it off by saving the thresholds.
+   */
+  feedbackTuning?: boolean | undefined;
 }
 
 /**
@@ -316,7 +336,7 @@ export const COST_ANOMALY_LIMITS = {
  * What an org that has never touched the settings gets: the values anomaly
  * detection shipped with, so leaving the form alone changes nothing.
  */
-export const DEFAULT_COST_ANOMALY_SETTINGS: CostAnomalySettings = {
+export const DEFAULT_COST_ANOMALY_SETTINGS: Required<CostAnomalySettings> = {
   sigmas: 3,
   /** $10. */
   minDeltaCents: 1000,
@@ -328,4 +348,5 @@ export const DEFAULT_COST_ANOMALY_SETTINGS: CostAnomalySettings = {
   newSourceMinCents: 2500,
   /** Opt-in. Turning an existing Twilio setup into a new pager is a surprise. */
   smsAlerts: "off",
+  feedbackTuning: true,
 };

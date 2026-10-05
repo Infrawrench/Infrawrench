@@ -2,7 +2,7 @@
 // command modules (those reach the network through `./context`, which drags in
 // Electron and every plugin) so the tree walk and the number formatting can be
 // unit-tested on their own. Imports nothing but `./output`.
-import { c } from "./output";
+import { c, safe } from "./output";
 
 /* ------------------------------------------------------------------ *
  * ASCII trees (`infrawrench graph`)
@@ -86,6 +86,124 @@ export function anomalyDeltaPercent(
   if (baselineCents <= 0) return null;
   const pct = ((actualCents - baselineCents) / baselineCents) * 100;
   return `+${Math.round(pct)}%`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Cost anomaly feedback (`costs --anomalies feedback|suppressions|precision`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Display labels for the feedback enums. Restated from client-core's
+ * `COST_ANOMALY_*_LABELS` because the CLI's client-core imports are type-only;
+ * keyed by plain strings so an unknown value from a newer server prints as
+ * itself rather than as "undefined".
+ */
+export const ANOMALY_REASON_LABELS: Record<string, string> = {
+  planned_launch: "Planned launch",
+  migration: "Migration",
+  seasonal: "Seasonal",
+  pricing_change: "Pricing change",
+  data_issue: "Data issue",
+  other: "Other",
+};
+
+export const ANOMALY_RECURRENCE_LABELS: Record<string, string> = {
+  one_off: "one-off",
+  weekly: "weekly",
+  monthly: "monthly",
+  seasonal: "yearly",
+};
+
+export const ANOMALY_SCOPE_LABELS: Record<string, string> = {
+  provider: "provider",
+  service: "service",
+  account: "account",
+  tag: "tag",
+  cost_centre: "cost centre",
+};
+
+/** The `feedback` column of `costs --anomalies`. */
+export function anomalyFeedbackLabel(anomaly: {
+  feedback?: { verdict: string; byName: string | null } | null | undefined;
+  suppressionId?: string | null | undefined;
+}): string {
+  const feedback = anomaly.feedback;
+  if (feedback) {
+    const who = feedback.byName ? ` by ${safe(feedback.byName)}` : "";
+    const text = `${feedback.verdict}${who}`;
+    const clipped = text.length > 32 ? `${text.slice(0, 31)}…` : text;
+    return feedback.verdict === "unexpected" ? c.red(clipped) : c.green(clipped);
+  }
+  if (anomaly.suppressionId) return c.dim("suppressed");
+  return c.dim("-");
+}
+
+/** The first eight characters of an id: enough to address one in a listing. */
+export function shortId(id: string): string {
+  return id.slice(0, 8);
+}
+
+/**
+ * Resolve an id the user typed against a listing: an exact id, then a unique
+ * prefix (the listing prints {@link shortId}). Ambiguity returns the
+ * candidates rather than picking one; a verdict on the wrong spike is a quiet
+ * wrong answer.
+ */
+export function matchIdPrefix<T extends { id: string }>(
+  rows: readonly T[],
+  query: string,
+): { match: T } | { match: null; candidates: T[] } {
+  const q = query.trim();
+  const exact = rows.find((r) => r.id === q);
+  if (exact) return { match: exact };
+  const prefixed = q ? rows.filter((r) => r.id.startsWith(q)) : [];
+  if (prefixed.length === 1) return { match: prefixed[0]! };
+  return { match: null, candidates: prefixed };
+}
+
+/** What a suppression covers: "aws", "env=prod", a cost centre's name. */
+export function suppressionCoverLabel(s: {
+  scope: string;
+  scopeKey: string;
+  tagKey: string | null;
+  scopeLabel: string | null;
+}): string {
+  if (s.scope === "tag" && s.tagKey) return safe(`${s.tagKey}=${s.scopeKey}`);
+  return safe(s.scopeLabel ?? s.scopeKey);
+}
+
+/** One month of the precision report, as the chart reads it. */
+export interface PrecisionChartPeriod {
+  month: string;
+  detected: number;
+  suppressed: number;
+  expected: number;
+  unexpected: number;
+  precision: number | null;
+}
+
+/**
+ * The precision report as a bar per month: the bar is the share of reviewed
+ * findings marked unexpected (how often an alert was a real problem), always
+ * drawn against 100% so months compare. A month with no verdicts prints a
+ * dim "no verdicts" instead of an empty bar, which would read as 0%.
+ */
+export function precisionChart(periods: readonly PrecisionChartPeriod[], width = 24): string[] {
+  if (periods.length === 0) return [c.dim("(no months)")];
+  return periods.map((p) => {
+    const reviewed = p.expected + p.unexpected;
+    const counts = c.dim(
+      `${reviewed} of ${p.detected} reviewed · ${p.unexpected} unexpected · ${p.suppressed} suppressed`,
+    );
+    if (p.precision === null) {
+      return `${p.month} ${c.dim("·".repeat(width))} ${c.dim("no verdicts")}  ${counts}`;
+    }
+    const share = Math.min(1, Math.max(0, p.precision));
+    const filled = Math.round(share * width);
+    const bar = c.cyan("█".repeat(filled)) + c.dim("░".repeat(width - filled));
+    const pct = `${Math.round(share * 100)}%`.padStart(4);
+    return `${p.month} ${bar} ${pct}  ${counts}`;
+  });
 }
 
 /* ------------------------------------------------------------------ *

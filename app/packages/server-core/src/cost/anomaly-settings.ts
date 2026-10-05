@@ -72,6 +72,7 @@ export function normalizeAnomalySettings(input: CostAnomalySettings): CostAnomal
       ),
     ),
     smsAlerts: normalizeSmsMode(input.smsAlerts),
+    feedbackTuning: input.feedbackTuning !== false,
   };
 }
 
@@ -110,6 +111,7 @@ export async function getOrgAnomalySettings(organizationId: string): Promise<Cos
     minDeltaCents: row.minDeltaCents,
     newSourceMinCents: row.newSourceMinCents,
     smsAlerts: row.smsAlerts,
+    feedbackTuning: row.feedbackTuning,
   });
 }
 
@@ -120,12 +122,19 @@ export async function setOrgAnomalySettings(
   now = new Date(),
 ): Promise<CostAnomalySettings> {
   const safe = normalizeAnomalySettings(settings);
+  // An omitted `feedbackTuning` keeps whatever is stored: a client that
+  // predates the setting must not switch it off by saving the thresholds.
+  const { feedbackTuning, ...thresholds } = safe;
+  const tuning = feedbackTuning !== false;
   const [row] = await db
     .insert(orgCostAnomalySettings)
-    .values({ organizationId, ...safe })
+    .values({ organizationId, ...thresholds, feedbackTuning: tuning })
     .onConflictDoUpdate({
       target: orgCostAnomalySettings.organizationId,
-      set: { ...safe, updatedAt: now },
+      set:
+        settings.feedbackTuning === undefined
+          ? { ...thresholds, updatedAt: now }
+          : { ...thresholds, feedbackTuning: tuning, updatedAt: now },
     })
     .returning();
   if (!row) throw new Error("Failed to save cost anomaly settings");
@@ -134,6 +143,7 @@ export async function setOrgAnomalySettings(
     minDeltaCents: row.minDeltaCents,
     newSourceMinCents: row.newSourceMinCents,
     smsAlerts: normalizeSmsMode(row.smsAlerts),
+    feedbackTuning: row.feedbackTuning,
   };
 }
 

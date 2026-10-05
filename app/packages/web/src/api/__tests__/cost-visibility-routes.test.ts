@@ -26,6 +26,7 @@ const COST_DATA = [
   /services\/unit-cost-query/,
   /services\/cost-reports/,
   /services\/cost-anomalies/,
+  /services\/cost-anomaly-feedback/,
   /services\/cost-alerts/,
   /services\/efficiency-alerts/,
   /services\/tag-policy/,
@@ -54,6 +55,11 @@ const COST_DATA = [
 const SELF_SCOPED: Record<string, { reason: string; mustContain: string }> = {
   "slack-inbound.ts": {
     reason: "Resolves the linked member per org and wraps the query.",
+    mustContain: "withPrincipalCostVisibility(",
+  },
+  "anomaly-feedback-link.ts": {
+    reason:
+      "The session-authed page behind Teams anomaly cards: resolves the signed-in member and wraps every read and write.",
     mustContain: "withPrincipalCostVisibility(",
   },
 };

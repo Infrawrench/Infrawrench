@@ -70,6 +70,12 @@ import type {
   ReportNotification,
   ReportNotificationInput,
   ReportNotificationSendResult,
+  CostAnomalyFeedbackInput,
+  CostAnomalyFeedbackResult,
+  CostAnomalyPrecisionReport,
+  CostAnomalySensitivity,
+  CostAnomalySuppression,
+  CostAnomalySuppressionInput,
 } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 
@@ -159,6 +165,72 @@ export async function saveCloudAnomalySettings(
   settings: CostAnomalySettings,
 ): Promise<CostAnomalySettingsView> {
   return invoke("cloud_costs_update_anomaly_settings", { orgId, settings });
+}
+
+export async function submitCloudAnomalyFeedback(
+  orgId: string,
+  anomalyId: string,
+  input: CostAnomalyFeedbackInput,
+): Promise<CostAnomalyFeedbackResult> {
+  return invoke("cloud_costs_anomaly_feedback", { orgId, anomalyId, input });
+}
+
+export async function clearCloudAnomalyFeedback(
+  orgId: string,
+  anomalyId: string,
+): Promise<CostAnomaly> {
+  return invoke("cloud_costs_clear_anomaly_feedback", { orgId, anomalyId });
+}
+
+export async function listCloudAnomalySuppressions(
+  orgId: string,
+): Promise<CostAnomalySuppression[]> {
+  const res = await invoke<{ suppressions: CostAnomalySuppression[] }>(
+    "cloud_costs_anomaly_suppressions",
+    { orgId },
+  );
+  return res?.suppressions ?? [];
+}
+
+export async function createCloudAnomalySuppression(
+  orgId: string,
+  input: CostAnomalySuppressionInput,
+): Promise<CostAnomalySuppression> {
+  return invoke("cloud_costs_create_anomaly_suppression", { orgId, input });
+}
+
+export async function updateCloudAnomalySuppression(
+  orgId: string,
+  suppressionId: string,
+  input: CostAnomalySuppressionInput,
+): Promise<CostAnomalySuppression> {
+  return invoke("cloud_costs_update_anomaly_suppression", { orgId, suppressionId, input });
+}
+
+export async function deleteCloudAnomalySuppression(
+  orgId: string,
+  suppressionId: string,
+): Promise<void> {
+  await invoke("cloud_costs_delete_anomaly_suppression", { orgId, suppressionId });
+}
+
+export async function loadCloudAnomalySensitivity(orgId: string): Promise<CostAnomalySensitivity> {
+  return invoke("cloud_costs_anomaly_sensitivity", { orgId });
+}
+
+export async function loadCloudAnomalyPrecision(
+  orgId: string,
+  months?: number,
+): Promise<CostAnomalyPrecisionReport> {
+  return invoke("cloud_costs_anomaly_precision", { orgId, months });
+}
+
+export async function listCloudCostCentresForCosts(
+  orgId: string,
+): Promise<Array<{ id: string; name: string }>> {
+  return (
+    (await invoke<Array<{ id: string; name: string }>>("cloud_list_cost_centres", { orgId })) ?? []
+  );
 }
 
 export async function loadCloudTagPolicy(orgId: string): Promise<TagPolicy> {

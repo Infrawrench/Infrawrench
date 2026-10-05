@@ -2,6 +2,12 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
+import type {
+  CostAnomalyFeedbackInput,
+  CostAnomalyFeedbackReason,
+  CostAnomalyRecurrence,
+  CostAnomalyVerdict,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -269,6 +275,30 @@ export interface BulkFlags {
   yes: boolean;
 }
 
+/**
+ * Flags for `costs --anomalies feedback|suppressions|precision`. Raw strings
+ * here; {@link buildAnomalyFeedbackInput} validates them into the request
+ * body so every mistake is reported before the round trip.
+ */
+export interface AnomalyFeedbackFlags {
+  /** `--expected`: the spike was planned or known. */
+  expected: boolean;
+  /** `--unexpected`: the spike was a real problem. */
+  unexpected: boolean;
+  /** `--clear`: withdraw the verdict (and the suppression it created). */
+  clear: boolean;
+  /** `--note <text>`: free-text context for the verdict. */
+  note?: string | undefined;
+  /** `--recurrence one_off|weekly|monthly|seasonal`: also suppress the pattern. */
+  recurrence?: string | undefined;
+  /** `--expires YYYY-MM-DD`: last day the suppression covers. */
+  expires?: string | undefined;
+  /** `--explain`: also publish the note as the anomaly's explanation. */
+  explain: boolean;
+  /** `--months <n>`: the precision report's span. */
+  months?: number | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
@@ -286,6 +316,8 @@ export interface ParsedCli {
   version: boolean;
   /** `costs --anomalies`: the spend-spike list instead of the spend chart. */
   anomalies: boolean;
+  /** `costs --anomalies feedback|suppressions|precision` flags. */
+  anomalyFeedback: AnomalyFeedbackFlags;
   /** `costs --alerts`: the change-alert list + recent firings instead of the chart. */
   alerts: boolean;
   /**
@@ -345,6 +377,17 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies`: same command, different question.
         anomalies: { type: "boolean", default: false },
+        // `costs --anomalies feedback <id>`: the verdict and what it suppresses.
+        // `--reason` (shared with posture dismiss) carries the reason category.
+        expected: { type: "boolean", default: false },
+        unexpected: { type: "boolean", default: false },
+        clear: { type: "boolean", default: false },
+        note: { type: "string" },
+        recurrence: { type: "string" },
+        expires: { type: "string" },
+        explain: { type: "boolean", default: false },
+        // `costs --anomalies precision --months 6`.
+        months: { type: "string" },
         // `costs --alerts`; the third cost question: configured change alerts.
         alerts: { type: "boolean", default: false },
         // `unit-costs <metric> --margin`: the ratio's other form.
@@ -424,9 +467,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "max-price": { type: "string" },
         sort: { type: "string" },
         desc: { type: "boolean", default: false },
-        // `reports move --folder`, `budgets annotate --note/--event`.
+        // `reports move --folder`, `budgets annotate --note/--event`. `--note`
+        // itself is declared once above and shared with `costs --anomalies
+        // feedback`: each command reads it into its own flag group.
         folder: { type: "string" },
-        note: { type: "string" },
         event: { type: "string" },
       },
     });
@@ -617,9 +661,151 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     positionals: parsed.positionals,
     version: values.version === true,
     anomalies: values.anomalies === true,
+    anomalyFeedback: {
+      expected: values.expected === true,
+      unexpected: values.unexpected === true,
+      clear: values.clear === true,
+      note: str("note"),
+      recurrence: str("recurrence"),
+      expires: str("expires"),
+      explain: values.explain === true,
+      months: positiveInt("months"),
+    },
     alerts: values.alerts === true,
     margin: values.margin === true,
   };
+}
+
+/*
+ * Anomaly feedback enums, restated as plain arrays: the CLI imports
+ * client-core type-only (it is CJS, client-core is ESM), so the `const`
+ * arrays there are out of reach at runtime. Each is typed against the wire
+ * union, so a value removed upstream fails this file's typecheck.
+ */
+export const ANOMALY_FEEDBACK_REASONS: readonly CostAnomalyFeedbackReason[] = [
+  "planned_launch",
+  "migration",
+  "seasonal",
+  "pricing_change",
+  "data_issue",
+  "other",
+];
+export const ANOMALY_RECURRENCES: readonly CostAnomalyRecurrence[] = [
+  "one_off",
+  "weekly",
+  "monthly",
+  "seasonal",
+];
+/** The API's own bounds (`COST_ANOMALY_FEEDBACK_LIMITS`), checked client-side. */
+export const ANOMALY_NOTE_MAX_LENGTH = 500;
+export const ANOMALY_PRECISION_MAX_MONTHS = 24;
+export const ANOMALY_PRECISION_DEFAULT_MONTHS = 6;
+
+/** True for a real calendar day in YYYY-MM-DD form (2026-02-30 is not one). */
+export function isIsoDay(day: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const d = new Date(`${day}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day;
+}
+
+/**
+ * `costs --anomalies feedback <id>` flags → the request: `{ clear: true }` for
+ * `--clear` (a DELETE), otherwise the POST body. Every combination the server
+ * would refuse, or silently ignore, is an exit-2 error here instead:
+ * a suppression on an `unexpected` verdict, `--explain` with no note to
+ * publish, an expiry with no recurrence to expire.
+ */
+export function buildAnomalyFeedbackInput(
+  flags: AnomalyFeedbackFlags,
+  reasonFlag: string | null,
+): { clear: true } | { clear: false; input: CostAnomalyFeedbackInput } {
+  const usage = (message: string): never => {
+    throw new CliError(message, 2);
+  };
+  if (flags.clear) {
+    if (
+      flags.expected ||
+      flags.unexpected ||
+      flags.note !== undefined ||
+      flags.recurrence !== undefined ||
+      flags.expires !== undefined ||
+      flags.explain ||
+      reasonFlag !== null
+    ) {
+      usage("--clear withdraws the verdict; it takes no other feedback flags.");
+    }
+    return { clear: true };
+  }
+  if (flags.expected === flags.unexpected) {
+    usage(
+      flags.expected
+        ? "--expected and --unexpected are mutually exclusive."
+        : "Say what the spike was: --expected (planned or known) or --unexpected (a real problem). --clear withdraws a verdict.",
+    );
+  }
+  const verdict: CostAnomalyVerdict = flags.expected ? "expected" : "unexpected";
+
+  let reason: CostAnomalyFeedbackReason | undefined;
+  if (reasonFlag !== null) {
+    reason = ANOMALY_FEEDBACK_REASONS.find((r) => r === reasonFlag);
+    if (!reason) {
+      usage(`--reason must be one of ${ANOMALY_FEEDBACK_REASONS.join(", ")}, got "${reasonFlag}".`);
+    }
+  }
+
+  const note = flags.note?.trim() || undefined;
+  if (note && note.length > ANOMALY_NOTE_MAX_LENGTH) {
+    usage(`--note can be at most ${ANOMALY_NOTE_MAX_LENGTH} characters, got ${note.length}.`);
+  }
+  if (flags.explain && !note) {
+    usage("--explain publishes the note as the anomaly's explanation; add --note <text>.");
+  }
+
+  let suppress: CostAnomalyFeedbackInput["suppress"];
+  if (flags.recurrence !== undefined) {
+    const recurrence = ANOMALY_RECURRENCES.find((r) => r === flags.recurrence);
+    if (!recurrence) {
+      usage(
+        `--recurrence must be one of ${ANOMALY_RECURRENCES.join(", ")}, got "${flags.recurrence}".`,
+      );
+    }
+    if (verdict !== "expected") {
+      usage(
+        "--recurrence suppresses future alerts for this pattern, which only makes sense for an --expected spike.",
+      );
+    }
+    suppress = { recurrence: recurrence! };
+  }
+  if (flags.expires !== undefined) {
+    if (!suppress) {
+      usage(
+        "--expires sets when a suppression ends; add --recurrence one_off|weekly|monthly|seasonal.",
+      );
+    }
+    if (!isIsoDay(flags.expires)) {
+      usage(`--expires must be a YYYY-MM-DD date, got "${flags.expires}".`);
+    }
+    suppress!.expiresOn = flags.expires;
+  }
+
+  const input: CostAnomalyFeedbackInput = { verdict };
+  if (reason) input.reason = reason;
+  if (note) input.note = note;
+  if (flags.explain) input.explain = true;
+  if (suppress) input.suppress = suppress;
+  return { clear: false, input };
+}
+
+/** `--months` for the precision report, bounded like the endpoint. */
+export function resolvePrecisionMonths(months: number | undefined): number {
+  if (months === undefined) return ANOMALY_PRECISION_DEFAULT_MONTHS;
+  if (months > ANOMALY_PRECISION_MAX_MONTHS) {
+    throw new CliError(
+      `--months can be at most ${ANOMALY_PRECISION_MAX_MONTHS}, asked for ${months}.`,
+      2,
+    );
+  }
+  return months;
 }
 
 /**

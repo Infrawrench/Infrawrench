@@ -29,9 +29,11 @@ import { resolveDayWindow, resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
 import {
   anomalyDeltaPercent,
+  anomalyFeedbackLabel,
   formatGroupBy,
   KEYED_GROUP_DIMENSIONS,
   parseGroupByFlag,
+  shortId,
 } from "../format";
 import { barChart, sparkline } from "../charts";
 
@@ -581,10 +583,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
  * ------------------------------------------------------------------ */
 
 /** The endpoint's own bound (`days` must be 1–90); checked before the request. */
-const MAX_ANOMALY_DAYS = 90;
+export const MAX_ANOMALY_DAYS = 90;
 const DEFAULT_ANOMALY_DAYS = 30;
 
-const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
+export const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
   provider: "provider",
   service: "service",
 };
@@ -629,6 +631,8 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   }
 
   printTable(anomalies, [
+    // Short ids: `costs --anomalies feedback <id>` accepts a unique prefix.
+    { header: "id", value: (a) => c.dim(shortId(a.id)) },
     { header: "day", value: (a) => a.day },
     {
       header: "what spiked",
@@ -672,12 +676,22 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
         return c.green(explanation.length > 44 ? `${explanation.slice(0, 43)}…` : explanation);
       },
     },
+    {
+      // The verdict somebody gave it, or that a suppression kept it quiet.
+      header: "feedback",
+      value: (a) => anomalyFeedbackLabel(a),
+    },
   ]);
 
   println();
   println(
     c.dim(
       "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.",
+    ),
+  );
+  println(
+    c.dim(
+      "Tell detection whether a row was a real problem: infrawrench costs --anomalies feedback <id> --expected|--unexpected. A suppressed row matched a suppression somebody created, so it was recorded but did not alert.",
     ),
   );
 }

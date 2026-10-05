@@ -1560,6 +1560,45 @@ export const costAnomalies = pgTable(
     annotationId: text("annotation_id").references(() => costAnnotations.id, {
       onDelete: "set null",
     }),
+    /**
+     * Feedback: whether somebody said this finding was `expected` (planned or
+     * known) or `unexpected` (a real problem). Separate from the
+     * acknowledgement above on purpose: a verdict is a judgement of the
+     * *detector* (and tunes it: see `cost/anomaly-feedback.ts`), an
+     * explanation is a fact about the *spend* (and lands on charts). A row can
+     * carry either, both, or neither.
+     */
+    feedbackVerdict: text("feedback_verdict").$type<"expected" | "unexpected">(),
+    feedbackReason: text("feedback_reason").$type<
+      "planned_launch" | "migration" | "seasonal" | "pricing_change" | "data_issue" | "other"
+    >(),
+    feedbackNote: text("feedback_note"),
+    /** When the current verdict was recorded; restamped when it changes. */
+    feedbackAt: timestamp("feedback_at"),
+    feedbackByUserId: text("feedback_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * The suppression an `expected` verdict created. Re-sending feedback edits
+     * this one rather than minting a second; switching to `unexpected` or
+     * withdrawing the verdict deletes it. SET NULL when somebody deletes the
+     * suppression from the list: the verdict stands without it.
+     */
+    feedbackSuppressionId: text("feedback_suppression_id").references(
+      (): AnyPgColumn => costAnomalySuppressions.id,
+      { onDelete: "set null" },
+    ),
+    /**
+     * The suppression that explained this finding when detection judged it.
+     * Set only while the row is undelivered (a finding already alerted on is
+     * not retroactively "suppressed"), and such a row is never notified.
+     * SET NULL when the suppression is deleted, which makes the finding
+     * eligible to alert on the next pass if its day is still being judged.
+     */
+    suppressedById: text("suppressed_by_id").references(
+      (): AnyPgColumn => costAnomalySuppressions.id,
+      { onDelete: "set null" },
+    ),
   },
   (t) => ({
     onceUnique: uniqueIndex("cost_anomalies_once_unique").on(
@@ -1580,6 +1619,74 @@ export const costAnomalies = pgTable(
     annotationUnique: uniqueIndex("cost_anomalies_annotation_unique")
       .on(t.annotationId)
       .where(sql`annotation_id is not null`),
+    /**
+     * Both suppression links are FKs with ON DELETE SET NULL, so deleting a
+     * suppression looks its anomalies up by these; the list's "suppressed N"
+     * count reads the second. Partial: nearly every row holds null.
+     */
+    suppressedByIdx: index("cost_anomalies_suppressed_by_idx")
+      .on(t.suppressedById)
+      .where(sql`suppressed_by_id is not null`),
+    feedbackSuppressionIdx: index("cost_anomalies_feedback_suppression_idx")
+      .on(t.feedbackSuppressionId)
+      .where(sql`feedback_suppression_id is not null`),
+    /** The sensitivity and precision reads: verdicts in a recent window. */
+    feedbackAtIdx: index("cost_anomalies_org_feedback_at_idx")
+      .on(t.organizationId, t.feedbackAt)
+      .where(sql`feedback_at is not null`),
+  }),
+);
+
+/**
+ * Anomaly suppressions: "spend in this scope is expected on these days, until
+ * this date". Created by an `expected` verdict on an anomaly (with a
+ * recurrence) or by hand from the suppression list, the API or Terraform.
+ *
+ * Detection applies them while judging a day (`cost/anomaly-feedback.ts`): on a
+ * covered day the scope's spend is set aside, and a finding that only existed
+ * because of it is stored with `suppressed_by_id` and never alerted on. The
+ * row is kept after it expires so the list can show what it suppressed; the
+ * evaluator reads only rows whose window reaches the days being judged.
+ *
+ * Dates are plain `YYYY-MM-DD` text like `cost_anomalies.day`, compared
+ * lexicographically; `expires_on` is inclusive.
+ */
+export const costAnomalySuppressions = pgTable(
+  "cost_anomaly_suppressions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    scope: text("scope")
+      .$type<"provider" | "service" | "account" | "tag" | "cost_centre">()
+      .notNull(),
+    /** Plugin id, service name, account id, tag value, or cost centre id. */
+    scopeKey: text("scope_key").notNull(),
+    /** For `scope = 'tag'`; null otherwise. */
+    tagKey: text("tag_key"),
+    recurrence: text("recurrence").$type<"one_off" | "weekly" | "monthly" | "seasonal">().notNull(),
+    anchorDay: text("anchor_day").notNull(),
+    startsOn: text("starts_on").notNull(),
+    expiresOn: text("expires_on").notNull(),
+    reason: text("reason").$type<
+      "planned_launch" | "migration" | "seasonal" | "pricing_change" | "data_issue" | "other"
+    >(),
+    note: text("note"),
+    sourceAnomalyId: text("source_anomaly_id").references((): AnyPgColumn => costAnomalies.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgExpiresIdx: index("cost_anomaly_suppressions_org_expires_idx").on(
+      t.organizationId,
+      t.expiresOn,
+    ),
   }),
 );
 
@@ -2805,6 +2912,13 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
    * evaluating the same org produce one text.
    */
   smsLastPagedAt: timestamp("sms_last_paged_at"),
+  /**
+   * Whether `expected` feedback nudges a key's spike threshold up (within
+   * bounds; see `costAnomalySigmaNudge` in client-core). Default on: the
+   * nudge only ever follows feedback somebody gave, and the tuning panel
+   * says which keys moved and why.
+   */
+  feedbackTuning: boolean("feedback_tuning").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -8,7 +8,14 @@ vi.mock("electron", () => ({
   safeStorage: { isEncryptionAvailable: () => false },
 }));
 
-import { parseCliArgs, parseLastDays, resolveDayWindow } from "../cli/args";
+import {
+  buildAnomalyFeedbackInput,
+  isIsoDay,
+  parseCliArgs,
+  parseLastDays,
+  resolveDayWindow,
+  resolvePrecisionMonths,
+} from "../cli/args";
 
 describe("parseCliArgs — exports create", () => {
   it("collects repeatable --target pairs and the schedule flags", () => {
@@ -185,5 +192,93 @@ describe("parseCliArgs — reports move/delete and budgets annotate", () => {
     ]);
     expect(bulk.note).toBe("Load test");
     expect(bulk.event).toBe("evt-1");
+  });
+});
+
+describe("costs --anomalies feedback flags", () => {
+  const build = (argv: string[]) => {
+    const parsed = parseCliArgs(argv);
+    return buildAnomalyFeedbackInput(parsed.anomalyFeedback, parsed.flags.reason);
+  };
+
+  it("keeps the verb and id as positionals", () => {
+    const parsed = parseCliArgs(["costs", "--anomalies", "feedback", "abcd1234", "--expected"]);
+    expect(parsed.positionals).toEqual(["costs", "feedback", "abcd1234"]);
+    expect(parsed.anomalies).toBe(true);
+    expect(parsed.anomalyFeedback.expected).toBe(true);
+  });
+
+  it("builds a full expected verdict with a suppression", () => {
+    expect(
+      build([
+        "costs",
+        "--anomalies",
+        "feedback",
+        "a1",
+        "--expected",
+        "--reason",
+        "planned_launch",
+        "--note",
+        "  launch week  ",
+        "--explain",
+        "--recurrence",
+        "weekly",
+        "--expires",
+        "2026-12-31",
+      ]),
+    ).toEqual({
+      clear: false,
+      input: {
+        verdict: "expected",
+        reason: "planned_launch",
+        note: "launch week",
+        explain: true,
+        suppress: { recurrence: "weekly", expiresOn: "2026-12-31" },
+      },
+    });
+  });
+
+  it("builds a bare unexpected verdict and a clear", () => {
+    expect(build(["costs", "feedback", "a1", "--unexpected"])).toEqual({
+      clear: false,
+      input: { verdict: "unexpected" },
+    });
+    expect(build(["costs", "feedback", "a1", "--clear"])).toEqual({ clear: true });
+  });
+
+  it.each([
+    [[], /--expected .* or --unexpected/],
+    [["--expected", "--unexpected"], /mutually exclusive/],
+    [["--clear", "--expected"], /--clear withdraws/],
+    [["--expected", "--reason", "vibes"], /--reason must be one of/],
+    [["--unexpected", "--recurrence", "weekly"], /only makes sense for an --expected/],
+    [["--expected", "--recurrence", "daily"], /--recurrence must be one of/],
+    [["--expected", "--expires", "2026-12-31"], /add --recurrence/],
+    [["--expected", "--recurrence", "one_off", "--expires", "2026-02-30"], /YYYY-MM-DD/],
+    [["--expected", "--explain"], /add --note/],
+    [["--expected", "--note", "x".repeat(501)], /at most 500/],
+  ])("rejects %j with exit code 2", (extra, message) => {
+    let error: unknown;
+    try {
+      build(["costs", "feedback", "a1", ...extra]);
+    } catch (e) {
+      error = e;
+    }
+    expect((error as Error).message).toMatch(message);
+    expect((error as { exitCode: number }).exitCode).toBe(2);
+  });
+
+  it("validates real calendar days", () => {
+    expect(isIsoDay("2024-02-29")).toBe(true);
+    expect(isIsoDay("2026-02-29")).toBe(false);
+    expect(isIsoDay("2026-1-01")).toBe(false);
+  });
+
+  it("bounds --months for the precision report", () => {
+    expect(resolvePrecisionMonths(undefined)).toBe(6);
+    expect(resolvePrecisionMonths(12)).toBe(12);
+    expect(() => resolvePrecisionMonths(25)).toThrow(/at most 24/);
+    expect(parseCliArgs(["costs", "--months", "3"]).anomalyFeedback.months).toBe(3);
+    expect(() => parseCliArgs(["costs", "--months", "0"])).toThrow(/at least 1/);
   });
 });

@@ -89,6 +89,12 @@ export interface AlertEvent {
   teamsBody?: string;
   /** Slack/Teams trailing context line. */
   context?: string;
+  /**
+   * Extra link buttons on the Teams card, before "View in Infrawrench".
+   * Teams cards are one-way webhooks, so these are links (the Slack
+   * equivalent is `RouteAlertOptions.slackButtons`, which call back).
+   */
+  teamsActions?: Array<{ title: string; url: string }>;
   /** Deep link behind the "View in Infrawrench" button. */
   url?: string | null;
   /**
@@ -292,7 +298,11 @@ async function deliverDestinations(
     ...(event.context ? { context: event.context } : {}),
     ...(event.url ? { url: event.url } : {}),
   };
-  const teamsAlert = event.teamsBody ? { ...alert, body: event.teamsBody } : alert;
+  const teamsBase = event.teamsBody ? { ...alert, body: event.teamsBody } : alert;
+  const teamsAlert =
+    event.teamsActions && event.teamsActions.length > 0
+      ? { ...teamsBase, actions: event.teamsActions }
+      : teamsBase;
 
   const buttons = [...(options.slackButtons ?? []), ...extraButtons];
   const slackAlert = buttons.length > 0 ? { ...alert, buttons } : alert;
