@@ -83,6 +83,15 @@ app_env = {
   # WORKOS_API_HTTPS / WORKOS_API_PORT also exist but are dev-only knobs for
   # the WorkOS emulator (docker-compose.dev.yml). Never set them in prod — the
   # SDK must keep speaking https on the default port.
+  # Optional. Signing secret of the WorkOS webhook endpoint
+  # (Dashboard > Webhooks > Create endpoint, URL
+  # https://app.infrawrench.com/api/v1/webhooks/workos, subscribed to the
+  # dsync.*, connection.* and organization_domain.* events). Enterprise SSO
+  # directory sync reads it: without it the endpoint answers 503, SCIM users
+  # are only provisioned and deprovisioned when an owner presses "Sync now"
+  # (or at the member's next sign-in), and a deprovisioned user keeps access
+  # until then. SSO sign-in and enforcement work without it.
+  WORKOS_WEBHOOK_SECRET = "<webhook signing secret>"
 
   # Stripe
   STRIPE_SECRET_KEY                   = "sk_live_..."

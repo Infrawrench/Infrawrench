@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// SSO enforcement is covered in services/sso; here it never denies.
+vi.mock("@/services/sso/enforcement", () => ({
+  ssoDenialForPerson: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("@/db/client", () => ({
   db: {
     select: vi.fn(),

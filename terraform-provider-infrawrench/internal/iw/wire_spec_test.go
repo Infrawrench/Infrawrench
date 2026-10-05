@@ -243,6 +243,25 @@ func specChecks() []specCheck {
 
 		{schema: "NetworkFlowSettings", value: NetworkFlowSettings{}},
 
+		{schema: "SsoSettings", value: SSOSettings{}},
+		{schema: "SsoSettingsInput", value: SSOSettingsInput{}},
+		{
+			schema: "SsoStatus",
+			value:  SSOStatus{},
+			// Domains, connections and directories are configured in the WorkOS
+			// Admin Portal and read live from WorkOS; the rest is page state
+			// (who is signed in how, member counts) that would diff on every
+			// refresh. The provider manages the settings singleton only.
+			ignored: []string{
+				"planIncluded", "domains", "connections", "directories", "workosError",
+				"owners", "currentSession", "directoryMemberCounts",
+			},
+		},
+		{schema: "SsoGroupRoleMapping", value: SSOGroupRoleMapping{}},
+		{schema: "SsoGroupRoleMappingInput", value: SSOGroupRoleMappingInput{}},
+		{schema: "SsoGroupRoleMappingUpdate", value: SSOGroupRoleMappingUpdate{}},
+		{schema: "SsoDirectoryGroup", value: SSODirectoryGroup{}},
+
 		{schema: "JiraIntegration", value: JiraIntegration{}},
 		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},
 		{schema: "LinearIntegration", value: LinearIntegration{}},

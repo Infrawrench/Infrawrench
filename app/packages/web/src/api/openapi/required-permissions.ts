@@ -377,6 +377,26 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // jira: read covers the redacted connection, the pickers, and the
   // finding→issue links a list view needs; write covers configuring the
   // credential and filing.
+  // single sign-on: reading is part of the team picture; every change is the
+  // owner-only settings permission. Mapping a role additionally checks the
+  // caller holds the role's permissions, and turning on auto-added seats
+  // needs billing:write; both in the handler.
+  "GET /sso": "team:read",
+  "POST /sso/setup": "org:settings:write",
+  "POST /sso/portal-link": "org:settings:write",
+  "POST /sso/domains": "org:settings:write",
+  "POST /sso/domains/{id}/verify": "org:settings:write",
+  "DELETE /sso/domains/{id}": "org:settings:write",
+  "PUT /sso/settings": "org:settings:write",
+  "GET /sso/groups": "team:read",
+  "GET /sso/directory-members": "team:read",
+  "POST /sso/sync": "org:settings:write",
+  "GET /sso/group-mappings": "team:read",
+  "GET /sso/group-mappings/{id}": "team:read",
+  "POST /sso/group-mappings": "org:settings:write",
+  "PATCH /sso/group-mappings/{id}": "org:settings:write",
+  "DELETE /sso/group-mappings/{id}": "org:settings:write",
+  "POST /sso/group-mappings/preview": "team:read",
   "GET /jira": "jira:read",
   "PUT /jira": "jira:write",
   "DELETE /jira": "jira:write",

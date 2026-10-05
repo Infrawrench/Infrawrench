@@ -4381,3 +4381,4 @@ export * from "./on-call-schema.js";
 export * from "./restore-drill-schema.js";
 export * from "./query-monitor-schema.js";
 export * from "./cost-visibility-schema.js";
+export * from "./sso-schema.js";

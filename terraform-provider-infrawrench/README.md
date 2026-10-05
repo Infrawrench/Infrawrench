@@ -693,18 +693,20 @@ secret store that consumes it rather than into an output.
 
 ### Accounts and access
 
-| Resource                            | Import                               | Notes                                                                      |
-| ----------------------------------- | ------------------------------------ | -------------------------------------------------------------------------- |
-| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                |
-| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                    |
-| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                        |
-| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                   |
-| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder or dashboard; destroy resets it |
-| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                 |
-| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                  |
-| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                       |
-| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                        |
-| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                              |
+| Resource                             | Import                               | Notes                                                                      |
+| ------------------------------------ | ------------------------------------ | -------------------------------------------------------------------------- |
+| `infrawrench_account`                | by id                                | Credentials are write-only; three permissions, three routes                |
+| `infrawrench_bastion`                | by id                                | Token returned once; renaming re-enrols                                    |
+| `infrawrench_role`                   | by id                                | Built-in roles are refused rather than half-managed                        |
+| `infrawrench_cost_visibility_scope`  | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                   |
+| `infrawrench_object_sharing`         | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder or dashboard; destroy resets it |
+| `infrawrench_sso_settings`           | by org id                            | Org singleton; SSO enforcement and provisioning; destroy leaves it as is   |
+| `infrawrench_sso_group_role_mapping` | by id                                | Directory group to role; never the owner role                              |
+| `infrawrench_api_key`                | by id                                | Every attribute replaces; delete is revoke                                 |
+| `infrawrench_ssh_key`                | by id                                | Import a public key, or generate and hold the private one                  |
+| `infrawrench_ssh_snippet`            | by id                                | Registers a command; does not run it                                       |
+| `infrawrench_deploy_trigger`         | by id                                | `enabled` is the only mutable field                                        |
+| `infrawrench_workflow_schedule`      | by workflow id                       | Attaches a cron to a workflow it does not own                              |
 
 ### Alert delivery
 
@@ -721,14 +723,15 @@ secret store that consumes it rather than into an output.
 
 ### Data sources
 
-| Data source                       | Purpose                                              |
-| --------------------------------- | ---------------------------------------------------- |
-| `infrawrench_accounts`            | Resolve account ids for rule matches                 |
-| `infrawrench_plugins`             | Resolve valid plugin ids                             |
-| `infrawrench_cost_centres`        | Reference centres created outside Terraform          |
-| `infrawrench_resources`           | Resolve a synced resource id for a probe or schedule |
-| `infrawrench_permissions`         | The catalogue roles and API keys grant from          |
-| `infrawrench_slack_installations` | Resolve the workspace a channel belongs to           |
+| Data source                        | Purpose                                              |
+| ---------------------------------- | ---------------------------------------------------- |
+| `infrawrench_accounts`             | Resolve account ids for rule matches                 |
+| `infrawrench_plugins`              | Resolve valid plugin ids                             |
+| `infrawrench_cost_centres`         | Reference centres created outside Terraform          |
+| `infrawrench_resources`            | Resolve a synced resource id for a probe or schedule |
+| `infrawrench_permissions`          | The catalogue roles and API keys grant from          |
+| `infrawrench_slack_installations`  | Resolve the workspace a channel belongs to           |
+| `infrawrench_sso_directory_groups` | Resolve a directory group id by name for a mapping   |
 
 ## Testing
 

@@ -1,4 +1,5 @@
 import type { TokenManager } from "./tokens";
+import { isSsoRequiredResponse, type SsoRequiredPayload } from "./sso";
 
 /**
  * Bearer-authenticated fetch against the cloud API, ported from the desktop's
@@ -17,6 +18,13 @@ export interface CloudFetchOptions {
    * the request once (after e.g. POSTing /ssh-host-keys/trust).
    */
   on409?: (body: unknown) => Promise<boolean>;
+  /**
+   * Called when the org requires single sign-on and this session was not
+   * established through its identity provider (the structured `sso_required`
+   * 403). The request still throws; this lets a host send the user back
+   * through sign-in at that provider rather than leaving every screen failing.
+   */
+  onSsoRequired?: (payload: SsoRequiredPayload) => void;
 }
 
 export class CloudApiError extends Error {
@@ -84,6 +92,18 @@ export function createCloudFetch(opts: CloudFetchOptions): CloudFetch {
     const res = await authedFetch(url, init);
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      if (res.status === 403 && opts.onSsoRequired) {
+        let parsed: unknown = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          /* not JSON */
+        }
+        if (isSsoRequiredResponse(parsed)) {
+          opts.onSsoRequired(parsed);
+          throw new CloudApiError(parsed.error, 403, text);
+        }
+      }
       throw new CloudApiError(
         `Cloud request failed: ${res.status} ${url} ${text}`,
         res.status,

@@ -4,7 +4,6 @@ import { randomBytes, createHash } from "node:crypto";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
-  apiKeys,
   costVisibilityScopes,
   users,
   invitations,
@@ -12,9 +11,10 @@ import {
   roles,
 } from "../../db/schema";
 import { logAudit } from "../../services/audit";
-import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
+import { addSeat, checkSeatAvailability } from "../../services/seats";
+import { removeOrgMember } from "../../services/member-removal";
+import { countOwners, isMemberOwner } from "../../services/org-owners";
 import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../services/entitlements";
-import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
   ALL_PERMISSIONS,
@@ -24,7 +24,6 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
-import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
 import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import type { AuthSession } from "../auth-middleware";
 
@@ -476,52 +475,6 @@ app.post("/invitations", async (c) => {
   return c.json({ id, token });
 });
 
-// Counts both new (role.systemKey === "owner") and legacy (text role) owners.
-// Used by the "last owner" guard on member delete / role change.
-//
-// Agent memberships never count, whatever role their row carries: the guard
-// exists so a *person* always remains who can administer the org, and an agent
-// cannot; its permission ceiling excludes team and settings mutations. A
-// claimed org whose agent still counted as an owner would let the only human
-// owner remove themselves.
-async function countOwners(organizationId: string): Promise<number> {
-  const rows = await db
-    .select({
-      userId: organizationMembers.userId,
-      legacyRole: organizationMembers.role,
-      systemKey: roles.systemKey,
-    })
-    .from(organizationMembers)
-    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
-    .where(eq(organizationMembers.organizationId, organizationId));
-  let count = 0;
-  for (const r of rows) {
-    if (isAgentUserId(r.userId)) continue;
-    if (isOwnerRole(r.systemKey, r.legacyRole)) count++;
-  }
-  return count;
-}
-
-/** Returns true if the membership row for (userId, orgId) is an owner. */
-async function isMemberOwner(organizationId: string, userId: string): Promise<boolean> {
-  const [row] = await db
-    .select({
-      legacyRole: organizationMembers.role,
-      systemKey: roles.systemKey,
-    })
-    .from(organizationMembers)
-    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-      ),
-    )
-    .limit(1);
-  if (!row) return false;
-  return isOwnerRole(row.systemKey, row.legacyRole);
-}
-
 /** DELETE /api/org/:orgId/team/members/:id */
 app.delete("/members/:id", async (c) => {
   requirePermission(c, "team:remove");
@@ -542,42 +495,7 @@ app.delete("/members/:id", async (c) => {
     }
   }
 
-  await db
-    .delete(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-      ),
-    );
-
-  // Their member-level cost visibility scope goes with the membership, so a
-  // later re-invite starts from whatever their new role says.
-  await db
-    .delete(costVisibilityScopes)
-    .where(
-      and(
-        eq(costVisibilityScopes.organizationId, organizationId),
-        eq(costVisibilityScopes.principalKind, "member"),
-        eq(costVisibilityScopes.principalId, userId),
-      ),
-    );
-
-  // Revoke the keys they minted in this org. `authenticateApiRequest` also
-  // re-checks membership, so this is belt-and-braces, but it leaves an
-  // accurate record rather than rows that merely happen to be unusable, and
-  // the removed user can no longer reach the UI to revoke them.
-  const revoked = await db
-    .update(apiKeys)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(
-        eq(apiKeys.userId, userId),
-        eq(apiKeys.organizationId, organizationId),
-        isNull(apiKeys.revokedAt),
-      ),
-    )
-    .returning({ id: apiKeys.id });
+  const { revokedApiKeyIds } = await removeOrgMember(organizationId, userId);
 
   void logAudit({
     organizationId,
@@ -585,16 +503,8 @@ app.delete("/members/:id", async (c) => {
     action: "member.remove",
     entityType: "member",
     entityId: userId,
-    metadata: { revokedApiKeyIds: revoked.map((k) => k.id) },
+    metadata: { revokedApiKeyIds },
   });
-
-  // Best-effort: the member is already out either way, and the seat can still
-  // be dropped by hand in the Stripe portal if this fails.
-  try {
-    await releaseSeat(organizationId);
-  } catch (err) {
-    console.error(`[team] releasing a seat for org ${organizationId} failed:`, err);
-  }
 
   return c.json({ ok: true });
 });

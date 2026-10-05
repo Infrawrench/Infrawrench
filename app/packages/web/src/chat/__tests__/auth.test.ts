@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockInsert = vi.fn();
+// The decision itself is covered in services/sso; here only that a denial is honoured.
+const mockSsoDenial = vi.hoisted(() => vi.fn());
+vi.mock("@/services/sso/enforcement", () => ({
+  ssoDenialForPerson: (...a: unknown[]) => mockSsoDenial(...a),
+}));
 vi.mock("@/db/client", () => ({
   db: {
     insert: (...a: unknown[]) => mockInsert(...a),
@@ -69,6 +74,7 @@ describe("authenticateChat", () => {
     process.env["WORKOS_COOKIE_PASSWORD"] = "x".repeat(40);
     // Permitted unless a test says otherwise.
     mockEffectivePermissions.mockResolvedValue(["chat:read", "chat:write"]);
+    mockSsoDenial.mockResolvedValue(null);
   });
 
   describe("API key bearer", () => {
@@ -156,6 +162,36 @@ describe("authenticateChat", () => {
         "chat:read",
       );
       expect(res).toMatchObject({ userId: "u1", via: "workos-bearer" });
+    });
+  });
+
+  describe("single sign-on enforcement", () => {
+    it("403s a WorkOS bearer person the org's SSO enforcement refuses", async () => {
+      mockVerifyWorkosAccessToken.mockResolvedValue({ sub: "u1", email: "a@b.com", sid: "s1" });
+      mockEnsureUser.mockResolvedValue({ id: "u1" });
+      membershipReturns([{ id: "m1" }]);
+      mockSsoDenial.mockResolvedValue({ error: "SSO required", code: "sso_required" });
+      const res = (await authenticateChat(
+        makeCtx({ authorization: "Bearer wos_token" }),
+        "org-1",
+        "chat:read",
+      )) as Response;
+      expect(res.status).toBe(403);
+      expect(mockSsoDenial).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: "org-1", userId: "u1", sessionId: "s1" }),
+      );
+    });
+
+    it("never consults it for an API key", async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({
+        userId: "u1",
+        organizationId: "org-1",
+        scopes: ["chat:read"],
+        apiKeyId: "k1",
+      });
+      membershipReturns([{ id: "m1" }]);
+      await authenticateChat(makeCtx({ authorization: "Bearer iwk_abc" }), "org-1", "chat:read");
+      expect(mockSsoDenial).not.toHaveBeenCalled();
     });
   });
 

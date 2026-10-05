@@ -88,6 +88,13 @@ export const ALL_PERMISSIONS = [
   "access:read",
   "access:request",
   "access:approve",
+  // Sign in without SSO while the org enforces it. Only ever meaningful as a
+  // break-glass *grant*: the enforcement gate reads it from live elevations
+  // alone and ignores it on a role, so `*` (owners) and a custom role carrying
+  // it exempt nobody. It is in the catalog so the access-request picker can
+  // ask for it and so `isSubsetOfCallerPerms` limits who can approve it to
+  // holders of `*`: admins are built with it excluded below.
+  "sso:bypass",
   "team:read",
   "team:invite",
   "team:role:write",

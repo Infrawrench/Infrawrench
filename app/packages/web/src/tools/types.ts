@@ -43,6 +43,11 @@ export interface ToolAuthContext {
    * nothing may derive authority from that row's membership role.
    */
   agentRegistrationId?: string;
+  /**
+   * The WorkOS session (`sid`) a person authenticated with, when known. Lets a
+   * per-call org switch apply that org's single sign-on enforcement.
+   */
+  sessionId?: string;
   /** "mcp" | "chat" | "api": written into audit metadata. */
   source: "mcp" | "chat" | "api";
 }

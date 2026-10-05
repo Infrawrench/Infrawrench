@@ -3,6 +3,7 @@ import type { AccessRequest } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { c, printJson, println, printTable, type Column } from "../output";
+import { cmdAccessSso } from "./access-sso";
 
 /** "45m" / "2h": kept local so the CLI pulls nothing UI-shaped. */
 function duration(minutes: number): string {
@@ -54,8 +55,12 @@ function statusCell(request: AccessRequest): string {
 export async function cmdAccess(ctx: CliContext, rest: string[]): Promise<void> {
   const org = await resolveOrg(ctx);
   const sub = rest[0];
+  if (sub === "sso") {
+    await cmdAccessSso(ctx, org.id, org.displayName);
+    return;
+  }
   if (sub !== undefined && sub !== "list" && sub !== "active") {
-    throw new CliError(`Unknown subcommand "${sub}". Try: access, access active`);
+    throw new CliError(`Unknown subcommand "${sub}". Try: access, access active, access sso`);
   }
 
   const query = sub === "active" ? "?active=1" : "";

@@ -1,4 +1,5 @@
 import { verifyWorkosAccessToken } from "../auth/api-auth";
+import { ssoDenialForPerson } from "../services/sso/enforcement";
 import { ensureUserFromClaims, hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import {
   resolveAgentPrincipal,
@@ -11,6 +12,8 @@ export interface McpAuthContext {
   userId: string;
   organizationId: string;
   email?: string;
+  /** WorkOS session id (`sid`) of a person's token, for SSO enforcement. */
+  sessionId?: string;
   /**
    * Set when the caller is an agent-auth registration rather than a person.
    *
@@ -119,11 +122,27 @@ export async function authenticateMcpRequest(
     organizationId = first.id;
   }
 
+  const sessionId = typeof claims.sid === "string" ? claims.sid : undefined;
+  // Enterprise SSO enforcement: an MCP client holding a password-session
+  // token must not reach an org that requires single sign-on. A null here is
+  // a 401, which sends the client back through OAuth sign-in.
+  const ssoDenied = await ssoDenialForPerson({
+    organizationId,
+    userId: user.id,
+    email: claims.email ?? user.email,
+    sessionId,
+  });
+  if (ssoDenied) {
+    console.warn(`[mcp-auth] rejected: org ${organizationId} requires single sign-on`);
+    return null;
+  }
+
   const ctx: McpAuthContext = {
     userId: user.id,
     organizationId,
   };
   if (claims.email) ctx.email = claims.email;
+  if (sessionId) ctx.sessionId = sessionId;
   return ctx;
 }
 

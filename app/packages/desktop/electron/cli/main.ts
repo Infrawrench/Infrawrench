@@ -68,6 +68,8 @@ USAGE
 COMMANDS
   (none) / tui        interactive dashboard (cute charts included)
   login               sign in to Infrawrench Cloud (browser PKCE)
+  login sso <org_id>  sign in through an organization's identity provider
+                      (the WorkOS org id an SSO-enforcing org names in its error)
   logout              sign out
   whoami              show the current session
   orgs                list your organizations
@@ -158,6 +160,8 @@ COMMANDS
   agents              agent credentials that can reach this org: who claimed
                       each one, when it was last used & which are unclaimed
   access active       only the elevations in force right now
+  access sso          single sign-on: domains, identity provider, enforcement,
+                      break-glass owners, directory sync & group to role mappings
   cost-visibility     cost visibility scopes on roles, members & API keys
   cost-visibility me  whether your own cost figures are scoped
   recordings          recorded SSH sessions: who connected, to what, for how long

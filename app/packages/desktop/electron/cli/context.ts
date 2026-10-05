@@ -42,6 +42,30 @@ export class CliError extends Error {
   }
 }
 
+/**
+ * The enforcement gate's `sso_required` 403, restated as what to type. Null
+ * for any other body. Parsed by hand rather than through client-core so this
+ * module keeps its import surface.
+ */
+function ssoRequiredHint(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown; workosOrganizationId?: unknown };
+    if (
+      parsed.code !== "sso_required" ||
+      typeof parsed.workosOrganizationId !== "string" ||
+      !/^org_[0-9A-Za-z]{10,64}$/.test(parsed.workosOrganizationId)
+    ) {
+      return null;
+    }
+    return (
+      "This organization requires single sign-on, and this session was not signed in through its identity provider. " +
+      `Run \`infrawrench logout\` then \`infrawrench login sso ${parsed.workosOrganizationId}\`.`
+    );
+  } catch {
+    return null;
+  }
+}
+
 function notSignedInError(): CliError {
   return new CliError(
     "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app — the CLI shares its session).",
@@ -71,6 +95,10 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
   const body = await res.text().catch(() => "");
 
   if (!res.ok) {
+    if (res.status === 403) {
+      const sso = ssoRequiredHint(body);
+      if (sso) throw new CliError(sso);
+    }
     throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
   }
 

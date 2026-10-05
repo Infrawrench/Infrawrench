@@ -10,6 +10,7 @@ export {
   isSeatLimitResponse,
   SeatLimitReachedClientError,
   PlanRequiredClientError,
+  SsoRequiredClientError,
   type SeatLimitPayload,
 } from "./api-errors";
 export { parseSseStream, parseNdjsonStream } from "./sse";
@@ -721,6 +722,7 @@ export * from "./commitments";
 export * from "./network-flows";
 export * from "./iac";
 export * from "./jira";
+export * from "./sso";
 export * from "./linear";
 export * from "./issue-filing";
 export * from "./cost-exports";

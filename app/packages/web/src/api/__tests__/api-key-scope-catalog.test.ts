@@ -64,6 +64,9 @@ describe("every unoffered scope gates a route API keys cannot reach anyway", () 
     "team:remove": { method: "DELETE", path: "/team/members/m1" },
     "access:request": { method: "POST", path: "/access-requests" },
     "access:approve": { method: "POST", path: "/access-requests/r1/approve" },
+    // Gates no route: it is only ever held as a break-glass grant, and asking
+    // for one is the access-request route keys are already denied.
+    "sso:bypass": { method: "POST", path: "/access-requests" },
   };
 
   it("has a sample request for each", () => {

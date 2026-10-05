@@ -206,6 +206,8 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewRoleResource,
 		NewCostVisibilityScopeResource,
 		NewObjectSharingResource,
+		NewSSOSettingsResource,
+		NewSSOGroupRoleMappingResource,
 		NewAPIKeyResource,
 		NewSSHKeyResource,
 		NewSSHSnippetResource,
@@ -231,6 +233,7 @@ func (p *infrawrenchProvider) DataSources(_ context.Context) []func() datasource
 		NewResourcesDataSource,
 		NewPermissionsDataSource,
 		NewSlackInstallationsDataSource,
+		NewSSODirectoryGroupsDataSource,
 	}
 }
 

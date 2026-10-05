@@ -159,6 +159,7 @@ export const API_KEY_UNOFFERED_SCOPES: Readonly<Record<string, string>> = {
   "team:remove": "API keys cannot remove members.",
   "access:request": "API keys cannot request break-glass access.",
   "access:approve": "API keys cannot approve or deny break-glass access.",
+  "sso:bypass": "SSO enforcement applies to people signing in, never to API keys.",
 };
 
 /**

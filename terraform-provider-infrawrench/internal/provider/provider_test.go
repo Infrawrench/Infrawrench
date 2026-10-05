@@ -16,8 +16,8 @@ import (
 // is the reminder that adding a resource also means adding a row to the
 // README's table and to the docs page, neither of which any test can check.
 const (
-	wantResources   = 50
-	wantDataSources = 6
+	wantResources   = 52
+	wantDataSources = 7
 )
 
 // These are unit tests over the provider's wiring, not acceptance tests: nothing

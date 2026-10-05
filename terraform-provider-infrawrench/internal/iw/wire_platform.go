@@ -1165,3 +1165,69 @@ type ObjectSharingInput struct {
 	OrgAccess string                    `json:"orgAccess"`
 	Grants    []ObjectSharingGrantInput `json:"grants"`
 }
+
+/* ----------------------------- single sign-on ----------------------------- */
+
+// SSOSettings is the org singleton for enterprise single sign-on: whether SSO
+// is enforced for verified domains, who may sign in without it, and how
+// Directory Sync provisions members.
+type SSOSettings struct {
+	EnforceSSO          bool     `json:"enforceSso"`
+	BreakGlassUserIDs   []string `json:"breakGlassUserIds"`
+	ProvisioningEnabled bool     `json:"provisioningEnabled"`
+	DefaultRoleID       *string  `json:"defaultRoleId"`
+	AutoAddSeats        bool     `json:"autoAddSeats"`
+	UpdatedAt           string   `json:"updatedAt"`
+}
+
+// SSOSettingsInput is the PUT body. Every field is sent, so a plan always
+// states the whole singleton; DefaultRoleID is sent as null to clear it.
+type SSOSettingsInput struct {
+	EnforceSSO          *bool    `json:"enforceSso,omitempty"`
+	BreakGlassUserIDs   []string `json:"breakGlassUserIds"`
+	ProvisioningEnabled *bool    `json:"provisioningEnabled,omitempty"`
+	DefaultRoleID       *string  `json:"defaultRoleId"`
+	AutoAddSeats        *bool    `json:"autoAddSeats,omitempty"`
+}
+
+// SSOStatus is GET /sso. The provider reads only whether setup has happened
+// and the settings; domains, connections and directories live in WorkOS and
+// are configured through its Admin Portal.
+type SSOStatus struct {
+	Configured bool         `json:"configured"`
+	Settings   *SSOSettings `json:"settings"`
+}
+
+// SSOGroupRoleMapping maps one directory group to one role.
+type SSOGroupRoleMapping struct {
+	ID               string  `json:"id"`
+	DirectoryGroupID string  `json:"directoryGroupId"`
+	GroupName        string  `json:"groupName"`
+	RoleID           string  `json:"roleId"`
+	RoleName         *string `json:"roleName"`
+	Position         int64   `json:"position"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+}
+
+// SSOGroupRoleMappingInput is the create body.
+type SSOGroupRoleMappingInput struct {
+	DirectoryGroupID string `json:"directoryGroupId"`
+	RoleID           string `json:"roleId"`
+	Position         *int64 `json:"position,omitempty"`
+}
+
+// SSOGroupRoleMappingUpdate is the PATCH body. The group is fixed for the
+// life of a mapping.
+type SSOGroupRoleMappingUpdate struct {
+	RoleID   *string `json:"roleId,omitempty"`
+	Position *int64  `json:"position,omitempty"`
+}
+
+// SSODirectoryGroup is one group in one of the org's directories.
+type SSODirectoryGroup struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	DirectoryID   string `json:"directoryId"`
+	DirectoryName string `json:"directoryName"`
+}

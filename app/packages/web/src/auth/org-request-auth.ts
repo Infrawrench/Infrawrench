@@ -22,6 +22,7 @@
  * order the checks run in and the wording of three error bodies for no gain:
  * see the note on {@link authenticateOrgRequest}.
  */
+import { ssoDenialForPerson } from "../services/sso/enforcement";
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { workos } from "./workos";
@@ -157,6 +158,15 @@ export async function authenticateOrgRequest(
       requiredScope,
     );
     if (denied) return denied;
+    // Enterprise SSO enforcement, which the org tree applies in middleware
+    // and these routers, sitting outside it, have to apply themselves.
+    const ssoDenied = await ssoDenialForPerson({
+      organizationId: pathOrgId,
+      userId: user.id,
+      email: claims.email ?? user.email,
+      sessionId: typeof claims.sid === "string" ? claims.sid : undefined,
+    });
+    if (ssoDenied) return c.json(ssoDenied, 403);
     const result: OrgAuthResult = {
       userId: user.id,
       organizationId: pathOrgId,
@@ -201,6 +211,14 @@ export async function authenticateOrgRequest(
       requiredScope,
     );
     if (denied) return denied;
+
+    const ssoDenied = await ssoDenialForPerson({
+      organizationId: pathOrgId,
+      userId,
+      email,
+      sessionId: authResult.sessionId,
+    });
+    if (ssoDenied) return c.json(ssoDenied, 403);
 
     return {
       userId,

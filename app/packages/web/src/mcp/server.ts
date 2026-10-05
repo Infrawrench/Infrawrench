@@ -1,4 +1,5 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
+import { ssoDenialForPerson } from "../services/sso/enforcement";
 import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import { z, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -71,6 +72,17 @@ async function resolveCallAuth(
   if (!(await hasMembership(base.userId, orgId))) {
     return { error: `You are not a member of organization ${orgId}.` };
   }
+  // API keys never reach here with a different org (they are pinned), so the
+  // caller is a person: the target org's SSO enforcement applies.
+  if (!base.scopes) {
+    const denied = await ssoDenialForPerson({
+      organizationId: orgId,
+      userId: base.userId,
+      email: base.email,
+      sessionId: base.sessionId,
+    });
+    if (denied) return { error: denied.error };
+  }
   return { ...base, organizationId: orgId };
 }
 
@@ -95,6 +107,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     organizationId: auth.organizationId,
     source: "mcp",
     ...(auth.email !== undefined ? { email: auth.email } : {}),
+    ...(auth.sessionId !== undefined ? { sessionId: auth.sessionId } : {}),
     // An agent's permissions arrive already intersected with its claimer's role
     // and the agent ceiling, so they ride the same `scopes` channel API keys
     // use. `agentRegistrationId` beside them is load-bearing, not just audit

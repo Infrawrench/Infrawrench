@@ -26,13 +26,17 @@ describe("SYSTEM_ROLE_DEFINITIONS", () => {
     expect(SYSTEM_ROLE_DEFINITIONS.owner.permissions).toEqual(["*"]);
   });
 
-  it("admin gets everything except billing:write and org:settings:write", () => {
+  it("admin gets everything except billing:write, org:settings:write and sso:bypass", () => {
     const perms = SYSTEM_ROLE_DEFINITIONS.admin.permissions;
     expect(perms).not.toContain("billing:write");
     expect(perms).not.toContain("org:settings:write");
+    // Without it an admin cannot approve an SSO bypass grant: only owners can.
+    expect(perms).not.toContain("sso:bypass");
     expect(perms).toContain("accounts:write");
     expect(perms).toEqual(
-      ALL_PERMISSIONS.filter((p) => p !== "billing:write" && p !== "org:settings:write"),
+      ALL_PERMISSIONS.filter(
+        (p) => p !== "billing:write" && p !== "org:settings:write" && p !== "sso:bypass",
+      ),
     );
   });
 

@@ -5,6 +5,10 @@ const handler = vi.fn(async (_input: Record<string, unknown>, _auth: unknown) =>
   content: [{ type: "text" as const, text: "done" }],
 }));
 
+// SSO enforcement is covered in services/sso; here it never denies.
+vi.mock("@/services/sso/enforcement", () => ({
+  ssoDenialForPerson: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("@/auth/cost-visibility", () => ({
   // Cost visibility resolution reads Postgres; these tests exercise an
   // unrestricted caller, so the wrapper just runs the work.
