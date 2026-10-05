@@ -75,6 +75,7 @@ import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdSettingsCostVisibilityRouteImport } from './routes/org.$orgId.settings.cost-visibility'
 import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
+import { Route as OrgOrgIdSettingsCustomCostSourcesRouteImport } from './routes/org.$orgId.settings.custom-cost-sources'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsGithubIssuesRouteImport } from './routes/org.$orgId.settings.github-issues'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
@@ -438,6 +439,12 @@ const OrgOrgIdSettingsCurrencyRoute =
     path: '/currency',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsCustomCostSourcesRoute =
+  OrgOrgIdSettingsCustomCostSourcesRouteImport.update({
+    id: '/custom-cost-sources',
+    path: '/custom-cost-sources',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   id: '/freezes',
   path: '/freezes',
@@ -580,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
@@ -659,6 +667,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
@@ -742,6 +751,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
+  '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
@@ -826,6 +836,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
+    | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
@@ -905,6 +916,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
+    | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
@@ -987,6 +999,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
+    | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
@@ -1480,6 +1493,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsCurrencyRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/custom-cost-sources': {
+      id: '/org/$orgId/settings/custom-cost-sources'
+      path: '/custom-cost-sources'
+      fullPath: '/org/$orgId/settings/custom-cost-sources'
+      preLoaderRoute: typeof OrgOrgIdSettingsCustomCostSourcesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/freezes': {
       id: '/org/$orgId/settings/freezes'
       path: '/freezes'
@@ -1655,6 +1675,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsCostVisibilityRoute: typeof OrgOrgIdSettingsCostVisibilityRoute
   OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
+  OrgOrgIdSettingsCustomCostSourcesRoute: typeof OrgOrgIdSettingsCustomCostSourcesRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsGithubIssuesRoute: typeof OrgOrgIdSettingsGithubIssuesRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
@@ -1687,6 +1708,8 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsCredentialHygieneRoute:
     OrgOrgIdSettingsCredentialHygieneRoute,
   OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,
+  OrgOrgIdSettingsCustomCostSourcesRoute:
+    OrgOrgIdSettingsCustomCostSourcesRoute,
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsGithubIssuesRoute: OrgOrgIdSettingsGithubIssuesRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,

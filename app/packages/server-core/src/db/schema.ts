@@ -724,6 +724,83 @@ export const costCanvases = pgTable(
 );
 
 /**
+ * Named sources of spend Infrawrench has no plugin for, filled by file upload
+ * (CSV or FOCUS) from Settings or `infrawrench costs push`.
+ *
+ * Each source is its own value in the cost `provider` dimension
+ * (`custom:<id>`, labelled with `name`), so renaming one relabels its history
+ * without rewriting a row. See `cost/custom-costs.ts`.
+ */
+export const customCostSources = pgTable(
+  "custom_cost_sources",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** ISO code applied to rows whose file has no currency column. */
+    defaultCurrency: text("default_currency"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /** A name is what the CLI's `--source` resolves, so it is unique per org. */
+    orgNameIdx: uniqueIndex("custom_cost_sources_org_name_idx").on(t.organizationId, t.name),
+  }),
+);
+
+/**
+ * One file uploaded into a custom cost source: the history row the Settings
+ * page lists, and the handle that deletes exactly the rows it wrote (every
+ * ClickHouse row it inserted carries its id in the reserved
+ * `infrawrench:upload` tag).
+ *
+ * `row_count`, `totals`, and the range are what the upload *still* holds: a
+ * later `replace` upload over part of its range lowers them, and one that
+ * covers all of it marks it `replaced`.
+ */
+export const customCostUploads = pgTable(
+  "custom_cost_uploads",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceId: text("source_id")
+      .notNull()
+      .references(() => customCostSources.id, { onDelete: "cascade" }),
+    fileName: text("file_name"),
+    /** "csv" | "focus" | "rows" */
+    format: text("format").notNull(),
+    /** "append" | "replace" */
+    mode: text("mode").notNull(),
+    /** "uploading" | "complete" | "replaced" */
+    status: text("status").notNull().default("uploading"),
+    /** The declared inclusive range; rows outside it are rejected. */
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date").notNull(),
+    rowCount: integer("row_count").notNull().default(0),
+    /** Per currency, the cash amount this upload still holds. */
+    totals: jsonb("totals").$type<Record<string, number>>().notNull().default({}),
+    uploadedByUserId: text("uploaded_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** "web" | "desktop" | "cli" | "api" */
+    via: text("via").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (t) => ({
+    sourceIdx: index("custom_cost_uploads_source_idx").on(t.sourceId, t.createdAt),
+  }),
+);
+
+/**
  * Dated notes drawn over cost charts: "we migrated to Graviton here".
  *
  * A step change in spend is only self-explanatory for about a fortnight. These

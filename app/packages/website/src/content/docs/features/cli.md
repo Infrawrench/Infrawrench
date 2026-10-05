@@ -406,7 +406,19 @@ infrawrench page clear --source backups --key nightly
 # Report spend, from a file or a pipeline.
 infrawrench costs push --source colo --file rows.json
 parse-invoice --json | infrawrench costs push --source colo
+
+# Upload a billing file into a custom cost source (CSV columns are
+# auto-detected; --map overrides any of them).
+infrawrench costs push --source "Colo invoices" --format csv --file bill.csv \
+  --map cost="Amount (EUR)" --map tag=Rack
+infrawrench costs push --source "Partner cloud" --format focus --file focus.csv --replace
+
+# List custom cost sources, or one source's upload history.
+infrawrench costs sources
+infrawrench costs sources "Colo invoices" --json
 ```
+
+When `--source` names a [custom cost source](./custom-cost-sources.md), the rows become an upload in its history. `--format csv` and `--format focus` parse the file locally exactly as the Settings page does and only send aggregated daily rows; `--currency` covers a file with no currency column and `--date-format mdy|dmy` settles slash dates that could be either. If the file's dates overlap an earlier upload the command stops and lists them: rerun with `--replace` (supersede that spend) or `--append` (add to it).
 
 `--source` names the system doing the pushing and is required by both. `page` also takes `--title`, `--key`, `--cooldown <minutes>`, and `--voice`; a suppressed page still exits zero and prints when the key can fire again. Both need a session (or role) carrying `pages:write` / `costs:write` — see [push from your own servers](./server-push.md) for the endpoints and their limits.
 

@@ -912,7 +912,9 @@ export async function getCostTagKeys(organizationId: string): Promise<string[]> 
       .orderBy(asc(sql`key`))
       .limit(50),
   );
-  const keys = new Set(rows.map((r) => r.key));
+  // `infrawrench:upload` (custom cost uploads) is a per-file bookkeeping id:
+  // nothing anyone would group or filter by, and one value per upload.
+  const keys = new Set(rows.map((r) => r.key).filter((key) => key !== "infrawrench:upload"));
   for (const r of callerRows) if (r.key.startsWith(CALLER_TAG_PREFIX)) keys.add(r.key);
   return [...keys].sort();
 }

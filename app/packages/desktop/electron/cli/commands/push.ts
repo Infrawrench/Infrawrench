@@ -12,6 +12,10 @@ import { readFileSync } from "node:fs";
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type { PushFlags } from "../args";
 import { c, printJson, println } from "../output";
+import { findCustomSource, pushToCustomSource } from "./custom-costs";
+import type { CustomCostSource } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
 
 /** Mirrors the `PageResponse` schema in the web package's OpenAPI paths. */
 interface PageResult {
@@ -110,15 +114,48 @@ async function clearPage(ctx: CliContext, flags: PushFlags): Promise<void> {
  * `infrawrench costs push --source <name> [--file rows.json]`: report spend
  * Infrawrench has no plugin for. Rows come from a file or stdin, so the usual
  * shape is a pipeline: `parse-invoice | infrawrench costs push --source colo`.
+ *
+ * When `--source` names a custom cost source (Settings → Custom Cost Sources),
+ * the rows become an upload in that source's history instead, and
+ * `--format csv|focus` uploads a billing file directly; see `custom-costs.ts`.
  */
 export async function cmdCostsPush(ctx: CliContext, flags: PushFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
   }
   const source = requireSource(flags);
-  const rows = parseRows(await readRowsInput(flags.file));
+  const format = flags.format ?? "json";
+  if (!["json", "csv", "focus"].includes(format)) {
+    throw new CliError("--format for costs push must be json, csv or focus.", 2);
+  }
+  const text = await readRowsInput(flags.file);
 
   const org = await resolveOrg(ctx);
+  const custom = findCustomSource(
+    await orgFetch<CustomCostSource[]>(org.id, "/custom-cost-sources"),
+    source,
+  );
+  if (format !== "json" && !custom) {
+    throw new CliError(
+      `No custom cost source named "${source}". CSV and FOCUS files upload into one: create it ` +
+        "under Settings → Custom Cost Sources (or with Terraform), then retry.",
+      2,
+    );
+  }
+  if (custom) {
+    await pushToCustomSource(
+      ctx,
+      org.id,
+      custom,
+      format === "json"
+        ? { text, format: "rows", rows: parseRows(text) }
+        : { text, format: format as "csv" | "focus" },
+      flags,
+    );
+    return;
+  }
+  const rows = parseRows(text);
+
   const result = await orgFetch<{ written: number }>(org.id, "/costs/rows", {
     method: "POST",
     body: JSON.stringify({ source, rows }),
@@ -141,7 +178,7 @@ async function readRowsInput(file: string | undefined): Promise<string> {
     }
   }
   if (process.stdin.isTTY) {
-    throw new CliError("No rows — pass --file <path> or pipe JSON on stdin.", 2);
+    throw new CliError("No rows — pass --file <path> or pipe rows on stdin.", 2);
   }
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));

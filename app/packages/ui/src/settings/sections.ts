@@ -55,6 +55,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // `org:settings:write` (it authorizes reads, sometimes billed ones),
   // editing a mapping `costs:write`.
   { key: "ai-attribution", label: msg("AI Attribution"), requiresPermission: "costs:read" },
+  // Spend from uploaded files (CSV or FOCUS). Beside Cost Exports: one is
+  // spend coming in as files, the other spend going out as files.
+  {
+    key: "custom-cost-sources",
+    label: msg("Custom Cost Sources"),
+    requiresPermission: "costs:read",
+  },
   { key: "approvals", label: msg("Approvals"), requiresPermission: "workflows:read" },
   // Beside Notifications: the routing rules there are what consume a rotation,
   // and "who gets woken up" is one question asked in two halves.

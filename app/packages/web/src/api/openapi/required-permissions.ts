@@ -376,6 +376,18 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-centres/rules/swap": "costs:write",
   "PUT /cost-centres/rules/{id}": "costs:write",
   "DELETE /cost-centres/rules/{id}": "costs:write",
+  // Custom cost sources: an upload is the same act as `POST /costs/rows`, so
+  // it rides the same `costs:write`.
+  "GET /custom-cost-sources": "costs:read",
+  "POST /custom-cost-sources": "costs:write",
+  "GET /custom-cost-sources/{id}": "costs:read",
+  "PUT /custom-cost-sources/{id}": "costs:write",
+  "DELETE /custom-cost-sources/{id}": "costs:write",
+  "GET /custom-cost-sources/{id}/uploads": "costs:read",
+  "POST /custom-cost-sources/{id}/uploads": "costs:write",
+  "POST /custom-cost-sources/{id}/uploads/{uploadId}/rows": "costs:write",
+  "POST /custom-cost-sources/{id}/uploads/{uploadId}/complete": "costs:write",
+  "DELETE /custom-cost-sources/{id}/uploads/{uploadId}": "costs:write",
   // jira: read covers the redacted connection, the pickers, and the
   // finding→issue links a list view needs; write covers configuring the
   // credential and filing.

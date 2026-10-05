@@ -776,3 +776,34 @@ func (c *Client) ListPlugins(ctx context.Context) ([]PluginSummary, error) {
 	err := c.Get(ctx, "/accounts/plugins", &out)
 	return out, err
 }
+
+/* --------------------------- custom cost sources -------------------------- */
+
+func (c *Client) GetCustomCostSource(ctx context.Context, id string) (*CustomCostSource, error) {
+	var out CustomCostSource
+	if err := c.Get(ctx, "/custom-cost-sources/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCustomCostSource(ctx context.Context, in CustomCostSourceInput) (*CustomCostSource, error) {
+	var out CustomCostSource
+	if err := c.Post(ctx, "/custom-cost-sources", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCustomCostSource(ctx context.Context, id string, in CustomCostSourceInput) (*CustomCostSource, error) {
+	var out CustomCostSource
+	if err := c.Put(ctx, "/custom-cost-sources/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteCustomCostSource deletes the source and zeroes every cost row it holds.
+func (c *Client) DeleteCustomCostSource(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/custom-cost-sources/"+seg(id))
+}

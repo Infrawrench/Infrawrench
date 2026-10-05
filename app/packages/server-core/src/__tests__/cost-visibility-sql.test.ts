@@ -251,11 +251,16 @@ describe("source guard", () => {
           // The helper itself holds exactly one. `cost-reconcile.ts` is the
           // collector's write path (it reads back the keys it is about to
           // replace) and must see every row whatever context it runs in.
+          // `custom-cost-store.ts` is the same kind of write path (tombstoning
+          // an upload, recomputing its holdings), with two predicates, behind
+          // a route refused to scoped callers.
           const allowed =
             path.endsWith(join("clickhouse", "cost-readers.ts")) ||
             path.endsWith(join("clickhouse", "cost-reconcile.ts"))
               ? 1
-              : 0;
+              : path.endsWith(join("clickhouse", "custom-cost-store.ts"))
+                ? 2
+                : 0;
           if (hits.length > allowed) offenders.push(path);
         }
       }

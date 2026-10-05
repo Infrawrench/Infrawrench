@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|ai-attribution|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear|github-issues)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|ai-attribution|custom-cost-sources|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear|github-issues)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },

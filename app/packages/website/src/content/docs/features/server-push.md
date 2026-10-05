@@ -93,6 +93,8 @@ curl -X POST https://app.infrawrench.com/api/org/$ORG/costs/rows \
 
 Each row is one day of spend for one combination of dimensions. `date`, `currency`, and `amount` are required; `service`, `region`, `resourceId`, `tags`, `usageAmount`, and `usageUnit` are the dimensions you can then group and filter by. `amount` may be negative for a credit.
 
+If the spend arrives as a file (a CSV or a FOCUS export) rather than from code, a [custom cost source](./custom-cost-sources.md) is usually the better fit: it is its own named provider, keeps an upload history, and lets you delete or replace an upload.
+
 Rows show up under the provider **External** and, unless you attribute them to one of your accounts with `accountId`, in the account dimension as "&lt;source&gt; (external)".
 
 ### Pushing the same day twice restates it

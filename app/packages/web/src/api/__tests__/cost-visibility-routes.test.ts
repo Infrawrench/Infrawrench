@@ -216,6 +216,8 @@ describe("costVisibilityMiddleware", () => {
 describe("costScopeRouteDenial", () => {
   it.each([
     ["GET", "/api/org/o/cost-exports", true],
+    ["GET", "/api/org/o/custom-cost-sources", true],
+    ["POST", "/api/org/o/custom-cost-sources/s1/uploads", true],
     ["GET", "/api/org/o/invoices/123", true],
     ["POST", "/api/org/o/config/apply", true],
     ["PUT", "/api/org/o/cost-visibility", true],

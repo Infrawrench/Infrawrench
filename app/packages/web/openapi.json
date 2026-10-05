@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.58.0",
+    "version": "1.59.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -11025,6 +11025,410 @@
           "centres"
         ],
         "additionalProperties": false
+      },
+      "CustomCostSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": "string",
+            "description": "The value this source's rows carry in the cost `provider` dimension. Use it in cost filters, budgets, and allocation rules.",
+            "example": "custom:0f8e…"
+          },
+          "uploadCount": {
+            "type": "integer"
+          },
+          "lastUploadAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "defaultCurrency",
+          "pluginId",
+          "uploadCount",
+          "lastUploadAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostSourceInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Unique within the organization (case-insensitively). Shown as the provider name in every cost report; renaming relabels the source's whole history.",
+            "example": "Colo invoices"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "defaultCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 3,
+            "maxLength": 3,
+            "description": "ISO 4217 code applied to rows whose file has no currency column. Null means every file must carry one.",
+            "example": "USD"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostDeleted": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "zeroedRows": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "zeroedRows"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostUpload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "fileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "focus",
+              "rows"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "uploading",
+              "complete",
+              "replaced"
+            ],
+            "description": "`uploading` until complete is called (an interrupted upload stays here and can be deleted); `replaced` once a later replace upload superseded every row it held."
+          },
+          "fromDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "toDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "rowCount": {
+            "type": "integer",
+            "description": "Daily rows this upload still holds."
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Currency code → cash amount this upload still holds."
+          },
+          "uploadedBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "email"
+            ],
+            "additionalProperties": false
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "web",
+              "desktop",
+              "cli",
+              "api"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sourceId",
+          "fileName",
+          "format",
+          "mode",
+          "status",
+          "fromDate",
+          "toDate",
+          "rowCount",
+          "totals",
+          "uploadedBy",
+          "via",
+          "createdAt",
+          "completedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostOverlap": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "overlap"
+            ]
+          },
+          "overlapping": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomCostUpload"
+            }
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "overlapping"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostUploadCreate": {
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "focus",
+              "rows"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace"
+            ],
+            "description": "What to do with spend this source already holds in the range. `append` adds to it; `replace` zeroes it (from every earlier upload) when this upload completes. Required when the range overlaps an earlier upload that still holds rows: omitted, that case is a 409 listing the overlapping uploads."
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "web",
+              "desktop",
+              "cli",
+              "api"
+            ]
+          },
+          "fromDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive. Rows outside the range are rejected.",
+            "example": "2026-07-01"
+          },
+          "toDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          }
+        },
+        "required": [
+          "format",
+          "fromDate",
+          "toDate"
+        ],
+        "additionalProperties": false
+      },
+      "CustomCostRow": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "amount": {
+            "type": "number",
+            "description": "Cash amount. Negative for credits."
+          },
+          "service": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "resourceId": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "subAccount": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "The file's own account label; splits the account dimension within the source."
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "At most 32. Keys starting with `infrawrench:` are reserved and rejected."
+          },
+          "usageAmount": {
+            "type": "number"
+          },
+          "usageUnit": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "chargeType": {
+            "type": "string",
+            "enum": [
+              "usage",
+              "commitment_covered_usage",
+              "commitment_fee",
+              "commitment_discount",
+              "credit",
+              "tax",
+              "refund",
+              "adjustment",
+              "support",
+              "other"
+            ]
+          },
+          "amortizedAmount": {
+            "type": "number",
+            "description": "Amortized (effective) cost, e.g. FOCUS EffectiveCost. Omit when unknown."
+          },
+          "commitmentId": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "date",
+          "currency",
+          "amount"
+        ],
+        "additionalProperties": false,
+        "description": "One day of spend for one dimension combination. Clients aggregate file lines to this grain before sending: two rows with the same date, dimensions, tags and currency in one upload replace each other rather than adding."
       },
       "BillingRuleMatch": {
         "type": "object",
@@ -50040,6 +50444,676 @@
         },
         "operationId": "getOrgOrgIdCostsShowback",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources": {
+      "get": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "List custom cost sources",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sources, name-sorted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomCostSource"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomCostSources",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Create a custom cost source",
+        "description": "A named provider for spend Infrawrench has no plugin for. Fill it by uploading files (CSV or FOCUS) from Settings, `infrawrench costs push --format csv|focus`, or the upload endpoints below.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomCostSourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomCostSources",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources/{id}": {
+      "get": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Get a custom cost source",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostSource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomCostSourcesId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Update a custom cost source",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomCostSourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCustomCostSourcesId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Delete a custom cost source and all of its spend",
+        "description": "Zeroes every cost row the source holds, then deletes it with its upload history. The spend disappears from every report, budget and export.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostDeleted"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCustomCostSourcesId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources/{id}/uploads": {
+      "get": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "List a source's uploads",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload history, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomCostUpload"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCustomCostSourcesIdUploads",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Start an upload",
+        "description": "Declares the upload's date range and what happens to spend already held in it. Then send rows with `…/rows` (up to 5,000 per call) and finish with `…/complete`.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomCostUploadCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Opened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The range overlaps earlier uploads and no `mode` was given",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostOverlap"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomCostSourcesIdUploads",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources/{id}/uploads/{uploadId}/rows": {
+      "post": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Send a chunk of rows to an open upload",
+        "description": "The chunk is validated whole: a 400 means none of it was written.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "uploadId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CustomCostRow"
+                    },
+                    "maxItems": 5000
+                  }
+                },
+                "required": [
+                  "rows"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "written": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "written"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomCostSourcesIdUploadsUploadIdRows",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources/{id}/uploads/{uploadId}/complete": {
+      "post": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Finish an upload",
+        "description": "Applies `replace` (zeroing this source's rows from other uploads in the range) and records what the upload holds.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "uploadId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCustomCostSourcesIdUploadsUploadIdComplete",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/custom-cost-sources/{id}/uploads/{uploadId}": {
+      "delete": {
+        "tags": [
+          "Custom Cost Sources"
+        ],
+        "summary": "Delete an upload and the rows it wrote",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "uploadId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomCostDeleted"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCustomCostSourcesIdUploadsUploadId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
       }
     },
     "/api/org/{orgId}/billing-rules": {

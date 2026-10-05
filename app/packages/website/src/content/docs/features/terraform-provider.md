@@ -409,6 +409,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds      |
 | `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                          |
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by            |
+| `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend       |
 
 ### Monitoring
 

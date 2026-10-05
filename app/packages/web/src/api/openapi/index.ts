@@ -34,6 +34,7 @@ import { registerChangeFreezePaths } from "./paths/change-freezes";
 import { registerTagPolicyPaths } from "./paths/tag-policy";
 import { registerCurrencyPaths } from "./paths/currency";
 import { registerCostCentrePaths } from "./paths/cost-centres";
+import { registerCustomCostSourcePaths } from "./paths/custom-cost-sources";
 import { registerBillingRulePaths } from "./paths/billing-rules";
 import { registerInvoicePaths } from "./paths/invoices";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
@@ -178,6 +179,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerTagPolicyPaths(ctx);
   registerCurrencyPaths(ctx);
   registerCostCentrePaths(ctx);
+  registerCustomCostSourcePaths(ctx);
   registerBillingRulePaths(ctx);
   registerInvoicePaths(ctx);
   registerCustomGraphPaths(ctx);

@@ -81,6 +81,7 @@ import { changeFreezeRoutes } from "./routes/change-freezes";
 import { tagPolicyRoutes } from "./routes/tag-policy";
 import { currencyRoutes } from "./routes/currency";
 import { costCentreRoutes } from "./routes/cost-centres";
+import { customCostSourceRoutes } from "./routes/custom-cost-sources";
 import { billingRuleRoutes } from "./routes/billing-rules";
 import { invoiceRoutes, managedAccountRoutes } from "./routes/invoices";
 import { customGraphRoutes } from "./routes/custom-graphs";
@@ -397,6 +398,9 @@ orgScoped.route("/change-freezes", changeFreezeRoutes);
 orgScoped.route("/tag-policy", tagPolicyRoutes);
 orgScoped.route("/currency", currencyRoutes);
 orgScoped.route("/cost-centres", costCentreRoutes);
+// Spend uploaded from files into named sources; each source reads as its own
+// provider in the cost dimensions. See server-core/src/cost/custom-costs.ts.
+orgScoped.route("/custom-cost-sources", customCostSourceRoutes);
 orgScoped.route("/billing-rules", billingRuleRoutes);
 orgScoped.route("/managed-accounts", managedAccountRoutes);
 orgScoped.route("/invoices", invoiceRoutes);

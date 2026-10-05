@@ -57,7 +57,7 @@ Some figures belong to an account rather than to individual cost rows: credits, 
 
 These cover the whole organization by nature, so they return an error for a scoped person:
 
-- [cost exports](../features/cloud-costs.md), [managed accounts and invoices](../features/managed-accounts.md) (including the pricing preview for a managed account), the [weekly digest](../features/weekly-digest.md) settings and [config as code](../features/config-as-code.md),
+- [cost exports](../features/cloud-costs.md), [custom cost sources](../features/custom-cost-sources.md), [managed accounts and invoices](../features/managed-accounts.md) (including the pricing preview for a managed account), the [weekly digest](../features/weekly-digest.md) settings and [config as code](../features/config-as-code.md),
 - changing roles, member roles, invitations or cost visibility scopes. Any of these could give someone, including a second account of their own, wider visibility than they hold.
 
 [Cost anomaly](../features/cloud-costs.md) findings are detected across all of the organization's spend, so they are hidden from scoped people rather than shown with totals they cannot otherwise see.
