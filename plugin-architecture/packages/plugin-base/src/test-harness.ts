@@ -92,6 +92,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   depot: { token: "test-depot-org-token", plan: "startup" },
+  anyscale: { apiKey: "test-anyscale-key" },
   deepgram: { apiKey: "test-deepgram-key" },
   "grafana-cloud": { token: "glc_test-grafana-cloud-token", orgSlug: "acme" },
   "elastic-cloud": { apiKey: "essu_test_elastic_cloud_key" },

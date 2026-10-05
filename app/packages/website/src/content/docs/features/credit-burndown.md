@@ -14,7 +14,7 @@ Find it on the **Costs** panel, above the savings sections — those are about s
 
 ## Which providers
 
-Only providers that expose a balance appear here. Current sources are **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Snowflake** (contract capacity, rollover and free usage when the role can read organization usage), **Crusoe Cloud**, **Linode** (active promotions and account credit), **Oracle Cloud** (Universal Credits commitments), **Twilio** (account balance) and **Elastic Cloud** (prepaid ECUs, one balance per order line with its expiry).
+Only providers that expose a balance appear here. Current sources are **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Snowflake** (contract capacity, rollover and free usage when the role can read organization usage), **Crusoe Cloud**, **Linode** (active promotions and account credit), **Oracle Cloud** (Universal Credits commitments), **Twilio** (account balance), **Elastic Cloud** (prepaid ECUs, one balance per order line with its expiry) and **Anyscale** (one balance per credit grant and prepaid commit, with its expiry).
 
 Each provider uses the balance name shown in its console, such as "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram, and "Account balance" on Twilio.
 

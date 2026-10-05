@@ -45,6 +45,7 @@ import { plugin as crusoePlugin } from "@infrawrench/plugin-crusoe";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
 import { plugin as elasticCloudPlugin } from "@infrawrench/plugin-elastic-cloud";
 import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
+import { plugin as anyscalePlugin } from "@infrawrench/plugin-anyscale";
 import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
 import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
 import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
@@ -127,6 +128,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   opensearchPlugin,
   elasticCloudPlugin,
   anthropicPlugin,
+  anyscalePlugin,
   assemblyaiPlugin,
   cartesiaPlugin,
   coherePlugin,

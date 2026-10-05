@@ -713,6 +713,20 @@ export const providerGroups: ProviderGroup[] = [
     name: "AI & Speech",
     providers: [
       {
+        name: "Anyscale",
+        detail: "Ray spend by project and user, credits, idle workspaces",
+        resources: [
+          "Organization",
+          "Cloud",
+          "Project",
+          "Workspace",
+          "Job",
+          "Service",
+          "Compute Config",
+          "Budget",
+        ],
+      },
+      {
         name: "OpenAI",
         detail: "11 resource types, org spend, Speech tab",
         resources: [

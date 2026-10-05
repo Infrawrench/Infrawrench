@@ -54,6 +54,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-opensearch"),
   () => import("@infrawrench/plugin-elastic-cloud"),
   () => import("@infrawrench/plugin-anthropic"),
+  () => import("@infrawrench/plugin-anyscale"),
   () => import("@infrawrench/plugin-assemblyai"),
   () => import("@infrawrench/plugin-cartesia"),
   () => import("@infrawrench/plugin-cohere"),

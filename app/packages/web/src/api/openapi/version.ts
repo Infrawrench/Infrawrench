@@ -165,4 +165,7 @@
 // 1.45.0: PDF export and scheduled dashboard delivery routes and schemas. Additive.
 // 1.46.0: New Relic plugin and resource type IDs, plus provider-filled credential choices. Additive.
 // 1.47.0: Datadog plugin; `datadog` on the `pluginId` enum and its resource type ids on the `resourceTypeId` enum. Additive.
-export const API_VERSION = "1.47.0";
+// 1.48.0: the Anyscale plugin. Adds `anyscale` to the pluginId enum and its
+// resource types (organization, cloud, project, workspace, job, service,
+// compute-config, budget) to the resourceTypeId enum.
+export const API_VERSION = "1.48.0";
