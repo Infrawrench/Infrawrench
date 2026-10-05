@@ -79,6 +79,7 @@ export async function claimDueReportNotifications(
     organizationId: String(r["organization_id"]),
     costReportId: String(r["cost_report_id"]),
     dashboardId: null,
+    costCanvasId: null,
     attachPdf: r["attach_pdf"] === true,
     cadence: String(r["cadence"]),
     sendDay: Number(r["send_day"]),

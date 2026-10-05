@@ -8,7 +8,7 @@ import {
   TransportOutcome,
 } from "./cost-report-notifications";
 
-const AttachPdf = z
+export const AttachPdf = z
   .boolean()
   .describe(
     "Attach the rendered PDF: as a file on every email, and uploaded into the Slack message's " +
@@ -16,7 +16,7 @@ const AttachPdf = z
       "Teams incoming webhooks cannot carry files, so Teams always gets the summary and a link.",
   );
 
-const DashboardNotificationInput = strict({
+export const DashboardNotificationInput = strict({
   ...ScheduleFields,
   attachPdf: AttachPdf.optional().describe("Absent means `true`."),
 })
@@ -55,7 +55,7 @@ const DashboardNotification = strict({
   updatedAt: IsoDateTime,
 }).openapi("DashboardNotification");
 
-const DashboardNotificationSendResult = strict({
+export const DashboardNotificationSendResult = strict({
   attempted: z.number().int(),
   succeeded: z.number().int(),
   slack: TransportOutcome,
@@ -71,11 +71,11 @@ const DashboardNotificationSendResult = strict({
     ),
 }).openapi("DashboardNotificationSendResult");
 
-const PdfBody = {
+export const PdfBody = {
   "application/pdf": { schema: z.string().openapi({ format: "binary" }) },
 };
 
-const TzQuery = z.object({
+export const TzQuery = z.object({
   tz: z
     .string()
     .optional()

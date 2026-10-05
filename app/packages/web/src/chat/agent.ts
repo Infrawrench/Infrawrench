@@ -24,7 +24,8 @@ import {
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall, runToolHandler } from "../tools/permissions";
 import { needsApproval } from "../tools/approval";
-import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
+import { okText, type ToolAuthContext, type ToolDefinition, type ToolResult } from "../tools/types";
+import { canvasAgentContext } from "../services/cost-canvases";
 import {
   DEFAULT_CHAT_MODEL,
   type ChatContentBlock as AnthropicContentBlock,
@@ -313,6 +314,35 @@ async function loadConversationForApi(
   };
 }
 
+/**
+ * The tool's own description of what approving would change, run under the
+ * caller's cost visibility and sharing (through `runToolHandler`, the one
+ * dispatch path). Never throws: a missing summary only means the card shows
+ * the raw input alone.
+ */
+async function approvalSummaryFor(
+  tool: Pick<ToolDefinition, "approvalSummary">,
+  input: Record<string, unknown>,
+  auth: ToolAuthContext,
+): Promise<string | null> {
+  const describe = tool.approvalSummary;
+  if (!describe) return null;
+  try {
+    const result = await runToolHandler(
+      { handler: async (i, a) => okText((await describe(i, a)) ?? "") },
+      input,
+      auth,
+    );
+    const text = result.content
+      .map((c) => c.text)
+      .join("\n")
+      .trim();
+    return text ? text.slice(0, 4000) : null;
+  } catch {
+    return null;
+  }
+}
+
 function toolToProvider(t: Omit<ToolDefinition, "handler">): ProviderTool {
   // Both providers take JSON Schema (draft 2020-12) for tool input. We convert
   // from the Zod shapes that MCP also uses. Must NOT use the openApi3 target:
@@ -388,6 +418,9 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
   // list is built once here; the dispatch map is rebuilt per iteration below
   // because their handlers close over the assistant message id.
   const webSpecs = webChatToolSpecs();
+  // A conversation started from a cost canvas carries that canvas into the
+  // system prompt; read once per turn (the agent re-reads the spec by tool).
+  const systemPrompt = SYSTEM_PROMPT + (await canvasAgentContext(conversationId).catch(() => ""));
   const providerTools = [
     ...registry.map(toolToProvider),
     ...webSpecs.map(toolToProvider),
@@ -423,7 +456,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let reservationId: string;
     try {
       const inputChars =
-        SYSTEM_PROMPT.length +
+        systemPrompt.length +
         (() => {
           try {
             return JSON.stringify(apiMessages).length;
@@ -475,7 +508,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
         try {
           for await (const ev of provider.streamTurn({
             model: activeModel,
-            system: SYSTEM_PROMPT,
+            system: systemPrompt,
             tools: providerTools,
             messages: apiMessages,
             maxTokens: MAX_TOKENS,
@@ -694,6 +727,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       }
       if (await needsApproval(tool, tu.input, auth)) {
         const pendingId = uuidv4();
+        const summary = await approvalSummaryFor(tool, tu.input, auth);
         await db.insert(chatPendingActions).values({
           id: pendingId,
           conversationId,
@@ -702,6 +736,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           toolName: tu.name,
           toolInput: tu.input,
           status: "pending",
+          ...(summary ? { summary } : {}),
         });
         // Mirror the request into Slack with Approve/Deny buttons, so the
         // owner can decide without the tab open. Fire-and-forget (the helper

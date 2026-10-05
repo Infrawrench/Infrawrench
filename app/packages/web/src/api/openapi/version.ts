@@ -186,4 +186,8 @@
 // `effects`/`rerateCoverage`/`warnings`/`expressionFailures` on invoice derivations;
 // `POST /billing-rules/preview` and `POST /billing-rules/reorder`. Additive.
 // 1.54.0: GitHub issue filing (`/github-issues/*`), the `github-issues` alert routing destination, the `savingsFindings` trigger, the `savings_finding` push payload and the `github-issues:read`/`:write` permissions. Additive.
-export const API_VERSION = "1.54.0";
+// 1.55.0: cost canvases (`/cost-canvases` CRUD, draft, preview, run, PDF and
+// delivery schedules), a `cost_canvas` dashboard widget kind and sharing
+// object type, `cost-canvases` on the TabTarget kind enum (with `canvasId`),
+// and the `6m` relative date-range preset. All additive.
+export const API_VERSION = "1.55.0";

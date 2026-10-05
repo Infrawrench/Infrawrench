@@ -250,29 +250,29 @@ permissions.
 
 ### Scopes
 
-| Objects                                                                                                                                   | Read                        | Write                                                                      |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
-| Budgets                                                                                                                                   | `budgets:read`              | `budgets:write`                                                            |
-| Cost centres, allocation rules, saved filters, reports, folders, alerts, annotations, scenario models, business metrics, managed accounts | `costs:read`                | `costs:write`                                                              |
-| Tag policy                                                                                                                                | `resources:read`            | `org:settings:write`                                                       |
-| Billing rules, cost exports, report notifications, currency and exchange rates                                                            | `costs:read`                | `org:settings:write`                                                       |
-| Probes, status pages, sleep schedules, log queries                                                                                        | `resources:read`            | `resources:write`                                                          |
-| Metric alerts                                                                                                                             | `metric-alerts:read`        | `metric-alerts:write`                                                      |
-| Custom graphs                                                                                                                             | `dashboards:read`           | `dashboards:write`                                                         |
-| Dashboard notifications                                                                                                                   | `dashboards:read`           | `org:settings:write`                                                       |
-| Network flow collection                                                                                                                   | `costs:read`                | `org:settings:write`                                                       |
-| Change freezes                                                                                                                            | `freezes:read`              | `freezes:write`                                                            |
-| Accounts                                                                                                                                  | `accounts:read`             | `accounts:write` (credentials: `secrets:write`; delete: `accounts:delete`) |
-| Bastions                                                                                                                                  | `bastions:read`             | `bastions:write`                                                           |
-| SSH keys, SSH snippets                                                                                                                    | `ssh-keys:read`             | `ssh-keys:write`                                                           |
-| API keys                                                                                                                                  | `apikeys:read`              | `apikeys:write`                                                            |
-| Roles                                                                                                                                     | `team:read`                 | `team:role:write`                                                          |
-| Deploy triggers                                                                                                                           | `deployments:read`          | `deployments:write`                                                        |
-| Workflow schedules                                                                                                                        | `workflows:read`            | `workflows:write`                                                          |
-| Session recording settings                                                                                                                | `session-recordings:read`   | `session-recordings:write`                                                 |
-| Jira / Linear connections                                                                                                                 | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
-| GitHub issue settings                                                                                                                     | `github-issues:read`        | `org:settings:write`                                                       |
-| Alert routing, Slack channels, Teams webhooks, digest, drift / expiry / posture alert settings                                            | `org:settings:write`        | `org:settings:write`                                                       |
+| Objects                                                                                                                                             | Read                        | Write                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
+| Budgets                                                                                                                                             | `budgets:read`              | `budgets:write`                                                            |
+| Cost centres, allocation rules, saved filters, reports, folders, canvases, alerts, annotations, scenario models, business metrics, managed accounts | `costs:read`                | `costs:write`                                                              |
+| Tag policy                                                                                                                                          | `resources:read`            | `org:settings:write`                                                       |
+| Billing rules, cost exports, report and canvas notifications, currency and exchange rates                                                           | `costs:read`                | `org:settings:write`                                                       |
+| Probes, status pages, sleep schedules, log queries                                                                                                  | `resources:read`            | `resources:write`                                                          |
+| Metric alerts                                                                                                                                       | `metric-alerts:read`        | `metric-alerts:write`                                                      |
+| Custom graphs                                                                                                                                       | `dashboards:read`           | `dashboards:write`                                                         |
+| Dashboard notifications                                                                                                                             | `dashboards:read`           | `org:settings:write`                                                       |
+| Network flow collection                                                                                                                             | `costs:read`                | `org:settings:write`                                                       |
+| Change freezes                                                                                                                                      | `freezes:read`              | `freezes:write`                                                            |
+| Accounts                                                                                                                                            | `accounts:read`             | `accounts:write` (credentials: `secrets:write`; delete: `accounts:delete`) |
+| Bastions                                                                                                                                            | `bastions:read`             | `bastions:write`                                                           |
+| SSH keys, SSH snippets                                                                                                                              | `ssh-keys:read`             | `ssh-keys:write`                                                           |
+| API keys                                                                                                                                            | `apikeys:read`              | `apikeys:write`                                                            |
+| Roles                                                                                                                                               | `team:read`                 | `team:role:write`                                                          |
+| Deploy triggers                                                                                                                                     | `deployments:read`          | `deployments:write`                                                        |
+| Workflow schedules                                                                                                                                  | `workflows:read`            | `workflows:write`                                                          |
+| Session recording settings                                                                                                                          | `session-recordings:read`   | `session-recordings:write`                                                 |
+| Jira / Linear connections                                                                                                                           | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
+| GitHub issue settings                                                                                                                               | `github-issues:read`        | `org:settings:write`                                                       |
+| Alert routing, Slack channels, Teams webhooks, digest, drift / expiry / posture alert settings                                                      | `org:settings:write`        | `org:settings:write`                                                       |
 
 Four shapes are worth noticing.
 
@@ -606,6 +606,12 @@ terraform import infrawrench_cost_report_notification.weekly <report-id>/<notifi
 terraform import infrawrench_dashboard_notification.weekly <dashboard-id>/<notification-id>
 ```
 
+**Cost canvas notifications** likewise, nested under the canvas:
+
+```sh
+terraform import infrawrench_cost_canvas_notification.weekly <canvas-id>/<notification-id>
+```
+
 **Workflow schedules** are addressed by the workflow they belong to:
 
 ```sh
@@ -658,6 +664,8 @@ secret store that consumes it rather than into an output.
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |
+| `infrawrench_cost_canvas`               | by id     | `spec_json` holds queries; compared as JSON          |
+| `infrawrench_cost_canvas_notification`  | composite | `<canvas-id>/<notification-id>`; canvas as PDF       |
 | `infrawrench_cost_alert`                | by id     | Needs at least one threshold                         |
 | `infrawrench_cost_annotation`           | by id     | An end equal to the start is stored as null          |
 | `infrawrench_scenario_model`            | by id     | Adjustment `key` is caller-assigned                  |
@@ -694,18 +702,18 @@ secret store that consumes it rather than into an output.
 
 ### Accounts and access
 
-| Resource                            | Import                               | Notes                                                                      |
-| ----------------------------------- | ------------------------------------ | -------------------------------------------------------------------------- |
-| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                |
-| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                    |
-| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                        |
-| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                   |
-| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder or dashboard; destroy resets it |
-| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                 |
-| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                  |
-| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                       |
-| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                        |
-| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                              |
+| Resource                            | Import                               | Notes                                                                              |
+| ----------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
+| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                        |
+| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                            |
+| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                                |
+| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                           |
+| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder, canvas or dashboard; destroy resets it |
+| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                         |
+| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                          |
+| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                               |
+| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                                |
+| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                                      |
 
 ### Alert delivery
 

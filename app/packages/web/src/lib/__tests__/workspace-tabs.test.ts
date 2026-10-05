@@ -26,6 +26,7 @@ import {
   resourceSftpTabTarget,
   resourceAppsTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
   getWorkspaceNavigateArgs,
@@ -779,6 +780,29 @@ describe("cost reports tab", () => {
       const path = args.to
         .replace("$orgId", args.params!["orgId"]!)
         .replace("$reportId", args.params!["reportId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("canvases tab", () => {
+  it("navigates to the list path without a canvas and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(costCanvasesTabTarget())).toEqual({
+      to: "/org/$orgId/cost-canvases",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(costCanvasesTabTarget("c1"))).toEqual({
+      to: "/org/$orgId/cost-canvases/$canvasId",
+      params: { orgId: "test-org", canvasId: "c1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    for (const target of [costCanvasesTabTarget(), costCanvasesTabTarget("c1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$canvasId", args.params!["canvasId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
     }
   });

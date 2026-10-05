@@ -57,7 +57,7 @@ export async function exportPdf(
     path: string;
     flags: PdfExportFlags;
     /** The object's name: the default file name, and the JSON `name` field. */
-    subject: { kind: "report" | "dashboard"; id: string; name: string };
+    subject: { kind: "report" | "dashboard" | "canvas"; id: string; name: string };
   },
 ): Promise<void> {
   // The local zone as `?tz=`, so the PDF's "generated at" line reads in the

@@ -19,6 +19,7 @@ import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
 import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
+import { cmdCanvasList, cmdCanvasRefresh, cmdCanvasShow } from "./commands/canvas";
 import { cmdDashboards, cmdSendDashboard, cmdShowDashboard } from "./commands/dashboards";
 import { pdfFlags } from "./pdf-export";
 import {
@@ -104,6 +105,10 @@ COMMANDS
   reports <name|id>   run one saved report and chart it
                       [--format pdf [--out <path>]  save the rendered PDF instead]
   reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
+  canvas list         cost canvases: reports the chat agent built from a description
+  canvas show <n|id>  one canvas's definition (blocks, placements, prompt)
+                      [--format pdf [--out <path>]  save the rendered canvas as a PDF]
+  canvas refresh <n>  re-run a canvas's queries (no model call) and print its figures
   dashboards          the org's dashboards and their scheduled PDF deliveries
   dashboards <n|id>   one dashboard's delivery schedules
                       [--format pdf [--out <path>]  save the rendered dashboard as a PDF]
@@ -470,6 +475,25 @@ export async function runCli(): Promise<void> {
         }
         await cmdReports(ctx);
         break;
+      case "canvas":
+      case "canvases": {
+        // `canvas list|show|refresh`; a bare `canvas` lists, and a bare name
+        // (`canvas "AI spend"`) refreshes, the verb people reach for.
+        const verb = rest[0];
+        if (!verb || verb === "list") {
+          if (parsed.exportFlags.format) {
+            throw new CliError("Which canvas? `infrawrench canvas show <name|id> --format pdf`.");
+          }
+          await cmdCanvasList(ctx);
+        } else if (verb === "show") {
+          await cmdCanvasShow(ctx, rest.slice(1).join(" "), pdfFlags(parsed));
+        } else if (verb === "refresh" || verb === "run") {
+          await cmdCanvasRefresh(ctx, rest.slice(1).join(" "), pdfFlags(parsed));
+        } else {
+          await cmdCanvasRefresh(ctx, rest.join(" "), pdfFlags(parsed));
+        }
+        break;
+      }
       case "dashboards":
         // Same shape as `reports`: `send` is the explicit verb that posts
         // into channels, a positional names one, bare lists them all.

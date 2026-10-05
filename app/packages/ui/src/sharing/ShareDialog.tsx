@@ -118,7 +118,9 @@ export function ShareDialog({
       ? gt("dashboard")
       : target.objectType === "cost_report_folder"
         ? gt("folder")
-        : gt("report");
+        : target.objectType === "cost_canvas"
+          ? gt("canvas")
+          : gt("report");
 
   const levelLabel = (level: ObjectAccessLevel) =>
     level === "owner" ? gt("Owner") : level === "editor" ? gt("Can edit") : gt("Can view");

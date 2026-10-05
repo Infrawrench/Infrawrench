@@ -15,6 +15,7 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerCostReportPaths } from "./paths/cost-reports";
+import { registerCostCanvasPaths } from "./paths/cost-canvases";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
 import { registerDashboardNotificationPaths } from "./paths/dashboard-notifications";
 import { registerCostReportFolderPaths } from "./paths/cost-report-folders";
@@ -158,6 +159,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerCostReportPaths(ctx);
+  registerCostCanvasPaths(ctx);
   registerCostReportNotificationPaths(ctx);
   registerDashboardNotificationPaths(ctx);
   registerCostReportFolderPaths(ctx);
@@ -315,6 +317,14 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Named, addressable saved cost graphs. A report owns its config as an org object, so " +
           "dashboards can reference it by id (the `cost_report` widget kind) and it can be run " +
           "by id without the caller reassembling the query.",
+      },
+      {
+        name: "Cost canvases",
+        description:
+          "Reports built from a plain-language description by the chat agent: a saved, " +
+          "strictly validated spec of KPI tiles, charts, tables, budgets, anomalies and short " +
+          "narrative. The spec stores queries, not numbers, so running a canvas re-executes " +
+          "them with no model call; edits proposed in chat are approved against a diff.",
       },
       {
         name: "Cost annotations",

@@ -383,28 +383,30 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Cost allocation and reporting
 
-| Resource                                | Manages                                                                               |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets) and their alert thresholds                        |
-| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                          |
-| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                            |
-| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                   |
-| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                |
-| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                     |
-| `infrawrench_cost_report_folder`        | Report folders                                                                        |
-| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                               |
-| `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email |
-| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                         |
-| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                                 |
-| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                               |
-| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                   |
-| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                           |
-| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values            |
-| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                |
-| `infrawrench_currency_settings`         | The organization's display currency                                                   |
-| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                 |
-| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                              |
-| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds     |
+| Resource                                | Manages                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets) and their alert thresholds                         |
+| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                           |
+| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                             |
+| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                    |
+| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                 |
+| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                      |
+| `infrawrench_cost_report_folder`        | Report folders                                                                         |
+| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                |
+| `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email  |
+| `infrawrench_cost_canvas`               | Cost canvases: report pages of text, KPIs, charts and tables, kept in code once vetted |
+| `infrawrench_cost_canvas_notification`  | Scheduled delivery of a cost canvas as a PDF to Slack, Teams or email                  |
+| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                          |
+| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                                  |
+| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                                |
+| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                    |
+| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                            |
+| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values             |
+| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                 |
+| `infrawrench_currency_settings`         | The organization's display currency                                                    |
+| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                  |
+| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                               |
+| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds      |
 
 ### Monitoring
 
@@ -430,18 +432,18 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Accounts and access
 
-| Resource                            | Manages                                                                                                                |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                 |
-| `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                          |
-| `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                           |
-| `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                        |
-| `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder or dashboard |
-| `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                            |
-| `infrawrench_ssh_key`               | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                     |
-| `infrawrench_ssh_snippet`           | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                          |
-| `infrawrench_deploy_trigger`        | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                     |
-| `infrawrench_workflow_schedule`     | The cron on an existing [workflow](./workflows.md)                                                                     |
+| Resource                            | Manages                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                              |
+| `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                                       |
+| `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                                        |
+| `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                                     |
+| `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder, cost canvas or dashboard |
+| `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                                         |
+| `infrawrench_ssh_key`               | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                                  |
+| `infrawrench_ssh_snippet`           | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                                       |
+| `infrawrench_deploy_trigger`        | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                                  |
+| `infrawrench_workflow_schedule`     | The cron on an existing [workflow](./workflows.md)                                                                                  |
 
 ### Alert delivery
 

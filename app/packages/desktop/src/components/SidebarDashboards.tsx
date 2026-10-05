@@ -40,11 +40,13 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
+import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   environmentsTabTarget,
   graphTabTarget,
@@ -254,6 +256,17 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costReportsTabTarget(), {
                 label: gt("Reports"),
+              }),
+          },
+          // Cloud-only: canvases are built by the cloud chat agent over
+          // server-collected spend.
+          {
+            key: "cost-canvases",
+            label: gt("Canvases"),
+            icon: <CostCanvasesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, costCanvasesTabTarget(), {
+                label: gt("Canvases"),
               }),
           },
           // Cloud-only for the same reason as Costs: an invoice bills for

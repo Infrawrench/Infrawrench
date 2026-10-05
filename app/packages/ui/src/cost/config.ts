@@ -80,6 +80,15 @@ import {
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,
   type ManagedInvoiceUpdate,
+  COST_CANVAS_LIMITS,
+  COST_CANVAS_TABLE_BINNINGS,
+  costCanvasTextReferences,
+  type CostCanvasBlock,
+  type CostCanvasInput,
+  type CostCanvasKpiMetric,
+  type CostCanvasSpec,
+  type CostCanvasTableQuery,
+  type CostCanvasWidgetConfig,
 } from "@infrawrench/client-core";
 
 export {
@@ -651,11 +660,18 @@ export const customGraphWidgetConfigSchema = z.object({
   graphId: z.string().min(1),
 });
 
+/** A cost-canvas widget is a dashboard view onto a cost_canvases row. */
+export const costCanvasWidgetConfigSchema = z.object({
+  version: z.literal(1),
+  canvasId: z.string().min(1),
+});
+
 const widgetConfigSchemas = {
   cost_graph: costGraphConfigSchema,
   cost_report: costReportWidgetConfigSchema,
   budget: budgetWidgetConfigSchema,
   custom_graph: customGraphWidgetConfigSchema,
+  cost_canvas: costCanvasWidgetConfigSchema,
 } as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
 
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
@@ -1220,4 +1236,251 @@ export const managedInvoiceSendSchema = z.object({
  */
 export type SchemasMatchManagedAccountContract = [
   Exact<z.infer<typeof managedInvoiceUpdateSchema>, ManagedInvoiceUpdate>,
+];
+
+/* ------------------------------------------------------------------ *
+ * Cost canvases: POST/PUT /cost-canvases, and the spec the chat agent writes.
+ *
+ * Every object is `.strict()`: the spec is model-authored, and a key the
+ * schema does not know is a mistake to report back to the model, never a
+ * field to carry along silently. Nothing here accepts a query string or SQL;
+ * filters are the structured `CostFilter[]` every other cost surface uses.
+ * ------------------------------------------------------------------ */
+
+const canvasId = z
+  .string()
+  .min(1)
+  .max(COST_CANVAS_LIMITS.maxBlockIdLength)
+  .regex(/^[A-Za-z0-9_-]+$/, "block ids are letters, digits, '-' and '_'");
+const canvasTitle = z.string().min(1).max(COST_CANVAS_LIMITS.maxBlockTitleLength);
+const canvasFilters = z.array(costFilterSchema.strict()).max(20).default([]);
+const canvasRef = z.string().min(1).max(200);
+
+const canvasKpiMetricSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("spend"),
+      dateRange: costDateRangeSchema,
+      filters: canvasFilters,
+      savedFilterId: canvasRef.optional(),
+      costBasis: z.enum(COST_BASES).optional(),
+      adjusted: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("unit_cost"),
+      businessMetricId: canvasRef,
+      dateRange: costDateRangeSchema,
+      filters: canvasFilters,
+      savedFilterId: canvasRef.optional(),
+      costBasis: z.enum(COST_BASES).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("forecast"),
+      filters: canvasFilters,
+      savedFilterId: canvasRef.optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("budget"), budgetId: canvasRef }).strict(),
+  z
+    .object({
+      type: z.literal("anomaly_count"),
+      days: z.number().int().min(1).max(COST_CANVAS_LIMITS.maxAnomalyDays),
+    })
+    .strict(),
+]);
+
+const canvasTableQuerySchema = z
+  .object({
+    dateRange: costDateRangeSchema,
+    binning: z.enum(COST_CANVAS_TABLE_BINNINGS),
+    groupBy: z.enum(COST_DIMENSIONS),
+    groupByTagKey: z.string().min(1).optional(),
+    filters: canvasFilters,
+    savedFilterId: canvasRef.optional(),
+    costBasis: z.enum(COST_BASES).optional(),
+    adjusted: z.boolean().optional(),
+    topN: z.number().int().min(1).max(COST_CANVAS_LIMITS.maxTableRows).default(10),
+  })
+  .strict();
+
+export const costCanvasBlockSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("text"),
+      text: z.string().min(1).max(COST_CANVAS_LIMITS.maxTextLength),
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("kpi"),
+      title: canvasTitle,
+      metric: canvasKpiMetricSchema,
+      comparePreviousPeriod: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("chart"),
+      title: canvasTitle,
+      config: costGraphConfigSchema.strict(),
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("table"),
+      title: canvasTitle,
+      query: canvasTableQuerySchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("budgets"),
+      title: canvasTitle,
+      budgetIds: z.array(canvasRef).max(COST_CANVAS_LIMITS.maxBudgetsPerBlock).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("anomalies"),
+      title: canvasTitle,
+      days: z.number().int().min(1).max(COST_CANVAS_LIMITS.maxAnomalyDays).default(30),
+      limit: z.number().int().min(1).max(COST_CANVAS_LIMITS.maxAnomalyRows).default(10),
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("cost_report"),
+      title: canvasTitle.optional(),
+      reportId: canvasRef,
+    })
+    .strict(),
+  z
+    .object({
+      id: canvasId,
+      kind: z.literal("custom_graph"),
+      title: canvasTitle.optional(),
+      graphId: canvasRef,
+    })
+    .strict(),
+]);
+
+function tagKeyIssues(
+  filters: Array<{ dimension: string; tagKey?: string | undefined }>,
+): string | null {
+  return filters.some((f) => f.dimension === "tag" && !f.tagKey)
+    ? "a tag filter needs tagKey"
+    : null;
+}
+
+export const costCanvasSpecSchema = z
+  .object({
+    version: z.literal(1),
+    blocks: z.array(costCanvasBlockSchema).max(COST_CANVAS_LIMITS.maxBlocks),
+  })
+  .strict()
+  .superRefine((spec, ctx) => {
+    const ids = new Set<string>();
+    const kpiIds = new Set(spec.blocks.filter((b) => b.kind === "kpi").map((b) => b.id));
+    spec.blocks.forEach((block, i) => {
+      const path = ["blocks", i];
+      if (ids.has(block.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "id"],
+          message: `duplicate block id "${block.id}"`,
+        });
+      }
+      ids.add(block.id);
+      const fail = (message: string, field: string) =>
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, field], message });
+      switch (block.kind) {
+        case "text":
+          for (const ref of costCanvasTextReferences(block.text)) {
+            if (!kpiIds.has(ref)) fail(`{{${ref}}} does not name a kpi block`, "text");
+          }
+          break;
+        case "kpi": {
+          const m = block.metric;
+          if ("filters" in m) {
+            const issue = tagKeyIssues(m.filters);
+            if (issue) fail(issue, "metric");
+          }
+          if (block.comparePreviousPeriod && m.type !== "spend" && m.type !== "unit_cost") {
+            fail(
+              "comparePreviousPeriod only applies to spend and unit_cost",
+              "comparePreviousPeriod",
+            );
+          }
+          break;
+        }
+        case "chart": {
+          const c = block.config;
+          if (c.groupBy === "tag" && !c.groupByTagKey)
+            fail("groupBy tag needs groupByTagKey", "config");
+          const issue = tagKeyIssues(c.filters);
+          if (issue) fail(issue, "config");
+          if (c.scenarioModelId && !c.showForecast) {
+            fail("scenarioModelId needs showForecast", "config");
+          }
+          break;
+        }
+        case "table": {
+          const q = block.query;
+          if (q.groupBy === "tag" && !q.groupByTagKey)
+            fail("groupBy tag needs groupByTagKey", "query");
+          const issue = tagKeyIssues(q.filters);
+          if (issue) fail(issue, "query");
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  });
+
+export const costCanvasInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(COST_CANVAS_LIMITS.maxNameLength),
+    description: z.string().max(COST_CANVAS_LIMITS.maxDescriptionLength).optional(),
+    spec: costCanvasSpecSchema,
+  })
+  .strict();
+
+export const costCanvasDraftInputSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(COST_CANVAS_LIMITS.maxPromptLength),
+    name: z.string().trim().min(1).max(COST_CANVAS_LIMITS.maxNameLength).optional(),
+    model: z.string().min(1).max(80).optional(),
+  })
+  .strict();
+
+/**
+ * A spec failure as one readable string, for the agent's tool error (it has
+ * to fix the spec from this alone) and the API's 400.
+ */
+export function formatCostCanvasSpecIssues(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 12)
+    .map((i) => `${i.path.length > 0 ? i.path.join(".") : "(spec)"}: ${i.message}`)
+    .join("; ");
+}
+
+export type SchemasMatchCostCanvasContract = [
+  Exact<z.infer<typeof canvasKpiMetricSchema>, CostCanvasKpiMetric>,
+  Exact<z.infer<typeof canvasTableQuerySchema>, CostCanvasTableQuery>,
+  Exact<z.infer<typeof costCanvasBlockSchema>, CostCanvasBlock>,
+  Exact<z.infer<typeof costCanvasSpecSchema>, CostCanvasSpec>,
+  Exact<z.infer<typeof costCanvasInputSchema>, CostCanvasInput>,
+  Exact<z.infer<typeof costCanvasWidgetConfigSchema>, CostCanvasWidgetConfig>,
 ];

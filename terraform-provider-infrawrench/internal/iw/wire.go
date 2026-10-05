@@ -759,6 +759,68 @@ type DashboardNotification struct {
 	UpdatedAt       string   `json:"updatedAt"`
 }
 
+/* ------------------------------- cost canvases ------------------------------ */
+
+// CostCanvasInput is the POST/PUT body for a cost canvas, a full replace.
+//
+// Spec is carried as raw JSON rather than as typed blocks. It is a tagged union
+// of block kinds whose chart config is itself an open JSON object, the server
+// validates it strictly, and the Terraform resource exposes it as a JSON
+// string; decoding it into Go types here would only add a second place for the
+// shape to drift. Description follows convention 1: omitted stores null.
+type CostCanvasInput struct {
+	Name        string          `json:"name"`
+	Description *string         `json:"description,omitempty"`
+	Spec        json.RawMessage `json:"spec"`
+}
+
+// CostCanvasPlacement is one dashboard widget that embeds a canvas.
+type CostCanvasPlacement struct {
+	WidgetID      string `json:"widgetId"`
+	DashboardID   string `json:"dashboardId"`
+	DashboardName string `json:"dashboardName"`
+}
+
+// CostCanvas is a stored canvas. The spec holds queries, never figures, so
+// reading it back does not change as spend changes.
+type CostCanvas struct {
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     *string               `json:"description"`
+	Spec            json.RawMessage       `json:"spec"`
+	Prompt          *string               `json:"prompt"`
+	ConversationID  *string               `json:"conversationId"`
+	CreatedByUserID *string               `json:"createdByUserId"`
+	CreatedAt       string                `json:"createdAt"`
+	UpdatedAt       string                `json:"updatedAt"`
+	Placements      []CostCanvasPlacement `json:"placements"`
+}
+
+// CostCanvasNotification is a stored delivery schedule for one canvas. It is
+// written with DashboardNotificationInput; only the parent id differs on the
+// way back.
+type CostCanvasNotification struct {
+	ID              string   `json:"id"`
+	CostCanvasID    string   `json:"costCanvasId"`
+	Cadence         string   `json:"cadence"`
+	SendDay         int64    `json:"sendDay"`
+	SendDayOfMonth  int64    `json:"sendDayOfMonth"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	AttachPDF       bool     `json:"attachPdf"`
+	NextSendAt      *string  `json:"nextSendAt"`
+	LastSentAt      *string  `json:"lastSentAt"`
+	LastStatus      *string  `json:"lastStatus"`
+	LastError       *string  `json:"lastError"`
+	CreatedByUserID *string  `json:"createdByUserId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
+}
+
 /* ------------------------------ cost settings ------------------------------ */
 
 // CostAnomalySettings is the org singleton tuning spike detection. Every field

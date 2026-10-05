@@ -55,10 +55,11 @@ const WorkflowPin = strict({
 }).openapi("DashboardWorkflowPin");
 
 const WidgetKind = z
-  .enum(["cost_graph", "cost_report", "budget", "custom_graph"])
+  .enum(["cost_graph", "cost_report", "budget", "custom_graph", "cost_canvas"])
   .describe(
     "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a " +
-      "saved cost report by id, so editing the report updates every dashboard showing it.",
+      "saved cost report by id, so editing the report updates every dashboard showing it. " +
+      "`cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way.",
   )
   .openapi("DashboardWidgetKind");
 
@@ -191,6 +192,7 @@ const TabTarget = strict({
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
     "cost-reports",
+    "cost-canvases",
     "invoices",
     "graph",
     "logs",
@@ -240,6 +242,11 @@ const TabTarget = strict({
    * deleted invoice just lands on the list.
    */
   invoiceId: Uuid.optional(),
+  /**
+   * Which canvas the Canvases tab was last on. Omitted for the list view.
+   * Never used to invalidate the tab, like `reportId`.
+   */
+  canvasId: Uuid.optional(),
   /** Which app-server session a `linux-app` tab belonged to. */
   sessionId: z.string().max(128).optional(),
   /** Which window of that session. */

@@ -86,6 +86,13 @@ export interface ToolDefinition {
    */
   requiresApproval?(input: Record<string, unknown>, auth: ToolAuthContext): Promise<boolean>;
   /**
+   * What approving this call would change, as plain lines, stored on the
+   * pending action and shown on the approval card above the raw input (a
+   * canvas edit's block diff). Chat-only; run under the caller's cost
+   * visibility and sharing like a handler. Null, or a throw, shows no summary.
+   */
+  approvalSummary?(input: Record<string, unknown>, auth: ToolAuthContext): Promise<string | null>;
+  /**
    * Permission the caller must hold, enforced centrally by
    * {@link authorizeToolCall} at every dispatch site (MCP + chat): NOT by the
    * handler. Must mirror the `requirePermission` on the equivalent HTTP route

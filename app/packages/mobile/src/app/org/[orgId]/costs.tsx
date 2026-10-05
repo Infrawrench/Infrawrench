@@ -105,6 +105,11 @@ export default function CostsScreen() {
           subtitle="Saved cost graphs — named, and shared across dashboards"
           onPress={() => router.push(`/org/${orgId}/cost-reports`)}
         />
+        <Row
+          title="Canvases"
+          subtitle="Reports built from a description, refreshed on open"
+          onPress={() => router.push(`/org/${orgId}/cost-canvases`)}
+        />
       </Card>
 
       <SectionTitle>Budgets</SectionTitle>

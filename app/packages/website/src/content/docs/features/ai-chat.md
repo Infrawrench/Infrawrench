@@ -49,6 +49,8 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Questions** — `ask_question`, so the agent can pause for a choice from a list (with an Other field) or a free-text answer instead of asking in the composer. Chat-only; see [Asking you a question](#asking-you-a-question).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
 
+- **Canvases**: `list_cost_canvases`, `get_cost_canvas`, `run_cost_canvas`, `write_cost_canvas`, `delete_cost_canvas`. Describe a report and the agent builds it as a saved canvas of KPI tiles, charts, tables, budgets, anomalies and narrative that refreshes without the agent. A conversation started from the Canvases page is tied to that canvas, so "split the table by region" edits it. See [Canvases](./ai-canvas.md).
+
 ## Reading the web
 
 Two tools let the agent look things up instead of guessing from training data. Like `sleep`, they are chat-only — the [MCP server](./mcp.md) does not expose them, because an MCP client already runs inside a host with its own web access.
@@ -97,6 +99,7 @@ A few tools need approval only for some inputs or targets, because one argument 
 - `write_custom_graph` when the call sets the source, since a graph script can run SSH commands every time a dashboard renders it.
 - `get_resource_outputs` whenever the call would return a sensitive output (a password, a connection string, a kubeconfig) or doesn't name its outputs on a type that has one. Asking for non-sensitive outputs such as an IP address still runs straight away, and `get_resource` leaves sensitive outputs out.
 - `web_fetch` for any URL that didn't come from you or from a search, as described in [Reading the web](#reading-the-web).
+- `write_cost_canvas` when it replaces a [canvas](./ai-canvas.md) that already has blocks. The card lists what the edit adds, removes, changes and moves, so you can approve the change rather than a wall of JSON. Creating a canvas, or filling one that is still empty, runs straight away.
 
 The [MCP server](./mcp.md) has no approval step; these rules apply to in-app chat.
 

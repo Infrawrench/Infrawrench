@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ShareDialog } from "@infrawrench/ui";
 import { createDesktopSharingClient } from "../lib/cost-reports-client";
+import { createDesktopCostCanvasesClient } from "../lib/cost-canvases-client";
+import { CostCanvasWidgetCard } from "@infrawrench/ui/cost-canvases";
+import type { CostCanvasWidgetConfig } from "@infrawrench/client-core";
 import { useNavigate } from "@tanstack/react-router";
 import { T, Var, useGT } from "gt-react";
 import { SpotlightSearch } from "./SpotlightSearch";
@@ -46,6 +49,7 @@ import { setSqlSession } from "../lib/sql-session";
 import {
   accountTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   navigateToWorkspaceTarget,
   resourceTabTarget,
   workflowsTabTarget,
@@ -163,6 +167,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const canvasClient = useMemo(
+    () => (activeCloudOrgId ? createDesktopCostCanvasesClient(activeCloudOrgId) : null),
+    [activeCloudOrgId],
+  );
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   // PDF export and scheduled delivery: cloud mode only, since the PDF is
@@ -336,7 +344,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         // the per-account state so the notice can explain an empty graph.
         if (
           (full.widgets ?? []).some(
-            (w) => w.kind === "cost_graph" || w.kind === "cost_report" || w.kind === "budget",
+            (w) =>
+              w.kind === "cost_graph" ||
+              w.kind === "cost_report" ||
+              w.kind === "budget" ||
+              w.kind === "cost_canvas",
           )
         ) {
           void loadCloudCostStatus(orgId)
@@ -1186,7 +1198,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                     card.kind === "widget" &&
                     (card.widget.kind === "cost_graph" ||
                       card.widget.kind === "cost_report" ||
-                      card.widget.kind === "custom_graph")
+                      card.widget.kind === "custom_graph" ||
+                      card.widget.kind === "cost_canvas")
                       ? "col-span-2"
                       : undefined
                   }
@@ -1239,6 +1252,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       }
                       onRemove={() => void removeWidget(card.widget.id)}
                     />
+                  ) : card.widget.kind === "cost_canvas" ? (
+                    canvasClient ? (
+                      <CostCanvasWidgetCard
+                        config={card.widget.config as CostCanvasWidgetConfig}
+                        client={canvasClient}
+                        onOpenCanvas={(canvasId) =>
+                          void navigateToWorkspaceTarget(
+                            navigate,
+                            costCanvasesTabTarget(canvasId),
+                            { label: gt("Canvases") },
+                          )
+                        }
+                        onRemove={() => void removeWidget(card.widget.id)}
+                      />
+                    ) : null
                   ) : card.widget.kind === "custom_graph" ? (
                     customGraphsClient ? (
                       <CustomGraphCard

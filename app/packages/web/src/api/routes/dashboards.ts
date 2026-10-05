@@ -20,6 +20,7 @@ import { db } from "../../db/client";
 import {
   dashboards,
   dashboardPins,
+  costCanvases,
   costReports,
   dashboardWidgets,
   dashboardWorkflowPins,
@@ -190,13 +191,42 @@ async function loadWidgets(dashboardId: string): Promise<DashboardWidget[]> {
 }
 
 /**
- * Drop report cards whose report the caller cannot open: the card would
+ * Drop report and canvas cards whose object the caller cannot open: the card would
  * otherwise render the report's figures on a dashboard they *can* open.
  */
 async function visibleWidgets(
   organizationId: string,
-  widgets: DashboardWidget[],
+  input: DashboardWidget[],
 ): Promise<DashboardWidget[]> {
+  let widgets = input;
+  const canvasIds = widgets
+    .filter((w) => w.kind === "cost_canvas")
+    .map((w) => (w.config as { canvasId?: string }).canvasId)
+    .filter((id): id is string => typeof id === "string");
+  if (canvasIds.length > 0) {
+    const canvasRows = await db
+      .select({ id: costCanvases.id, createdByUserId: costCanvases.createdByUserId })
+      .from(costCanvases)
+      .where(
+        and(eq(costCanvases.organizationId, organizationId), inArray(costCanvases.id, canvasIds)),
+      );
+    const visibleCanvases = new Set(
+      (
+        await filterVisibleObjects(
+          organizationId,
+          "cost_canvas",
+          canvasRows,
+          (r) => r.id,
+          (r) => r,
+        )
+      ).map((r) => r.id),
+    );
+    widgets = widgets.filter(
+      (w) =>
+        w.kind !== "cost_canvas" ||
+        visibleCanvases.has((w.config as { canvasId?: string }).canvasId ?? ""),
+    );
+  }
   const reportIds = widgets
     .filter((w) => w.kind === "cost_report")
     .map((w) => (w.config as { reportId?: string }).reportId)
@@ -396,6 +426,13 @@ app.post("/widgets", async (c) => {
     const meta = await loadObjectMeta(organizationId, "cost_report", reportId);
     if (!meta) return c.json({ error: "Report not found" }, 404);
     await requireObjectAccess(organizationId, "cost_report", reportId, meta, "viewer");
+  }
+  // Same for a canvas card.
+  const canvasId = (parsed.data as { canvasId?: unknown }).canvasId;
+  if (kind === "cost_canvas" && typeof canvasId === "string") {
+    const meta = await loadObjectMeta(organizationId, "cost_canvas", canvasId);
+    if (!meta) return c.json({ error: "Canvas not found" }, 404);
+    await requireObjectAccess(organizationId, "cost_canvas", canvasId, meta, "viewer");
   }
 
   const [created] = await db
@@ -774,6 +811,9 @@ app.post("/validate-tabs", async (c) => {
       // The Cost reports tab is the list page; `reportId` only remembers which
       // report was open, so a deleted report must not invalidate the tab.
       target.kind === "cost-reports" ||
+      // Same rule for Canvases: `canvasId` only remembers which canvas was
+      // open, and the panel shows "not found" for one that is gone.
+      target.kind === "cost-canvases" ||
       // Same as Cost reports: the Invoices tab is the list page, and
       // `invoiceId` only remembers which invoice was open. A voided or deleted
       // invoice must not invalidate the tab.

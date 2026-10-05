@@ -3,21 +3,21 @@
 page_title: "infrawrench_object_sharing Resource - infrawrench"
 subcategory: ""
 description: |-
-  Who can open or edit one cost report, report folder or dashboard.
+  Who can open or edit one cost report, report folder, cost canvas or dashboard.
   Authoritative for the object: the org-wide default and every grant block are the whole sharing document, and anything added in the Share dialog outside Terraform shows up as a diff. Destroying the resource resets the object to the default, where everyone in the organization can edit.
   Sharing never goes beyond a role: opening still needs costs:read or dashboards:read and editing costs:write or dashboards:write. Explicit sharing on a report folder also reaches every report and subfolder inside it. Members holding sharing:override (admins and owners) see and manage every object regardless.
-  Changing sharing needs owner access on the object. A report's creator is always its owner and is not listed here; a dashboard or folder must keep at least one owner grant.
+  Changing sharing needs owner access on the object. The creator of a report or canvas is always its owner and is not listed here; a dashboard or folder must keep at least one owner grant.
 ---
 
 # infrawrench_object_sharing (Resource)
 
-Who can open or edit one cost report, report folder or dashboard.
+Who can open or edit one cost report, report folder, cost canvas or dashboard.
 
 Authoritative for the object: the org-wide default and every `grant` block are the whole sharing document, and anything added in the Share dialog outside Terraform shows up as a diff. Destroying the resource resets the object to the default, where everyone in the organization can edit.
 
 Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read` and editing `costs:write` or `dashboards:write`. Explicit sharing on a report folder also reaches every report and subfolder inside it. Members holding `sharing:override` (admins and owners) see and manage every object regardless.
 
-Changing sharing needs owner access on the object. A report's creator is always its owner and is not listed here; a dashboard or folder must keep at least one `owner` grant.
+Changing sharing needs owner access on the object. The creator of a report or canvas is always its owner and is not listed here; a dashboard or folder must keep at least one `owner` grant.
 
 ## Example Usage
 
@@ -42,7 +42,7 @@ resource "infrawrench_object_sharing" "board" {
 ### Required
 
 - `object_id` (String) The object's id, e.g. `infrawrench_cost_report.x.id`. Changing it replaces the resource.
-- `object_type` (String) `cost_report`, `cost_report_folder` or `dashboard`. Changing it replaces the resource.
+- `object_type` (String) `cost_report`, `cost_report_folder`, `cost_canvas` or `dashboard`. Changing it replaces the resource.
 - `org_access` (String) What everyone in the organization can do: `editor`, `viewer` or `none`. `editor` is how an object nobody has shared behaves.
 
 ### Optional

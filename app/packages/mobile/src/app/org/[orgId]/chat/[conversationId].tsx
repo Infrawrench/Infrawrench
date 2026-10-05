@@ -664,6 +664,11 @@ function BlockView({
         <Text style={styles.toolName}>{block.name}</Text>
         <Text style={statusStyle}>{statusLabel}</Text>
       </Pressable>
+      {pending?.summary ? (
+        <View style={styles.toolDetails}>
+          <Text style={styles.toolDetailText}>{pending.summary}</Text>
+        </View>
+      ) : null}
       {pending?.status === "pending" && (
         <View style={styles.toolActions}>
           <Button

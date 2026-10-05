@@ -8,6 +8,7 @@ import {
   dashboardTabTarget,
   environmentDiffTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
@@ -34,6 +35,8 @@ import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
 import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
+import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
+import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
 import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
@@ -87,6 +90,16 @@ let costReportsClient: CostReportsClient | null = null;
 function getCostReportsClient(): CostReportsClient {
   if (!costReportsClient) costReportsClient = createDesktopCostReportsClient();
   return costReportsClient;
+}
+
+const costCanvasesClients = new Map<string, CostCanvasesClient>();
+function getCostCanvasesClient(orgId: string): CostCanvasesClient {
+  let client = costCanvasesClients.get(orgId);
+  if (!client) {
+    client = createDesktopCostCanvasesClient(orgId);
+    costCanvasesClients.set(orgId, client);
+  }
+  return client;
 }
 
 let invoicesClient: InvoicesClient | null = null;
@@ -329,6 +342,26 @@ function renderPanel(
           {gt(
             "Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.",
           )}
+        </div>
+      );
+    case "cost-canvases":
+      // Cloud-only, like Cost reports: a canvas is an org row over
+      // server-collected spend, built by the cloud chat agent.
+      return activeCloudOrgId ? (
+        <CostCanvasesPanel
+          key={activeCloudOrgId}
+          client={getCostCanvasesClient(activeCloudOrgId)}
+          canvasId={t.canvasId}
+          onSelectCanvas={(canvasId) =>
+            void navigate(getWorkspaceNavigateArgs(costCanvasesTabTarget(canvasId)))
+          }
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
+          }
+        />
+      ) : (
+        <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
+          {gt("Canvases live in Infrawrench Cloud. Sign in and pick an organization to see them.")}
         </div>
       );
     case "invoices":

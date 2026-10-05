@@ -116,7 +116,12 @@ export async function fetchCostVisibilityScopes(
  * Object sharing
  * ------------------------------------------------------------------ */
 
-export const SHAREABLE_OBJECT_TYPES = ["cost_report", "cost_report_folder", "dashboard"] as const;
+export const SHAREABLE_OBJECT_TYPES = [
+  "cost_report",
+  "cost_report_folder",
+  "dashboard",
+  "cost_canvas",
+] as const;
 export type ShareableObjectType = (typeof SHAREABLE_OBJECT_TYPES)[number];
 
 export const OBJECT_ACCESS_LEVELS = ["owner", "editor", "viewer"] as const;

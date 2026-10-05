@@ -47,6 +47,9 @@ import {
   type CostReport,
   type CostReportWidgetConfig,
 } from "@infrawrench/ui/cost-reports";
+import { CostCanvasWidgetCard } from "@infrawrench/ui/cost-canvases";
+import type { CostCanvasWidgetConfig } from "@infrawrench/client-core";
+import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
 import {
   CustomGraphCard,
   CustomGraphEditorModal,
@@ -195,6 +198,7 @@ export function DashboardView({
   // render only when their loader is present, so a hand-rolled literal here
   // takes them away from every cost card opened on a dashboard.
   const costApi: CostApi = useMemo(() => createWebCostApi(orgId), [orgId]);
+  const canvasClient = useMemo(() => createWebCostCanvasesClient(orgId), [orgId]);
 
   // PDF export and scheduled delivery. Managing schedules is
   // `org:settings:write`; without it the dialog lists them read-only.
@@ -281,7 +285,11 @@ export function DashboardView({
   // behind it, so pull the per-account state once and let the notice decide
   // whether there is anything worth saying.
   const hasCostWidgets = widgets.some(
-    (w) => w.kind === "cost_graph" || w.kind === "cost_report" || w.kind === "budget",
+    (w) =>
+      w.kind === "cost_graph" ||
+      w.kind === "cost_report" ||
+      w.kind === "budget" ||
+      w.kind === "cost_canvas",
   );
   useEffect(() => {
     if (!hasCostWidgets) return;
@@ -636,7 +644,8 @@ export function DashboardView({
                       card.kind === "widget" &&
                       (card.widget.kind === "cost_graph" ||
                         card.widget.kind === "cost_report" ||
-                        card.widget.kind === "custom_graph")
+                        card.widget.kind === "custom_graph" ||
+                        card.widget.kind === "cost_canvas")
                         ? "col-span-2"
                         : undefined
                     }
@@ -689,6 +698,18 @@ export function DashboardView({
                           void navigate({
                             to: "/org/$orgId/cost-reports/$reportId",
                             params: { orgId, reportId },
+                          })
+                        }
+                        onRemove={() => void handleRemoveWidget(card.widget.id)}
+                      />
+                    ) : card.widget.kind === "cost_canvas" ? (
+                      <CostCanvasWidgetCard
+                        config={card.widget.config as CostCanvasWidgetConfig}
+                        client={canvasClient}
+                        onOpenCanvas={(canvasId) =>
+                          void navigate({
+                            to: "/org/$orgId/cost-canvases/$canvasId",
+                            params: { orgId, canvasId },
                           })
                         }
                         onRemove={() => void handleRemoveWidget(card.widget.id)}

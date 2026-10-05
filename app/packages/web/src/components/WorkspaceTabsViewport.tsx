@@ -33,8 +33,11 @@ import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
+import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
+import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
 import {
   costReportsTabTarget,
+  costCanvasesTabTarget,
   incidentsTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
@@ -186,6 +189,16 @@ function getCostReportsClient(orgId: string): CostReportsClient {
   if (!client) {
     client = createWebCostReportsClient(orgId);
     costReportsClients.set(orgId, client);
+  }
+  return client;
+}
+
+const costCanvasesClients = new Map<string, CostCanvasesClient>();
+function getCostCanvasesClient(orgId: string): CostCanvasesClient {
+  let client = costCanvasesClients.get(orgId);
+  if (!client) {
+    client = createWebCostCanvasesClient(orgId);
+    costCanvasesClients.set(orgId, client);
   }
   return client;
 }
@@ -343,6 +356,21 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // on the tab, so a reload or a tab switch comes back to it.
           onSelectReport={(reportId) =>
             void navigate(getWorkspaceNavigateArgs(costReportsTabTarget(reportId)))
+          }
+          onOpenDashboard={(dashboardId) =>
+            void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
+          }
+        />
+      );
+    case "cost-canvases":
+      return (
+        <CostCanvasesPanel
+          key={orgId}
+          client={getCostCanvasesClient(orgId)}
+          canvasId={t.canvasId}
+          // The URL owns which canvas is open, as for Cost reports.
+          onSelectCanvas={(canvasId) =>
+            void navigate(getWorkspaceNavigateArgs(costCanvasesTabTarget(canvasId)))
           }
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))

@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
@@ -235,6 +236,29 @@ describe("navigateToWorkspaceTarget", () => {
  * Getting either half wrong is silent: a tab per report, or a report that
  * vanishes on reload.
  */
+describe("cost-canvases tab identity", () => {
+  it("uses one tab id whatever canvas is open", () => {
+    expect(getWorkspaceTabId(costCanvasesTabTarget())).toBe("cost-canvases");
+    expect(getWorkspaceTabId(costCanvasesTabTarget("c1"))).toBe("cost-canvases");
+  });
+
+  it("has a fallback title", () => {
+    expect(getWorkspaceTabFallbackTitle(costCanvasesTabTarget())).toBe("Canvases");
+  });
+
+  it("compares the canvas so the route sync retargets the open tab", () => {
+    expect(workspaceTabTargetsEqual(costCanvasesTabTarget("c1"), costCanvasesTabTarget("c1"))).toBe(
+      true,
+    );
+    expect(workspaceTabTargetsEqual(costCanvasesTabTarget("c1"), costCanvasesTabTarget("c2"))).toBe(
+      false,
+    );
+    expect(workspaceTabTargetsEqual(costCanvasesTabTarget(), costCanvasesTabTarget("c1"))).toBe(
+      false,
+    );
+  });
+});
+
 describe("cost-reports tab identity", () => {
   it("uses one tab id whatever report is open", () => {
     expect(getWorkspaceTabId(costReportsTabTarget())).toBe("cost-reports");

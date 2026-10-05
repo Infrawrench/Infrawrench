@@ -463,6 +463,24 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-reports/{id}": "costs:write",
   "DELETE /cost-reports/{id}": "costs:write",
   "POST /cost-reports/{id}/run": "costs:read",
+  // cost canvases: the report rules, plus chat:write for the routes that open
+  // a conversation (checked in the route; the table holds one permission).
+  "GET /cost-canvases": "costs:read",
+  "POST /cost-canvases": "costs:write",
+  "POST /cost-canvases/draft": "costs:write",
+  "POST /cost-canvases/preview": "costs:read",
+  "GET /cost-canvases/{id}": "costs:read",
+  "PUT /cost-canvases/{id}": "costs:write",
+  "DELETE /cost-canvases/{id}": "costs:write",
+  "POST /cost-canvases/{id}/run": "costs:read",
+  "POST /cost-canvases/{id}/conversation": "costs:write",
+  "GET /cost-canvases/{id}/pdf": "costs:read",
+  "GET /cost-canvases/{id}/notifications": "costs:read",
+  "GET /cost-canvases/{id}/notifications/targets": "org:settings:write",
+  "POST /cost-canvases/{id}/notifications": "org:settings:write",
+  "PUT /cost-canvases/{id}/notifications/{notificationId}": "org:settings:write",
+  "DELETE /cost-canvases/{id}/notifications/{notificationId}": "org:settings:write",
+  "POST /cost-canvases/{id}/notifications/{notificationId}/send": "org:settings:write",
   // report delivery schedules; reads ride costs:read (mobile shows them
   // read-only), but writes and "send now" are org:settings:write, the
   // cost-exports reasoning: a schedule is standing authorisation to ship org
