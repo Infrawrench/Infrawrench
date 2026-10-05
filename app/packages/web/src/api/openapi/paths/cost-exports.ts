@@ -85,6 +85,28 @@ const CostExportDestination = z
             "never returned.",
         ),
     }),
+    strict({
+      kind: z.literal("warehouse"),
+      pluginId: z
+        .string()
+        .describe(
+          "Plugin whose warehouse receives the rows: `snowflake` or `databricks`. See " +
+            "`GET /cost-exports/warehouse-sinks`.",
+        ),
+      accountId: z
+        .string()
+        .describe(
+          "Connected account of that plugin. Its stored credentials load the rows; the export " +
+            "carries no credential of its own.",
+        ),
+      target: z
+        .record(z.string(), z.string())
+        .describe(
+          "The plugin's target fields. Snowflake: `warehouse` (optional), `database`, `schema`, " +
+            "`table`. Databricks: `warehouseId`, `catalog`, `schema`, `table`. A table that does " +
+            "not exist is created on the first run.",
+        ),
+    }),
   ])
   .openapi("CostExportDestination");
 
@@ -179,7 +201,8 @@ const CostExportObject = strict({
     .string()
     .describe(
       "`{prefix}/cost-export/{exportId}/{cadence}/{periodStart}.{format}`. Deterministic, so " +
-        "re-exporting a restated period overwrites this object instead of adding a second copy.",
+        "re-exporting a restated period overwrites this object instead of adding a second copy. " +
+        "For a warehouse destination, the table and the period's days (`byteCount` is 0).",
     ),
   rowCount: z.number().int(),
   byteCount: z.number().int(),
@@ -196,6 +219,41 @@ const CostExportRunResult = strict({
   ),
   error: z.string().nullable(),
 }).openapi("CostExportRunResult");
+
+const WarehouseTargetField = strict({
+  key: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  dependsOn: z.array(z.string()),
+  optional: z.boolean(),
+  allowCustom: z
+    .boolean()
+    .describe("A value outside the listed options is accepted (a table created on first run)."),
+  placeholder: z.string().nullable(),
+  emptyLabel: z.string().nullable(),
+}).openapi("CostExportWarehouseTargetField");
+
+const WarehouseSink = strict({
+  pluginId: z.string(),
+  displayName: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  targetFields: z.array(WarehouseTargetField),
+  accounts: z.array(strict({ id: z.string(), name: z.string() })),
+}).openapi("CostExportWarehouseSink");
+
+const WarehouseTarget = z.record(z.string(), z.string());
+
+const WarehouseOption = strict({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+}).openapi("CostExportWarehouseOption");
+
+const WarehouseSetup = strict({
+  sql: z.string().describe("GRANT statements to run once, with comments."),
+  notes: z.array(z.string()),
+}).openapi("CostExportWarehouseSetup");
 
 export function registerCostExportPaths(ctx: BuildContext) {
   const { registry } = ctx;
@@ -222,14 +280,90 @@ export function registerCostExportPaths(ctx: BuildContext) {
     tags: ["Cost exports"],
     summary: "Create a cost export",
     description:
-      "Credentials are required on create. They are encrypted at rest and no route ever " +
-      "returns them; responses carry a redacted `credentialHint` instead.",
+      "Credentials are required on create for S3 and HTTPS destinations. They are encrypted at " +
+      "rest and no route ever returns them; responses carry a redacted `credentialHint` " +
+      "instead. A warehouse destination takes none: it loads with the connected account's " +
+      "credentials.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CostExportInput } }, required: true },
     },
     responses: {
       200: { description: "Created", content: { "application/json": { schema: CostExport } } },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/cost-exports/warehouse-sinks",
+    tags: ["Cost exports"],
+    summary: "List warehouse destination types",
+    description:
+      "Plugins that can load an export into a table in their own warehouse (Snowflake, " +
+      "Databricks), each with the organization's connected accounts and the target fields to fill.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Warehouse sinks",
+        content: { "application/json": { schema: strict({ sinks: z.array(WarehouseSink) }) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/cost-exports/warehouse-options",
+    tags: ["Cost exports"],
+    summary: "List options for a warehouse target field",
+    description:
+      "Reads the provider live with the account's credentials (warehouses, databases or " +
+      "catalogs, schemas, tables). A provider refusal is a 400 carrying its message.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({
+              accountId: z.string(),
+              field: z.string(),
+              target: WarehouseTarget.optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Options",
+        content: { "application/json": { schema: strict({ options: z.array(WarehouseOption) }) } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/cost-exports/warehouse-setup",
+    tags: ["Cost exports"],
+    summary: "Least-privilege setup for a warehouse target",
+    description:
+      "The GRANT statements the connected role or principal needs for a target, plus any " +
+      "non-SQL steps (for Databricks, CAN USE on the SQL warehouse).",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({ accountId: z.string(), target: WarehouseTarget.optional() }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: { description: "Setup", content: { "application/json": { schema: WarehouseSetup } } },
       400: ErrorResponses[400],
     },
   });

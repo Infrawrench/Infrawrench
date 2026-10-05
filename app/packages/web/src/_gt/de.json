@@ -13724,5 +13724,61 @@
       },
       ". Die Filter und Gebührenarten des Exports gelten weiterhin."
     ]
+  },
+  "89f3a7d7b043fe23": "Databricks-Tabelle",
+  "03c12f895f6c0bd0": "infrawrench_costs",
+  "6892247f01ce944c": "INFRAWRENCH_COSTS",
+  "d62528a9c3494c35": "Lädt Zeilen über die SQL-API in eine Tabelle Ihres Snowflake-Kontos. Die Tabelle wird beim ersten Lauf angelegt, falls sie nicht existiert.",
+  "5ce184480c92662e": "Lädt Zeilen über ein SQL Warehouse in eine Unity-Catalog-Tabelle. Existiert die Tabelle nicht, wird sie beim ersten Lauf als Delta-Tabelle angelegt.",
+  "437f4c13b801db7d": "Wählen Sie eine vorhandene Tabelle oder geben Sie einen neuen Namen ein; dann wird eine neue Delta-Tabelle angelegt.",
+  "9d4c4c15213df1e9": "Wählen Sie eine vorhandene Tabelle oder geben Sie einen neuen Namen ein; dann wird eine neue Tabelle angelegt.",
+  "f567f6fd45f71a23": "Führt das Laden aus. Ein kleines Serverless-Warehouse reicht völlig.",
+  "07447ca87b2a9394": "Führt das Laden aus. Ein X-Small-Warehouse mit automatischem Anhalten reicht völlig.",
+  "651cc7aaf30c2aa4": "Snowflake-Tabelle",
+  "d9be128cdefe662a": "SQL Warehouse",
+  "a45fa4cabec0dc7b": "Das im Konto konfigurierte Warehouse",
+  "15131735780e419c": "Optionen konnten nicht aufgelistet werden",
+  "7d58f7029c7305bb": "{label} auswählen…",
+  "fcfa067ab8a00eaa": "Wählen Sie zuerst die Felder oben aus",
+  "304cc5acb741079b": "Optionen konnten nicht aufgelistet werden ({error}). Geben Sie den Namen stattdessen ein.",
+  "7fdd41a2fb5e2c2b": "Die Einrichtungsanweisungen konnten nicht erstellt werden",
+  "7b5dcc37bea9e653": "Einrichtungsanweisungen aktualisieren",
+  "16f47d1d1364ff0c": "Einrichtung mit minimalen Rechten anzeigen",
+  "b2c74a74a06c3223": "„{name}“ hat {rows} Zeilen in {periods} Zeitraum/Zeiträume geladen.",
+  "9f0296f9719298a9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Es ist noch kein ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "-Konto verbunden. Fügen Sie unter Konten eines hinzu und wählen Sie dann hier seine Tabelle."
+    ]
+  },
+  "dc0742680499bef8": {
+    "t": "p",
+    "i": 1,
+    "c": "Das verbundene Konto lädt die Zeilen mit seinen eigenen Zugangsdaten. Führen Sie diese Berechtigungen einmal als Administrator aus, damit es die Tabelle anlegen, jeden Lauf zwischenspeichern und die exportierten Zeiträume ersetzen kann, und nicht mehr."
+  },
+  "572eac73fad3900d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Liefern Sie die rohen Kostenzeilen der Organisation planmäßig an ein Data Warehouse oder einen Objektspeicher. Jeder Lauf schreibt ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "ein Objekt pro Zeitraum"
+      },
+      " unter einem deterministischen Schlüssel oder ersetzt die Zeilen des Zeitraums in einer Snowflake- oder Databricks-Tabelle, sodass ein erneuter Export eines Zeitraums ihn ersetzt, statt eine zweite Kopie derselben Tage hinzuzufügen."
+    ]
+  },
+  "1b4bc6acc70aeab9": {
+    "t": "p",
+    "i": 1,
+    "c": "Noch keine Exporte. Erstellen Sie einen, damit Infrawrench Kostenzeilen als CSV oder NDJSON in einen S3-kompatiblen Bucket (AWS S3, R2, Spaces, MinIO) schreibt, per POST an einen HTTPS-Endpunkt sendet oder über ein verbundenes Konto in eine Snowflake- oder Databricks-Tabelle lädt."
   }
 }

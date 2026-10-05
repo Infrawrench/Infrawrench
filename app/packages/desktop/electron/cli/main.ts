@@ -21,7 +21,14 @@ import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
 import { cmdDashboards, cmdSendDashboard, cmdShowDashboard } from "./commands/dashboards";
 import { pdfFlags } from "./pdf-export";
-import { cmdExportFocus, cmdExports, cmdRunExport } from "./commands/exports";
+import {
+  cmdCreateWarehouseExport,
+  cmdExportFocus,
+  cmdExports,
+  cmdExportSetup,
+  cmdExportWarehouses,
+  cmdRunExport,
+} from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
@@ -102,6 +109,13 @@ COMMANDS
   exports             scheduled cost exports (raw rows → warehouse/object store), with the
                       last run's status and error
   exports run <n|id>  run one export now and list the objects it wrote
+  exports warehouses  Snowflake/Databricks destinations, your accounts of each, and the
+                      --target keys they take
+  exports create      a warehouse export: load rows into a Snowflake or Databricks table
+                      --name <n> --plugin snowflake|databricks -a <account> --target k=v ...
+                      [--cadence daily|weekly|monthly] [--hour 4] [--timezone UTC]
+                      [--restatement-days 7] [--dimensions provider,account,service,region]
+  exports setup <n>   the least-privilege GRANT statements a warehouse export needs
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
   showback            spend by cost centre via the org's allocation rules, as an indented
                       tree — a parent's bar is its subtree total   [--last 30d]
@@ -462,6 +476,18 @@ export async function runCli(): Promise<void> {
         // explicit verb: this one writes to somebody's bucket.
         if (rest[0] === "run") {
           await cmdRunExport(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        if (rest[0] === "warehouses") {
+          await cmdExportWarehouses(ctx);
+          break;
+        }
+        if (rest[0] === "create") {
+          await cmdCreateWarehouseExport(ctx, parsed.exports);
+          break;
+        }
+        if (rest[0] === "setup") {
+          await cmdExportSetup(ctx, rest.slice(1).join(" "));
           break;
         }
         await cmdExports(ctx);

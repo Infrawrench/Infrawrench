@@ -71,6 +71,10 @@ Lakebase projects are managed Postgres databases with autoscaling compute, scale
 - **Edit** the name, the default compute range, the scale-to-zero delay, and the restore window (48 to 840 hours of history for point-in-time restore and branching). Compute settings are the defaults for the project's endpoints.
 - **Branches** list under each project with state, size, source branch and whether they are the default or protected. Non-default branches can be deleted; the default branch cannot.
 
+## Cost exports into Unity Catalog
+
+A Databricks workspace can be the destination of a [scheduled cost export](../features/cost-exports.md#destination-snowflake-or-databricks-table): Infrawrench loads its cost rows into a Unity Catalog table you pick (or creates it as a Delta table) through a SQL warehouse, replacing each exported period atomically with `INSERT ... REPLACE WHERE`. The token's principal needs USE CATALOG, USE SCHEMA and CREATE TABLE on the schema plus CAN USE on the warehouse; the export dialog prints the GRANT statements.
+
 ## Tips & limits
 
 - SQL warehouse must be running before queries work; starting one can take a minute.

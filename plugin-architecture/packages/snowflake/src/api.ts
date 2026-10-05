@@ -51,6 +51,25 @@ export interface StatementOptions {
   maxRows?: number;
   /** Keep column names as Snowflake returns them instead of lower-casing them. */
   keepColumnCase?: boolean;
+  /**
+   * Positional bind variables for `?` placeholders, keyed "1", "2", ... The
+   * SQL API takes every value as a string (or null) with a Snowflake type.
+   * Not allowed together with `multiStatementCount`: the SQL API does not
+   * support binding in multi-statement requests.
+   */
+  bindings?: Record<string, SnowflakeBinding>;
+  /**
+   * Run a semicolon-separated batch of statements (`MULTI_STATEMENT_COUNT`).
+   * Needed for an explicit `BEGIN ... COMMIT` transaction, because every SQL
+   * API request is its own session. 0 accepts any number of statements.
+   */
+  multiStatementCount?: number;
+}
+
+/** One SQL API bind value. */
+export interface SnowflakeBinding {
+  type: "TEXT" | "FIXED" | "REAL" | "BOOLEAN" | "DATE" | "TIMESTAMP_NTZ" | "TIMESTAMP_TZ";
+  value: string | null;
 }
 
 export interface ColumnMeta {
@@ -290,8 +309,18 @@ export async function runSql(
     ...(role ? { role } : {}),
     ...(opts.database ? { database: opts.database } : {}),
     ...(opts.schema ? { schema: opts.schema } : {}),
-    parameters: { timezone: "UTC", query_tag: QUERY_TAG },
+    ...(opts.bindings ? { bindings: opts.bindings } : {}),
+    parameters: {
+      timezone: "UTC",
+      query_tag: QUERY_TAG,
+      ...(opts.multiStatementCount !== undefined
+        ? { MULTI_STATEMENT_COUNT: String(opts.multiStatementCount) }
+        : {}),
+    },
   };
+  if (opts.bindings && opts.multiStatementCount !== undefined) {
+    throw new Error("Snowflake: bind variables are not supported in multi-statement requests.");
+  }
   const requestId = uuid();
 
   let res: RawResponse | undefined;

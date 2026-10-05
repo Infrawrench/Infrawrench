@@ -10,6 +10,8 @@ import {
   COST_EXPORT_SCHEMAS,
   COST_EXPORT_SCHEMA_LABELS,
   DEFAULT_COST_EXPORT_INPUT,
+  costExportWarehouseTable,
+  describeCostExportDestination,
   type CostDimensionId,
   type CostExport,
   type CostExportHttpDestination,
@@ -17,6 +19,7 @@ import {
   type CostExportQuery,
   type CostExportRunResult,
   type CostExportS3Destination,
+  type CostExportWarehouseSink,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { parseNumericInputValue } from "../form-values.js";
@@ -24,6 +27,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
+import { WarehouseDestinationFields } from "./CostExportWarehouseFields.js";
 
 /**
  * Scheduled cost exports: a recurring dump of the org's raw cost rows into a
@@ -73,10 +77,36 @@ function statusLabel(exp: CostExport, gt: ReturnType<typeof useGT>): string {
   return gt("Failed {when}", { when });
 }
 
-function describeDestination(exp: CostExport): string {
-  return exp.destination.kind === "s3"
-    ? `s3://${exp.destination.bucket}/${exp.destination.prefix}`
-    : `${exp.destination.method} ${exp.destination.urlHint}`;
+function describeDestination(exp: CostExport, sinks: CostExportWarehouseSink[]): string {
+  const d = exp.destination;
+  if (d.kind === "s3") return `s3://${d.bucket}/${d.prefix}`;
+  if (d.kind === "http") return `${d.method} ${d.urlHint}`;
+  const sink = sinks.find((s) => s.pluginId === d.pluginId);
+  if (!sink) return describeCostExportDestination(d);
+  const account = sink.accounts.find((a) => a.id === d.accountId)?.name;
+  return `${sink.displayName}${account ? ` (${account})` : ""}: ${costExportWarehouseTable(d)}`;
+}
+
+/** Warehouse destination types, loaded once for editors. Empty for read-only viewers. */
+function useWarehouseSinks(enabled: boolean): CostExportWarehouseSink[] {
+  const { orgId, api } = useSettingsHost();
+  const [sinks, setSinks] = useState<CostExportWarehouseSink[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    api
+      .get<{ sinks: CostExportWarehouseSink[] }>(`/api/org/${orgId}/cost-exports/warehouse-sinks`)
+      .then((res) => {
+        if (!cancelled) setSinks(Array.isArray(res?.sinks) ? res.sinks : []);
+      })
+      .catch(() => {
+        // An older server without warehouse sinks: offer S3 and HTTPS only.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, orgId, enabled]);
+  return sinks;
 }
 
 function describeSchedule(exp: CostExport, gtData: (value: string) => string): string {
@@ -119,6 +149,7 @@ export function CostExportsSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ export: CostExport | null } | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const sinks = useWarehouseSinks(canWrite);
 
   const load = useCallback(async () => {
     setError(null);
@@ -170,6 +201,14 @@ export function CostExportsSection() {
             error: result.error ?? gt("unknown error"),
           }),
         );
+      } else if (exp.destination.kind === "warehouse") {
+        setNotice(
+          gt('"{name}" loaded {rows} rows into {periods} period(s).', {
+            name: exp.name,
+            rows: result.rowCount.toLocaleString(),
+            periods: result.objects.length,
+          }),
+        );
       } else if (result.objects.length === 1) {
         setNotice(
           gt('"{name}" wrote {objects} object ({rows} rows).', {
@@ -204,8 +243,8 @@ export function CostExportsSection() {
             <p className="text-sm text-on-surface-muted mt-1">
               Ship the organization&rsquo;s raw cost rows to a warehouse or object store on a
               schedule. Each run writes <strong>one object per period</strong> at a deterministic
-              key, so re-exporting a period replaces the file rather than adding a second copy of
-              the same days.
+              key, or replaces the period&rsquo;s rows in a Snowflake or Databricks table, so
+              re-exporting a period replaces it rather than adding a second copy of the same days.
             </p>
           </T>
         </div>
@@ -248,7 +287,8 @@ export function CostExportsSection() {
         <T>
           <p className="text-sm text-on-surface-muted">
             No exports yet. Create one to have Infrawrench write CSV or NDJSON cost rows to an
-            S3-compatible bucket (AWS S3, R2, Spaces, MinIO) or POST them to an HTTPS endpoint.
+            S3-compatible bucket (AWS S3, R2, Spaces, MinIO), POST them to an HTTPS endpoint, or
+            load them into a Snowflake or Databricks table through a connected account.
           </p>
         </T>
       ) : (
@@ -259,7 +299,9 @@ export function CostExportsSection() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{exp.name}</span>
-                    <span className="text-xs text-on-surface-muted uppercase">{exp.format}</span>
+                    {exp.destination.kind !== "warehouse" && (
+                      <span className="text-xs text-on-surface-muted uppercase">{exp.format}</span>
+                    )}
                     {exp.schema === "focus-1.3" && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-secondary">
                         {gtData(COST_EXPORT_SCHEMA_LABELS[exp.schema])}
@@ -272,7 +314,7 @@ export function CostExportsSection() {
                     )}
                   </div>
                   <p className="text-xs text-on-surface-tertiary mt-1 truncate">
-                    {describeDestination(exp)}
+                    {describeDestination(exp, sinks)}
                   </p>
                   <p className="text-xs text-on-surface-muted mt-0.5">
                     {exp.credentialHint
@@ -331,6 +373,7 @@ export function CostExportsSection() {
       {editing && (
         <CostExportEditor
           existing={editing.export}
+          sinks={sinks}
           onClose={() => setEditing(null)}
           onSaved={(message) => {
             setEditing(null);
@@ -345,10 +388,12 @@ export function CostExportsSection() {
 
 function CostExportEditor({
   existing,
+  sinks,
   onClose,
   onSaved,
 }: {
   existing: CostExport | null;
+  sinks: CostExportWarehouseSink[];
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -363,6 +408,25 @@ function CostExportEditor({
   const [error, setError] = useState<string | null>(null);
 
   const isS3 = form.destination.kind === "s3";
+  const isHttp = form.destination.kind === "http";
+  const warehouseDestination = form.destination.kind === "warehouse" ? form.destination : null;
+  const activeSink = warehouseDestination
+    ? sinks.find((s) => s.pluginId === warehouseDestination.pluginId)
+    : undefined;
+
+  function setWarehouseSink(sink: CostExportWarehouseSink) {
+    setForm((f) => ({
+      ...f,
+      destination: {
+        kind: "warehouse",
+        pluginId: sink.pluginId,
+        // One connected account is the common case; pick it rather than make
+        // the user choose from a list of one.
+        accountId: sink.accounts.length === 1 ? sink.accounts[0]!.id : "",
+        target: {},
+      },
+    }));
+  }
 
   function setDestinationKind(kind: "s3" | "http") {
     setForm((f) =>
@@ -392,7 +456,10 @@ function CostExportEditor({
         // "keep the stored one", which is what a blank field means here.
         ...(isS3 && accessKeyId ? { accessKeyId } : {}),
         ...(isS3 && secretAccessKey ? { secretAccessKey } : {}),
-        ...(!isS3 && url ? { url } : {}),
+        ...(isHttp && url ? { url } : {}),
+        // A table takes the native layout only (the server refuses FOCUS
+        // there), so a FOCUS choice left over from a file destination is dropped.
+        ...(warehouseDestination ? { schema: "native" as const } : {}),
       };
       if (existing) {
         await api.put(`/api/org/${orgId}/cost-exports/${existing.id}`, body);
@@ -434,7 +501,7 @@ function CostExportEditor({
               />
             </label>
 
-            <label className="block">
+            <label className={`block ${warehouseDestination ? "hidden" : ""}`}>
               <span className={LABEL}>{gt("Format")}</span>
               <select
                 value={form.format}
@@ -451,7 +518,7 @@ function CostExportEditor({
               </select>
             </label>
 
-            <label className="block">
+            <label className={`block ${warehouseDestination ? "hidden" : ""}`}>
               <span className={LABEL}>{gt("Column layout")}</span>
               <select
                 value={form.schema ?? "native"}
@@ -543,7 +610,7 @@ function CostExportEditor({
             </label>
           </section>
 
-          {form.schema === "focus-1.3" ? (
+          {form.schema === "focus-1.3" && !warehouseDestination ? (
             <FocusColumnsNote />
           ) : (
             <ColumnPicker
@@ -554,7 +621,7 @@ function CostExportEditor({
 
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">{gt("Destination")}</h3>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setDestinationKind("s3")}
@@ -565,13 +632,37 @@ function CostExportEditor({
               <button
                 type="button"
                 onClick={() => setDestinationKind("http")}
-                className={!isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
+                className={isHttp ? PRIMARY_BUTTON : SECONDARY_BUTTON}
               >
                 {gt("HTTPS endpoint")}
               </button>
+              {sinks.map((sink) => (
+                <button
+                  key={sink.pluginId}
+                  type="button"
+                  onClick={() => setWarehouseSink(sink)}
+                  className={
+                    warehouseDestination?.pluginId === sink.pluginId
+                      ? PRIMARY_BUTTON
+                      : SECONDARY_BUTTON
+                  }
+                >
+                  {gtData(sink.label)}
+                </button>
+              ))}
             </div>
 
-            {form.destination.kind === "s3" ? (
+            {warehouseDestination ? (
+              activeSink ? (
+                <WarehouseDestinationFields
+                  sink={activeSink}
+                  destination={warehouseDestination}
+                  onChange={(destination) => setForm((f) => ({ ...f, destination }))}
+                />
+              ) : (
+                <p className="text-xs text-on-surface-muted">{gt("Loading…")}</p>
+              )
+            ) : form.destination.kind === "s3" ? (
               <S3DestinationFields
                 destination={form.destination}
                 onChange={(destination) => setForm((f) => ({ ...f, destination }))}
@@ -581,7 +672,7 @@ function CostExportEditor({
                 secretAccessKey={secretAccessKey}
                 onSecretAccessKeyChange={setSecretAccessKey}
               />
-            ) : (
+            ) : form.destination.kind === "http" ? (
               <HttpDestinationFields
                 destination={form.destination}
                 onChange={(destination) => setForm((f) => ({ ...f, destination }))}
@@ -589,7 +680,7 @@ function CostExportEditor({
                 url={url}
                 onUrlChange={setUrl}
               />
-            )}
+            ) : null}
           </section>
 
           <label className="flex items-center gap-2 text-sm">

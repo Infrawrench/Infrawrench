@@ -51,6 +51,12 @@ import {
 import { resolveColumns, streamCostExportRows, type CostExportRow } from "./rows";
 import { serializeRows } from "./serialize";
 import {
+  openWarehouseLoader,
+  warehouseCells,
+  warehouseColumns,
+  type WarehouseLoader,
+} from "./warehouse";
+import {
   isCostExportInFlight,
   loadCredentials,
   markCostExportRunInFlight,
@@ -166,7 +172,9 @@ async function persistRunOutcome(
  * duplicate is a duplicate row in their warehouse.
  */
 function toleratesRedelivery(destination: CostExportDestination): boolean {
-  return destination.kind === "s3";
+  // A warehouse load replaces the period's rows for this export in one
+  // transaction, which is the S3 overwrite in table form.
+  return destination.kind === "s3" || destination.kind === "warehouse";
 }
 
 /**
@@ -264,8 +272,11 @@ export async function runCostExport(
   let error: string | null = null;
 
   try {
-    const credentials = await loadCredentials(row);
-    if (!credentials) {
+    const isWarehouse = destination.kind === "warehouse";
+    // A warehouse borrows the connected account's credentials; there is no
+    // bundle on the export to decrypt.
+    const credentials = isWarehouse ? null : await loadCredentials(row);
+    if (!credentials && !isWarehouse) {
       throw new CostExportUploadError(
         "No destination credentials are stored (or they could not be decrypted). Re-enter them in Settings → Cost exports.",
       );
@@ -278,11 +289,25 @@ export async function runCostExport(
     const exportedAt = now.toISOString();
     const columns = resolveColumns(query);
     const prefix = destination.kind === "s3" ? destination.prefix : "";
+    // FOCUS rows go to files only: the warehouse loader maps the native
+    // layout and replaces each period by its `day` column, which FOCUS rows do
+    // not have. Input validation refuses the pair; this catches a row written
+    // before it did.
+    if (focus && destination.kind === "warehouse") {
+      throw new CostExportUploadError(
+        "FOCUS 1.3 columns can only be written as files. Switch this export to Infrawrench columns, or to an S3 or HTTPS destination.",
+      );
+    }
     // Loaded once per run, not per period: names do not change between the
     // objects of one run, and a 90-day daily restatement is 91 periods.
     const focusLookups: FocusLookups | null = focus
       ? await loadFocusLookups(row.organizationId)
       : null;
+    const warehouse: WarehouseLoader | null =
+      destination.kind === "warehouse"
+        ? await openWarehouseLoader(row.organizationId, destination)
+        : null;
+    const typedColumns = warehouse ? warehouseColumns(columns) : [];
 
     const periods = periodsToExport({
       cadence,
@@ -317,6 +342,44 @@ export async function runCostExport(
         }
       };
       const stamp = { exportedAt, collectionWatermark: watermark };
+
+      if (warehouse) {
+        // One atomic replace per period: the rows for this export and these
+        // days are swapped for the fresh copy, so a restated period is
+        // rewritten in full, never appended to.
+        const loaded = await warehouse.load({
+          columns: typedColumns,
+          rows: warehouseCells(
+            count<CostExportRow>(
+              streamCostExportRows({
+                organizationId: row.organizationId,
+                from: period.from,
+                to: period.to,
+                dimensions: query.dimensions ?? [],
+                tagKeys: query.tagKeys ?? [],
+                filters: query.filters ?? [],
+                chargeTypes: query.chargeTypes,
+                costBasis: query.costBasis,
+              }),
+            ),
+            typedColumns,
+            { exportId: row.id, periodStart: period.key, stamp },
+          ),
+          exportId: row.id,
+          from: period.from,
+          to: period.to,
+        });
+        totalRows += rowCount;
+        objects.push({
+          periodStart: period.key,
+          from: period.from,
+          to: period.to,
+          key: `${loaded.table} (${period.from}..${period.to})`,
+          rowCount,
+          byteCount: 0,
+        });
+        continue;
+      }
 
       // FOCUS fixes its own columns and grain, so only the query's scope
       // (filters, charge types) carries over; `dimensions`, `tagKeys` and
@@ -358,7 +421,7 @@ export async function runCostExport(
 
       const { byteCount } = await uploadCostExportObject({
         destination,
-        credentials,
+        credentials: credentials!,
         key,
         contentType,
         body,

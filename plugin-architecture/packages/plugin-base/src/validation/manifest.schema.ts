@@ -164,6 +164,26 @@ export const pluginManifestSchema = z.object({
       requiresElevatedCredential: z.boolean().optional(),
     })
     .optional(),
+  warehouseSink: z
+    .object({
+      label: z.string().min(1),
+      description: z.string().optional(),
+      targetFields: z
+        .array(
+          z.object({
+            key: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/),
+            label: z.string().min(1),
+            description: z.string().optional(),
+            dependsOn: z.array(z.string()).optional(),
+            optional: z.boolean().optional(),
+            allowCustom: z.boolean().optional(),
+            placeholder: z.string().optional(),
+            emptyLabel: z.string().optional(),
+          }),
+        )
+        .min(1),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

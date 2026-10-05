@@ -65,6 +65,16 @@ export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 export { CreditAccessError } from "./credits.js";
 
 export type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+export type {
+  WarehouseCell,
+  WarehouseColumn,
+  WarehouseColumnType,
+  WarehouseLoadRequest,
+  WarehouseLoadResult,
+  WarehouseSetupGuide,
+  WarehouseSinkDeclaration,
+  WarehouseTargetField,
+} from "./warehouse-sink.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
 
 export type {

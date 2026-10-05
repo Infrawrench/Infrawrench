@@ -45,14 +45,55 @@ describe("parseNumericInputValue", () => {
   });
 });
 
-function renderSection(posted: { path?: string; body?: unknown }) {
+const SINKS = {
+  sinks: [
+    {
+      pluginId: "snowflake",
+      displayName: "Snowflake",
+      label: "Snowflake table",
+      description: null,
+      accounts: [{ id: "acct-sf", name: "Prod Snowflake" }],
+      targetFields: [
+        {
+          key: "database",
+          label: "Database",
+          description: null,
+          dependsOn: [],
+          optional: false,
+          allowCustom: false,
+          placeholder: null,
+          emptyLabel: null,
+        },
+        {
+          key: "table",
+          label: "Table",
+          description: null,
+          dependsOn: ["database"],
+          optional: false,
+          allowCustom: true,
+          placeholder: null,
+          emptyLabel: null,
+        },
+      ],
+    },
+  ],
+};
+
+function renderSection(posted: { path?: string; body?: unknown }, withSinks = false) {
   const host = {
     orgId: "org-1",
     api: {
-      async get<T>(): Promise<T> {
+      async get<T>(path: string): Promise<T> {
+        if (withSinks && path.endsWith("/warehouse-sinks")) return SINKS as T;
         return [] as T;
       },
       async post<T>(path: string, body?: unknown): Promise<T> {
+        if (path.endsWith("/warehouse-options")) {
+          const field = (body as { field: string }).field;
+          return {
+            options: field === "database" ? [{ id: "ANALYTICS", label: "ANALYTICS" }] : [],
+          } as T;
+        }
         posted.path = path;
         posted.body = body;
         return {} as T;
@@ -128,5 +169,38 @@ describe("CostExportsSection restatement window", () => {
 
     await waitFor(() => expect(posted.body).toBeDefined());
     expect((posted.body as { restatementDays: number }).restatementDays).toBe(0);
+  });
+});
+
+describe("CostExportsSection warehouse destination", () => {
+  it("picks the account and target from the provider and sends no credential", async () => {
+    const posted: { path?: string; body?: unknown } = {};
+    renderSection(posted, true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Snowflake table" }));
+
+    // The only connected account is chosen for the user.
+    const database = (await screen.findByLabelText("Database")) as HTMLSelectElement;
+    await waitFor(() => expect(database.tagName).toBe("SELECT"));
+    await screen.findByRole("option", { name: "ANALYTICS" });
+    fireEvent.change(database, { target: { value: "ANALYTICS" } });
+    const table = (await screen.findByLabelText("Table")) as HTMLInputElement;
+    await waitFor(() => expect(table.disabled).toBe(false));
+    fireEvent.change(table, { target: { value: "COSTS" } });
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Finance" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create export" }));
+
+    await waitFor(() => expect(posted.body).toBeDefined());
+    const body = posted.body as Record<string, unknown>;
+    expect(body["destination"]).toEqual({
+      kind: "warehouse",
+      pluginId: "snowflake",
+      accountId: "acct-sf",
+      target: { database: "ANALYTICS", table: "COSTS" },
+    });
+    expect(body).not.toHaveProperty("accessKeyId");
+    expect(body).not.toHaveProperty("url");
   });
 });

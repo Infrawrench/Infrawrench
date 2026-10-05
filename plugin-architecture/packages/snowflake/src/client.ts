@@ -2,6 +2,7 @@ import type {
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
+  CredentialFieldOption,
   CreditBalance,
   DashboardStat,
   DetailViewSchema,
@@ -12,6 +13,9 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
   SqlTableMeta,
+  WarehouseLoadRequest,
+  WarehouseLoadResult,
+  WarehouseSetupGuide,
 } from "@infrawrench/plugin-base";
 import { CostSetupError, decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
 import type { SnowflakeAccount } from "./account.js";
@@ -56,6 +60,11 @@ import {
 import type { AccountSummary, WarehouseInsights } from "./render.js";
 import { OUT, renderSnowflakeDetail, renderSnowflakeSidebar } from "./render.js";
 import { TYPE } from "./resource-types.js";
+import {
+  listSnowflakeTargetOptions,
+  loadSnowflakeRows,
+  snowflakeSetupGuide,
+} from "./warehouse-sink.js";
 
 /**
  * Every ACCOUNT_USAGE read needs a running warehouse, and the poller refetches
@@ -93,6 +102,7 @@ export class SnowflakeClient implements PluginClient {
   private readonly ctx: SnowflakeContext;
   private readonly rates: SnowflakeRates;
   private readonly cacheScope: string;
+  private readonly user: string;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const account: SnowflakeAccount = parseAccount(credentials["account"] ?? "");
@@ -112,6 +122,7 @@ export class SnowflakeClient implements PluginClient {
     };
     this.rates = parseRates(credentials);
     this.cacheScope = `${account.host}|${user.toUpperCase()}|${role}|${warehouse}`;
+    this.user = user;
   }
 
   private sql(statement: string, opts?: StatementOptions): Promise<QueryResult> {
@@ -126,6 +137,39 @@ export class SnowflakeClient implements PluginClient {
   // Listing: SHOW commands only. They are served by cloud services and never
   // resume a warehouse, which matters because the poller lists every cycle.
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Warehouse sink: cost exports load into a table (see warehouse-sink.ts).
+  // -------------------------------------------------------------------------
+
+  listWarehouseTargetOptions(
+    _accountId: string,
+    fieldKey: string,
+    target: Record<string, string>,
+  ): Promise<CredentialFieldOption[]> {
+    return listSnowflakeTargetOptions(this.ctx, fieldKey, target);
+  }
+
+  loadWarehouseRows(
+    _accountId: string,
+    request: WarehouseLoadRequest,
+  ): Promise<WarehouseLoadResult> {
+    return loadSnowflakeRows(this.ctx, request);
+  }
+
+  async describeWarehouseSetup(
+    _accountId: string,
+    target: Record<string, string>,
+  ): Promise<WarehouseSetupGuide> {
+    let role = this.ctx.role ?? "";
+    if (!role) {
+      // No role on the account: the user's default role is what runs, so ask.
+      role = await this.sql("SELECT CURRENT_ROLE() AS ROLE")
+        .then((r) => str(r.rows[0]?.["role"]))
+        .catch(() => "");
+    }
+    return snowflakeSetupGuide(target, role, this.user);
+  }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {

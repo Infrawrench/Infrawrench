@@ -3,7 +3,8 @@
 page_title: "infrawrench_cost_export Resource - infrawrench"
 subcategory: ""
 description: |-
-  A scheduled delivery of cost rows to an S3-compatible bucket or an HTTP endpoint.
+  A scheduled delivery of cost rows to an S3-compatible bucket, an HTTP endpoint, or a table in a connected Snowflake or Databricks account.
+  A warehouse destination takes no credential of its own: the connected account's stored credentials load the rows, so access_key_id, secret_access_key and url stay unset and has_credentials is always true.
   Credentials are write-only. access_key_id, secret_access_key and url are accepted on write and never returned by any route — not by the create response, not by a read, not by the listing. Three things follow, and all three are permanent properties of the API rather than gaps this provider will close:
   The provider cannot detect drift on a credential. If someone rotates the stored secret through the UI, Terraform will not notice and will not plan a change. The only way to be certain of the stored value is to write it again.On update, a credential left out of the configuration is kept, not cleared. There is no way to express "remove the secret and leave the export"; delete and recreate the export instead.On import, credentials are unrecoverable — see the import notes below.
   has_credentials and credential_hint are the only readable signal that a secret exists at all.
@@ -12,7 +13,9 @@ description: |-
 
 # infrawrench_cost_export (Resource)
 
-A scheduled delivery of cost rows to an S3-compatible bucket or an HTTP endpoint.
+A scheduled delivery of cost rows to an S3-compatible bucket, an HTTP endpoint, or a table in a connected Snowflake or Databricks account.
+
+A `warehouse` destination takes no credential of its own: the connected account's stored credentials load the rows, so `access_key_id`, `secret_access_key` and `url` stay unset and `has_credentials` is always true.
 
 **Credentials are write-only.** `access_key_id`, `secret_access_key` and `url` are accepted on write and never returned by any route — not by the create response, not by a read, not by the listing. Three things follow, and all three are permanent properties of the API rather than gaps this provider will close:
 
@@ -32,7 +35,7 @@ Operational state — when the export last ran, whether it succeeded, how many r
 ### Required
 
 - `cadence` (String) How often the export runs: `daily`, `weekly` or `monthly`.
-- `format` (String) `csv` for a spreadsheet-and-warehouse friendly file, `ndjson` for one JSON object per line.
+- `format` (String) `csv` for a spreadsheet-and-warehouse friendly file, `ndjson` for one JSON object per line. Ignored by a `warehouse` destination, which loads typed columns; set `csv`.
 - `hour` (Number) Hour of the day the run starts, 0–23, interpreted in `timezone`.
 - `name` (String) Display name, 1–120 characters.
 - `restatement_days` (Number) How many days of already-exported history to re-emit on each run, 0–90. Providers restate recent spend after the fact, so a window here is what keeps a warehouse's copy in step with the invoice. Set it to 0 only if the consumer reconciles restatements itself.
@@ -61,16 +64,19 @@ The two branches do not mix: the server's destination schema is a strict discrim
 
 Required:
 
-- `kind` (String) `s3` to write objects to an S3-compatible bucket, `http` to POST or PUT each file to a webhook.
+- `kind` (String) `s3` to write objects to an S3-compatible bucket, `http` to POST or PUT each file to a webhook, `warehouse` to load rows into a Snowflake or Databricks table.
 
 Optional:
 
+- `account_id` (String) Id of the connected Snowflake or Databricks account whose credentials load the rows, at most 128 characters; it must belong to `plugin_id`. `warehouse` only. Its role or principal needs the grants shown in the export's settings (`infrawrench exports setup` prints them).
 - `bucket` (String) Bucket name. `s3` only.
 - `endpoint` (String) Custom S3 endpoint for a non-AWS implementation such as R2, MinIO or Spaces: a bare host or an `https://` origin, with an optional port and no path. Plain `http` is refused, as is any host that is or resolves to a private, loopback, link-local or otherwise reserved address. `s3` only; leave unset for AWS.
 - `force_path_style` (Boolean) Address objects as `endpoint/bucket/key` rather than as a virtual host. Most self-hosted S3 implementations need this. `s3` only.
 - `method` (String) HTTP method each file is delivered with, `POST` or `PUT`. `http` only.
+- `plugin_id` (String) Which warehouse: `snowflake`, `databricks`. `warehouse` only.
 - `prefix` (String) Key prefix objects are written under. `s3` only.
 - `region` (String) Bucket region, e.g. `eu-west-2`; 1 to 32 lowercase letters, digits or hyphens. `s3` only.
+- `target` (Map of String) Where in the warehouse the rows land. Snowflake: `warehouse` (optional; the account's configured warehouse otherwise), `database`, `schema`, `table`. Databricks: `warehouseId` (the SQL warehouse id), `catalog`, `schema`, `table`. A table that does not exist is created on the first run; each run replaces, in one transaction, the rows matching this export's `export_id` and the periods it writes. Keys are letters, digits and underscores; values are 1 to 255 characters. `warehouse` only.
 
 Read-Only:
 

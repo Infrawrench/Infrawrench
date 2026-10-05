@@ -409,6 +409,32 @@ func TestCostExportDestinationMarshalsOneBranch(t *testing.T) {
 		t.Errorf("url hint is server-computed and must not be sent: %s", httpDest)
 	}
 
+	plugin, account := "snowflake", "acc-1"
+	warehouse, err := json.Marshal(CostExportDestination{
+		Kind:      "warehouse",
+		PluginID:  &plugin,
+		AccountID: &account,
+		Target:    map[string]string{"database": "ANALYTICS", "schema": "FINOPS", "table": "COSTS"},
+		Bucket:    &bucket,
+	})
+	if err != nil {
+		t.Fatalf("warehouse: %v", err)
+	}
+	decoded = map[string]any{}
+	if err := json.Unmarshal(warehouse, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded["pluginId"] != "snowflake" || decoded["accountId"] != "acc-1" {
+		t.Errorf("warehouse destination = %s", warehouse)
+	}
+	if _, present := decoded["bucket"]; present {
+		t.Errorf("warehouse destination leaked an s3 key: %s", warehouse)
+	}
+	empty, err := json.Marshal(CostExportDestination{Kind: "warehouse", PluginID: &plugin, AccountID: &account})
+	if err != nil || !strings.Contains(string(empty), `"target":{}`) {
+		t.Errorf("warehouse destination must always send target, got %s (%v)", empty, err)
+	}
+
 	if _, err := json.Marshal(CostExportDestination{Kind: "gcs"}); err == nil {
 		t.Error("expected an error for an unknown destination kind")
 	}

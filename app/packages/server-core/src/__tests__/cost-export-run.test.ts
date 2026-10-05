@@ -75,6 +75,40 @@ vi.mock("../cost-exports/destinations", () => ({
   CostExportUploadError: class CostExportUploadError extends Error {},
 }));
 
+/** Every period a warehouse destination was asked to load, with its rows. */
+const warehouseLoads: Array<{ from: string; to: string; exportId: string; rows: unknown[][] }> = [];
+let warehouseOpenError: Error | null = null;
+vi.mock("../cost-exports/warehouse", async () => {
+  const real = await vi.importActual<typeof import("../cost-exports/warehouse")>(
+    "../cost-exports/warehouse",
+  );
+  return {
+    warehouseColumns: real.warehouseColumns,
+    warehouseCells: real.warehouseCells,
+    openWarehouseLoader: async () => {
+      if (warehouseOpenError) throw warehouseOpenError;
+      return {
+        load: async (args: {
+          rows: AsyncIterable<unknown[]>;
+          from: string;
+          to: string;
+          exportId: string;
+        }) => {
+          const rows: unknown[][] = [];
+          for await (const r of args.rows) rows.push(r);
+          warehouseLoads.push({ from: args.from, to: args.to, exportId: args.exportId, rows });
+          return { rowCount: rows.length, table: "ANALYTICS.FINOPS.COSTS" };
+        },
+      };
+    },
+  };
+});
+vi.mock("../org-accounts", () => ({ getOrgAccountClient: async () => null }));
+vi.mock("../plugin-loader", () => ({
+  getPlugin: async () => undefined,
+  loadPlugins: async () => [],
+}));
+
 const { runCostExport } = await import("../cost-exports/run");
 const { COST_EXPORT_IN_FLIGHT_PREFIX, isCostExportInFlight } =
   await import("../cost-exports/store");
@@ -130,6 +164,8 @@ const noRetry = { now: NOW, persistRetryDelaysMs: [] as number[] };
 
 beforeEach(() => {
   updates.length = 0;
+  warehouseLoads.length = 0;
+  warehouseOpenError = null;
   uploadCostExportObject.mockClear();
   updateBehaviour = async () => {};
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -242,5 +278,69 @@ describe("runCostExport — a lost outcome write must not re-deliver", () => {
     expect(result.status).toBe("succeeded");
     expect(result.error).toBeNull();
     expect(uploadCostExportObject).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runCostExport — warehouse destinations", () => {
+  const warehouseRow = () =>
+    exportRow({
+      destinationKind: "warehouse",
+      destination: {
+        kind: "warehouse",
+        pluginId: "snowflake",
+        accountId: "acct-sf",
+        target: { database: "ANALYTICS", schema: "FINOPS", table: "COSTS" },
+      },
+      encryptedCredentials: null,
+      credentialsIv: null,
+      credentialHint: null,
+    });
+
+  it("loads each period through the plugin, typed and scoped to the export", async () => {
+    const result = await runCostExport(warehouseRow(), noRetry);
+
+    expect(result.status).toBe("succeeded");
+    expect(uploadCostExportObject).not.toHaveBeenCalled();
+    expect(warehouseLoads).toHaveLength(1);
+    const load = warehouseLoads[0]!;
+    expect(load.exportId).toBe("exp-1");
+    // export_id, period_start, day, currency, amount, usage_amount, usage_unit,
+    // exported_at, collection_watermark
+    expect(load.rows[0]).toEqual([
+      "exp-1",
+      load.from,
+      "2026-08-07",
+      "USD",
+      1,
+      null,
+      null,
+      NOW.toISOString(),
+      "2026-08-06",
+    ]);
+    expect(result.objects[0]).toMatchObject({ rowCount: 1, byteCount: 0 });
+    expect(result.objects[0]!.key).toContain("ANALYTICS.FINOPS.COSTS");
+  });
+
+  it("needs no stored credential and never marks itself in flight (the replace is idempotent)", async () => {
+    await runCostExport(warehouseRow(), noRetry);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ lastStatus: "succeeded", lastError: null });
+  });
+
+  it("records a missing account as the run's failure", async () => {
+    warehouseOpenError = new Error(
+      "The connected account this export loads through no longer exists.",
+    );
+    const result = await runCostExport(warehouseRow(), noRetry);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/no longer exists/);
+    expect(updates[0]).toMatchObject({ lastStatus: "failed" });
+  });
+
+  it("refuses a FOCUS layout instead of loading native rows into the table", async () => {
+    const result = await runCostExport({ ...warehouseRow(), outputSchema: "focus-1.3" }, noRetry);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/FOCUS 1\.3 columns can only be written as files/);
+    expect(warehouseLoads).toHaveLength(0);
   });
 });

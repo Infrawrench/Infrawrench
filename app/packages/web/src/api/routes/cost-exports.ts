@@ -52,6 +52,11 @@ import {
   updateCostExport,
 } from "@infrawrench/server-core/cost-exports/store";
 import { runCostExport } from "@infrawrench/server-core/cost-exports/run";
+import {
+  describeWarehouseSetup,
+  listWarehouseOptions,
+  listWarehouseSinks,
+} from "@infrawrench/server-core/cost-exports/warehouse";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -97,7 +102,33 @@ const destinationSchema = z.union([
     // proved it holds the URL for.
     urlHint: z.string().max(255).optional(),
   }),
+  z.object({
+    kind: z.literal("warehouse"),
+    pluginId: z.string().min(1).max(64),
+    accountId: z.string().min(1).max(128),
+    target: z.record(z.string(), z.string().max(255)),
+  }),
 ]);
+
+const warehouseTargetSchema = z.record(z.string().max(64), z.string().max(255));
+
+const warehouseOptionsSchema = z.object({
+  accountId: z.string().min(1).max(128),
+  field: z.string().min(1).max(64),
+  target: warehouseTargetSchema.default({}),
+});
+
+const warehouseSetupSchema = z.object({
+  accountId: z.string().min(1).max(128),
+  target: warehouseTargetSchema.default({}),
+});
+
+/** Non-secret one-liner for the audit log: bucket, URL hint, or table. */
+function destinationSummary(d: CostExportInput["destination"]): string {
+  if (d.kind === "s3") return `${d.bucket}/${d.prefix}`;
+  if (d.kind === "http") return d.urlHint;
+  return `${d.pluginId}:${Object.values(d.target).join(".")}`;
+}
 
 const inputSchema = z.object({
   name: z.string().min(1).max(120),
@@ -127,6 +158,68 @@ function inputFailure(err: unknown): { message: string; status: 400 | 404 } | nu
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listCostExports(c.get("organizationId")));
+});
+
+/**
+ * GET /api/org/:orgId/cost-exports/warehouse-sinks: the destination types a
+ * connected account can provide (Snowflake, Databricks), with the org's
+ * accounts of each and the fields to pick. Registered before `/:id`.
+ */
+app.get("/warehouse-sinks", async (c) => {
+  requirePermission(c, "org:settings:write");
+  return c.json({ sinks: await listWarehouseSinks(c.get("organizationId")) });
+});
+
+/**
+ * POST /api/org/:orgId/cost-exports/warehouse-options: picker options for one
+ * target field, read live from the provider with the account's credentials.
+ * A provider refusal (bad grant, no warehouse) is a 400 carrying its message,
+ * because the user can act on it and the form falls back to typing.
+ */
+app.post("/warehouse-options", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const parsed = warehouseOptionsSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const options = await listWarehouseOptions(
+      c.get("organizationId"),
+      parsed.data.accountId,
+      parsed.data.field,
+      parsed.data.target,
+    );
+    return c.json({ options });
+  } catch (err) {
+    // A WarehouseDestinationError or the provider's own refusal: both are
+    // things the user can act on, and the form falls back to typing.
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/cost-exports/warehouse-setup: the least-privilege GRANT
+ * statements for a target, personalised with the account's role or principal.
+ */
+app.post("/warehouse-setup", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const parsed = warehouseSetupSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    return c.json(
+      await describeWarehouseSetup(
+        c.get("organizationId"),
+        parsed.data.accountId,
+        parsed.data.target,
+      ),
+    );
+  } catch (err) {
+    // A WarehouseDestinationError or the provider's own refusal: both are
+    // things the user can act on, and the form falls back to typing.
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
 });
 
 /** GET /api/org/:orgId/cost-exports/:id */
@@ -168,10 +261,7 @@ app.post("/", async (c) => {
         schema: created.schema,
         cadence: created.cadence,
         destinationKind: created.destination.kind,
-        destination:
-          created.destination.kind === "s3"
-            ? `${created.destination.bucket}/${created.destination.prefix}`
-            : created.destination.urlHint,
+        destination: destinationSummary(created.destination),
       },
     });
     return c.json(created);

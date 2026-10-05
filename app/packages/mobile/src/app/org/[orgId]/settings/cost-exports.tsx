@@ -1,6 +1,10 @@
 import { Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { COST_EXPORT_SCHEMA_LABELS, type CostExport } from "@infrawrench/client-core";
+import {
+  COST_EXPORT_SCHEMA_LABELS,
+  describeCostExportDestination,
+  type CostExport,
+} from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
@@ -51,15 +55,11 @@ export default function CostExportsScreen() {
         <Card key={exp.id} list>
           <Row
             title={exp.name}
-            subtitle={`${exp.format.toUpperCase()}${exp.schema === "focus-1.3" ? ` · ${COST_EXPORT_SCHEMA_LABELS[exp.schema]}` : ""} · ${exp.cadence} ${String(exp.hour).padStart(2, "0")}:00 ${exp.timezone}`}
+            subtitle={`${exp.destination.kind === "warehouse" ? "TABLE" : exp.format.toUpperCase()}${exp.schema === "focus-1.3" ? ` · ${COST_EXPORT_SCHEMA_LABELS[exp.schema]}` : ""} · ${exp.cadence} ${String(exp.hour).padStart(2, "0")}:00 ${exp.timezone}`}
             right={<StatusBadge export={exp} />}
           />
           <Row
-            title={
-              exp.destination.kind === "s3"
-                ? `s3://${exp.destination.bucket}/${exp.destination.prefix}`
-                : `${exp.destination.method} ${exp.destination.urlHint}`
-            }
+            title={describeCostExportDestination(exp.destination)}
             subtitle={
               exp.lastStatus === "succeeded"
                 ? `${exp.lastObjectCount ?? 0} object(s) · ${(exp.lastRowCount ?? 0).toLocaleString()} rows · ${exp.lastRunAt ? new Date(exp.lastRunAt).toLocaleString() : ""}`

@@ -16,6 +16,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { snowflakeTerraformExport } from "./terraform.js";
+import { SNOWFLAKE_WAREHOUSE_SINK } from "./warehouse-sink.js";
 
 const PRICING_LINK = {
   label: "Snowflake pricing",
@@ -145,6 +146,7 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   statusFeed,
+  warehouseSink: SNOWFLAKE_WAREHOUSE_SINK,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
 };
 

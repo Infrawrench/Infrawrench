@@ -13510,5 +13510,61 @@
       },
       ". Les filtres et types de frais de l'export s'appliquent toujours."
     ]
+  },
+  "89f3a7d7b043fe23": "Table Databricks",
+  "03c12f895f6c0bd0": "infrawrench_costs",
+  "6892247f01ce944c": "INFRAWRENCH_COSTS",
+  "d62528a9c3494c35": "Charge les lignes dans une table de votre compte Snowflake via l'API SQL. La table est créée lors de la première exécution si elle n'existe pas.",
+  "5ce184480c92662e": "Charge les lignes dans une table Unity Catalog via un SQL warehouse. Si la table n'existe pas, elle est créée comme table Delta lors de la première exécution.",
+  "437f4c13b801db7d": "Choisissez une table existante ou saisissez un nouveau nom ; une nouvelle table Delta sera créée.",
+  "9d4c4c15213df1e9": "Choisissez une table existante ou saisissez un nouveau nom ; une nouvelle table sera créée.",
+  "f567f6fd45f71a23": "Exécute le chargement. Un petit warehouse serverless suffit largement.",
+  "07447ca87b2a9394": "Exécute le chargement. Un warehouse X-Small avec suspension automatique suffit largement.",
+  "651cc7aaf30c2aa4": "Table Snowflake",
+  "d9be128cdefe662a": "SQL warehouse",
+  "a45fa4cabec0dc7b": "Le warehouse configuré sur le compte",
+  "15131735780e419c": "Impossible de lister les options",
+  "7d58f7029c7305bb": "Choisissez {label}…",
+  "fcfa067ab8a00eaa": "Choisissez d'abord les champs ci-dessus",
+  "304cc5acb741079b": "Impossible de lister les options ({error}). Saisissez plutôt le nom.",
+  "7fdd41a2fb5e2c2b": "Impossible de générer les instructions de configuration",
+  "7b5dcc37bea9e653": "Actualiser les instructions de configuration",
+  "16f47d1d1364ff0c": "Afficher la configuration à privilèges minimaux",
+  "b2c74a74a06c3223": "« {name} » a chargé {rows} lignes sur {periods} période(s).",
+  "9f0296f9719298a9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aucun compte ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " n'est encore connecté. Ajoutez-en un dans Comptes, puis revenez choisir sa table."
+    ]
+  },
+  "dc0742680499bef8": {
+    "t": "p",
+    "i": 1,
+    "c": "Le compte connecté charge les lignes avec ses propres identifiants. Exécutez ces autorisations une fois en tant qu'administrateur pour qu'il puisse créer la table, préparer chaque exécution et remplacer les périodes qu'il exporte, et rien de plus."
+  },
+  "572eac73fad3900d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Envoyez les lignes de coûts brutes de l'organisation vers un entrepôt de données ou un stockage d'objets selon un calendrier. Chaque exécution écrit ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "un objet par période"
+      },
+      " à une clé déterministe, ou remplace les lignes de la période dans une table Snowflake ou Databricks, de sorte que réexporter une période la remplace au lieu d'ajouter une seconde copie des mêmes jours."
+    ]
+  },
+  "1b4bc6acc70aeab9": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune exportation pour l'instant. Créez-en une pour qu'Infrawrench écrive des lignes de coûts CSV ou NDJSON dans un bucket compatible S3 (AWS S3, R2, Spaces, MinIO), les envoie par POST à un endpoint HTTPS, ou les charge dans une table Snowflake ou Databricks via un compte connecté."
   }
 }

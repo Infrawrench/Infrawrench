@@ -14,10 +14,13 @@ import { writeFileSync } from "node:fs";
 import { CliError, orgFetch, orgFetchText, resolveOrg, type CliContext } from "../context";
 import type {
   CostExport,
+  CostExportInput,
   CostExportRunResult,
+  CostExportWarehouseSetup,
+  CostExportWarehouseSink,
   FocusExportRequest,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import type { RangeFlags } from "../args";
+import type { ExportsFlags, RangeFlags } from "../args";
 import { resolveDateRange } from "../args";
 import { matchCostReport } from "../format";
 import { c, printErr, printJson, println, printTable } from "../output";
@@ -32,11 +35,20 @@ function requireCloud(ctx: CliContext): void {
   }
 }
 
-/** `s3://bucket/prefix` or `POST warehouse.acme.com/…a7f2`. */
+/**
+ * `s3://bucket/prefix`, `POST warehouse.acme.com/…a7f2` or `snowflake: DB.SCHEMA.TABLE`.
+ * Restated from client-core's `describeCostExportDestination` because this
+ * file imports client-core for types only (zero runtime dependencies).
+ */
 function describeDestination(exp: CostExport): string {
-  return exp.destination.kind === "s3"
-    ? `s3://${exp.destination.bucket}/${exp.destination.prefix}`
-    : `${exp.destination.method} ${exp.destination.urlHint}`;
+  const d = exp.destination;
+  if (d.kind === "s3") return `s3://${d.bucket}/${d.prefix}`;
+  if (d.kind === "http") return `${d.method} ${d.urlHint}`;
+  const table = ["database", "catalog", "schema", "table"]
+    .map((k) => d.target[k])
+    .filter(Boolean)
+    .join(".");
+  return `${d.pluginId}: ${table}`;
 }
 
 /** `daily 04:00 Europe/Berlin`: how the schedule reads. */
@@ -80,7 +92,7 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
   if (exports.length === 0) {
     println(
       c.dim(
-        "No cost exports. An export writes your raw cost rows to a bucket or HTTPS endpoint on a schedule — create one in Settings → Cost Exports.",
+        "No cost exports. An export writes your raw cost rows to a bucket, an HTTPS endpoint, or a Snowflake/Databricks table on a schedule — create one in Settings → Cost Exports, or `infrawrench exports create` for a table.",
       ),
     );
     return;
@@ -91,8 +103,15 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
     {
       header: "format",
       // `schema` is absent on a server older than FOCUS support, which only
-      // ever wrote native columns.
-      value: (e) => c.dim(e.schema === "focus-1.3" ? `${e.format} · FOCUS 1.3` : e.format),
+      // ever wrote native columns. A warehouse export is a table, not a file.
+      value: (e) =>
+        c.dim(
+          e.destination.kind === "warehouse"
+            ? "table"
+            : e.schema === "focus-1.3"
+              ? `${e.format} · FOCUS 1.3`
+              : e.format,
+        ),
     },
     { header: "schedule", value: (e) => c.dim(describeSchedule(e)) },
     { header: "destination", value: (e) => c.dim(describeDestination(e)) },
@@ -132,24 +151,9 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
     throw new CliError("Which export? `infrawrench exports run <name|id>`");
   }
   const org = await resolveOrg(ctx);
-  const exports = await orgFetch<CostExport[]>(org.id, "/cost-exports");
-
   // Same name-or-id matcher the reports command uses: a name is the point of
   // the object, and two objects should not disagree about how to find one.
-  const found = matchCostReport(exports, query);
-  if (!found.match) {
-    if (found.candidates.length === 0) {
-      throw new CliError(
-        `No cost export matches "${query}". Run \`infrawrench exports\` to see them.`,
-      );
-    }
-    throw new CliError(
-      `"${query}" matches ${found.candidates.length} exports: ${found.candidates
-        .map((e) => e.name)
-        .join(", ")}. Use the full name or the id.`,
-    );
-  }
-  const exp = found.match;
+  const exp = await findExport(org.id, query);
 
   const run = await orgFetch<CostExportRunResult>(
     org.id,
@@ -188,8 +192,19 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
     { header: "period", value: (o) => o.periodStart },
     { header: "days", value: (o) => c.dim(`${o.from} → ${o.to}`) },
     { header: "rows", value: (o) => o.rowCount.toLocaleString(), align: "right" },
-    { header: "bytes", value: (o) => o.byteCount.toLocaleString(), align: "right" },
-    { header: "key", value: (o) => c.dim(o.key) },
+    ...(exp.destination.kind === "warehouse"
+      ? []
+      : [
+          {
+            header: "bytes",
+            value: (o: CostExportRunResult["objects"][number]) => o.byteCount.toLocaleString(),
+            align: "right" as const,
+          },
+        ]),
+    {
+      header: exp.destination.kind === "warehouse" ? "table" : "key",
+      value: (o) => c.dim(o.key),
+    },
   ]);
 }
 
@@ -282,4 +297,216 @@ export async function cmdExportFocus(
         : summary,
     ),
   );
+}
+
+/** The org's export by name or id, or a CliError naming the candidates. */
+async function findExport(orgId: string, query: string): Promise<CostExport> {
+  const exports = await orgFetch<CostExport[]>(orgId, "/cost-exports");
+  const found = matchCostReport(exports, query);
+  if (found.match) return found.match;
+  if (found.candidates.length === 0) {
+    throw new CliError(
+      `No cost export matches "${query}". Run \`infrawrench exports\` to see them.`,
+    );
+  }
+  throw new CliError(
+    `"${query}" matches ${found.candidates.length} exports: ${found.candidates
+      .map((e) => e.name)
+      .join(", ")}. Use the full name or the id.`,
+  );
+}
+
+async function fetchSinks(orgId: string): Promise<CostExportWarehouseSink[]> {
+  return (
+    await orgFetch<{ sinks: CostExportWarehouseSink[] }>(orgId, "/cost-exports/warehouse-sinks")
+  ).sinks;
+}
+
+/** `infrawrench exports warehouses`: the warehouse destination types and your accounts of each. */
+export async function cmdExportWarehouses(ctx: CliContext): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const sinks = await fetchSinks(org.id);
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, sinks });
+    return;
+  }
+  println(`${c.bold(org.displayName)} ${c.dim("· warehouse destinations for cost exports")}`);
+  println();
+  for (const sink of sinks) {
+    println(`${c.bold(sink.label)} ${c.dim(`(--plugin ${sink.pluginId})`)}`);
+    if (sink.accounts.length === 0) {
+      println(c.dim(`  No ${sink.displayName} account connected. Add one first.`));
+    } else {
+      for (const a of sink.accounts) println(`  ${a.name} ${c.dim(a.id)}`);
+    }
+    for (const f of sink.targetFields) {
+      const notes = [
+        f.optional ? "optional" : "required",
+        f.allowCustom ? "new names allowed" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      println(c.dim(`  --target ${f.key}=<${f.label.toLowerCase()}>  (${notes})`));
+    }
+    println();
+  }
+  println(
+    c.dim(
+      "Create one with `infrawrench exports create --name <n> --plugin <id> -a <account> --target key=value ...`.",
+    ),
+  );
+}
+
+/** Split `key=value` pairs, refusing anything else by name. */
+function parseTargets(pairs: string[]): Record<string, string> {
+  const target: Record<string, string> = {};
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) throw new CliError(`--target takes key=value, got "${pair}"`, 2);
+    target[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+  }
+  return target;
+}
+
+const CADENCES = ["daily", "weekly", "monthly"] as const;
+const DIMENSIONS = [
+  "provider",
+  "account",
+  "service",
+  "region",
+  "resource",
+  "charge_type",
+  "commitment",
+] as const;
+
+/**
+ * `infrawrench exports create`: a warehouse export. S3 and HTTPS exports take
+ * a secret, which belongs in the settings form rather than in shell history,
+ * so only warehouse destinations (which borrow a connected account's
+ * credentials) are created here.
+ */
+export async function cmdCreateWarehouseExport(
+  ctx: CliContext,
+  flags: ExportsFlags,
+): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const name = flags.name?.trim();
+  if (!name) throw new CliError("Name the export: `--name <name>`.", 2);
+  const sinks = await fetchSinks(org.id);
+  const sink = sinks.find((s) => s.pluginId === flags.plugin);
+  if (!sink) {
+    throw new CliError(
+      `--plugin must be one of: ${sinks.map((s) => s.pluginId).join(", ") || "(none available)"}`,
+      2,
+    );
+  }
+  const accountQuery = ctx.flags.account?.trim() ?? "";
+  const account =
+    sink.accounts.find((a) => a.id === accountQuery) ??
+    sink.accounts.find((a) => a.name.toLowerCase() === accountQuery.toLowerCase()) ??
+    (accountQuery === "" && sink.accounts.length === 1 ? sink.accounts[0] : undefined);
+  if (!account) {
+    throw new CliError(
+      sink.accounts.length === 0
+        ? `No ${sink.displayName} account is connected. Add one first.`
+        : `Which ${sink.displayName} account? -a <name|id>, one of: ${sink.accounts.map((a) => a.name).join(", ")}`,
+      2,
+    );
+  }
+  const target = parseTargets(flags.target);
+  const known = new Set(sink.targetFields.map((f) => f.key));
+  for (const key of Object.keys(target)) {
+    if (!known.has(key)) {
+      throw new CliError(
+        `${sink.displayName} has no target field "${key}". Fields: ${[...known].join(", ")}`,
+        2,
+      );
+    }
+  }
+  const missing = sink.targetFields.filter((f) => !f.optional && !target[f.key]);
+  if (missing.length > 0) {
+    throw new CliError(
+      `Missing ${missing.map((f) => `--target ${f.key}=…`).join(", ")}. \`infrawrench exports warehouses\` lists them.`,
+      2,
+    );
+  }
+  const cadence = flags.cadence ?? "daily";
+  if (!(CADENCES as readonly string[]).includes(cadence)) {
+    throw new CliError(`--cadence must be one of: ${CADENCES.join(", ")}`, 2);
+  }
+  const dimensions = (flags.dimensions ?? "provider,account,service,region")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+  for (const d of dimensions) {
+    if (!(DIMENSIONS as readonly string[]).includes(d)) {
+      throw new CliError(`--dimensions: unknown column "${d}". Use ${DIMENSIONS.join(", ")}`, 2);
+    }
+  }
+
+  const input: CostExportInput = {
+    name,
+    format: "csv",
+    query: {
+      version: 1,
+      dimensions: dimensions as CostExportInput["query"]["dimensions"],
+      tagKeys: [],
+      filters: [],
+    },
+    cadence: cadence as CostExportInput["cadence"],
+    hour: flags.hour ?? 4,
+    timezone: flags.timezone ?? "UTC",
+    restatementDays: flags.restatementDays ?? 7,
+    enabled: true,
+    destination: { kind: "warehouse", pluginId: sink.pluginId, accountId: account.id, target },
+  };
+  const created = await orgFetch<CostExport>(org.id, "/cost-exports", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, export: created });
+    return;
+  }
+  println(`${c.green("✓")} ${c.bold(created.name)} ${c.dim(`· ${describeDestination(created)}`)}`);
+  println(
+    c.dim(`${describeSchedule(created)} · ${created.restatementDays}-day restatement window`),
+  );
+  println();
+  println(
+    c.dim(
+      "Grant the account access with `infrawrench exports setup " +
+        JSON.stringify(created.name) +
+        "`, then test it with `infrawrench exports run`.",
+    ),
+  );
+}
+
+/** `infrawrench exports setup <name|id>`: the GRANT statements a warehouse export needs. */
+export async function cmdExportSetup(ctx: CliContext, query: string): Promise<void> {
+  requireCloud(ctx);
+  if (!query.trim()) throw new CliError("Which export? `infrawrench exports setup <name|id>`");
+  const org = await resolveOrg(ctx);
+  const exp = await findExport(org.id, query);
+  if (exp.destination.kind !== "warehouse") {
+    throw new CliError(
+      `"${exp.name}" writes to ${describeDestination(exp)}, not a warehouse table.`,
+    );
+  }
+  const setup = await orgFetch<CostExportWarehouseSetup>(org.id, "/cost-exports/warehouse-setup", {
+    method: "POST",
+    body: JSON.stringify({ accountId: exp.destination.accountId, target: exp.destination.target }),
+  });
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, export: exp.id, ...setup });
+    return;
+  }
+  println(setup.sql);
+  if (setup.notes.length > 0) {
+    println();
+    for (const note of setup.notes) println(c.dim(`• ${note}`));
+  }
 }

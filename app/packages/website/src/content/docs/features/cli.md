@@ -136,7 +136,13 @@ infrawrench dashboards send "Platform"     # deliver it to its schedules right n
 infrawrench exports
 infrawrench exports run "Finance warehouse"
 infrawrench exports --json
+infrawrench exports warehouses
+infrawrench exports create --name "Finance warehouse" --plugin snowflake -a "Prod Snowflake" \
+  --target database=ANALYTICS --target schema=FINOPS --target table=COSTS
+infrawrench exports setup "Finance warehouse"
 ```
+
+`exports warehouses` lists the Snowflake and Databricks table destinations, your connected accounts of each and the `--target` keys they take; `exports create` makes a [table export](./cost-exports.md#destination-snowflake-or-databricks-table) from them (with optional `--cadence`, `--hour`, `--timezone`, `--restatement-days` and `--dimensions`), and `exports setup <name|id>` prints the least-privilege GRANT statements it needs. All three take `--json`.
 
 `exports run` forces a run and lists the objects it wrote, then exits non-zero if the destination rejected it, so a CI step can depend on it. Running is behind an explicit verb rather than a bare positional like `reports`, because this one writes to somebody's bucket.
 
