@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import { strict, OrgIdParam, Uuid, IsoDateTime, FindingRemediation } from "../common";
 import type { BuildContext } from "../context";
 
 export function registerRightsizingPaths(ctx: BuildContext) {
@@ -68,6 +68,9 @@ export function registerRightsizingPaths(ctx: BuildContext) {
       .nullable()
       .describe("Plugin-authored caveat (e.g. the provider requires the machine stopped)."),
     lastSyncedAt: IsoDateTime.nullable(),
+    remediation: FindingRemediation.optional().describe(
+      "Ready-to-run commands that perform the same resize from a terminal.",
+    ),
   }).openapi("OversizedResource");
 
   const OversizedAccountGroup = strict({

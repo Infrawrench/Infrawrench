@@ -13,6 +13,8 @@
  * Day-of-week values are ISO 8601: 1 = Monday … 7 = Sunday. Times are
  * 24-hour `"HH:MM"` wall-clock strings in the schedule's IANA `timezone`.
  */
+import type { FindingRemediation } from "@infrawrench/plugin-base";
+
 import type { CloudFetch } from "./fetch";
 
 /** The user-editable timing half of a schedule. */
@@ -62,6 +64,11 @@ export interface SleepSchedule extends SleepScheduleTiming {
   currency: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Manual stop/start commands from the owning plugin. Optional only for
+   * responses from servers that predate it.
+   */
+  remediation?: FindingRemediation;
 }
 
 export interface SleepScheduleListResponse {

@@ -16,7 +16,7 @@
  * module keeps zero runtime dependency on plugin-base (the mobile bundle
  * imports this file's wire types through the client-core barrel).
  */
-import type { RightsizingDeclaration } from "@infrawrench/plugin-base";
+import type { FindingRemediation, RightsizingDeclaration } from "@infrawrench/plugin-base";
 
 import type { CloudFetch } from "./fetch";
 
@@ -342,6 +342,12 @@ export interface OversizedResource {
   /** Plugin-authored caveat for the confirm dialog (e.g. "power off first"). */
   resizeNote: string | null;
   lastSyncedAt: string | null;
+  /**
+   * Ready-to-run resize commands from the owning plugin, plus a Terraform
+   * hint when the resource is IaC-managed. Optional only for responses from
+   * servers that predate it.
+   */
+  remediation?: FindingRemediation;
 }
 
 export interface OversizedAccountGroup {

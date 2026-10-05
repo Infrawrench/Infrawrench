@@ -4,6 +4,7 @@ import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { awsTerraformExport } from "./terraform.js";
+import { awsRemediationCommands } from "./remediation.js";
 import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
 import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
@@ -268,4 +269,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   policyTemplate: buildAwsPolicyTemplate,
   terraformExport: awsTerraformExport,
+  remediationCommands: awsRemediationCommands,
 };

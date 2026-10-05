@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { formatDaysOfWeek, formatMoney } from "@infrawrench/client-core";
 import { ScheduleEditorModal } from "./ScheduleEditorModal.js";
+import { RemediateToggle, RemediationPanel } from "../savings/RemediationPanel.js";
 import type { SchedulesClient, SleepSchedule } from "./types.js";
 
 export interface SleepSchedulesSectionProps {
@@ -65,6 +66,16 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<SleepSchedule | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Rows whose Remediate panel is expanded. */
+  const [openRemediation, setOpenRemediation] = useState<ReadonlySet<string>>(new Set());
+  const toggleRemediation = useCallback((id: string) => {
+    setOpenRemediation((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -182,81 +193,99 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
           <table className="w-full text-sm">
             <tbody>
               {schedules.map((s) => (
-                <tr key={s.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-2.5 whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={onOpenResource ? () => onOpenResource(s) : undefined}
-                      className={`font-medium text-on-surface ${onOpenResource ? "hover:underline" : "cursor-default"}`}
-                    >
-                      {s.resourceName}
-                    </button>
-                    <div className="text-xs text-on-surface-faint">{s.accountName}</div>
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
-                    {gt("{days} · off {stopTime} → on {startTime}", {
-                      days: formatDaysOfWeek(s.daysOfWeek),
-                      stopTime: s.stopTime,
-                      startTime: s.startTime,
-                    })}
-                    <div className="text-xs text-on-surface-faint">{s.timezone}</div>
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
-                    {s.paused ? (
-                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                        {gt("Paused")}
-                      </span>
-                    ) : s.nextTransitionAt ? (
-                      gt("{action} {time}", {
-                        action: s.nextTransitionAction === "stop" ? gt("Off") : gt("On"),
-                        time: formatInstant(s.nextTransitionAt, s.timezone),
-                      })
-                    ) : (
-                      <span className="text-on-surface-faint">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <LastRunBadge schedule={s} />
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-right text-on-surface">
-                    {s.projectedMonthlySaving != null && s.currency ? (
-                      <>
-                        {formatMoney(s.projectedMonthlySaving, s.currency)}
-                        <span className="ml-1 text-xs text-on-surface-faint">{gt("/mo")}</span>
-                      </>
-                    ) : (
-                      <span className="text-on-surface-faint">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 whitespace-nowrap text-right">
-                    <div className="flex justify-end gap-2">
+                <Fragment key={s.id}>
+                  <tr
+                    className={`border-border ${
+                      openRemediation.has(s.id) ? "" : "border-b last:border-b-0"
+                    }`}
+                  >
+                    <td className="px-4 py-2.5 whitespace-nowrap">
                       <button
                         type="button"
-                        disabled={busyId === s.id}
-                        onClick={() => void togglePause(s)}
-                        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
+                        onClick={onOpenResource ? () => onOpenResource(s) : undefined}
+                        className={`font-medium text-on-surface ${onOpenResource ? "hover:underline" : "cursor-default"}`}
                       >
-                        {s.paused ? gt("Resume") : gt("Pause")}
+                        {s.resourceName}
                       </button>
-                      <button
-                        type="button"
-                        disabled={busyId === s.id}
-                        onClick={() => setEditing(s)}
-                        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
-                      >
-                        {gt("Edit")}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === s.id}
-                        onClick={() => void remove(s)}
-                        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
-                      >
-                        {gt("Delete")}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                      <div className="text-xs text-on-surface-faint">{s.accountName}</div>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
+                      {gt("{days} · off {stopTime} → on {startTime}", {
+                        days: formatDaysOfWeek(s.daysOfWeek),
+                        stopTime: s.stopTime,
+                        startTime: s.startTime,
+                      })}
+                      <div className="text-xs text-on-surface-faint">{s.timezone}</div>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
+                      {s.paused ? (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                          {gt("Paused")}
+                        </span>
+                      ) : s.nextTransitionAt ? (
+                        gt("{action} {time}", {
+                          action: s.nextTransitionAction === "stop" ? gt("Off") : gt("On"),
+                          time: formatInstant(s.nextTransitionAt, s.timezone),
+                        })
+                      ) : (
+                        <span className="text-on-surface-faint">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <LastRunBadge schedule={s} />
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right text-on-surface">
+                      {s.projectedMonthlySaving != null && s.currency ? (
+                        <>
+                          {formatMoney(s.projectedMonthlySaving, s.currency)}
+                          <span className="ml-1 text-xs text-on-surface-faint">{gt("/mo")}</span>
+                        </>
+                      ) : (
+                        <span className="text-on-surface-faint">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <RemediateToggle
+                          remediation={s.remediation}
+                          open={openRemediation.has(s.id)}
+                          onToggle={() => toggleRemediation(s.id)}
+                        />
+                        <button
+                          type="button"
+                          disabled={busyId === s.id}
+                          onClick={() => void togglePause(s)}
+                          className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
+                        >
+                          {s.paused ? gt("Resume") : gt("Pause")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyId === s.id}
+                          onClick={() => setEditing(s)}
+                          className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
+                        >
+                          {gt("Edit")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyId === s.id}
+                          onClick={() => void remove(s)}
+                          className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
+                        >
+                          {gt("Delete")}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {openRemediation.has(s.id) && s.remediation && (
+                    <tr className="border-b border-border last:border-b-0">
+                      <td colSpan={6} className="px-4 pb-3">
+                        <RemediationPanel remediation={s.remediation} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

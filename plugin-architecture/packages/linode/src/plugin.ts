@@ -27,6 +27,7 @@ import { BucketResourceType, VolumeResourceType } from "./resources/storage.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchLinodePriceCatalog, linodePriceCatalog } from "./price-catalog.js";
 import { linodeTerraformExport } from "./terraform.js";
+import { linodeRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "linode",
@@ -102,6 +103,7 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new LinodeClient(credentials, resourceTypes, services),
   terraformExport: linodeTerraformExport,
+  remediationCommands: linodeRemediationCommands,
   parseStatusFeed,
   policyTemplate: linodePolicyTemplate,
   fetchPriceCatalog: fetchLinodePriceCatalog,

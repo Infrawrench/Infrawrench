@@ -34,7 +34,9 @@ time it files, and a finding filed to both shows both issue links.
 Each one prefills the issue for you: a summary naming the finding, and a description carrying
 the numbers behind it — the day and the baseline for an anomaly, the current and recommended
 size for an oversized machine, the rule and severity for a posture finding — plus a link back
-into Infrawrench. Everything is editable before you file, because the sentence worth adding is
+into Infrawrench. Orphaned and oversized findings also carry their
+[remediation commands](./remediation-commands.md), one code block per command, so whoever picks
+up the ticket can run the fix without opening Infrawrench. Everything is editable before you file, because the sentence worth adding is
 usually "this is the one paging us".
 
 ## Setting it up

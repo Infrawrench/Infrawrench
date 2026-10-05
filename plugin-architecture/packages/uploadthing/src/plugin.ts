@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UploadThingClient } from "./client.js";
 import { UtAppResourceType } from "./resources/ut-app.js";
 import { UtFileResourceType } from "./resources/ut-file.js";
+import { uploadthingRemediationCommands } from "./remediation.js";
 
 // Mark taken verbatim from the UploadThing docs site header (the inline
 // `viewBox="0 0 300 300"` logo on docs.uploadthing.com, brand red #e22400).
@@ -51,4 +52,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new UploadThingClient(credentials, services),
+  remediationCommands: uploadthingRemediationCommands,
 };

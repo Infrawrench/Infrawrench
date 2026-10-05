@@ -11,6 +11,7 @@ import { BatchResourceType } from "./resources/batch.js";
 import { EvaluationResourceType } from "./resources/evaluation.js";
 import { GpuClusterResourceType } from "./resources/gpu-cluster.js";
 import { SharedVolumeResourceType } from "./resources/shared-volume.js";
+import { togetherRemediationCommands } from "./remediation.js";
 
 // Mark taken verbatim from Together AI's own favicon, served at
 // https://api.together.ai/favicon.svg: three overlapping lobes in the brand
@@ -76,4 +77,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new TogetherClient(credentials, services),
+  remediationCommands: togetherRemediationCommands,
 };

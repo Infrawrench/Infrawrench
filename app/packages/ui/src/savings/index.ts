@@ -5,3 +5,9 @@ export {
   describeResizeConfirm,
   type OversizedSectionProps,
 } from "./OversizedSection.js";
+export {
+  RemediateToggle,
+  RemediationPanel,
+  type RemediateToggleProps,
+  type RemediationPanelProps,
+} from "./RemediationPanel.js";

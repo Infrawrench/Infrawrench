@@ -3,12 +3,13 @@ import {
   DEFAULT_COST_EFFICIENCY_SETTINGS,
   EFFICIENCY_ALERT_KIND_LABELS,
 } from "@infrawrench/client-core";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 
 import { parseNumericInputValue } from "../form-values.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { formatMoney } from "./transform.js";
+import { RemediateToggle, RemediationPanel } from "../savings/RemediationPanel.js";
 import type { CostEfficiencySettings } from "./config.js";
 import type { CostsClient, EfficiencyAlertEvent, EfficiencyAlertKind } from "./types.js";
 
@@ -138,6 +139,16 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
   const [events, setEvents] = useState<EfficiencyAlertEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tuning, setTuning] = useState(false);
+  /** Idle-commitment rows whose Remediate panel is expanded. */
+  const [openRemediation, setOpenRemediation] = useState<ReadonlySet<string>>(new Set());
+  const toggleRemediation = useCallback((id: string) => {
+    setOpenRemediation((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const list = client.listEfficiencyAlerts;
@@ -243,6 +254,18 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
                     "Stored but not delivered — no routing rule matched, or quiet hours are holding it.",
                   )}
                 </p>
+              )}
+              <div>
+                <RemediateToggle
+                  remediation={event.remediation}
+                  open={openRemediation.has(event.id)}
+                  onToggle={() => toggleRemediation(event.id)}
+                />
+              </div>
+              {openRemediation.has(event.id) && event.remediation && (
+                <div className="mt-1">
+                  <RemediationPanel remediation={event.remediation} />
+                </div>
               )}
             </li>
           ))}

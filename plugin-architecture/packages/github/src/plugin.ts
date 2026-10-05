@@ -7,6 +7,7 @@ import { listOwnerOptions } from "./owners.js";
 import { GITHUB_PREFLIGHT, githubPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { githubRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "github",
@@ -83,4 +84,5 @@ export const plugin: Plugin = {
       return err instanceof Error ? err.message : String(err);
     }
   },
+  remediationCommands: githubRemediationCommands,
 };

@@ -4,6 +4,7 @@ import { TwilioClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { twilioRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "twilio",
@@ -81,4 +82,5 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new TwilioClient(credentials, services),
   parseStatusFeed,
+  remediationCommands: twilioRemediationCommands,
 };

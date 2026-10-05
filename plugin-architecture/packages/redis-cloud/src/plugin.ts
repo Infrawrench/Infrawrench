@@ -4,6 +4,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { redisCloudTerraformExport } from "./terraform.js";
+import { redisCloudRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "redis-cloud",
@@ -61,4 +62,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new RedisCloudClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: redisCloudTerraformExport,
+  remediationCommands: redisCloudRemediationCommands,
 };

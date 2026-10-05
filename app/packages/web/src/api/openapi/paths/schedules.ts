@@ -1,5 +1,12 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import {
+  strict,
+  ErrorResponses,
+  OrgIdParam,
+  Uuid,
+  IsoDateTime,
+  FindingRemediation,
+} from "../common";
 import type { BuildContext } from "../context";
 
 const ScheduleAction = z.enum(["stop", "start"]).openapi({
@@ -66,6 +73,9 @@ export function registerSchedulePaths(ctx: BuildContext) {
     currency: z.string().nullable().describe("Currency of the projection, when present."),
     createdAt: IsoDateTime,
     updatedAt: IsoDateTime,
+    remediation: FindingRemediation.optional().describe(
+      "Provider CLI stop/start commands for the resource, for doing it by hand.",
+    ),
   }).openapi("SleepSchedule");
 
   const SleepScheduleList = strict({

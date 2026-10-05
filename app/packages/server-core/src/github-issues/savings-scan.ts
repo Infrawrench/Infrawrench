@@ -22,10 +22,12 @@
  * poller replicas scan an org once per window. Never throws.
  */
 import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
-import type {
-  GithubIssueSourceKind,
-  OrphanListResponse,
-  RightsizingListResponse,
+import {
+  remediationCommandLines,
+  type FindingRemediation,
+  type GithubIssueSourceKind,
+  type OrphanListResponse,
+  type RightsizingListResponse,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
@@ -92,12 +94,21 @@ export function orphanFindings(feed: OrphanListResponse, appUrl: string | null):
           ],
           note: r.reason,
           ...(monthly ? { monthlyCost: monthly } : {}),
+          ...withRemediation(r.remediation),
           appUrl,
         },
       });
     }
   }
   return out;
+}
+
+/** A finding's fix commands for the issue body, when it has any. */
+function withRemediation(remediation: FindingRemediation | null | undefined): {
+  remediation?: string[];
+} {
+  const commands = remediationCommandLines(remediation);
+  return commands.length > 0 ? { remediation: commands } : {};
 }
 
 /** Oversized resources as findings. Pure, for tests. */
@@ -141,6 +152,7 @@ export function oversizedFindings(
             { label: "Projected p95 CPU", value: `${r.projectedCpuP95}%` },
           ],
           ...(r.resizeNote ? { note: r.resizeNote } : {}),
+          ...withRemediation(r.remediation),
           ...(monthly
             ? { monthlyCost: { amount: monthly.amount, currency: monthly.currency } }
             : {}),

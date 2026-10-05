@@ -277,7 +277,7 @@ infrawrench ownership sam            # filter by resource, owner or purpose
 infrawrench ownership --json
 ```
 
-`oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
+`oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel, or by running the [remediation commands](./remediation-commands.md) printed under the table (`orphans` and `schedules` print theirs the same way, and `--json` carries them as `remediation` on every row):
 
 ```
 infrawrench oversized

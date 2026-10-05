@@ -176,7 +176,15 @@ func specChecks() []specCheck {
 		{schema: "StatusPageComponent", value: StatusPageComponent{}},
 		{schema: "StatusPageComponentInput", value: StatusPageComponentInput{}},
 
-		{schema: "SleepSchedule", value: SleepSchedule{}},
+		{
+			schema: "SleepSchedule",
+			value:  SleepSchedule{},
+			// Derived help text (provider CLI stop/start commands generated
+			// from the resource's synced fields), not configuration: it
+			// changes when the resource does, under a plan that changes
+			// nothing.
+			ignored: []string{"remediation"},
+		},
 		{schema: "SleepScheduleCreate", value: SleepScheduleCreate{}},
 		{schema: "SleepScheduleUpdate", value: SleepScheduleUpdate{}},
 

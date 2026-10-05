@@ -7,6 +7,7 @@ import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { coreweaveTerraformExport } from "./terraform.js";
+import { coreweaveRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "coreweave",
@@ -68,4 +69,5 @@ export const plugin: Plugin = {
   fetchPriceCatalog,
   policyTemplate: coreweavePolicyTemplate,
   terraformExport: coreweaveTerraformExport,
+  remediationCommands: coreweaveRemediationCommands,
 };

@@ -135,6 +135,19 @@ describe("toAdf", () => {
     ]);
   });
 
+  it("turns a fenced block (a remediation command) into a codeBlock", async () => {
+    const { toAdf } = await import("../jira");
+    const doc = toAdf(
+      "1. Delete the volume (AWS CLI)\n\n```sh\naws ec2 delete-volume --volume-id vol-0a1b2c3d4e5f67890\n```",
+    );
+    expect(doc?.content).toHaveLength(2);
+    expect(doc?.content[1]).toEqual({
+      type: "codeBlock",
+      attrs: { language: "sh" },
+      content: [{ type: "text", text: "aws ec2 delete-volume --volume-id vol-0a1b2c3d4e5f67890" }],
+    });
+  });
+
   /**
    * A `doc` with an empty `content` array is not valid ADF, so the caller has
    * to omit the field rather than send an empty document.

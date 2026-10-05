@@ -9,6 +9,7 @@ import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { ObjectStorageResourceType } from "./resources/object-storage.js";
 import { BlockVolumeResourceType } from "./resources/block-volume.js";
 import { scalewayTerraformExport } from "./terraform.js";
+import { scalewayRemediationCommands } from "./remediation.js";
 import { FlexibleIpResourceType } from "./resources/flexible-ip.js";
 import { LoadBalancerResourceType } from "./resources/load-balancer.js";
 import { PrivateNetworkResourceType } from "./resources/private-network.js";
@@ -102,4 +103,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new ScalewayClient(credentials, resourceTypes, services),
   parseStatusFeed,
   terraformExport: scalewayTerraformExport,
+  remediationCommands: scalewayRemediationCommands,
 };

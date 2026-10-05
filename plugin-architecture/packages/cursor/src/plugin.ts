@@ -6,6 +6,7 @@ import { DEFAULT_PREMIUM_SEAT_PRICE, DEFAULT_STANDARD_SEAT_PRICE } from "./cost-
 import { logoSvg } from "./logo.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { cursorRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "cursor",
@@ -106,4 +107,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new CursorClient(credentials, services),
   parseStatusFeed,
+  remediationCommands: cursorRemediationCommands,
 };

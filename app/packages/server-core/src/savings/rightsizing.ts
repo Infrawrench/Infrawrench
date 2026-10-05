@@ -1,8 +1,12 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type {
-  ResourceTypeDefinition,
-  RightsizingDeclaration,
-  SizeOption,
+import {
+  primitiveFields,
+  resolveRemediationCommands,
+  type Plugin,
+  type RemediationFinding,
+  type ResourceTypeDefinition,
+  type RightsizingDeclaration,
+  type SizeOption,
 } from "@infrawrench/plugin-base";
 import { getMetricQuantilesBatch } from "../clickhouse/readers.js";
 import {
@@ -21,6 +25,7 @@ import { db } from "../db/client.js";
 import { accounts, resources } from "../db/schema.js";
 import { loadPlugins } from "../plugin-loader.js";
 import { getOrgAccountClient as getClientForAccount } from "../org-accounts.js";
+import { attachIacHints, type IacHintTarget } from "./remediation-iac.js";
 
 /**
  * "Oversized" recommendations; the savings finder's second pass: resources
@@ -84,6 +89,7 @@ interface DeclaredType {
   typeDef: ResourceTypeDefinition;
   declaration: RightsizingDeclaration;
   pluginName: string;
+  plugin: Plugin;
 }
 
 async function computeRightsizing(organizationId: string): Promise<RightsizingListResponse> {
@@ -122,6 +128,7 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
         typeDef: type,
         declaration: type.rightsizing,
         pluginName: plugin.manifest.displayName,
+        plugin,
       });
     }
   }
@@ -234,6 +241,7 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
   };
 
   const groups = new Map<string, OversizedAccountGroup>();
+  const iacTargets: IacHintTarget[] = [];
 
   await Promise.all(
     worthCataloguing.map(async (r) => {
@@ -283,6 +291,29 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
       });
       if (!recommendation) return;
 
+      // The resize as the provider CLI would run it, from the owning plugin.
+      const finding: RemediationFinding & { kind: "oversized" } = {
+        kind: "oversized",
+        resource: {
+          resourceTypeId: r.resourceTypeId,
+          displayName: r.displayName,
+          externalId: r.externalId,
+          fields: primitiveFields(r.fieldsJson),
+        },
+        sizeFieldKey: declaration.sizeFieldKey,
+        currentSize: recommendation.current.id,
+        targetSize: recommendation.recommended.id,
+        region,
+      };
+      const remediation = resolveRemediationCommands(entry.plugin, finding);
+      iacTargets.push({
+        resourceId: r.id,
+        pluginId: r.pluginId,
+        accountId: r.accountId,
+        finding,
+        remediation,
+      });
+
       const account = accountMap.get(r.accountId)!;
       let group = groups.get(r.accountId);
       if (!group) {
@@ -328,9 +359,11 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
         })(),
         resizeNote: declaration.resizeNote ?? null,
         lastSyncedAt: r.lastSyncedAt ? r.lastSyncedAt.toISOString() : null,
+        remediation,
       } satisfies OversizedResource);
     }),
   );
+  await attachIacHints(organizationId, iacTargets);
 
   const grouped = [...groups.values()].sort((a, b) => a.accountName.localeCompare(b.accountName));
   for (const g of grouped) {

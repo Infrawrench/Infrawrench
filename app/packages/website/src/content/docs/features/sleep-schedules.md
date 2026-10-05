@@ -58,7 +58,8 @@ The cloud poller executes due transitions server-side by invoking the plugin's o
 
 ## Other surfaces
 
-- **Mobile** shows the schedule list on the Costs tab with a pause/resume toggle; creating and editing stays on web and desktop.
+- **Remediate** on a schedule row shows the provider CLI stop and start commands for that resource, for running the same thing by hand or from your own cron. See [Remediation commands](./remediation-commands.md).
+- **Mobile** shows the schedule list on the Costs tab with a pause/resume toggle and the same commands to copy; creating and editing stays on web and desktop.
 - **CLI**: `infrawrench schedules` lists windows, next transitions, and projected savings (`--json` for scripts).
 - **MCP**: the `list_schedules` and `create_schedule` tools let agents read and create schedules under the same permissions as the UI. In the in-app [AI chat](./ai-chat.md), `create_schedule` waits for your approval, because it arms the poller to stop the resource on a timer.
 

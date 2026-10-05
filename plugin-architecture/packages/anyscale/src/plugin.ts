@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { AnyscaleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
+import { anyscaleRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "anyscale",
@@ -48,4 +49,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AnyscaleClient(credentials, services),
+  remediationCommands: anyscaleRemediationCommands,
 };

@@ -3,6 +3,7 @@ import type { SleepSchedule, SleepScheduleListResponse } from "@infrawrench/clie
   "resolution-mode": "import",
 };
 import { c, formatMoney, printJson, println, printTable, type Column } from "../output";
+import { printRemediation } from "../remediation";
 
 function windowSummary(s: SleepSchedule): string {
   const days = formatDays(s.daysOfWeek);
@@ -103,6 +104,9 @@ export async function cmdSchedules(ctx: CliContext): Promise<void> {
     },
   ];
   printTable(response.schedules, columns);
+  // Manual stop/start for each scheduled resource: for pausing a schedule and
+  // doing it by hand, or reproducing the window from your own cron.
+  printRemediation(response.schedules.map((s) => ({ ...s, displayName: s.resourceName })));
   println();
   println(
     c.dim(

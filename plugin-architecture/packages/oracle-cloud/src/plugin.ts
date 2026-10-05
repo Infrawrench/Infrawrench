@@ -7,6 +7,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ociPriceCatalog } from "./price-catalog.js";
 import { ociTerraformExport } from "./terraform.js";
+import { ociRemediationCommands } from "./remediation.js";
 
 const API_KEY_DOCS = "https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm";
 
@@ -100,4 +101,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new OracleCloudClient(credentials, services),
   parseStatusFeed,
   terraformExport: ociTerraformExport,
+  remediationCommands: ociRemediationCommands,
 };

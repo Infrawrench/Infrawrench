@@ -21,6 +21,7 @@ import type { OrphanListResponse } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
 import { c, formatMoney, printJson, println, printTable, type Column } from "../output";
+import { printRemediation } from "../remediation";
 
 type FlaggedResource = OrphanListResponse["accounts"][number]["resources"][number];
 
@@ -101,6 +102,8 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     println(`${c.bold(group.accountName)} ${c.dim(`· ${group.pluginName}`)}`);
     printTable(group.resources, columns);
   }
+
+  printRemediation(response.accounts.flatMap((g) => g.resources));
 
   if (showOwner && response.unownedCount > 0) {
     println();

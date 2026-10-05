@@ -1,3 +1,5 @@
+import type { FindingRemediation } from "@infrawrench/plugin-base";
+
 import type { CloudFetch } from "./fetch";
 
 /* ------------------------------------------------------------------ *
@@ -235,6 +237,12 @@ export interface EfficiencyAlertEvent {
   detail: Record<string, string | number | null>;
   firedAt: string;
   notifiedAt: string | null;
+  /**
+   * Idle commitments only: the owning plugin's commands for inspecting and
+   * acting on the commitment. Null (or absent, from older servers) for the
+   * other kinds and when the commitment record is gone.
+   */
+  remediation?: FindingRemediation | null;
 }
 
 /** The org's efficiency-alert tuning (`GET /costs/efficiency-alert-settings`). */

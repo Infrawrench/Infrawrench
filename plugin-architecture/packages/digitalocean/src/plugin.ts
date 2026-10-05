@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { DIGITALOCEAN_FOCUS } from "./focus-services.js";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
+import { digitaloceanRemediationCommands } from "./remediation.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { doPriceCatalog } from "./price-catalog.js";
 import { ProjectResourceType } from "./resources/project.js";
@@ -146,5 +147,6 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new DigitalOceanClient(credentials, resourceTypes, services),
   terraformExport: digitaloceanTerraformExport,
+  remediationCommands: digitaloceanRemediationCommands,
   parseStatusFeed,
 };

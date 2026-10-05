@@ -275,7 +275,36 @@ export type {
 // Orphan aggregation: the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.
-export { collectOrphanGroups, countOrphans, countUnownedOrphans } from "./orphans.js";
+export {
+  collectOrphanGroups,
+  countOrphans,
+  countUnownedOrphans,
+  primitiveFields,
+} from "./orphans.js";
+export type {
+  FindingRemediation,
+  IacAttributeChange,
+  IacRemediationHint,
+  RemediationCommand,
+  RemediationCommitment,
+  RemediationFinding,
+  RemediationFindingKind,
+  RemediationPlaceholder,
+  RemediationResource,
+  RemediationSource,
+  RemediationTool,
+  TerraformRemediationInput,
+} from "./remediation.js";
+export {
+  collectPlaceholders,
+  MAX_REMEDIATION_COMMANDS,
+  remediationDateStamp,
+  remediationField,
+  remediationId,
+  resolveRemediationCommands,
+  shellQuote,
+  terraformRemediationHint,
+} from "./remediation.js";
 export type {
   OrphanCostAnnotation,
   OrphanCostBasis,

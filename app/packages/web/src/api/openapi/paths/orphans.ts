@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import { strict, OrgIdParam, Uuid, IsoDateTime, FindingRemediation } from "../common";
 import type { BuildContext } from "../context";
 
 export function registerOrphanPaths(ctx: BuildContext) {
@@ -44,6 +44,9 @@ export function registerOrphanPaths(ctx: BuildContext) {
         "reads as null, because the question this answers is who to tell.",
     ),
     lastSyncedAt: IsoDateTime.nullable(),
+    remediation: FindingRemediation.optional().describe(
+      "Ready-to-run commands to clean this resource up (snapshot first where it applies).",
+    ),
   }).openapi("OrphanedResource");
 
   const OrphanAccountGroup = strict({
