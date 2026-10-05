@@ -12,6 +12,7 @@ import {
   check,
   numeric,
   date,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
@@ -4093,23 +4094,46 @@ export const linearIssueLinks = pgTable(
  * only takes effect for currencies the org has also stated a rate for in
  * `org_exchange_rates`, because Infrawrench never fetches live FX.
  */
-export const orgCurrencySettings = pgTable("org_currency_settings", {
-  organizationId: text("organization_id")
-    .primaryKey()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  /**
-   * ISO 4217 code every converted amount is expressed in, or NULL for "do not
-   * convert".
-   *
-   * Nullable rather than defaulted, deliberately: there is no sensible default
-   * display currency (USD would silently start converting a EUR-billing org's
-   * spend), and NULL lets an org clear the setting and get its honest
-   * per-currency view back without deleting the row.
-   */
-  displayCurrency: text("display_currency"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const orgCurrencySettings = pgTable(
+  "org_currency_settings",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * ISO 4217 code every converted amount is expressed in, or NULL for "do not
+     * convert".
+     *
+     * Nullable rather than defaulted, deliberately: there is no sensible default
+     * display currency (USD would silently start converting a EUR-billing org's
+     * spend), and NULL lets an org clear the setting and get its honest
+     * per-currency view back without deleting the row.
+     */
+    displayCurrency: text("display_currency"),
+    /**
+     * Fill days no stated rate covers from the automatic reference-rate feed
+     * (`fx_reference_rates`). Off by default so an org that has only ever stated
+     * its own rates converts at exactly those and nothing else; stated rates
+     * still win over the feed when it is on.
+     */
+    autoRates: boolean("auto_rates").notNull().default(false),
+    /**
+     * `daily` converts each day at that day's feed rate; `month_end` converts
+     * each day at the feed rate in force on the last day of its month. Text with
+     * a check constraint rather than a pg enum, like the other small vocabularies
+     * here, so adding a basis is not an `ALTER TYPE`.
+     */
+    rateBasis: text("rate_basis").notNull().default("daily"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    rateBasisCheck: check(
+      "org_currency_settings_rate_basis_check",
+      sql`${t.rateBasis} IN ('daily', 'month_end')`,
+    ),
+  }),
+);
 
 /**
  * The exchange rates an org states for itself, with the date each starts
@@ -4182,6 +4206,13 @@ export const orgExchangeRates = pgTable(
      */
     effectiveFrom: date("effective_from").notNull(),
     /**
+     * Inclusive last day this rate applies, or NULL for open-ended (until a
+     * later stated rate supersedes it). An end date is what lets a stated rate
+     * be a bounded *override* of the automatic feed: past it, the feed takes
+     * over again. An older stated rate never resurfaces past an end date.
+     */
+    effectiveTo: date("effective_to"),
+    /**
      * User who stated the rate. Nullable because the user row can be deleted
      * and the rate must outlive them: the converted history stays valid, and
      * a null author is more honest than reassigning one.
@@ -4206,6 +4237,63 @@ export const orgExchangeRates = pgTable(
     orgIdx: index("org_exchange_rates_org_idx").on(t.organizationId),
   }),
 );
+
+/**
+ * Published reference exchange rates, stored **once for every org**.
+ *
+ * The automatic rate feed is a public dataset (today the ECB's euro reference
+ * rates), so there is nothing org-specific to store: one row per publication
+ * day per currency, quoted as units of `currency` per 1 EUR exactly as
+ * published. Orgs opt in to *reading* it (`org_currency_settings.auto_rates`);
+ * crossing to other pairs and carrying a rate over weekends and holidays
+ * happen at read time (`cost/fx-feed.ts`), so nothing derived is stored.
+ *
+ * Written only by the poller's feed pass (`cost/fx-feed-pass.ts`), which
+ * backfills the full history once and then refreshes the trailing 90 days
+ * daily, upserting so a publisher's correction to a recent day lands.
+ */
+export const fxReferenceRates = pgTable(
+  "fx_reference_rates",
+  {
+    /** Feed identifier, e.g. `ecb`. Part of the key so a second feed can coexist. */
+    source: text("source").notNull(),
+    /** Publication day. Weekends and holidays have no row by design. */
+    rateDate: date("rate_date").notNull(),
+    /** ISO 4217 code quoted, never `EUR` (the base). */
+    currency: text("currency").notNull(),
+    /**
+     * Units of `currency` per 1 EUR. `numeric` for the same reason as
+     * `org_exchange_rates.rate`: the published digits round-trip exactly.
+     */
+    perEur: numeric("per_eur", { precision: 20, scale: 10 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.source, t.rateDate, t.currency] }),
+  }),
+);
+
+/**
+ * One row per feed: the poller's lease and the feed's health, shown on the
+ * Currency settings page so a broken fetch is visible rather than silently
+ * stale. `next_fetch_at` doubles as the lease, exactly as
+ * `provider_status_feeds.next_fetch_at` does, so replicas never double-fetch.
+ */
+export const fxRateFeedState = pgTable("fx_rate_feed_state", {
+  source: text("source").primaryKey(),
+  nextFetchAt: timestamp("next_fetch_at").notNull().defaultNow(),
+  /** Set once the full history has been loaded; later fetches are 90-day. */
+  backfilledAt: timestamp("backfilled_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  /** Most recent failure, cleared on success. Truncated to 500 chars. */
+  lastError: text("last_error"),
+  latestRateDate: date("latest_rate_date"),
+  earliestRateDate: date("earliest_rate_date"),
+  /** Currencies quoted in the newest publication: what is not manual-only. */
+  currencies: jsonb("currencies").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 /**
  * A recurring dump of the org's cost rows into a warehouse or object store.

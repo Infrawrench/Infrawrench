@@ -37,6 +37,31 @@ describe("CostConversionNotice", () => {
     expect(screen.getByText(/1\.085 from 2026-01-01/)).toBeTruthy();
   });
 
+  it("summarizes automatic rates by source and publication dates", () => {
+    render(
+      <CostConversionNotice
+        conversion={conversion({
+          rateBasis: "daily",
+          converted: [
+            {
+              currency: "EUR",
+              rates: [
+                { effectiveFrom: "2026-10-05", rate: 1.13, source: "ecb" },
+                { effectiveFrom: "2026-10-02", rate: 1.1225, source: "ecb" },
+                { effectiveFrom: "2026-09-01", rate: 1.1, source: "manual" },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    expect(
+      screen.getByText(/1\.1225 to 1\.13 \(ECB reference rates, 2026-10-02 to 2026-10-05\)/),
+    ).toBeTruthy();
+    expect(screen.getByText(/1\.1 from 2026-09-01 \(your rate\)/)).toBeTruthy();
+    expect(screen.getByText(/European Central Bank/)).toBeTruthy();
+  });
+
   it("says out loud when a range spans a rate change", () => {
     render(
       <CostConversionNotice

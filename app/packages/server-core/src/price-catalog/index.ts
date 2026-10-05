@@ -4,7 +4,6 @@
  * dependencies so it can be tested without any of them.
  */
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { buildExchangeRateTable } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
@@ -12,7 +11,7 @@ import { loadPlugins } from "../plugin-loader";
 import { getOrgAccountClient } from "../org-accounts";
 import { buildPluginHostServices } from "../host-services";
 import { runInEgressScope } from "../egress-guard";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
+import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { createPriceCatalogService, type PriceCatalogService } from "./service";
 
 export {
@@ -61,25 +60,24 @@ export function getPriceCatalogService(): PriceCatalogService {
     loadConverter: async (organizationId) => {
       // The catalog is a new surface with no pre-conversion behaviour to
       // preserve, so an org that configured a display currency compares in
-      // it. Still the org's own rates, still one hop, still "unconverted"
-      // (null) for a currency with no stated rate.
+      // it, at today's rate from the org's rate book: its stated rates first,
+      // then the ECB feed when automatic rates are on, the same precedence as
+      // every other converter. Still "unconverted" (null) for a currency with
+      // no rate either way.
       const settings = await getOrgCurrencySettings(organizationId);
       const displayCurrency = settings.displayCurrency;
       if (!displayCurrency) {
         return { displayCurrency: null, convert: (amount, currency) => ({ amount, currency }) };
       }
-      const table = buildExchangeRateTable(
-        await listOrgExchangeRates(organizationId),
-        displayCurrency,
-      );
+      const rates = await loadOrgRateBook(organizationId, settings);
       const today = new Date().toISOString().slice(0, 10);
       return {
         displayCurrency,
         convert: (amount, currency) => {
           if (currency === displayCurrency) return { amount, currency };
-          const rate = table.get(currency)?.find((r) => r.effectiveFrom <= today);
-          if (!rate) return null;
-          return { amount: amount * Number(rate.rate), currency: displayCurrency };
+          const resolved = rates.resolve(currency, displayCurrency, today);
+          if (!resolved) return null;
+          return { amount: amount * resolved.rate, currency: displayCurrency };
         },
       };
     },

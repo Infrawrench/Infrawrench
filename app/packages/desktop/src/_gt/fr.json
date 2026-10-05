@@ -14870,5 +14870,96 @@
       "v": "v"
     },
     " clés)"
-  ]
+  ],
+  "b250dd3976d0e585": "{rate} (taux de référence de la BCE, {date})",
+  "b15b8aa19a4c9c7e": "{min} à {max} (taux de référence de la BCE, {first} à {last})",
+  "52360d27e3151d09": "{rate} depuis {from} (votre taux)",
+  "3ac96636cd4b7d3a": "{from} vers {to} à {rate} ({source}, {date})",
+  "bbefdfdf4570084c": "Taux de référence de la BCE",
+  "8d2ffdfe36a5e232": "votre taux",
+  "ced7d3a868be7b08": "Échec de l'enregistrement des paramètres de devise",
+  "3e9ed3a4521e9eeb": "Supprimer le taux {from} → {to} en vigueur le {effectiveFrom} ?\n\nLes jours qu'il couvrait basculeront sur le taux précédent, puis sur les taux automatiques s'ils sont activés, ou seront signalés non convertis si aucun ne s'applique. Aucune dépense n'est perdue dans les deux cas.",
+  "72dc7ed5a35c608d": "sans date de fin",
+  "06f7855ace575bde": "Enregistrer le taux",
+  "2f7aae4422df912f": "La date de fin doit être identique ou postérieure à la date de début.",
+  "6e3364e1b1f97f58": "Taux de change automatiques",
+  "a7b0d1a136bc4cb9": "Quel taux automatique convertit les coûts d'un mois",
+  "f4575f4fe3398cf7": "Taux quotidien",
+  "a75fbf9de648e447": "Les dépenses de chaque jour sont converties au taux de ce jour.",
+  "44a3d54b9bc36372": "Taux de fin de mois",
+  "e07531a9425c7783": "Tous les jours d'un mois sont convertis au taux du dernier jour du mois, comme le comptabilisent la plupart des clôtures mensuelles. Le mois en cours utilise le dernier taux jusqu'à sa fin.",
+  "27f190e70b42329c": "Dernière publication de la BCE : {date}.",
+  "b3da409a8f3edd31": "Historique depuis le {date}.",
+  "3adb45975cb2380d": "Aucun taux de référence n'a encore été récupéré. La première récupération charge tout l'historique.",
+  "fcca217dd338c57a": "Devises couvertes : {codes}.",
+  "d263cc30163720dd": "La dernière récupération a échoué : {error}. Les taux stockés sont toujours utilisés.",
+  "b02d72cd771f3c1b": "À propos des taux de référence de la BCE",
+  "6bc6be1803aa662e": {
+    "t": "p",
+    "i": 1,
+    "c": "« Votre taux » est un taux que votre organisation a saisi dans Paramètres → Devise ; il prime toujours sur les taux automatiques pour les jours qu'il couvre."
+  },
+  "bd0faa5e5dbecd88": {
+    "t": "p",
+    "i": 1,
+    "c": "Les taux automatiques sont les taux de référence de l'euro de la Banque centrale européenne, croisés via l'EUR si nécessaire. Les week-ends et jours fériés utilisent le dernier taux publié, c'est pourquoi une date peut être antérieure au jour converti."
+  },
+  "354082ea36939e29": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Les dépenses déjà en ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ne sont pas converties."
+    ]
+  },
+  "8386cedcb17cf2ff": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aucun taux de change ne couvre tous les jours de cette période pour",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " (les taux automatiques sont peut-être désactivés, ou la BCE ne publie pas cette devise), donc les montants sont affichés séparément dans leur propre devise plutôt que fusionnés ou ignorés. Ajoutez un taux dans Paramètres → Devise pour inclure ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "e752d19f8abb772c": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Les dépenses sont collectées et stockées dans la devise de facturation de chaque fournisseur, et ne sont jamais fusionnées sans votre demande. Définissez ici une devise d'affichage et Infrawrench convertira les autres vers celle-ci, aux taux de change que vous saisissez ci-dessous et, si vous les activez, aux taux de référence quotidiens de la Banque centrale européenne.",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Un taux que vous saisissez l'emporte toujours sur un taux automatique."
+      },
+      " ",
+      "Les montants convertis sont signalés comme tels partout où ils apparaissent, avec la source et la date du taux utilisé."
+    ]
+  },
+  "5681792d75cdc599": {
+    "t": "p",
+    "i": 1,
+    "c": "Un taux par paire de devises et par date d'effet. Les dépenses d'un jour sont converties au taux dont la date d'effet est la plus récente, au plus tard ce jour-là ; modifier un taux ne réécrit donc pas les périodes déjà clôturées. Donnez une date de fin à un taux pour en faire une dérogation limitée : après ce jour, les taux automatiques reprennent (ou les jours sont affichés non convertis si les taux automatiques sont désactivés). Les taux saisis sont utilisés en une seule étape ; Infrawrench n'inverse jamais un taux et n'en enchaîne jamais deux via une troisième devise."
+  },
+  "a4a7f5704533b1ab": {
+    "t": "p",
+    "i": 1,
+    "c": "Complétez chaque jour qu'aucun taux saisi ne couvre avec les taux de référence de change de l'euro de la Banque centrale européenne, récupérés chaque jour et conservés depuis 1999. Les week-ends et jours fériés utilisent le dernier taux publié, et les paires sans l'euro sont croisées via l'EUR. Les devises que la BCE ne publie pas sont manuelles uniquement : elles ne sont converties qu'au taux que vous saisissez ci-dessous."
+  }
 }

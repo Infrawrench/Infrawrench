@@ -29,6 +29,7 @@ import type { CostScenarioProjection } from "./cost-scenarios";
 // and a response can come back describing what it did.
 import type { CostAdjustmentSummary } from "./billing-rules";
 import type { BudgetHierarchyWarning, BudgetMeasure, BudgetPeriod } from "./budgets";
+import type { ExchangeRateBasis, ExchangeRateSource } from "./currency";
 
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
@@ -899,9 +900,29 @@ export interface CostQuerySeries {
  * produced a number rather than having to trust that some rate did.
  */
 export interface CostConversionRate {
-  /** Inclusive `YYYY-MM-DD` the rate started applying from. */
+  /**
+   * Inclusive `YYYY-MM-DD` the rate started applying from. For a stated rate
+   * this is the row's own date; for a feed rate it is the **publication date**
+   * of the reference rate that was used, which is earlier than the day it was
+   * applied to whenever a weekend or holiday carried it forward.
+   */
   effectiveFrom: string;
   rate: number;
+  /**
+   * Where the rate came from: `manual` for a rate the org stated, `ecb` for
+   * the automatic daily feed (European Central Bank euro reference rates,
+   * crossed through EUR when neither side is the euro). Absent on responses
+   * from servers that predate the feed, which only ever applied stated rates.
+   */
+  source?: ExchangeRateSource;
+  /**
+   * First and last day (inclusive, `YYYY-MM-DD`) of the queried data this rate
+   * was applied to. Lets a chart tooltip name the rate behind one bucket
+   * without re-implementing the precedence rules client-side; see
+   * `conversionRateForDay`.
+   */
+  firstDay?: string;
+  lastDay?: string;
 }
 
 /** A currency that was folded into the display currency, and how. */
@@ -939,6 +960,13 @@ export interface CostConversion {
    * total, which is a worse failure than showing two numbers.
    */
   unconverted: string[];
+  /**
+   * Which day's feed rate converted each point, when automatic rates are on:
+   * `daily` is the rate published for (or carried forward to) that day,
+   * `month_end` the rate in force on the last day of that day's month. Absent
+   * when the org has automatic rates off; stated rates always apply by day.
+   */
+  rateBasis?: ExchangeRateBasis;
 }
 
 export interface CostQueryResponse {

@@ -14867,5 +14867,96 @@
       "v": "v"
     },
     " Schlüssel)"
-  ]
+  ],
+  "b250dd3976d0e585": "{rate} (EZB-Referenzkurs, {date})",
+  "b15b8aa19a4c9c7e": "{min} bis {max} (EZB-Referenzkurse, {first} bis {last})",
+  "52360d27e3151d09": "{rate} ab {from} (Ihr Kurs)",
+  "3ac96636cd4b7d3a": "{from} zu {to} zu {rate} ({source}, {date})",
+  "bbefdfdf4570084c": "EZB-Referenzkurs",
+  "8d2ffdfe36a5e232": "Ihr Kurs",
+  "ced7d3a868be7b08": "Währungseinstellungen konnten nicht gespeichert werden",
+  "3e9ed3a4521e9eeb": "Den Kurs {from} → {to} mit Gültigkeit ab {effectiveFrom} löschen?\n\nDie abgedeckten Tage fallen auf den nächstälteren Kurs zurück, dann auf automatische Kurse, falls aktiviert, oder werden nicht umgerechnet ausgewiesen, wenn keines zutrifft. In beiden Fällen gehen keine Ausgaben verloren.",
+  "72dc7ed5a35c608d": "unbefristet",
+  "06f7855ace575bde": "Kurs speichern",
+  "2f7aae4422df912f": "Das Enddatum muss am oder nach dem Startdatum liegen.",
+  "6e3364e1b1f97f58": "Automatische Wechselkurse",
+  "a7b0d1a136bc4cb9": "Welcher automatische Kurs die Kosten eines Monats umrechnet",
+  "f4575f4fe3398cf7": "Tageskurs",
+  "a75fbf9de648e447": "Die Ausgaben jedes Tages werden zum Kurs dieses Tages umgerechnet.",
+  "44a3d54b9bc36372": "Monatsendkurs",
+  "e07531a9425c7783": "Alle Tage eines Monats werden zum Kurs des letzten Tages des Monats umgerechnet, so wie die meisten Monatsabschlüsse es buchen. Der laufende Monat verwendet bis zu seinem Ende den neuesten Kurs.",
+  "27f190e70b42329c": "Letzte EZB-Veröffentlichung: {date}.",
+  "b3da409a8f3edd31": "Verlauf ab {date}.",
+  "3adb45975cb2380d": "Es wurden noch keine Referenzkurse abgerufen. Der erste Abruf lädt den gesamten Verlauf.",
+  "fcca217dd338c57a": "Abgedeckt: {codes}.",
+  "d263cc30163720dd": "Der letzte Abruf ist fehlgeschlagen: {error}. Gespeicherte Kurse werden weiterhin verwendet.",
+  "b02d72cd771f3c1b": "Über die EZB-Referenzkurse",
+  "6bc6be1803aa662e": {
+    "t": "p",
+    "i": 1,
+    "c": "„Ihr Kurs“ ist ein Kurs, den Ihre Organisation unter Einstellungen → Währung angegeben hat; er hat für die abgedeckten Tage immer Vorrang vor automatischen Kursen."
+  },
+  "bd0faa5e5dbecd88": {
+    "t": "p",
+    "i": 1,
+    "c": "Automatische Kurse sind die Euro-Referenzkurse der Europäischen Zentralbank, bei Bedarf über den EUR gekreuzt. Wochenenden und Feiertage verwenden den zuletzt veröffentlichten Kurs, weshalb ein Datum früher sein kann als der Tag der Umrechnung."
+  },
+  "354082ea36939e29": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Ausgaben, die bereits in ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " vorliegen, werden nicht umgerechnet."
+    ]
+  },
+  "8386cedcb17cf2ff": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Kein Wechselkurs deckt jeden Tag dieses Zeitraums ab für",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " (automatische Kurse sind möglicherweise deaktiviert, oder die EZB veröffentlicht die Währung nicht). Deshalb werden die Beträge getrennt in ihrer eigenen Währung angezeigt, statt eingerechnet oder weggelassen zu werden. Fügen Sie unter Einstellungen → Währung einen Kurs hinzu, um ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " einzubeziehen."
+    ]
+  },
+  "e752d19f8abb772c": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Ausgaben werden in der Währung erfasst und gespeichert, in der der jeweilige Anbieter abrechnet, und nie zusammengeführt, außer Sie wünschen es. Legen Sie hier eine Anzeigewährung fest, und Infrawrench rechnet die anderen in sie um, zu den unten angegebenen Wechselkursen und, falls aktiviert, zu den täglichen Referenzkursen der Europäischen Zentralbank.",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Ein von Ihnen angegebener Kurs hat immer Vorrang vor einem automatischen."
+      },
+      " ",
+      "Umgerechnete Beträge sind überall, wo sie erscheinen, als umgerechnet gekennzeichnet, mit Quelle und Datum des verwendeten Kurses."
+    ]
+  },
+  "5681792d75cdc599": {
+    "t": "p",
+    "i": 1,
+    "c": "Ein Kurs pro Währungspaar und Gültigkeitsdatum. Die Ausgaben eines Tages werden zum Kurs mit dem spätesten Gültigkeitsdatum am oder vor diesem Tag umgerechnet, sodass eine Neufestlegung eines Kurses bereits abgeschlossene Zeiträume nicht umschreibt. Geben Sie einem Kurs ein Enddatum, um ihn zu einer befristeten Überschreibung zu machen: Nach diesem Tag gelten wieder automatische Kurse (oder die Tage werden nicht umgerechnet angezeigt, wenn automatische Kurse deaktiviert sind). Angegebene Kurse werden nur in einem Schritt verwendet; Infrawrench invertiert nie einen Kurs und verkettet nie zwei über eine dritte Währung."
+  },
+  "a4a7f5704533b1ab": {
+    "t": "p",
+    "i": 1,
+    "c": "Füllen Sie jeden Tag, den kein angegebener Kurs abdeckt, mit den Euro-Referenzkursen der Europäischen Zentralbank, die täglich abgerufen und bis 1999 zurück gespeichert werden. Wochenenden und Feiertage verwenden den zuletzt veröffentlichten Kurs, und Paare ohne Euro werden über den EUR gekreuzt. Währungen, die die EZB nicht veröffentlicht, sind nur manuell: Sie werden ausschließlich zu einem Kurs umgerechnet, den Sie unten angeben."
+  }
 }

@@ -32,6 +32,7 @@ import {
   costSeriesTotal,
   effectiveCostBinning,
   isCostTotalsChart,
+  describeCostConversion,
   orderDashboardCards,
   unitCostQueryForConfig,
   type BudgetWidgetConfig,
@@ -326,9 +327,10 @@ export function costResponseBlocks(
 
   const notes: string[] = [];
   if (response.conversion) {
-    notes.push(
-      `Converted to ${response.conversion.displayCurrency} at the org's stated exchange rates.`,
-    );
+    // Names the rate source and dates (stated rates and/or the ECB feed), the
+    // same sentence the graph card prints, so a printed report can be checked.
+    const note = describeCostConversion(response.conversion);
+    if (note) notes.push(note);
   }
   if (response.adjustment) {
     notes.push(

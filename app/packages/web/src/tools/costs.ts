@@ -47,6 +47,11 @@ import {
 } from "@infrawrench/server-core/cost/billing-rules";
 import { previewPricing } from "@infrawrench/server-core/cost/pricing-preview";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
+import {
+  CurrencySettingsError,
+  getOrgCurrencyConfig,
+  lookupOrgExchangeRate,
+} from "@infrawrench/server-core/cost/currency-settings";
 import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
@@ -597,6 +602,71 @@ export function costTools(): ToolDefinition[] {
           return ok(await previewPricing(auth.organizationId, parsed.data));
         } catch (e) {
           if (e instanceof BillingRuleError) return err(e.message);
+          throw e;
+        }
+      },
+    },
+
+    {
+      name: "get_currency_settings",
+      title: "Get currency settings",
+      description:
+        "The organization's currency conversion setup: `displayCurrency` (null means conversion " +
+        "is off and every figure is per currency), `autoRates` (whether the automatic daily " +
+        "European Central Bank euro reference rates fill days no stated rate covers), " +
+        "`rateBasis` (`daily`: each day at its own rate; `month_end`: each day at its month's " +
+        "last-day rate), the stated `rates` table (each with `effectiveFrom` and an optional " +
+        "`effectiveTo`), and `feed` (the ECB feed's newest publication, covered currencies and " +
+        "last error).\n\n" +
+        "Precedence: a stated rate covering a day always wins over the feed; past a stated " +
+        "rate's `effectiveTo` the feed takes over again. The feed carries the last publication " +
+        "over weekends and holidays and crosses non-EUR pairs through EUR. Currencies not in " +
+        "`feed.currencies` are manual-only. Use lookup_exchange_rate to answer 'which rate " +
+        "converted this day'.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await getOrgCurrencyConfig(auth.organizationId));
+      },
+    },
+
+    {
+      name: "lookup_exchange_rate",
+      title: "Look up an exchange rate",
+      description:
+        "Which rate a day of spend in `from` converts to `to` at (default: the display " +
+        "currency), under the organization's own rules, with its `source` (`manual` for a " +
+        "stated rate, `ecb` for the automatic reference rate), `rateDate` (the stated rate's " +
+        "effective date or the ECB publication used, which is earlier than `date` over a " +
+        "weekend or holiday) and a plain-English `explanation`. `rate: null` means no rate " +
+        "applies and that currency's spend is shown unconverted. Quote the source and date " +
+        "whenever you state a converted amount.",
+      inputSchema: {
+        from: z.string().regex(/^[A-Za-z]{3}$/, "expected a three-letter currency code"),
+        to: z
+          .string()
+          .regex(/^[A-Za-z]{3}$/, "expected a three-letter currency code")
+          .optional(),
+        date: isoDay.optional().describe("Day of spend, YYYY-MM-DD. Defaults to today."),
+      },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        try {
+          return ok(
+            await lookupOrgExchangeRate(auth.organizationId, {
+              from: String(input["from"] ?? ""),
+              to: (input["to"] as string | undefined) ?? undefined,
+              date: (input["date"] as string | undefined) ?? new Date().toISOString().slice(0, 10),
+            }),
+          );
+        } catch (e) {
+          if (e instanceof CurrencySettingsError) return err(e.message);
           throw e;
         }
       },

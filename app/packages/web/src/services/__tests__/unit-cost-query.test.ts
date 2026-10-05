@@ -55,7 +55,7 @@ const mockLoadConversionContext = vi.fn(async () => ({
 const mockListRates = vi.fn(async () => [] as unknown[]);
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: (...args: unknown[]) => mockLoadConversionContext(...(args as [])),
-  listOrgExchangeRates: (...args: unknown[]) => mockListRates(...(args as [])),
+  loadOrgRateBook: async (...args: unknown[]) => mockListRates(...(args as [])),
 }));
 
 const mockGetBusinessMetric = vi.fn();

@@ -41,38 +41,66 @@ export function decodeFeedBody(bytes: Uint8Array): string {
  * a broken feed is diagnosable rather than silently reporting "no incidents".
  */
 export async function fetchStatusFeedBody(url: string): Promise<string> {
+  return fetchPublicFeedBody(url, {
+    accept: FEED_ACCEPT,
+    timeoutMs: FEED_TIMEOUT_MS,
+    maxBytes: FEED_MAX_BYTES,
+    label: "status feed",
+  });
+}
+
+/** Options for {@link fetchPublicFeedBody}. */
+export interface PublicFeedFetchOptions {
+  accept: string;
+  timeoutMs: number;
+  maxBytes: number;
+  /** Prefix for error messages, e.g. "status feed". */
+  label: string;
+}
+
+/**
+ * Fetch a public, credential-free document (a status feed, a published
+ * reference-rate file) through the egress proxy when one is configured, or
+ * directly otherwise, with a hard size cap. Shared by the status-feed pass and
+ * the exchange-rate feed pass (`cost/fx-feed-pass.ts`).
+ */
+export async function fetchPublicFeedBody(
+  url: string,
+  options: PublicFeedFetchOptions,
+): Promise<string> {
+  const { accept, timeoutMs, maxBytes, label } = options;
   if (isWorkflowFetchConfigured()) {
     const response = await fetchFromWorkflow({
       url,
       method: "GET",
-      headers: { accept: FEED_ACCEPT },
-      timeoutMs: FEED_TIMEOUT_MS,
-      maxBytes: FEED_MAX_BYTES,
+      headers: { accept },
+      timeoutMs,
+      maxBytes,
       redirect: "follow",
     });
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(`status feed responded HTTP ${response.status}`);
+      throw new Error(`${label} responded HTTP ${response.status}`);
     }
     return decodeFeedBody(Uint8Array.from(Buffer.from(response.bodyBase64, "base64")));
   }
 
   // No proxy configured: direct fetch (dev / self-hosted outside k8s).
   const res = await fetch(url, {
-    headers: { accept: FEED_ACCEPT },
+    headers: { accept },
     redirect: "follow",
-    signal: AbortSignal.timeout(FEED_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
-    throw new Error(`status feed responded HTTP ${res.status}`);
+    throw new Error(`${label} responded HTTP ${res.status}`);
   }
   // Stream with an early abort so a runaway feed never buffers past the cap.
   // Content-Length is only a hint (may be absent or wrong).
   const advertised = res.headers.get("content-length");
-  if (advertised && Number(advertised) > FEED_MAX_BYTES) {
-    throw new Error(`status feed body exceeds ${FEED_MAX_BYTES} bytes`);
+  if (advertised && Number(advertised) > maxBytes) {
+    throw new Error(`${label} body exceeds ${maxBytes} bytes`);
   }
   if (!res.body) {
-    throw new Error("status feed response has no body");
+    throw new Error(`${label} response has no body`);
   }
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -83,9 +111,9 @@ export async function fetchStatusFeedBody(url: string): Promise<string> {
       if (done) break;
       if (!value) continue;
       total += value.byteLength;
-      if (total > FEED_MAX_BYTES) {
+      if (total > maxBytes) {
         await reader.cancel();
-        throw new Error(`status feed body exceeds ${FEED_MAX_BYTES} bytes`);
+        throw new Error(`${label} body exceeds ${maxBytes} bytes`);
       }
       chunks.push(value);
     }

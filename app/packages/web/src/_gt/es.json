@@ -15070,5 +15070,96 @@
       "v": "v"
     },
     " claves)"
-  ]
+  ],
+  "b250dd3976d0e585": "{rate} (tipo de referencia del BCE, {date})",
+  "b15b8aa19a4c9c7e": "{min} a {max} (tipos de referencia del BCE, {first} a {last})",
+  "52360d27e3151d09": "{rate} desde {from} (tu tipo)",
+  "3ac96636cd4b7d3a": "{from} a {to} a {rate} ({source}, {date})",
+  "bbefdfdf4570084c": "Tipo de referencia del BCE",
+  "8d2ffdfe36a5e232": "tu tipo",
+  "ced7d3a868be7b08": "No se pudo guardar la configuración de moneda",
+  "3e9ed3a4521e9eeb": "¿Eliminar el tipo {from} → {to} vigente desde {effectiveFrom}?\n\nLos días que cubría pasarán al siguiente tipo más antiguo, luego a los tipos automáticos si están activados, o se informarán sin convertir si no se aplica ninguno. No se pierde ningún gasto en ningún caso.",
+  "72dc7ed5a35c608d": "sin fecha de fin",
+  "06f7855ace575bde": "Guardar tipo",
+  "2f7aae4422df912f": "La fecha de fin debe ser igual o posterior a la fecha de inicio.",
+  "6e3364e1b1f97f58": "Tipos de cambio automáticos",
+  "a7b0d1a136bc4cb9": "Qué tipo automático convierte los costes de un mes",
+  "f4575f4fe3398cf7": "Tipo diario",
+  "a75fbf9de648e447": "El gasto de cada día se convierte al tipo de ese día.",
+  "44a3d54b9bc36372": "Tipo de fin de mes",
+  "e07531a9425c7783": "Todos los días de un mes se convierten al tipo del último día del mes, como lo registran la mayoría de los cierres mensuales. El mes en curso usa el último tipo disponible hasta que termina.",
+  "27f190e70b42329c": "Última publicación del BCE: {date}.",
+  "b3da409a8f3edd31": "Historial desde {date}.",
+  "3adb45975cb2380d": "Aún no se han obtenido tipos de referencia. La primera obtención carga todo el historial.",
+  "fcca217dd338c57a": "Cubiertas: {codes}.",
+  "d263cc30163720dd": "La última obtención falló: {error}. Se siguen usando los tipos almacenados.",
+  "b02d72cd771f3c1b": "Acerca de los tipos de referencia del BCE",
+  "6bc6be1803aa662e": {
+    "t": "p",
+    "i": 1,
+    "c": "«Tu tipo» es un tipo que tu organización indicó en Configuración → Moneda; siempre tiene prioridad sobre los tipos automáticos en los días que cubre."
+  },
+  "bd0faa5e5dbecd88": {
+    "t": "p",
+    "i": 1,
+    "c": "Los tipos automáticos son los tipos de referencia del euro del Banco Central Europeo, cruzados a través del EUR cuando es necesario. Los fines de semana y festivos usan el último tipo publicado, por eso una fecha puede ser anterior al día convertido."
+  },
+  "354082ea36939e29": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El gasto ya en ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " no se convierte."
+    ]
+  },
+  "8386cedcb17cf2ff": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Ningún tipo de cambio cubre todos los días de este intervalo para",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " (puede que los tipos automáticos estén desactivados o que el BCE no publique la moneda), por lo que los importes se muestran por separado en su propia moneda en lugar de sumarse u omitirse. Añade un tipo en Configuración → Moneda para incluir ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "e752d19f8abb772c": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El gasto se recopila y almacena en la moneda en que factura cada proveedor, y nunca se fusiona salvo que lo pidas. Define aquí una moneda de visualización e Infrawrench convertirá las demás a ella, a los tipos de cambio que indiques abajo y, si los activas, a los tipos de referencia diarios del Banco Central Europeo.",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Un tipo que indicas siempre prevalece sobre uno automático."
+      },
+      " ",
+      "Las cifras convertidas se etiquetan como convertidas en todas partes donde aparecen, con la fuente y la fecha del tipo utilizado."
+    ]
+  },
+  "5681792d75cdc599": {
+    "t": "p",
+    "i": 1,
+    "c": "Un tipo por par de monedas y fecha de vigencia. El gasto de un día se convierte al tipo con la fecha de vigencia más reciente igual o anterior a ese día, así que restablecer un tipo no reescribe periodos ya cerrados. Asigna una fecha de fin a un tipo para convertirlo en una excepción acotada: después de ese día, los tipos automáticos vuelven a aplicarse (o los días se muestran sin convertir si los tipos automáticos están desactivados). Los tipos indicados se usan en un solo paso; Infrawrench nunca invierte uno ni encadena dos a través de una tercera moneda."
+  },
+  "a4a7f5704533b1ab": {
+    "t": "p",
+    "i": 1,
+    "c": "Rellena cada día no cubierto por un tipo indicado con los tipos de referencia del euro del Banco Central Europeo, obtenidos a diario y conservados desde 1999. Los fines de semana y festivos usan el último tipo publicado, y los pares sin el euro se cruzan a través del EUR. Las monedas que el BCE no publica son solo manuales: se convierten únicamente al tipo que indiques abajo."
+  }
 }

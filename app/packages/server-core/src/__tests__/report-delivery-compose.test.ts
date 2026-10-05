@@ -160,8 +160,8 @@ describe("reportDeliverySegments", () => {
     expect(text).toContain("+23.4%");
     expect(text).toContain("vs $10,000 the period before");
     // The caveat names both what was converted and what was left out.
-    expect(text).toContain("EUR converted to USD at your organization's stated rates");
-    expect(text).toContain("JPY shown unconverted");
+    expect(text).toContain("EUR converted to USD at your organization's stated rates (2026-01-01)");
+    expect(text).toContain("JPY shown separately");
   });
 
   it("omits the comparison suffix when the previous period is unknown", () => {

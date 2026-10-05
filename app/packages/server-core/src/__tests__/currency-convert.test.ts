@@ -30,6 +30,7 @@ function rate(
     toCurrency,
     rate: value,
     effectiveFrom,
+    effectiveTo: null,
     createdBy: "user-1",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -159,7 +160,20 @@ describe("convertGroups", () => {
     expect(result.groups[0]!.points[0]!.amount).toBe(110);
     expect(result.conversion).toEqual({
       displayCurrency: "USD",
-      converted: [{ currency: "EUR", rates: [{ effectiveFrom: "2026-01-01", rate: 1.1 }] }],
+      converted: [
+        {
+          currency: "EUR",
+          rates: [
+            {
+              effectiveFrom: "2026-01-01",
+              rate: 1.1,
+              source: "manual",
+              firstDay: "2026-02-01",
+              lastDay: "2026-02-01",
+            },
+          ],
+        },
+      ],
       unconverted: [],
     });
   });
@@ -189,8 +203,20 @@ describe("convertGroups", () => {
     // Both rates are reported, newest first: a total spanning a rate change is
     // a blend, and the reader has to be able to see that.
     expect(result.conversion!.converted[0]!.rates).toEqual([
-      { effectiveFrom: "2026-02-01", rate: 2 },
-      { effectiveFrom: "2026-01-01", rate: 1 },
+      {
+        effectiveFrom: "2026-02-01",
+        rate: 2,
+        source: "manual",
+        firstDay: "2026-02-15",
+        lastDay: "2026-02-15",
+      },
+      {
+        effectiveFrom: "2026-01-01",
+        rate: 1,
+        source: "manual",
+        firstDay: "2026-01-15",
+        lastDay: "2026-01-15",
+      },
     ]);
   });
 
@@ -333,7 +359,18 @@ describe("convertTotals", () => {
     const result = convertTotals({ EUR: 100, USD: 50 }, "USD", eurUsd, "2026-02-01");
     expect(result.totals).toEqual({ USD: 160 });
     expect(result.conversion!.converted).toEqual([
-      { currency: "EUR", rates: [{ effectiveFrom: "2026-01-01", rate: 1.1 }] },
+      {
+        currency: "EUR",
+        rates: [
+          {
+            effectiveFrom: "2026-01-01",
+            rate: 1.1,
+            source: "manual",
+            firstDay: "2026-02-01",
+            lastDay: "2026-02-01",
+          },
+        ],
+      },
     ]);
   });
 

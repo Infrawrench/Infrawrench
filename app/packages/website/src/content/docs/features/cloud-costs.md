@@ -250,7 +250,7 @@ Check the plugin's page under [Plugins](../plugins/aws.md) to see whether its co
 
 Spend is stored in the currency each provider bills in, and **currencies are never merged by default**. A graph whose scope covers a EUR-billing account and a USD-billing one draws one series per currency and says so under the title, and the total reads `€4,100 + $9,300`. That is the honest answer, and it stays the default — but it means an org billing in two currencies cannot answer "what do we spend", which is a real gap.
 
-**Settings → Currency** closes it, as an explicit opt-in. Set a display currency, state the exchange rates yourself, and every cost surface folds the currencies you have priced into that one.
+**Settings → Currency** closes it, as an explicit opt-in. Set a display currency, then either state the exchange rates yourself, turn on **automatic exchange rates** (the European Central Bank's daily reference rates), or both, and every cost surface folds the currencies it has a rate for into that one.
 
 ![Settings → Currency page with a display currency of USD set and three exchange rate rows (EUR, GBP, SEK) with different effective dates](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-settings.png)
 
@@ -258,23 +258,37 @@ Spend is stored in the currency each provider bills in, and **currencies are nev
 
 An org with no display currency configured behaves exactly as it did before this feature existed — same series, same per-currency totals, same digest lines. Nothing starts merging currencies on its own, and clearing the display currency turns conversion off everywhere without deleting the rates you have stated, so you can switch it back on later without re-typing anything.
 
-### The rates are yours
+### Where the rates come from
 
-Infrawrench does not fetch live exchange rates, and this is deliberate rather than a gap. A finance team reconciles a converted total against the rate their accounting system booked the period at — a decision somebody made and recorded — not against today's mid-market quote. A monitoring tool that silently applied its own rate would produce a number that disagrees with the ledger every single month, and the disagreement would be invisible.
+There are two sources, and you choose which to use.
 
-So you state the rates. Each one is a from-currency, a to-currency, a rate, and an **effective date**:
+**Rates you state.** A finance team often reconciles a converted total against the rate their accounting system booked the period at, a decision somebody made and recorded, not today's mid-market quote. So you can state the rates. Each one is a from-currency, a to-currency, a rate, an **effective date** and, optionally, an **end date**:
 
-- A day's spend converts at the rate whose effective date is the latest one on or before that day. Restating a rate for this month therefore does not rewrite periods you have already closed.
-- A range spanning a rate change is converted per day and reported as a blend — the caveat under the figure names every rate that was applied.
-- Rates are used in **one hop**. Infrawrench never inverts a rate (a USD→EUR rate is not treated as evidence about EUR→USD) and never chains two through a third currency, because both would produce a number you never stated and cannot defend.
-- One rate per currency pair per effective date. Re-adding the same pair and date replaces the stored rate, which is what correcting a typo should mean — two rates on one day would make "the rate that applied" ambiguous.
+- A day's spend converts at the stated rate whose effective date is the latest one on or before that day. Restating a rate for this month therefore does not rewrite periods you have already closed.
+- An end date makes the rate a bounded override. After it, automatic rates take over again if they are on; otherwise those days are unconverted. An older stated rate never comes back past an end date.
+- A range spanning a rate change is converted per day and reported as a blend: the caveat under the figure names every rate that was applied.
+- Stated rates are used in **one hop**. Infrawrench never inverts a stated rate (a USD→EUR rate is not treated as evidence about EUR→USD) and never chains two through a third currency.
+- One rate per currency pair per effective date. Re-adding the same pair and date replaces the stored rate, which is what correcting a typo should mean. **Edit** on a row opens it in the form.
 - Rates are stored as exact decimals, so the digits you type are the digits stored and echoed back.
+
+**Automatic exchange rates.** Turn them on and Infrawrench fills every day that no stated rate covers with the [European Central Bank's euro foreign exchange reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html). They are free and public, published around 16:00 CET on every TARGET working day for about thirty currencies, with history back to January 1999. Infrawrench fetches them once a day and stores them once for everyone, so turning them on gives you the full history immediately.
+
+- **Weekends and holidays** have no publication, so those days use the last published rate. The converted figure shows the publication date that was actually used.
+- **Pairs without the euro** (GBP to USD, say) are crossed through EUR from the same day's publication: USD per EUR divided by GBP per EUR.
+- **Currencies the ECB does not publish** are manual-only. They convert when you state a rate and are shown unconverted otherwise. The Currency page lists the currencies the feed covers.
+- **Daily or end-of-month.** Choose whether each day converts at its own rate, or every day in a month converts at the rate on the month's last day, which matches how most month-end closes book foreign-currency costs. The current month uses the latest rate until it ends. The choice only affects automatic rates.
+
+**A rate you state always wins.** For any day a stated rate covers, that rate is used, whatever the feed says. That lets you leave automatic rates on and pin the months your books closed at a different number.
+
+The Currency page also shows the feed's latest publication and, if the last daily fetch failed, the error. A failed fetch never removes rates already stored; conversion keeps using them, and every converted figure names the date of the rate it used, so a stale rate is visible.
+
+<insert [Settings → Currency page with automatic exchange rates turned on, the end-of-month basis selected, the latest ECB publication date and covered currencies listed, and a stated EUR to USD rate with an end date in the table below] here>
 
 Stating or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Reading the table only needs `costs:read`: anyone who can see a converted total needs to be able to see what produced it.
 
 ### Converted numbers always say they are converted
 
-A total that quietly mixes currencies is worse than two totals, so every surface that shows a converted figure labels it — the graph card's footnote, a notice above the Costs panel, the weekly digest, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were folded in and the rate used for each.
+A total that quietly mixes currencies is worse than two totals, so every surface that shows a converted figure labels it: the graph card's footnote, a notice above the Costs panel, the weekly digest, scheduled report deliveries, dashboard PDFs, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were folded in and, for each, **where the rate came from and its date**: your stated rates with their effective dates, or the ECB reference rates with the range of publication dates used. Hovering a bar or point on a cost graph names the rate behind that bucket, its source and its date. Invoice CSVs carry `rate_source` and `rate_effective_from` columns for every line.
 
 Spend already in the display currency is never converted. It is passed through untouched rather than multiplied by a rate of 1.
 
@@ -283,9 +297,9 @@ Spend already in the display currency is never converted. It is passed through u
 This is the important one. If your data contains a currency you have not stated a rate for, Infrawrench does **not** quietly leave it out of the total — that would understate your spend, which is the worst thing this feature could do. Instead:
 
 - It keeps its own series and its own entry in the totals, in its own currency.
-- A notice names it explicitly: "Spend in SEK is not included in the USD figure — no exchange rate is configured."
+- A notice names it explicitly: "Spend in SEK is not included in the USD figure."
 
-The same applies to a currency you have priced but not far enough back: if any day in the range falls before the earliest rate you stated for it, that currency is left unconverted as a whole rather than half-converted, because a partly converted series reconciles against nothing. Add an earlier effective date to include it.
+The same applies to a currency that has a rate for only part of the range: if any day falls outside every stated rate and the feed cannot cover it either, that currency is left unconverted as a whole rather than half-converted, because a partly converted series reconciles against nothing. Add a stated rate covering those days, or turn on automatic rates, to include it.
 
 <insert [Costs panel showing a converted USD total with the neutral "Amounts are converted to USD" notice listing EUR at 1.0850, and below it the amber "Spend in SEK is not included in the USD figure" notice] here>
 
@@ -293,7 +307,7 @@ The same applies to a currency you have priced but not far enough back: if any d
 
 A budget keeps its own currency — the display currency does not re-denominate a budget somebody set, and every threshold and alert stays in the budget's own currency.
 
-What changes is which spend counts. A budget has always counted only spend already in its own currency, silently ignoring the rest. When a budget's currency **is** your org's display currency, it now converts your other currencies' spend into it first, using your stated rates, so a USD budget in a mixed-currency org tracks the org's actual spend. A budget in any other currency, or an org with no display currency, behaves exactly as before.
+What changes is which spend counts. A budget has always counted only spend already in its own currency, silently ignoring the rest. When a budget's currency **is** your org's display currency, it now converts your other currencies' spend into it first, using your stated rates and automatic rates if they are on, so a USD budget in a mixed-currency org tracks the org's actual spend. A budget in any other currency, or an org with no display currency, behaves exactly as before.
 
 The gate is that equality because rates point _to_ the display currency in one hop — there are simply no rates pointing at a GBP budget in a USD-display org, so "convert into the budget's currency" would have nothing to use. A budget is a single number and cannot carry a second currency alongside it, so a currency with no rate really is excluded here — and the alert message says so, naming it.
 
@@ -301,8 +315,11 @@ The gate is that equality because rates point _to_ the display currency in one h
 
 - **Showback** converts per cost centre, on the rate in force on the last day of the period rather than per day: a chargeback is a statement about a closed period, and "August, at the August rate" is a sentence a finance team can reproduce.
 - **The weekly digest** follows the org's display currency and adds the same caveat line under the spend figure, instead of one line per currency.
-- **The CLI** takes `--currency USD` on `infrawrench costs`. The conversion caveat prints above the chart in text mode and rides along under `--json`, including the currencies that could not be converted.
-- **Mobile** shows converted totals with their caveat. The rate editor is web and desktop only — stating a rate is a finance-governance act done once a period against a system that is not on a phone.
+- **Invoices** for [managed accounts](./managed-accounts.md) convert at the rate in force on the period's last day under the same precedence, and freeze the rate and its source at approval.
+- **The CLI** takes `--currency USD` on `infrawrench costs`. The conversion caveat prints above the chart in text mode and rides along under `--json`, including the currencies that could not be converted. `infrawrench currency` prints the settings, the feed's state and your stated rates; `infrawrench currency rate EUR 2026-09-30` says which rate a day converts at and why; `infrawrench currency feed` lists the ECB rates for a day.
+- **MCP and the AI chat** have `get_currency_settings` and `lookup_exchange_rate`, and quote a converted figure's rate source and date.
+- **Terraform**: `infrawrench_currency_settings` takes `auto_rates` and `rate_basis`, and `infrawrench_exchange_rate` takes `effective_to`. See [Terraform provider](./terraform-provider.md).
+- **Mobile** shows converted totals with their caveat, including the rate source. The settings and rate editor are web and desktop only: stating a rate is a finance-governance act done once a period against a system that is not on a phone.
 
 ## Budgets & alerts
 

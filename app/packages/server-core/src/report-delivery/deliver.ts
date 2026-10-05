@@ -32,7 +32,7 @@ import { accounts, costReports, organizations, reportNotifications } from "../db
 import { queryCosts, type CostSeriesGroup } from "../clickhouse/cost-readers";
 import { isClickHouseConfigured } from "../clickhouse/client";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
+import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { loadPlugins } from "../plugin-loader";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { sendSlackToChannels } from "../slack";
@@ -144,13 +144,14 @@ export async function buildReportDelivery(
       to: addDaysIso(request.to, -span),
       ...base,
     }),
-    getOrgCurrencySettings(organizationId).catch(() => ({
-      displayCurrency: null as string | null,
-    })),
+    getOrgCurrencySettings(organizationId).catch(() => null),
   ]);
 
-  const displayCurrency = currencySettings.displayCurrency;
-  const rates = displayCurrency ? await listOrgExchangeRates(organizationId) : [];
+  const displayCurrency = currencySettings?.displayCurrency ?? null;
+  const rates =
+    displayCurrency && currencySettings
+      ? await loadOrgRateBook(organizationId, currencySettings)
+      : [];
   const currentConverted = convertGroups(rawCurrent, displayCurrency, rates);
   const previousConverted = convertGroups(rawPrevious, displayCurrency, rates);
   const current = mergeConvertedGroups(currentConverted.groups);

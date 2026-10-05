@@ -59,7 +59,6 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   billingRuleAppliesToCustomer,
-  buildExchangeRateTable,
   dedupeScopeCentres,
   describeBillingRule,
   isInvoiceOnlyBillingRuleKind,
@@ -99,8 +98,7 @@ import { getPricingLines, getShowbackSpend, type ShowbackRule } from "../clickho
 import { csvCell } from "../cost-exports/serialize";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { listBillingRules, resolveBillingAdjustments } from "./billing-rules";
-import { rateForDay, parseRate } from "./currency-convert";
-import { listOrgExchangeRates } from "./currency-settings";
+import { loadOrgRateBook } from "./currency-settings";
 import { deliverInvoiceEmail } from "./invoice-delivery";
 import { getManagedAccountRow } from "./managed-accounts";
 
@@ -183,7 +181,7 @@ export async function computeInvoiceFigures(
     listAllocationRules(organizationId),
     account.applyBillingRules ? resolveBillingAdjustments(organizationId) : Promise.resolve(null),
     account.applyBillingRules ? listBillingRules(organizationId) : Promise.resolve([]),
-    listOrgExchangeRates(organizationId),
+    loadOrgRateBook(organizationId),
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
       .from(accounts)
@@ -460,7 +458,6 @@ export async function computeInvoiceFigures(
   // period totals with no day to convert against, and "January, at the
   // 31 January rate" is a sentence a finance team can defend and reproduce.
   const rateDate = periodTo;
-  const table = buildExchangeRateTable(rates, invoiceCurrency);
 
   const appliedRates = new Map<string, ManagedInvoiceRate>();
   const unconverted = new Set<string>();
@@ -468,19 +465,24 @@ export async function computeInvoiceFigures(
   const lines: ManagedInvoiceLine[] = rawLines.map((line) => {
     if (line.currency === invoiceCurrency) {
       // Passed through, never multiplied by a stated rate of 1: a self-rate
-      // cannot exist (`buildExchangeRateTable` drops it).
+      // cannot exist (`RateBook.resolve` returns null for one).
       return { ...line, rate: 1, billed: line.adjusted };
     }
-    const match = rateForDay(table.get(line.currency) ?? [], rateDate);
-    const value = match ? parseRate(match.rate) : null;
-    if (!match || value === null) {
+    // Same precedence as every graph: a stated rate covering the day wins,
+    // then the automatic feed if the org has it on (its month-end basis is
+    // moot here: `rateDate` is already the period's last day for a monthly
+    // invoice).
+    const match = rates.resolve(line.currency, invoiceCurrency, rateDate);
+    if (!match) {
       unconverted.add(line.currency);
       return { ...line, rate: null, billed: null };
     }
+    const value = match.rate;
     appliedRates.set(line.currency, {
       currency: line.currency,
       rate: value,
       effectiveFrom: match.effectiveFrom,
+      source: match.source,
     });
     return { ...line, rate: value, billed: round6(line.adjusted * value) };
   });
@@ -1483,11 +1485,20 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
     "adjusted",
     "rate",
     "rate_date",
+    "rate_source",
+    "rate_effective_from",
     "invoice_currency",
     "billed",
   ];
-  const rows = invoice.lines.map((line) =>
-    [
+  const appliedByCurrency = new Map(invoice.derivation.rates.map((r) => [r.currency, r]));
+  const rows = invoice.lines.map((line) => {
+    // Which rate produced `billed`, and where it came from: `manual` is the
+    // org's stated rate, `ecb` the automatic reference rate (its effective
+    // date is the publication used). Blank when the line needed no rate or
+    // had none.
+    const applied =
+      line.currency === invoice.currency ? undefined : appliedByCurrency.get(line.currency);
+    return [
       invoice.number ?? "(draft)",
       invoice.managedAccountName,
       invoice.periodFrom,
@@ -1500,12 +1511,14 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
       line.adjusted,
       line.rate ?? "",
       invoice.derivation.rateDate,
+      applied ? (applied.source ?? "manual") : "",
+      applied?.effectiveFrom ?? "",
       invoice.currency,
       line.billed ?? "",
     ]
       .map(csvCell)
-      .join(","),
-  );
+      .join(",");
+  });
 
   // The totals ride in the same file rather than a sidecar: a line list whose
   // sum the reader has to compute themselves is how two parties end up with two
@@ -1524,6 +1537,8 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
       "",
       "",
       invoice.derivation.rateDate,
+      "",
+      "",
       currency,
       amount,
     ]

@@ -5,7 +5,10 @@ import type { AuthSession } from "@/api/auth-middleware";
 import { buildTestApp } from "./test-utils";
 
 const mockGetConfig = vi.fn();
-const mockSetDisplayCurrency = vi.fn();
+const mockSetSettings = vi.fn();
+const mockLookup = vi.fn();
+const mockFeedStatus = vi.fn();
+const mockFeedSnapshot = vi.fn();
 const mockUpsertRate = vi.fn();
 const mockDeleteRate = vi.fn();
 
@@ -21,9 +24,15 @@ class MockCurrencySettingsError extends Error {}
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   CurrencySettingsError: MockCurrencySettingsError,
   getOrgCurrencyConfig: (...args: unknown[]) => mockGetConfig(...args),
-  setOrgDisplayCurrency: (...args: unknown[]) => mockSetDisplayCurrency(...args),
+  setOrgCurrencySettings: (...args: unknown[]) => mockSetSettings(...args),
+  lookupOrgExchangeRate: (...args: unknown[]) => mockLookup(...args),
   upsertOrgExchangeRate: (...args: unknown[]) => mockUpsertRate(...args),
   deleteOrgExchangeRate: (...args: unknown[]) => mockDeleteRate(...args),
+}));
+
+vi.mock("@infrawrench/server-core/cost/fx-feed-store", () => ({
+  getFxFeedStatus: () => mockFeedStatus(),
+  getFxFeedSnapshot: () => mockFeedSnapshot(),
 }));
 
 const mockLogAudit = vi.fn();
@@ -66,6 +75,7 @@ const storedRate = {
   toCurrency: "USD",
   rate: "1.0850000000",
   effectiveFrom: "2026-07-01",
+  effectiveTo: null,
   createdBy: "user-1",
   createdAt: "2026-07-01T00:00:00.000Z",
   updatedAt: "2026-07-01T00:00:00.000Z",
@@ -74,9 +84,24 @@ const storedRate = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetConfig.mockResolvedValue({ displayCurrency: null, rates: [] });
-  mockSetDisplayCurrency.mockImplementation((_org: string, code: string | null) =>
-    Promise.resolve({ displayCurrency: code }),
+  mockSetSettings.mockImplementation(
+    (_org: string, input: { displayCurrency: string | null; autoRates?: boolean }) =>
+      Promise.resolve({
+        displayCurrency: input.displayCurrency,
+        autoRates: input.autoRates ?? false,
+        rateBasis: "daily",
+      }),
   );
+  mockFeedStatus.mockResolvedValue({
+    source: "ecb",
+    sourceName: "ECB",
+    sourceUrl: "https://example.test/ecb",
+    latestRateDate: "2026-10-02",
+    earliestRateDate: "1999-01-04",
+    currencies: ["EUR", "GBP", "USD"],
+    lastSuccessAt: null,
+    lastError: null,
+  });
   mockUpsertRate.mockResolvedValue(storedRate);
   mockDeleteRate.mockResolvedValue(true);
 });
@@ -119,25 +144,51 @@ describe("PUT /currency", () => {
   it("sets the display currency", async () => {
     const res = await buildApp().request("/", json({ displayCurrency: "USD" }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ displayCurrency: "USD" });
-    expect(mockSetDisplayCurrency).toHaveBeenCalledWith("org-1", "USD");
+    expect(await res.json()).toEqual({
+      displayCurrency: "USD",
+      autoRates: false,
+      rateBasis: "daily",
+    });
+    expect(mockSetSettings).toHaveBeenCalledWith("org-1", { displayCurrency: "USD" });
   });
 
   it("upper-cases a lowercase code", async () => {
     await buildApp().request("/", json({ displayCurrency: "eur" }));
-    expect(mockSetDisplayCurrency).toHaveBeenCalledWith("org-1", "EUR");
+    expect(mockSetSettings).toHaveBeenCalledWith("org-1", { displayCurrency: "EUR" });
   });
 
   it("accepts null to turn conversion off", async () => {
     const res = await buildApp().request("/", json({ displayCurrency: null }));
     expect(res.status).toBe(200);
-    expect(mockSetDisplayCurrency).toHaveBeenCalledWith("org-1", null);
+    expect(mockSetSettings).toHaveBeenCalledWith("org-1", { displayCurrency: null });
   });
 
   it("rejects a body that omits the field rather than clearing the setting", async () => {
     const res = await buildApp().request("/", json({}));
     expect(res.status).toBe(400);
-    expect(mockSetDisplayCurrency).not.toHaveBeenCalled();
+    expect(mockSetSettings).not.toHaveBeenCalled();
+  });
+
+  it("passes the automatic-rate settings through when sent", async () => {
+    const res = await buildApp().request(
+      "/",
+      json({ displayCurrency: "USD", autoRates: true, rateBasis: "month_end" }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSetSettings).toHaveBeenCalledWith("org-1", {
+      displayCurrency: "USD",
+      autoRates: true,
+      rateBasis: "month_end",
+    });
+  });
+
+  it("rejects an unknown rate basis", async () => {
+    const res = await buildApp().request(
+      "/",
+      json({ displayCurrency: "USD", rateBasis: "weekly" }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockSetSettings).not.toHaveBeenCalled();
   });
 
   it("rejects a non-code string", async () => {
@@ -153,10 +204,58 @@ describe("PUT /currency", () => {
   });
 
   it("maps a CurrencySettingsError to a 400", async () => {
-    mockSetDisplayCurrency.mockRejectedValue(new MockCurrencySettingsError("nope"));
+    mockSetSettings.mockRejectedValue(new MockCurrencySettingsError("nope"));
     const res = await buildApp().request("/", json({ displayCurrency: "USD" }));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "nope" });
+  });
+});
+
+describe("GET /currency/lookup", () => {
+  it("reads with costs:read", async () => {
+    mockLookup.mockResolvedValue({ rate: 1.1225, source: "ecb" });
+    const res = await buildAppWithPermissions(["costs:read"]).request(
+      "/lookup?from=EUR&to=USD&date=2026-10-04",
+    );
+    expect(res.status).toBe(200);
+    expect(mockLookup).toHaveBeenCalledWith("org-1", {
+      from: "EUR",
+      to: "USD",
+      date: "2026-10-04",
+    });
+  });
+
+  it("maps a CurrencySettingsError to a 400", async () => {
+    mockLookup.mockRejectedValue(new MockCurrencySettingsError("bad from"));
+    const res = await buildApp().request("/lookup?from=x&date=2026-10-04");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /currency/feed", () => {
+  it("lists the feed's rates for a day in the requested base, carrying a weekend", async () => {
+    const { buildFxFeedSnapshot } = await import("@infrawrench/server-core/cost/fx-feed");
+    mockFeedSnapshot.mockResolvedValue(
+      buildFxFeedSnapshot([{ date: "2026-10-02", rates: { USD: "1.1225", GBP: "0.85033" } }]),
+    );
+    const res = await buildAppWithPermissions(["costs:read"]).request(
+      "/feed?date=2026-10-04&base=USD",
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      base: string;
+      rateDate: string;
+      rates: Array<{ currency: string; rate: number }>;
+    };
+    expect(body.base).toBe("USD");
+    expect(body.rateDate).toBe("2026-10-02");
+    expect(body.rates.find((r) => r.currency === "EUR")!.rate).toBe(1.1225);
+    expect(body.rates.map((r) => r.currency)).toEqual(["EUR", "GBP"]);
+  });
+
+  it("rejects a malformed date", async () => {
+    const res = await buildApp().request("/feed?date=yesterday");
+    expect(res.status).toBe(400);
   });
 });
 
@@ -181,6 +280,15 @@ describe("PUT /currency/rates", () => {
       expect.objectContaining({ fromCurrency: "EUR", toCurrency: "USD", rate: "1.0850" }),
       "user-1",
     );
+  });
+
+  it("accepts an end date and passes it through", async () => {
+    const res = await buildApp().request(
+      "/rates",
+      json({ ...validRate, effectiveTo: "2026-07-31" }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockUpsertRate.mock.calls[0]![1]).toMatchObject({ effectiveTo: "2026-07-31" });
   });
 
   it("keeps the rate a string so the org's digits survive", async () => {

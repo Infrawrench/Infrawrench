@@ -35,6 +35,7 @@ import {
   costQueryForConfig,
   describeCostAnnotationScope,
   describeCostConversion,
+  conversionRateForDay,
   formatCostAnnotationDates,
   type CostAnnotation,
   type CostAnnotationInput,
@@ -543,7 +544,27 @@ function SpendGraphCard({
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelFormatter={(b) => formatBucketLabel(String(b), bin)}
+            labelFormatter={(b) => {
+              const label = formatBucketLabel(String(b), bin);
+              // Name the rate behind this bucket's converted amounts, with its
+              // source and date, so a single bar can be checked by hand.
+              const rates = (response.conversion?.converted ?? []).flatMap((entry) => {
+                const applied = conversionRateForDay(entry, String(b));
+                return applied
+                  ? [
+                      gt("{from} to {to} at {rate} ({source}, {date})", {
+                        from: entry.currency,
+                        to: response.conversion!.displayCurrency,
+                        rate: applied.rate,
+                        source:
+                          applied.source === "ecb" ? gt("ECB reference rate") : gt("your rate"),
+                        date: applied.effectiveFrom,
+                      }),
+                    ]
+                  : [];
+              });
+              return rates.length > 0 ? `${label} · ${rates.join("; ")}` : label;
+            }}
             formatter={(value, name) => {
               const label =
                 String(name) === COMPARISON_KEY

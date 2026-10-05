@@ -4,7 +4,8 @@ page_title: "infrawrench_exchange_rate Resource - infrawrench"
 subcategory: ""
 description: |-
   One stated exchange rate, effective from a day.
-  A given day converts at the rate with the greatest effective_from on or before it, so historical periods keep the rate that applied then and restating a rate today cannot restate last quarter's totals. A day earlier than every stated rate has no rate at all.
+  A given day converts at the rate with the greatest effective_from on or before it, so historical periods keep the rate that applied then and restating a rate today cannot restate last quarter's totals. A day earlier than every stated rate has no rate at all, unless the organization has automatic rates on (infrawrench_currency_settings.auto_rates).
+  A stated rate always wins over an automatic one for the days it covers. Set effective_to to make it a bounded override: after that day the automatic feed takes over again.
   This is exactly the kind of number that belongs in review: it restates every converted total the organization reports, in the digest that goes to the whole team and in the budget alerts that page people.
 ---
 
@@ -12,7 +13,9 @@ description: |-
 
 One stated exchange rate, effective from a day.
 
-A given day converts at the rate with the greatest `effective_from` on or before it, so historical periods keep the rate that applied then and restating a rate today cannot restate last quarter's totals. A day earlier than every stated rate has no rate at all.
+A given day converts at the rate with the greatest `effective_from` on or before it, so historical periods keep the rate that applied then and restating a rate today cannot restate last quarter's totals. A day earlier than every stated rate has no rate at all, unless the organization has automatic rates on (`infrawrench_currency_settings.auto_rates`).
+
+A stated rate always wins over an automatic one for the days it covers. Set `effective_to` to make it a bounded override: after that day the automatic feed takes over again.
 
 This is exactly the kind of number that belongs in review: it restates every converted total the organization reports, in the digest that goes to the whole team and in the budget alerts that page people.
 
@@ -29,6 +32,10 @@ This is exactly the kind of number that belongs in review: it restates every con
 
 A decimal **string**, not a number: it is stored in a `numeric(20, 10)` column so the digits your finance system used survive the round trip exactly, and a float could not promise that.
 - `to_currency` (String) ISO 4217 code, upper-case — the currency being converted **to**.
+
+### Optional
+
+- `effective_to` (String) Inclusive last day this rate applies, as `YYYY-MM-DD`. Omit for open-ended (until a later stated rate). Days after it fall back to automatic rates when they are on, and are otherwise unconverted; an older stated rate never resurfaces. Must not be before `effective_from`.
 
 ### Read-Only
 

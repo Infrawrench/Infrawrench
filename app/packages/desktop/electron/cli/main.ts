@@ -45,6 +45,7 @@ import {
   TAG_KEYS_ACTIONS,
   type TagKeysAction,
 } from "./commands/tag-keys";
+import { cmdCurrency, cmdCurrencyFeed, cmdCurrencyRate } from "./commands/currency";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
@@ -109,7 +110,8 @@ COMMANDS
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
                       [--group-by tag:<key> | virtual_tag:<key>  group by a provider tag or a virtual tag]
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
-                      [--currency USD  convert to your org's display currency at its stated rates]
+                      [--currency USD  convert to your org's display currency (stated rates, then
+                      automatic ECB rates if on)]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
                       [--filter <name|id>  a saved cost filter, resolved server-side; ANDs with --where]
                       [--measure cost|usage|count] [--unit <usage unit>] [--bin day|week|month|quarter|hour]
@@ -170,6 +172,12 @@ COMMANDS
        <key|id>       share left unmatched
   virtual-tags reprocess <key|id>
                       re-run a tag's background evaluation over the stored history now
+  currency            display currency, automatic-rate settings, ECB feed state and stated rates
+  currency rate <FROM> [TO] [YYYY-MM-DD]
+                      the rate a day of spend converts at under your org's rules, its source
+                      (stated or ECB) and date, and why
+  currency feed [YYYY-MM-DD]
+                      the ECB reference rates for a day   [--currency USD  express them in USD]
   invoices            invoices raised against managed accounts (customers), newest first — a
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
@@ -633,6 +641,22 @@ export async function runCli(): Promise<void> {
       // reports about itself and rides `org:settings:write`; that is a
       // considered act with a form and an audit entry behind it, not something
       // to make one flag away in a shell.
+      // Read-only on purpose, like billing rules: stating a rate restates every
+      // converted total the org reports and rides `org:settings:write`.
+      case "currency":
+        if (rest[0] === "rate") {
+          await cmdCurrencyRate(ctx, rest.slice(1));
+          break;
+        }
+        if (rest[0] === "feed") {
+          await cmdCurrencyFeed(ctx, rest.slice(1), parsed.range.currency);
+          break;
+        }
+        if (rest.length > 0) {
+          throw new CliError(`Unknown currency subcommand "${rest[0]}". Try rate or feed.`, 2);
+        }
+        await cmdCurrency(ctx);
+        break;
       case "billing-rules":
         if (rest[0] === "preview") {
           await cmdBillingRulePreview(ctx, rest.slice(1).join(" "), {

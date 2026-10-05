@@ -208,6 +208,33 @@ func TestExchangeRateStateKeepsTheConfiguredSpelling(t *testing.T) {
 	}
 }
 
+// An end date round-trips, and an open-ended rate reads back as null rather
+// than an empty string, which would diff against an omitted attribute.
+func TestExchangeRateEffectiveToMapping(t *testing.T) {
+	end := "2026-07-31"
+	bounded := exchangeRateStateFrom(&iw.ExchangeRate{
+		ID: "r1", FromCurrency: "EUR", ToCurrency: "USD",
+		Rate: "1.0850000000", EffectiveFrom: "2026-07-01", EffectiveTo: &end,
+	}, exchangeRateResourceModel{})
+	if bounded.EffectiveTo.ValueString() != end {
+		t.Errorf("effective_to lost: %q", bounded.EffectiveTo.ValueString())
+	}
+	open := exchangeRateStateFrom(&iw.ExchangeRate{
+		ID: "r1", FromCurrency: "EUR", ToCurrency: "USD",
+		Rate: "1.0850000000", EffectiveFrom: "2026-07-01",
+	}, exchangeRateResourceModel{})
+	if !open.EffectiveTo.IsNull() {
+		t.Errorf("an open-ended rate must read back as null, got %q", open.EffectiveTo.ValueString())
+	}
+	input := exchangeRateInputFrom(exchangeRateResourceModel{EffectiveTo: types.StringNull()})
+	if input.EffectiveTo != nil {
+		t.Errorf("an omitted end date must be sent as null")
+	}
+	if rateBasisOrDefault("") != "daily" || rateBasisOrDefault("month_end") != "month_end" {
+		t.Errorf("rate basis default is wrong")
+	}
+}
+
 func TestSameDecimal(t *testing.T) {
 	for _, c := range []struct {
 		a, b string

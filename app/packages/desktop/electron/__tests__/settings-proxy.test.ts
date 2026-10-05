@@ -13,6 +13,10 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("GET", "/api/profile")).toBe(true);
     expect(isAllowedSettingsRequest("patch", "/api/org/o1/team/m1")).toBe(true);
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/audit-logs?limit=50")).toBe(true);
+    // The Currency section's automatic-rate settings and feed status.
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/currency")).toBe(true);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/currency/feed?date=2026-10-02")).toBe(true);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/currency/lookup?from=EUR")).toBe(true);
     // The Tag Keys section: the discovery table and the settings document.
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/tag-keys")).toBe(true);
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/tag-keys/settings")).toBe(true);

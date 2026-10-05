@@ -42,8 +42,8 @@ import { db } from "../db/client";
 import { costAlertEvents, costAlerts } from "../db/schema";
 import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
-import { convertGroups, mergeConvertedGroups } from "./currency-convert";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "./currency-settings";
+import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";
+import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import {
   changeWindows,
   detectChanges,
@@ -108,7 +108,7 @@ async function evaluateAlert(
   alert: ChangeAlertRow,
   windows: ChangeWindow[],
   displayCurrency: string | null,
-  rates: Awaited<ReturnType<typeof listOrgExchangeRates>>,
+  rates: RateSource,
 ): Promise<Array<{ eventId: string; window: ChangeWindow; finding: ChangeFinding }>> {
   const fired: Array<{ eventId: string; window: ChangeWindow; finding: ChangeFinding }> = [];
   for (const window of windows) {
@@ -217,10 +217,11 @@ export async function evaluateCostChangeAlertsForOrg(
   // Org currency settings, read once per pass. A failure degrades to
   // per-currency comparison rather than aborting the pass.
   let displayCurrency: string | null = null;
-  let rates: Awaited<ReturnType<typeof listOrgExchangeRates>> = [];
+  let rates: RateSource = [];
   try {
-    displayCurrency = (await getOrgCurrencySettings(organizationId)).displayCurrency;
-    if (displayCurrency) rates = await listOrgExchangeRates(organizationId);
+    const settings = await getOrgCurrencySettings(organizationId);
+    displayCurrency = settings.displayCurrency;
+    if (displayCurrency) rates = await loadOrgRateBook(organizationId, settings);
   } catch (err) {
     console.error(`[change-eval] currency settings read failed for org ${organizationId}:`, err);
   }

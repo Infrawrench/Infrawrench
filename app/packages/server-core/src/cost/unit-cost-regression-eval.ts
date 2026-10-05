@@ -45,8 +45,8 @@ import { businessMetrics, unitCostRegressionEvents } from "../db/schema";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "./anomaly-detect";
-import { convertGroups, mergeConvertedGroups } from "./currency-convert";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "./currency-settings";
+import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";
+import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import { getMetricValues } from "./metric-ingest";
 import { SavedCostFilterResolutionError, resolveSavedCostFilters } from "./saved-filters";
 import { getOrgEfficiencySettings } from "./efficiency-settings";
@@ -215,7 +215,7 @@ async function evaluateMetric(
   settings: Awaited<ReturnType<typeof getOrgEfficiencySettings>>,
   windows: ReturnType<typeof unitCostWindows>,
   displayCurrency: string | null,
-  rates: Awaited<ReturnType<typeof listOrgExchangeRates>>,
+  rates: RateSource,
   url: string | null,
 ): Promise<void> {
   const filters = await numeratorFilters(organizationId, metric);
@@ -382,10 +382,11 @@ export async function evaluateUnitCostRegressionsForOrg(
   // per-currency comparison rather than aborting: the same policy the change
   // evaluator follows.
   let displayCurrency: string | null = null;
-  let rates: Awaited<ReturnType<typeof listOrgExchangeRates>> = [];
+  let rates: RateSource = [];
   try {
-    displayCurrency = (await getOrgCurrencySettings(organizationId)).displayCurrency;
-    if (displayCurrency) rates = await listOrgExchangeRates(organizationId);
+    const settings = await getOrgCurrencySettings(organizationId);
+    displayCurrency = settings.displayCurrency;
+    if (displayCurrency) rates = await loadOrgRateBook(organizationId, settings);
   } catch (err) {
     console.error(`[unit-cost-regression] currency read failed for org ${organizationId}:`, err);
   }

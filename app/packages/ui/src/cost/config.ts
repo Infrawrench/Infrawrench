@@ -40,7 +40,8 @@ import {
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
   type ExchangeRateInput,
-  type OrgCurrencySettings,
+  type OrgCurrencySettingsInput,
+  EXCHANGE_RATE_BASES,
   type BudgetInput,
   type CostAnomalySettings,
   type CostEfficiencySettings,
@@ -273,7 +274,19 @@ export {
   normalizeCurrencyCode,
   buildExchangeRateTable,
   describeCostConversion,
+  describeAppliedRate,
+  summarizeConversionRates,
+  conversionRateForDay,
+  EXCHANGE_RATE_BASES,
+  EXCHANGE_RATE_SOURCES,
+  EXCHANGE_RATE_SOURCE_LABELS,
   type OrgCurrencySettings,
+  type OrgCurrencySettingsInput,
+  type ExchangeRateBasis,
+  type ExchangeRateSource,
+  type ExchangeRateLookup,
+  type FxFeedStatus,
+  type ConversionRateSummary,
   type OrgCurrencyConfig,
   type ExchangeRate,
   type ExchangeRateInput,
@@ -1227,6 +1240,12 @@ const currencyCode = z
  */
 export const currencySettingsSchema = z.object({
   displayCurrency: currencyCode.nullable(),
+  /**
+   * Optional, unlike the display currency: omitted keeps the stored value, so
+   * a client that predates automatic rates cannot switch them off by saving.
+   */
+  autoRates: z.boolean().optional(),
+  rateBasis: z.enum(EXCHANGE_RATE_BASES).optional(),
 });
 
 /**
@@ -1309,6 +1328,8 @@ export const exchangeRateInputSchema = z.object({
       return n >= EXCHANGE_RATE_LIMITS.rateMin && n <= EXCHANGE_RATE_LIMITS.rateMax;
     }, "rate must be greater than 0"),
   effectiveFrom: isoDate,
+  /** Inclusive last day, or null/omitted for open-ended. */
+  effectiveTo: isoDate.nullable().optional(),
 });
 
 /**
@@ -1339,7 +1360,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof tagKeySettingsSchema>, TagKeySettings>,
   Exact<z.infer<typeof allocationRuleMatchSchema>, AllocationRuleMatch>,
   Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
-  Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettings>,
+  Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettingsInput>,
   Exact<z.infer<typeof exchangeRateInputSchema>, ExchangeRateInput>,
   Exact<z.infer<typeof savedCostFilterInputSchema>, SavedCostFilterInput>,
   Exact<z.infer<typeof costScenarioAdjustmentSchema>, CostScenarioAdjustment>,

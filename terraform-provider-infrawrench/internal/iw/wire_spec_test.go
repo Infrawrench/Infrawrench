@@ -153,6 +153,8 @@ func specChecks() []specCheck {
 
 		{schema: "CurrencyConfig", value: CurrencyConfig{}},
 		{schema: "CurrencySettings", value: CurrencySettings{}},
+		{schema: "CurrencySettingsInput", value: CurrencySettings{}},
+		{schema: "FxFeedStatus", value: FxFeedStatus{}},
 		{schema: "ExchangeRate", value: ExchangeRate{}},
 		{schema: "ExchangeRateInput", value: ExchangeRateInput{}},
 
