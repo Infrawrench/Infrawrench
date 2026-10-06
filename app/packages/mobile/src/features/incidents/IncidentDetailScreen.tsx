@@ -10,6 +10,7 @@ import {
 } from "@infrawrench/client-core";
 import { Button, Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
+import { IssueIndicator } from "@/components/IssueIndicator";
 import {
   useAddIncidentNote,
   useIncident,
@@ -140,17 +141,6 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
   );
 }
 
-function severityColor(severity: string): string {
-  switch (severity) {
-    case "critical":
-      return colors.danger;
-    case "warning":
-      return colors.warning;
-    default:
-      return colors.accent;
-  }
-}
-
 function formatTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString(undefined, {
@@ -167,7 +157,10 @@ function formatTime(iso: string): string {
 function TimelineRow({ entry }: { entry: IncidentTimelineEntry }) {
   return (
     <View style={styles.row}>
-      <View style={[styles.dot, { backgroundColor: severityColor(entry.severity) }]} />
+      <View style={styles.issueSlot}>
+        {entry.severity === "critical" && <IssueIndicator tone="danger" reason="Critical" />}
+        {entry.severity === "warning" && <IssueIndicator tone="warning" reason="Warning" />}
+      </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowMeta}>
           {formatTime(entry.at)}
@@ -205,7 +198,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", gap: spacing.md, padding: spacing.md },
   rowMain: { flex: 1, gap: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  issueSlot: { width: 14, marginTop: 4 },
   rowMeta: { color: colors.textFaint, fontSize: 11 },
   rowTitle: { color: colors.text, fontSize: 14 },
   rowDetail: { color: colors.textMuted, fontSize: 12 },

@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { IssueIndicator } from "@/components/IssueIndicator";
 import { Button, Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
 
@@ -40,20 +41,6 @@ interface WorkflowRun {
   logs?: WorkflowRunLog[] | null;
   error?: { message: string } | null;
   output?: unknown;
-}
-
-function statusColor(status: string): string {
-  switch (status) {
-    case "success":
-      return colors.success;
-    case "failure":
-      return colors.danger;
-    case "running":
-    case "pending":
-      return colors.warning;
-    default:
-      return colors.textMuted;
-  }
 }
 
 /** Mirrors the web/desktop run-history labels (`ui/src/workflows/RunHistory.tsx`). */
@@ -105,7 +92,9 @@ function RunRow({ run }: { run: WorkflowRun }) {
         accessibilityState={{ expanded }}
         accessibilityLabel={`${run.status} run, ${triggerLabel(run.triggerSource)}`}
       >
-        <View style={[styles.statusDot, { backgroundColor: statusColor(run.status) }]} />
+        {run.status === "failure" && (
+          <IssueIndicator tone="danger" reason={run.error?.message ?? "Run failed"} />
+        )}
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ color: colors.text, fontSize: 14 }}>
             {run.status}
@@ -272,7 +261,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
   disclosure: { color: colors.textMuted, fontSize: 14, paddingHorizontal: spacing.xs },
   runDetail: {
     backgroundColor: colors.background,

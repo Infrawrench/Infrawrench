@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ShareDialog } from "@infrawrench/ui";
+import { IssueIndicator, ShareDialog } from "@infrawrench/ui";
 import { createWebSharingClient } from "../lib/cost-client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useGT } from "gt-react";
@@ -1110,7 +1110,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <img className="size-1.5 rounded-full bg-red-500 flex-shrink-0" alt={gt("Error")} />
+        <IssueIndicator tone="danger" reason={status.error ?? gt("Connection failed")} />
         <span className="text-xs text-danger truncate">
           {status.error ?? gt("Connection failed")}
         </span>
@@ -1121,7 +1121,6 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <img className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" alt={gt("Connected")} />
         <span className="text-xs text-on-surface-faint">{gt("Connected")}</span>
       </div>
       {status.stats?.map((stat) => {

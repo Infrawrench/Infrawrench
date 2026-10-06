@@ -1,5 +1,5 @@
 import { useGT } from "gt-react";
-import { SparklineChart, useDataString } from "@infrawrench/ui";
+import { IssueIndicator, SparklineChart, useDataString } from "@infrawrench/ui";
 import type { CardStatus } from "./types";
 
 export function ConnectionFooter({
@@ -16,7 +16,6 @@ export function ConnectionFooter({
   if (status.phase === "connecting") {
     return (
       <div className="px-5 py-3 border-t border-border flex items-center gap-2">
-        <span className="size-1.5 rounded-full bg-surface-sunken animate-pulse flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">{gt("Connecting…")}</span>
       </div>
     );
@@ -28,7 +27,7 @@ export function ConnectionFooter({
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <span className="size-1.5 rounded-full bg-red-500 flex-shrink-0" />
+        <IssueIndicator tone="danger" reason={status.error ?? gt("Connection failed")} />
         <span className="text-xs text-danger truncate">
           {status.error ?? gt("Connection failed")}
         </span>
@@ -39,7 +38,6 @@ export function ConnectionFooter({
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">{gt("Connected")}</span>
       </div>
       {status.stats?.map((stat, index) => {

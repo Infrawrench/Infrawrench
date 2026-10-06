@@ -8,6 +8,7 @@ import {
   type MetricAlertRuleInput,
   type MetricAlertRuleWithStatus,
 } from "./config.js";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 import { MetricAlertRuleModal } from "./MetricAlertRuleModal.js";
 import type { MetricAlertsClient } from "./types.js";
 
@@ -139,22 +140,7 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full ${
-                        rule.firingCount > 0
-                          ? "bg-red-500"
-                          : rule.enabled
-                            ? "bg-emerald-500"
-                            : "bg-neutral-500"
-                      }`}
-                      title={
-                        rule.firingCount > 0
-                          ? gt("Firing")
-                          : rule.enabled
-                            ? gt("Healthy")
-                            : gt("Disabled")
-                      }
-                    />
+                    {rule.firingCount > 0 && <IssueIndicator tone="danger" reason={gt("Firing")} />}
                     <span className="text-sm font-medium text-on-surface truncate">
                       {rule.name}
                     </span>

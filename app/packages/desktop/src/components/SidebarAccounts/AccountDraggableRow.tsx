@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useGT } from "gt-react";
-import { ChevronIcon, type DraggableResource, CloseIcon } from "@infrawrench/ui";
+import { ChevronIcon, type DraggableResource, CloseIcon, IssueIndicator } from "@infrawrench/ui";
 import { accountTabTarget } from "../../lib/workspace-tabs";
 import type { Account, PluginGroup } from "./types";
 
@@ -8,7 +8,7 @@ export function AccountDraggableRow({
   account,
   group,
   isExpanded,
-  connected,
+  issue,
   acceptsSecretImport,
   onToggleExpand,
   onNavigate,
@@ -17,7 +17,8 @@ export function AccountDraggableRow({
   account: Account;
   group: PluginGroup;
   isExpanded: boolean;
-  connected: boolean;
+  /** Why the account needs attention; shown as a warning triangle when set. */
+  issue?: string | null | undefined;
   acceptsSecretImport: boolean;
   onToggleExpand: () => void;
   onNavigate: () => void;
@@ -95,10 +96,8 @@ export function AccountDraggableRow({
         }}
         className="flex items-center gap-2 flex-1 text-left min-w-0"
       >
-        <span
-          className={`size-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
-        />
         <span className="truncate">{account.displayName}</span>
+        {issue && <IssueIndicator reason={issue} />}
       </button>
       {showDropHint && <span className="text-xs text-accent flex-shrink-0">{gt("Drop")}</span>}
       {!showDropHint && onDelete && (

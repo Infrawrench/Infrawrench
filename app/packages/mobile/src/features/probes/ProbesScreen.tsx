@@ -8,6 +8,7 @@ import {
 import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
 import { CLOUD_URL } from "../../../env";
+import { IssueIndicator } from "@/components/IssueIndicator";
 import { useProbes } from "./useProbes";
 import { useStatusPages } from "./useStatusPages";
 
@@ -99,7 +100,6 @@ function StatusPageRow({ page }: { page: StatusPage }) {
       onPress={() => void Linking.openURL(url)}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <View style={[styles.dot, { backgroundColor: live ? colors.success : colors.textFaint }]} />
       <View style={styles.rowMain}>
         <Text style={styles.title} numberOfLines={1}>
           {page.title}
@@ -153,7 +153,9 @@ function ProbeRow({ probe }: { probe: SyntheticProbe }) {
       accessibilityLabel={`${probe.name}, ${statusLabel(probe)}${detail ? `, ${detail}` : ""}`}
       style={styles.row}
     >
-      <View style={[styles.dot, { backgroundColor: statusColor(probe) }]} />
+      {probe.enabled && probe.status === "down" && (
+        <IssueIndicator tone="danger" reason={probe.lastError ?? "Down"} />
+      )}
       <View style={styles.rowMain}>
         <Text style={styles.title} numberOfLines={1}>
           {probe.name}
@@ -175,7 +177,6 @@ function ProbeRow({ probe }: { probe: SyntheticProbe }) {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10 },
   rowPressed: { backgroundColor: colors.surfaceOverlay },
-  dot: { width: 8, height: 8, borderRadius: 4 },
   rowMain: { flex: 1, gap: 2 },
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },
   subtitle: { color: colors.textMuted, fontSize: 12 },

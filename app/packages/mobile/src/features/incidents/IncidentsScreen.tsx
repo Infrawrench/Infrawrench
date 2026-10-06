@@ -14,6 +14,7 @@ import {
 import { Button, Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { IssueIndicator } from "@/components/IssueIndicator";
 import { useDeclareIncident, useIncidents } from "./useIncidents";
 
 const FILTERS: Array<{ id: IncidentStatus | "all"; label: string }> = [
@@ -104,17 +105,6 @@ export function IncidentsScreen() {
   );
 }
 
-function severityColor(severity: string): string {
-  switch (severity) {
-    case "sev1":
-      return colors.danger;
-    case "sev2":
-      return colors.warning;
-    default:
-      return colors.textFaint;
-  }
-}
-
 function statusColor(status: string): string {
   switch (status) {
     case "open":
@@ -135,7 +125,12 @@ function IncidentRow({ incident, onPress }: { incident: Incident; onPress: () =>
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <View style={[styles.dot, { backgroundColor: severityColor(incident.severity) }]} />
+      {(incident.severity === "sev1" || incident.severity === "sev2") && (
+        <IssueIndicator
+          tone={incident.severity === "sev1" ? "danger" : "warning"}
+          reason={incidentSeverityLabel(incident.severity)}
+        />
+      )}
       <View style={styles.rowMain}>
         <Text style={styles.title} numberOfLines={1}>
           {incident.title}
@@ -250,7 +245,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
   rowPressed: { opacity: 0.6 },
   rowMain: { flex: 1, gap: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
   title: { color: colors.text, fontSize: 15 },
   subtitle: { color: colors.textMuted, fontSize: 12 },
   status: { fontSize: 12 },

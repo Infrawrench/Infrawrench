@@ -15438,5 +15438,10 @@
     ]
   },
   "103a895b60e7fafe": "Rien à afficher ici pour le moment.",
-  "9b6c644edff4c76f": "Aucun crédit ni engagement trouvé. Les comptes connectés affichent ici les réservations, plans d’épargne, remises sur engagement d’utilisation et soldes de crédits dès que leur fournisseur en a."
+  "9b6c644edff4c76f": "Aucun crédit ni engagement trouvé. Les comptes connectés affichent ici les réservations, plans d’épargne, remises sur engagement d’utilisation et soldes de crédits dès que leur fournisseur en a.",
+  "1de36ca50e73ce0d": "Critique",
+  "4ebc13b08e0dc6f4": "Avertissement",
+  "b2ad1dbc3fa36e3e": "Dégradé",
+  "4700bf54096e7dea": "L'agent du bastion ne s'est pas manifesté récemment.",
+  "97e0e78d2c0a878d": "Impossible d'actualiser les ressources : {error}"
 }

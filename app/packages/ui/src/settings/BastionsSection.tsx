@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { T, Var, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 import type { Bastion } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 
@@ -163,7 +164,6 @@ function StatusBadge({ bastion }: { bastion: Bastion }) {
   if (bastion.connected) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs">
-        <span className="size-1.5 rounded-full bg-green-500" />
         <span className="text-on-surface-secondary">{gt("Connected")}</span>
       </span>
     );
@@ -171,14 +171,13 @@ function StatusBadge({ bastion }: { bastion: Bastion }) {
   if (bastion.status === "pending" && !bastion.lastSeenAt) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs">
-        <span className="size-1.5 rounded-full bg-amber-500" />
         <span className="text-on-surface-tertiary">{gt("Awaiting first connect")}</span>
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
-      <span className="size-1.5 rounded-full bg-red-500" />
+      <IssueIndicator tone="danger" reason={gt("The bastion agent hasn't checked in recently.")} />
       <span className="text-on-surface-tertiary">{gt("Offline")}</span>
     </span>
   );

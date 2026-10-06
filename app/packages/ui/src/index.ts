@@ -619,6 +619,12 @@ export {
   type ResourceFieldChange,
   type ResourceChangeEntry,
 } from "@infrawrench/client-core";
+export {
+  IssueIndicator,
+  StatusIssueIndicator,
+  type IssueTone,
+} from "./components/IssueIndicator.js";
+export { statusIssueTone } from "./components/schema-tokens.js";
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
 export { IacIcon } from "./components/icons/IacIcon.js";
 export { LogsIcon } from "./components/icons/LogsIcon.js";
@@ -634,6 +640,7 @@ export {
   RefreshIcon,
   SettingsIcon,
   UploadIcon,
+  WarningIcon,
   type ChromeIconProps,
   type IconDirection,
 } from "./components/icons/ChromeIcons.js";

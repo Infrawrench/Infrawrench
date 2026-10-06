@@ -4,6 +4,7 @@ import {
   type IncidentTimelineEntry,
   type IncidentTimelineResponse,
 } from "@infrawrench/client-core";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 
 export interface IncidentTimelineViewProps {
   timeline: IncidentTimelineResponse | null;
@@ -11,12 +12,6 @@ export interface IncidentTimelineViewProps {
   error?: string | null;
   onRetry?: () => void;
 }
-
-const SEVERITY_DOT: Record<string, string> = {
-  critical: "bg-red-500",
-  warning: "bg-amber-500",
-  info: "bg-blue-500",
-};
 
 const SOURCE_LABEL: Record<string, string> = {
   incident: "Incident",
@@ -106,11 +101,14 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
           {timeline.entries.map((entry) => (
             <li key={entry.id} className={`rounded-lg border px-3 py-2 ${entryTone(entry)}`}>
               <div className="flex items-start gap-2">
-                <span
-                  className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
-                    SEVERITY_DOT[entry.severity] ?? "bg-neutral-500"
-                  }`}
-                />
+                <span className="mt-0.5 w-3 shrink-0">
+                  {entry.severity === "critical" && (
+                    <IssueIndicator tone="danger" reason={gt("Critical")} />
+                  )}
+                  {entry.severity === "warning" && (
+                    <IssueIndicator tone="warning" reason={gt("Warning")} />
+                  )}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-xs tabular-nums text-on-surface-faint">

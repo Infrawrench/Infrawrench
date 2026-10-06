@@ -6,7 +6,8 @@ import type { DraggableResource } from "../../dnd/types.js";
 import { ErrorNotice } from "../ErrorNotice.js";
 import { ImportYamlModal } from "../ImportYamlModal.js";
 import type { PeerPaneData } from "./detail-types.js";
-import { statusDotClass } from "../schema-tokens.js";
+import { StatusIssueIndicator } from "../IssueIndicator.js";
+import { WarningIcon } from "../icons/ChromeIcons.js";
 import { dispatchPromptNoSqlCommand } from "../../utils.js";
 import { useDataString } from "../../i18n/data-strings.js";
 import {
@@ -180,7 +181,7 @@ export function PeerPaneView({
     <div className={guidanceIsBanner ? "" : "py-12 px-6 max-w-2xl"}>
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
+          <WarningIcon size={14} className="text-warning flex-shrink-0 mt-0.5" />
           <p className="text-sm font-medium text-on-surface leading-relaxed">
             {gtData(guidance.title)}
           </p>
@@ -442,7 +443,6 @@ export function PeerPaneView({
               className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="size-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                 <span className="text-sm text-on-surface-secondary font-medium truncate">
                   {pf.resourceName}
                 </span>
@@ -544,13 +544,7 @@ function NamespaceGrid({
           >
             <span className="flex min-w-0 max-w-full items-center gap-1.5">
               <span className="truncate text-xs font-medium">{ns.displayName}</span>
-              {ns.status && (
-                <span
-                  role="img"
-                  aria-label={gt("Status: {status}", { status: ns.status })}
-                  className={`inline-block size-1.5 flex-shrink-0 rounded-full ${statusDotClass(ns.status)}`}
-                />
-              )}
+              <StatusIssueIndicator status={ns.status} size={11} />
             </span>
             {ns.subtitle && (
               <span
@@ -651,13 +645,7 @@ function PeerResourcePill({
             <span className="text-sm font-medium text-on-surface truncate">
               {resource.displayName}
             </span>
-            {resource.status && (
-              <span
-                role="img"
-                aria-label={gt("Status: {status}", { status: resource.status })}
-                className={`size-2 rounded-full flex-shrink-0 ${statusDotClass(resource.status)}`}
-              />
-            )}
+            <StatusIssueIndicator status={resource.status} />
           </div>
           {resource.subtitle && (
             <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>

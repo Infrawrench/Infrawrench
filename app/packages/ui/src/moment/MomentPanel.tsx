@@ -12,6 +12,7 @@ import {
   type MomentResponse,
   type MomentSeverity,
 } from "@infrawrench/client-core";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 import type { MomentClient } from "./types.js";
 
 export interface MomentPanelProps {
@@ -55,11 +56,13 @@ function localInputToIso(value: string): string | null {
   return date.toISOString();
 }
 
-const SEVERITY_DOT: Record<MomentSeverity, string> = {
-  info: "bg-on-surface-faint",
-  warning: "bg-amber-500",
-  critical: "bg-red-500",
-};
+/** Warning and critical events get a triangle; info events nothing. */
+function SeverityIssue({ severity }: { severity: MomentSeverity }) {
+  const gt = useGT();
+  if (severity === "critical") return <IssueIndicator tone="danger" reason={gt("Critical")} />;
+  if (severity === "warning") return <IssueIndicator tone="warning" reason={gt("Warning")} />;
+  return null;
+}
 
 function spansById(ids: string[], incidents: MomentIncidentSpan[]): MomentIncidentSpan[] {
   return incidents.filter((span) => ids.includes(span.id));
@@ -150,10 +153,9 @@ export function MomentPanel({
         <span className="text-xs text-on-surface-tertiary whitespace-nowrap w-28 shrink-0 text-right">
           {formatTime(event.timestamp)}
         </span>
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${SEVERITY_DOT[event.severity] ?? SEVERITY_DOT.info}`}
-          title={event.severity}
-        />
+        <span className="w-3 shrink-0 flex items-center justify-center">
+          <SeverityIssue severity={event.severity} />
+        </span>
         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap shrink-0">
           {gtData(MOMENT_FEED_LABELS[event.feed] ?? event.feed)}
         </span>
@@ -350,7 +352,7 @@ export function MomentPanel({
                       <span className="text-xs text-on-surface-tertiary whitespace-nowrap w-28 shrink-0 text-right">
                         {formatTime(item.events[0]?.timestamp ?? "")}
                       </span>
-                      <span className="w-2 h-2 rounded-full shrink-0 bg-on-surface-faint" />
+                      <span className="w-3 shrink-0" />
                       <T>
                         <span className="text-sm text-on-surface-secondary truncate">
                           <Var>{item.events.length}</Var> events on{" "}

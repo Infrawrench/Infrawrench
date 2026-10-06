@@ -52,11 +52,26 @@ describe("SchemaRenderer", () => {
     expect(screen.getByText("Up")).toBeInTheDocument();
   });
 
-  it("StatusDotNodeRenderer handles an unknown status without a label", () => {
+  it("StatusDotNodeRenderer renders nothing for a status that is not a problem", () => {
     const { container } = render(
       <StatusDotNodeRenderer node={{ kind: "status-dot", status: "weird" as never }} />,
     );
-    expect(container.querySelector("span")).toBeTruthy();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("StatusDotNodeRenderer shows a warning triangle explaining an error", () => {
+    render(
+      <StatusDotNodeRenderer
+        node={{ kind: "status-dot", status: "error", label: "Credentials expired" }}
+      />,
+    );
+    const icon = screen.getByRole("img", { name: "Credentials expired" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(icon);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Credentials expired");
+    expect(icon).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
+    fireEvent.mouseLeave(icon);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("renders a link node with href and target", () => {

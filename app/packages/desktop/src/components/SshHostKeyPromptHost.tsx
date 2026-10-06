@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
-import { Modal } from "@infrawrench/ui";
+import { Modal, WarningIcon } from "@infrawrench/ui";
 import type { HostKeyPromptPayload } from "@infrawrench/plugin-base";
 import { invoke } from "../lib/invoke";
 
@@ -50,11 +50,9 @@ export function SshHostKeyPromptHost() {
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] p-6">
         <div className="flex items-start gap-3 mb-4">
-          <div
-            className={`mt-0.5 size-2 rounded-full flex-shrink-0 ${
-              isMismatch ? "bg-red-500" : "bg-amber-400"
-            }`}
-            aria-hidden
+          <WarningIcon
+            size={16}
+            className={`mt-0.5 flex-shrink-0 ${isMismatch ? "text-danger" : "text-warning"}`}
           />
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-on-surface">

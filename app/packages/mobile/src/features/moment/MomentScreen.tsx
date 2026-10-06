@@ -15,6 +15,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
 import { Chip, ChipRow } from "@/components/form";
 import { colors, radii, spacing } from "@/lib/theme";
+import { IssueIndicator } from "@/components/IssueIndicator";
 import { useMoment } from "./useMoment";
 
 /**
@@ -30,11 +31,15 @@ import { useMoment } from "./useMoment";
  * the window presets do the zooming.
  */
 
-const SEVERITY_COLORS: Record<MomentSeverity, string> = {
-  info: colors.textFaint,
-  warning: colors.warning,
-  critical: colors.danger,
-};
+/** Warning and critical events get a triangle; info events an empty slot. */
+function SeverityIssue({ severity }: { severity: MomentSeverity }) {
+  return (
+    <View style={styles.issueSlot}>
+      {severity === "critical" && <IssueIndicator tone="danger" reason="Critical" />}
+      {severity === "warning" && <IssueIndicator tone="warning" reason="Warning" />}
+    </View>
+  );
+}
 
 export interface MomentScreenProps {
   /** ISO centre timestamp from a deep link; absent = around now. */
@@ -190,7 +195,7 @@ export function MomentScreen({ at: atParam, window: windowParam }: MomentScreenP
                   onPress={() => setExpandedBurst(expandedBurst === item.key ? null : item.key)}
                 >
                   <Text style={styles.time}>{formatTime(item.events[0]?.timestamp ?? "")}</Text>
-                  <View style={[styles.dot, { backgroundColor: colors.textFaint }]} />
+                  <View style={styles.issueSlot} />
                   <View style={styles.body}>
                     <Text style={styles.title} numberOfLines={1}>
                       {item.events.length} events on {item.resourceName ?? item.resourceId}
@@ -242,12 +247,7 @@ function MomentEventRow({
   return (
     <Pressable style={styles.row} onPress={onPress} disabled={!onPress}>
       <Text style={styles.time}>{time}</Text>
-      <View
-        style={[
-          styles.dot,
-          { backgroundColor: SEVERITY_COLORS[event.severity] ?? colors.textFaint },
-        ]}
-      />
+      <SeverityIssue severity={event.severity} />
       <View style={styles.body}>
         <Text style={styles.feed}>{MOMENT_FEED_LABELS[event.feed] ?? event.feed}</Text>
         <Text style={styles.title} numberOfLines={2}>
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   },
   burstMember: { paddingLeft: spacing.lg },
   time: { color: colors.textMuted, fontSize: 11, width: 76, textAlign: "right", marginTop: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
+  issueSlot: { width: 14, marginTop: 2 },
   body: { flex: 1, gap: 1 },
   feed: { color: colors.textFaint, fontSize: 11 },
   title: { color: colors.text, fontSize: 14 },

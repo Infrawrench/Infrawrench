@@ -15,7 +15,8 @@ import type {
   HostAction,
 } from "@infrawrench/plugin-base";
 import { MetricChart } from "../charts/MetricChart.js";
-import { badgeClass, statusDotClass } from "../schema-tokens.js";
+import { badgeClass, statusIssueTone } from "../schema-tokens.js";
+import { StatusIssueIndicator } from "../IssueIndicator.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
   dispatchInvokePluginAction,
@@ -176,10 +177,10 @@ function BadgeNodeRenderer({ node }: { node: BadgeNode }) {
 }
 
 export function StatusDotNodeRenderer({ node }: { node: StatusDotNode }) {
-  const dot = statusDotClass(node.status);
+  if (!statusIssueTone(node.status) && !node.label) return null;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`size-2 rounded-full flex-shrink-0 ${dot}`} />
+      <StatusIssueIndicator status={node.status} label={node.label} />
       {node.label && <span className="text-xs text-on-surface-tertiary">{node.label}</span>}
     </span>
   );
