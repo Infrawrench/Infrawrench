@@ -9,6 +9,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": { "enabled": true },
+  // Run next to the database rather than the visitor: every request makes
+  // several sequential Postgres round trips (Neon `core` is in AWS us-east-2;
+  // the gateway and ClickHouse are in GCP us-east4, next door). From a London
+  // edge each query crossed the Atlantic (~210 ms of a warm request's wall
+  // time), and concentrating traffic in fewer data centres keeps isolates warm.
+  "placement": { "region": "aws:us-east-2" },
   // No route, on purpose. On the `app.infrawrench.com/*` route (2026-10-06)
   // every request cost 2-5 s of CPU: the bundle needs ~107 MB just to load and
   // ~208 MB with the API evaluated, past the 128 MB isolate limit, so Cloudflare
