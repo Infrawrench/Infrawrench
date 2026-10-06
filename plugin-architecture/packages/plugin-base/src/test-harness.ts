@@ -170,6 +170,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   bitbucket: { email: "dev@example.com", token: "ATATT-test-token", workspace: "acme" },
   "cockroachdb-cloud": { apiKey: "CCDB1_test" },
   northflank: { apiToken: "test-northflank-token" },
+  upcloud: { apiToken: "ucat_01TESTTOKEN0000000000000000", username: "", password: "" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

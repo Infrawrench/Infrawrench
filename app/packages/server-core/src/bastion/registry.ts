@@ -228,6 +228,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   bitbucket: ["api.bitbucket.org", "*.s3.amazonaws.com"],
   "cockroachdb-cloud": ["cockroachlabs.cloud"],
   northflank: ["api.northflank.com"],
+  upcloud: ["api.upcloud.com"],
 };
 
 /**

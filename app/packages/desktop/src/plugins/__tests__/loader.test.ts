@@ -133,6 +133,7 @@ vi.mock("@infrawrench/plugin-pagerduty", () => stub("pagerduty"));
 vi.mock("@infrawrench/plugin-bitbucket", () => stub("bitbucket"));
 vi.mock("@infrawrench/plugin-cockroachdb-cloud", () => stub("cockroachdb-cloud"));
 vi.mock("@infrawrench/plugin-northflank", () => stub("northflank"));
+vi.mock("@infrawrench/plugin-upcloud", () => stub("upcloud"));
 
 beforeEach(() => {
   disabled = [];

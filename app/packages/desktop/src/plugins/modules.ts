@@ -104,4 +104,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-bitbucket"),
   () => import("@infrawrench/plugin-cockroachdb-cloud"),
   () => import("@infrawrench/plugin-northflank"),
+  () => import("@infrawrench/plugin-upcloud"),
 ];
