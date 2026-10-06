@@ -97,4 +97,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-convex"),
   () => import("@infrawrench/plugin-railway"),
   () => import("@infrawrench/plugin-gitlab"),
+  () => import("@infrawrench/plugin-civo"),
 ];

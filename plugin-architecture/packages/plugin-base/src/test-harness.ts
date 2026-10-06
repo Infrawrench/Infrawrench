@@ -163,6 +163,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   convex: { accessToken: "test-convex-team-token" },
   railway: { apiToken: "test-token" },
   gitlab: { url: "https://gitlab.com", token: "glpat-test-token" },
+  civo: { apiKey: "civotestkey000000000000000000000000000000000000000" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

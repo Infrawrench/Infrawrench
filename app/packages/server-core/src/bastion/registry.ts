@@ -211,6 +211,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   railway: ["backboard.railway.com"],
   // GitLab.com only; self-managed instances are user-supplied hosts and are not bastion-routed
   gitlab: ["gitlab.com"],
+  // api.civo.com is the management API; Object Store endpoints are objectstore.<region>.civo.com
+  civo: ["api.civo.com", "*.civo.com"],
 };
 
 /**
