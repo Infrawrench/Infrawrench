@@ -9,10 +9,13 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": { "enabled": true },
-  // In front of the GKE ingress, not instead of it: requests the Worker
-  // forwards (`fetch(request)`) reach that origin unchanged. Deleting this
-  // route is a complete rollback.
-  "routes": [{ "pattern": "app.infrawrench.com/*", "zone_name": "infrawrench.com" }],
+  // No route, on purpose. On the `app.infrawrench.com/*` route (2026-10-06)
+  // every request cost 2-5 s of CPU: the bundle needs ~107 MB just to load and
+  // ~208 MB with the API evaluated, past the 128 MB isolate limit, so Cloudflare
+  // recycled the isolate after each request and every one paid the full load.
+  // The route goes back only once the API fits (KNOWLEDGE.md, "Edge/gateway
+  // split"). The Worker still deploys so it stays in step with main.
+  //   "routes": [{ "pattern": "app.infrawrench.com/*", "zone_name": "infrawrench.com" }],
   // Bundle-time constant, not a var: React and friends pick their production
   // build off it, and a Worker has no process to set it on.
   "define": { "process.env.NODE_ENV": "\"production\"" },

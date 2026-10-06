@@ -344,9 +344,11 @@ unserved.
 2. Add `POLLER_SCOPE = "gateway"` to `app_env`, `terraform apply`, and
    `kubectl -n infrawrench rollout restart deploy/poller`. The Node poller now
    does only gateway work; it can drop to one replica.
-3. The web Worker's route goes live with its first deploy. To hold it back,
-   deploy once with the `routes` entry removed from
-   `app/packages/web/edge/wrangler.jsonc`.
+3. **The web Worker has no route** (it is commented out in
+   `app/packages/web/edge/wrangler.jsonc`). It was live for about 15 minutes
+   on 2026-10-06 and every request cost 2-5 s, because the API does not fit
+   a 128 MB isolate (KNOWLEDGE.md, "Edge/gateway split"). Do not restore it
+   until that is fixed and measured.
 
 **Rollback**: delete the web Worker's route (dashboard, or redeploy without
 it) and every request goes straight to the pods again. Unset `POLLER_SCOPE`
