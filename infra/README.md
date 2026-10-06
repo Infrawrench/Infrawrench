@@ -344,11 +344,12 @@ unserved.
 2. Add `POLLER_SCOPE = "gateway"` to `app_env`, `terraform apply`, and
    `kubectl -n infrawrench rollout restart deploy/poller`. The Node poller now
    does only gateway work; it can drop to one replica.
-3. **The web Worker has no route** (it is commented out in
-   `app/packages/web/edge/wrangler.jsonc`). It was live for about 15 minutes
-   on 2026-10-06 and every request cost 2-5 s, because the API does not fit
-   a 128 MB isolate (KNOWLEDGE.md, "Edge/gateway split"). Do not restore it
-   until that is fixed and measured.
+3. The web Worker's route (`app.infrawrench.com/*`) went live on 2026-10-06,
+   on the second attempt. The first, about 15 minutes, cost every request
+   2-5 s because the API did not fit a 128 MB isolate; it went back once the
+   plugin code was out of the bundle and both Workers were pinned next to the
+   database (KNOWLEDGE.md, "Edge/gateway split"). Measure per-request CPU with
+   `wrangler tail` after any change to what the API loads.
 
 **Rollback**: delete the web Worker's route (dashboard, or redeploy without
 it) and every request goes straight to the pods again. Unset `POLLER_SCOPE`
