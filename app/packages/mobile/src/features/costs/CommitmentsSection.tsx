@@ -24,19 +24,26 @@ export function CommitmentsSection() {
   const feed = useCommitments();
   const data = feed.data;
 
-  // No commitment-capable providers connected: stay out of the way entirely,
-  // the way the change-alerts section does.
-  if (
-    !feed.isLoading &&
-    !feed.isError &&
-    data &&
-    data.holdings.length === 0 &&
-    data.planner.recommendations.length === 0 &&
-    data.failures.length === 0
-  ) {
-    return null;
+  // This section is the whole Commitments tab, so an empty feed gets a
+  // message rather than a blank screen.
+  const empty =
+    !data ||
+    (data.holdings.length === 0 &&
+      data.planner.recommendations.length === 0 &&
+      data.failures.length === 0);
+  if (!feed.isLoading && !feed.isError && empty) {
+    return (
+      <>
+        <SectionTitle>Commitments</SectionTitle>
+        <Card>
+          <Text style={styles.muted}>
+            No commitments found. Reservations, savings plans and committed-use discounts show here
+            once a connected provider reports any.
+          </Text>
+        </Card>
+      </>
+    );
   }
-  if (!feed.isLoading && !feed.isError && !data) return null;
 
   return (
     <>

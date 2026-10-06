@@ -1,9 +1,15 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useGT } from "gt-react";
 
 export interface SectionTab<T extends string = string> {
   id: T;
   label: string;
   content: ReactNode;
+  /**
+   * Shown when every section in `content` renders nothing. Sections hide
+   * themselves when they have no data, which on a tab leaves a blank panel.
+   */
+  empty?: ReactNode;
 }
 
 export interface SectionTabsProps<T extends string> {
@@ -46,6 +52,7 @@ export function SectionTabs<T extends string>({
   initialTab,
   className,
 }: SectionTabsProps<T>) {
+  const gt = useGT();
   const uid = useId();
   const ids = tabs.map((t) => t.id);
   const [active, setActive] = useState<T>(() => {
@@ -123,9 +130,13 @@ export function SectionTabs<T extends string>({
             id={`${uid}-panel-${tab.id}`}
             aria-labelledby={`${uid}-tab-${tab.id}`}
             hidden={tab.id !== current}
-            className="flex flex-col gap-6"
           >
-            {tab.content}
+            {/* `peer-empty` reads the DOM, so it catches sections that return
+                null after their fetch settles, which no prop could. */}
+            <div className="peer flex flex-col gap-6">{tab.content}</div>
+            <p className="hidden peer-empty:block rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-on-surface-muted">
+              {tab.empty ?? gt("Nothing to show here yet.")}
+            </p>
           </div>
         ) : null,
       )}

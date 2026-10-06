@@ -486,6 +486,9 @@ export function CostsPanel({
             {
               id: "commitments",
               label: gt("Commitments & credits"),
+              empty: gt(
+                "No credits or commitments found. Connected accounts report reservations, savings plans, committed-use discounts and credit balances here once their provider has any.",
+              ),
               content: (
                 <>
                   {/* Credits first: a pot running dry is an outage, while a

@@ -54,4 +54,20 @@ describe("SectionTabs", () => {
     expect(screen.getByRole("tab", { name: "Gamma" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("gamma body");
   });
+
+  it("puts the empty message right after a content wrapper that rendered nothing", () => {
+    // jsdom applies no Tailwind, so this pins the DOM shape `peer-empty` relies on.
+    const Hidden = () => null;
+    render(
+      <SectionTabs
+        ariaLabel="Views"
+        tabs={[{ id: "a", label: "Alpha", content: <Hidden />, empty: "No data" }]}
+      />,
+    );
+    const message = screen.getByText("No data");
+    const wrapper = message.previousElementSibling;
+    expect(wrapper?.className).toContain("peer");
+    expect(wrapper?.childNodes).toHaveLength(0);
+    expect(message.className).toContain("peer-empty:block");
+  });
 });
