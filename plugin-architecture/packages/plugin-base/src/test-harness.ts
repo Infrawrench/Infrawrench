@@ -154,6 +154,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiKeySecret: "test-twilio-api-key-secret",
   },
   postmark: { accountToken: "test-postmark-account-token" },
+  runpod: { apiKey: "rpa_test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

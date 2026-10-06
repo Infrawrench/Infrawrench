@@ -199,6 +199,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   twilio: ["api.twilio.com", "messaging.twilio.com", "verify.twilio.com", "pricing.twilio.com"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
   postmark: ["api.postmarkapp.com"],
+  // REST management API, GraphQL (account, GPU types, SSH keys) and the Serverless queue API
+  runpod: ["rest.runpod.io", "api.runpod.io", "api.runpod.ai"],
 };
 
 /**
