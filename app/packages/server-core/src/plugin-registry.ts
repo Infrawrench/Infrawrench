@@ -81,6 +81,7 @@ import { plugin as postmarkPlugin } from "@infrawrench/plugin-postmark";
 import { plugin as runpodPlugin } from "@infrawrench/plugin-runpod";
 import { plugin as renderPlugin } from "@infrawrench/plugin-render";
 import { plugin as stripePlugin } from "@infrawrench/plugin-stripe";
+import { plugin as supabasePlugin } from "@infrawrench/plugin-supabase";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -170,4 +171,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   runpodPlugin,
   renderPlugin,
   stripePlugin,
+  supabasePlugin,
 ];

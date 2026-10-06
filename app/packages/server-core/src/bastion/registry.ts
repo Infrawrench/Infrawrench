@@ -203,6 +203,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   runpod: ["rest.runpod.io", "api.runpod.io", "api.runpod.ai"],
   render: ["api.render.com"],
   stripe: ["api.stripe.com"],
+  // *.supabase.co is each project's own gateway, used for the Storage API
+  supabase: ["api.supabase.com", "*.supabase.co"],
 };
 
 /**

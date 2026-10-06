@@ -91,4 +91,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-runpod"),
   () => import("@infrawrench/plugin-render"),
   () => import("@infrawrench/plugin-stripe"),
+  () => import("@infrawrench/plugin-supabase"),
 ];

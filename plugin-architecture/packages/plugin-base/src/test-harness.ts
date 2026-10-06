@@ -157,6 +157,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   runpod: { apiKey: "rpa_test" },
   render: { apiKey: "rnd_test" },
   stripe: { apiKey: "rk_test_123" },
+  supabase: { accessToken: "sbp_test_token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
