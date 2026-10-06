@@ -109,3 +109,24 @@ describe("keepAlive", () => {
     expect(keepAlive(p)).toBe(p);
   });
 });
+
+describe("the db proxy", () => {
+  it("binds prototype methods but passes own properties through unchanged", async () => {
+    const { db } = await import("../db/client");
+    class FakeDb {
+      // Like drizzle's `$client`: an own property that is itself a callable
+      // object with methods hanging off it.
+      $client = Object.assign(() => "query", { end: () => "ended" });
+      whoAmI(this: unknown) {
+        return this;
+      }
+    }
+    const fake = new FakeDb();
+    await runInRequestScope({ db: fake }, async () => {
+      expect(db.$client).toBe(fake.$client);
+      expect((db.$client as unknown as { end: () => string }).end()).toBe("ended");
+      const whoAmI = (db as unknown as FakeDb).whoAmI;
+      expect(whoAmI()).toBe(fake);
+    });
+  });
+});

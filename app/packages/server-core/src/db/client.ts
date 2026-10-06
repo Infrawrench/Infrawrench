@@ -52,7 +52,11 @@ export const db: Db = new Proxy({} as Db, {
   get(_target, prop) {
     const target = resolveDb();
     const value: unknown = Reflect.get(target, prop, target);
-    return typeof value === "function"
+    // Bind the methods (`select`, `transaction`, ...), which live on the
+    // prototype and need their `this`. Own properties pass through as they
+    // are: `$client` is the postgres.js client, itself a function, and binding
+    // it would return a bare function without `.end()` and the rest.
+    return typeof value === "function" && !Object.hasOwn(target, prop)
       ? (value as (...args: unknown[]) => unknown).bind(target)
       : value;
   },
