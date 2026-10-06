@@ -46,10 +46,12 @@
 
   // Postgres, through Hyperdrive's pool. Create with:
   //   wrangler hyperdrive create infrawrench-db --connection-string="<Neon direct URL>"
-  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "HYPERDRIVE_ID" }],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
 
-  // The in-cluster ClickHouse, via Cloudflare Tunnel (infra/k8s/cloudflared.yaml).
-  "vpc_services": [{ "binding": "CLICKHOUSE", "service_id": "CLICKHOUSE_VPC_SERVICE_ID" }],
+  // The in-cluster ClickHouse, via Cloudflare Tunnel (connector in infra/terraform/edge.tf).
+  "vpc_services": [
+    { "binding": "CLICKHOUSE", "service_id": "01a11103-f076-7aa3-b40c-1688380e249b" },
+  ],
 
   "durable_objects": {
     "bindings": [{ "name": "SCHEDULER", "class_name": "PollerScheduler" }],

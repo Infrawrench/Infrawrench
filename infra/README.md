@@ -308,10 +308,11 @@ consoles, Linux app streams, chat and the workflow isolate. KNOWLEDGE.md
 Run wrangler from either Worker package (`pnpm --filter @infrawrench/web exec
 wrangler ...`) on the Infrawrench Production account.
 
-1. **Neon must accept Hyperdrive.** Neon's IP allowlist holds the Cloud NAT
-   address; Hyperdrive connects from Cloudflare's network. Either drop the
-   allowlist (the role's password is the control) or add Cloudflare's
-   published ranges, before anything below.
+1. **Neon must accept Hyperdrive.** Hyperdrive connects from Cloudflare's
+   network, not the Cloud NAT address. The `core` project has no IP allowlist
+   (checked 2026-10-06), so nothing is needed today; if one is ever added it
+   must cover Hyperdrive and the GitHub-hosted runners that run migrations,
+   neither of which has a fixed address.
 2. **Hyperdrive**, pointed at Neon's _direct_ endpoint (not `-pooler`;
    Hyperdrive is the pool):
    `wrangler hyperdrive create infrawrench-db --connection-string="postgres://…"`.
