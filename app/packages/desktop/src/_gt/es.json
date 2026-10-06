@@ -15263,5 +15263,6 @@
   "4ebc13b08e0dc6f4": "Advertencia",
   "b2ad1dbc3fa36e3e": "Degradado",
   "4700bf54096e7dea": "El agente del bastión no se ha conectado recientemente.",
-  "7e8b020239ceae1c": "No se pudieron listar {types}: {error}"
+  "7e8b020239ceae1c": "No se pudieron listar {types}: {error}",
+  "4ca0bec7911e1267": "Opciones avanzadas"
 }

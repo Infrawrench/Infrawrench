@@ -72,6 +72,7 @@ export function AddAccountModal({
         ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
         ...(f.regions !== undefined ? { regions: f.regions } : {}),
         ...(f.optional !== undefined ? { optional: f.optional } : {}),
+        ...(f.advanced !== undefined ? { advanced: f.advanced } : {}),
         ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
         ...(f.providerOptions !== undefined ? { providerOptions: f.providerOptions } : {}),
         ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),

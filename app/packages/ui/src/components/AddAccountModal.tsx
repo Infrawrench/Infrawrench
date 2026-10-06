@@ -11,6 +11,7 @@ import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
 import { ProviderOptionsField, type LoadCredentialOptions } from "./ProviderOptionsField.js";
 import { formatErrorMessage } from "../utils.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
+import { AdvancedFieldsDisclosure } from "./AdvancedFieldsDisclosure.js";
 
 export interface PluginInfo {
   id: string;
@@ -25,6 +26,8 @@ export interface PluginInfo {
     multiline?: boolean;
     defaultValue?: string;
     optional?: boolean;
+    /** Collapsed under "Advanced options" until opened or filled in. */
+    advanced?: boolean;
     regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
     accountReference?: { pluginId: string };
     /** Picker filled by the plugin from the provider once `dependsOn` is entered. */
@@ -34,6 +37,8 @@ export interface PluginInfo {
   /** Declared when the plugin supports credential preflight; absent otherwise. */
   preflight?: PreflightDeclaration | null;
 }
+
+export type CredentialFieldInfo = PluginInfo["credentialFields"][number];
 
 export interface BastionOption {
   id: string;
@@ -229,9 +234,9 @@ export function AddAccountModal({
           : gt("Add {name} account", { name: selected?.displayName ?? "" })
       }
     >
-      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl flex flex-col max-h-[calc(100dvh-4rem)]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
             {step === "pick-plugin"
               ? gt("Add account")
@@ -247,7 +252,7 @@ export function AddAccountModal({
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="p-5 overflow-y-auto min-h-0">
           {step === "pick-plugin" && (
             <div>
               <input
@@ -301,6 +306,128 @@ export function AddAccountModal({
                     fieldValues[f.key]?.trim() || f.defaultValue || "",
                   ]),
                 );
+              const renderField = (f: CredentialFieldInfo) => {
+                const fieldId = `add-account-field-${f.key}`;
+                return (
+                  <div key={f.key}>
+                    <label
+                      htmlFor={fieldId}
+                      className="block text-xs text-on-surface-tertiary mb-1"
+                    >
+                      {f.label}
+                    </label>
+                    {f.description && (
+                      <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
+                    )}
+                    {f.helpLink && (
+                      <a
+                        href={f.helpLink.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={
+                          onOpenExternal
+                            ? (e) => {
+                                e.preventDefault();
+                                onOpenExternal(f.helpLink!.url);
+                              }
+                            : undefined
+                        }
+                        className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
+                      >
+                        {f.helpLink.label}
+                        <ExternalLinkIcon size={12} />
+                      </a>
+                    )}
+                    {f.providerOptions ? (
+                      (() => {
+                        const deps = f.providerOptions.dependsOn;
+                        const depsReady = deps.every(
+                          (k) =>
+                            !!fieldValues[k]?.trim() ||
+                            !!selected.credentialFields.find((c) => c.key === k)?.defaultValue,
+                        );
+                        return (
+                          <ProviderOptionsField
+                            fieldId={fieldId}
+                            label={f.label}
+                            value={fieldValues[f.key] ?? ""}
+                            onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
+                            placeholder={f.placeholder}
+                            emptyLabel={f.providerOptions.emptyLabel}
+                            multiple={f.providerOptions.multiple}
+                            load={
+                              loadCredentialOptions && depsReady
+                                ? () =>
+                                    loadCredentialOptions(
+                                      selected.id,
+                                      f.key,
+                                      buildCredentials(),
+                                      bastionId || null,
+                                    )
+                                : undefined
+                            }
+                            reloadKey={JSON.stringify([
+                              selected.id,
+                              bastionId,
+                              ...deps.map((k) => fieldValues[k] ?? ""),
+                            ])}
+                          />
+                        );
+                      })()
+                    ) : f.accountReference ? (
+                      (() => {
+                        const filterPluginId = f.accountReference.pluginId;
+                        const candidates = (accounts ?? []).filter(
+                          (a) => a.pluginId === filterPluginId,
+                        );
+                        return (
+                          <select
+                            id={fieldId}
+                            value={fieldValues[f.key] ?? ""}
+                            onChange={(e) =>
+                              setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
+                            }
+                            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
+                          >
+                            <option value="">{gt("None (direct)")}</option>
+                            {candidates.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        );
+                      })()
+                    ) : f.regions && f.regions.length > 0 ? (
+                      <RegionPicker
+                        regions={f.regions}
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
+                      />
+                    ) : f.multiline ? (
+                      <textarea
+                        id={fieldId}
+                        aria-label={f.label}
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        rows={6}
+                        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
+                      />
+                    ) : (
+                      <input
+                        id={fieldId}
+                        aria-label={f.label}
+                        type={f.sensitive ? "password" : "text"}
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
+                      />
+                    )}
+                  </div>
+                );
+              };
               return (
                 <div className="space-y-4">
                   <div>
@@ -321,132 +448,16 @@ export function AddAccountModal({
                     />
                   </div>
 
-                  {selected.credentialFields.map((f) => {
-                    const fieldId = `add-account-field-${f.key}`;
-                    return (
-                      <div key={f.key}>
-                        <label
-                          htmlFor={fieldId}
-                          className="block text-xs text-on-surface-tertiary mb-1"
-                        >
-                          {f.label}
-                        </label>
-                        {f.description && (
-                          <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
-                        )}
-                        {f.helpLink && (
-                          <a
-                            href={f.helpLink.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={
-                              onOpenExternal
-                                ? (e) => {
-                                    e.preventDefault();
-                                    onOpenExternal(f.helpLink!.url);
-                                  }
-                                : undefined
-                            }
-                            className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
-                          >
-                            {f.helpLink.label}
-                            <ExternalLinkIcon size={12} />
-                          </a>
-                        )}
-                        {f.providerOptions ? (
-                          (() => {
-                            const deps = f.providerOptions.dependsOn;
-                            const depsReady = deps.every(
-                              (k) =>
-                                !!fieldValues[k]?.trim() ||
-                                !!selected.credentialFields.find((c) => c.key === k)?.defaultValue,
-                            );
-                            return (
-                              <ProviderOptionsField
-                                fieldId={fieldId}
-                                label={f.label}
-                                value={fieldValues[f.key] ?? ""}
-                                onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
-                                placeholder={f.placeholder}
-                                emptyLabel={f.providerOptions.emptyLabel}
-                                multiple={f.providerOptions.multiple}
-                                load={
-                                  loadCredentialOptions && depsReady
-                                    ? () =>
-                                        loadCredentialOptions(
-                                          selected.id,
-                                          f.key,
-                                          buildCredentials(),
-                                          bastionId || null,
-                                        )
-                                    : undefined
-                                }
-                                reloadKey={JSON.stringify([
-                                  selected.id,
-                                  bastionId,
-                                  ...deps.map((k) => fieldValues[k] ?? ""),
-                                ])}
-                              />
-                            );
-                          })()
-                        ) : f.accountReference ? (
-                          (() => {
-                            const filterPluginId = f.accountReference.pluginId;
-                            const candidates = (accounts ?? []).filter(
-                              (a) => a.pluginId === filterPluginId,
-                            );
-                            return (
-                              <select
-                                id={fieldId}
-                                value={fieldValues[f.key] ?? ""}
-                                onChange={(e) =>
-                                  setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
-                                }
-                                className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
-                              >
-                                <option value="">{gt("None (direct)")}</option>
-                                {candidates.map((a) => (
-                                  <option key={a.id} value={a.id}>
-                                    {a.displayName}
-                                  </option>
-                                ))}
-                              </select>
-                            );
-                          })()
-                        ) : f.regions && f.regions.length > 0 ? (
-                          <RegionPicker
-                            regions={f.regions}
-                            value={fieldValues[f.key] ?? ""}
-                            onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
-                          />
-                        ) : f.multiline ? (
-                          <textarea
-                            id={fieldId}
-                            aria-label={f.label}
-                            value={fieldValues[f.key] ?? ""}
-                            onChange={(e) =>
-                              setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
-                            }
-                            placeholder={f.placeholder}
-                            rows={6}
-                            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
-                          />
-                        ) : (
-                          <input
-                            id={fieldId}
-                            aria-label={f.label}
-                            type={f.sensitive ? "password" : "text"}
-                            value={fieldValues[f.key] ?? ""}
-                            onChange={(e) =>
-                              setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
-                            }
-                            placeholder={f.placeholder}
-                            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
+                  {selected.credentialFields.filter((f) => !f.advanced).map(renderField)}
+                  {selected.credentialFields.some((f) => f.advanced) && (
+                    <AdvancedFieldsDisclosure
+                      autoOpen={selected.credentialFields.some(
+                        (f) => f.advanced && !!fieldValues[f.key]?.trim(),
+                      )}
+                    >
+                      {selected.credentialFields.filter((f) => f.advanced).map(renderField)}
+                    </AdvancedFieldsDisclosure>
+                  )}
 
                   {bastions && bastions.length > 0 && (
                     <div>

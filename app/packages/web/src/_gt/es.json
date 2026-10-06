@@ -15444,5 +15444,6 @@
   "4ebc13b08e0dc6f4": "Advertencia",
   "b2ad1dbc3fa36e3e": "Degradado",
   "4700bf54096e7dea": "El agente del bastión no se ha conectado recientemente.",
-  "97e0e78d2c0a878d": "No se pudieron actualizar los recursos: {error}"
+  "97e0e78d2c0a878d": "No se pudieron actualizar los recursos: {error}",
+  "4ca0bec7911e1267": "Opciones avanzadas"
 }

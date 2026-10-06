@@ -15262,5 +15262,6 @@
   "4ebc13b08e0dc6f4": "Avertissement",
   "b2ad1dbc3fa36e3e": "Dégradé",
   "4700bf54096e7dea": "L'agent du bastion ne s'est pas manifesté récemment.",
-  "7e8b020239ceae1c": "Impossible de lister {types} : {error}"
+  "7e8b020239ceae1c": "Impossible de lister {types} : {error}",
+  "4ca0bec7911e1267": "Options avancées"
 }

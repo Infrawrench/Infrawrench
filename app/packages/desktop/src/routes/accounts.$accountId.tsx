@@ -704,6 +704,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             ...(f.multiline !== undefined ? { multiline: f.multiline } : {}),
             ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
             ...(f.optional !== undefined ? { optional: f.optional } : {}),
+            ...(f.advanced !== undefined ? { advanced: f.advanced } : {}),
             ...(f.regions !== undefined ? { regions: f.regions } : {}),
             ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
             ...(f.providerOptions !== undefined ? { providerOptions: f.providerOptions } : {}),

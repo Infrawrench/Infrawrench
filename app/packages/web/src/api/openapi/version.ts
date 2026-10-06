@@ -262,4 +262,7 @@
 // Additive: an existing export or a request without `version` writes 1.3.
 // 1.74.1: creating or moving a report or folder into a folder now needs editor
 // on that folder, as the bulk move already did; a viewer gets a 403.
-export const API_VERSION = "1.74.1";
+// 1.75.0: `advanced` on CredentialField; a rarely needed optional setting (a
+// custom CA bundle) that credential forms collapse under "Advanced options".
+// Additive.
+export const API_VERSION = "1.75.0";
