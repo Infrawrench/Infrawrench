@@ -209,6 +209,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // *.convex.cloud is each deployment's own Deployment API (regional hosts included)
   convex: ["api.convex.dev", "*.convex.cloud"],
   railway: ["backboard.railway.com"],
+  // GitLab.com only; self-managed instances are user-supplied hosts and are not bastion-routed
+  gitlab: ["gitlab.com"],
 };
 
 /**

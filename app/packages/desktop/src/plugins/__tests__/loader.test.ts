@@ -125,6 +125,7 @@ vi.mock("@infrawrench/plugin-vultr", () => stub("vultr"));
 vi.mock("@infrawrench/plugin-resend", () => stub("resend"));
 vi.mock("@infrawrench/plugin-convex", () => stub("convex"));
 vi.mock("@infrawrench/plugin-railway", () => stub("railway"));
+vi.mock("@infrawrench/plugin-gitlab", () => stub("gitlab"));
 
 beforeEach(() => {
   disabled = [];

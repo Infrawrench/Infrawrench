@@ -202,6 +202,7 @@
     "@infrawrench/plugin-resend": "workspace:*",
     "@infrawrench/plugin-convex": "workspace:*",
     "@infrawrench/plugin-railway": "workspace:*",
+    "@infrawrench/plugin-gitlab": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
