@@ -160,6 +160,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   supabase: { accessToken: "sbp_test_token" },
   vultr: { apiKey: "TESTKEY000000000000000000000000000000" },
   resend: { apiKey: "re_test_123" },
+  convex: { accessToken: "test-convex-team-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

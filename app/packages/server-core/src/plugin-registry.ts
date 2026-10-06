@@ -84,6 +84,7 @@ import { plugin as stripePlugin } from "@infrawrench/plugin-stripe";
 import { plugin as supabasePlugin } from "@infrawrench/plugin-supabase";
 import { plugin as vultrPlugin } from "@infrawrench/plugin-vultr";
 import { plugin as resendPlugin } from "@infrawrench/plugin-resend";
+import { plugin as convexPlugin } from "@infrawrench/plugin-convex";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -176,4 +177,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   supabasePlugin,
   vultrPlugin,
   resendPlugin,
+  convexPlugin,
 ];

@@ -123,6 +123,7 @@ vi.mock("@infrawrench/plugin-stripe", () => stub("stripe"));
 vi.mock("@infrawrench/plugin-supabase", () => stub("supabase"));
 vi.mock("@infrawrench/plugin-vultr", () => stub("vultr"));
 vi.mock("@infrawrench/plugin-resend", () => stub("resend"));
+vi.mock("@infrawrench/plugin-convex", () => stub("convex"));
 
 beforeEach(() => {
   disabled = [];

@@ -1507,6 +1507,22 @@ Verified against Resend's published OpenAPI spec (`github.com/resend/resend-open
 - **Status**: `status.resend.com` redirects to `resend-status.com`, incident.io's Statuspage emulation: `/api/v2/incidents.json` filtered to unresolved (unresolved.json 404s). Incidents carry no components, so they read provider-wide.
 - **Not done**: cost (no billing API), Terraform (no official provider; only community ones), audiences (deprecated for segments; broadcasts' `audience_id` mapped to `segmentId`), automation create (step graphs), contact imports, segment metrics (private beta), sending email.
 
+### Convex (`@infrawrench/plugin-convex`)
+
+Verified against the Management API OpenAPI (`https://api.convex.dev/v1/openapi.json`) and the Deployment API OpenAPI (`npm-packages/@convex-dev/platform/deployment-openapi.json` in `get-convex/convex-backend`), 2026-10.
+
+- **Auth**: one team access token (Team Settings > Access Tokens). Management API wants `Authorization: Bearer <token>`; the per-deployment Deployment API (`{deploymentUrl}/api/v1`) wants `Authorization: Convex <token>` and accepts the same team token. The team id comes from `GET /token_details` (`type: "teamToken"`); project tokens and deploy keys are rejected with a 400 there because they cannot list the team.
+- **Writes are RPC-style POSTs** (`/projects/{id}/delete`, `/deployments/{name}/create_deploy_key`, `/update_environment_variables`…); only project and deployment updates are `PATCH`. Errors are `{code, message}`; `ConvexApiError` keeps both and the status.
+- **Pagination**: `{items, pagination: {hasMore, nextCursor}}` with `cursor`/`limit` (max 100). Deploy keys list is a bare array; preview keys are `{items}` and need `includeManaged=true` to show integration-managed ones (Vercel).
+- **Deployments** come from `GET /teams/{id}/list_deployments` (one paged call for the whole team); `kind: "local"` entries are skipped. `deploymentUrl` can carry a regional host (`*.eu-west-1.convex.cloud`), so always use it for Deployment API calls rather than building `{name}.convex.cloud`. HTTP actions live on the matching `.convex.site` host; `get_canonical_urls` gives the real pair (custom canonical URLs).
+- **No paused flag anywhere** in either API: lifecycle declares pause/unpause without a status field.
+- **Env vars**: `list_environment_variables` returns values in plaintext (docs warn secrets may be omitted in future); `update_environment_variables` with `value: null` deletes. Default env vars are per (name, deploymentType) pairs; external id `{projectId}/{type}/{name}`.
+- **Deploy keys** are returned only by the create call; list gives id/name/lastUsed/allowedActions. Delete takes the key's *name* (or secret) as `id`, not the numeric id.
+- **Usage**: `get_current_usage` (beta) gives current day and month per metric with a unit and a `seedStatus`; it feeds point-in-time metrics. Enabled `list_usage_limits` entries become quotas (both halves from Convex). Usage limit update replaces the whole config.
+- **Log streams**: discriminated by `logStreamType` (datadog, webhook, axiom, sentry, postHogLogs, postHogErrorTracking, s3Export). Create returns `hmacSecret` for webhooks; `get_log_stream` returns it later too. S3 export create (needs AWS keys and a table selection) is deliberately not offered.
+- **No billing API** (only usage), no official Terraform provider (registry has no convex namespace), no log retrieval API (the CLI's log tail is not public), and no deployment transfer UI (needs a destination prompt `invokeAction` cannot carry).
+- **Status feed**: Statuspage at `status.convex.dev`; components are plan tiers (Free & Starter / Professional / Business) duplicated under "Live Traffic" and "Development Services", so everything is provider-wide except AI Gateway; the website component is ignored.
+
 ---
 
 ## Publish capability (cross-plugin)

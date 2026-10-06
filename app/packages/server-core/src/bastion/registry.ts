@@ -206,6 +206,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // *.supabase.co is each project's own gateway, used for the Storage API
   supabase: ["api.supabase.com", "*.supabase.co"],
   resend: ["api.resend.com"],
+  // *.convex.cloud is each deployment's own Deployment API (regional hosts included)
+  convex: ["api.convex.dev", "*.convex.cloud"],
 };
 
 /**
