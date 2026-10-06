@@ -66,7 +66,12 @@ describe("SchemaRenderer", () => {
       />,
     );
     const icon = screen.getByRole("img", { name: "Credentials expired" });
-    expect(icon).toHaveAttribute("title", "Credentials expired");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(icon);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Credentials expired");
+    expect(icon).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
+    fireEvent.mouseLeave(icon);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("renders a link node with href and target", () => {
