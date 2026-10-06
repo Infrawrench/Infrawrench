@@ -3,6 +3,7 @@ import { findUnsafeSvgConstructs, resourceTypeHasMetrics } from "@infrawrench/pl
 import { createMockResource, makeMockCredentials } from "@infrawrench/plugin-base/test-harness";
 
 let loader: typeof import("../plugin-loader");
+let registry: typeof import("../plugin-registry");
 
 // One import for the whole file. Transforming every plugin package is expensive,
 // and doing it in `beforeEach` (with `resetModules`) paid that cost per test:
@@ -11,6 +12,7 @@ let loader: typeof import("../plugin-loader");
 // caching assertion still exercises two `loadPlugins()` calls on that instance.
 beforeAll(async () => {
   loader = await import("../plugin-loader");
+  registry = await import("../plugin-registry");
 }, 120_000);
 
 describe("loadPlugins", () => {
@@ -62,7 +64,7 @@ describe("loadPlugins", () => {
 describe("plugin logos", () => {
   it("are inert SVG on every bundled plugin", () => {
     const offenders: string[] = [];
-    for (const plugin of loader.BUNDLED_PLUGINS) {
+    for (const plugin of registry.BUNDLED_PLUGINS) {
       for (const problem of findUnsafeSvgConstructs(plugin.manifest.logoSvg)) {
         offenders.push(`${plugin.manifest.id}: ${problem}`);
       }
@@ -85,11 +87,11 @@ describe("manifest validation", () => {
   it("drops nothing — every bundled plugin survives loadPlugins()", async () => {
     const loaded = await loader.loadPlugins();
     const loadedIds = new Set(loaded.map((l) => l.plugin.manifest.id));
-    const dropped = loader.BUNDLED_PLUGINS.map((p) => p.manifest.id).filter(
+    const dropped = registry.BUNDLED_PLUGINS.map((p) => p.manifest.id).filter(
       (id) => !loadedIds.has(id),
     );
     expect(dropped, "these plugins failed manifest validation and vanished").toEqual([]);
-    expect(loaded).toHaveLength(loader.BUNDLED_PLUGINS.length);
+    expect(loaded).toHaveLength(registry.BUNDLED_PLUGINS.length);
   });
 });
 
@@ -847,7 +849,7 @@ describe("metrics declarations", () => {
     declaresCapability: boolean;
   }> {
     const out: Array<{ id: string; hasMetrics: boolean; declaresCapability: boolean }> = [];
-    for (const plugin of loader.BUNDLED_PLUGINS) {
+    for (const plugin of registry.BUNDLED_PLUGINS) {
       const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
       for (const rt of plugin.resourceTypes) {
         const schema = client.renderDetail(createMockResource(plugin.manifest.id, rt));
@@ -890,7 +892,7 @@ describe("metrics declarations", () => {
    */
   it("supportsMetrics only appears on plugins whose client can fetch series", () => {
     const bad: string[] = [];
-    for (const plugin of loader.BUNDLED_PLUGINS) {
+    for (const plugin of registry.BUNDLED_PLUGINS) {
       const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
       if (typeof client.fetchMetricSeries === "function") continue;
       for (const rt of plugin.resourceTypes) {

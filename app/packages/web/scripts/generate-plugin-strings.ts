@@ -19,7 +19,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUNDLED_PLUGINS } from "@infrawrench/server-core/plugin-loader";
+import { BUNDLED_PLUGINS } from "@infrawrench/server-core/plugin-registry";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUTPUT = resolve(__dirname, "../../ui/src/i18n/plugin-strings.gen.ts");

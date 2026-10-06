@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Options, type PostgresType, type Sql } from "postgres";
 import * as schema from "./schema";
-import { currentRequestScope } from "../runtime/request-scope";
+import { currentRequestScope, noteDbWrite } from "../runtime/request-scope";
 
 function wrap(sql: Sql) {
   return drizzle(sql, { schema });
@@ -37,6 +37,20 @@ function getProcessDb(): Db {
   return processDb;
 }
 
+/**
+ * Entry points that can change data. `execute` and `transaction` are counted
+ * too: raw SQL may well be a read, but a replay that repeats a write is worse
+ * than a 503 that did not need to happen.
+ */
+const WRITE_ENTRY_POINTS = new Set<PropertyKey>([
+  "insert",
+  "update",
+  "delete",
+  "execute",
+  "transaction",
+  "batch",
+]);
+
 function resolveDb(): Db {
   return (currentRequestScope()?.db as Db | undefined) ?? getProcessDb();
 }
@@ -50,6 +64,7 @@ function resolveDb(): Db {
  */
 export const db: Db = new Proxy({} as Db, {
   get(_target, prop) {
+    if (WRITE_ENTRY_POINTS.has(prop)) noteDbWrite();
     const target = resolveDb();
     const value: unknown = Reflect.get(target, prop, target);
     // Bind the methods (`select`, `transaction`, ...), which live on the

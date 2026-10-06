@@ -18,7 +18,13 @@
   //   "routes": [{ "pattern": "app.infrawrench.com/*", "zone_name": "infrawrench.com" }],
   // Bundle-time constant, not a var: React and friends pick their production
   // build off it, and a Worker has no process to set it on.
-  "define": { "process.env.NODE_ENV": "\"production\"" },
+  // __INFRAWRENCH_EDGE_PLUGINS__ swaps the plugins for their metadata
+  // (server-core/src/plugin-loader.ts): plugin code made the Worker too big for
+  // a 128 MB isolate, and calling it hands the request to the gateway anyway.
+  "define": {
+    "process.env.NODE_ENV": "\"production\"",
+    "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
+  },
 
   "assets": {
     "directory": "../dist/client",

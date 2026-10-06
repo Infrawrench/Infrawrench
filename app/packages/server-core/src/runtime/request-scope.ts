@@ -22,6 +22,12 @@ export interface RequestScope {
   waitUntil?: (promise: Promise<unknown>) => void;
   /** Where gateway-only hits inside this scope are recorded (edge only). */
   gatewayOnly?: GatewayOnlyTracker;
+  /**
+   * Database writes started in this scope (edge only), counted by the `db`
+   * proxy. The edge replays a request on the gateway only if it has written
+   * nothing, since a replay would otherwise do the writes twice.
+   */
+  dbWrites?: { count: number };
 }
 
 /**
@@ -86,4 +92,15 @@ export async function trackGatewayOnlyHits<T>(
   } catch (error) {
     return tracker.hit ? { ok: false, error, hit: tracker.hit } : { ok: false, error };
   }
+}
+
+/** Count a database write against the current scope (called by the `db` proxy). */
+export function noteDbWrite(): void {
+  const writes = storage.getStore()?.dbWrites;
+  if (writes) writes.count++;
+}
+
+/** Database writes the current scope has started so far. */
+export function dbWritesInScope(): number {
+  return storage.getStore()?.dbWrites?.count ?? 0;
 }

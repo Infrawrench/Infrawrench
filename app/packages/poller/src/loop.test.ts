@@ -10,6 +10,14 @@ vi.mock("./claim", () => ({
   COST_LEASE_MS: 30 * 60 * 1000,
 }));
 
+// The capability lookups the account passes make. Unit tests must not load
+// the real registry: it is a dynamic import of every plugin, slow enough that
+// a fake-timer tick finishes before the passes after it run.
+vi.mock("@infrawrench/server-core/plugin-loader", () => ({
+  loadPlugins: async () => [],
+  getPlugin: async () => undefined,
+}));
+
 // --- DB mock: only the workflow-reschedule update path remains in the loop ---
 const updateWhere = vi.fn();
 const updateSet = vi.fn((_values: unknown) => ({ where: updateWhere }));

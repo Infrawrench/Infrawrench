@@ -130,3 +130,18 @@ describe("the db proxy", () => {
     });
   });
 });
+
+describe("db write counting", () => {
+  it("counts write entry points used through the db proxy, not reads", async () => {
+    const { db } = await import("../db/client");
+    const { dbWritesInScope } = await import("../runtime/request-scope");
+    const fake = { select: () => "s", insert: () => "i", execute: () => "e" };
+    await runInRequestScope({ db: fake, dbWrites: { count: 0 } }, async () => {
+      (db as unknown as typeof fake).select();
+      expect(dbWritesInScope()).toBe(0);
+      (db as unknown as typeof fake).insert();
+      (db as unknown as typeof fake).execute();
+      expect(dbWritesInScope()).toBe(2);
+    });
+  });
+});

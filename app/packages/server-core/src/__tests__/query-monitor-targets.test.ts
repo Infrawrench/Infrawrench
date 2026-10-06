@@ -22,7 +22,7 @@ const {
   sqlPeerIntegrationsOf,
   updateQueryMonitor,
 } = await import("../query-monitors/store");
-const { BUNDLED_PLUGINS } = await import("../plugin-loader");
+const { BUNDLED_PLUGINS } = await import("../plugin-registry");
 
 beforeEach(() => {
   pg.reset();

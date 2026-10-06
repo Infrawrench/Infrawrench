@@ -14,6 +14,7 @@ function deps(overrides: Partial<EdgeApiDeps> = {}): EdgeApiDeps & {
     accountNeedsGateway: vi.fn(async () => false),
     markAccountRequiresGateway: vi.fn(async () => {}),
     gatewayOnlyHit: () => undefined,
+    dbWrites: () => 0,
     waitUntil: () => {},
     ...overrides,
   } as never;
@@ -61,7 +62,54 @@ describe("handleEdgeApi", () => {
     expect(d.markAccountRequiresGateway).not.toHaveBeenCalled();
   });
 
-  it("asks for a retry instead of replaying a write, and flags the account", async () => {
+  it("replays a write on the gateway when it has not written anything yet", async () => {
+    // A resource action whose plugin call hit the stub before any insert.
+    const d = deps({
+      apiFetch: vi.fn(async (req: Request) => {
+        await req.text(); // the API consumed the body; the replay must not care
+        return Response.json({ e: 1 }, { status: 503, headers: { "x-iw-gateway-only": "1" } });
+      }),
+    });
+    await handleEdgeApi(
+      new Request(URL_BASE, {
+        method: "POST",
+        body: '{"name":"db-1"}',
+        headers: { "content-length": "15" },
+      }),
+      "acc_1",
+      d,
+    );
+    const replayed = d.forward.mock.calls[0]![0] as Request;
+    expect(replayed.method).toBe("POST");
+    expect(await replayed.text()).toBe('{"name":"db-1"}');
+    expect(d.markAccountRequiresGateway).toHaveBeenCalledWith("acc_1", "error handler");
+  });
+
+  it("asks for a retry instead of replaying a write that already wrote", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let writes = 0;
+    const d = deps({
+      dbWrites: () => writes,
+      apiFetch: vi.fn(async () => {
+        writes++; // an insert happened before the plugin call
+        return Response.json(
+          { error: "x" },
+          { status: 503, headers: { "x-iw-gateway-only": "1" } },
+        );
+      }),
+    });
+    const res = await handleEdgeApi(
+      new Request(URL_BASE, { method: "POST", body: "{}", headers: { "content-length": "2" } }),
+      "acc_1",
+      d,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("1");
+    expect(d.forward).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not hold a large upload for replay", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const d = deps({
       apiFetch: vi.fn(async () =>
@@ -69,14 +117,16 @@ describe("handleEdgeApi", () => {
       ),
     });
     const res = await handleEdgeApi(
-      new Request(URL_BASE, { method: "POST", body: "{}" }),
-      "acc_1",
+      new Request(URL_BASE, {
+        method: "POST",
+        body: "x",
+        headers: { "content-length": String(5 * 1024 * 1024) },
+      }),
+      undefined,
       d,
     );
     expect(res.status).toBe(503);
-    expect(res.headers.get("retry-after")).toBe("1");
     expect(d.forward).not.toHaveBeenCalled();
-    expect(d.markAccountRequiresGateway).toHaveBeenCalledWith("acc_1", "error handler");
     warn.mockRestore();
   });
 

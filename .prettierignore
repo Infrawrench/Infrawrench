@@ -39,3 +39,4 @@ app/packages/desktop/src/_gt/
 # because the bytes no longer match what the generator produces, and fixing
 # either one breaks the other.
 terraform-provider-infrawrench/docs/
+app/packages/server-core/src/plugin-registry-edge.gen.json

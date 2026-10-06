@@ -12,6 +12,12 @@ import { isSafeMethod } from "./gateway-routes";
 
 /** Error bodies at most this large are checked for the gateway-only marker. */
 const MARKER_SCAN_MAX_BYTES = 64 * 1024;
+/**
+ * Request bodies at most this large are kept so a write can be replayed on the
+ * gateway. Larger uploads (cost-file ingest) are not held twice in a 128 MB
+ * isolate; they get the 503.
+ */
+const REPLAY_BODY_MAX_BYTES = 1024 * 1024;
 
 export interface EdgeApiDeps {
   /** The Hono API, run in this isolate. */
@@ -22,6 +28,8 @@ export interface EdgeApiDeps {
   markAccountRequiresGateway(accountId: string, reason: string): Promise<void>;
   /** What the invocation's scope recorded, even if a handler swallowed it. */
   gatewayOnlyHit(): string | undefined;
+  /** Database writes the invocation has started so far. */
+  dbWrites(): number;
   waitUntil(promise: Promise<unknown>): void;
 }
 
@@ -52,8 +60,16 @@ export async function handleEdgeApi(
   if (accountId && (await deps.accountNeedsGateway(accountId))) {
     return deps.forward(request);
   }
-  // Kept for the replay: the API may consume the original.
-  const replay = isSafeMethod(request.method) ? request.clone() : null;
+  // Kept for the replay: the API may consume the original. Every request
+  // with no body or a small one; a write only replays if it turns out to have
+  // written nothing (below).
+  const length = Number(request.headers.get("content-length") ?? "0");
+  const replayable =
+    isSafeMethod(request.method) ||
+    !request.body ||
+    (request.headers.has("content-length") && length <= REPLAY_BODY_MAX_BYTES);
+  const replay = replayable ? request.clone() : null;
+  const writesBefore = deps.dbWrites();
   const response = await deps.apiFetch(request);
   const reason = await gatewayOnlyReason(response, deps.gatewayOnlyHit());
   if (!reason) return response;
@@ -61,15 +77,16 @@ export async function handleEdgeApi(
   if (accountId) {
     deps.waitUntil(deps.markAccountRequiresGateway(accountId, reason).catch(() => {}));
   }
-  // A read is safe to run twice: replay it where it can succeed, and the user
-  // never sees the miss.
-  if (replay) return deps.forward(replay);
-  // A write is not: whatever it did before reaching the Node-only path has
-  // happened. Ask for a retry, which the flag above routes to the gateway
-  // when the path names the account.
+  // A read is safe to run twice, and so is a write that has not written yet:
+  // plugin code (the usual gateway-only path) runs before the write it leads
+  // to. Replay either where it can succeed, and the user never sees the miss.
+  const wrote = deps.dbWrites() > writesBefore;
+  if (replay && (isSafeMethod(request.method) || !wrote)) return deps.forward(replay);
+  // Anything else may have changed data already, so ask for a retry, which
+  // the flag above routes to the gateway when the path names the account.
   console.warn(
     `[edge] ${request.method} ${new URL(request.url).pathname} reached a gateway-only path ` +
-      `(${reason}); add it to src/edge/gateway-routes.ts if it recurs`,
+      `(${reason}) after writing; add it to src/edge/gateway-routes.ts`,
   );
   return new Response(
     JSON.stringify({ error: "This request could not be completed here. Please try again." }),

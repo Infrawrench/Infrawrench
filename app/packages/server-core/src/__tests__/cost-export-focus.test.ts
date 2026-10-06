@@ -27,7 +27,7 @@ import {
   type FocusRow,
   type FocusSourceRow,
 } from "../cost-exports/focus";
-import { BUNDLED_PLUGINS } from "../plugin-loader";
+import { BUNDLED_PLUGINS } from "../plugin-registry";
 
 const stamp = { exportedAt: "2026-10-04T04:00:00.000Z", collectionWatermark: "2026-10-02" };
 

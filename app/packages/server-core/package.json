@@ -16,6 +16,7 @@
     "./runtime/gateway-only": "./src/runtime/gateway-only.ts",
     "./runtime/account-runtime": "./src/runtime/account-runtime.ts",
     "./runtime/edge-invocation": "./src/runtime/edge-invocation.ts",
+    "./plugin-registry": "./src/plugin-registry.ts",
     "./edge/gateway-only-stub.cjs": "./edge/gateway-only-stub.cjs",
     "./edge/gateway-only-modules.json": "./edge/gateway-only-modules.json",
     "./edge/wrangler-aliases.mjs": "./edge/wrangler-aliases.mjs",
@@ -278,7 +279,8 @@
     "test:postgres": "vitest run --config vitest.db.config.ts src/__tests__/db/postgres",
     "test:clickhouse": "vitest run --config vitest.db.config.ts src/__tests__/db/clickhouse",
     "test:clickhouse:shadow": "vitest run --config vitest.shadow-clickhouse.config.ts",
-    "test:postgres:shadow": "vitest run --config vitest.shadow-postgres.config.ts"
+    "test:postgres:shadow": "vitest run --config vitest.shadow-postgres.config.ts",
+    "generate:edge-plugins": "tsx scripts/generate-edge-plugin-registry.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
@@ -375,6 +377,7 @@
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.10",
+    "tsx": "^4.23.11",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }

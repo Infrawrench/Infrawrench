@@ -72,6 +72,7 @@ export async function withEdgeInvocation<T>(
     db,
     // Root tracker: `gatewayOnlyHitInScope()` reads it after the work.
     gatewayOnly: {},
+    dbWrites: { count: 0 },
     waitUntil: (promise: Promise<unknown>) => {
       pending.push(promise);
       ctx.waitUntil(promise);

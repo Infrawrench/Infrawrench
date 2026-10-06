@@ -31,6 +31,10 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
   /^\/api\/bastions\/agent$/,
   // Node HTTP handler, not part of the Hono app.
   /^\/api\/mcp(\/|$)/,
+  // Slack slash commands and button actions answer Slack at once and do the
+  // work afterwards, often through plugin code; a gateway-only miss there
+  // happens after the response and cannot be replayed.
+  /^\/api\/slack\/(commands|interactions)$/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
   /^\/api\/internal(\/|$)/,

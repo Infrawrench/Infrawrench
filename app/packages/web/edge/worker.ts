@@ -36,7 +36,10 @@ import { isApiPath, routeRequest } from "../src/edge/gateway-routes";
 import { handleEdgeApi } from "../src/edge/handle-api";
 import type { EdgeBindings } from "@infrawrench/server-core/runtime/edge-invocation";
 import { GATEWAY_ONLY_HEADER } from "@infrawrench/server-core/runtime/gateway-only";
-import { gatewayOnlyHitInScope } from "@infrawrench/server-core/runtime/request-scope";
+import {
+  dbWritesInScope,
+  gatewayOnlyHitInScope,
+} from "@infrawrench/server-core/runtime/request-scope";
 
 /**
  * The API and everything behind it, loaded on the first API request rather
@@ -122,6 +125,7 @@ async function handleApi(
       accountNeedsGateway: accounts.accountNeedsGateway,
       markAccountRequiresGateway: accounts.markAccountRequiresGateway,
       gatewayOnlyHit: gatewayOnlyHitInScope,
+      dbWrites: dbWritesInScope,
       waitUntil: (promise) => ctx.waitUntil(promise),
     }),
   );
