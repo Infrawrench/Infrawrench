@@ -25,6 +25,8 @@ This walkthrough uses DigitalOcean because it has the simplest credential: a sin
 
 For some providers (AWS, Google Cloud, Cloudflare) the form also offers a **Check credentials** button that verifies, per capability, what the pasted credential can actually do — and a generator for the exact least-privilege policy to grant. See [Credential preflight](../core-concepts/credential-preflight.md).
 
+Rarely needed settings, such as a custom CA certificate for a self-hosted endpoint or a TLS-intercepting proxy, sit under a collapsed **Advanced options** section at the bottom of the form. It opens by itself when one of them already has a value.
+
 ## 3. Watch your resources appear
 
 Within a few seconds the sidebar populates with your Droplets, Kubernetes clusters, databases, Spaces, and domains. Click any resource to see its detail page.

@@ -41,6 +41,10 @@ const CredentialField = strict({
         "Present when the field's choices come from the provider. Once every field in `dependsOn` has a value, `POST /accounts/credential-options` returns them.",
     }),
   helpLink: strict({ label: z.string(), url: z.string() }).optional(),
+  advanced: z.boolean().optional().openapi({
+    description:
+      "A rarely needed optional setting (a custom CA bundle, say) that forms show under a collapsed advanced section.",
+  }),
 }).openapi("CredentialField");
 
 const CredentialOptionsRequest = strict({

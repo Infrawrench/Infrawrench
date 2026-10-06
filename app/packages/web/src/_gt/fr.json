@@ -15443,5 +15443,6 @@
   "4ebc13b08e0dc6f4": "Avertissement",
   "b2ad1dbc3fa36e3e": "Dégradé",
   "4700bf54096e7dea": "L'agent du bastion ne s'est pas manifesté récemment.",
-  "97e0e78d2c0a878d": "Impossible d'actualiser les ressources : {error}"
+  "97e0e78d2c0a878d": "Impossible d'actualiser les ressources : {error}",
+  "4ca0bec7911e1267": "Options avancées"
 }

@@ -18,7 +18,7 @@ Paste a full connection string:
 postgresql://user:password@host:5432/dbname
 ```
 
-There is one other field, **CA Certificate** — optional, and only needed when the server presents a vendor-managed CA the system trust store doesn't know about.
+There is one other field, **CA Certificate**, under **Advanced options** at the bottom of the form. It is optional, and only needed when the server presents a vendor-managed CA the system trust store doesn't know about.
 
 For a managed database you already have in Infrawrench, don't add an account here. Open the database resource and use its **PostgreSQL** tab: the connection string and CA certificate flow through from the database's own outputs as an [output reference](../core-concepts/output-references.md). That covers RDS instances and clusters, Redshift, Cloud SQL, AlloyDB, Azure Database for PostgreSQL, DigitalOcean and Scaleway managed databases, OVH managed DBs, and Neon projects, branches and databases. There is no picker or toggle in this credential form.
 

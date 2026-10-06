@@ -51,6 +51,12 @@ export interface CredentialField {
   /** Field is optional: the modal accepts an empty value and skips validation. */
   optional?: boolean;
   /**
+   * Rarely needed setting (a custom CA bundle, say): the credential forms tuck
+   * it under a collapsed "Advanced options" disclosure, opened automatically
+   * once it holds a value. Only meaningful together with `optional`.
+   */
+  advanced?: boolean;
+  /**
    * Optional external link rendered beneath the field, e.g. a deep link to the
    * provider's "create token" page with the scopes this plugin needs pre-filled.
    * Opened through the host's external-URL handler so it works in both the web

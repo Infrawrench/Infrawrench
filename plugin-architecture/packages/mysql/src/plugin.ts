@@ -30,6 +30,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       multiline: true,
       optional: true,
+      advanced: true,
       placeholder: "-----BEGIN CERTIFICATE-----\n...",
     },
   ],

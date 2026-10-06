@@ -32,6 +32,7 @@ export const caCertCredentialField: CredentialField = {
     "PEM-encoded trust anchor for verifying the API endpoint. Use this for self-hosted vendor instances or corporate TLS-intercepting proxies. Leave blank to use the operating system's default trust store.",
   sensitive: false,
   optional: true,
+  advanced: true,
   multiline: true,
   placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
 };

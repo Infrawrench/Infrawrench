@@ -15259,5 +15259,6 @@
   "4ebc13b08e0dc6f4": "Warnung",
   "b2ad1dbc3fa36e3e": "Beeinträchtigt",
   "4700bf54096e7dea": "Der Bastion-Agent hat sich in letzter Zeit nicht gemeldet.",
-  "7e8b020239ceae1c": "{types} konnten nicht aufgelistet werden: {error}"
+  "7e8b020239ceae1c": "{types} konnten nicht aufgelistet werden: {error}",
+  "4ca0bec7911e1267": "Erweiterte Optionen"
 }

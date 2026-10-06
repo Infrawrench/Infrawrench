@@ -58,6 +58,7 @@ app.get("/plugins", async (c) => {
         defaultValue: f.defaultValue,
         regions: f.regions,
         optional: f.optional,
+        advanced: f.advanced,
         accountReference: f.accountReference,
         providerOptions: f.providerOptions,
         helpLink: f.helpLink,
