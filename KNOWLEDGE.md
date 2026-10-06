@@ -1706,6 +1706,24 @@ Verified against the public OpenAPI document (`GET https://api.incident.io/v1/op
 - **Terraform** (`incident-io/incident ~> 5.0`, `api_key`): `incident_severity` only (`name`, `description` required, `rank`). Catalog types need `source_repo_url`, which the API does not return.
 - **Not done**: workflow enable/disable and alert route editing (their PUTs need the full engine configuration, and the GET shapes do not round-trip); creating alert sources (template bindings); MTTA/MTTR charts (no analytics API, only per-incident `duration_metrics`, shown on the incident); no billing API.
 
+### Koyeb (`@infrawrench/plugin-koyeb`)
+
+- Auth: `Authorization: Bearer <token>` against `https://app.koyeb.com` (Swagger 2.0 spec at `https://api.prod.koyeb.com/public.swagger.json`, read 2026-10). Organization tokens come from Settings, API (`app.koyeb.com/settings/api`); `GET /v1/account/organization` resolves the org. Lists page with `limit`/`offset` (strings) and answer `has_next` or `count`; int64s (counts, sizes, budget amounts) arrive as JSON strings.
+- 10 types: `organization`, `project`, `app`, `service` (child of app, `showInSidebar`; WEB, WORKER and DATABASE), `deployment` and `instance` (children of service), `secret`, `domain`, `volume`, `snapshot`.
+- A service's live config is its latest deployment's `definition`; the lister fetches all of them in one `GET /v1/deployments?ids=…` (chunks of 50). Edits fetch that definition, change the edited parts and `PATCH /v1/services/{id} {definition}` (which deploys). Rollback = PATCH with an old deployment's definition, `git.sha` pinned to its `provisioning_info.sha`.
+- Actions: `POST /v1/services/{id}/redeploy {use_cache}`, `PUT /v1/services/{id}/scale {scalings: [{instances}]}`, `POST /v1/{apps|services}/{id}/pause|resume` (lifecycle), `POST /v1/deployments/{id}/cancel`, `POST /v1/domains/{id}/refresh`, `POST /v1/snapshots {parent_volume_id, name}`. Volume update is `POST /v1/volumes/{id} {name, max_size}` (GB). Secret value: `PATCH /v1/secrets/{id}?update_mask=value`; reveal `POST /v1/secrets/{id}/reveal`.
+- Postgres (DATABASE services, Neon-backed): `definition.database.neon_postgres {pg_version, region, instance_type, roles, databases}`; the deployment's `database_info.neon_postgres` gives `server_host`/`server_port` and `roles[{name, secret_id}]`; the `connectionString` output reveals the first role's secret. Peer: `postgres`.
+- Pickers: `/v1/catalog/regions` and `/v1/catalog/instances` are public; instance types carry `price_monthly`, `regions` (size-picker `availableFor`, filtered by the region field).
+- Metrics: `GET /v1/streams/metrics?service_id&name&start&end&step` (CPU_TOTAL_PERCENT, MEM_RSS, HTTP_THROUGHPUT, HTTP_RESPONSE_TIME_50P/90P/99P, PUBLIC_DATA_TRANSFER_IN/OUT); per-instance series are averaged (summed for throughput/transfer).
+- Logs: `GET /v1/streams/logs/query` with `type` runtime|build, `service_id`/`deployment_id`/`instance_ids`, `streams` (stdout, stderr, koyeb), `order=desc`, `limit` ≤ 1000; `start` defaults to 15 minutes ago, so the plugin asks for 24 hours.
+- Costs (`periodNative`, `chargeTypes`): `GET /v1/billing/next_invoice` (experimental; what the control panel's Usage page renders): Stripe lines (`plan_nickname`, `quantity`, `amount_excluding_tax` cents) dated to their period start; Stripe subtotal vs total → one credit row. Past invoices are not in the API, so history accumulates from connection. Hobby orgs error → no rows. `/v1/usages` (instance seconds per type) was not used: it is unpriced and month-granular.
+- Spending alert: `/v1/organizations/{id}/budget` amount in **cents** (control panel multiplies by 100, minimum $5); PUT, POST when absent, DELETE to clear.
+- Quotas: `GET /v1/quotas/organizations/{id}/usage` returns used/limit pairs (apps, services, memory, domains, proxy ports, instances by type, volume GB by region, instance snapshots); zero limits are skipped.
+- Status: status.koyeb.com is Instatus (no Statuspage JSON); `/history.rss`, updates are not always chronological so the newest timestamp wins; region components end in the code ("Paris - PAR" → `par`), continents expand (Europe → fra, par). "Washington, D.C. - WAS" contains a comma and is special-cased before splitting.
+- Terraform: `koyeb/koyeb` ~> 0.2 (token from `KOYEB_TOKEN`, no provider args); app, simple secret (value as sensitive variable), volume; passthrough import by id. Services skipped (full definition).
+- Private service mesh hostname: `<service>.<app>.internal` (Koyeb docs).
+- Not done: sandboxes, service pools, compose, archives, instance snapshots/exec, organization members and invitations, payment methods.
+
 ---
 
 ## Publish capability (cross-plugin)

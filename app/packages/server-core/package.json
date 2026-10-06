@@ -383,6 +383,7 @@
     "@infrawrench/plugin-northflank": "workspace:*",
     "@infrawrench/plugin-upcloud": "workspace:*",
     "@infrawrench/plugin-incident-io": "workspace:*",
+    "@infrawrench/plugin-koyeb": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

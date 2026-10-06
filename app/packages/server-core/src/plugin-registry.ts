@@ -96,6 +96,7 @@ import { plugin as cockroachdbCloudPlugin } from "@infrawrench/plugin-cockroachd
 import { plugin as northflankPlugin } from "@infrawrench/plugin-northflank";
 import { plugin as upcloudPlugin } from "@infrawrench/plugin-upcloud";
 import { plugin as incidentIoPlugin } from "@infrawrench/plugin-incident-io";
+import { plugin as koyebPlugin } from "@infrawrench/plugin-koyeb";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -200,4 +201,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   northflankPlugin,
   upcloudPlugin,
   incidentIoPlugin,
+  koyebPlugin,
 ];

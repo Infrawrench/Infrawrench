@@ -230,6 +230,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   northflank: ["api.northflank.com"],
   upcloud: ["api.upcloud.com"],
   "incident-io": ["api.incident.io"],
+  koyeb: ["app.koyeb.com"],
 };
 
 /**

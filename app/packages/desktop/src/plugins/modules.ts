@@ -106,4 +106,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-northflank"),
   () => import("@infrawrench/plugin-upcloud"),
   () => import("@infrawrench/plugin-incident-io"),
+  () => import("@infrawrench/plugin-koyeb"),
 ];
