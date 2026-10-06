@@ -92,6 +92,7 @@ import { plugin as xataPlugin } from "@infrawrench/plugin-xata";
 import { plugin as herokuPlugin } from "@infrawrench/plugin-heroku";
 import { plugin as pagerdutyPlugin } from "@infrawrench/plugin-pagerduty";
 import { plugin as bitbucketPlugin } from "@infrawrench/plugin-bitbucket";
+import { plugin as cockroachdbCloudPlugin } from "@infrawrench/plugin-cockroachdb-cloud";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -192,4 +193,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   herokuPlugin,
   pagerdutyPlugin,
   bitbucketPlugin,
+  cockroachdbCloudPlugin,
 ];

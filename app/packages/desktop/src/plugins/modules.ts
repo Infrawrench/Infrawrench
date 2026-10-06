@@ -102,4 +102,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-heroku"),
   () => import("@infrawrench/plugin-pagerduty"),
   () => import("@infrawrench/plugin-bitbucket"),
+  () => import("@infrawrench/plugin-cockroachdb-cloud"),
 ];

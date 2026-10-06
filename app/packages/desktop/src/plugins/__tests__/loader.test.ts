@@ -131,6 +131,7 @@ vi.mock("@infrawrench/plugin-xata", () => stub("xata"));
 vi.mock("@infrawrench/plugin-heroku", () => stub("heroku"));
 vi.mock("@infrawrench/plugin-pagerduty", () => stub("pagerduty"));
 vi.mock("@infrawrench/plugin-bitbucket", () => stub("bitbucket"));
+vi.mock("@infrawrench/plugin-cockroachdb-cloud", () => stub("cockroachdb-cloud"));
 
 beforeEach(() => {
   disabled = [];

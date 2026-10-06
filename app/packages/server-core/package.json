@@ -379,6 +379,7 @@
     "@infrawrench/plugin-heroku": "workspace:*",
     "@infrawrench/plugin-pagerduty": "workspace:*",
     "@infrawrench/plugin-bitbucket": "workspace:*",
+    "@infrawrench/plugin-cockroachdb-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

@@ -168,6 +168,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   heroku: { apiKey: "HRKU-test" },
   pagerduty: { apiKey: "test-pagerduty-api-key" },
   bitbucket: { email: "dev@example.com", token: "ATATT-test-token", workspace: "acme" },
+  "cockroachdb-cloud": { apiKey: "CCDB1_test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

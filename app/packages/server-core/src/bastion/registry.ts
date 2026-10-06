@@ -226,6 +226,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // finished Pipelines step logs redirect (307) to S3 long-term storage
   bitbucket: ["api.bitbucket.org", "*.s3.amazonaws.com"],
+  "cockroachdb-cloud": ["cockroachlabs.cloud"],
 };
 
 /**
