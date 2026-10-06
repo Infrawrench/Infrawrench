@@ -130,6 +130,7 @@ vi.mock("@infrawrench/plugin-civo", () => stub("civo"));
 vi.mock("@infrawrench/plugin-xata", () => stub("xata"));
 vi.mock("@infrawrench/plugin-heroku", () => stub("heroku"));
 vi.mock("@infrawrench/plugin-pagerduty", () => stub("pagerduty"));
+vi.mock("@infrawrench/plugin-bitbucket", () => stub("bitbucket"));
 
 beforeEach(() => {
   disabled = [];

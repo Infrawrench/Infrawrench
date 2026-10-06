@@ -224,6 +224,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "events.pagerduty.com",
     "events.eu.pagerduty.com",
   ],
+  // finished Pipelines step logs redirect (307) to S3 long-term storage
+  bitbucket: ["api.bitbucket.org", "*.s3.amazonaws.com"],
 };
 
 /**

@@ -167,6 +167,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   xata: { apiKey: "xau_test" },
   heroku: { apiKey: "HRKU-test" },
   pagerduty: { apiKey: "test-pagerduty-api-key" },
+  bitbucket: { email: "dev@example.com", token: "ATATT-test-token", workspace: "acme" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -91,6 +91,7 @@ import { plugin as civoPlugin } from "@infrawrench/plugin-civo";
 import { plugin as xataPlugin } from "@infrawrench/plugin-xata";
 import { plugin as herokuPlugin } from "@infrawrench/plugin-heroku";
 import { plugin as pagerdutyPlugin } from "@infrawrench/plugin-pagerduty";
+import { plugin as bitbucketPlugin } from "@infrawrench/plugin-bitbucket";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -190,4 +191,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   xataPlugin,
   herokuPlugin,
   pagerdutyPlugin,
+  bitbucketPlugin,
 ];
