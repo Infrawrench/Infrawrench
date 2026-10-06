@@ -229,6 +229,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "cockroachdb-cloud": ["cockroachlabs.cloud"],
   northflank: ["api.northflank.com"],
   upcloud: ["api.upcloud.com"],
+  "incident-io": ["api.incident.io"],
 };
 
 /**

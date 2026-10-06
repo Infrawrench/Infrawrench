@@ -171,6 +171,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   "cockroachdb-cloud": { apiKey: "CCDB1_test" },
   northflank: { apiToken: "test-northflank-token" },
   upcloud: { apiToken: "ucat_01TESTTOKEN0000000000000000", username: "", password: "" },
+  "incident-io": { apiKey: "test-incident-io-api-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

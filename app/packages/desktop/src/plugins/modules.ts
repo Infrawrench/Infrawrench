@@ -105,4 +105,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-cockroachdb-cloud"),
   () => import("@infrawrench/plugin-northflank"),
   () => import("@infrawrench/plugin-upcloud"),
+  () => import("@infrawrench/plugin-incident-io"),
 ];

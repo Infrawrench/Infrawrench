@@ -382,6 +382,7 @@
     "@infrawrench/plugin-cockroachdb-cloud": "workspace:*",
     "@infrawrench/plugin-northflank": "workspace:*",
     "@infrawrench/plugin-upcloud": "workspace:*",
+    "@infrawrench/plugin-incident-io": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
