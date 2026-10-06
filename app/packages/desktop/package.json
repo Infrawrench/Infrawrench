@@ -198,6 +198,7 @@
     "@infrawrench/plugin-render": "workspace:*",
     "@infrawrench/plugin-stripe": "workspace:*",
     "@infrawrench/plugin-supabase": "workspace:*",
+    "@infrawrench/plugin-vultr": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

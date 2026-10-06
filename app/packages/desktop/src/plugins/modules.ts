@@ -92,4 +92,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-render"),
   () => import("@infrawrench/plugin-stripe"),
   () => import("@infrawrench/plugin-supabase"),
+  () => import("@infrawrench/plugin-vultr"),
 ];

@@ -82,6 +82,7 @@ import { plugin as runpodPlugin } from "@infrawrench/plugin-runpod";
 import { plugin as renderPlugin } from "@infrawrench/plugin-render";
 import { plugin as stripePlugin } from "@infrawrench/plugin-stripe";
 import { plugin as supabasePlugin } from "@infrawrench/plugin-supabase";
+import { plugin as vultrPlugin } from "@infrawrench/plugin-vultr";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -172,4 +173,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   renderPlugin,
   stripePlugin,
   supabasePlugin,
+  vultrPlugin,
 ];
