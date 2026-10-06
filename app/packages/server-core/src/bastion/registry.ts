@@ -213,6 +213,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   gitlab: ["gitlab.com"],
   // api.civo.com is the management API; Object Store endpoints are objectstore.<region>.civo.com
   civo: ["api.civo.com", "*.civo.com"],
+  // *.xata.tech is each branch's own SQL gateway host ({branch}.{region}.xata.tech)
+  xata: ["api.xata.tech", "*.xata.tech"],
 };
 
 /**

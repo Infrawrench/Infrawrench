@@ -204,6 +204,7 @@
     "@infrawrench/plugin-railway": "workspace:*",
     "@infrawrench/plugin-gitlab": "workspace:*",
     "@infrawrench/plugin-civo": "workspace:*",
+    "@infrawrench/plugin-xata": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

@@ -88,6 +88,7 @@ import { plugin as convexPlugin } from "@infrawrench/plugin-convex";
 import { plugin as railwayPlugin } from "@infrawrench/plugin-railway";
 import { plugin as gitlabPlugin } from "@infrawrench/plugin-gitlab";
 import { plugin as civoPlugin } from "@infrawrench/plugin-civo";
+import { plugin as xataPlugin } from "@infrawrench/plugin-xata";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -184,4 +185,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   railwayPlugin,
   gitlabPlugin,
   civoPlugin,
+  xataPlugin,
 ];

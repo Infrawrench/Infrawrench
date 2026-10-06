@@ -1576,6 +1576,23 @@ Verified against `doc/api/*.md` on gitlab-org/gitlab master, the GraphQL referen
 - Status feed: status.civo.com is cState; `/index.xml` RSS, titles carry the region code and resolved issues start "[Resolved]". `/api/v2/*` and `/issues/index.json` 404.
 - Not done: subnets and routes, resource snapshot schedules, VPC-umbrella aliases (`/v2/vpc/*`, identical to the classic paths), teams/permissions/webhooks, custom disk image uploads.
 
+### Xata (`@infrawrench/plugin-xata`)
+
+Verified against `https://api.xata.tech/openapi.json` and the xata.io docs (2026-10). This is the current Xata Postgres platform (CloudNativePG clusters, copy-on-write branches, scale-to-zero); the old `*.xata.sh` workspace/database/table API is gone and nothing here targets it.
+
+- **Auth**: one API key (`xau_…`) as `Authorization: Bearer`. Organization keys act as Admin limited by scopes (`org:*`, `project:*`, `branch:*`, `credentials:*`, `metrics:read`, `logs:read`, `keys:*`, `role:*`, `org:delete`); user keys act with the member's role. Every organization the key sees is listed, so external ids carry the org: `{org}/{project}/{branch}`.
+- **Branch list is thin** (id, name, region, parentID, publicAccess, backupsEnabled); status, instance type, image, replicas, storage and scale-to-zero only come from the per-branch GET, so the lister does one GET per branch. The branch GET still returns a deprecated `connectionString` with the password embedded: only its host is kept.
+- **Create branch** is a discriminated body: `mode: "inherit"` + `parentID` (copy-on-write) or `mode: "custom"` + `configuration {region, instanceType, image, replicas, storage?}`. Restore is `POST …/branches/{source}/restore` with a name and a full `configuration` (copied from the source, replicas 0); it restores the latest point, there is no timestamp.
+- **PATCH branch** takes `hibernate: true|false` (lifecycle), `instanceType`, `image`, `replicas` (0-4), `storage` (GiB), `scaleToZero`, `backupConfiguration.retentionPeriod` (2-35), `postgresConfigurationParameters` (whole map, so changes are merged into the current one). Instance types and images are region-scoped catalogs (`/instanceTypes?region=`, `/images?region=`) with vCPUs, RAM and `hourlyRate`; they feed the create size-picker and the "Change instance type" / "Change Postgres image" prompts (`executeNoSqlCommand`), because a resource field cannot carry a live enum.
+- **Credentials** come from `GET …/credentials` (default user `xata`); `POST …/credentials/rotate {username}`. The connection string carries no `sslmode`; `withSsl` adds `sslmode=require`.
+- **SQL** goes to the gateway on the branch host, `POST https://{branch}.{region}.xata.tech/sql` with the connection string in a `Connection-String` header; the API key is rejected there. Response `{fields, command, rowCount, rows}`.
+- **Metrics**: `POST …/metrics {start, end, metrics[], aggregations: ["avg"]}`, one result per metric with a unit and a series per instance; 1-minute granularity, 30 days. **Logs**: `POST …/logs {start, end, limit, filters: [{field: "level", op: "in", values}]}` with a `nextCursor`.
+- **Postgres settings**: `GET …/postgres-config` returns every parameter with type, section, range, default and current value; it drives the settings editor directly.
+- **Costs**: `billing/invoices` (cursor paged, decimal `amount_due`, `invoice_date`, status) has no line items or period fields. Rows are period-native, dated to the month of `invoice_date - 1 day` (Orb issues on period close); void and draft invoices skipped; `billing/invoices/upcoming` supplies the current month and is restated.
+- **Quotas**: `/limits` (maxProjects, maxBranchesPerOrg), project `/limits` (maxBranchesPerProject), `/membership-limits` (maxMembers, maxInvites) against counted projects, branches, members and pending invites.
+- **Status feed**: incident.io at `www.xatastatus.com`; `/api/v2/incidents/unresolved.json` 404s, so the full `/incidents.json` is parsed and filtered. Components "Database connectivity (AWS us-east-1)" map to regions emitted both bare and cloud-prefixed.
+- **Not done**: SSO domains/providers, GitHub App repository mappings, Vercel/AWS marketplace endpoints, organization deletion. No official Terraform provider for the new Xata.
+
 ---
 
 ## Publish capability (cross-plugin)
