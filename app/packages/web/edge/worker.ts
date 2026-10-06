@@ -31,20 +31,41 @@ import type {
   ExportedHandler,
   Request as WorkerRequest,
 } from "@cloudflare/workers-types/index";
-import { api } from "../src/api/index";
 import { securityHeaderEntries } from "../src/api/security-headers";
 import { isApiPath, routeRequest } from "../src/edge/gateway-routes";
 import { handleEdgeApi } from "../src/edge/handle-api";
-import {
-  withEdgeInvocation,
-  type EdgeBindings,
-} from "@infrawrench/server-core/runtime/edge-invocation";
+import type { EdgeBindings } from "@infrawrench/server-core/runtime/edge-invocation";
 import { GATEWAY_ONLY_HEADER } from "@infrawrench/server-core/runtime/gateway-only";
 import { gatewayOnlyHitInScope } from "@infrawrench/server-core/runtime/request-scope";
-import {
-  accountNeedsGateway,
-  markAccountRequiresGateway,
-} from "@infrawrench/server-core/runtime/account-runtime";
+
+/**
+ * The API and everything behind it, loaded on the first API request rather
+ * than at startup. Evaluating it (every plugin, ~45 AWS SDK clients, the
+ * schema) costs several hundred ms of CPU, past what Workers allow a script's
+ * startup; inside a request it is a one-off per isolate, and requests for the
+ * SPA never pay it. The specifiers are literal, so it is still one bundle.
+ */
+let server: Promise<{
+  api: (typeof import("../src/api/index"))["api"];
+  withEdgeInvocation: (typeof import("@infrawrench/server-core/runtime/edge-invocation"))["withEdgeInvocation"];
+  accounts: typeof import("@infrawrench/server-core/runtime/account-runtime");
+}> | null = null;
+function loadServer() {
+  server ??= Promise.all([
+    import("../src/api/index"),
+    import("@infrawrench/server-core/runtime/edge-invocation"),
+    import("@infrawrench/server-core/runtime/account-runtime"),
+  ]).then(([apiModule, invocation, accounts]) => ({
+    api: apiModule.api,
+    withEdgeInvocation: invocation.withEdgeInvocation,
+    accounts,
+  }));
+  // A failed load must not be cached: let the next request try again.
+  server.catch(() => {
+    server = null;
+  });
+  return server;
+}
 
 export interface Env extends EdgeBindings {
   /** The static assets binding, typed against the global Request/Response. */
@@ -93,12 +114,13 @@ async function handleApi(
   ctx: ExecutionContext,
   accountId: string | undefined,
 ): Promise<Response> {
+  const { api, withEdgeInvocation, accounts } = await loadServer();
   return withEdgeInvocation(env, ctx, () =>
     handleEdgeApi(request, accountId, {
       apiFetch: async (req) => api.fetch(req, env, ctx),
       forward: (req) => forwardToGateway(req, env),
-      accountNeedsGateway,
-      markAccountRequiresGateway,
+      accountNeedsGateway: accounts.accountNeedsGateway,
+      markAccountRequiresGateway: accounts.markAccountRequiresGateway,
       gatewayOnlyHit: gatewayOnlyHitInScope,
       waitUntil: (promise) => ctx.waitUntil(promise),
     }),

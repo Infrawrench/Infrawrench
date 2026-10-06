@@ -3,8 +3,9 @@ import type { PollScope } from "@infrawrench/server-core/runtime/account-runtime
 import { passesFor, type AccountPass, type PassContext } from "./passes";
 import { TokenBucketRegistry } from "./token-bucket";
 
-export const DEFAULT_TICK_MS = 15_000;
-export const DEFAULT_CONCURRENCY = 8;
+import { DEFAULT_CONCURRENCY, DEFAULT_TICK_MS } from "./defaults";
+
+export { DEFAULT_CONCURRENCY, DEFAULT_TICK_MS };
 
 interface LoopOptions {
   tickMs?: number;

@@ -30,14 +30,37 @@ import type {
   MessageBatch,
   Queue,
 } from "@cloudflare/workers-types/index";
-import {
-  withEdgeInvocation,
-  type EdgeBindings,
-} from "@infrawrench/server-core/runtime/edge-invocation";
-import { passesFor, findPass, type PassContext } from "../src/passes";
+import type { EdgeBindings } from "@infrawrench/server-core/runtime/edge-invocation";
+import type { PassContext } from "../src/passes";
 import type { PollAccountRow } from "../src/poll-account";
 import { TokenBucketRegistry } from "../src/token-bucket";
-import { DEFAULT_CONCURRENCY, DEFAULT_TICK_MS } from "../src/loop";
+import { DEFAULT_CONCURRENCY, DEFAULT_TICK_MS } from "../src/defaults";
+
+/**
+ * The pass registry and the edge runtime, loaded on first use rather than at
+ * startup: evaluating them (every plugin, ~45 AWS SDK clients) costs several
+ * hundred ms of CPU, past what Workers allow a script's startup. Inside an
+ * alarm or queue invocation it is a one-off per isolate. Literal specifiers,
+ * so it is still one bundle.
+ */
+let runtime: Promise<{
+  passes: typeof import("../src/passes");
+  withEdgeInvocation: (typeof import("@infrawrench/server-core/runtime/edge-invocation"))["withEdgeInvocation"];
+}> | null = null;
+function loadRuntime() {
+  runtime ??= Promise.all([
+    import("../src/passes"),
+    import("@infrawrench/server-core/runtime/edge-invocation"),
+  ]).then(([passes, invocation]) => ({
+    passes,
+    withEdgeInvocation: invocation.withEdgeInvocation,
+  }));
+  // A failed load must not be cached: let the next invocation try again.
+  runtime.catch(() => {
+    runtime = null;
+  });
+  return runtime;
+}
 
 export interface Env extends EdgeBindings {
   POLL_QUEUE: Queue<PollMessage>;
@@ -102,7 +125,10 @@ export class PollerScheduler {
     const tickMs = envInt(this.env.POLLER_TICK_MS, DEFAULT_TICK_MS);
     await this.state.storage.setAlarm(Date.now() + tickMs);
 
-    const messages = await withEdgeInvocation(this.env, this.state, () => this.collectMessages());
+    const { passes, withEdgeInvocation } = await loadRuntime();
+    const messages = await withEdgeInvocation(this.env, this.state, () =>
+      this.collectMessages(passes),
+    );
     for (let i = 0; i < messages.length; i += SEND_BATCH_MAX) {
       await this.env.POLL_QUEUE.sendBatch(
         messages.slice(i, i + SEND_BATCH_MAX).map((body) => ({ body, contentType: "json" })),
@@ -110,13 +136,13 @@ export class PollerScheduler {
     }
   }
 
-  private async collectMessages(): Promise<PollMessage[]> {
+  private async collectMessages(passes: typeof import("../src/passes")): Promise<PollMessage[]> {
     const now = Date.now();
     const ctx = getPassContext(this.env);
     const lastRunAt = (await this.state.storage.get<Record<string, number>>("lastRunAt")) ?? {};
     const messages: PollMessage[] = [];
 
-    for (const pass of passesFor("edge")) {
+    for (const pass of passes.passesFor("edge")) {
       if (pass.kind === "accounts") {
         try {
           const rows = await pass.claim("edge", ctx);
@@ -139,8 +165,12 @@ export class PollerScheduler {
   }
 }
 
-async function runMessage(body: PollMessage, env: Env): Promise<void> {
-  const pass = findPass(body.pass);
+async function runMessage(
+  body: PollMessage,
+  env: Env,
+  passes: typeof import("../src/passes"),
+): Promise<void> {
+  const pass = passes.findPass(body.pass);
   if (!pass) {
     console.warn(`[poller-edge] dropping message for unknown pass ${body.pass}`);
     return;
@@ -172,11 +202,12 @@ const handler = {
   },
 
   async queue(batch: MessageBatch<PollMessage>, env: Env, ctx: ExecutionContext) {
+    const { passes, withEdgeInvocation } = await loadRuntime();
     for (const message of batch.messages) {
       // Every pass logs and swallows its own failures, so a throw here means
       // the invocation itself broke; let the queue retry it once (see
       // wrangler.jsonc), the lease guards against working a row twice.
-      await withEdgeInvocation(env, ctx, () => runMessage(message.body, env));
+      await withEdgeInvocation(env, ctx, () => runMessage(message.body, env, passes));
       message.ack();
     }
   },

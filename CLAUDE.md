@@ -95,6 +95,7 @@ The web API, the SPA and most of the poller also run on Cloudflare Workers (`app
 - **A new poller pass** goes in `poller/src/passes.ts` with a deliberate `runtime`: `gateway` if it needs Node or calls plugin code for arbitrary accounts, `edge` only if it touches Postgres, ClickHouse and fixed HTTPS services.
 - **`server.ts` and `web/edge/worker.ts` both serve the SPA**; a change to static serving, security headers or the hashed-asset 404 rule goes to both.
 - **Worker entry files import types from `@cloudflare/workers-types/index`**, never the global flavour, which clashes with `@types/node` across the server graph.
+- **Worker entry files load the server code lazily** (the dynamic `import()`s in both `edge/worker.ts`). A static import of the API, the pass registry, `plugin-loader` or anything that reaches them puts several hundred ms of module evaluation back into startup, and Cloudflare rejects the deploy (`10021`). Run `wrangler check startup` from the `edge/` directory after touching either entry.
 
 ## Server environment variables
 
