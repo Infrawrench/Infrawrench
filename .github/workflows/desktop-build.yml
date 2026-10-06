@@ -482,6 +482,11 @@ jobs:
       - name: Build
         run: pnpm --filter @infrawrench/desktop dist
         env:
+          # V8 sizes its default heap from physical memory. The arm64 macos-15
+          # runner has 7 GB, which caps the heap near 2 GB, and bundling the
+          # main process (every plugin's cloud SDK) outgrew that. The 14-16 GB
+          # runners already default to about 4 GB; match them explicitly.
+          NODE_OPTIONS: --max-old-space-size=4096
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
           APPLE_ID: ${{ secrets.APPLE_ID }}
