@@ -363,6 +363,7 @@
     "@infrawrench/plugin-vercel": "workspace:*",
     "@infrawrench/plugin-workos": "workspace:*",
     "@infrawrench/plugin-xai": "workspace:*",
+    "@infrawrench/plugin-postmark": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

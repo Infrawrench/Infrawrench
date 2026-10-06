@@ -87,4 +87,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-uploadthing"),
   () => import("@infrawrench/plugin-workos"),
   () => import("@infrawrench/plugin-twilio"),
+  () => import("@infrawrench/plugin-postmark"),
 ];

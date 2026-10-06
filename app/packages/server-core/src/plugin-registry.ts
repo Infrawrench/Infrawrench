@@ -77,6 +77,7 @@ import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
 import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 import { plugin as twilioPlugin } from "@infrawrench/plugin-twilio";
+import { plugin as postmarkPlugin } from "@infrawrench/plugin-postmark";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -162,4 +163,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   uploadthingPlugin,
   workosPlugin,
   twilioPlugin,
+  postmarkPlugin,
 ];
