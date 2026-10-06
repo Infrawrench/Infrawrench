@@ -208,6 +208,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   resend: ["api.resend.com"],
   // *.convex.cloud is each deployment's own Deployment API (regional hosts included)
   convex: ["api.convex.dev", "*.convex.cloud"],
+  railway: ["backboard.railway.com"],
 };
 
 /**

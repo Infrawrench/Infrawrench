@@ -85,6 +85,7 @@ import { plugin as supabasePlugin } from "@infrawrench/plugin-supabase";
 import { plugin as vultrPlugin } from "@infrawrench/plugin-vultr";
 import { plugin as resendPlugin } from "@infrawrench/plugin-resend";
 import { plugin as convexPlugin } from "@infrawrench/plugin-convex";
+import { plugin as railwayPlugin } from "@infrawrench/plugin-railway";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -178,4 +179,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   vultrPlugin,
   resendPlugin,
   convexPlugin,
+  railwayPlugin,
 ];

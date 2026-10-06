@@ -95,4 +95,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-vultr"),
   () => import("@infrawrench/plugin-resend"),
   () => import("@infrawrench/plugin-convex"),
+  () => import("@infrawrench/plugin-railway"),
 ];

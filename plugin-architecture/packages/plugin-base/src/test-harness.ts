@@ -161,6 +161,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   vultr: { apiKey: "TESTKEY000000000000000000000000000000" },
   resend: { apiKey: "re_test_123" },
   convex: { accessToken: "test-convex-team-token" },
+  railway: { apiToken: "test-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

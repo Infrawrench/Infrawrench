@@ -371,6 +371,7 @@
     "@infrawrench/plugin-vultr": "workspace:*",
     "@infrawrench/plugin-resend": "workspace:*",
     "@infrawrench/plugin-convex": "workspace:*",
+    "@infrawrench/plugin-railway": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
