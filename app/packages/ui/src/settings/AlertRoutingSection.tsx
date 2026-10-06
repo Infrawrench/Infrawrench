@@ -27,6 +27,7 @@ import {
   validateAlertRule,
   type AlertRule,
   type AlertRulesResponse,
+  type PagingDestinationsResponse,
 } from "@infrawrench/client-core";
 
 import { useSettingsHost } from "./host.js";
@@ -84,6 +85,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [paging, setPaging] = useState<PagingDestinationsResponse["accounts"]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +106,22 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
       cancelled = true;
     };
   }, [apiGet, orgId, reloadNonce]);
+
+  // Paging provider pickers are a live provider round trip, so they load on
+  // their own and never hold the rules up; a failure just leaves them empty.
+  useEffect(() => {
+    let cancelled = false;
+    apiGet<PagingDestinationsResponse>(`/api/org/${orgId}/paging-providers/destinations`)
+      .then((res) => {
+        if (!cancelled) setPaging(res.accounts);
+      })
+      .catch(() => {
+        if (!cancelled) setPaging([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiGet, orgId]);
 
   function update(next: AlertRule[]): void {
     setRules(next);
@@ -189,7 +207,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
               rule={rule}
               index={i}
               total={rules.length}
-              data={data}
+              data={{ ...data, paging }}
               onChange={(next) => update(rules.map((r, j) => (j === i ? next : r)))}
               onRemove={() => update(rules.filter((_, j) => j !== i))}
               onMove={(delta) => {

@@ -25,6 +25,17 @@ function bundledPlugins(): Promise<readonly Plugin[]> {
     : import("./plugin-registry").then((m) => m.BUNDLED_PLUGINS);
 }
 
+/**
+ * Whether plugin *code* can run in this process. False only in the web edge
+ * Worker, whose registry is manifests with stub functions. Code that would
+ * otherwise call a plugin inline (a paging send on the alert path) checks this
+ * and leaves the work for a gateway pass instead, rather than tripping the
+ * gateway-only error mid-request after it has already written to the database.
+ */
+export function pluginCodeAvailable(): boolean {
+  return !globalThis.__INFRAWRENCH_EDGE_PLUGINS__;
+}
+
 export interface LoadedPlugin {
   plugin: Plugin;
 }

@@ -285,6 +285,14 @@ export interface PluginManifest {
    * `warehouse-sink.ts` for the contract.
    */
   warehouseSink?: WarehouseSinkDeclaration;
+  /**
+   * If present, this plugin's provider pages people (PagerDuty, incident.io),
+   * and the host offers its accounts as an alert routing destination, as an
+   * on-call source, and (when `paging.incidents` is set) as a source of
+   * incidents to mirror. See `paging.ts` for the contract; the host knows
+   * nothing provider-specific about any of it.
+   */
+  paging?: PagingCapabilityDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -921,6 +929,32 @@ export interface PluginClient {
     options?: { model?: string },
   ): AsyncIterable<ChatStreamEvent>;
   /**
+   * Paging: the places an alert can be sent (services, alert sources). Required
+   * when the manifest declares `paging`. See `paging.ts`.
+   */
+  listPagingTargets?(): Promise<PagingTarget[]>;
+  /**
+   * Paging: trigger, acknowledge or resolve one alert on a target under the
+   * host's dedup key. The plugin resolves whatever secret the provider needs
+   * (a routing key, a source token) from the target id. Throws with a numeric
+   * `status` on failure so the host can tell retryable errors from permanent ones.
+   */
+  sendPagingEvent?(targetId: string, event: PagingEvent): Promise<PagingEventResult>;
+  /** Paging: schedules and escalation policies that can name who is on call. */
+  listPagingOnCallSources?(): Promise<PagingOnCallSource[]>;
+  /** Paging: who is on call on one source at `at` (first level first). */
+  resolvePagingOnCall?(sourceId: string, at: Date): Promise<PagingOnCallPerson[]>;
+  /** Paging: incidents created or changed since `query.since`. */
+  listPagingIncidents?(query: PagingIncidentQuery): Promise<PagingIncident[]>;
+  /** Paging: one incident's current state, or null when it no longer exists. */
+  getPagingIncident?(incidentId: string): Promise<PagingIncident | null>;
+  /** Paging: acknowledge or resolve an incident, returning its new state. */
+  updatePagingIncident?(incidentId: string, update: PagingIncidentUpdate): Promise<PagingIncident>;
+  /** Paging: subscribe `url` to incident events (`webhook.mode: "managed"`). */
+  registerPagingWebhook?(url: string): Promise<PagingWebhookRegistration>;
+  /** Paging: remove a subscription made by `registerPagingWebhook`. */
+  removePagingWebhook?(webhookId: string): Promise<void>;
+  /**
    * Publish one message to a pub/sub resource: Cloudflare Queue, AWS SQS/SNS/
    * Kinesis/EventBridge, GCP Pub/Sub topic, GCP Cloud Tasks, Azure Service
    * Bus / Event Hub, Kafka topic, etc. Called by the host's Publish tab when
@@ -1262,6 +1296,13 @@ export interface Plugin {
     credentials: Record<string, string>,
     services?: HostServices,
   ): Promise<CredentialFieldOption[]>;
+  /**
+   * Verify and interpret one inbound paging webhook delivery. Required when
+   * `manifest.paging.webhook` is set. Lives on the Plugin rather than the
+   * client because it needs only the signing secret, not the account's
+   * credentials. Must return `valid: false` (never throw) for a bad signature.
+   */
+  verifyPagingWebhook?(request: PagingWebhookRequest): Promise<PagingWebhookResult>;
 }
 
 // Forward declarations: defined in their own modules but used here
@@ -1341,3 +1382,17 @@ import type {
   FieldActionResult,
 } from "./create.js";
 import type { TerraformExportCapability } from "./terraform.js";
+import type {
+  PagingCapabilityDeclaration,
+  PagingEvent,
+  PagingEventResult,
+  PagingIncident,
+  PagingIncidentQuery,
+  PagingIncidentUpdate,
+  PagingOnCallPerson,
+  PagingOnCallSource,
+  PagingTarget,
+  PagingWebhookRegistration,
+  PagingWebhookRequest,
+  PagingWebhookResult,
+} from "./paging.js";

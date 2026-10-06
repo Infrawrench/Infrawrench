@@ -12,12 +12,12 @@ Every alert Infrawrench raises — a sync failure, a budget crossing, a cost ano
 
 A rule has four parts:
 
-| Part            | What it says                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.                                        |
-| **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations, GitHub issues and [email](./email-alerts.md), in any mix. |
-| **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent.                           |
-| **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                                           |
+| Part            | What it says                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.                                                                                           |
+| **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations, GitHub issues, [email](./email-alerts.md) and [paging providers](./on-call.md#paging-providers), in any mix. |
+| **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent.                                                                              |
+| **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                                                                                              |
 
 Rules are a **list, evaluated top to bottom**, and the first one that matches decides where the alert goes. That ordering is what makes the common ask expressible:
 
@@ -31,6 +31,23 @@ A rule can also be a **tee** rather than a branch: untick _Stop here_ and evalua
 ![The Alert routing card on the Routing tab of Settings → Notifications, showing two rules, a narrow "anomalies over $500 on prod → #incidents" above a broad "everything → #infra-noise", with the first rule expanded to show its conditions](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/two-rules.png)
 
 The **GitHub issues** destination files the alert's finding as an issue in the repository your [GitHub issue settings](./github-issues.md) route it to, one issue per finding. Only alerts that carry a finding (savings findings, anomalies, idle commitments) are filed; for other triggers it is skipped. The **Savings findings** trigger, one alert per new orphaned or oversized resource, is left out of the default rule and muted on phones, so it only goes where a rule sends it.
+
+### PagerDuty and incident.io
+
+With a [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md) account connected, the **Send to** list gains a picker for each: choose a PagerDuty service or an incident.io HTTP alert source by name, and matching alerts open an alert there. You never paste a routing key; Infrawrench looks it up through the account.
+
+Each upstream alert is addressed by a stable key per condition, so the lifecycle follows it upstream:
+
+- A probe that recovers, a metric alert that clears, a declared incident that is resolved, a sync failure that heals and a page that is cleared all **resolve** the upstream alert, whichever rule opened it and whatever the rules say now.
+- Mitigating a declared incident, or pressing **Acknowledge** on an escalating alert in Infrawrench, **acknowledges** it upstream (PagerDuty; an incident.io alert source only knows firing and resolved).
+- Acknowledging upstream, in PagerDuty or by responding to an incident.io escalation, settles the Infrawrench escalation for that alert, so nobody is escalated to about a page somebody already took. This needs inbound mirroring on for the account, see [On-call](./on-call.md#paging-providers).
+- A repeat of the same alert (the same probe, the same budget) re-triggers the open upstream alert rather than opening a second incident.
+
+The same picker offers **whoever is on call** on a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. It is resolved when the alert fires and matched to your members by email, then delivered like an [on-call rotation](./on-call.md): one push per person, never twice to somebody who is also on an Infrawrench rotation.
+
+A send that fails (the provider is down, rate limited) is retried in the background with backoff; a refused one (a deleted service, a revoked key) is given up on and shown under **Settings → On-call → Paging providers**.
+
+<insert [The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker] here>
 
 ## Conditions
 
@@ -71,7 +88,7 @@ Escalation goes **one hop**. There is no chain, so an unacknowledged alert canno
 
 Two limits worth knowing before you rely on it:
 
-- **Acknowledgement is a Slack button.** An alert routed only to Teams or to mobile push has no way to be acknowledged, so it will always escalate. Route escalating alerts to at least one Slack channel.
+- **Acknowledgement is a Slack button** (or the alert's PagerDuty or incident.io incident, when the rule also sends there). An alert routed only to Teams or to mobile push has no way to be acknowledged, so it will always escalate. Route escalating alerts to at least one Slack channel or paging provider.
 - **An alert that reached nobody does not escalate.** There is nothing to escalate _from_, and a "nobody acknowledged" message about an alert nobody ever saw is noise.
 
 ## Mobile push is still personal

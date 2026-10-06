@@ -64,6 +64,12 @@ failure it was meant to fix.
 Retrying a status-page update republishes it against **the components you originally picked**,
 not the whole page.
 
+### Incidents from PagerDuty and incident.io
+
+If a [paging provider](./on-call.md#paging-providers) account mirrors its incidents into Infrawrench, the open ones are listed at the top of the Incidents tab, above the incidents your organization declared, with **Acknowledge** and **Resolve** buttons that write back to the provider. **Declare incident** on one of them opens this form with its title and start time filled in, for when the page turns out to be an outage worth a freeze, an announcement and a status page notice.
+
+When an alert routing rule sends declared incidents to a paging provider, declaring opens an incident there, mitigating acknowledges it and resolving resolves it.
+
 ## The timeline
 
 The timeline is **assembled when you read it**, by joining what the platform already recorded

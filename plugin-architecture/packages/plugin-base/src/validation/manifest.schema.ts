@@ -278,6 +278,27 @@ export const pluginManifestSchema = z.object({
         }),
     })
     .optional(),
+  paging: z
+    .object({
+      targetLabel: z.string().min(1),
+      targetDescription: z.string().optional(),
+      supportsAcknowledgeEvent: z.boolean(),
+      onCall: z.object({ sourceLabel: z.string().min(1) }).optional(),
+      incidents: z
+        .object({
+          label: z.string().min(1),
+          canAcknowledge: z.boolean(),
+          canResolve: z.boolean(),
+        })
+        .optional(),
+      webhook: z
+        .object({
+          mode: z.enum(["managed", "manual"]),
+          setupHelp: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

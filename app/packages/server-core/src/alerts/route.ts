@@ -59,6 +59,13 @@ import { resolveRoutingRules } from "./rules";
 import { resolveOnCallNow } from "../on-call/store";
 import type { GithubFinding } from "../github-issues/filing";
 import { sendAlertEmail } from "./email";
+import {
+  type PagingLifecycle,
+  applyPagingLifecycle,
+  resolveProviderOnCallMembers,
+  sendPagingDestinations,
+} from "../paging/providers";
+import { pluginCodeAvailable } from "../plugin-loader";
 
 /**
  * Everything a detector knows about the thing it is reporting.
@@ -119,6 +126,19 @@ export interface AlertEvent {
    * destination files; without it that destination is skipped.
    */
   finding?: GithubFinding;
+  /**
+   * Where the condition this alert reports is in its own life, for alerts that
+   * have one (a probe goes down and recovers, a declared incident is mitigated
+   * and resolved, a page is cleared). `key` must be stable per condition.
+   *
+   * Only the paging-provider destination reads it: `open` triggers (or
+   * re-triggers) the upstream alert under a dedup key derived from `key`, and
+   * `acknowledged`/`resolved` are written to every upstream alert that key
+   * opened, **whichever rule opened them and whatever the rules say now**, so
+   * a recovery always closes the PagerDuty incident the outage opened. A
+   * non-open event never opens a new upstream alert.
+   */
+  lifecycle?: PagingLifecycle;
 }
 
 /**
@@ -279,9 +299,12 @@ async function deliverDestinations(
   extraButtons: SlackMessageButton[],
   emailSent: Set<string>,
   ruleName?: string,
+  ackDeliveryId?: string | null,
 ): Promise<DestinationOutcome> {
   const def = alertTriggerDef(event.trigger);
   const slackIds: string[] = [];
+  const pagingTargets: Array<{ accountId: string; targetId: string }> = [];
+  const providerOnCall: Array<{ accountId: string; sourceId: string }> = [];
   const teamsIds: string[] = [];
   const onCallScheduleIds: string[] = [];
   const emailTargets: AlertEmailRecipients = { userIds: [], addresses: [] };
@@ -320,6 +343,19 @@ async function deliverDestinations(
         // other trigger the destination is skipped, not failed.
         if (event.finding) wantsGithub = true;
         break;
+      case "paging-provider":
+        // A recovery or acknowledgement never opens a new upstream incident;
+        // `routeAlert` has already written it to the ones the condition opened.
+        if (!event.lifecycle || event.lifecycle.phase === "open") {
+          pagingTargets.push({ accountId: d.accountId, targetId: d.targetId });
+        }
+        break;
+      case "provider-on-call":
+        // Same push contract as `on-call`: it needs something for a tap to open.
+        if (!def.channelOnly && event.pushData) {
+          providerOnCall.push({ accountId: d.accountId, sourceId: d.sourceId });
+        }
+        break;
     }
   }
 
@@ -352,9 +388,23 @@ async function deliverDestinations(
       if (entry.shift) onCallUserIds.add(entry.shift.userId);
     }
   }
+  // A provider's schedule resolves to people too, matched to members by
+  // email, and joins the same per-user set: somebody on call in PagerDuty and
+  // on an Infrawrench rotation in the same week gets one push, not two.
+  if (providerOnCall.length > 0) {
+    const unique = [
+      ...new Map(providerOnCall.map((p) => [`${p.accountId}:${p.sourceId}`, p])).values(),
+    ];
+    const resolved = await Promise.all(
+      unique.map((p) =>
+        resolveProviderOnCallMembers(event.organizationId, p.accountId, p.sourceId),
+      ),
+    );
+    for (const userIds of resolved) for (const id of userIds) onCallUserIds.add(id);
+  }
 
   const severity = event.severity ?? def.defaultSeverity;
-  const [push, slack, teams, onCall, github, email] = await Promise.all([
+  const [push, slack, teams, onCall, github, email, paging] = await Promise.all([
     wantsPush
       ? sendPushToOrg(
           event.organizationId,
@@ -430,6 +480,27 @@ async function deliverDestinations(
           emailSent,
         )
       : Promise.resolve({ attempted: 0, succeeded: 0 }),
+    // Paging providers count one per target. They are not a transport the
+    // per-transport counts report (nothing that shows those counts has a
+    // column for them) but they are destinations, so they count toward
+    // whether the alert reached anyone.
+    pagingTargets.length > 0
+      ? sendPagingDestinations(
+          {
+            organizationId: event.organizationId,
+            trigger: event.trigger,
+            severity,
+            title: event.title,
+            body: event.body,
+            url: event.url ?? null,
+            ...(event.context ? { context: event.context } : {}),
+            ...(event.facts ? { facts: event.facts } : {}),
+            ...(event.lifecycle ? { lifecycle: event.lifecycle } : {}),
+          },
+          pagingTargets,
+          { alertDeliveryId: ackDeliveryId ?? null },
+        )
+      : Promise.resolve({ attempted: 0, succeeded: 0 }),
   ]);
 
   return {
@@ -444,14 +515,16 @@ async function deliverDestinations(
       teams.attempted +
       onCall.attempted +
       github.attempted +
-      email.attempted,
+      email.attempted +
+      paging.attempted,
     succeeded:
       (push.succeeded > 0 ? 1 : 0) +
       slack.succeeded +
       teams.succeeded +
       onCall.succeeded +
       github.succeeded +
-      email.succeeded,
+      email.succeeded +
+      paging.succeeded,
     counts: {
       push: push.succeeded,
       slack: slack.succeeded,
@@ -590,6 +663,12 @@ export async function routeAlert(
   const now = options.now ?? new Date();
   try {
     const severity = event.severity ?? alertTriggerDef(event.trigger).defaultSeverity;
+    // The condition moved on: tell every upstream alert it opened, before (and
+    // regardless of) where the rules send this message. A replay of a held
+    // copy skips it; the original call already did this.
+    if (event.lifecycle && event.lifecycle.phase !== "open" && !options.pinnedLegs) {
+      await applyPagingLifecycle(event.organizationId, event.lifecycle.key, event.lifecycle.phase);
+    }
     const decision = options.pinnedLegs
       ? {
           legs: options.pinnedLegs,
@@ -676,7 +755,24 @@ export async function routeAlert(
     const deliveryIds: string[] = [];
     const seen = new Set<string>();
 
-    for (const leg of decision.legs) {
+    // Where plugin code cannot run (the web edge Worker), a provider on-call
+    // leg cannot be resolved inline. It is held for "now" instead, so the
+    // follow-up pass (which runs plugin code) resolves and delivers it within
+    // a tick, rather than the request tripping the gateway-only error after it
+    // has already written to the database.
+    const legs: RoutedLeg[] = pluginCodeAvailable()
+      ? decision.legs
+      : decision.legs.flatMap((leg) => {
+          const deferred = leg.destinations.filter((d) => d.kind === "provider-on-call");
+          if (deferred.length === 0 || leg.holdUntil) return [leg];
+          const rest = leg.destinations.filter((d) => d.kind !== "provider-on-call");
+          return [
+            ...(rest.length > 0 ? [{ ...leg, destinations: rest }] : []),
+            { ...leg, destinations: deferred, escalation: null, holdUntil: now },
+          ];
+        });
+
+    for (const leg of legs) {
       // Two rules can name the same channel (a tee rule above a catch-all is
       // the ordinary way that happens) and nobody wants the message twice.
       // De-duplicating across legs rather than within one keeps the first rule
@@ -690,7 +786,9 @@ export async function routeAlert(
       });
       if (fresh.length === 0) continue;
 
-      if (leg.holdUntil && !options.bypassQuietHours) {
+      // `holdUntil` equal to `now` is the edge deferral above, which no
+      // caller's `bypassQuietHours` may undo.
+      if (leg.holdUntil && (!options.bypassQuietHours || leg.holdUntil === now)) {
         const id = await recordDelivery(event, { ...leg, destinations: fresh }, "held", now);
         if (id) {
           held += 1;
@@ -727,6 +825,7 @@ export async function routeAlert(
         ackId ? [ackButton(event.organizationId, ackId)] : [],
         emailSent,
         leg.ruleName,
+        ackId,
       );
       attempted += out.attempted;
       succeeded += out.succeeded;

@@ -397,6 +397,38 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         }
       }
 
+      const paging = plugin.manifest.paging;
+      if (paging) {
+        it("manifest.paging → client can list targets and send events", () => {
+          expect(typeof client.listPagingTargets).toBe("function");
+          expect(typeof client.sendPagingEvent).toBe("function");
+        });
+        if (paging.onCall) {
+          it("paging.onCall → client can list and resolve on-call sources", () => {
+            expect(typeof client.listPagingOnCallSources).toBe("function");
+            expect(typeof client.resolvePagingOnCall).toBe("function");
+          });
+        }
+        if (paging.incidents) {
+          it("paging.incidents → client can list, read and update incidents", () => {
+            expect(typeof client.listPagingIncidents).toBe("function");
+            expect(typeof client.getPagingIncident).toBe("function");
+            expect(typeof client.updatePagingIncident).toBe("function");
+          });
+        }
+        if (paging.webhook) {
+          it("paging.webhook → plugin verifies webhooks", () => {
+            expect(typeof plugin.verifyPagingWebhook).toBe("function");
+          });
+          if (paging.webhook.mode === "managed") {
+            it("paging.webhook managed → client registers and removes webhooks", () => {
+              expect(typeof client.registerPagingWebhook).toBe("function");
+              expect(typeof client.removePagingWebhook).toBe("function");
+            });
+          }
+        }
+      }
+
       const hasSupportsStorageBrowser = plugin.resourceTypes.some(
         (rt) => rt.supportsStorageBrowser,
       );

@@ -13,6 +13,8 @@ import type {
   IncidentPatch,
   IncidentStatus,
   IncidentTimelineResponse,
+  PagerIncidentRecord,
+  PagerIncidentsResponse,
 } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 
@@ -84,4 +86,21 @@ export async function deleteCloudIncidentNote(
 
 export async function deleteCloudIncident(orgId: string, incidentId: string): Promise<void> {
   await invoke("cloud_incidents_delete", { orgId, incidentId });
+}
+
+/** Incidents mirrored from paging providers (PagerDuty, incident.io). */
+export async function listCloudPagerIncidents(
+  orgId: string,
+  status: "open" | "all",
+): Promise<PagerIncidentsResponse> {
+  return invoke("cloud_paging_incidents_list", { orgId, status });
+}
+
+/** Acknowledge or resolve a provider incident upstream. */
+export async function actOnCloudPagerIncident(
+  orgId: string,
+  incidentId: string,
+  action: "acknowledge" | "resolve",
+): Promise<PagerIncidentRecord> {
+  return invoke("cloud_paging_incidents_act", { orgId, incidentId, action });
 }

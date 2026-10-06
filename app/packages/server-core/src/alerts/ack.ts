@@ -11,6 +11,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { alertDeliveries } from "../db/schema";
+import { acknowledgePagingForDelivery } from "../paging/providers";
 
 export interface AckResult {
   /** True when this call is what moved the row. */
@@ -77,6 +78,9 @@ export async function acknowledgeAlert(args: {
     .returning();
 
   if (won) {
+    // The acknowledgement is the same fact upstream: a PagerDuty incident this
+    // alert opened stops paging its own responders too. Never throws.
+    await acknowledgePagingForDelivery(args.organizationId, won.id);
     const payload = won.payload as { title?: string } | null;
     return { acknowledged: true, ...(payload?.title ? { title: payload.title } : {}) };
   }

@@ -728,18 +728,19 @@ secret store that consumes it rather than into an output.
 
 ### Alert delivery
 
-| Resource                            | Import    | Notes                                                       |
-| ----------------------------------- | --------- | ----------------------------------------------------------- |
-| `infrawrench_alert_routing`         | by org id | The whole ordered table; destroy restores the defaults      |
-| `infrawrench_on_call_schedule`      | by id     | Rotation order is the list order; covers stay in the app    |
-| `infrawrench_slack_channel`         | by id     | The workspace connection is an OAuth flow, read not written |
-| `infrawrench_msteams_webhook`       | by id     | URL is write-only and Microsoft-host-restricted             |
-| `infrawrench_alert_email_settings`  | by org id | Org singleton; destroy restores `member-domains`            |
-| `infrawrench_digest_settings`       | by org id | Org singleton; destinations come from the routing table     |
-| `infrawrench_digest_recipient`      | by id     | Address is normalized server-side                           |
-| `infrawrench_jira_integration`      | by org id | Org singleton; omitting the token keeps the stored one      |
-| `infrawrench_linear_integration`    | by org id | Org singleton; omitting the key keeps the stored one        |
-| `infrawrench_github_issue_settings` | by org id | Org singleton; destroy restores the defaults (filing off)   |
+| Resource                               | Import        | Notes                                                       |
+| -------------------------------------- | ------------- | ----------------------------------------------------------- |
+| `infrawrench_alert_routing`            | by org id     | The whole ordered table; destroy restores the defaults      |
+| `infrawrench_on_call_schedule`         | by id         | Rotation order is the list order; covers stay in the app    |
+| `infrawrench_slack_channel`            | by id         | The workspace connection is an OAuth flow, read not written |
+| `infrawrench_msteams_webhook`          | by id         | URL is write-only and Microsoft-host-restricted             |
+| `infrawrench_alert_email_settings`     | by org id     | Org singleton; destroy restores `member-domains`            |
+| `infrawrench_digest_settings`          | by org id     | Org singleton; destinations come from the routing table     |
+| `infrawrench_digest_recipient`         | by id         | Address is normalized server-side                           |
+| `infrawrench_paging_provider_settings` | by account id | Inbound mirroring; the webhook secret is write-only         |
+| `infrawrench_jira_integration`         | by org id     | Org singleton; omitting the token keeps the stored one      |
+| `infrawrench_linear_integration`       | by org id     | Org singleton; omitting the key keeps the stored one        |
+| `infrawrench_github_issue_settings`    | by org id     | Org singleton; destroy restores the defaults (filing off)   |
 
 ### Data sources
 

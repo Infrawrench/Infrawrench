@@ -289,6 +289,13 @@ async function announce(
           incidentId: incident.id,
           status: phase === "declared" ? "open" : phase,
         },
+        // A paging-provider destination opens one upstream incident per
+        // declared incident; mitigating acknowledges it and resolving closes it.
+        lifecycle: {
+          key: `incident:${incident.id}`,
+          phase:
+            phase === "declared" ? "open" : phase === "mitigated" ? "acknowledged" : "resolved",
+        },
         // `facts` are what routing rules match on. An incident names no single
         // account or resource (it usually names several) so it offers none
         // rather than picking one arbitrarily and letting a scoped rule fire

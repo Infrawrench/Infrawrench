@@ -301,6 +301,8 @@ const INVOKE_CHANNELS = [
   "cloud_incidents_add_note",
   "cloud_incidents_delete_note",
   "cloud_incidents_delete",
+  "cloud_paging_incidents_list",
+  "cloud_paging_incidents_act",
   "cloud_environments_templates",
   "cloud_environments_instances",
   "cloud_environments_settings",

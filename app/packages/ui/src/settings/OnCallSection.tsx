@@ -9,6 +9,7 @@ import {
   type OnCallShift,
 } from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
+import { PagingProvidersPanel } from "./PagingProvidersPanel.js";
 
 interface OnCallNowEntry {
   scheduleId: string;
@@ -626,6 +627,8 @@ export function OnCallSection() {
           deliver to their other destinations.
         </p>
       </T>
+
+      <PagingProvidersPanel />
     </div>
   );
 }

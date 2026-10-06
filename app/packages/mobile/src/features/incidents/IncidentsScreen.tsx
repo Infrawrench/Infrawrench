@@ -7,7 +7,9 @@ import {
   formatIncidentDuration,
   incidentSeverityLabel,
   incidentStatusLabel,
+  sortPagerIncidents,
   type Incident,
+  type PagerIncidentRecord,
   type IncidentSeverity,
   type IncidentStatus,
 } from "@infrawrench/client-core";
@@ -15,7 +17,12 @@ import { Button, Card, EmptyView, ErrorView, LoadingView, Screen } from "@/compo
 import { colors, radii, spacing } from "@/lib/theme";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { IssueIndicator } from "@/components/IssueIndicator";
-import { useDeclareIncident, useIncidents } from "./useIncidents";
+import {
+  useActOnPagerIncident,
+  useDeclareIncident,
+  useIncidents,
+  usePagerIncidents,
+} from "./useIncidents";
 
 const FILTERS: Array<{ id: IncidentStatus | "all"; label: string }> = [
   { id: "all", label: "All" },
@@ -81,6 +88,8 @@ export function IncidentsScreen() {
 
       <Button label="Declare incident" variant="danger" onPress={() => setDeclaring(true)} />
 
+      <PagerIncidentsSection />
+
       {list.length === 0 ? (
         <EmptyView message="No incidents. Long may it last." />
       ) : (
@@ -102,6 +111,93 @@ export function IncidentsScreen() {
 
       <DeclareSheet visible={declaring} onClose={() => setDeclaring(false)} />
     </Screen>
+  );
+}
+
+/**
+ * Open pages from PagerDuty / incident.io, with Acknowledge and Resolve. These
+ * are the provider's incidents, mirrored; acting here writes back upstream as
+ * you, which is the whole point of having them on the lock-screen device.
+ */
+function PagerIncidentsSection() {
+  const pager = usePagerIncidents();
+  const act = useActOnPagerIncident();
+  const list = sortPagerIncidents(pager.data?.incidents ?? []);
+  if (list.length === 0) return null;
+  return (
+    <View style={styles.pagerSection}>
+      <Text style={styles.sectionTitle}>From your paging providers</Text>
+      {act.isError && (
+        <Text style={styles.error}>
+          {act.error instanceof Error ? act.error.message : "The provider refused the change."}
+        </Text>
+      )}
+      <Card list>
+        {list.map((incident) => (
+          <PagerIncidentRow
+            key={incident.id}
+            incident={incident}
+            busy={act.isPending && act.variables?.id === incident.id}
+            onAct={(action) => act.mutate({ id: incident.id, action })}
+          />
+        ))}
+      </Card>
+    </View>
+  );
+}
+
+function pagerStatusColor(status: PagerIncidentRecord["status"]): string {
+  if (status === "triggered") return colors.danger;
+  if (status === "acknowledged") return colors.warning;
+  return colors.textFaint;
+}
+
+function PagerIncidentRow({
+  incident,
+  busy,
+  onAct,
+}: {
+  incident: PagerIncidentRecord;
+  busy: boolean;
+  onAct: (action: "acknowledge" | "resolve") => void;
+}) {
+  return (
+    <View style={styles.pagerRow}>
+      <View style={styles.rowMain}>
+        <Text style={styles.title} numberOfLines={2}>
+          {incident.reference ? `${incident.reference} ` : ""}
+          {incident.title}
+        </Text>
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {incident.accountName}
+          {incident.serviceName ? ` · ${incident.serviceName}` : ""}
+          {incident.assignees.length > 0
+            ? ` · ${incident.assignees.map((a) => a.name ?? a.email ?? "").join(", ")}`
+            : ""}
+        </Text>
+        <Text style={[styles.status, { color: pagerStatusColor(incident.status) }]}>
+          {(incident.statusLabel ?? incident.status).toLowerCase()}
+        </Text>
+      </View>
+      <View style={styles.pagerActions}>
+        {incident.canAcknowledge && (
+          <Button
+            label="Acknowledge"
+            variant="secondary"
+            disabled={busy}
+            onPress={() => onAct("acknowledge")}
+          />
+        )}
+        {incident.canResolve && (
+          <Button
+            label="Resolve"
+            variant="secondary"
+            disabled={busy}
+            onPress={() => onAct("resolve")}
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -249,6 +345,10 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textMuted, fontSize: 12 },
   status: { fontSize: 12 },
   footnote: { color: colors.textFaint, fontSize: 12, lineHeight: 17 },
+  pagerSection: { gap: spacing.sm },
+  sectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
+  pagerRow: { gap: spacing.sm, padding: spacing.md },
+  pagerActions: { flexDirection: "row", gap: spacing.sm },
   error: { color: colors.danger, fontSize: 13 },
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
   sheet: {

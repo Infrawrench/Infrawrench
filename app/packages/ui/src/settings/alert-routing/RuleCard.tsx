@@ -8,7 +8,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { INPUT, localTimezone } from "./shared.js";
-import { DestinationPicker } from "./DestinationPicker.js";
+import { DestinationPicker, type DestinationCatalog } from "./DestinationPicker.js";
 import {
   newCondition,
   CONDITION_FIELDS,
@@ -34,7 +34,7 @@ export function RuleCard({
   rule: AlertRule;
   index: number;
   total: number;
-  data: AlertRulesResponse;
+  data: AlertRulesResponse & Pick<DestinationCatalog, "paging">;
   onChange: (next: AlertRule) => void;
   onRemove: () => void;
   onMove: (delta: number) => void;

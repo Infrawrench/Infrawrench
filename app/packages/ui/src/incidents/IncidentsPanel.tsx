@@ -12,6 +12,7 @@ import {
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 import { DeclareIncidentModal } from "./DeclareIncidentModal.js";
+import { PagerIncidentsList } from "./PagerIncidentsList.js";
 import { IncidentTimelineView, artifactLabel } from "./IncidentTimelineView.js";
 import type { IncidentSeed, IncidentsClient } from "./types.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
@@ -492,6 +493,12 @@ export function IncidentsPanel({
           </button>
         </p>
       )}
+      <PagerIncidentsList
+        client={client}
+        showResolved={filter === "resolved" || filter === "all"}
+        onDeclare={canWrite ? (seed) => setDeclaring(seed) : undefined}
+      />
+
       {incidents === null && !error && (
         <p className="text-sm text-on-surface-faint">{gt("Loading incidents…")}</p>
       )}

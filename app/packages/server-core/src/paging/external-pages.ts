@@ -13,6 +13,7 @@
  * each other, and it is what the notification shows as the sender.
  */
 import { and, eq, sql } from "drizzle-orm";
+import { applyPagingLifecycle } from "./providers";
 import { randomUUID } from "node:crypto";
 
 import type { PageResult, PageSpec } from "@infrawrench/workflow-runtime";
@@ -91,6 +92,7 @@ function audienceFor(ctx: ExternalPageContext, key: string): PageAudience {
     organizationId: ctx.organizationId,
     name: ctx.source,
     context: `Source: ${ctx.source}`,
+    lifecycleKey: externalPageLifecycleKey(ctx.source, key),
     // No page of our own to link to: send the reader to the org home, which
     // is also where the mobile deep link lands.
     url: base ? `${base}/org/${ctx.organizationId}` : null,
@@ -122,6 +124,11 @@ export async function pageFromExternal(
  * `infra.page.clear(key)` does for a workflow. Returns whether a row was
  * actually cleared.
  */
+/** The lifecycle key an API page opens upstream alerts under. */
+export function externalPageLifecycleKey(source: string, key: string): string {
+  return `page:${source}:${key}`;
+}
+
 export async function clearExternalPage(
   organizationId: string,
   source: string,
@@ -137,5 +144,9 @@ export async function clearExternalPage(
       ),
     )
     .returning({ id: externalPages.id });
+  // Clearing is the caller saying the condition recovered, so whatever a
+  // paging provider opened for this key resolves, whether or not a cooldown
+  // row was still there to delete.
+  await applyPagingLifecycle(organizationId, externalPageLifecycleKey(source, key), "resolved");
   return deleted.length > 0;
 }

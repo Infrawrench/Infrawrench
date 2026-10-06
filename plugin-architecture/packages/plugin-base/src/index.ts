@@ -211,6 +211,25 @@ export type {
 export { parseStatuspageIncidents, parseStatusFeedXml, stripStatusHtml } from "./status-feed.js";
 
 export type {
+  PagingCapabilityDeclaration,
+  PagingEvent,
+  PagingEventAction,
+  PagingEventResult,
+  PagingIncident,
+  PagingIncidentQuery,
+  PagingIncidentStatus,
+  PagingIncidentUpdate,
+  PagingOnCallPerson,
+  PagingOnCallSource,
+  PagingSeverity,
+  PagingTarget,
+  PagingWebhookRegistration,
+  PagingWebhookRequest,
+  PagingWebhookResult,
+} from "./paging.js";
+export { bytesToHex, constantTimeEqual, hmacSha256, rejectedPagingWebhook } from "./paging.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,

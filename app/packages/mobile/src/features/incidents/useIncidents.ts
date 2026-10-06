@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  actOnPagerIncident,
   addIncidentNote,
+  fetchPagerIncidents,
   declareIncident,
   fetchIncident,
   fetchIncidentTimeline,
@@ -81,6 +83,32 @@ export function useTransitionIncident(incidentId: string) {
       void qc.invalidateQueries({ queryKey: ["incident", orgId, incidentId] });
       void qc.invalidateQueries({ queryKey: ["incident-timeline", orgId, incidentId] });
       void qc.invalidateQueries({ queryKey: ["incidents", orgId] });
+    },
+  });
+}
+
+/**
+ * Incidents mirrored from paging providers (PagerDuty, incident.io): the pages
+ * themselves, not the incidents declared here. Empty for an org that has not
+ * turned mirroring on, so the section simply does not render.
+ */
+export function usePagerIncidents() {
+  const { api, orgId } = useOrgApi();
+  return useQuery({
+    queryKey: ["pager-incidents", orgId],
+    queryFn: () => fetchPagerIncidents(api, orgId),
+  });
+}
+
+/** Acknowledge or resolve upstream, as the signed-in member. */
+export function useActOnPagerIncident() {
+  const { api, orgId } = useOrgApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "acknowledge" | "resolve" }) =>
+      actOnPagerIncident(api, orgId, id, action),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["pager-incidents", orgId] });
     },
   });
 }

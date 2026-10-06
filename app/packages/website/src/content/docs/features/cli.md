@@ -277,6 +277,16 @@ infrawrench declared-incidents "checkout"   # one incident: facts, artefacts, jo
 infrawrench declared-incidents --json
 ```
 
+`paging` is the third kind: incidents mirrored from your [paging providers](./on-call.md#paging-providers) (PagerDuty, incident.io), open ones first. `ack` and `resolve` take an Infrawrench id, a provider id or the provider's reference (`#1234`, `INC-56`) and write back upstream as you; `events` lists the alerts Infrawrench opened upstream, with any send still being retried:
+
+```
+infrawrench paging                 # open provider incidents
+infrawrench paging --all           # including resolved ones
+infrawrench paging ack 1234        # acknowledge PagerDuty incident #1234
+infrawrench paging resolve INC-56
+infrawrench paging events --json
+```
+
 `ownership` lists [resource ownership](../core-concepts/resource-ownership.md) — who owns each resource, what it is for, and its ticket link. Only resources with something recorded appear, so a resource absent from this list is unowned; `infrawrench orphans` is where the unowned resources that also look wasted show up. Pass a query to filter by resource name, owner or purpose. Cloud-only, and read-only: owners are set from a resource's Ownership tab, where the picker offers real org members:
 
 ```

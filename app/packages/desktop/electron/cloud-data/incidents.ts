@@ -95,3 +95,29 @@ ipcMain.handle(
     return cloudFetch(orgId, `/incidents/${encodeURIComponent(incidentId)}`, { method: "DELETE" });
   },
 );
+
+// Incidents mirrored from paging providers (PagerDuty, incident.io): a
+// provider's pages, listed beside the declared ones and acknowledged or
+// resolved upstream through the cloud.
+ipcMain.handle(
+  "cloud_paging_incidents_list",
+  async (_e, { orgId, status }: { orgId: string; status?: string }) => {
+    return cloudFetch(orgId, `/paging-incidents${status === "all" ? "?status=all" : ""}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_paging_incidents_act",
+  async (
+    _e,
+    { orgId, incidentId, action }: { orgId: string; incidentId: string; action: string },
+  ) => {
+    if (action !== "acknowledge" && action !== "resolve") {
+      throw new Error(`Unknown paging incident action "${action}"`);
+    }
+    return cloudFetch(orgId, `/paging-incidents/${encodeURIComponent(incidentId)}/${action}`, {
+      method: "POST",
+      body: "{}",
+    });
+  },
+);

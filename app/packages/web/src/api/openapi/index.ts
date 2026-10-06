@@ -62,6 +62,7 @@ import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
 import { registerRunbookPaths } from "./paths/runbooks";
 import { registerOnCallPaths } from "./paths/on-call";
+import { registerPagingProviderPaths } from "./paths/paging-providers";
 import { registerQueryMonitorPaths } from "./paths/query-monitors";
 import { registerCarbonPaths } from "./paths/carbon";
 import { registerPriceCatalogPaths } from "./paths/price-catalog";
@@ -213,6 +214,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCalendarPaths(ctx);
   registerRunbookPaths(ctx);
   registerOnCallPaths(ctx);
+  registerPagingProviderPaths(ctx);
   registerQueryMonitorPaths(ctx);
   registerCarbonPaths(ctx);
   registerPriceCatalogPaths(ctx);
@@ -482,6 +484,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "On-call",
         description:
           "Who to wake. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time. Shift boundaries are calendar-day arithmetic in the rotation's zone, so daylight-saving changes do not drift. Covers override the rotation for their window and are audit-logged.",
+      },
+      {
+        name: "Paging providers",
+        description:
+          "PagerDuty, incident.io and any plugin with the paging capability. A routing rule's `paging-provider` destination opens an alert on a provider target under a stable dedup key, so the alert's own recovery and an Infrawrench acknowledgement reach the same upstream alert; `provider-on-call` resolves whoever is on call upstream to members by email. Provider incidents can be mirrored into Infrawrench (by signed webhook and a reconcile pass) and acknowledged or resolved from here.",
       },
       {
         name: "Query monitors",

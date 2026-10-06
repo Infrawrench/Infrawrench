@@ -53,6 +53,16 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
     }
     case "email-address":
       return `email:${d.address}`;
+    case "paging-provider": {
+      // Target names are listed live from the provider; the rules response
+      // carries the account, which is what tells PagerDuty from incident.io.
+      const account = data.accounts.find((a) => a.id === d.accountId);
+      return `${account ? account.displayName : "(removed account)"}:${d.targetId}`;
+    }
+    case "provider-on-call": {
+      const account = data.accounts.find((a) => a.id === d.accountId);
+      return `on-call:${account ? account.displayName : "(removed account)"}/${d.sourceId}`;
+    }
   }
 }
 

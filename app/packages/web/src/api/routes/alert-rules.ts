@@ -33,6 +33,7 @@ import {
   cancelAlertDeliveries,
   listAlertDeliveries,
 } from "@infrawrench/server-core/alerts/ack";
+import { listPagingProviders } from "@infrawrench/server-core/paging/providers";
 
 import { db } from "../../db/client";
 import {
@@ -156,6 +157,8 @@ const DESTINATION_KINDS = new Set([
   "github-issues",
   "email-member",
   "email-address",
+  "paging-provider",
+  "provider-on-call",
 ]);
 
 /**
@@ -200,6 +203,24 @@ function destinationError(dest: AlertDestination | null | undefined, what: strin
     (typeof dest.address !== "string" || !normalizeAlertEmailAddress(dest.address))
   ) {
     return `An email ${what} needs a valid address`;
+  }
+  if (
+    dest.kind === "paging-provider" &&
+    (typeof dest.accountId !== "string" ||
+      !dest.accountId ||
+      typeof dest.targetId !== "string" ||
+      !dest.targetId)
+  ) {
+    return `A paging provider ${what} needs an accountId and a targetId`;
+  }
+  if (
+    dest.kind === "provider-on-call" &&
+    (typeof dest.accountId !== "string" ||
+      !dest.accountId ||
+      typeof dest.sourceId !== "string" ||
+      !dest.sourceId)
+  ) {
+    return `A provider on-call ${what} needs an accountId and a sourceId`;
   }
   return null;
 }
@@ -272,35 +293,45 @@ app.put("/", async (c) => {
     return c.json({ error: `At most ${ALERT_RULE_LIMITS.maxRulesPerOrg} rules per org` }, 400);
   }
 
-  const [ownChannels, ownWebhooks, ownRules, ownSchedules, emailOptions] = await Promise.all([
-    // Live installations only, matching the GET list and `resolveSlackChannels`.
-    // A channel whose install was disconnected is still a row in this org's
-    // table, so ownership alone would accept it, and it would then be dropped
-    // at delivery time, turning a first-match rule into silence.
-    db
-      .select({ id: slackChannels.id })
-      .from(slackChannels)
-      .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
-      .where(
-        and(eq(slackChannels.organizationId, organizationId), isNull(slackInstallations.deletedAt)),
-      ),
-    db
-      .select({ id: msteamsWebhooks.id })
-      .from(msteamsWebhooks)
-      .where(eq(msteamsWebhooks.organizationId, organizationId)),
-    listAlertRules(organizationId),
-    // Rotations are checked for the same reason channels are: a destination
-    // naming a rotation from another org would be dropped at delivery time,
-    // turning a first-match rule into silence.
-    db
-      .select({ id: onCallSchedules.id })
-      .from(onCallSchedules)
-      .where(eq(onCallSchedules.organizationId, organizationId)),
-    // Email destinations are checked the same way: a member id must be a
-    // current member and an extra address must pass the org's policy, or the
-    // rule would save and then deliver nothing.
-    getAlertEmailOptions(organizationId),
-  ]);
+  const [ownChannels, ownWebhooks, ownRules, ownSchedules, emailOptions, pagingAccounts] =
+    await Promise.all([
+      // Live installations only, matching the GET list and `resolveSlackChannels`.
+      // A channel whose install was disconnected is still a row in this org's
+      // table, so ownership alone would accept it, and it would then be dropped
+      // at delivery time, turning a first-match rule into silence.
+      db
+        .select({ id: slackChannels.id })
+        .from(slackChannels)
+        .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
+        .where(
+          and(
+            eq(slackChannels.organizationId, organizationId),
+            isNull(slackInstallations.deletedAt),
+          ),
+        ),
+      db
+        .select({ id: msteamsWebhooks.id })
+        .from(msteamsWebhooks)
+        .where(eq(msteamsWebhooks.organizationId, organizationId)),
+      listAlertRules(organizationId),
+      // Rotations are checked for the same reason channels are: a destination
+      // naming a rotation from another org would be dropped at delivery time,
+      // turning a first-match rule into silence.
+      db
+        .select({ id: onCallSchedules.id })
+        .from(onCallSchedules)
+        .where(eq(onCallSchedules.organizationId, organizationId)),
+      // Email destinations are checked the same way: a member id must be a
+      // current member and an extra address must pass the org's policy, or the
+      // rule would save and then deliver nothing.
+      getAlertEmailOptions(organizationId),
+      // Paging destinations must name one of this org's accounts whose provider
+      // can page (and, for on-call, can say who is on call). The target id itself
+      // is the provider's and is not re-listed here: that would make saving a
+      // rule depend on the provider being reachable.
+      listPagingProviders(organizationId),
+    ]);
+  const pagingById = new Map(pagingAccounts.map((a) => [a.accountId, a]));
   const memberIds = new Set(emailOptions.members.map((m) => m.userId));
   const channelIds = new Set(ownChannels.map((r) => r.id));
   const webhookIds = new Set(ownWebhooks.map((r) => r.id));
@@ -339,6 +370,12 @@ app.put("/", async (c) => {
         )
       ) {
         return `${d.address} is outside the domains this organization allows for alert email`;
+      }
+      if (d.kind === "paging-provider" && !pagingById.has(d.accountId)) {
+        return "That paging provider account does not belong to this organization";
+      }
+      if (d.kind === "provider-on-call" && !pagingById.get(d.accountId)?.onCallSourceLabel) {
+        return "That account cannot say who is on call";
       }
     }
     return null;

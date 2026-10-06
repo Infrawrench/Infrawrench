@@ -204,6 +204,7 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
       status: "down",
     },
     facts: { key: probe.name },
+    lifecycle: { key: `probe:${probe.id}`, phase: "open" },
   });
   await notifyResourceOwner(probe.organizationId, probe.resourceId, "probeAlerts", (o) => ({
     title: `Your endpoint is down: ${probe.name}`,
@@ -243,6 +244,7 @@ async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Pr
       status: "up",
     },
     facts: { key: probe.name },
+    lifecycle: { key: `probe:${probe.id}`, phase: "resolved" },
   });
 }
 

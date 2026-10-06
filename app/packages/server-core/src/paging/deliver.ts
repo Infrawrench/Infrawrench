@@ -42,6 +42,11 @@ export interface PageAudience {
   url: string | null;
   /** Mobile deep-link payload: the routing contract with the app. */
   pushData: PushData;
+  /**
+   * The page's lifecycle key, e.g. `page:<source>:<key>`. Clearing the key
+   * later resolves whatever a paging-provider destination opened for it.
+   */
+  lifecycleKey?: string;
 }
 
 /** The prior state of a cooldown row, for a rollback. */
@@ -126,6 +131,9 @@ export async function deliverPage(
       url: audience.url,
       pushData: audience.pushData,
       facts: { key: audience.name },
+      ...(audience.lifecycleKey
+        ? { lifecycle: { key: audience.lifecycleKey, phase: "open" as const } }
+        : {}),
     },
     { bypassQuietHours: true },
   );

@@ -924,6 +924,8 @@ export * from "./alert-routing";
 export * from "./alert-email";
 // Who to wake, rather than which channel to shout into.
 export * from "./on-call";
+// PagerDuty, incident.io and any other plugin with the paging capability.
+export * from "./paging-providers";
 export * from "./metric-alerts";
 // A SQL query on a schedule: what the data says, which no metric reports.
 export * from "./query-monitors";

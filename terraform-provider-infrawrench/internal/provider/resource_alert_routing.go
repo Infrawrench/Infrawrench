@@ -65,6 +65,9 @@ type alertDestinationModel struct {
 	ScheduleID types.String `tfsdk:"schedule_id"`
 	UserID     types.String `tfsdk:"user_id"`
 	Address    types.String `tfsdk:"address"`
+	AccountID  types.String `tfsdk:"account_id"`
+	TargetID   types.String `tfsdk:"target_id"`
+	SourceID   types.String `tfsdk:"source_id"`
 }
 
 type alertQuietHoursModel struct {
@@ -96,6 +99,9 @@ var alertDestinationAttrTypes = map[string]attr.Type{
 	"schedule_id": types.StringType,
 	"user_id":     types.StringType,
 	"address":     types.StringType,
+	"account_id":  types.StringType,
+	"target_id":   types.StringType,
+	"source_id":   types.StringType,
 }
 
 var (
@@ -142,7 +148,7 @@ var (
 		"in", "notIn", "gte", "eq", "lt", "contains", "notContains",
 	}
 	alertSeverities      = []string{"info", "warning", "critical"}
-	alertDestinationKind = []string{"push", "slack", "msteams", "on-call", "github-issues", "email-member", "email-address"}
+	alertDestinationKind = []string{"push", "slack", "msteams", "on-call", "github-issues", "email-member", "email-address", "paging-provider", "provider-on-call"}
 	alertTriggers        = []string{
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
 		"commitmentIdleAlerts", "unitCostRegressionAlerts", "savingsFindings", "metricAlerts", "resourceDrift", "workflowPages",
@@ -283,7 +289,14 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"trigger the destination is skipped, and it does nothing while GitHub " +
 											"issue filing is disabled. `email-member` and `email-address` send an " +
 											"email; email has no acknowledge button, so a rule routed only to email " +
-											"always escalates.",
+											"always escalates.\n\n" +
+											"`paging-provider` opens an alert on a PagerDuty service or an " +
+											"incident.io alert source through a connected account, under a stable " +
+											"dedup key: the alert's own recovery resolves it upstream, an " +
+											"acknowledgement in Infrawrench acknowledges it, and an acknowledgement " +
+											"upstream settles the Infrawrench escalation. `provider-on-call` pushes " +
+											"to whoever is on call on a provider schedule or escalation policy, " +
+											"matched to members by email when the alert fires.",
 										Validators: []validatorString{oneOfValidator(alertDestinationKind...)},
 									},
 									"channel_id": schema.StringAttribute{
@@ -317,6 +330,24 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"address such as a `finance@` alias. It must pass the organization's " +
 											"external-address policy (`infrawrench_alert_email_settings`), checked " +
 											"when the rules are saved and again when the alert is sent.",
+									},
+									"account_id": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `paging-provider` or " +
+											"`provider-on-call`: the `id` of a connected account whose provider " +
+											"can page (PagerDuty, incident.io).",
+									},
+									"target_id": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `paging-provider`: the " +
+											"provider's id for the target, a PagerDuty service id or an incident.io " +
+											"HTTP alert source id. The routing key or source token is looked up by " +
+											"the account, never stored on the rule.",
+									},
+									"source_id": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `provider-on-call`: the " +
+											"provider's id for a schedule or escalation policy.",
 									},
 								},
 							},
@@ -403,6 +434,19 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 												Optional: true,
 												MarkdownDescription: "Required when `kind` is `email-address`. Must pass " +
 													"the organization's external-address policy.",
+											},
+											"account_id": schema.StringAttribute{
+												Optional: true,
+												MarkdownDescription: "Required when `kind` is `paging-provider` or " +
+													"`provider-on-call`: a paging provider account `id`.",
+											},
+											"target_id": schema.StringAttribute{
+												Optional:            true,
+												MarkdownDescription: "Required when `kind` is `paging-provider`.",
+											},
+											"source_id": schema.StringAttribute{
+												Optional:            true,
+												MarkdownDescription: "Required when `kind` is `provider-on-call`.",
 											},
 										},
 									},
@@ -652,6 +696,9 @@ func alertDestinationsFrom(ctx context.Context, list types.List) ([]iw.AlertDest
 			ScheduleID: stringPtr(b.ScheduleID),
 			UserID:     stringPtr(b.UserID),
 			Address:    stringPtr(b.Address),
+			AccountID:  stringPtr(b.AccountID),
+			TargetID:   stringPtr(b.TargetID),
+			SourceID:   stringPtr(b.SourceID),
 		})
 	}
 	return out, diags
@@ -694,6 +741,9 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 				ScheduleID: stringValue(dest.ScheduleID),
 				UserID:     stringValue(dest.UserID),
 				Address:    stringValue(dest.Address),
+				AccountID:  stringValue(dest.AccountID),
+				TargetID:   stringValue(dest.TargetID),
+				SourceID:   stringValue(dest.SourceID),
 			})
 		}
 		destinationList, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)
@@ -770,6 +820,9 @@ func alertEscalationTo(ctx context.Context, escalation *iw.EscalationPolicy) (ty
 			ScheduleID: stringValue(dest.ScheduleID),
 			UserID:     stringValue(dest.UserID),
 			Address:    stringValue(dest.Address),
+			AccountID:  stringValue(dest.AccountID),
+			TargetID:   stringValue(dest.TargetID),
+			SourceID:   stringValue(dest.SourceID),
 		})
 	}
 	list, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)

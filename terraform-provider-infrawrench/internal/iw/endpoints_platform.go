@@ -1321,3 +1321,43 @@ func (c *Client) PutRealizedSavingsSettings(ctx context.Context, in RealizedSavi
 	}
 	return &out, nil
 }
+
+/* ---------------------------- paging providers ---------------------------- */
+
+// ListPagingProviders unwraps the {"accounts": […]} envelope.
+func (c *Client) ListPagingProviders(ctx context.Context) ([]PagingProviderAccount, error) {
+	var envelope struct {
+		Accounts []PagingProviderAccount `json:"accounts"`
+	}
+	if err := c.Get(ctx, "/paging-providers", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Accounts, nil
+}
+
+// GetPagingProvider reads one account by listing: there is no single-object
+// route. An account that is gone (or whose plugin cannot page) is a 404.
+func (c *Client) GetPagingProvider(ctx context.Context, accountID string) (*PagingProviderAccount, error) {
+	all, err := c.ListPagingProviders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].AccountID == accountID {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/paging-providers", accountID)
+}
+
+// PutPagingProviderSettings unwraps {"account": …, "warning": …}.
+func (c *Client) PutPagingProviderSettings(ctx context.Context, accountID string, in PagingProviderSettingsInput) (*PagingProviderAccount, *string, error) {
+	var out struct {
+		Account PagingProviderAccount `json:"account"`
+		Warning *string               `json:"warning"`
+	}
+	if err := c.Put(ctx, "/paging-providers/"+seg(accountID)+"/settings", in, &out); err != nil {
+		return nil, nil, err
+	}
+	return &out.Account, out.Warning, nil
+}

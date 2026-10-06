@@ -103,6 +103,7 @@ async function notifyFiring(
       status: "firing",
     },
     facts: { resourceId: resource.id, key: rule.name },
+    lifecycle: { key: `metric-alert:${rule.id}:${resource.id}`, phase: "open" },
   });
   if (alertReached(routed)) {
     await db
@@ -138,6 +139,7 @@ async function notifyResolved(rule: MetricAlertRuleRow, event: OpenEventRow): Pr
       status: "resolved",
     },
     facts: { resourceId: event.resourceId, key: rule.name },
+    lifecycle: { key: `metric-alert:${rule.id}:${event.resourceId}`, phase: "resolved" },
   });
   if (alertReached(routed)) {
     await db

@@ -17,7 +17,8 @@ import { randomUUID } from "node:crypto";
 import type { PageResult, PageSpec } from "@infrawrench/workflow-runtime";
 
 import { db } from "../db/client";
-import { workflowPages } from "../db/schema";
+import { workflowPages, workflows } from "../db/schema";
+import { applyPagingLifecycle } from "../paging/providers";
 import { appBaseUrl } from "../app-url";
 import {
   deliverPage,
@@ -100,7 +101,7 @@ function workflowUrl(ctx: WorkflowPageContext): string | null {
   return base ? `${base}/org/${ctx.organizationId}/workflows/${ctx.workflowId}` : null;
 }
 
-function audienceFor(ctx: WorkflowPageContext): PageAudience {
+function audienceFor(ctx: WorkflowPageContext, key: string): PageAudience {
   return {
     organizationId: ctx.organizationId,
     name: ctx.workflowName,
@@ -112,7 +113,13 @@ function audienceFor(ctx: WorkflowPageContext): PageAudience {
       workflowId: ctx.workflowId,
       ...(ctx.runId ? { runId: ctx.runId } : {}),
     },
+    lifecycleKey: workflowPageLifecycleKey(ctx.workflowId, key),
   };
+}
+
+/** The lifecycle key an `infra.page()` opens upstream alerts under. */
+export function workflowPageLifecycleKey(workflowId: string, key: string): string {
+  return `workflow-page:${workflowId}:${key}`;
 }
 
 /**
@@ -124,7 +131,7 @@ export async function pageFromWorkflow(
   spec: PageSpec,
 ): Promise<PageResult> {
   const { key } = pageKeyAndCooldown(spec);
-  return deliverPage(audienceFor(ctx), workflowPageCooldownStore(ctx, key), spec);
+  return deliverPage(audienceFor(ctx, key), workflowPageCooldownStore(ctx, key), spec);
 }
 
 /**
@@ -132,7 +139,26 @@ export async function pageFromWorkflow(
  * `infra.page.clear(key)` when a workflow sees the condition recover.
  */
 export async function clearWorkflowPage(workflowId: string, key: string): Promise<void> {
-  await db
+  const deleted = await db
     .delete(workflowPages)
-    .where(and(eq(workflowPages.workflowId, workflowId), eq(workflowPages.key, key)));
+    .where(and(eq(workflowPages.workflowId, workflowId), eq(workflowPages.key, key)))
+    .returning({ organizationId: workflowPages.organizationId });
+  // The recovery also resolves whatever a paging provider opened for the key.
+  // The org comes from the workflow when no cooldown row was left to delete.
+  const organizationId =
+    deleted[0]?.organizationId ??
+    (
+      await db
+        .select({ organizationId: workflows.organizationId })
+        .from(workflows)
+        .where(eq(workflows.id, workflowId))
+        .limit(1)
+    )[0]?.organizationId;
+  if (organizationId) {
+    await applyPagingLifecycle(
+      organizationId,
+      workflowPageLifecycleKey(workflowId, key),
+      "resolved",
+    );
+  }
 }

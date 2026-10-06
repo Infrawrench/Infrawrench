@@ -231,6 +231,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewMSTeamsWebhookResource,
 		NewDigestSettingsResource,
 		NewDigestRecipientResource,
+		NewPagingProviderSettingsResource,
 		NewJiraIntegrationResource,
 		NewLinearIntegrationResource,
 		NewGithubIssueSettingsResource,

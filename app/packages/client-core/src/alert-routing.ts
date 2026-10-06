@@ -472,7 +472,24 @@ export type AlertDestination =
    * the org's external-address policy (`AlertEmailSettings` in
    * `alert-email.ts`), checked on save and again at send time.
    */
-  | { kind: "email-address"; address: string };
+  | { kind: "email-address"; address: string }
+  /**
+   * Trigger an incident on a paging provider (a PagerDuty service, an
+   * incident.io alert source) through a connected account whose plugin
+   * declares the paging capability. `targetId` is the provider's id for the
+   * target, picked from a list the plugin returns; the user never handles a
+   * routing key. The upstream alert is addressed by a stable dedup key, so the
+   * alert's own resolution (a probe recovering, an incident resolving) and an
+   * acknowledgement in Infrawrench are written back to the same upstream alert.
+   */
+  | { kind: "paging-provider"; accountId: string; targetId: string }
+  /**
+   * Whoever is on call on a paging provider's schedule or escalation policy,
+   * resolved at delivery time and matched to org members by email. Delivered
+   * exactly like the `on-call` destination: one personal push per person,
+   * deduplicated by user across rotations.
+   */
+  | { kind: "provider-on-call"; accountId: string; sourceId: string };
 
 export function destinationKey(d: AlertDestination): string {
   switch (d.kind) {
@@ -490,6 +507,10 @@ export function destinationKey(d: AlertDestination): string {
       return `email-member:${d.userId}`;
     case "email-address":
       return `email-address:${d.address.toLowerCase()}`;
+    case "paging-provider":
+      return `paging-provider:${d.accountId}:${d.targetId}`;
+    case "provider-on-call":
+      return `provider-on-call:${d.accountId}:${d.sourceId}`;
   }
 }
 

@@ -166,15 +166,20 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`, `paging-provider`, `provider-on-call`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
 
 `github-issues` files the alert's finding as a GitHub issue, in the repository `infrawrench_github_issue_settings` routes it to, and comments on the open issue instead when one already exists for that finding. It takes no id. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for any other trigger the destination is skipped, and it does nothing while GitHub issue filing is disabled. `email-member` and `email-address` send an email; email has no acknowledge button, so a rule routed only to email always escalates.
 
+`paging-provider` opens an alert on a PagerDuty service or an incident.io alert source through a connected account, under a stable dedup key: the alert's own recovery resolves it upstream, an acknowledgement in Infrawrench acknowledges it, and an acknowledgement upstream settles the Infrawrench escalation. `provider-on-call` pushes to whoever is on call on a provider schedule or escalation policy, matched to members by email when the alert fires.
+
 Optional:
 
+- `account_id` (String) Required when `kind` is `paging-provider` or `provider-on-call`: the `id` of a connected account whose provider can page (PagerDuty, incident.io).
 - `address` (String) Required when `kind` is `email-address`: a literal address such as a `finance@` alias. It must pass the organization's external-address policy (`infrawrench_alert_email_settings`), checked when the rules are saved and again when the alert is sent.
 - `channel_id` (String) Required when `kind` is `slack`: the `id` of an `infrawrench_slack_channel`.
 - `schedule_id` (String) Required when `kind` is `on-call`: the `id` of an `infrawrench_on_call_schedule`. The rule then reaches whoever is holding that rotation when the alert fires, rather than a person named when the rule was written. A disabled rotation contributes nobody and the rule's other destinations still deliver.
+- `source_id` (String) Required when `kind` is `provider-on-call`: the provider's id for a schedule or escalation policy.
+- `target_id` (String) Required when `kind` is `paging-provider`: the provider's id for the target, a PagerDuty service id or an incident.io HTTP alert source id. The routing key or source token is looked up by the account, never stored on the rule.
 - `user_id` (String) Required when `kind` is `email-member`: a member's `id` from the `infrawrench_members` data source. The member's current login address is resolved when the alert is sent, so an address change follows them and a member who leaves stops receiving.
 - `webhook_id` (String) Required when `kind` is `msteams`: the `id` of an `infrawrench_msteams_webhook`.
 
@@ -192,13 +197,16 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`, `paging-provider`, `provider-on-call`.
 
 Optional:
 
+- `account_id` (String) Required when `kind` is `paging-provider` or `provider-on-call`: a paging provider account `id`.
 - `address` (String) Required when `kind` is `email-address`. Must pass the organization's external-address policy.
 - `channel_id` (String) Required when `kind` is `slack`.
 - `schedule_id` (String) Required when `kind` is `on-call`.
+- `source_id` (String) Required when `kind` is `provider-on-call`.
+- `target_id` (String) Required when `kind` is `paging-provider`.
 - `user_id` (String) Required when `kind` is `email-member`: a member's `id` from `infrawrench_members`, resolved to their current login address at send time.
 - `webhook_id` (String) Required when `kind` is `msteams`.
 

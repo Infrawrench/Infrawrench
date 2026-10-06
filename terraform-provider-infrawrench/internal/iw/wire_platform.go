@@ -720,7 +720,7 @@ type DigestRecipient struct {
 
 /* ------------------------------ alert routing ------------------------------ */
 
-// AlertDestination is a tagged union over the seven delivery targets. It
+// AlertDestination is a tagged union over the nine delivery targets. It
 // marshals to exactly the branch its Kind names, because the server's schema is
 // a strict oneOf and a push destination carrying a stray channelId is rejected.
 type AlertDestination struct {
@@ -736,6 +736,15 @@ type AlertDestination struct {
 	// Address is a literal mailbox for `email-address`. It must pass the
 	// organization's external-address policy when saved and again when sent.
 	Address *string `json:"address,omitempty"`
+	// AccountID names a connected paging provider account (PagerDuty,
+	// incident.io) for `paging-provider` and `provider-on-call`.
+	AccountID *string `json:"accountId,omitempty"`
+	// TargetID is the provider's id for a `paging-provider` target: a
+	// PagerDuty service or an incident.io alert source.
+	TargetID *string `json:"targetId,omitempty"`
+	// SourceID is the provider's schedule or escalation policy id for
+	// `provider-on-call`; who it reaches is decided when the alert fires.
+	SourceID *string `json:"sourceId,omitempty"`
 }
 
 // MarshalJSON emits only the keys belonging to the named branch.
@@ -796,8 +805,20 @@ func (d AlertDestination) MarshalJSON() ([]byte, error) {
 			Kind    string `json:"kind"`
 			Address string `json:"address"`
 		}{Kind: "email-address", Address: address})
+	case "paging-provider":
+		return json.Marshal(struct {
+			Kind      string `json:"kind"`
+			AccountID string `json:"accountId"`
+			TargetID  string `json:"targetId"`
+		}{Kind: "paging-provider", AccountID: deref(d.AccountID), TargetID: deref(d.TargetID)})
+	case "provider-on-call":
+		return json.Marshal(struct {
+			Kind      string `json:"kind"`
+			AccountID string `json:"accountId"`
+			SourceID  string `json:"sourceId"`
+		}{Kind: "provider-on-call", AccountID: deref(d.AccountID), SourceID: deref(d.SourceID)})
 	default:
-		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\", \"on-call\", \"github-issues\", \"email-member\" or \"email-address\")", d.Kind)
+		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\", \"on-call\", \"github-issues\", \"email-member\", \"email-address\", \"paging-provider\" or \"provider-on-call\")", d.Kind)
 	}
 }
 
@@ -1534,4 +1555,49 @@ type RealizedSavingsSettings struct {
 	HorizonMonths             int64 `json:"horizonMonths"`
 	ShortfallThresholdPercent int64 `json:"shortfallThresholdPercent"`
 	BaselineWindowDays        int64 `json:"baselineWindowDays"`
+}
+
+// deref reads an optional string, empty when absent. Used by the tagged-union
+// marshallers so a missing id serialises as "" and the server's validation
+// names the missing field, rather than the key vanishing from the body.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+/* ---------------------------- paging providers ---------------------------- */
+
+// PagingProviderSettings is the per-account inbound configuration of a
+// paging provider (PagerDuty, incident.io). The signing secret is write-only
+// and never comes back; WebhookConfigured says whether one is stored.
+type PagingProviderSettings struct {
+	InboundEnabled    bool    `json:"inboundEnabled"`
+	WebhookConfigured bool    `json:"webhookConfigured"`
+	WebhookURL        *string `json:"webhookUrl"`
+	LastSyncedAt      *string `json:"lastSyncedAt"`
+	LastSyncError     *string `json:"lastSyncError"`
+}
+
+// PagingProviderAccount is one connected account whose plugin can page.
+type PagingProviderAccount struct {
+	AccountID                string                 `json:"accountId"`
+	DisplayName              string                 `json:"displayName"`
+	PluginID                 string                 `json:"pluginId"`
+	TargetLabel              string                 `json:"targetLabel"`
+	TargetDescription        *string                `json:"targetDescription"`
+	SupportsAcknowledgeEvent bool                   `json:"supportsAcknowledgeEvent"`
+	OnCallSourceLabel        *string                `json:"onCallSourceLabel"`
+	WebhookMode              *string                `json:"webhookMode"`
+	WebhookSetupHelp         *string                `json:"webhookSetupHelp"`
+	Settings                 PagingProviderSettings `json:"settings"`
+}
+
+// PagingProviderSettingsInput is the PUT body. WebhookSecret is a pointer to
+// a pointer in spirit: nil omits the key (keep the stored secret), and an
+// explicit empty string clears it, which the server reads like null.
+type PagingProviderSettingsInput struct {
+	InboundEnabled bool    `json:"inboundEnabled"`
+	WebhookSecret  *string `json:"webhookSecret,omitempty"`
 }

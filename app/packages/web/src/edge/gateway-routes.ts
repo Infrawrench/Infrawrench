@@ -31,6 +31,10 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
   /^\/api\/bastions\/agent$/,
   // Node HTTP handler, not part of the Hono app.
   /^\/api\/mcp(\/|$)/,
+  // Paging-provider webhooks: the signature check is plugin code, which the
+  // web Worker does not carry, and a provider retries a failed delivery
+  // rather than replaying it somewhere else.
+  /^\/api\/paging-webhooks\//,
   // Slack slash commands and button actions answer Slack at once and do the
   // work afterwards, often through plugin code; a gateway-only miss there
   // happens after the response and cannot be replayed.
@@ -71,6 +75,9 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Git push webhook: runs the workflow.
   /^\/api\/workflows\/git\//,
   new RegExp(`${ORG}/(workflows|accounts|ssh-keys|resources)(/|$)`),
+  // Registering a provider webhook and acknowledging a provider incident both
+  // call plugin code, the first after it has already written a settings row.
+  new RegExp(`${ORG}/(paging-providers|paging-incidents)(/|$)`),
 ];
 
 const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);

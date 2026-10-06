@@ -8,6 +8,7 @@ import type {
   IncidentPatch,
   IncidentStatus,
   IncidentTimelineResponse,
+  PagerIncidentRecord,
   StatusPage,
 } from "@infrawrench/client-core";
 
@@ -36,6 +37,19 @@ export interface IncidentsClient {
 
   /** Status pages the declaration may publish an update on. */
   listStatusPages?(): Promise<StatusPage[]>;
+
+  /**
+   * Incidents mirrored from paging providers (PagerDuty, incident.io). Optional:
+   * a host that omits it simply has no provider section. These are the
+   * provider's pages, listed beside the declared incidents because at 03:14 the
+   * question is "what is open", not "which tool opened it".
+   */
+  listPagerIncidents?(status: "open" | "all"): Promise<PagerIncidentRecord[]>;
+  /** Acknowledge or resolve a provider incident upstream (`incidents:write`). */
+  actOnPagerIncident?(
+    incidentId: string,
+    action: "acknowledge" | "resolve",
+  ): Promise<PagerIncidentRecord>;
 }
 
 /**

@@ -46,6 +46,7 @@ import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pas
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
+import { runPagingProvidersPass } from "@infrawrench/server-core/paging/providers";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
@@ -582,6 +583,23 @@ export const PASSES: readonly Pass[] = [
         console.log(
           `[poller] alert follow-up: released ${stats.flushed} held, escalated ${stats.escalated}`,
         );
+      }
+    }),
+  },
+
+  // Paging providers (PagerDuty, incident.io): sends queued outbound events
+  // (triggers raised on the web edge, retries after a provider outage, the
+  // acknowledge/resolve that follows) and reconciles mirrored incidents for
+  // accounts with inbound turned on. Gateway: it calls plugin code for
+  // arbitrary accounts, some of which may sit behind a bastion.
+  {
+    kind: "periodic",
+    name: "paging-providers",
+    runtime: "gateway",
+    run: guarded("[poller] paging provider tick failed:", async () => {
+      const stats = await runPagingProvidersPass();
+      if (stats.sent > 0 || stats.synced > 0) {
+        console.log(`[poller] paging providers: sent ${stats.sent}, reconciled ${stats.synced}`);
       }
     }),
   },

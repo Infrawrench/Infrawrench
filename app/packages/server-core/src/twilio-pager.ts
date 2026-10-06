@@ -9,6 +9,7 @@ import {
 } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
 import { alertReached, routeAlert } from "./alerts/route";
+import { applyPagingLifecycle } from "./paging/providers";
 
 /**
  * Paging pipeline. Records sync-failure history per (account, type), opens an
@@ -475,6 +476,7 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
         accountId: args.accountId,
         resourceTypeId: args.resourceTypeId,
       },
+      lifecycle: { key: syncLifecycleKey(args.accountId, args.resourceTypeId), phase: "open" },
     });
 
     // Only mark the incident as paged if at least one transport succeeded,
@@ -500,12 +502,19 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
   }
 }
 
+/** The lifecycle key a sync-failure page opens upstream alerts under. */
+function syncLifecycleKey(accountId: string, resourceTypeId: string): string {
+  return `sync:${accountId}:${resourceTypeId}`;
+}
+
 async function closeOpenIncident(
   organizationId: string,
   accountId: string,
   resourceTypeId: string,
 ): Promise<void> {
-  await db
+  // Runs on every successful poll, so the paging-provider resolve is only
+  // attempted when an incident actually closed here.
+  const closed = await db
     .update(pagingIncidents)
     .set({ closedAt: new Date() })
     .where(
@@ -515,7 +524,15 @@ async function closeOpenIncident(
         eq(pagingIncidents.resourceTypeId, resourceTypeId),
         isNull(pagingIncidents.closedAt),
       ),
+    )
+    .returning({ id: pagingIncidents.id });
+  if (closed.length > 0) {
+    await applyPagingLifecycle(
+      organizationId,
+      syncLifecycleKey(accountId, resourceTypeId),
+      "resolved",
     );
+  }
 }
 
 /**

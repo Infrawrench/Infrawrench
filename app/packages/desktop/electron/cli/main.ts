@@ -88,6 +88,7 @@ import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
+import { cmdPaging } from "./commands/paging";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
@@ -318,6 +319,9 @@ COMMANDS
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
        [id|title]     anything the declaration asked for failed (give an id/title for its joined
                       timeline). "incidents" above is the other kind, the providers'.
+  paging [--all]      incidents mirrored from PagerDuty / incident.io (open ones; --all adds
+                      resolved). paging ack|resolve <ref> writes back upstream as you;
+                      paging events lists the alerts Infrawrench opened upstream
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -359,7 +363,7 @@ FLAGS
   --limit <n>         row cap for changes (max 200)
   --kind <k>          changes filter: created | updated | deleted
   -b, --against <x>   diff: the second account (-a supplies the first)
-  --all               diff: compare ids, addresses & timestamps too
+  --all               diff: compare ids, addresses & timestamps too; paging: include resolved
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
@@ -982,6 +986,10 @@ export async function runCli(): Promise<void> {
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.
         await cmdProbes(ctx, rest[0]);
+        break;
+      case "paging":
+        // Incidents mirrored from paging providers: the third "incident".
+        await cmdPaging(ctx, rest, parsed.diff.all);
         break;
       case "declared-incidents":
         // Incidents *we* declared (incident mode), as opposed to `incidents`

@@ -8,6 +8,8 @@ import type {
   IncidentPatch,
   IncidentStatus,
   IncidentTimelineResponse,
+  PagerIncidentRecord,
+  PagerIncidentsResponse,
   StatusPage,
   StatusPageListResponse,
 } from "@infrawrench/client-core";
@@ -38,6 +40,12 @@ export function createWebIncidentsClient(orgId: string, canWrite = true): Incide
     listStatusPages: async (): Promise<StatusPage[]> =>
       (await apiGet<StatusPageListResponse>(`/api/org/${encodeURIComponent(orgId)}/status-pages`))
         .pages,
+    listPagerIncidents: async (status) =>
+      (
+        await apiGet<PagerIncidentsResponse>(
+          `/api/org/${encodeURIComponent(orgId)}/paging-incidents${status === "all" ? "?status=all" : ""}`,
+        )
+      ).incidents,
   };
   if (!canWrite) return read;
   return {
@@ -60,5 +68,10 @@ export function createWebIncidentsClient(orgId: string, canWrite = true): Incide
     deleteIncident: async (incidentId: string) => {
       await apiDelete(`${base}/${encodeURIComponent(incidentId)}`);
     },
+    actOnPagerIncident: (incidentId: string, action: "acknowledge" | "resolve") =>
+      apiPost<PagerIncidentRecord>(
+        `/api/org/${encodeURIComponent(orgId)}/paging-incidents/${encodeURIComponent(incidentId)}/${action}`,
+        {},
+      ),
   } satisfies IncidentsClient & { declareIncident: (input: IncidentDeclare) => Promise<Incident> };
 }

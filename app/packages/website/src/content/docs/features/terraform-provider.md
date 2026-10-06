@@ -487,18 +487,19 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Alert delivery
 
-| Resource                            | Manages                                                                                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `infrawrench_alert_routing`         | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included                                |
-| `infrawrench_on_call_schedule`      | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                             |
-| `infrawrench_slack_channel`         | [Slack](./slack-alerts.md) channels as destinations                                                                                      |
-| `infrawrench_msteams_webhook`       | [Teams](./teams-alerts.md) webhooks as destinations                                                                                      |
-| `infrawrench_alert_email_settings`  | The external-address policy for [alert email](./email-alerts.md)                                                                         |
-| `infrawrench_digest_settings`       | When the [weekly digest](./weekly-digest.md) is sent                                                                                     |
-| `infrawrench_digest_recipient`      | An email address the digest goes to                                                                                                      |
-| `infrawrench_jira_integration`      | The [Jira](./jira.md) connection                                                                                                         |
-| `infrawrench_linear_integration`    | The [Linear](./linear.md) connection                                                                                                     |
-| `infrawrench_github_issue_settings` | Filing findings as [GitHub issues](./github-issues.md): default repository, routes, labels, and the Terraform sources pull requests edit |
+| Resource                               | Manages                                                                                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_alert_routing`            | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included                                |
+| `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                             |
+| `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                      |
+| `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                      |
+| `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                         |
+| `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                     |
+| `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                      |
+| `infrawrench_paging_provider_settings` | Mirroring a [paging provider's](./on-call.md#paging-providers) incidents into Infrawrench                                                |
+| `infrawrench_jira_integration`         | The [Jira](./jira.md) connection                                                                                                         |
+| `infrawrench_linear_integration`       | The [Linear](./linear.md) connection                                                                                                     |
+| `infrawrench_github_issue_settings`    | Filing findings as [GitHub issues](./github-issues.md): default repository, routes, labels, and the Terraform sources pull requests edit |
 
 ### Data sources
 

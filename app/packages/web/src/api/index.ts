@@ -113,6 +113,11 @@ import { calendarRoutes } from "./routes/calendar";
 import { publicCalendarRoutes } from "./routes/calendar-feed";
 import { runbookRoutes } from "./routes/runbooks";
 import { onCallRoutes } from "./routes/on-call";
+import {
+  pagingIncidentRoutes,
+  pagingProviderRoutes,
+  pagingWebhookRoutes,
+} from "./routes/paging-providers";
 import { queryMonitorRoutes } from "./routes/query-monitors";
 import { carbonRoutes } from "./routes/carbon";
 import { dnsRoutes } from "./routes/dns";
@@ -217,6 +222,9 @@ api.route("/api", slackInboundRoutes);
 api.route("/api", anomalyFeedbackLinkRoutes);
 // Public alert-email unsubscribe (no session; HMAC-signed token in the URL).
 api.route("/api", alertEmailPublicRoutes);
+// Inbound paging-provider webhooks (no session; the provider's signature,
+// verified with the stored secret, is the authentication).
+api.route("/api", pagingWebhookRoutes);
 api.route("/.well-known", wellKnownRoutes);
 // `auth.md` at the domain root: the agent-registration skill document the
 // `agent_auth` discovery block points at.
@@ -472,6 +480,8 @@ orgScoped.route("/wallboard", wallboardRoutes);
 orgScoped.route("/calendar", calendarRoutes);
 orgScoped.route("/runbooks", runbookRoutes);
 orgScoped.route("/on-call", onCallRoutes);
+orgScoped.route("/paging-providers", pagingProviderRoutes);
+orgScoped.route("/paging-incidents", pagingIncidentRoutes);
 orgScoped.route("/query-monitors", queryMonitorRoutes);
 orgScoped.route("/carbon", carbonRoutes);
 orgScoped.route("/dns", dnsRoutes);

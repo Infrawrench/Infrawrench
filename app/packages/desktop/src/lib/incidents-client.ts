@@ -11,6 +11,8 @@ import {
   listCloudIncidents,
   retryCloudIncidentArtifacts,
   updateCloudIncident,
+  listCloudPagerIncidents,
+  actOnCloudPagerIncident,
 } from "./cloud-incidents";
 import { listCloudStatusPages } from "./cloud-status-pages";
 
@@ -46,5 +48,9 @@ export function createDesktopIncidentsClient(): IncidentsClient {
     deleteNote: (incidentId, noteId) => deleteCloudIncidentNote(requireOrgId(), incidentId, noteId),
     retryArtifacts: (incidentId) => retryCloudIncidentArtifacts(requireOrgId(), incidentId),
     deleteIncident: (incidentId) => deleteCloudIncident(requireOrgId(), incidentId),
+    listPagerIncidents: async (status) =>
+      (await listCloudPagerIncidents(requireOrgId(), status)).incidents,
+    actOnPagerIncident: (incidentId, action) =>
+      actOnCloudPagerIncident(requireOrgId(), incidentId, action),
   };
 }

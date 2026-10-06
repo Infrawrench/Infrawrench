@@ -84,6 +84,31 @@ pages nobody, silently, on their week — which is the worst failure this featur
 could have, so it is enforced by the database rather than by anyone remembering
 to check.
 
+## Paging providers
+
+If your organization already pages people with [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md), connect the account and Infrawrench works with it rather than beside it:
+
+- **Send alerts there.** An [alert routing](./alert-routing.md#pagerduty-and-incidentio) destination opens an alert on a PagerDuty service or an incident.io alert source, and resolves it when the condition recovers.
+- **Push whoever is on call there.** A routing destination can name a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. Infrawrench asks the provider who is on call when the alert fires and pushes to the members whose email matches. Somebody on call upstream who is not an Infrawrench member is still paged by the provider, just not by Infrawrench.
+- **See and act on their incidents here.** Under **Settings → On-call → Paging providers**, tick **Show this account's incidents in Infrawrench**. Open incidents then appear at the top of the Incidents tab on web, desktop and mobile, and in `infrawrench paging`, with **Acknowledge** and **Resolve** buttons that write back to the provider as you. **Declare incident** on one opens the [incident mode](./incident-mode.md) form with its title filled in.
+
+The same card shows who is on call on each provider schedule right now, and the alerts Infrawrench recently opened upstream with any send that is being retried or was refused.
+
+<insert [Settings, On-call tab, the Paging providers card with a PagerDuty account mirroring incidents (webhook subscribed) and an incident.io account showing its webhook URL and signing secret field] here>
+
+### Keeping the list current
+
+Incidents are reconciled with the provider every couple of minutes. A webhook makes it near-instant:
+
+- **PagerDuty** subscribes one for you when you turn mirroring on, and removes it when you turn it off.
+- **incident.io** has no API for webhook endpoints, so add the URL the card shows as an endpoint under **Settings → Webhooks** in incident.io, subscribe it to incident and escalation events, and paste its **signing secret** into the card.
+
+Every delivery is checked against its signature (PagerDuty's HMAC, incident.io's signed webhook headers) and then treated as a nudge: the incident is re-read from the provider, so a delivery that arrives out of order cannot roll the list back. Turning mirroring off forgets the mirrored incidents.
+
+Configuring paging providers takes **Organization settings** (`org:settings:write`); acknowledging and resolving their incidents takes `incidents:write`, the same as declared incidents; seeing who is on call takes `team:read`.
+
+<insert [The Incidents tab with two open PagerDuty incidents above the declared incidents, one marked "opened by an Infrawrench alert", showing the Acknowledge, Resolve and Declare incident buttons] here>
+
 ## Not yet
 
 There is no per-rotation escalation policy separate from the routing rule's
@@ -93,6 +118,8 @@ per-person). The `next` person is exposed by the API and shown in the UI, so
 the escalation half is one step away.
 
 ## In Terraform
+
+The paging provider half is an `infrawrench_paging_provider_settings` per account for mirroring, and routing destinations with `kind = "paging-provider"` (`account_id`, `target_id`) or `kind = "provider-on-call"` (`account_id`, `source_id`).
 
 A rotation is an `infrawrench_on_call_schedule`, and a routing rule reaches it
 with a destination whose `kind` is `on-call`:

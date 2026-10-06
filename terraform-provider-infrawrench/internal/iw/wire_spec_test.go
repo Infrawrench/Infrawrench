@@ -391,7 +391,12 @@ func specChecks() []specCheck {
 // billing rules into the document. Keeping the list and its test rather than
 // deleting them is deliberate: the next object added ahead of a spec refresh
 // goes here, and the test then says out loud when the refresh catches up.
-var schemasKnownAbsent = []string{}
+var schemasKnownAbsent = []string{
+	// Paging providers (PagerDuty, incident.io): the routes and their OpenAPI
+	// sources landed ahead of the next spec regeneration.
+	"PagingProviderAccount",
+	"PagingProviderSettings",
+}
 
 func loadSpecSchemas(t *testing.T) map[string]map[string]any {
 	t.Helper()

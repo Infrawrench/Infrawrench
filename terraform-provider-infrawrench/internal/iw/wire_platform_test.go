@@ -65,6 +65,26 @@ func TestAlertDestinationMarshalsOnlyItsBranch(t *testing.T) {
 		}
 	})
 
+	t.Run("paging-provider carries accountId and targetId only", func(t *testing.T) {
+		got := decode(t, AlertDestination{Kind: "paging-provider", AccountID: strptr("a1"), TargetID: strptr("P1"), SourceID: strptr("S1")})
+		if got["accountId"] != "a1" || got["targetId"] != "P1" {
+			t.Errorf("paging-provider ids lost: %v", got)
+		}
+		if _, present := got["sourceId"]; present {
+			t.Errorf("a paging-provider destination must not carry sourceId: %v", got)
+		}
+	})
+
+	t.Run("provider-on-call carries accountId and sourceId only", func(t *testing.T) {
+		got := decode(t, AlertDestination{Kind: "provider-on-call", AccountID: strptr("a1"), SourceID: strptr("S1"), TargetID: strptr("P1")})
+		if got["accountId"] != "a1" || got["sourceId"] != "S1" {
+			t.Errorf("provider-on-call ids lost: %v", got)
+		}
+		if _, present := got["targetId"]; present {
+			t.Errorf("a provider-on-call destination must not carry targetId: %v", got)
+		}
+	})
+
 	t.Run("github-issues carries nothing else", func(t *testing.T) {
 		// The repository is decided by the GitHub issue settings, so a stray id
 		// from an edited slack destination must not reach the strict schema.
