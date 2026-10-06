@@ -136,6 +136,7 @@ vi.mock("@infrawrench/plugin-northflank", () => stub("northflank"));
 vi.mock("@infrawrench/plugin-upcloud", () => stub("upcloud"));
 vi.mock("@infrawrench/plugin-incident-io", () => stub("incident-io"));
 vi.mock("@infrawrench/plugin-koyeb", () => stub("koyeb"));
+vi.mock("@infrawrench/plugin-sendgrid", () => stub("sendgrid"));
 
 beforeEach(() => {
   disabled = [];

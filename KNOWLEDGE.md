@@ -1724,6 +1724,19 @@ Verified against the public OpenAPI document (`GET https://api.incident.io/v1/op
 - Private service mesh hostname: `<service>.<app>.internal` (Koyeb docs).
 - Not done: sandboxes, service pools, compose, archives, instance snapshots/exec, organization members and invitations, payment methods.
 
+### SendGrid (`@infrawrench/plugin-sendgrid`)
+
+Verified against Twilio's published OpenAPI documents (`twilio/sendgrid-oai`, `spec/json/tsg_*_v3.json`, 2026-10). Things the code does not make obvious:
+
+- **Two hosts, Bearer auth.** `api.sendgrid.com` (global) and `api.eu.sendgrid.com` (EU regional subusers), picked by the `region` credential. Optional `onBehalfOf` (a subuser picker filled from `GET /v3/subusers` via `listCredentialOptions`) sends `on-behalf-of`; parent-only endpoints (`/v3/subusers*`) skip it. Errors are `{ errors: [{ message, field }] }`; `SendGridApiError` carries `status`. Listers treat 403/404 (missing scope or plan feature) as empty; the account lister (`/v3/user/username`) is the credential check and surfaces 401.
+- **Paging differs per endpoint**: `limit`/`offset` bare arrays (domains, reverse DNS, legacy `/v3/ips`, subusers, suppressions), `limit` only (link branding, API keys), `page_size` ≤ 200 plus `page_token` from the absolute `_metadata.next` URL (templates), `limit` + `lastSeenID` (verified senders). Legacy `/v3/ips` defaults to 10 per page.
+- **API key scopes need a GET per key** (`/v3/api_keys/{id}`, capped at 200); the spec wraps it in `result: [...]` but the live API returns a bare object, so both are read. Keys are `SG.<api_key_id>.<secret>`, which is how `inUse` and the self-delete guard work. `canCreateKeys` (holds `api_keys.create`) is the access-review admin indicator.
+- **Required DNS records** come from every entry of a domain's or link's `dns` object (`mail_cname`, `dkim1`, `dkim2`, and with automated security off `mail_server`/`subdomain_spf`/`dkim`), a reverse DNS `a_record`, and a synthesised `MX 10 mx.sendgrid.net` per Inbound Parse host (no verified state). Types arrive lowercase. Owners are linked by `dependsOn`, not parentage, since one record type has four possible owners.
+- **Quotas**: `GET /v3/user/credits` (`total`/`used`/`reset_frequency`) is a provider-stated pair; a zero total (no limit) returns nothing. 403 throws `QuotaAccessError`.
+- **Metrics**: `/v3/stats` and `/v3/subusers/stats?subusers=` with `aggregated_by=day`; each day's `stats[]` entries are summed.
+- **Status feed** is Twilio's Statuspage (status.sendgrid.com redirects). Incidents are pre-filtered to SendGrid components (groups named "SendGrid …" and children `SMTP`, `API v2/v3`, `Event Webhooks`, `Parse API`, `Dedicated IP Address`) or "SendGrid" in the title, otherwise the shared parser would keep component-less Twilio incidents as provider-wide.
+- **Not done, deliberately**: costs (no billing API), Terraform export (no official provider), the newer IP Address Management API (`/v3/send_ips/*`; the legacy `/v3/ips` and `/v3/ips/pools` cover listing, pools and warmup), template version editing (rename only; versions shown read-only), Marketing Campaigns.
+
 ---
 
 ## Publish capability (cross-plugin)

@@ -213,6 +213,7 @@
     "@infrawrench/plugin-upcloud": "workspace:*",
     "@infrawrench/plugin-incident-io": "workspace:*",
     "@infrawrench/plugin-koyeb": "workspace:*",
+    "@infrawrench/plugin-sendgrid": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

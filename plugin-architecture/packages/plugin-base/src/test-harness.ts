@@ -173,6 +173,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   upcloud: { apiToken: "ucat_01TESTTOKEN0000000000000000", username: "", password: "" },
   "incident-io": { apiKey: "test-incident-io-api-key" },
   koyeb: { apiToken: "test-token" },
+  sendgrid: { apiKey: "SG.test-key-id.test-secret" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

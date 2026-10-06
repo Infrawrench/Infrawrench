@@ -231,6 +231,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   upcloud: ["api.upcloud.com"],
   "incident-io": ["api.incident.io"],
   koyeb: ["app.koyeb.com"],
+  // api.eu.sendgrid.com serves EU regional subusers
+  sendgrid: ["api.sendgrid.com", "api.eu.sendgrid.com"],
 };
 
 /**
