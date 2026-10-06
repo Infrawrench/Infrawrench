@@ -166,6 +166,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   civo: { apiKey: "civotestkey000000000000000000000000000000000000000" },
   xata: { apiKey: "xau_test" },
   heroku: { apiKey: "HRKU-test" },
+  pagerduty: { apiKey: "test-pagerduty-api-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

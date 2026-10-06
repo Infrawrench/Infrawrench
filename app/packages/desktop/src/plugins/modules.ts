@@ -100,4 +100,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-civo"),
   () => import("@infrawrench/plugin-xata"),
   () => import("@infrawrench/plugin-heroku"),
+  () => import("@infrawrench/plugin-pagerduty"),
 ];

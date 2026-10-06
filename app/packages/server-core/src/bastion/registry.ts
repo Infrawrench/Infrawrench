@@ -217,6 +217,13 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   xata: ["api.xata.tech", "*.xata.tech"],
   // *.heroku.com covers the one-off log session URLs the API returns
   heroku: ["api.heroku.com", "*.heroku.com"],
+  // REST API (US and EU service regions) and the Events API v2 the paging capability sends alerts through.
+  pagerduty: [
+    "api.pagerduty.com",
+    "api.eu.pagerduty.com",
+    "events.pagerduty.com",
+    "events.eu.pagerduty.com",
+  ],
 };
 
 /**
