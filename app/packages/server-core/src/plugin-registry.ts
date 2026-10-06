@@ -93,6 +93,7 @@ import { plugin as herokuPlugin } from "@infrawrench/plugin-heroku";
 import { plugin as pagerdutyPlugin } from "@infrawrench/plugin-pagerduty";
 import { plugin as bitbucketPlugin } from "@infrawrench/plugin-bitbucket";
 import { plugin as cockroachdbCloudPlugin } from "@infrawrench/plugin-cockroachdb-cloud";
+import { plugin as northflankPlugin } from "@infrawrench/plugin-northflank";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -194,4 +195,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   pagerdutyPlugin,
   bitbucketPlugin,
   cockroachdbCloudPlugin,
+  northflankPlugin,
 ];

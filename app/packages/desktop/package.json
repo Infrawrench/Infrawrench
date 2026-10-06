@@ -209,6 +209,7 @@
     "@infrawrench/plugin-pagerduty": "workspace:*",
     "@infrawrench/plugin-bitbucket": "workspace:*",
     "@infrawrench/plugin-cockroachdb-cloud": "workspace:*",
+    "@infrawrench/plugin-northflank": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
