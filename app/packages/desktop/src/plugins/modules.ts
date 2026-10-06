@@ -89,4 +89,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-twilio"),
   () => import("@infrawrench/plugin-postmark"),
   () => import("@infrawrench/plugin-runpod"),
+  () => import("@infrawrench/plugin-render"),
 ];

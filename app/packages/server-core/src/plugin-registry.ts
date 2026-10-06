@@ -79,6 +79,7 @@ import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 import { plugin as twilioPlugin } from "@infrawrench/plugin-twilio";
 import { plugin as postmarkPlugin } from "@infrawrench/plugin-postmark";
 import { plugin as runpodPlugin } from "@infrawrench/plugin-runpod";
+import { plugin as renderPlugin } from "@infrawrench/plugin-render";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -166,4 +167,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   twilioPlugin,
   postmarkPlugin,
   runpodPlugin,
+  renderPlugin,
 ];

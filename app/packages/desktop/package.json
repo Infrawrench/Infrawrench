@@ -195,6 +195,7 @@
     "@infrawrench/plugin-xai": "workspace:*",
     "@infrawrench/plugin-postmark": "workspace:*",
     "@infrawrench/plugin-runpod": "workspace:*",
+    "@infrawrench/plugin-render": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

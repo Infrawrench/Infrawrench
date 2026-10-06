@@ -118,6 +118,7 @@ vi.mock("@infrawrench/plugin-workos", () => stub("workos"));
 vi.mock("@infrawrench/plugin-twilio", () => stub("twilio"));
 vi.mock("@infrawrench/plugin-postmark", () => stub("postmark"));
 vi.mock("@infrawrench/plugin-runpod", () => stub("runpod"));
+vi.mock("@infrawrench/plugin-render", () => stub("render"));
 
 beforeEach(() => {
   disabled = [];
