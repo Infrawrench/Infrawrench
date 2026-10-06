@@ -6,6 +6,7 @@ import {
   type AgentPrincipal,
 } from "@infrawrench/server-core/trials/principal";
 import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 export interface McpAuthContext {
   userId: string;
@@ -129,7 +130,7 @@ export async function authenticateMcpRequest(
 
 /** The context an agent principal authenticates as, whichever way it proved itself. */
 function agentMcpContext(agent: AgentPrincipal): McpAuthContext {
-  void touchAgentRegistration(agent.registrationId);
+  void keepAlive(touchAgentRegistration(agent.registrationId));
   return {
     userId: agent.userId,
     organizationId: agent.organizationId,

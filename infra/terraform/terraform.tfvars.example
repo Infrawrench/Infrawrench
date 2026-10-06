@@ -344,4 +344,20 @@ app_env = {
   # protection does not hinge on that one switch. An invalid entry fails every
   # guarded connection rather than being silently skipped.
   EGRESS_BLOCKED_CIDRS = "10.0.0.0/20,10.4.0.0/14,10.8.0.0/20,172.16.0.0/28"
+
+  # Cloudflare edge split (infra/README.md, "Cloudflare edge"). OPTIONAL, and
+  # only after the edge poller Worker is deployed and running.
+  #
+  # POLLER_SCOPE: "gateway" makes the Node poller claim only accounts that need
+  # Node (bastion-bound, SSH-tunnelled, or flagged requires_gateway by the edge
+  # poller) and run only the passes pinned to the gateway; the Worker does the
+  # rest. Unset means the Node poller does everything, as before. Setting it
+  # while the Worker is not running stops polling for every other account, so
+  # set it after the Worker, and unset it to roll back.
+  # POLLER_SCOPE = "gateway"
 }
+
+# The Cloudflare Tunnel connector the edge Workers reach ClickHouse through
+# (edge.tf). OPTIONAL: empty runs no connector. The token is the `eyJ...`
+# string from Networking > Tunnels > (tunnel) > Add a replica.
+# cloudflare_tunnel_token = "eyJ..."

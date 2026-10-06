@@ -8,10 +8,13 @@
     "dev": "tsx watch --import @infrawrench/server-core/env-loader src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --banner:js=\"import{createRequire as __bannerCreateRequire}from'node:module';import{fileURLToPath as __bannerFileURLToPath}from'node:url';import{dirname as __bannerDirname}from'node:path';const require=__bannerCreateRequire(import.meta.url);const __filename=__bannerFileURLToPath(import.meta.url);const __dirname=__bannerDirname(__filename);\" && node ../workflow-runtime/scripts/copy-wasm.mjs dist",
     "start": "node dist/index.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p edge",
+    "test": "vitest run",
+    "edge:dev": "wrangler dev -c edge/wrangler.jsonc",
+    "edge:deploy": "wrangler deploy -c edge/wrangler.jsonc"
   },
   "dependencies": {
+    "@clickhouse/client-web": "^1.23.1",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
@@ -23,11 +26,13 @@
     "ssh2": "^1.17.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260808.1",
     "@types/node": "^22.20.1",
     "@vitest/coverage-v8": "^4.1.10",
     "esbuild": "^0.25.12",
     "tsx": "^4.23.11",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
   }
 }

@@ -19,6 +19,7 @@ import { chatUsage, organizations, subscriptions } from "../db/schema";
 import { computeCostMicros, computeSearchCostMicros, type TokenUsage } from "./pricing";
 import { getStripe } from "../services/stripe";
 import type { SpendStatus } from "@infrawrench/ui";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 /**
  * The org's month-to-date AI spend against its monthly cap. Since `infra.ai()`
@@ -60,7 +61,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<number> {
     costMicros,
   });
 
-  void reportUsageToStripe(id, input.organizationId, costMicros).catch((e) => {
+  void keepAlive(reportUsageToStripe(id, input.organizationId, costMicros)).catch((e) => {
     console.error("[chat/billing] Stripe usage report failed:", e);
   });
 
@@ -123,7 +124,7 @@ export async function recordWebSearchUsage(input: RecordWebSearchInput): Promise
     return costMicros;
   }
 
-  void reportUsageToStripe(id, input.organizationId, costMicros).catch((e) => {
+  void keepAlive(reportUsageToStripe(id, input.organizationId, costMicros)).catch((e) => {
     console.error("[chat/billing] Stripe usage report failed:", e);
   });
 

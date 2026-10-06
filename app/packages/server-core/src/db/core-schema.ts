@@ -153,6 +153,17 @@ export const accounts = pgTable(
     costPollErrorHelpUrl: text("cost_poll_error_help_url"),
     /** Set once the initial cost-history backfill completes. */
     costBackfilledAt: timestamp("cost_backfilled_at"),
+    /**
+     * Set the first time work for this account reached a Node-only code path
+     * on the edge (a socket database driver, SSH, kubectl). From then on the
+     * edge poller skips it and the Node gateway's poller claims it, and the
+     * edge router forwards its requests. Never cleared automatically: the
+     * gateway can run everything, so a stale `true` only costs locality.
+     * See `runtime/account-runtime.ts`.
+     */
+    requiresGateway: boolean("requires_gateway").notNull().default(false),
+    /** What tripped `requiresGateway`, for support (the gateway-only error's message). */
+    gatewayReason: text("gateway_reason"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

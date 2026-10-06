@@ -1,0 +1,68 @@
+// The web front door: see worker.ts for the edge/gateway split, and
+// infra/README.md ("Cloudflare edge") for provisioning the bindings below.
+// Build the SPA first (`pnpm build:client`); the assets directory is its output.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "infrawrench-web",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  // In front of the GKE ingress, not instead of it: requests the Worker
+  // forwards (`fetch(request)`) reach that origin unchanged. Deleting this
+  // route is a complete rollback.
+  "routes": [{ "pattern": "app.infrawrench.com/*", "zone_name": "infrawrench.com" }],
+  // Bundle-time constant, not a var: React and friends pick their production
+  // build off it, and a Worker has no process to set it on.
+  "define": { "process.env.NODE_ENV": "\"production\"" },
+
+  "assets": {
+    "directory": "../dist/client",
+    "binding": "ASSETS",
+    // Every request reaches the Worker first, so the SPA shell and assets get
+    // the same security headers and hashed-asset 404 rule as the API.
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application",
+  },
+
+  // Every library in server-core/edge/gateway-only-modules.json resolves to the
+  // stub, which throws IW_GATEWAY_ONLY the moment it is used; the Worker then
+  // replays the request on the Node gateway. src/edge/__tests__/wrangler-aliases.test.ts
+  // keeps this map in step with that file. The ClickHouse Node client becomes
+  // the fetch-based web client (same API), whose fetch goes through CLICKHOUSE.
+  "alias": {
+    "cpu-features": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "node-pty": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "ssh2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "dockerode": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@kubernetes/client-node": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "pg": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mysql2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mysql2/promise": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mssql": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "tedious": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "ioredis": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "memjs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mongodb": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "kafkajs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@libsql/client": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "typescript": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@typescript/typescript6": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@clickhouse/client": "@clickhouse/client-web",
+  },
+
+  // Cost reports aggregate in JS after the ClickHouse read; the default 30s
+  // per request leaves no headroom for the largest orgs.
+  "limits": { "cpu_ms": 60000 },
+
+  // Postgres, through Hyperdrive's pool (shared with the poller Worker).
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "HYPERDRIVE_ID" }],
+
+  // The in-cluster ClickHouse, via Cloudflare Tunnel (infra/k8s/cloudflared.yaml).
+  "vpc_services": [{ "binding": "CLICKHOUSE", "service_id": "CLICKHOUSE_VPC_SERVICE_ID" }],
+
+  // Secrets are the app_env map (infra/terraform), synced on deploy by
+  // .github/workflows/web-deploy.yml with `wrangler deploy --secrets-file`.
+}

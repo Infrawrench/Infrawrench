@@ -84,6 +84,18 @@ Three unrelated features have "Terraform" in the name; **eject to Terraform** (`
 - **The client half is two workspace packages**: `@infrawrench/appstream-core` (the wire; its serde field names come from `iw-proto`) and `@infrawrench/appstream-host` (staging and running the binary over an SSH connection the caller supplies). Both apps consume both; the launcher is a resource view and each window is a `linux-app` tab. A change to the protocol is a change to `iw-proto`, `appstream-core` and the golden fixtures in one commit.
 - **No new runtime dependencies without a reason you would defend in review.** Everything in this workspace runs on someone else's machine; the list is `serde`, `thiserror`, `zstd` and `jpeg-encoder` (the lossy tier; zero transitive dependencies, and the decoder is the browser's own).
 
+## Edge/gateway split
+
+The web API, the SPA and most of the poller also run on Cloudflare Workers (`app/packages/web/edge`, `app/packages/poller/edge`), with the GKE pods as the Node gateway. KNOWLEDGE.md ("Edge/gateway split") has the mechanism and `infra/README.md` ("Cloudflare edge") the runbook; what binds changes made elsewhere:
+
+- **A library that cannot run in a Worker** (native addon, raw TCP to arbitrary hosts, child processes, runtime-compiled wasm or JS) goes in `server-core/edge/gateway-only-modules.json` **and** both `edge/wrangler.jsonc` alias maps, in the same change; a test in each Worker package fails when they drift. Forgetting it ships a Worker that dies on load or, worse, half-works.
+- **Server code that runs on the edge holds no state across requests.** Postgres goes through `db` from `server-core/db/client` (a per-invocation client on the edge); never open a module-level socket or pool of your own. In-memory maps are per isolate there: fine for caches, wrong for coordination or rate limits that must hold fleet-wide.
+- **Fire-and-forget work wraps in `keepAlive`** (`server-core/runtime/request-scope`): `void keepAlive(notify(...))`. A bare `void notify(...)` on a path the edge serves can be cut off when the response is sent. `logAudit` already wraps itself.
+- **A new route that is stateful, streams (SSE/WebSocket) or exists to drive a socket driver, SSH or kubectl** goes in `web/src/edge/gateway-routes.ts`. Reads elsewhere fall back to the gateway on their own; writes answer 503 until the route is listed.
+- **A new poller pass** goes in `poller/src/passes.ts` with a deliberate `runtime`: `gateway` if it needs Node or calls plugin code for arbitrary accounts, `edge` only if it touches Postgres, ClickHouse and fixed HTTPS services.
+- **`server.ts` and `web/edge/worker.ts` both serve the SPA**; a change to static serving, security headers or the hashed-asset 404 rule goes to both.
+- **Worker entry files import types from `@cloudflare/workers-types/index`**, never the global flavour, which clashes with `@types/node` across the server graph.
+
 ## Server environment variables
 
 Every server-side variable read through `process.env` (web, poller, github-watcher) must be added to **both** places in the same change:

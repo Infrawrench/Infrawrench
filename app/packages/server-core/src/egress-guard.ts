@@ -38,6 +38,7 @@ import net from "node:net";
 import type { DialTarget } from "@infrawrench/plugin-base";
 import type { TunnelExtras } from "@infrawrench/ssh-tunnel-core";
 import { Agent, Dispatcher, buildConnector, setGlobalDispatcher } from "undici";
+import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
 
 /** Who a connection is being made for. Used only to recognise its own tunnels. */
 export interface DialScope {
@@ -305,6 +306,9 @@ export async function resolveDialAddress(
   options: ResolveDialOptions = {},
 ): Promise<string> {
   const label = options.label ?? "Host";
+  // Its callers dial raw sockets (drivers, SSH tunnels, CA-pinned HTTPS),
+  // none of which the edge does.
+  if (isEdgeRuntime()) throw new GatewayOnlyError(`Dialling ${label.toLowerCase()} ${host}`);
   let trimmed = host.trim();
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) trimmed = trimmed.slice(1, -1);
   if (!trimmed) throw new EgressBlockedError(`${label} is required`);
@@ -399,6 +403,10 @@ export async function guardDriverConnection(
   connection: string,
   scope?: DialScope,
 ): Promise<void> {
+  // Every socket driver is gateway-only on the edge (its library is a stub
+  // there). Say so here, before the DNS check below fails for an unrelated
+  // reason and a plugin swallows that instead.
+  if (isEdgeRuntime()) throw new GatewayOnlyError(`The ${driver.id} driver`);
   if (!driver.dialTargets) {
     throw new EgressBlockedError(
       `The ${driver.id} driver does not declare where it connects, so the cloud server will not run it`,
@@ -458,6 +466,12 @@ let installed = false;
  */
 export function ensureEgressGuardInstalled(): void {
   if (installed) return;
+  // A Worker's fetch is not undici's and already cannot reach loopback,
+  // link-local or private space, which is everything this guard refuses.
+  if (isEdgeRuntime()) {
+    installed = true;
+    return;
+  }
   const plain = new Agent();
   const scoped = new Map<string, Agent>();
   const MAX_SCOPED_AGENTS = 256;

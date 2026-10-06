@@ -39,6 +39,7 @@ import {
 } from "../db/schema.js";
 import { activeCapacitySeats } from "./capacity-slots.js";
 import { computeCostMicros, type TokenUsage } from "./ai-pricing.js";
+import { keepAlive } from "../runtime/request-scope";
 
 /** ISO timestamp of the first day of the current month (UTC). */
 function monthStart(): Date {
@@ -297,7 +298,7 @@ export async function recordWorkflowAiUsage(input: WorkflowAiUsageInput): Promis
     costMicros,
   });
 
-  void reportWorkflowAiUsageToStripe(id, input.organizationId, costMicros).catch((e) => {
+  void keepAlive(reportWorkflowAiUsageToStripe(id, input.organizationId, costMicros)).catch((e) => {
     console.error("[billing/ai-usage] Stripe usage report failed:", e);
   });
 

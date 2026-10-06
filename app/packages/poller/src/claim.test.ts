@@ -7,10 +7,13 @@ vi.mock("@infrawrench/server-core/db/client", () => ({
 
 // Capture the sql tag's inputs so tests can assert on the raw statement text.
 vi.mock("drizzle-orm", () => ({
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
-    strings: [...strings],
-    values,
-  }),
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => ({
+      strings: [...strings],
+      values,
+    }),
+    { raw: (text: string) => ({ raw: text }) },
+  ),
 }));
 
 import {
@@ -31,6 +34,17 @@ function capturedSql(): CapturedQuery {
   return execute.mock.calls[0]![0] as CapturedQuery;
 }
 
+/** The scope condition `all` splices in: nothing at all. */
+const NO_SCOPE = { strings: [""], values: [] };
+
+/** Flatten a captured query, nested fragments included, to its text. */
+function flatText(q: unknown): string {
+  if (q && typeof q === "object" && "raw" in q) return String((q as { raw: string }).raw);
+  if (!q || typeof q !== "object" || !("strings" in q)) return "?";
+  const { strings, values } = q as CapturedQuery;
+  return strings.map((str, i) => str + (i < values.length ? flatText(values[i]) : "")).join("");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   execute.mockResolvedValue([]);
@@ -46,7 +60,7 @@ describe("claimDueAccounts", () => {
     expect(text).toContain("UPDATE accounts");
     expect(text).toContain("SET next_poll_at = now() +");
     expect(text).toContain("RETURNING");
-    expect(q.values).toEqual([ACCOUNT_LEASE_MS, 8]);
+    expect(q.values).toEqual([ACCOUNT_LEASE_MS, NO_SCOPE, 8]);
   });
 
   it("only considers live, due accounts, never-polled first", async () => {
@@ -56,6 +70,23 @@ describe("claimDueAccounts", () => {
     expect(text).toContain("deleted_at IS NULL");
     expect(text).toContain("next_poll_at IS NULL OR next_poll_at <= now()");
     expect(text).toContain("ORDER BY last_polled_at ASC NULLS FIRST, id ASC");
+  });
+
+  it("leaves gateway-bound accounts to the gateway when claiming for the edge", async () => {
+    await claimDueAccounts(8, "edge");
+
+    const text = flatText(capturedSql());
+    expect(text).toMatch(/AND NOT \(\s*accounts\.requires_gateway/);
+    expect(text).toContain("accounts.bastion_id IS NOT NULL");
+    expect(text).toContain("FROM ssh_tunnel_configs t WHERE t.account_id = accounts.id");
+  });
+
+  it("claims only gateway-bound accounts when claiming for the gateway", async () => {
+    await claimDueAccounts(8, "gateway");
+
+    const text = flatText(capturedSql());
+    expect(text).toMatch(/AND \(\s*accounts\.requires_gateway/);
+    expect(text).not.toContain("AND NOT");
   });
 
   it("maps returned snake_case rows to PollAccountRow", async () => {
@@ -96,7 +127,7 @@ describe("claimDueCostAccounts", () => {
     expect(text).toContain("FOR UPDATE SKIP LOCKED");
     expect(text).toContain("UPDATE accounts");
     expect(text).toContain("SET cost_next_poll_at = now() +");
-    expect(q.values).toEqual([COST_LEASE_MS, ["aws", "gcp"], 2]);
+    expect(q.values).toEqual([COST_LEASE_MS, ["aws", "gcp"], NO_SCOPE, 2]);
   });
 
   // Regression: this used to be `= ANY(${ids})`. The sql tag expands a JS array

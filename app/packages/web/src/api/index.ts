@@ -25,6 +25,10 @@ import {
   unlessApiKey,
 } from "./auth-middleware";
 import { securityHeaders } from "./security-headers";
+import {
+  GATEWAY_ONLY_HEADER,
+  isGatewayOnlyError,
+} from "@infrawrench/server-core/runtime/gateway-only";
 import { workos, clientId } from "../auth/workos";
 import { getPublicOpenApiDocument } from "./openapi/index";
 import {
@@ -180,6 +184,13 @@ api.onError((err, c) => {
   if (err instanceof ObjectNotVisibleError) return c.json({ error: "Not found" }, 404);
   if (err instanceof ObjectAccessDeniedError) return c.json({ error: err.message }, 403);
   if (err instanceof SharingInputError) return c.json({ error: err.message }, 400);
+  // Only possible on the edge, where Node-only libraries are stubs: the edge
+  // router sees the header and replays the request on the Node gateway (see
+  // `edge/worker.ts`). The body is what a client gets if it cannot.
+  if (isGatewayOnlyError(err)) {
+    c.header(GATEWAY_ONLY_HEADER, "1");
+    return c.json({ error: "This request could not be completed here. Please try again." }, 503);
+  }
   // In production we don't echo the message/stack: they leak schema, paths, secrets.
   const correlationId = randomUUID();
   console.error(`[api] uncaught error correlationId=${correlationId}:`, err);

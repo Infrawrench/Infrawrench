@@ -720,9 +720,10 @@ resource "kubernetes_pod_disruption_budget_v1" "clickhouse" {
 
 locals {
   # Everything that legitimately queries ClickHouse: the three app workloads
-  # (all of them get CLICKHOUSE_METRICS_* through the shared env secret) plus
-  # this file's bootstrap Job and backup CronJob.
-  ch_client_apps = ["web", "poller", "github-watcher", "clickhouse-bootstrap", "clickhouse-backup"]
+  # (all of them get CLICKHOUSE_METRICS_* through the shared env secret), this
+  # file's bootstrap Job and backup CronJob, and the Cloudflare Tunnel
+  # connector the edge Workers query through (edge.tf; absent until enabled).
+  ch_client_apps = ["web", "poller", "github-watcher", "clickhouse-bootstrap", "clickhouse-backup", "cloudflared"]
 
   # kubelet probes come from the node, not a pod, so only the node subnet can
   # express them. The Calico addon does not exempt them the way Dataplane V2

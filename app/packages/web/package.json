@@ -8,7 +8,7 @@
     "dev": "tsx watch --import @infrawrench/server-core/env-loader server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --external:vite --external:bufferutil --external:utf-8-validate --banner:js=\"import{createRequire as __bannerCreateRequire}from'node:module';import{fileURLToPath as __bannerFileURLToPath}from'node:url';import{dirname as __bannerDirname}from'node:path';const require=__bannerCreateRequire(import.meta.url);const __filename=__bannerFileURLToPath(import.meta.url);const __dirname=__bannerDirname(__filename);\" && node ../workflow-runtime/scripts/copy-wasm.mjs dist && node ../workflow-runtime/scripts/copy-ts-libs.mjs dist",
     "start": "node dist/server.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p edge",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -17,11 +17,15 @@
     "test": "vitest run",
     "generate:plugin-strings": "tsx scripts/generate-plugin-strings.ts",
     "translations:status": "node scripts/translation-status.mjs",
-    "translations:audit": "node scripts/translation-audit.mjs"
+    "translations:audit": "node scripts/translation-audit.mjs",
+    "build:client": "vite build",
+    "edge:dev": "wrangler dev -c edge/wrangler.jsonc",
+    "edge:deploy": "wrangler deploy -c edge/wrangler.jsonc"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
     "@asteasolutions/zod-to-openapi": "^7.3.4",
+    "@clickhouse/client-web": "^1.23.1",
     "@google/genai": "2.13.0",
     "@hono/node-server": "^2.1.0",
     "@infrawrench/appstream-core": "workspace:*",
@@ -68,6 +72,7 @@
   },
   "devDependencies": {
     "@babel/parser": "^7.29.8",
+    "@cloudflare/workers-types": "^5.20260808.1",
     "@generaltranslation/compiler": "^1.3.37",
     "@modelcontextprotocol/client": "^2.0.0",
     "@tailwindcss/vite": "^4.3.3",
@@ -89,6 +94,7 @@
     "tsx": "^4.23.11",
     "typescript": "^7.0.2",
     "vite": "^6.4.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
   }
 }

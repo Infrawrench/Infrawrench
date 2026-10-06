@@ -4,6 +4,11 @@ import {
   markCommitmentPollSuccess,
 } from "@infrawrench/server-core/commitments/collect";
 import type { PollAccountRow } from "./poll-account";
+import {
+  isGatewayOnlyError,
+  runGatewayChecked,
+} from "@infrawrench/server-core/runtime/gateway-only";
+import { handOffToGateway } from "./gateway-handoff";
 
 /**
  * Commitment inventories are read daily.
@@ -24,7 +29,9 @@ const COMMITMENT_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 export async function pollAccountCommitments(account: PollAccountRow): Promise<void> {
   try {
-    const result = await collectAccountCommitments(account.id, account.organizationId);
+    const result = await runGatewayChecked(() =>
+      collectAccountCommitments(account.id, account.organizationId),
+    );
     const jitter = Math.floor(Math.random() * COMMITMENT_JITTER_MS);
     await markCommitmentPollSuccess(
       account.id,
@@ -38,6 +45,10 @@ export async function pollAccountCommitments(account: PollAccountRow): Promise<v
       console.log(`[commitments] read for ${account.id} (${account.pluginId}) returned no records`);
     }
   } catch (err) {
+    if (isGatewayOnlyError(err)) {
+      await handOffToGateway(account, "commitments", err);
+      return;
+    }
     // Exponential backoff on the failure count, capped at a day. The plugin
     // contract throws on any partial failure (one region down fails the whole
     // fetch), so failures here are expected during provider incidents and

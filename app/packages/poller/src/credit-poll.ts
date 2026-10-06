@@ -4,6 +4,11 @@ import {
   markCreditPollSuccess,
 } from "@infrawrench/server-core/credits/collect";
 import type { PollAccountRow } from "./poll-account";
+import {
+  isGatewayOnlyError,
+  runGatewayChecked,
+} from "@infrawrench/server-core/runtime/gateway-only";
+import { handOffToGateway } from "./gateway-handoff";
 
 /**
  * Credit balances are read roughly twice a day.
@@ -25,7 +30,9 @@ const CREDIT_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 export async function pollAccountCredits(account: PollAccountRow): Promise<void> {
   try {
-    const result = await collectAccountCredits(account.id, account.organizationId);
+    const result = await runGatewayChecked(() =>
+      collectAccountCredits(account.id, account.organizationId),
+    );
     const jitter = Math.floor(Math.random() * CREDIT_JITTER_MS);
     await markCreditPollSuccess(
       account.id,
@@ -39,6 +46,10 @@ export async function pollAccountCredits(account: PollAccountRow): Promise<void>
       console.log(`[poller] credit read for ${account.id} (${account.pluginId}) returned no pots`);
     }
   } catch (err) {
+    if (isGatewayOnlyError(err)) {
+      await handOffToGateway(account, "credits", err);
+      return;
+    }
     // Exponential backoff on the failure count, capped at a day. A credential
     // that cannot see the balance will keep failing, and hammering a
     // management API about it helps nobody.

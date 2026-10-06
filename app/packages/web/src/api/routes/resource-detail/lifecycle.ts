@@ -29,6 +29,7 @@ import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { checkChangeFreeze } from "../../../services/change-freezes";
 import { logAudit } from "../../../services/audit";
 import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
@@ -71,16 +72,18 @@ export function registerLifecycleRoutes(app: Hono): void {
     // and never awaited into the response: it reads billing, and the delete
     // has already succeeded whatever it finds. Never throws.
     if (ctx.account.pluginId === pluginId) {
-      void captureDeletionSaving({
-        organizationId,
-        accountId,
-        resourceId,
-        resourceTypeId,
-        pluginId,
-        source: "in_app",
-        userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
-        ctx: { client: ctx.client, plugin: ctx.plugin },
-      });
+      void keepAlive(
+        captureDeletionSaving({
+          organizationId,
+          accountId,
+          resourceId,
+          resourceTypeId,
+          pluginId,
+          source: "in_app",
+          userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
+          ctx: { client: ctx.client, plugin: ctx.plugin },
+        }),
+      );
     }
     return c.json({ ok: true });
   });
@@ -414,24 +417,26 @@ export function registerLifecycleRoutes(app: Hono): void {
     // rides this route) is recorded as a saving. Not awaited: it prices sizes
     // against the provider's catalogue, and the edit has already succeeded.
     if (prior) {
-      void captureResizeSaving({
-        organizationId,
-        accountId: input.accountId,
-        resourceId: input.resourceId,
-        resourceTypeId: input.resourceTypeId,
-        pluginId: input.pluginId,
-        source: "in_app",
-        priorFields: prior.fieldsJson,
-        nextFields: {
-          ...((prior.fieldsJson ?? {}) as Record<string, unknown>),
-          ...input.fields,
-          ...(updated.fields ?? {}),
-        },
-        displayName: updated.displayName,
-        externalId: prior.externalId ?? null,
-        userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
-        ctx: { client: ctx.client, plugin: ctx.plugin },
-      });
+      void keepAlive(
+        captureResizeSaving({
+          organizationId,
+          accountId: input.accountId,
+          resourceId: input.resourceId,
+          resourceTypeId: input.resourceTypeId,
+          pluginId: input.pluginId,
+          source: "in_app",
+          priorFields: prior.fieldsJson,
+          nextFields: {
+            ...((prior.fieldsJson ?? {}) as Record<string, unknown>),
+            ...input.fields,
+            ...(updated.fields ?? {}),
+          },
+          displayName: updated.displayName,
+          externalId: prior.externalId ?? null,
+          userId: (c.get("session") as { userId?: string } | undefined)?.userId ?? null,
+          ctx: { client: ctx.client, plugin: ctx.plugin },
+        }),
+      );
     }
 
     return c.json({

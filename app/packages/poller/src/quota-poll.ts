@@ -4,6 +4,11 @@ import {
   markQuotaPollSuccess,
 } from "@infrawrench/server-core/quotas/collect";
 import type { PollAccountRow } from "./poll-account";
+import {
+  isGatewayOnlyError,
+  runGatewayChecked,
+} from "@infrawrench/server-core/runtime/gateway-only";
+import { handOffToGateway } from "./gateway-handoff";
 
 /**
  * Quotas are read roughly every six hours.
@@ -26,7 +31,9 @@ const QUOTA_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 export async function pollAccountQuotas(account: PollAccountRow): Promise<void> {
   try {
-    const result = await collectAccountQuotas(account.id, account.organizationId);
+    const result = await runGatewayChecked(() =>
+      collectAccountQuotas(account.id, account.organizationId),
+    );
     const jitter = Math.floor(Math.random() * QUOTA_JITTER_MS);
     await markQuotaPollSuccess(
       account.id,
@@ -50,6 +57,10 @@ export async function pollAccountQuotas(account: PollAccountRow): Promise<void> 
       );
     }
   } catch (err) {
+    if (isGatewayOnlyError(err)) {
+      await handOffToGateway(account, "quotas", err);
+      return;
+    }
     // Exponential backoff on the failure count, capped at a day. A credential
     // that cannot read Service Quotas will keep failing, and hammering a
     // management API about it helps nobody: least of all on AWS, where the

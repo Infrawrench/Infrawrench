@@ -8,6 +8,21 @@ export type ClickHouseDb = ReturnType<typeof buildDb>;
 let cachedClient: ClickHouseClient | null = null;
 let cachedDb: ClickHouseDb | null = null;
 let configured: boolean | null = null;
+let transportFetch: typeof fetch | null = null;
+
+/**
+ * Route every ClickHouse request through `fetchImpl` instead of the network.
+ * The edge entry points pass their Workers VPC binding's `fetch` here, which
+ * is how a Worker reaches the in-cluster ClickHouse without it being exposed
+ * publicly. On the edge `@clickhouse/client` is aliased to
+ * `@clickhouse/client-web`, whose config takes this option; Node never calls
+ * it. Must run before the first query (the client is cached).
+ */
+export function configureClickHouseTransport(fetchImpl: typeof fetch): void {
+  transportFetch = fetchImpl;
+  cachedClient = null;
+  cachedDb = null;
+}
 
 /**
  * Returns true if the four CLICKHOUSE_METRICS_* env vars are set. The metrics
@@ -63,6 +78,9 @@ export function getClickHouseClient(): ClickHouseClient {
       // swallowed the rejection and the pipeline read as silently empty.
       date_time_input_format: "best_effort",
     },
+    // Only `@clickhouse/client-web` (the edge alias) reads this; the Node
+    // client's config type has no such field, hence the widening.
+    ...(transportFetch ? ({ fetch: transportFetch } as object) : {}),
   });
   return cachedClient;
 }
@@ -89,4 +107,5 @@ export function resetClickHouseClientForTests(): void {
   cachedClient = null;
   cachedDb = null;
   configured = null;
+  transportFetch = null;
 }
