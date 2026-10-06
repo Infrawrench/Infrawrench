@@ -1489,6 +1489,24 @@ Verified against the Management API OpenAPI document (`https://api.supabase.com/
 - Status feed: `https://status.vultr.com/status.json` (custom JSON, not Statuspage): `regions.{id}.alerts[]` keyed by API region ids plus `service_alerts[]` with an optional `region`; `status: "ongoing"` while active.
 - Not done: Container Registry, CDN, Serverless Inference, ISOs, organizations/IAM, NAT gateways, database connection pools/topics/connectors, LB auto-SSL. Vultr's DNS records cannot point at Vultr instances through the shared `dnsContentField` source lists until plugin-base adds Vultr outputs there.
 
+### Resend (`@infrawrench/plugin-resend`)
+
+Verified against Resend's published OpenAPI spec (`github.com/resend/resend-openapi` `resend.json`, 1.5.1, updated 2026-09-29) and resend.com/docs, 2026-10.
+
+- **Auth**: one `apiKey` (`re_…`), Bearer, host `api.resend.com`. Only **Full access** keys work: a sending-access key answers 401 `restricted_api_key` on everything but sending (the account lister rethrows that with a "needs Full access" message). A malformed key is a 400 `validation_error`, not a 401. Errors are `{statusCode, message, name}`; `ResendApiError` keeps `status` and `errorName`.
+- **No CORS** on `api.resend.com` (no `Access-Control-*` even on preflight), so the desktop renderer depends on the host `services.http` path; `api.ts resendFetch` uses it whenever present.
+- **Rate limit 10 req/s per team** (shared across keys). `resendFetch` retries a 429 up to 3 times after `retry-after` (capped 10 s), except `daily_quota_exceeded` / `monthly_quota_exceeded`, which waiting does not fix. Manifest `rateLimit` is 5/s.
+- **Pagination**: `limit` 1-100 + `after=<last id>` cursor, `has_more`. Timestamps come back as Postgres text (`2023-04-26 20:21:26.347412+00`); `toIso` normalises.
+- **15 types**: `resend-account` (root, from `GET /usage`), `resend-domain`, `resend-dns-record` (child), `resend-api-key`, `resend-webhook`, `resend-email` (100 newest), `resend-broadcast`, `resend-template`, `resend-segment`, `resend-topic`, `resend-contact` (1,000 newest), `resend-contact-property`, `resend-suppression`, `resend-automation`, `resend-oauth-grant`.
+- **DNS records are only on the single GET**: `GET /domains` omits `records`, so each domain is re-read (`GET /domains/{id}`, concurrency 3) and cached 60 s so the domain and DNS-record listers share one pass. Record names are relative (`resend._domainkey`, `send`, `@`/empty for apex) and stored fully qualified; `record` is the purpose (SPF/DKIM/Receiving/Tracking/TrackingCAA), `ttl` is the string `"Auto"`, MX carries `priority`. Declared `dnsRole: record` with `priorityKey`, parent is the domain (not a zone), like Postmark. Domain posture check: `status` not `verified`.
+- **Domain update**: `PATCH /domains/{id}` takes `capabilities` as a whole object, so changing only `sending` re-reads the domain to keep `receiving`. Region and custom return path are create-only. `tls` is accepted on create/update but not returned on read.
+- **Secrets**: webhook `GET /webhooks/{id}` returns `signing_secret` every time (resolved live; `POST …/signing-secret/rotate` rotates). API key tokens are returned only by `POST /api-keys` (stored as plaintext secretState + `services.secrets`); the list returns only `id, name, created_at, last_used_at`, never the permission or domain.
+- **Webhook events**: no list endpoint; the 19 types come from the spec's `webhooks` section (email.*, contact.*, domain.*, suppression.*). Deliveries: `GET /webhooks/{id}/events` (status pending/attempting/success/failed), replay `POST …/events/{event_id}/replay`; the detail table's per-row Replay button encodes the event id in the action id (`replay:<id>`).
+- **Metrics**: `GET /emails/metrics` with `dimensions=period`, `granularity` hourly/daily, filtered by `domain_id` or `broadcast_id`; list params are comma-joined. Rows carry metric keys directly; rates are fractions (charted ×100). Cached by Resend up to 15 min, clamped to plan retention.
+- **Quotas** from `GET /usage`: emails daily (free plan only) and monthly, contacts, segments, domains, automation runs, AI credits; `null` limits (unlimited / not on plan) are skipped.
+- **Status**: `status.resend.com` redirects to `resend-status.com`, incident.io's Statuspage emulation: `/api/v2/incidents.json` filtered to unresolved (unresolved.json 404s). Incidents carry no components, so they read provider-wide.
+- **Not done**: cost (no billing API), Terraform (no official provider; only community ones), audiences (deprecated for segments; broadcasts' `audience_id` mapped to `segmentId`), automation create (step graphs), contact imports, segment metrics (private beta), sending email.
+
 ---
 
 ## Publish capability (cross-plugin)

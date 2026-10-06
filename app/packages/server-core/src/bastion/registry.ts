@@ -205,6 +205,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   stripe: ["api.stripe.com"],
   // *.supabase.co is each project's own gateway, used for the Storage API
   supabase: ["api.supabase.com", "*.supabase.co"],
+  resend: ["api.resend.com"],
 };
 
 /**
