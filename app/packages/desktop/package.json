@@ -196,6 +196,7 @@
     "@infrawrench/plugin-postmark": "workspace:*",
     "@infrawrench/plugin-runpod": "workspace:*",
     "@infrawrench/plugin-render": "workspace:*",
+    "@infrawrench/plugin-stripe": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

@@ -202,6 +202,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // REST management API, GraphQL (account, GPU types, SSH keys) and the Serverless queue API
   runpod: ["rest.runpod.io", "api.runpod.io", "api.runpod.ai"],
   render: ["api.render.com"],
+  stripe: ["api.stripe.com"],
 };
 
 /**

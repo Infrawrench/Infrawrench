@@ -80,6 +80,7 @@ import { plugin as twilioPlugin } from "@infrawrench/plugin-twilio";
 import { plugin as postmarkPlugin } from "@infrawrench/plugin-postmark";
 import { plugin as runpodPlugin } from "@infrawrench/plugin-runpod";
 import { plugin as renderPlugin } from "@infrawrench/plugin-render";
+import { plugin as stripePlugin } from "@infrawrench/plugin-stripe";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -168,4 +169,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   postmarkPlugin,
   runpodPlugin,
   renderPlugin,
+  stripePlugin,
 ];

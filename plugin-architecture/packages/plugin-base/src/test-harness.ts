@@ -156,6 +156,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   postmark: { accountToken: "test-postmark-account-token" },
   runpod: { apiKey: "rpa_test" },
   render: { apiKey: "rnd_test" },
+  stripe: { apiKey: "rk_test_123" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
