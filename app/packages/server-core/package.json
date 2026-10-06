@@ -376,6 +376,7 @@
     "@infrawrench/plugin-gitlab": "workspace:*",
     "@infrawrench/plugin-civo": "workspace:*",
     "@infrawrench/plugin-xata": "workspace:*",
+    "@infrawrench/plugin-heroku": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

@@ -165,6 +165,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   gitlab: { url: "https://gitlab.com", token: "glpat-test-token" },
   civo: { apiKey: "civotestkey000000000000000000000000000000000000000" },
   xata: { apiKey: "xau_test" },
+  heroku: { apiKey: "HRKU-test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

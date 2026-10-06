@@ -215,6 +215,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   civo: ["api.civo.com", "*.civo.com"],
   // *.xata.tech is each branch's own SQL gateway host ({branch}.{region}.xata.tech)
   xata: ["api.xata.tech", "*.xata.tech"],
+  // *.heroku.com covers the one-off log session URLs the API returns
+  heroku: ["api.heroku.com", "*.heroku.com"],
 };
 
 /**

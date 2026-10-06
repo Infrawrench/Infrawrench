@@ -89,6 +89,7 @@ import { plugin as railwayPlugin } from "@infrawrench/plugin-railway";
 import { plugin as gitlabPlugin } from "@infrawrench/plugin-gitlab";
 import { plugin as civoPlugin } from "@infrawrench/plugin-civo";
 import { plugin as xataPlugin } from "@infrawrench/plugin-xata";
+import { plugin as herokuPlugin } from "@infrawrench/plugin-heroku";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -186,4 +187,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   gitlabPlugin,
   civoPlugin,
   xataPlugin,
+  herokuPlugin,
 ];

@@ -1593,6 +1593,24 @@ Verified against `https://api.xata.tech/openapi.json` and the xata.io docs (2026
 - **Status feed**: incident.io at `www.xatastatus.com`; `/api/v2/incidents/unresolved.json` 404s, so the full `/incidents.json` is parsed and filtered. Components "Database connectivity (AWS us-east-1)" map to regions emitted both bare and cloud-prefixed.
 - **Not done**: SSO domains/providers, GitHub App repository mappings, Vercel/AWS marketplace endpoints, organization deletion. No official Terraform provider for the new Xata.
 
+### Heroku (`@infrawrench/plugin-heroku`)
+
+- Auth: `Authorization: Bearer <api key>` plus `Accept: application/vnd.heroku+json; version=3` against `https://api.heroku.com` (JSON hyper-schema at `/schema`, read 2026-10). Keys are `HRKU-` prefixed since April 2024 and act with the user's full access. Optional `team` credential (provider-options picker over `GET /teams`) scopes apps/add-ons to `/teams/{team}/apps|addons`.
+- Pagination is the `Range` header: send `id ..; max=1000;`, a `206` answer carries `Next-Range` to send next. Releases are read newest-first with `Range: version ..; order=desc, max=10;`. 4,500 requests/hour per user; manifest `rateLimit` 30 / 1.2 per s.
+- 14 types: `team`, `app` (externalId = app UUID), app children `formation` (`{appId}/{type}`), `dyno`, `release`, `config-var` (`{appId}/{KEY}`, value only as a sensitive output), `domain`, `sni-endpoint`, `log-drain`; `add-on` (top level, `/addons`), `pipeline` with children `pipeline-coupling` and `review-app`; `space`.
+- Config vars: `PATCH /apps/{app}/config-vars {KEY: value}`, delete is `{KEY: null}`. Add-on owned vars are marked from `/addons` `config_vars`.
+- Writes: team apps go through `POST /teams/apps`, personal through `POST /apps`; ACM is `POST|DELETE|PATCH /apps/{app}/acm`; formation `PATCH /apps/{app}/formation/{type} {quantity, dyno_size: {name}}`; rollback `POST /apps/{app}/releases {release}`; one-off `POST /apps/{app}/dynos {command, attach: false, type: "run:detached"}`; restart all `DELETE /apps/{app}/dynos`, a process type `DELETE /apps/{app}/formations/{type}`; add-on plan change `PATCH /apps/{app}/addons/{id} {plan}` (plan is required on every PATCH, also for a rename); promotion `POST /pipeline-promotions {pipeline, source.app, targets[].app}` to every coupling in the next stage.
+- Formation lifecycle: stop = quantity 0, start = quantity 1 (the API keeps no "previous" count).
+- Add-on create: plans of `heroku-postgresql`, `heroku-redis`, `heroku-kafka` and `scheduler` are listed from `/addon-services/{svc}/plans`; others are typed as `service:plan` (listing every marketplace service's plans would be ~150 calls). Existing add-ons get a Change Plan picker from their own service's plans.
+- Logs: `POST /apps/{app}/log-sessions {lines (≤1500), source, dyno_name, tail: false}` returns a one-off `logplex_url` (on a `*.heroku.com` host) whose body is the text tail.
+- Costs (`periodNative`, `chargeTypes`): monthly invoices dated to `period_start`. Team invoices (`/teams/{id}/invoices`) are integer **cents** with `platform_total`/`addons_total`/`database_total`; personal invoices (`/account/invoices`) are `number` **dollars** with only `charges_total`/`total` (schema types, matching other open-source collectors). The remainder to `total` is one credit/other row. No current-month estimate. `team-daily-usage` was not used: it reports enterprise credits, not money.
+- Credits: `/account/credits` (`balance`/`amount` in cents), expired ones dropped.
+- No metrics: the Platform API has no metrics endpoint (only telemetry drains). No quotas: the 4,500/hour limit is documentation, not an API value.
+- Status: `https://status.heroku.com/api/v4/current-status` (`incidents`, `scheduled`); tags NA/EMEA/APAC map to the regions in each geography (`us`, `virginia`, `oregon`, `montreal` / `eu`, `dublin`, `frankfurt`, `london` / `tokyo`, `sydney`, `mumbai`, `singapore`), systems Apps/Data to types; untagged incidents are provider-wide.
+- Terraform: `heroku/heroku` ~> 5.4; app (import by name), formation (`app:type`), addon (id), domain (`app:hostname`), pipeline (`owner` block), coupling, space (name), drain (`app:drain-id`, skipped when the URL embeds credentials). `app_id` uses the app UUID literal.
+- DNS: `dnsServiceHosts` claims `<name>(-<12 hex>)?.herokuapp.com` for apps (newer apps carry the random suffix).
+- Not done: review app creation (needs a source tarball URL), builds from source, collaborators and team membership edits, app transfers, VPN/peering, telemetry drains, Fir-generation OTel features.
+
 ---
 
 ## Publish capability (cross-plugin)
