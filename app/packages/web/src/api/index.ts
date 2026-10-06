@@ -346,18 +346,30 @@ api.route("/api/agent/claim", agentClaimRoutes);
 // authorised. See routes/internal-relay.ts for why that is the whole check.
 api.route("/api/internal", relayRoutes);
 
+// The session-only surface: user-scoped, so it lives outside the org tree.
+//
+// One `use` per mount, never `authed.use("*")`. Hono registers a sub-app's
+// `use("*")` as `/api/*` once the sub-app is mounted at `/api`, so it ran on
+// the org tree too, ahead of `apiKeyOrgMiddleware`, and rejected every `iwk_`
+// key and agent token there (neither is a person's WorkOS session).
+// `authed-scope.test.ts` drives the real `api` to keep it that way.
 const authed = new Hono();
-authed.use("*", sessionMiddleware);
-
-authed.route("/auth", authRoutes);
-// Personal account settings: user-scoped, so it lives outside the org tree.
-authed.route("/profile", profileRoutes);
-authed.route("/orgs", orgManagementRoutes);
-authed.route("/invitations", invitationAcceptRoutes);
-// Platform-admin surface: session-authed here, allowlist-gated inside.
-authed.route("/admin", adminRoutes);
-// Push devices are user-scoped (a phone registers once across orgs).
-authed.route("/push", pushDeviceRoutes);
+const AUTHED_ROUTES = [
+  ["/auth", authRoutes],
+  // Personal account settings.
+  ["/profile", profileRoutes],
+  ["/orgs", orgManagementRoutes],
+  ["/invitations", invitationAcceptRoutes],
+  // Platform-admin surface: session-authed here, allowlist-gated inside.
+  ["/admin", adminRoutes],
+  // Push devices are user-scoped (a phone registers once across orgs).
+  ["/push", pushDeviceRoutes],
+] as const;
+for (const [path, routes] of AUTHED_ROUTES) {
+  // `/x/*` also matches `/x` itself, and not `/xy`.
+  authed.use(`${path}/*`, sessionMiddleware);
+  authed.route(path, routes);
+}
 
 api.route("/api", authed);
 
