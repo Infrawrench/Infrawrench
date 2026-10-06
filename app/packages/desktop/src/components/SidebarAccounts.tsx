@@ -38,6 +38,8 @@ interface SidebarAccountsProps {
 interface AccountResourcesState {
   loading: boolean;
   error: string | null;
+  /** Some resource types failed to list while others loaded. */
+  warning?: string | undefined;
   resources: ResourceInstance[];
 }
 
@@ -111,7 +113,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const workspaceTabs = useUIStore((s) => s.workspaceTabs);
-  const connectedAccounts = useUIStore((s) => s.connectedAccounts);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -248,6 +249,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     }
     try {
       let allResources: ResourceInstance[] = [];
+      let warning: string | undefined;
       if (account.cloudManaged) {
         if (!activeCloudOrgId) throw new Error(gt("No active cloud workspace"));
         const cloudRows = await listCloudAccountResources(activeCloudOrgId, id);
@@ -279,13 +281,29 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const results = await Promise.allSettled(
           topLevelTypes.map((t) => client.listResources(t.id, id)),
         );
-        for (const r of results) {
-          if (r.status === "fulfilled") allResources.push(...r.value);
+        const failedTypes: string[] = [];
+        let firstFailure: unknown;
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            allResources.push(...r.value);
+          } else {
+            failedTypes.push(topLevelTypes[i]!.pluralDisplayName);
+            firstFailure ??= r.reason;
+          }
+        });
+        if (failedTypes.length > 0 && failedTypes.length === topLevelTypes.length) {
+          throw firstFailure;
+        }
+        if (failedTypes.length > 0) {
+          warning = gt("Couldn't list {types}: {error}", {
+            types: failedTypes.join(", "),
+            error: formatErrorMessage(firstFailure),
+          });
         }
       }
       setAccountResources((prev) => ({
         ...prev,
-        [id]: { loading: false, error: null, resources: allResources },
+        [id]: { loading: false, error: null, warning, resources: allResources },
       }));
       const sshHosts: Record<string, string> = {};
       const sshUsernames: Record<string, string> = {};
@@ -607,7 +625,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                     account={account}
                     group={group}
                     isExpanded={isExpanded}
-                    connected={connectedAccounts.has(account.id)}
+                    issue={resourceState?.error ?? resourceState?.warning}
                     acceptsSecretImport={secretImportPluginIds.has(account.pluginId)}
                     onToggleExpand={() => void toggleExpand(account)}
                     onNavigate={() =>

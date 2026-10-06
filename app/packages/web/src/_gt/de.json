@@ -15435,5 +15435,10 @@
     ]
   },
   "103a895b60e7fafe": "Hier gibt es noch nichts anzuzeigen.",
-  "9b6c644edff4c76f": "Keine Guthaben oder Zusagen gefunden. Verbundene Konten melden hier Reservierungen, Savings Plans, Committed-Use-Rabatte und Guthabenstände, sobald ihr Anbieter welche hat."
+  "9b6c644edff4c76f": "Keine Guthaben oder Zusagen gefunden. Verbundene Konten melden hier Reservierungen, Savings Plans, Committed-Use-Rabatte und Guthabenstände, sobald ihr Anbieter welche hat.",
+  "1de36ca50e73ce0d": "Kritisch",
+  "4ebc13b08e0dc6f4": "Warnung",
+  "b2ad1dbc3fa36e3e": "Beeinträchtigt",
+  "4700bf54096e7dea": "Der Bastion-Agent hat sich in letzter Zeit nicht gemeldet.",
+  "97e0e78d2c0a878d": "Ressourcen konnten nicht aktualisiert werden: {error}"
 }

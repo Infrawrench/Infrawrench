@@ -9,6 +9,7 @@ import {
   type EnvironmentInstance,
   type EnvironmentInstanceStatus,
 } from "@infrawrench/client-core";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 import { CaptureTemplateModal } from "./CaptureTemplateModal.js";
 import { InstantiateModal } from "./InstantiateModal.js";
 import type {
@@ -20,22 +21,6 @@ import type {
 
 export interface EnvironmentsPanelProps {
   client: EnvironmentsClient;
-}
-
-function statusDotClass(status: EnvironmentInstanceStatus): string {
-  switch (status) {
-    case "active":
-      return "bg-emerald-500";
-    case "creating":
-    case "tearing-down":
-      return "bg-blue-500";
-    case "partial":
-      return "bg-amber-500";
-    case "failed":
-      return "bg-red-500";
-    default:
-      return "bg-neutral-500";
-  }
 }
 
 function statusLabel(status: EnvironmentInstanceStatus, gt: ReturnType<typeof useGT>): string {
@@ -84,10 +69,12 @@ function InstanceItem({
           className="min-w-0 flex-1 text-left"
         >
           <div className="flex items-center gap-2">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${statusDotClass(instance.status)}`}
-              title={statusLabel(instance.status, gt)}
-            />
+            {(instance.status === "failed" || instance.status === "partial") && (
+              <IssueIndicator
+                tone={instance.status === "failed" ? "danger" : "warning"}
+                reason={statusLabel(instance.status, gt)}
+              />
+            )}
             <span className="truncate text-sm font-medium text-on-surface">{instance.name}</span>
             <span className="text-xs text-on-surface-faint">
               {gt("from {name}", { name: instance.templateName })}

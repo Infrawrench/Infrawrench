@@ -16,6 +16,7 @@ import {
   ChevronIcon,
   CloseIcon,
   PanelLeftCloseIcon,
+  IssueIndicator,
   PanelLeftOpenIcon,
   SettingsIcon,
 } from "@infrawrench/ui";
@@ -90,7 +91,12 @@ interface WebSidebarProps {
 const EMPTY_EXPANDED: ReadonlySet<string> = new Set();
 const EMPTY_RESOURCES: Record<
   string,
-  { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }
+  {
+    loading: boolean;
+    resources: ResourceSummary[];
+    error?: string | undefined;
+    warning?: string | undefined;
+  }
 > = {};
 
 export function WebSidebar({ orgId }: WebSidebarProps) {
@@ -108,7 +114,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     forOrg: string | null;
     map: Record<
       string,
-      { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }
+      {
+        loading: boolean;
+        resources: ResourceSummary[];
+        error?: string | undefined;
+        warning?: string | undefined;
+      }
     >;
   }>({ forOrg: orgId, map: {} });
 
@@ -385,7 +396,25 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             };
           });
         })
-        .catch((e) => console.error("Background sync failed:", e));
+        .catch((e) => {
+          console.error("Background sync failed:", e);
+          const message = e instanceof Error ? e.message : String(e);
+          setAccountResourcesStore((prev) => {
+            const base = prev.forOrg === orgId ? prev.map : {};
+            const current = base[accountId];
+            return {
+              forOrg: orgId,
+              map: {
+                ...base,
+                [accountId]: {
+                  loading: false,
+                  resources: current?.resources ?? existing,
+                  warning: gt("Couldn't refresh resources: {error}", { error: message }),
+                },
+              },
+            };
+          });
+        });
     } catch (e) {
       if (background) return;
       setAccountResourcesStore((prev) => {
@@ -867,6 +896,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               {group.accounts.map((account) => {
                 const isExpanded = expanded.has(account.id);
                 const resourceState = accountResources[account.id];
+                const issue = resourceState?.error ?? resourceState?.warning;
 
                 return (
                   <div key={account.id}>
@@ -896,8 +926,8 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         }
                         className="flex items-center gap-2 flex-1 text-left min-w-0"
                       >
-                        <span className="size-1.5 rounded-full flex-shrink-0 bg-surface-sunken" />
                         <span className="truncate">{account.displayName}</span>
+                        {issue && <IssueIndicator reason={issue} />}
                       </button>
                     </div>
 

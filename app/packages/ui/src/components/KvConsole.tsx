@@ -83,9 +83,6 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60">
-        <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
-        />
         <span className="text-xs text-on-surface-muted font-medium">
           {gt("{label} Console", { label: profile.label })}
         </span>

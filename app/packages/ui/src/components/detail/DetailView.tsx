@@ -46,7 +46,7 @@ import {
 } from "./ArtifactRegistryView.js";
 import { KvBrowserView, type KvBrowserListParams } from "./KvBrowserView.js";
 import { ResourceDependenciesPanel } from "../graph/ResourceDependenciesPanel.js";
-import { statusDotClass } from "../schema-tokens.js";
+import { StatusIssueIndicator } from "../IssueIndicator.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
   dispatchInvokePluginAction,
@@ -1346,9 +1346,7 @@ function ChildResourcePill({
   nonInteractive?: boolean | undefined;
 }) {
   const statusDot = child.status && (
-    <span
-      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDotClass(child.status.status)}`}
-    />
+    <StatusIssueIndicator status={child.status.status} label={child.status.label} />
   );
   if (nonInteractive) {
     return (

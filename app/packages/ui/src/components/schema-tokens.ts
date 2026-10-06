@@ -23,16 +23,13 @@ export function badgeClass(color: string | undefined): string {
   return (color && BADGE_CLASSES[color]) || BADGE_CLASSES["gray"]!;
 }
 
-/** `StatusDotNode.status` → dot background classes. Unknown states read as `unknown`. */
-const STATUS_DOT_CLASSES: Record<string, string> = {
-  healthy: "bg-emerald-400",
-  degraded: "bg-yellow-400",
-  error: "bg-red-400",
-  unknown: "bg-surface-sunken",
-  provisioning: "bg-blue-400 animate-pulse",
-  info: "bg-blue-400",
-};
-
-export function statusDotClass(status: string | undefined): string {
-  return (status && STATUS_DOT_CLASSES[status]) || STATUS_DOT_CLASSES["unknown"]!;
+/**
+ * `StatusDotNode.status` → whether it needs attention. Only problem states are
+ * drawn (as a warning triangle); healthy, unknown, provisioning and info states
+ * render nothing.
+ */
+export function statusIssueTone(status: string | undefined): "warning" | "danger" | null {
+  if (status === "error") return "danger";
+  if (status === "degraded") return "warning";
+  return null;
 }

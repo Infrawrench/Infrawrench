@@ -1,6 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useGT } from "gt-react";
 import type { ChildResource } from "../components/detail/DetailView.js";
+import { StatusIssueIndicator } from "../components/IssueIndicator.js";
 import type { DraggableResource } from "./types.js";
 
 export interface DraggableChildPillProps {
@@ -54,19 +55,7 @@ export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableCh
         className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
       >
         {child.status && (
-          <span
-            className={`size-1.5 rounded-full flex-shrink-0 ${
-              child.status.status === "healthy"
-                ? "bg-blue-400"
-                : child.status.status === "error"
-                  ? "bg-red-400"
-                  : child.status.status === "degraded"
-                    ? "bg-yellow-400"
-                    : child.status.status === "provisioning"
-                      ? "bg-blue-400 animate-pulse"
-                      : "bg-surface-sunken"
-            }`}
-          />
+          <StatusIssueIndicator status={child.status.status} label={child.status.label} />
         )}
         <span className="text-sm font-medium text-on-surface-secondary leading-none">
           {child.displayName}

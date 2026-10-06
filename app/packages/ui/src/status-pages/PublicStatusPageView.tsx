@@ -10,39 +10,33 @@ import {
   type StatusPageState,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
+import { IssueIndicator, type IssueTone } from "../components/IssueIndicator.js";
 
 export interface PublicStatusPageViewProps {
   page: PublicStatusPage;
 }
 
 /**
- * Colour for a component state. Deliberately paired with a text label
- * everywhere it appears: a status page read by a colour-blind visitor, or
- * screenshotted in greyscale into a ticket, must still say what it means.
+ * Which component states earn a warning triangle. Always paired with a text
+ * label: a status page read by a colour-blind visitor, or screenshotted in
+ * greyscale into a ticket, must still say what it means.
  */
-function stateColor(state: StatusComponentState): string {
-  switch (state) {
-    case "operational":
-      return "bg-emerald-500";
-    case "degraded":
-      return "bg-amber-500";
-    case "down":
-      return "bg-red-500";
-    case "unknown":
-      return "bg-neutral-400";
-  }
+function stateIssueTone(state: StatusComponentState): IssueTone | null {
+  if (state === "down") return "danger";
+  if (state === "degraded") return "warning";
+  return null;
 }
 
-function pageAccent(state: StatusPageState): { bar: string; text: string } {
+function pageAccent(state: StatusPageState): { tone: IssueTone | null; text: string } {
   switch (state) {
     case "operational":
-      return { bar: "bg-emerald-500", text: "text-success" };
+      return { tone: null, text: "text-success" };
     case "degraded":
-      return { bar: "bg-amber-500", text: "text-warning" };
+      return { tone: "warning", text: "text-warning" };
     case "major_outage":
-      return { bar: "bg-red-500", text: "text-danger" };
+      return { tone: "danger", text: "text-danger" };
     case "unknown":
-      return { bar: "bg-neutral-400", text: "text-on-surface-tertiary" };
+      return { tone: null, text: "text-on-surface-tertiary" };
   }
 }
 
@@ -75,6 +69,7 @@ function ComponentRow({
 }) {
   const gt = useGT();
   const gtData = useDataString();
+  const tone = stateIssueTone(component.state);
   return (
     <div className="flex flex-col gap-2 border-b border-border px-4 py-3 last:border-b-0">
       <div className="flex items-center justify-between gap-3">
@@ -85,10 +80,9 @@ function ComponentRow({
               {gt("{value} 24h", { value: formatUptime(component.uptime24h) })}
             </span>
           )}
-          <span
-            aria-hidden="true"
-            className={`h-2 w-2 rounded-full ${stateColor(component.state)}`}
-          />
+          {tone && (
+            <IssueIndicator tone={tone} reason={gtData(statusComponentLabel(component.state))} />
+          )}
           <span className="text-on-surface-secondary">
             {gtData(statusComponentLabel(component.state))}
           </span>
@@ -167,13 +161,13 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
       </header>
 
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised px-4 py-3">
-        <span aria-hidden="true" className={`h-3 w-3 rounded-full ${accent.bar}`} />
+        {accent.tone && <IssueIndicator tone={accent.tone} reason={page.summary} size={14} />}
         <span className={`text-sm font-medium ${accent.text}`}>{page.summary}</span>
       </div>
 
       {/*
         Notices sit above the components, because a sentence from a human is
-        what a visitor came for and the coloured dots are what they will read
+        what a visitor came for and the component states are what they will read
         second. Everything about a notice that could identify the org (the
         declared incident's id, who wrote it) is absent from the payload, so
         there is nothing here to accidentally render.

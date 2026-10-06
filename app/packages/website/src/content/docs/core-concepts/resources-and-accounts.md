@@ -49,6 +49,8 @@ Providers
 
 The sidebar auto-refreshes every 30 seconds. You can manually refresh an account or resource group from its context menu.
 
+Healthy things carry no marker. When an account or resource needs attention (its resources failed to load, a refresh failed, or the provider reports it as errored or degraded), a warning triangle appears next to its name; hover it to see why. The same triangle marks problems across the app: a down probe, a firing alert rule, an offline bastion, a failed environment.
+
 The sidebar is deliberately shallow — it lists top-level resources so you can reach the common ones quickly. Nested resources like DNS records and database users are reached through their parent, or through the account page below.
 
 ## Account pages

@@ -7,11 +7,11 @@ import {
   groupCalendarEventsByDay,
   type CalendarEvent,
   type CalendarEventKind,
-  type CalendarEventSeverity,
   type CalendarResponse,
   type CalendarSubscription,
 } from "@infrawrench/client-core";
 import { ChevronIcon } from "../components/icons/ChromeIcons.js";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 
 export interface CalendarRange {
   /** ISO 8601, inclusive lower bound. */
@@ -78,12 +78,6 @@ const KIND_BADGE_CLASSES: Record<CalendarEventKind, string> = {
   "commitment-expiry": "bg-violet-500/10 text-on-surface-secondary",
   "workflow-schedule": "bg-emerald-500/10 text-success",
   incident: "bg-red-500/10 text-danger",
-};
-
-const SEVERITY_DOT_CLASSES: Record<CalendarEventSeverity, string> = {
-  critical: "bg-danger",
-  warning: "bg-warning",
-  info: "bg-on-surface-faint",
 };
 
 function kindLabel(gt: Gt, kind: CalendarEventKind): string {
@@ -176,10 +170,13 @@ function EventChip({
   const time = event.allDay ? gt("All day") : formatTime(event.startsAt, timeZone);
   const body = (
     <>
-      <span
-        aria-hidden="true"
-        className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${SEVERITY_DOT_CLASSES[event.severity]}`}
-      />
+      {event.severity !== "info" && (
+        <IssueIndicator
+          tone={event.severity === "critical" ? "danger" : "warning"}
+          reason={event.severity === "critical" ? gt("Critical") : gt("Warning")}
+          size={11}
+        />
+      )}
       <span className="truncate">{event.title}</span>
       {!compact && (
         <span className="ml-auto shrink-0 text-xs tabular-nums text-on-surface-faint">{time}</span>

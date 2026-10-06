@@ -15258,5 +15258,10 @@
     ]
   },
   "103a895b60e7fafe": "Todavía no hay nada que mostrar aquí.",
-  "9b6c644edff4c76f": "No se encontraron créditos ni compromisos. Las cuentas conectadas muestran aquí reservas, planes de ahorro, descuentos por uso comprometido y saldos de crédito en cuanto su proveedor tenga alguno."
+  "9b6c644edff4c76f": "No se encontraron créditos ni compromisos. Las cuentas conectadas muestran aquí reservas, planes de ahorro, descuentos por uso comprometido y saldos de crédito en cuanto su proveedor tenga alguno.",
+  "1de36ca50e73ce0d": "Crítico",
+  "4ebc13b08e0dc6f4": "Advertencia",
+  "b2ad1dbc3fa36e3e": "Degradado",
+  "4700bf54096e7dea": "El agente del bastión no se ha conectado recientemente.",
+  "7e8b020239ceae1c": "No se pudieron listar {types}: {error}"
 }

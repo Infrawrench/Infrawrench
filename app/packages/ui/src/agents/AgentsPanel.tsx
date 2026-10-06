@@ -27,6 +27,7 @@ import type {
   T3CodeAccess,
 } from "./types.js";
 import { ChevronIcon } from "../components/icons/ChromeIcons.js";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 
 type RepoSource = "git-url" | "local-path";
 
@@ -40,13 +41,6 @@ interface AgentsPanelProps {
    * stays a free-text input.
    */
   gitIntegration?: GitIntegration;
-}
-
-function statusClass(status: AgentSession["status"]): string {
-  if (status === "up") return "bg-green-500";
-  if (status === "failed") return "bg-red-500";
-  if (status === "stopped") return "bg-surface-sunken";
-  return "bg-yellow-500";
 }
 
 function statusLabel(
@@ -734,9 +728,14 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                         {/* select-text: the desktop app root disables selection globally */}
                         <div className="min-w-0 select-text">
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`size-2 rounded-full ${statusClass(session.status)}`}
-                            />
+                            {session.status === "failed" && (
+                              <IssueIndicator
+                                tone="danger"
+                                reason={
+                                  session.logs.at(-1) ?? statusLabel(session.status, gt, gtData)
+                                }
+                              />
+                            )}
                             <span className="font-medium text-sm truncate">
                               {session.projectName}
                             </span>

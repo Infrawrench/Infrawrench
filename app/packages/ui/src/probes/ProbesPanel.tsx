@@ -4,6 +4,7 @@ import type { MetricSeries } from "@infrawrench/plugin-base";
 import { formatUptime, type SyntheticProbe } from "@infrawrench/client-core";
 import { MetricChart } from "../components/charts/MetricChart.js";
 import { SparklineChart } from "../components/charts/SparklineChart.js";
+import { IssueIndicator } from "../components/IssueIndicator.js";
 import { ProbeEditorModal } from "./ProbeEditorModal.js";
 import type { ProbesClient } from "./types.js";
 
@@ -28,18 +29,6 @@ export interface ProbesPanelProps {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function statusDotClass(probe: SyntheticProbe): string {
-  if (!probe.enabled) return "bg-neutral-500";
-  switch (probe.status) {
-    case "up":
-      return "bg-emerald-500";
-    case "down":
-      return "bg-red-500";
-    default:
-      return "bg-amber-500";
-  }
-}
 
 function statusTitle(probe: SyntheticProbe, gt: ReturnType<typeof useGT>): string {
   if (!probe.enabled) return gt("Disabled");
@@ -194,10 +183,12 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                       className="flex-1 min-w-0 text-left"
                     >
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block h-2 w-2 rounded-full ${statusDotClass(probe)}`}
-                          title={statusTitle(probe, gt)}
-                        />
+                        {probe.enabled && probe.status === "down" && (
+                          <IssueIndicator
+                            tone="danger"
+                            reason={probe.lastError ?? statusTitle(probe, gt)}
+                          />
+                        )}
                         <span className="text-sm font-medium text-on-surface truncate">
                           {probe.name}
                         </span>
