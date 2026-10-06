@@ -6,6 +6,8 @@ const claimDueWorkflows = vi.fn();
 vi.mock("./claim", () => ({
   claimDueAccounts: (...a: unknown[]) => claimDueAccounts(...a),
   claimDueWorkflows: (...a: unknown[]) => claimDueWorkflows(...a),
+  ACCOUNT_LEASE_MS: 5 * 60 * 1000,
+  COST_LEASE_MS: 30 * 60 * 1000,
 }));
 
 // --- DB mock: only the workflow-reschedule update path remains in the loop ---
@@ -231,7 +233,7 @@ describe("PollerLoop", () => {
     const loop = new PollerLoop({ concurrency: 3 });
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(claimDueAccounts).toHaveBeenCalledWith(3);
+    expect(claimDueAccounts).toHaveBeenCalledWith(3, "all");
     await loop.stop();
   });
 

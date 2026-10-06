@@ -22,6 +22,7 @@ import { setLiteralSecretState } from "./secret-states";
 import { resourceIdBelongsToAccount } from "./resource-ids";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
+import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
 import {
   guardDriverConnection,
   pinnedLookup,
@@ -189,6 +190,16 @@ function buildHttpHostServices(
   return {
     request: async (req) => {
       const binary = req.responseEncoding === "binary";
+      // A Worker has neither the agent connections (they live in the Node
+      // process the agent dialled) nor a way to trust a per-request CA, so
+      // both hand the call to the gateway. Plain requests need no guard
+      // there: Workers egress cannot reach private or loopback addresses.
+      if (isEdgeRuntime() && bastionId) {
+        throw new GatewayOnlyError("Routing through a bastion agent");
+      }
+      if (isEdgeRuntime() && req.caCert) {
+        throw new GatewayOnlyError("A request trusting a custom CA certificate");
+      }
       if (bastionId) {
         const dispatcher = getDispatcherFor(bastionId);
         if (!dispatcher) throw new BastionDisconnectedError(bastionId);

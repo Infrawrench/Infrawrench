@@ -23,6 +23,12 @@ name: web-deploy
 #   AR_REGISTRY                    — us-east4-docker.pkg.dev/<project>/infrawrench
 #   GKE_CLUSTER                    — cluster name (default: infrawrench-prod)
 #   GKE_REGION                     — cluster region (default: us-east4)
+# Optional repo variables (Cloudflare edge; see "Cloudflare edge" in
+# infra/README.md):
+#   EDGE_DEPLOY_ENABLED            - "true" to deploy the web and poller Workers
+#                                    after the cluster rollout. Needs the
+#                                    CLOUDFLARE_API_TOKEN secret and real ids in
+#                                    both edge/wrangler.jsonc files.
 # Optional repo variables:
 #   GKE_DNS_ENDPOINT               - "true" to reach the control plane through
 #                                    its IAM-gated DNS endpoint instead of the
@@ -182,3 +188,90 @@ jobs:
           kubectl -n infrawrench rollout status deployment/web --timeout=300s
           kubectl -n infrawrench rollout status deployment/poller --timeout=300s
           kubectl -n infrawrench rollout status deployment/github-watcher --timeout=300s
+
+  # The Cloudflare edge: the web front door and the edge poller, both built
+  # from this same commit. After `deploy` so the gateway (the pods above) is
+  # already serving what the edge forwards to it, and after `migrate` so the
+  # schema the Workers read is in place. Secrets are the cluster's own
+  # `infrawrench-env` (terraform's app_env), read here rather than duplicated
+  # in GitHub, so the two runtimes can never disagree about a value.
+  deploy-edge:
+    if: github.ref == 'refs/heads/main' && vars.EDGE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [migrate, deploy]
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Enable corepack (pinned pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Refuse placeholder binding ids
+        run: |
+          if grep -nE '"(HYPERDRIVE_ID|CLICKHOUSE_VPC_SERVICE_ID)"' \
+              app/packages/web/edge/wrangler.jsonc app/packages/poller/edge/wrangler.jsonc; then
+            echo "::error::Replace the placeholder ids above with the real Hyperdrive and VPC service ids (infra/README.md, Cloudflare edge)."
+            exit 1
+          fi
+
+      # Workspace packages the Workers import from their built output (the
+      # plugins, ui), then the SPA the web Worker serves as static assets.
+      - name: Build
+        run: |
+          pnpm exec turbo run build --filter="@infrawrench/web^..." --filter="@infrawrench/poller^..."
+          pnpm --filter @infrawrench/web build:client
+
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - name: Fetch cluster credentials
+        env:
+          DNS_ENDPOINT: ${{ vars.GKE_DNS_ENDPOINT }}
+        run: |
+          if [ "$DNS_ENDPOINT" = "true" ]; then
+            gcloud container clusters get-credentials "$CLUSTER" --region "$REGION" --dns-endpoint
+          else
+            gcloud container clusters get-credentials "$CLUSTER" --region "$REGION"
+          fi
+
+      - name: Read app_env from the cluster
+        run: |
+          umask 077
+          kubectl -n infrawrench get secret infrawrench-env -o json \
+            | jq '.data | map_values(@base64d)' > "$RUNNER_TEMP/edge-secrets.json"
+
+      # --old-asset-ttl keeps the previous build's hashed assets servable for a
+      # day, so a tab opened before the deploy can still lazy-load its chunks.
+      - name: Deploy web Worker
+        run: >
+          pnpm --filter @infrawrench/web exec wrangler deploy -c edge/wrangler.jsonc
+          --secrets-file "$RUNNER_TEMP/edge-secrets.json" --old-asset-ttl 86400
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy poller Worker
+        run: >
+          pnpm --filter @infrawrench/poller exec wrangler deploy -c edge/wrangler.jsonc
+          --secrets-file "$RUNNER_TEMP/edge-secrets.json"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Remove secrets file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/edge-secrets.json"

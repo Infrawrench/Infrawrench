@@ -7,6 +7,9 @@ import { notePollOutcome } from "@infrawrench/server-core/twilio-pager";
 import { notifyResourceDrift } from "@infrawrench/server-core/drift/alerts";
 import { TokenBucketRegistry, defaultBucketConfig, type BucketConfig } from "./token-bucket";
 import { isRateLimitError, isTransientError } from "./error-classification";
+import { gatewayOnlyHitInScope, keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { isGatewayOnlyError } from "@infrawrench/server-core/runtime/gateway-only";
+import { handOffToGateway } from "./gateway-handoff";
 
 const BASE_INTERVAL_MS = 15_000;
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -31,37 +34,63 @@ export async function pollAccount(
     : defaultBucketConfig;
 
   let transientFailure = false;
+  // Set when a type's listing reached a gateway-only stub (edge poller only).
+  // The sync still finishes the other types; the account is handed over after.
+  let gatewayOnly: unknown = null;
 
-  const result = await syncAccountResources(account.id, account.organizationId, {
-    canListType: () => buckets.tryTake(account.pluginId, account.id, config),
-    // Poller-driven syncs are the only ones that raise drift notifications; a
-    // manual refresh from the UI still writes the change timeline but stays
-    // silent, the same line notePollOutcome draws for sync incidents.
-    //
-    // Fire-and-forget: the notifier swallows its own errors and rate-limits
-    // itself per org, so it can never block or break the poll loop.
-    onChanges: (events) => {
-      void notifyResourceDrift(account.organizationId, account.id, events);
-    },
-    onTypeDone: (typeId, outcome, err) => {
-      if (outcome === "error" && err && isTransientError(err)) {
-        transientFailure = true;
-        if (isRateLimitError(err)) {
-          buckets.penalize(account.pluginId, account.id, PENALTY_DURATION_MS);
+  let result: Awaited<ReturnType<typeof syncAccountResources>> | null = null;
+  try {
+    result = await syncAccountResources(account.id, account.organizationId, {
+      canListType: () => buckets.tryTake(account.pluginId, account.id, config),
+      // Poller-driven syncs are the only ones that raise drift notifications; a
+      // manual refresh from the UI still writes the change timeline but stays
+      // silent, the same line notePollOutcome draws for sync incidents.
+      //
+      // Fire-and-forget: the notifier swallows its own errors and rate-limits
+      // itself per org, so it can never block or break the poll loop.
+      onChanges: (events) => {
+        void keepAlive(notifyResourceDrift(account.organizationId, account.id, events));
+      },
+      onTypeDone: (typeId, outcome, err) => {
+        if (outcome === "error" && isGatewayOnlyError(err)) {
+          gatewayOnly ??= err;
+          return;
         }
-      }
-      // Fire-and-forget: the pager swallows its own errors so it can never
-      // block or break the poll loop.
-      void notePollOutcome({
-        organizationId: account.organizationId,
-        accountId: account.id,
-        accountLabel: account.displayName,
-        resourceTypeId: typeId,
-        outcome,
-        ...(err ? { error: err } : {}),
-      });
-    },
-  });
+        if (outcome === "error" && err && isTransientError(err)) {
+          transientFailure = true;
+          if (isRateLimitError(err)) {
+            buckets.penalize(account.pluginId, account.id, PENALTY_DURATION_MS);
+          }
+        }
+        // Fire-and-forget: the pager swallows its own errors so it can never
+        // block or break the poll loop.
+        void keepAlive(
+          notePollOutcome({
+            organizationId: account.organizationId,
+            accountId: account.id,
+            accountLabel: account.displayName,
+            resourceTypeId: typeId,
+            outcome,
+            ...(err ? { error: err } : {}),
+          }),
+        );
+      },
+    });
+  } catch (err) {
+    // Credential rewriting (an SSH tunnel) runs before any type is listed.
+    if (!isGatewayOnlyError(err)) throw err;
+    gatewayOnly = err;
+  }
+
+  // Also catches a hit outside the listings (pinned stats, peer resolution)
+  // that the plugin swallowed: the account still needs the gateway to be
+  // polled properly. Each edge invocation polls one account, so the scope's
+  // record is this account's.
+  gatewayOnly ??= gatewayOnlyHitInScope() ?? null;
+  if (gatewayOnly || !result) {
+    await handOffToGateway(account, "resources", gatewayOnly);
+    return;
+  }
 
   const hardFailure = !!result.firstError && transientFailure;
 

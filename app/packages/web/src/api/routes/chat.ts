@@ -39,6 +39,7 @@ import {
   parseAskQuestionInput,
   validateAskQuestionAnswers,
 } from "@infrawrench/client-core";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 const app = new Hono();
 
@@ -357,15 +358,17 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
   // decision. Fire-and-forget (the helper never throws): the decision below
   // is the record; Slack is presentation.
   const noteDecided = (decision: "approved" | "denied") =>
-    void noteChatToolApprovalDecided({
-      organizationId: auth.organizationId,
-      pendingActionId: pendingId,
-      toolName: row.pending.toolName,
-      toolInput: row.pending.toolInput,
-      decision,
-      decidedByName,
-      via: "the web app",
-    });
+    void keepAlive(
+      noteChatToolApprovalDecided({
+        organizationId: auth.organizationId,
+        pendingActionId: pendingId,
+        toolName: row.pending.toolName,
+        toolInput: row.pending.toolInput,
+        decision,
+        decidedByName,
+        via: "the web app",
+      }),
+    );
 
   // Claim the row conditioned on it still being `pending`: the returned row
   // count makes two racing deciders (this route, a Slack button, or both)

@@ -40,6 +40,7 @@ import {
   type ResourceOutput,
 } from "@infrawrench/plugin-base";
 import { ok, okText, err, type ToolDefinition } from "./types";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 const parentResourceIdField = z
   .string()
@@ -1277,16 +1278,18 @@ export function genericTools(): ToolDefinition[] {
         });
         // Same as the HTTP delete: an orphan cleaned up is a realized saving.
         if (ctx.account?.pluginId === pluginId) {
-          void captureDeletionSaving({
-            organizationId: auth.organizationId,
-            accountId,
-            resourceId,
-            resourceTypeId,
-            pluginId,
-            source: "in_app",
-            userId: auth.userId ?? null,
-            ctx: { client: ctx.client, plugin: ctx.plugin },
-          });
+          void keepAlive(
+            captureDeletionSaving({
+              organizationId: auth.organizationId,
+              accountId,
+              resourceId,
+              resourceTypeId,
+              pluginId,
+              source: "in_app",
+              userId: auth.userId ?? null,
+              ctx: { client: ctx.client, plugin: ctx.plugin },
+            }),
+          );
         }
         return ok({ ok: true });
       },

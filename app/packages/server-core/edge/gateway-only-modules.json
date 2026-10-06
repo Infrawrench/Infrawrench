@@ -1,0 +1,23 @@
+{
+  "$comment": "Libraries that cannot run in a Cloudflare Worker. Each edge Worker's wrangler.jsonc aliases every one of these to gateway-only-stub.cjs (a test in each Worker package checks the two lists match). Add a library here when it needs a native addon, raw TCP to arbitrary hosts, child processes, or a runtime-compiled wasm/JS engine; the edge then hands any work that touches it to the Node gateway.",
+  "modules": [
+    "cpu-features",
+    "node-pty",
+    "ssh2",
+    "dockerode",
+    "@kubernetes/client-node",
+    "pg",
+    "mysql2",
+    "mysql2/promise",
+    "mssql",
+    "tedious",
+    "ioredis",
+    "memjs",
+    "mongodb",
+    "kafkajs",
+    "@libsql/client",
+    "typescript",
+    "@typescript/typescript6",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify"
+  ]
+}

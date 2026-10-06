@@ -38,6 +38,11 @@ vi.mock("@infrawrench/server-core/drift/alerts", () => ({
   notifyResourceDrift: (...a: unknown[]) => notifyResourceDrift(...a),
 }));
 
+const handOffToGateway = vi.fn();
+vi.mock("./gateway-handoff", () => ({
+  handOffToGateway: (...a: unknown[]) => handOffToGateway(...a),
+}));
+
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { TokenBucketRegistry } from "./token-bucket";
 
@@ -249,5 +254,53 @@ describe("pollAccount", () => {
     const setArg = updateSet.mock.calls[0]![0] as Record<string, unknown>;
     // no transient failure flagged -> not a hard failure -> reset
     expect(setArg.pollFailureCount).toBe(0);
+  });
+
+  describe("on the edge, when a type reaches a gateway-only stub", () => {
+    const stubError = Object.assign(
+      new Error("[gateway-only] node-only module.Client needs the Node gateway"),
+      {
+        code: "IW_GATEWAY_ONLY",
+      },
+    );
+
+    it("hands the account to the gateway instead of recording a failure", async () => {
+      syncAccountResources.mockImplementation(async (_id, _org, opts) => {
+        opts.onTypeDone("databases", "error", stubError);
+        opts.onTypeDone("tables", "ok");
+        return { firstError: stubError };
+      });
+
+      await pollAccount(makeRow({ pluginId: "postgres" }), new TokenBucketRegistry());
+
+      expect(handOffToGateway).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "acc-1" }),
+        "resources",
+        stubError,
+      );
+      // No backoff write, and no page for something that is not a failure.
+      expect(dbUpdate).not.toHaveBeenCalled();
+      expect(notePollOutcome).toHaveBeenCalledTimes(1);
+      expect(notePollOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({ resourceTypeId: "tables", outcome: "ok" }),
+      );
+    });
+
+    it("hands over when credential rewriting throws before any type runs", async () => {
+      syncAccountResources.mockRejectedValue(new Error("tunnel failed", { cause: stubError }));
+
+      await pollAccount(makeRow(), new TokenBucketRegistry());
+
+      expect(handOffToGateway).toHaveBeenCalledTimes(1);
+      expect(dbUpdate).not.toHaveBeenCalled();
+    });
+
+    it("still throws errors that are not gateway-only", async () => {
+      syncAccountResources.mockRejectedValue(new Error("database down"));
+      await expect(pollAccount(makeRow(), new TokenBucketRegistry())).rejects.toThrow(
+        "database down",
+      );
+      expect(handOffToGateway).not.toHaveBeenCalled();
+    });
   });
 });

@@ -11,6 +11,7 @@ import {
   touchAgentRegistration,
 } from "@infrawrench/server-core/trials/principal";
 import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
  * match the value used in `api/routes/api-keys.ts`. */
@@ -147,7 +148,7 @@ export async function agentAuthResult(
 ): Promise<ApiAuthResult | null> {
   const agent = await resolveAgentPrincipal(registrationId, { actorUserId });
   if (!agent) return null;
-  void touchAgentRegistration(agent.registrationId);
+  void keepAlive(touchAgentRegistration(agent.registrationId));
   return {
     userId: agent.userId,
     organizationId: agent.organizationId,

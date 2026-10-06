@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { db } from "@/db/client";
 import { auditLogs } from "@/db/schema";
 import { currentAuditPrincipal } from "./audit-context";
@@ -32,8 +33,15 @@ interface AuditParams {
  *
  * It is deliberately still a boolean rather than a throw: an audit failure must
  * never be the reason a mutation that already happened is reported as failed.
+ *
+ * Wrapped in `keepAlive` because nearly every call site is `void logAudit(...)`:
+ * on the edge the invocation would otherwise end before the insert lands.
  */
-export async function logAudit(params: AuditParams): Promise<boolean> {
+export function logAudit(params: AuditParams): Promise<boolean> {
+  return keepAlive(insertAudit(params));
+}
+
+async function insertAudit(params: AuditParams): Promise<boolean> {
   try {
     await db.insert(auditLogs).values({
       id: uuid(),

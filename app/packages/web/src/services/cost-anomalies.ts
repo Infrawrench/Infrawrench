@@ -24,6 +24,7 @@ import {
 import { resolveFindingIssues } from "@infrawrench/server-core/github-issues/filing";
 import { db } from "../db/client";
 import { costAnnotations, costAnomalies, users } from "../db/schema";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 export { CostAnomalyAcknowledgeError };
 
@@ -247,10 +248,12 @@ export async function acknowledgeCostAnomaly(
   // acknowledgement only; a reworded explanation is not a second resolution.
   // Fire-and-forget: GitHub being down must not fail the acknowledgement.
   if (result && existing.acknowledgedAt === null) {
-    void resolveFindingIssues(
-      organizationId,
-      [{ sourceKind: "cost_anomaly", sourceId: anomalyId }],
-      `it was explained in Infrawrench: "${text.slice(0, 300)}"`,
+    void keepAlive(
+      resolveFindingIssues(
+        organizationId,
+        [{ sourceKind: "cost_anomaly", sourceId: anomalyId }],
+        `it was explained in Infrawrench: "${text.slice(0, 300)}"`,
+      ),
     );
   }
   return result;

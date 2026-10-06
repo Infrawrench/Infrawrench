@@ -10,6 +10,11 @@ import { evaluateUnitCostRegressionsForOrg } from "@infrawrench/server-core/cost
 import { reattributeAfterCostCollection } from "@infrawrench/server-core/ai-attribution/run";
 import { evaluateUnitCostThresholdsForOrg } from "@infrawrench/server-core/cost/unit-cost-threshold-eval";
 import type { PollAccountRow } from "./poll-account";
+import {
+  isGatewayOnlyError,
+  runGatewayChecked,
+} from "@infrawrench/server-core/runtime/gateway-only";
+import { handOffToGateway } from "./gateway-handoff";
 
 /**
  * Cost collection runs roughly once a day per account: provider billing
@@ -24,7 +29,9 @@ const COST_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
   try {
-    const result = await collectAccountCosts(account.id, account.organizationId);
+    const result = await runGatewayChecked(() =>
+      collectAccountCosts(account.id, account.organizationId),
+    );
     if (result.backfilled) {
       console.log(
         `[poller] cost backfill for ${account.id} (${account.pluginId}) ingested ${result.rowCount} rows`,
@@ -82,6 +89,10 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // label value): the same engine as the chart, judged over a trailing window.
     await evaluateUnitCostThresholdsForOrg(account.organizationId);
   } catch (e) {
+    if (isGatewayOnlyError(e)) {
+      await handOffToGateway(account, "costs", e);
+      return;
+    }
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;
     const backoff = Math.min(COST_BASE_BACKOFF_MS * Math.pow(2, failures - 1), COST_MAX_BACKOFF_MS);

@@ -16,6 +16,7 @@ import { captureSavingsFromChanges } from "./savings/capture";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
+import { runGatewayChecked } from "./runtime/gateway-only";
 import {
   flattenMetricSeries,
   insertAccountResourceCounts,
@@ -298,8 +299,14 @@ export async function syncAccountResources(
     }
   }
 
+  // `runGatewayChecked` turns a listing that touched a gateway-only path into
+  // a failed type even when the plugin swallowed the error and returned
+  // placeholders, so the edge never persists (or diffs, or deletes against) a
+  // degraded list. A plain call on Node.
   const fetchResults = await Promise.allSettled(
-    runnableTypeIds.map((typeId) => client.listResources(typeId, accountId)),
+    runnableTypeIds.map((typeId) =>
+      runGatewayChecked(() => client.listResources(typeId, accountId)),
+    ),
   );
 
   const allResources: ResourceInstance[] = [];

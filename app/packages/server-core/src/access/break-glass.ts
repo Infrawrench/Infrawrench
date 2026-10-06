@@ -34,6 +34,7 @@ import { db } from "../db/client";
 import { accessRequests, users } from "../db/schema";
 import { hasPermission, isSubsetOfCallerPerms } from "../permissions/catalog";
 import { updateSlackApprovalMessages } from "../slack-approvals";
+import { keepAlive } from "../runtime/request-scope";
 
 /** Default window an undecided request stays decidable. */
 export const DEFAULT_REQUEST_TIMEOUT_MINUTES = 60;
@@ -418,13 +419,15 @@ export async function decideAccessRequest(
 
   // Retire every tracked Slack copy in place. Fire-and-forget: the decision is
   // landed, and a Slack outage must not make it look like it wasn't.
-  void updateSlackApprovalMessages(organizationId, "access", requestId, {
-    decision,
-    decidedByName: decider.name ?? null,
-    via: opts.decidedVia ?? "the web app",
-    title: `Approval needed: ${accessRequestTitle(updated)}`,
-    body: updated.reason,
-  });
+  void keepAlive(
+    updateSlackApprovalMessages(organizationId, "access", requestId, {
+      decision,
+      decidedByName: decider.name ?? null,
+      via: opts.decidedVia ?? "the web app",
+      title: `Approval needed: ${accessRequestTitle(updated)}`,
+      body: updated.reason,
+    }),
+  );
 
   return { outcome: "decided", request: toSummary(updated, now.getTime()) };
 }
@@ -447,13 +450,15 @@ async function expireStaleRequest(
     .where(and(eq(accessRequests.id, requestId), eq(accessRequests.status, "pending")))
     .returning();
   if (!expired) return;
-  void updateSlackApprovalMessages(organizationId, "access", requestId, {
-    decision: "expired",
-    decidedByName,
-    ...(via ? { via } : {}),
-    title: `Approval needed: ${accessRequestTitle(expired)}`,
-    body: expired.reason,
-  });
+  void keepAlive(
+    updateSlackApprovalMessages(organizationId, "access", requestId, {
+      decision: "expired",
+      decidedByName,
+      ...(via ? { via } : {}),
+      title: `Approval needed: ${accessRequestTitle(expired)}`,
+      body: expired.reason,
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -537,11 +542,13 @@ export async function withdrawAccessRequest(
     .returning({ id: accessRequests.id });
   if (!updated) return { outcome: "conflict" };
 
-  void updateSlackApprovalMessages(organizationId, "access", requestId, {
-    decision: "expired",
-    decidedByName: null,
-    title: "Approval needed: elevated access",
-    body: "The requester withdrew this request.",
-  });
+  void keepAlive(
+    updateSlackApprovalMessages(organizationId, "access", requestId, {
+      decision: "expired",
+      decidedByName: null,
+      title: "Approval needed: elevated access",
+      body: "The requester withdrew this request.",
+    }),
+  );
   return { outcome: "withdrawn" };
 }

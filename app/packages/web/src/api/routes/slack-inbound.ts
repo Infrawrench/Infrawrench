@@ -93,6 +93,7 @@ import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
 import type { ToolAuthContext } from "../../tools/types";
 import { sessionMiddleware } from "../auth-middleware";
 import { safeReturnPath } from "../oauth-state";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 function appUrl(): string {
   return (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
@@ -956,27 +957,29 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
   // Approved and claimed (same approved → executed transition as the web
   // route): run the tool and resume off this request; execution can outlive
   // Slack's 3-second acknowledgement window.
-  void (async () => {
-    try {
-      const { allResolved } = await executePendingAction(row.pending.id, toolAuth);
-      await noteDecided("approved");
-      if (allResolved) await resumeConversation(row.pending.conversationId, toolAuth);
-    } catch (err) {
-      await db
-        .update(chatPendingActions)
-        .set({
-          status: "errored",
-          result: err instanceof Error ? err.message : "Execution failed",
-          isError: true,
-          resolvedAt: new Date(),
-        })
-        .where(eq(chatPendingActions.id, row.pending.id));
-      // The approval still happened (only the execution failed) so the Slack
-      // copies' decision controls must retire either way.
-      await noteDecided("approved");
-      console.error(`[slack] executing pending action ${row.pending.id} failed:`, err);
-    }
-  })();
+  void keepAlive(
+    (async () => {
+      try {
+        const { allResolved } = await executePendingAction(row.pending.id, toolAuth);
+        await noteDecided("approved");
+        if (allResolved) await resumeConversation(row.pending.conversationId, toolAuth);
+      } catch (err) {
+        await db
+          .update(chatPendingActions)
+          .set({
+            status: "errored",
+            result: err instanceof Error ? err.message : "Execution failed",
+            isError: true,
+            resolvedAt: new Date(),
+          })
+          .where(eq(chatPendingActions.id, row.pending.id));
+        // The approval still happened (only the execution failed) so the Slack
+        // copies' decision controls must retire either way.
+        await noteDecided("approved");
+        console.error(`[slack] executing pending action ${row.pending.id} failed:`, err);
+      }
+    })(),
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1020,20 +1023,22 @@ app.post("/slack/commands", async (c) => {
   // Acknowledge inside Slack's 3-second window *before* doing any real work
   // (a cost query or resource search can blow that budget) and deliver the
   // actual reply through response_url, which stays valid for 30 minutes.
-  void (async () => {
-    let reply: SlackReply;
-    try {
-      reply = await handleSlashCommand({ teamId, slackUserId, text });
-    } catch (err) {
-      console.error("[slack] slash command failed:", err);
-      reply = ephemeral("Something went wrong running that command. Try again shortly.");
-    }
-    try {
-      await postToSlackResponseUrl(responseUrl, reply);
-    } catch (err) {
-      console.error("[slack] response_url post failed:", err);
-    }
-  })();
+  void keepAlive(
+    (async () => {
+      let reply: SlackReply;
+      try {
+        reply = await handleSlashCommand({ teamId, slackUserId, text });
+      } catch (err) {
+        console.error("[slack] slash command failed:", err);
+        reply = ephemeral("Something went wrong running that command. Try again shortly.");
+      }
+      try {
+        await postToSlackResponseUrl(responseUrl, reply);
+      } catch (err) {
+        console.error("[slack] response_url post failed:", err);
+      }
+    })(),
+  );
   return c.body(null, 200);
 });
 
@@ -1050,7 +1055,7 @@ app.post("/slack/interactions", async (c) => {
   if (!payload || payload.type !== "block_actions") return c.body(null, 200);
   // Same shape as /slack/commands: acknowledge now, work in the background.
   // All feedback rides response_url, chat.update, and threads.
-  void handleBlockAction(payload).catch((err: unknown) => {
+  void keepAlive(handleBlockAction(payload)).catch((err: unknown) => {
     console.error("[slack] interaction failed:", err);
   });
   return c.body(null, 200);

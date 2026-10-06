@@ -14,6 +14,8 @@ the CF Workers deployables (website, telemetry) are not part of this.
 | Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)        |
 | Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`      |
 | Workflow egress proxy `egress.infrawrench.com` (CF Worker)            | `.github/workflows/egress-proxy-deploy.yml` |
+| Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`          |
+| Cloudflare Tunnel connector to ClickHouse (optional)                  | `infra/terraform/edge.tf`                   |
 
 **The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
 runs in the `web`/`poller` isolates; if those pods made the request, every
@@ -278,6 +280,90 @@ Function) may run as that account. **Manual step after applying:**
 
 The org policy `iam.automaticIamGrantsForDefaultServiceAccounts` stops new
 projects from granting Editor to begin with.
+
+## Cloudflare edge
+
+Most of the web app and the poller can run on Cloudflare Workers, with the GKE
+pods kept as the Node **gateway** for what a Worker cannot do: socket database
+drivers, SSH and SFTP, kubectl and k9s, Docker, bastion agents, shared
+consoles, Linux app streams, chat and the workflow isolate. KNOWLEDGE.md
+("Edge/gateway split") explains the mechanism; this section is the runbook.
+
+- **`infrawrench-web`** (`app/packages/web/edge`) sits on the
+  `app.infrawrench.com/*` route _in front of_ the ingress. It serves the SPA
+  from static assets, runs the Hono API itself, and forwards everything else
+  to the origin with a plain `fetch(request)`, which a Worker's subrequest to
+  its own route sends to the origin rather than back through the Worker. The
+  ingress, its certificate and the hostname are unchanged; the bastion agents
+  and desktop clients keep connecting to the same URL.
+- **`infrawrench-poller`** (`app/packages/poller/edge`) runs the poller
+  passes that need nothing Node-only, beside the Node poller running with
+  `POLLER_SCOPE=gateway`.
+- Both reach Postgres through **Hyperdrive** and ClickHouse through a
+  **Workers VPC service** over a Cloudflare Tunnel whose connector runs in the
+  cluster (`edge.tf`). ClickHouse gets no public address.
+
+### Provisioning (once)
+
+Run wrangler from either Worker package (`pnpm --filter @infrawrench/web exec
+wrangler ...`) on the Infrawrench Production account.
+
+1. **Neon must accept Hyperdrive.** Hyperdrive connects from Cloudflare's
+   network, not the Cloud NAT address. The `core` project has no IP allowlist
+   (checked 2026-10-06), so nothing is needed today; if one is ever added it
+   must cover Hyperdrive and the GitHub-hosted runners that run migrations,
+   neither of which has a fixed address.
+2. **Hyperdrive**, pointed at Neon's _direct_ endpoint (not `-pooler`;
+   Hyperdrive is the pool):
+   `wrangler hyperdrive create infrawrench-db --connection-string="postgres://…"`.
+3. **Tunnel**: create a remotely-managed tunnel (Networking > Tunnels), put
+   its token in `terraform.tfvars` as `cloudflare_tunnel_token`, and
+   `terraform apply`. Two `cloudflared` pods come up; `/ready` is green once
+   they hold a connection.
+4. **VPC service** for ClickHouse over that tunnel:
+   `wrangler vpc service create infrawrench-clickhouse --type http --tunnel-id <id> --hostname clickhouse.infrawrench.svc.cluster.local --http-port 8123`.
+5. **Queue**: `wrangler queues create infrawrench-poll`.
+6. Replace `HYPERDRIVE_ID` and `CLICKHOUSE_VPC_SERVICE_ID` in **both**
+   `edge/wrangler.jsonc` files with the ids from steps 2 and 4, and commit.
+   CI refuses to deploy while the placeholders are there.
+7. Set the repo variable `EDGE_DEPLOY_ENABLED=true`. The next main push runs
+   `deploy-edge` after the cluster rollout: it reads `infrawrench-env` from
+   the cluster and uploads it as both Workers' secrets, so `app_env` stays the
+   one place a value lives.
+
+### Cutover order
+
+Each step is independently reversible, and in this order nothing is ever
+unserved.
+
+1. Deploy with `EDGE_DEPLOY_ENABLED=true`. The poller Worker starts claiming
+   accounts at once; the Node poller (still scope `all`) claims alongside it,
+   which the `SKIP LOCKED` leases make safe. Watch
+   `accounts.requires_gateway` fill in as Postgres, Docker and similar
+   accounts hand themselves over.
+2. Add `POLLER_SCOPE = "gateway"` to `app_env`, `terraform apply`, and
+   `kubectl -n infrawrench rollout restart deploy/poller`. The Node poller now
+   does only gateway work; it can drop to one replica.
+3. The web Worker's route goes live with its first deploy. To hold it back,
+   deploy once with the `routes` entry removed from
+   `app/packages/web/edge/wrangler.jsonc`.
+
+**Rollback**: delete the web Worker's route (dashboard, or redeploy without
+it) and every request goes straight to the pods again. Unset `POLLER_SCOPE`
+and restart the poller to make it do everything; the poller Worker can stay
+(the leases make the overlap harmless) or be deleted.
+
+### Day-2
+
+- **Secrets** still rotate through `app_env`. The Workers pick up a change on
+  the next `deploy-edge` run; to push one without a code change, re-run the
+  workflow.
+- **An account stuck on the gateway** (`requires_gateway = true`) is
+  harmless, the gateway can do everything, but `gateway_reason` says why it
+  moved, and setting the flag back to false lets the edge try again.
+- **A write that 503s** with "could not be completed here" reached a Node-only
+  path on the edge. The Worker logs `[edge] <method> <path> reached a
+gateway-only path`; add the route to `src/edge/gateway-routes.ts`.
 
 ## Day-2 notes
 

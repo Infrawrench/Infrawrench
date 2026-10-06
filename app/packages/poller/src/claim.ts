@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db } from "@infrawrench/server-core/db/client";
+import {
+  accountScopeCondition,
+  type PollScope,
+} from "@infrawrench/server-core/runtime/account-runtime";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -44,7 +48,10 @@ export interface DueWorkflowRow {
  * Ordering matches the old single-instance query: least-recently-polled first,
  * with never-polled accounts (fresh sign-ups) at the front.
  */
-export async function claimDueAccounts(limit: number): Promise<PollAccountRow[]> {
+export async function claimDueAccounts(
+  limit: number,
+  scope: PollScope = "all",
+): Promise<PollAccountRow[]> {
   const rows = await db.execute(sql`
     UPDATE accounts
     SET next_poll_at = now() + ${ACCOUNT_LEASE_MS}::float8 * interval '1 millisecond'
@@ -52,6 +59,7 @@ export async function claimDueAccounts(limit: number): Promise<PollAccountRow[]>
       SELECT id FROM accounts
       WHERE deleted_at IS NULL
         AND (next_poll_at IS NULL OR next_poll_at <= now())
+        ${accountScopeCondition(scope)}
       ORDER BY last_polled_at ASC NULLS FIRST, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -78,6 +86,7 @@ export async function claimDueAccounts(limit: number): Promise<PollAccountRow[]>
 export async function claimDueCostAccounts(
   limit: number,
   costCapablePluginIds: string[],
+  scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (costCapablePluginIds.length === 0) return [];
   const rows = await db.execute(sql`
@@ -91,6 +100,7 @@ export async function claimDueCostAccounts(
         -- real array on the right and fails with 42809 against that list.
         AND plugin_id IN ${costCapablePluginIds}
         AND (cost_next_poll_at IS NULL OR cost_next_poll_at <= now())
+        ${accountScopeCondition(scope)}
       ORDER BY cost_last_polled_at ASC NULLS FIRST, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -119,6 +129,7 @@ export async function claimDueCostAccounts(
 export async function claimDueCreditAccounts(
   limit: number,
   creditCapablePluginIds: string[],
+  scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (creditCapablePluginIds.length === 0) return [];
   const rows = await db.execute(sql`
@@ -131,6 +142,7 @@ export async function claimDueCreditAccounts(
       -- IN, not = ANY(): see the note on claimDueCostAccounts.
       AND a.plugin_id IN ${creditCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+      ${accountScopeCondition(scope, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -193,6 +205,7 @@ export async function claimDueCreditAccounts(
 export async function claimDueCommitmentAccounts(
   limit: number,
   commitmentCapablePluginIds: string[],
+  scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (commitmentCapablePluginIds.length === 0) return [];
   const rows = await db.execute(sql`
@@ -205,6 +218,7 @@ export async function claimDueCommitmentAccounts(
       -- IN, not = ANY(): see the note on claimDueCostAccounts.
       AND a.plugin_id IN ${commitmentCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+      ${accountScopeCondition(scope, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
@@ -265,6 +279,7 @@ export async function claimDueCommitmentAccounts(
 export async function claimDueQuotaAccounts(
   limit: number,
   quotaCapablePluginIds: string[],
+  scope: PollScope = "all",
 ): Promise<PollAccountRow[]> {
   if (quotaCapablePluginIds.length === 0) return [];
   const rows = await db.execute(sql`
@@ -277,6 +292,7 @@ export async function claimDueQuotaAccounts(
       -- IN, not = ANY(): see the note on claimDueCostAccounts.
       AND a.plugin_id IN ${quotaCapablePluginIds}
       AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+      ${accountScopeCondition(scope, "a")}
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE

@@ -37,6 +37,7 @@ import {
 } from "../slack-approvals";
 import { sendOneShotPage } from "../twilio-pager";
 import { workflowPageCooldownStore } from "./paging";
+import { keepAlive } from "../runtime/request-scope";
 
 /** How often the suspended run re-reads its approval row. */
 const POLL_INTERVAL_MS = 2500;
@@ -306,12 +307,14 @@ async function expirePending(approvalId: string): Promise<void> {
     return row;
   });
   if (!expired) return;
-  void updateSlackApprovalMessages(expired.organizationId, "workflow", approvalId, {
-    decision: "expired",
-    decidedByName: null,
-    title: `Approval needed: ${expired.title}`,
-    body: expired.message,
-  });
+  void keepAlive(
+    updateSlackApprovalMessages(expired.organizationId, "workflow", approvalId, {
+      decision: "expired",
+      decidedByName: null,
+      title: `Approval needed: ${expired.title}`,
+      body: expired.message,
+    }),
+  );
 }
 
 /**
@@ -559,13 +562,15 @@ export async function decideWorkflowApproval(
     // The Slack copies must land on "expired" here too: this path is the one
     // where the run's poll never gets to call expirePending (the row left
     // `pending` under the late approval), so nothing else retires them.
-    void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
-      decision: "expired",
-      decidedByName: decidedBy.name ?? null,
-      via: opts.decidedVia ?? "the web app",
-      title: `Approval needed: ${outcome.title}`,
-      body: outcome.message,
-    });
+    void keepAlive(
+      updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
+        decision: "expired",
+        decidedByName: decidedBy.name ?? null,
+        via: opts.decidedVia ?? "the web app",
+        title: `Approval needed: ${outcome.title}`,
+        body: outcome.message,
+      }),
+    );
     return { outcome: "conflict" };
   }
 
@@ -573,12 +578,14 @@ export async function decideWorkflowApproval(
   // and decider shown in place, threaded reply for the channel's history.
   // Fire-and-forget (the updater never throws): the decision is already
   // landed, and a Slack outage must not turn it into an error.
-  void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
-    decision,
-    decidedByName: decidedBy.name ?? null,
-    via: opts.decidedVia ?? "the web app",
-    title: `Approval needed: ${outcome.title}`,
-    body: outcome.message,
-  });
+  void keepAlive(
+    updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
+      decision,
+      decidedByName: decidedBy.name ?? null,
+      via: opts.decidedVia ?? "the web app",
+      title: `Approval needed: ${outcome.title}`,
+      body: outcome.message,
+    }),
+  );
   return { outcome: "decided", approval: outcome.approval };
 }

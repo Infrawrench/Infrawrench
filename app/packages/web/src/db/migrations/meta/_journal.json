@@ -1016,6 +1016,13 @@
       "when": 1791239116057,
       "tag": "0144_alert_email",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1791281971590,
+      "tag": "0145_accounts_requires_gateway",
+      "breakpoints": true
     }
   ]
 }
