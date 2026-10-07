@@ -243,6 +243,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     hostname: "app.terraform.io",
     organization: "acme",
   },
+  okta: { orgUrl: "https://acme.okta.com", apiToken: "00test-okta-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -418,6 +418,7 @@
     "@infrawrench/plugin-docker-hub": "workspace:*",
     "@infrawrench/plugin-posthog": "workspace:*",
     "@infrawrench/plugin-hcp-terraform": "workspace:*",
+    "@infrawrench/plugin-okta": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

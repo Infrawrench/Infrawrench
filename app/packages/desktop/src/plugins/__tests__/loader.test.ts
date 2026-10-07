@@ -170,6 +170,7 @@ vi.mock("@infrawrench/plugin-chronosphere", () => stub("chronosphere"));
 vi.mock("@infrawrench/plugin-docker-hub", () => stub("docker-hub"));
 vi.mock("@infrawrench/plugin-posthog", () => stub("posthog"));
 vi.mock("@infrawrench/plugin-hcp-terraform", () => stub("hcp-terraform"));
+vi.mock("@infrawrench/plugin-okta", () => stub("okta"));
 
 beforeEach(() => {
   disabled = [];

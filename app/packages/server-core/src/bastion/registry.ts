@@ -318,6 +318,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   posthog: ["us.posthog.com", "eu.posthog.com"],
   // app.terraform.io (and app.eu.terraform.io) for the API, archivist.terraform.io for run logs and state downloads; Terraform Enterprise hostnames are user-supplied and not allowlisted
   "hcp-terraform": ["app.terraform.io", "*.terraform.io"],
+  // Okta orgs live on per-tenant subdomains; orgs on a custom URL domain use the user's own host
+  okta: ["*.okta.com", "*.oktapreview.com", "*.okta-emea.com", "*.okta-gov.com"],
 };
 
 /**

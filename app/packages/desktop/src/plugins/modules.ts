@@ -141,4 +141,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-docker-hub"),
   () => import("@infrawrench/plugin-posthog"),
   () => import("@infrawrench/plugin-hcp-terraform"),
+  () => import("@infrawrench/plugin-okta"),
 ];
