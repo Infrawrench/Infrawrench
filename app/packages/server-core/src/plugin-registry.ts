@@ -151,6 +151,7 @@ import { plugin as openstackPlugin } from "@infrawrench/plugin-openstack";
 import { plugin as rabbitmqPlugin } from "@infrawrench/plugin-rabbitmq";
 import { plugin as prometheusPlugin } from "@infrawrench/plugin-prometheus";
 import { plugin as nomadPlugin } from "@infrawrench/plugin-nomad";
+import { plugin as consulPlugin } from "@infrawrench/plugin-consul";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -310,4 +311,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   rabbitmqPlugin,
   prometheusPlugin,
   nomadPlugin,
+  consulPlugin,
 ];

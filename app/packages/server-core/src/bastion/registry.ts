@@ -357,6 +357,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   prometheus: [],
   // Nomad is self-hosted: the agent address is user-supplied, so there is no fixed egress host (same as kubernetes).
   nomad: [],
+  // Consul is self-hosted: the agent address is user-supplied, so there is no fixed egress host (same as kubernetes).
+  consul: [],
 };
 
 /**
