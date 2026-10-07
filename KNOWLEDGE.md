@@ -1839,6 +1839,23 @@ International site, RAM user AccessKey (`accessKeyId`, `accessKeySecret`), a def
 - Terraform: `pinecone-io/pinecone` 4.x; `spec`/`read_capacity`/`embed` are attribute objects (`tf.map`); import ids are the index/collection name, project id, `<project_id>:<key_id>`, service account id. Document (full-text) indexes are unsupported.
 - **No cost data**: Pinecone has no billing or usage API (console Usage page / CSV only), verified 2026-10. Serverless regions are a static list from the "Create an index" guide; there is no region listing call. Embedding models come from `GET /models?type=embed`.
 
+### Vast.ai (`@infrawrench/plugin-vast-ai`)
+
+Verified 2026-10 against the full OpenAPI document (`https://docs.vast.ai/api-reference/openapi.yaml`; the per-operation YAMLs under `/api-reference/openapi/yaml/` match it) and the `vast-cli` source (`vast.py`), which disagrees with the spec in places and wins where it does.
+
+- **Auth**: `Authorization: Bearer <key>` against `https://console.vast.ai`. Keys can be scoped (`instance_read/write`, `user_read/write`, `billing_read`, `misc`, ...). Errors are `{success:false, error, msg}` or just `msg`/`message`; some endpoints return HTTP 200 with `success:false`, which `api.ts` turns into a 400. Rate limits are per endpoint and identity; a 429 body may be plain text.
+- **Query objects are JSON in the query string** (`select_filters`, `select_cols`, `order_by`), exactly as the CLI's `apiurl` encodes them. Keyset pagination is `after_token` in, `next_token` out (`/api/v1/instances/` max 25 per page, `/api/v0/charges/`).
+- **Offers are a POST**: `POST /api/v0/bundles/` with the filter object as the body (`verified`, `rentable`, `rented`, `external`, `type: ondemand|bid|reserved`, `order: [[field, dir]]`, `limit`). The example in the spec says `on-demand`; the enum and the CLI say `ondemand`. The picker is a size-picker of offers grouped by `gpu_name`.
+- **Create instance is `PUT /api/v0/asks/{offerId}/`** returning `new_contract` (the instance id). The CLI's body is the reference: `client_id: "me"`, `env` as an **object** (`{KEY: value, "-p 8000:8000": "1"}`, from `parse_env`), no `image`/`runtype` when a `template_hash_id` is given, `price` only for interruptible. Templates instead take `env` as a Docker-flag **string**.
+- **Instance actions**: start/stop are `PUT /instances/{id}/ {state}`, label the same endpoint `{label}`; reboot/recycle `PUT /instances/{reboot|recycle}/{id}/`; rebid `PUT /instances/bid_price/{id}/ {client_id, price}`; destroy `DELETE /instances/{id}/`. `show instance` wraps the object as `{instances: {...}}` (singular object, plural key). `jupyter_token` is never stored.
+- **Units**: `gpu_ram`/`cpu_ram` are MB and Vast displays MB/1000 as GB; `cpu_util` is a fraction; `gpu_util` and `disk_usage` are already percentages (the CLI prints them raw). `end_date` far in the future means no end and is dropped. Utilization is a point-in-time snapshot stored as fields, not a metrics series (no history API).
+- **Volumes**: list `GET /api/v0/volumes/?owner=me&type=all_volume` (CLI), rent `PUT /api/v0/volumes/ {id: volumeOfferId, size, name}` from `POST /api/v0/volumes/search/`, delete `DELETE /api/v0/volumes/` where the CLI sends `?id=` and the spec a body, so both are sent.
+- **Templates**: `GET /api/v0/template/` searches everyone's; the lister filters `creator_id` = `users/current.id`. Edit is `PUT` keyed by `hash_id`, which changes on every edit (re-read before editing). Delete takes `template_id` in the body.
+- **Cost**: `GET /api/v0/charges/?select_filters={"day":{"gte","lte"}}&format=table`: one row per contract with `items` (`gpu`, `disk`, `bwd`, `bwu`), each with its own `start`/`end`. Not bucketed by day, so amounts are spread over the UTC days each item spans (exact for fixed hourly GPU/disk rates). Credit balance is `users/current.balance` (the docs example calls it `credit`; both are read).
+- **Serverless**: `endptjobs` (endpoints) and `workergroups` CRUD; both payloads include an `api_key`, which is never stored. Endpoint start/stop goes through `deployments` (`/deployment/{id}/start|stop/`), found by `endpoint_id`; endpoints without a deployment get an explanatory error.
+- **Account env vars** (`/api/v0/secrets/`): GET returns values; only keys are kept. Values are a write-only `password` field.
+- **Not done**: no status feed (status.vast.ai is a self-hosted uptime grid of probe logs with no incidents); no Terraform (no provider); copy/cloud-copy/execute/logs (async S3 result URLs with no host surface); host-side machine management; teams and API keys; reserved-instance prepay.
+
 ---
 
 ## Publish capability (cross-plugin)

@@ -188,6 +188,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     region: "ap-southeast-1",
   },
   pinecone: { apiKey: "pcsk_test_pinecone_key" },
+  "vast-ai": { apiKey: "test-vast-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
