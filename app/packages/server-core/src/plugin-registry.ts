@@ -137,6 +137,7 @@ import { plugin as huggingfacePlugin } from "@infrawrench/plugin-huggingface";
 import { plugin as proxmoxPlugin } from "@infrawrench/plugin-proxmox";
 import { plugin as hashicorpVaultPlugin } from "@infrawrench/plugin-hashicorp-vault";
 import { plugin as auth0Plugin } from "@infrawrench/plugin-auth0";
+import { plugin as pulumiCloudPlugin } from "@infrawrench/plugin-pulumi-cloud";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -282,4 +283,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   proxmoxPlugin,
   hashicorpVaultPlugin,
   auth0Plugin,
+  pulumiCloudPlugin,
 ];

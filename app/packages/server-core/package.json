@@ -424,6 +424,7 @@
     "@infrawrench/plugin-proxmox": "workspace:*",
     "@infrawrench/plugin-hashicorp-vault": "workspace:*",
     "@infrawrench/plugin-auth0": "workspace:*",
+    "@infrawrench/plugin-pulumi-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

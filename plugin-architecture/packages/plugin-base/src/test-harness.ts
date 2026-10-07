@@ -257,6 +257,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientId: "test-auth0-client",
     clientSecret: "test-auth0-secret",
   },
+  "pulumi-cloud": { accessToken: "pul-test", organization: "acme", plan: "pro" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

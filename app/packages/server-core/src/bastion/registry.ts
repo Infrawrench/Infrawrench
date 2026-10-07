@@ -335,6 +335,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "hashicorp-vault": [],
   // Auth0 tenants: {tenant}.auth0.com and {tenant}.{region}.auth0.com
   auth0: ["*.auth0.com"],
+  // managed Pulumi Cloud API; self-hosted API URLs are user-supplied and not allowlisted
+  "pulumi-cloud": ["api.pulumi.com"],
 };
 
 /**
