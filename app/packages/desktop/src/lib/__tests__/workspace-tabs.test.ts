@@ -259,6 +259,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({ to: "/access-review" });
   });
 
+  it("returns just-in-time access route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "jit-access" })).toEqual({ to: "/jit-access" });
+  });
+
   it("returns dns route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({ to: "/dns" });
   });
@@ -382,6 +386,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the access review path", () => {
     expect(syncWorkspaceRouteFromPath("/access-review")).toEqual({ kind: "access-review" });
+  });
+
+  it("parses the just-in-time access path", () => {
+    expect(syncWorkspaceRouteFromPath("/jit-access")).toEqual({ kind: "jit-access" });
   });
 
   it("parses the dns path", () => {

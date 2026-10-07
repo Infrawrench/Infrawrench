@@ -109,6 +109,7 @@ describe("getWorkspaceTabId", () => {
 
   it("returns the singleton id for the access review target", () => {
     expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
+    expect(getWorkspaceTabId({ kind: "jit-access" })).toBe("jit-access");
   });
 
   it("returns the singleton id for the iac target", () => {
@@ -318,6 +319,7 @@ describe("getWorkspaceTabFallbackTitle", () => {
 
   it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "access-review" })).toBe("Access review");
+    expect(getWorkspaceTabFallbackTitle({ kind: "jit-access" })).toBe("Just-in-time access");
   });
 
   it("returns 'IaC' for the iac target, matching the sidebar tile", () => {
@@ -449,6 +451,8 @@ describe("workspaceTabTargetsEqual", () => {
   // each other in the sidebar and answer different questions.
   it("never equates the access review with posture", () => {
     expect(workspaceTabTargetsEqual({ kind: "access-review" }, { kind: "posture" })).toBe(false);
+    expect(workspaceTabTargetsEqual({ kind: "jit-access" }, { kind: "jit-access" })).toBe(true);
+    expect(workspaceTabTargetsEqual({ kind: "jit-access" }, { kind: "access-review" })).toBe(false);
   });
 
   it("treats two iac targets as equal (singleton tab)", () => {

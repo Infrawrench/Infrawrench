@@ -162,6 +162,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "expiring" ||
     target.kind === "posture" ||
     target.kind === "access-review" ||
+    target.kind === "jit-access" ||
     target.kind === "backups" ||
     target.kind === "wallboard" ||
     target.kind === "calendar" ||

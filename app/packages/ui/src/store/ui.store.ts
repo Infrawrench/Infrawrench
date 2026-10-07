@@ -16,6 +16,8 @@ export type WorkspaceTabTarget =
   | { kind: "expiring" }
   | { kind: "posture" }
   | { kind: "access-review" }
+  /** Just-in-time access: time-boxed provider roles, requested and approved. */
+  | { kind: "jit-access" }
   | { kind: "backups" }
   /** The wallboard: one screen, read from across the room. */
   | { kind: "wallboard" }
@@ -154,6 +156,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "posture";
     case "access-review":
       return "access-review";
+    case "jit-access":
+      return "jit-access";
     case "backups":
       return "backups";
     case "wallboard":
@@ -250,6 +254,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Posture";
     case "access-review":
       return "Access review";
+    case "jit-access":
+      return "Just-in-time access";
     case "backups":
       return "Backups";
     case "wallboard":
@@ -319,6 +325,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "expiring":
     case "posture":
     case "access-review":
+    case "jit-access":
     case "backups":
     case "wallboard":
     case "calendar":

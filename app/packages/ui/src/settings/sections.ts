@@ -25,6 +25,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // answered for cost rows instead of permissions.
   { key: "cost-visibility", label: msg("Cost Visibility"), requiresPermission: "team:read" },
   { key: "access-requests", label: msg("Break-glass Access"), requiresPermission: "access:read" },
+  // Beside Break-glass: the cloud half of the same idea. Break-glass elevates
+  // Infrawrench permissions; these policies govern time-boxed provider roles.
+  // The request queue itself is the Just-in-time access workspace tab.
+  { key: "jit-access", label: msg("Just-in-time Access"), requiresPermission: "access:read" },
   { key: "ssh-keys", label: msg("SSH Keys") },
   { key: "ssh-host-keys", label: msg("Trusted SSH Hosts") },
   {

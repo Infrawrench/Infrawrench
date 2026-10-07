@@ -28,6 +28,7 @@ import { Route as GraphRouteImport } from './routes/graph'
 import { Route as IacRouteImport } from './routes/iac'
 import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as InvoicesRouteImport } from './routes/invoices'
+import { Route as JitAccessRouteImport } from './routes/jit-access'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MomentRouteImport } from './routes/moment'
@@ -142,6 +143,11 @@ const InvoicesRoute = InvoicesRouteImport.update({
   path: '/invoices',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JitAccessRoute = JitAccessRouteImport.update({
+  id: '/jit-access',
+  path: '/jit-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -254,6 +260,7 @@ export interface FileRoutesByFullPath {
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
+  '/jit-access': typeof JitAccessRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
+  '/jit-access': typeof JitAccessRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
+  '/jit-access': typeof JitAccessRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -374,6 +383,7 @@ export interface FileRouteTypes {
     | '/iac'
     | '/incidents'
     | '/invoices'
+    | '/jit-access'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -413,6 +423,7 @@ export interface FileRouteTypes {
     | '/iac'
     | '/incidents'
     | '/invoices'
+    | '/jit-access'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -452,6 +463,7 @@ export interface FileRouteTypes {
     | '/iac'
     | '/incidents'
     | '/invoices'
+    | '/jit-access'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -492,6 +504,7 @@ export interface RootRouteChildren {
   IacRoute: typeof IacRoute
   IncidentsRoute: typeof IncidentsRoute
   InvoicesRoute: typeof InvoicesRoute
+  JitAccessRoute: typeof JitAccessRoute
   LogsRoute: typeof LogsRoute
   MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
@@ -647,6 +660,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jit-access': {
+      id: '/jit-access'
+      path: '/jit-access'
+      fullPath: '/jit-access'
+      preLoaderRoute: typeof JitAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/logs': {
       id: '/logs'
       path: '/logs'
@@ -796,6 +816,7 @@ const rootRouteChildren: RootRouteChildren = {
   IacRoute: IacRoute,
   IncidentsRoute: IncidentsRoute,
   InvoicesRoute: InvoicesRoute,
+  JitAccessRoute: JitAccessRoute,
   LogsRoute: LogsRoute,
   MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,

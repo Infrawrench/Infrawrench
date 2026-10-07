@@ -4,6 +4,7 @@ import { TeamSection } from "./TeamSection.js";
 import { RolesSection } from "./RolesSection.js";
 import { CostVisibilitySection } from "./CostVisibilitySection.js";
 import { AccessRequestsSection } from "./AccessRequestsSection.js";
+import { JitAccessPoliciesSection } from "./JitAccessPoliciesSection.js";
 import { SshKeysSection } from "./SshKeysSection.js";
 import { SshHostKeysSection } from "./SshHostKeysSection.js";
 import { SessionRecordingsSection } from "./SessionRecordingsSection.js";
@@ -49,6 +50,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <CostVisibilitySection />;
     case "access-requests":
       return <AccessRequestsSection />;
+    case "jit-access":
+      return <JitAccessPoliciesSection />;
     case "ssh-keys":
       return <SshKeysSection />;
     case "ssh-host-keys":

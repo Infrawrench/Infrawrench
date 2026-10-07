@@ -19,6 +19,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   AccessReviewIcon,
+  JitAccessIcon,
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
@@ -61,6 +62,7 @@ import {
   queryMonitorsTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
   workflowsTabTarget,
@@ -311,6 +313,17 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, accessReviewTabTarget(), {
                 label: gt("Access review"),
+              }),
+          },
+          // Cloud-only for the same reason: policies, approvers and the
+          // expiry sweep live in the cloud.
+          {
+            key: "jit-access",
+            label: gt("Just-in-time access"),
+            icon: <JitAccessIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, jitAccessTabTarget(), {
+                label: gt("Just-in-time access"),
               }),
           },
           // Cloud-only: reconciliation classifies the org's *synced*

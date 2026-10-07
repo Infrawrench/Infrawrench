@@ -14,6 +14,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
@@ -202,6 +203,12 @@ export function getWorkspaceNavigateArgs(
     case "access-review":
       return {
         to: "/org/$orgId/access-review",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "jit-access":
+      return {
+        to: "/org/$orgId/jit-access",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -541,6 +548,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "access-review") {
     return accessReviewTabTarget();
+  }
+  if (s[0] === "jit-access") {
+    return jitAccessTabTarget();
   }
   if (s[0] === "backups") {
     return backupsTabTarget();

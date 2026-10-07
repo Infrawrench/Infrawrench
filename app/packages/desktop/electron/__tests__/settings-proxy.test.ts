@@ -30,6 +30,18 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/ai-attribution/dimensions/d1")).toBe(true);
   });
 
+  it("allows just-in-time access: the policies section and the workspace tab", () => {
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/jit-access/policies")).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/jit-access/policies/p1")).toBe(true);
+    expect(
+      isAllowedSettingsRequest("GET", "/api/org/o1/jit-access/accounts/a1/roles?scopeId=proj"),
+    ).toBe(true);
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/jit-access/requests/r1/approve")).toBe(
+      true,
+    );
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/jit-accessories")).toBe(false);
+  });
+
   it("allows virtual tags and read-only business metrics", () => {
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/virtual-tags")).toBe(true);
     expect(isAllowedSettingsRequest("POST", "/api/org/o1/virtual-tags/preview")).toBe(true);

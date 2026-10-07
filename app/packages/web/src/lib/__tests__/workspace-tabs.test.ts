@@ -418,6 +418,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns just-in-time access route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "jit-access" })).toEqual({
+      to: "/org/$orgId/jit-access",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns dns route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({
       to: "/org/$orgId/dns",
@@ -505,6 +512,12 @@ describe("syncWorkspaceRouteFromPath", () => {
   it("parses the org-scoped access review path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/access-review")).toEqual({
       kind: "access-review",
+    });
+  });
+
+  it("parses the org-scoped just-in-time access path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/jit-access")).toEqual({
+      kind: "jit-access",
     });
   });
 
