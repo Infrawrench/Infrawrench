@@ -212,6 +212,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiToken: "dt0c01.TEST.SECRET",
   },
   wasabi: { accessKey: "TESTACCESSKEY0000000", secretKey: "test-wasabi-secret" },
+  "weaviate-cloud": {
+    endpoint: "https://test.c0.europe-west3.gcp.weaviate.cloud",
+    apiKey: "test-weaviate-key",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

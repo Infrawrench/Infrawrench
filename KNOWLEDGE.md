@@ -1985,6 +1985,18 @@ Verified against the Dynatrace docs (Environment API v2/v1, Settings 2.0, Accoun
 - Status: status.wasabi.com is Statuspage; components "US-Central-1 (Texas)" → `us-central-1`.
 - Not done: Terraform (no official Wasabi provider), Wasabi-specific `?compliance` bucket settings, bucket logging, replication, event notifications (SNS-style config), STS, IAM groups/roles as resources, multipart upload in the browser.
 
+### Weaviate Cloud (`@infrawrench/plugin-weaviate-cloud`)
+
+- **Weaviate Cloud has no public management API** (verified 2026-10 against docs.weaviate.io/cloud and the FAQ): no cluster create/resize/delete, no billing, no Terraform provider, no CLI. Cluster lifecycle stays in the console; the plugin manages what is *inside* a cluster through its REST API (`<endpoint>/v1`, spec `openapi-specs/schema.json` in github.com/weaviate/weaviate). It works unchanged against self-hosted Weaviate.
+- **One account = one cluster**: credentials are `endpoint` + optional `apiKey` (sent as `Authorization: Bearer`), so `cluster` is the `accountRoot`. WCD hosts are `<id>.c<n>.<region>.<cloud>.weaviate.cloud` (older `*.weaviate.network`); region/cloud are parsed from the host and gRPC is `grpc-<host>`. Pasted endpoints are normalised (scheme added, trailing `/v1` dropped).
+- Sources: `/v1/meta` (version, loaded modules), `/v1/nodes?output=verbose` (node status plus per-shard `class`/`objectCount`/`vectorQueueLength`; per-collection counts are summed from shards), `/v1/schema` (classes; `vectorConfig` means named vectors). Collection update is `PUT /v1/schema/{class}` with the whole fetched class; only description, `replicationConfig.factor` and the multi-tenancy auto flags are edited.
+- Tenants: `GET/POST/PUT/DELETE /v1/schema/{class}/tenants` (PUT and POST take arrays, DELETE takes an array of names). Activity names changed: `HOT/COLD/FROZEN` are deprecated aliases of `ACTIVE/INACTIVE/OFFLOADED`; mappers normalise.
+- Aliases (`/v1/aliases`, 1.32+) and RBAC (`/v1/users/db`, `/v1/authz/roles`, assign/revoke with `{roles, userType: "db"}`, 1.30+) answer 404 on older clusters and are treated as empty. A DB user's `apikey` is returned only on create and `rotate-key`; the plugin stores it with `services.secrets`.
+- Backups use the cluster's backup module: backends come from `meta.modules` keys `backup-<backend>`; `GET /v1/backups/{backend}` lists (array with `size` in GiB), `POST .../{id}/restore`, `DELETE .../{id}` cancels. No module, no backups.
+- Metrics: no REST time series and WCD does not expose the Prometheus port, so node stats are emitted as one point per poll.
+- **No status feed**: status.weaviate.cloud is an incident.io page whose Statuspage-compatible `/api/v2/*.json` returns `{"page": null}` and whose advertised `feed.rss`/`feed.atom` 404 (2026-10).
+- Logo: gradient symbol from weaviate.io's 2026 wordmark SVG on #151515.
+
 ---
 
 ## Publish capability (cross-plugin)

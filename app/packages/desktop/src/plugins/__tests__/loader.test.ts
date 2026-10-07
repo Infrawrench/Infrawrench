@@ -154,6 +154,7 @@ vi.mock("@infrawrench/plugin-honeycomb", () => stub("honeycomb"));
 vi.mock("@infrawrench/plugin-ibm-cloud", () => stub("ibm-cloud"));
 vi.mock("@infrawrench/plugin-dynatrace", () => stub("dynatrace"));
 vi.mock("@infrawrench/plugin-wasabi", () => stub("wasabi"));
+vi.mock("@infrawrench/plugin-weaviate-cloud", () => stub("weaviate-cloud"));
 
 beforeEach(() => {
   disabled = [];

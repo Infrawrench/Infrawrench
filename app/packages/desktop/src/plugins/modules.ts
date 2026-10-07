@@ -125,4 +125,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-ibm-cloud"),
   () => import("@infrawrench/plugin-dynatrace"),
   () => import("@infrawrench/plugin-wasabi"),
+  () => import("@infrawrench/plugin-weaviate-cloud"),
 ];

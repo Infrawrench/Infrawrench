@@ -273,6 +273,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // s3.<region>, iam, stats and partner (Account Control) hosts
   wasabi: ["*.wasabisys.com"],
+  // each account is one cluster endpoint: Weaviate Cloud clusters live under weaviate.cloud (older ones weaviate.network); self-hosted endpoints are user-supplied
+  "weaviate-cloud": ["*.weaviate.cloud", "*.weaviate.network"],
 };
 
 /**
