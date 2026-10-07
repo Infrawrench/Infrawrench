@@ -411,6 +411,7 @@
     "@infrawrench/plugin-buildkite": "workspace:*",
     "@infrawrench/plugin-influxdb-cloud": "workspace:*",
     "@infrawrench/plugin-bunny": "workspace:*",
+    "@infrawrench/plugin-jfrog": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

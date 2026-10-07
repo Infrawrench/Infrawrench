@@ -163,6 +163,7 @@ vi.mock("@infrawrench/plugin-splunk-observability", () => stub("splunk-observabi
 vi.mock("@infrawrench/plugin-buildkite", () => stub("buildkite"));
 vi.mock("@infrawrench/plugin-influxdb-cloud", () => stub("influxdb-cloud"));
 vi.mock("@infrawrench/plugin-bunny", () => stub("bunny"));
+vi.mock("@infrawrench/plugin-jfrog", () => stub("jfrog"));
 
 beforeEach(() => {
   disabled = [];

@@ -134,4 +134,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-buildkite"),
   () => import("@infrawrench/plugin-influxdb-cloud"),
   () => import("@infrawrench/plugin-bunny"),
+  () => import("@infrawrench/plugin-jfrog"),
 ];

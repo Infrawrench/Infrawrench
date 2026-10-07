@@ -124,6 +124,7 @@ import { plugin as splunkObservabilityPlugin } from "@infrawrench/plugin-splunk-
 import { plugin as buildkitePlugin } from "@infrawrench/plugin-buildkite";
 import { plugin as influxdbCloudPlugin } from "@infrawrench/plugin-influxdb-cloud";
 import { plugin as bunnyPlugin } from "@infrawrench/plugin-bunny";
+import { plugin as jfrogPlugin } from "@infrawrench/plugin-jfrog";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -256,4 +257,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   buildkitePlugin,
   influxdbCloudPlugin,
   bunnyPlugin,
+  jfrogPlugin,
 ];

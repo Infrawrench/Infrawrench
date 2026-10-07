@@ -298,6 +298,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "influxdb-cloud": ["*.cloud2.influxdata.com", "console.influxdata.com"],
   // Edge Storage answers on the zone's regional storage host
   bunny: ["api.bunny.net", "storage.bunnycdn.com", "*.storage.bunnycdn.com"],
+  // platform URL is user-supplied (JFrog Cloud or self-hosted); v1 doesn't bastion-route JFrog
+  jfrog: [],
 };
 
 /**
