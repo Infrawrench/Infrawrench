@@ -2,6 +2,7 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
+import type { JitFlags } from "./commands/jit";
 import type {
   CostAnomalyFeedbackInput,
   CostAnomalyFeedbackReason,
@@ -350,6 +351,8 @@ export interface ParsedCli {
   margin: boolean;
   /** `unit-costs` calculation flags: raw strings, validated by the command. */
   unitCost: UnitCostFlags;
+  /** `jit` flags: raw strings, validated by the command. */
+  jit: JitFlags;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -509,6 +512,17 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         event: { type: "string" },
         // `savings log`: a manual saving's monthly amount (`--note` is the shared one).
         amount: { type: "string" },
+        // `jit request|extend|list`: which policy and role, for how long, and
+        // filters on the queue. `--reason` and `--note` are the shared ones.
+        policy: { type: "string" },
+        role: { type: "string" },
+        scope: { type: "string" },
+        for: { type: "string" },
+        by: { type: "string" },
+        ticket: { type: "string" },
+        status: { type: "string" },
+        mine: { type: "boolean", default: false },
+        holding: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -697,6 +711,18 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       desc: values.desc === true,
     },
     savings: { amount: str("amount"), note: str("note") },
+    jit: {
+      policy: str("policy"),
+      role: str("role"),
+      scope: str("scope"),
+      duration: str("for"),
+      by: str("by"),
+      ticket: str("ticket"),
+      note: str("note"),
+      status: str("status"),
+      mine: values.mine === true,
+      holding: values.holding === true,
+    },
     positionals: parsed.positionals,
     version: values.version === true,
     anomalies: values.anomalies === true,
