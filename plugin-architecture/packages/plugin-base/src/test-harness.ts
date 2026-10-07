@@ -200,6 +200,12 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiKey: "test-qdrant-management-key",
     accountId: "00000000-0000-0000-0000-000000000001",
   },
+  honeycomb: {
+    region: "us1",
+    managementKeyId: "hcxmk_test",
+    managementKeySecret: "test-secret",
+    configurationKey: "test-config-key",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

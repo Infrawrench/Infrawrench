@@ -259,6 +259,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // cluster database endpoints are per-cluster subdomains of cloud.qdrant.io (port 6333); hybrid clusters use the customer's own endpoint
   "qdrant-cloud": ["api.cloud.qdrant.io", "*.cloud.qdrant.io"],
+  // Honeycomb US and EU API hosts (configuration and management keys share them).
+  honeycomb: ["api.honeycomb.io", "api.eu1.honeycomb.io"],
 };
 
 /**
