@@ -250,6 +250,13 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // B2 hands out a per-cluster apiNNN/fNNN/podNNN host at authorize time
   "backblaze-b2": ["api.backblazeb2.com", "*.backblazeb2.com"],
   paperspace: ["api.paperspace.com"],
+  // Astra DevOps/streaming APIs, the metrics scrape host, and each database's Data API endpoint
+  "datastax-astra": [
+    "api.astra.datastax.com",
+    "api.streaming.datastax.com",
+    "metrics.astra.datastax.com",
+    "*.apps.astra.datastax.com",
+  ],
 };
 
 /**

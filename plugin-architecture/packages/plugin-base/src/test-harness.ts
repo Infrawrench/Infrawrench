@@ -195,6 +195,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     applicationKey: "K005testapplicationkey",
   },
   paperspace: { apiKey: "test-paperspace-key" },
+  "datastax-astra": { token: "AstraCS:test:secret" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

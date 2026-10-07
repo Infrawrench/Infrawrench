@@ -119,4 +119,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-aiven"),
   () => import("@infrawrench/plugin-backblaze-b2"),
   () => import("@infrawrench/plugin-paperspace"),
+  () => import("@infrawrench/plugin-datastax-astra"),
 ];

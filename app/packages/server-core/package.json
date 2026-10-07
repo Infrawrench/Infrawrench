@@ -396,6 +396,7 @@
     "@infrawrench/plugin-aiven": "workspace:*",
     "@infrawrench/plugin-backblaze-b2": "workspace:*",
     "@infrawrench/plugin-paperspace": "workspace:*",
+    "@infrawrench/plugin-datastax-astra": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

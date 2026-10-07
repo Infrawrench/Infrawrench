@@ -109,6 +109,7 @@ import { plugin as vastAiPlugin } from "@infrawrench/plugin-vast-ai";
 import { plugin as aivenPlugin } from "@infrawrench/plugin-aiven";
 import { plugin as backblazeB2Plugin } from "@infrawrench/plugin-backblaze-b2";
 import { plugin as paperspacePlugin } from "@infrawrench/plugin-paperspace";
+import { plugin as datastaxAstraPlugin } from "@infrawrench/plugin-datastax-astra";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -226,4 +227,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   aivenPlugin,
   backblazeB2Plugin,
   paperspacePlugin,
+  datastaxAstraPlugin,
 ];

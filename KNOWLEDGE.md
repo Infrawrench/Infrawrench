@@ -1900,6 +1900,21 @@ Verified 2026-10 against the live OpenAPI document (`https://api.paperspace.com/
 - **Status**: `status.paperspace.com` is Atlassian Statuspage; components "US (NY2)", "US (CA1)", "Europe (AMS1)" map to region codes.
 - **Not done**: no cost or credits (billing moved to DigitalOcean, no Paperspace billing API; a DigitalOcean token would be needed); no Terraform (`Paperspace/paperspace` 0.4.5, 2023, targets the retired legacy API); datasets, models, team and project secrets, machine accessors and project collaborators are not modelled.
 
+### DataStax Astra (`@infrawrench/plugin-datastax-astra`)
+
+Verified 2026-10 against the OpenAPI documents in github.com/datastax/astra-client-go (`openapi/astra-devops-api.yaml` v2.3.0, `openapi/streaming-devops-api.yaml`), the `datastax/astra` Terraform provider v2.5 source and docs, the Astra CLI source, and docs.datastax.com.
+
+- **One `AstraCS:` application token, three auth spellings**: `Authorization: Bearer` on `api.astra.datastax.com` (DevOps + streaming), `Token:` on a database's Data API host (`https://<dbid>-<region>.apps.astra.datastax.com/api/json/v1/<keyspace>`), and `Authorization: Astra-Token <token>` on `metrics.astra.datastax.com` (the Prometheus scrape's `authorization.type`). `astraRequest({ dataApi: true })` switches the header.
+- **Database list** pages with `?include=nonterminated&limit=100&starting_after=<last id>`. Create returns 201 with the id only in a `Location` header that `jsonRestFetch` cannot read, so the client re-lists and finds the newest database with that name. Body: `{name, keyspace?, cloudProvider: AWS|GCP|AZURE, tier: "serverless", capacityUnits: 1, region, dbType?: "vector", pcuGroupUUID?}`. Regions come from `GET /v2/regions/serverless?region-type=all` (picker ids `CLOUD:region`).
+- **No resume endpoint.** A hibernated database wakes on any authenticated Data API request, which answers 503 while it resumes; `resume` does exactly what `astra db resume` does (GET a dummy Data API path, accept 503). The same fact means listing collections must skip non-ACTIVE databases or every sync would wake them.
+- **Access lists**: `GET /v2/access-lists` (org-wide, one call) feeds the database fields; edits read the database's list and `PUT` it whole (PUT replaces everything), deletes use `DELETE …/access-list?addresses=<cidr>`. Enforcing an empty list is refused client-side. Entry ids are `<db>/<cidr>`, split on the first slash.
+- **PCU groups**: list is `POST /v2/pcus/actions/get {}` (empty body = all), update is `PUT /v2/pcus [ {full object} ]`, park/unpark `POST /v2/pcus/{park|unpark}/{id}`, associations `GET/POST/DELETE /v2/pcus/association/{group}[/{datacenter}]`, moves via `POST /v2/pcus/association/transfer`.
+- **Streaming** responses are documented wrapped in `{Body: …}` but the provider reads them bare; `unwrapBody` accepts both. Tenant create needs `orgID` (and `orgName`, which the Terraform provider fills with the org id), `clusterName`, `tenantName`, `userEmail`. Delete is `DELETE /v2/streaming/tenants/{tenant}/clusters/{cluster}`.
+- **CDC** is per database (`/v3/databases/{id}/cdc`): POST creates, PUT replaces the table set, DELETE with a body removes tables. Adding a table PUTs existing tables plus the new one; regions must match the tenant's region.
+- **Metrics** are point-in-time scrapes (`:rate1m` recordings) of `/v1/databases/{id}/metrics` and `/v1/pcugroup/{id}/metrics`; a paid-plan feature, 401/403/404 read as no data. Multi-region series are summed, latencies take the worst region.
+- **Status**: `status.datastax.com` is an inactive Statuspage; the live one is `status.astra.datastax.com`. AWS components are `AWS us-east-1`, Azure ones bare region names, GCP ones Google service names (no regions), so only AWS/Azure map to `region`.
+- **Not done**: cost/usage (`/v2/enterprises/consumption` and billing reports need an enterprise token and the response shape is not published), quotas, classic (non-serverless) database features (resize, park), third-party metrics export and telemetry config, streaming namespaces/topics/sinks/sources, VPC peering, customer keys. Token secrets are only returned by create, so the `token` output exists only on the create response.
+
 ---
 
 ## Publish capability (cross-plugin)
