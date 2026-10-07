@@ -300,7 +300,7 @@ export class HuggingFaceClient implements PluginClient {
       if (statusOf(err) === 403) return [] as ScheduledJob[];
       throw err;
     });
-    return (jobs ?? []).filter((j) => j.id).map((j) => mapScheduledJob(accountId, j));
+    return (jobs ?? []).filter((j) => j.id).map((j) => mapScheduledJob(accountId, j, ns));
   }
 
   /** `GET https://router.huggingface.co/v1/models` */
@@ -400,7 +400,7 @@ export class HuggingFaceClient implements PluginClient {
           this.ctx,
           `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}`,
         );
-        return mapScheduledJob(accountId, job);
+        return mapScheduledJob(accountId, job, ns);
       }
       case "hf-service-account": {
         const sa = await hfJson<ServiceAccount>(
@@ -615,7 +615,7 @@ export class HuggingFaceClient implements PluginClient {
             },
           },
         );
-        return mapScheduledJob(accountId, job);
+        return mapScheduledJob(accountId, job, ns);
       }
       case "hf-service-account": {
         if (!isOrg) {
@@ -796,7 +796,7 @@ export class HuggingFaceClient implements PluginClient {
             `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}/schedule`,
             { method: "POST", body: { schedule: fields["schedule"].trim() } },
           );
-          return mapScheduledJob(accountId, job);
+          return mapScheduledJob(accountId, job, ns);
         }
         return this.getResource(typeId, resourceId, accountId);
       }

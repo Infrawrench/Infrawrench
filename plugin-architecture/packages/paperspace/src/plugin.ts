@@ -4,6 +4,7 @@ import { PaperspaceClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { paperspaceRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "paperspace",
@@ -38,4 +39,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new PaperspaceClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
+  remediationCommands: paperspaceRemediationCommands,
 };

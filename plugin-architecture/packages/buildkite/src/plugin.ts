@@ -10,6 +10,7 @@ import { BuildkiteClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import type { BkOrganization } from "./mappers.js";
 import { PREFLIGHT_CAPABILITIES, policyTemplate, tokenUrl } from "./preflight.js";
+import { buildkiteRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { buildkiteTerraformExport } from "./terraform.js";
@@ -92,5 +93,6 @@ export const plugin: Plugin = {
   parseStatusFeed,
   listCredentialOptions,
   terraformExport: buildkiteTerraformExport,
+  remediationCommands: buildkiteRemediationCommands,
   policyTemplate,
 };

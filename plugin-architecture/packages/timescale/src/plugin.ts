@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { TimescaleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { timescaleRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { timescaleTerraformExport } from "./terraform.js";
@@ -45,4 +46,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new TimescaleClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: timescaleTerraformExport,
+  remediationCommands: timescaleRemediationCommands,
 };

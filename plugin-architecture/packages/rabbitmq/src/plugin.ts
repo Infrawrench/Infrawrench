@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RABBIT_PREFLIGHT, RabbitClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { rabbitmqRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { rabbitTerraformExport } from "./terraform.js";
 
@@ -61,4 +62,5 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RabbitClient(credentials, services),
   terraformExport: rabbitTerraformExport,
+  remediationCommands: rabbitmqRemediationCommands,
 };

@@ -11,6 +11,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { qdrantTerraformExport } from "./terraform.js";
+import { qdrantRemediationCommands } from "./remediation.js";
 import type { QcAccount } from "./types.js";
 
 const manifest: PluginManifest = {
@@ -83,5 +84,6 @@ export const plugin: Plugin = {
     new QdrantCloudClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
   terraformExport: qdrantTerraformExport,
+  remediationCommands: qdrantRemediationCommands,
   listCredentialOptions,
 };

@@ -4,6 +4,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { astraTerraformExport } from "./terraform.js";
+import { astraRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "datastax-astra",
@@ -39,4 +40,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new AstraPluginClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: astraTerraformExport,
+  remediationCommands: astraRemediationCommands,
 };

@@ -8,6 +8,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { nfFetch, nfList } from "./api.js";
 import { NorthflankClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { northflankRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { NfAuth, NfTeam } from "./types.js";
@@ -90,4 +91,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new NorthflankClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   listCredentialOptions,
+  remediationCommands: northflankRemediationCommands,
 };

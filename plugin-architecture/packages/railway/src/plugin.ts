@@ -10,6 +10,7 @@ import { RailwayClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
 import { Q_TOKEN_WORKSPACES } from "./queries.js";
+import { railwayRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { RwWorkspaceRef } from "./types.js";
@@ -97,4 +98,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new RailwayClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
   listCredentialOptions,
+  remediationCommands: railwayRemediationCommands,
 };

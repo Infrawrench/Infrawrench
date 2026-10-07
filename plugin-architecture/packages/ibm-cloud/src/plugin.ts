@@ -18,6 +18,7 @@ import {
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ibmTerraformExport } from "./terraform.js";
+import { ibmRemediationCommands } from "./remediation.js";
 
 const API_KEY_DOCS = "https://cloud.ibm.com/docs/account?topic=account-userapikey";
 
@@ -100,6 +101,7 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new IbmCloudClient(credentials, services),
   parseStatusFeed,
   terraformExport: ibmTerraformExport,
+  remediationCommands: ibmRemediationCommands,
   async listCredentialOptions(fieldKey, credentials, services) {
     if (fieldKey !== "regions") return [];
     return listRegionOptions(credentials, services);

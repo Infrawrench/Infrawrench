@@ -8,6 +8,7 @@ import type { BitbucketContext } from "./api.js";
 import { bbPaged, isPermissionError } from "./api.js";
 import { BitbucketClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { bitbucketRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { BbWorkspaceAccess } from "./types.js";
@@ -106,4 +107,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new BitbucketClient(credentials, services),
   parseStatusFeed,
   listCredentialOptions,
+  remediationCommands: bitbucketRemediationCommands,
 };

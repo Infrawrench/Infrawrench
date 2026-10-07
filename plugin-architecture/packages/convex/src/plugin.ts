@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ConvexClient } from "./client.js";
 import { CONVEX_LOGO } from "./logo.js";
 import { CONVEX_PREFLIGHT } from "./preflight.js";
+import { convexRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -45,4 +46,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new ConvexClient(credentials, services),
   parseStatusFeed,
+  remediationCommands: convexRemediationCommands,
 };

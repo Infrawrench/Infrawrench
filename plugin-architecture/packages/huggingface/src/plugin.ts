@@ -7,6 +7,7 @@ import type {
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HuggingFaceClient } from "./client.js";
 import { HUB_BASE, hfJson, statusOf } from "./http.js";
+import { huggingfaceRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { WhoAmI } from "./wire.js";
@@ -133,4 +134,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new HuggingFaceClient(credentials, services),
   parseStatusFeed,
   listCredentialOptions,
+  remediationCommands: huggingfaceRemediationCommands,
 };

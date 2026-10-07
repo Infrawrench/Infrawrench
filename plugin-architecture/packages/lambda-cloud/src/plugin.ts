@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { LambdaCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { lambdaCloudRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -35,4 +36,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new LambdaCloudClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
+  remediationCommands: lambdaCloudRemediationCommands,
 };

@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CIVO_PREFLIGHT, CivoClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { civoRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { civoTerraformExport } from "./terraform.js";
@@ -46,4 +47,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new CivoClient(credentials, RESOURCE_TYPES, services),
   terraformExport: civoTerraformExport,
   parseStatusFeed: (body) => parseStatusFeed(body),
+  remediationCommands: civoRemediationCommands,
 };

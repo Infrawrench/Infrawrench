@@ -5,6 +5,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { exoscaleTerraformExport } from "./terraform.js";
+import { exoscaleRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "exoscale",
@@ -64,5 +65,6 @@ export const plugin: Plugin = {
   createClient: (credentials, services) =>
     new ExoscaleClient(credentials, RESOURCE_TYPES, services),
   terraformExport: exoscaleTerraformExport,
+  remediationCommands: exoscaleRemediationCommands,
   parseStatusFeed: (body) => parseStatusFeed(body),
 };

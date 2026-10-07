@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NOMAD_PREFLIGHT, NomadClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { nomadRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { nomadTerraformExport } from "./terraform.js";
 
@@ -56,4 +57,5 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new NomadClient(credentials, services),
   terraformExport: nomadTerraformExport,
+  remediationCommands: nomadRemediationCommands,
 };

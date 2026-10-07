@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { VsphereClient } from "./client.js";
+import { vsphereRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resources.js";
 import { vsphereTerraformExport } from "./terraform.js";
 
@@ -64,4 +65,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new VsphereClient(credentials, services),
   terraformExport: vsphereTerraformExport,
+  remediationCommands: vsphereRemediationCommands,
 };

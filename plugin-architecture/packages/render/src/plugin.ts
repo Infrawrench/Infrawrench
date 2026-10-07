@@ -9,6 +9,7 @@ import { RenderApi } from "./api.js";
 import { RenderClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
+import { renderRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { renderTerraformExport } from "./terraform.js";
@@ -81,4 +82,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: renderTerraformExport,
   listCredentialOptions,
+  remediationCommands: renderRemediationCommands,
 };

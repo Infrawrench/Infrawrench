@@ -291,7 +291,11 @@ export function mapJob(accountId: string, job: Job): ResourceInstance {
   );
 }
 
-export function mapScheduledJob(accountId: string, job: ScheduledJob): ResourceInstance {
+export function mapScheduledJob(
+  accountId: string,
+  job: ScheduledJob,
+  namespace = "",
+): ResourceInstance {
   const id = str(job.id);
   const spec = job.jobSpec ?? {};
   return instance(
@@ -301,6 +305,7 @@ export function mapScheduledJob(accountId: string, job: ScheduledJob): ResourceI
     `${job.schedule ?? ""} · ${spec.dockerImage || spec.spaceId || id}`,
     {
       scheduledJobId: id,
+      namespace,
       schedule: str(job.schedule),
       suspended: job.suspend === true,
       suspendReason: str(job.suspendReason),

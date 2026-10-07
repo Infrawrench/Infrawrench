@@ -10,6 +10,7 @@ import type { GitLabContext } from "./api.js";
 import { glFetch, glPaged, isPermissionError, resolveBaseUrl } from "./api.js";
 import { GitLabClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { gitlabRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
@@ -152,6 +153,7 @@ export const plugin: Plugin = {
   parseStatusFeed,
   listCredentialOptions,
   terraformExport: gitlabTerraformExport,
+  remediationCommands: gitlabRemediationCommands,
   validateServerCredentials: (credentials) => {
     try {
       const url = resolveBaseUrl(credentials["url"]);

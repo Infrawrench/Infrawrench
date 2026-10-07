@@ -8,6 +8,7 @@ import type { HubContext } from "./api.js";
 import { statusOf } from "./api.js";
 import { DockerHubClient, listNamespaces } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { dockerHubRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dockerHubTerraformExport } from "./terraform.js";
@@ -99,5 +100,6 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new DockerHubClient(credentials, services),
   parseStatusFeed,
   terraformExport: dockerHubTerraformExport,
+  remediationCommands: dockerHubRemediationCommands,
   listCredentialOptions,
 };

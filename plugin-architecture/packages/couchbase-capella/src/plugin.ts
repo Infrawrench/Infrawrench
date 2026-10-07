@@ -7,6 +7,7 @@ import type {
 import { capellaFetch } from "./api.js";
 import { CapellaClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { capellaRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { capellaTerraformExport } from "./terraform.js";
@@ -61,6 +62,7 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new CapellaClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: capellaTerraformExport,
+  remediationCommands: capellaRemediationCommands,
   async listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,

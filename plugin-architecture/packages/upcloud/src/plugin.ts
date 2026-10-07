@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UPCLOUD_PREFLIGHT, UpCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { upcloudRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { upcloudTerraformExport } from "./terraform.js";
@@ -76,4 +77,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new UpCloudClient(credentials, RESOURCE_TYPES, services),
   terraformExport: upcloudTerraformExport,
   parseStatusFeed,
+  remediationCommands: upcloudRemediationCommands,
 };

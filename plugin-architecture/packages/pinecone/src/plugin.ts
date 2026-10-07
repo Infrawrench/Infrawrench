@@ -11,6 +11,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { pineconeTerraformExport } from "./terraform.js";
+import { pineconeRemediationCommands } from "./remediation.js";
 import type { PcProject } from "./types.js";
 
 const manifest: PluginManifest = {
@@ -108,5 +109,6 @@ export const plugin: Plugin = {
     new PineconeClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
   terraformExport: pineconeTerraformExport,
+  remediationCommands: pineconeRemediationCommands,
   listCredentialOptions,
 };

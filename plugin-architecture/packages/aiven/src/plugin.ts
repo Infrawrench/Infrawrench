@@ -5,6 +5,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { aivenTerraformExport } from "./terraform.js";
+import { aivenRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "aiven",
@@ -45,4 +46,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new AivenClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: aivenTerraformExport,
+  remediationCommands: aivenRemediationCommands,
 };

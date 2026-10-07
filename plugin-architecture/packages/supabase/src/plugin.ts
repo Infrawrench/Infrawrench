@@ -6,6 +6,7 @@ import { SUPABASE_PREFLIGHT } from "./preflight.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { supabaseTerraformExport } from "./terraform.js";
+import { supabaseRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "supabase",
@@ -58,4 +59,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new SupabaseClient(credentials, services),
   parseStatusFeed,
   terraformExport: supabaseTerraformExport,
+  remediationCommands: supabaseRemediationCommands,
 };

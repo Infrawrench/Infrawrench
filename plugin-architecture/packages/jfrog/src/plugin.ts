@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { JfrogClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { JFROG_PREFLIGHT } from "./preflight.js";
+import { jfrogRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { jfrogTerraformExport } from "./terraform.js";
@@ -51,4 +52,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new JfrogClient(credentials, services),
   parseStatusFeed,
   terraformExport: jfrogTerraformExport,
+  remediationCommands: jfrogRemediationCommands,
 };

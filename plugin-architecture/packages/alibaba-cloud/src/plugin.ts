@@ -12,6 +12,7 @@ import { ALI_REGIONS, DEFAULT_REGION, HOME_REGION_OPTIONS, regionInfo } from "./
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { alibabaTerraformExport } from "./terraform.js";
+import { alibabaRemediationCommands } from "./remediation.js";
 
 const ACCESS_KEY_DOCS =
   "https://www.alibabacloud.com/help/en/ram/user-guide/create-an-accesskey-pair";
@@ -120,6 +121,7 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new AlibabaCloudClient(credentials, services),
   parseStatusFeed,
   terraformExport: alibabaTerraformExport,
+  remediationCommands: alibabaRemediationCommands,
   async listCredentialOptions(fieldKey, credentials, services) {
     if (fieldKey !== "regions") return [];
     return listRegionOptions(credentials, services);

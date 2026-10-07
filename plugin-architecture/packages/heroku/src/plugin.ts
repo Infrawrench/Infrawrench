@@ -11,6 +11,7 @@ import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { herokuRemediationCommands } from "./remediation.js";
 import { herokuTerraformExport } from "./terraform.js";
 import type { HkTeam } from "./types.js";
 
@@ -91,4 +92,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: herokuTerraformExport,
   listCredentialOptions,
+  remediationCommands: herokuRemediationCommands,
 };

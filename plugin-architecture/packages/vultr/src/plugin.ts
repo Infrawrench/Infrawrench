@@ -5,6 +5,7 @@ import { LOGO_SVG } from "./logo.js";
 import { VULTR_PREFLIGHT } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { vultrRemediationCommands } from "./remediation.js";
 import { vultrTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -56,4 +57,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new VultrClient(credentials, RESOURCE_TYPES, services),
   terraformExport: vultrTerraformExport,
   parseStatusFeed,
+  remediationCommands: vultrRemediationCommands,
 };

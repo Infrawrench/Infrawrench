@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { OpenStackApi } from "./api.js";
 import { OpenStackClient } from "./client.js";
+import { openstackRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resources.js";
 import { openstackTerraformExport } from "./terraform.js";
 
@@ -123,6 +124,7 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new OpenStackClient(credentials, services),
   terraformExport: openstackTerraformExport,
+  remediationCommands: openstackRemediationCommands,
   async listCredentialOptions(fieldKey, credentials, services) {
     const api = new OpenStackApi(
       {

@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { XataClient } from "./client.js";
 import { XATA_LOGO } from "./logo.js";
 import { XATA_PREFLIGHT } from "./preflight.js";
+import { xataRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -45,4 +46,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new XataClient(credentials, services),
   parseStatusFeed,
+  remediationCommands: xataRemediationCommands,
 };

@@ -4,6 +4,7 @@ import { AlgoliaClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { algoliaRemediationCommands } from "./remediation.js";
 import { algoliaTerraformExport } from "./terraform.js";
 
 /**
@@ -97,4 +98,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new AlgoliaClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed: (body) => parseStatusFeed(body),
   terraformExport: algoliaTerraformExport,
+  remediationCommands: algoliaRemediationCommands,
 };

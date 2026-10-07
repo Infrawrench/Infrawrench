@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { KoyebClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { koyebRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { koyebTerraformExport } from "./terraform.js";
@@ -47,4 +48,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new KoyebClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
   terraformExport: koyebTerraformExport,
+  remediationCommands: koyebRemediationCommands,
 };

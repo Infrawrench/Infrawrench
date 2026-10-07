@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BunnyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { bunnyRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { bunnyTerraformExport } from "./terraform.js";
@@ -69,4 +70,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new BunnyClient(credentials, services),
   parseStatusFeed,
   terraformExport: bunnyTerraformExport,
+  remediationCommands: bunnyRemediationCommands,
 };

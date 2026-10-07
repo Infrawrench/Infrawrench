@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { ProxmoxClient } from "./client.js";
 import { resourceTypes } from "./resources.js";
 import { PREFLIGHT, proxmoxPolicyTemplate } from "./preflight.js";
+import { proxmoxRemediationCommands } from "./remediation.js";
 
 /** Proxmox mark from simple-icons (CC0), white on the brand orange. */
 const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -67,4 +68,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new ProxmoxClient(credentials, services),
   policyTemplate: proxmoxPolicyTemplate,
+  remediationCommands: proxmoxRemediationCommands,
 };

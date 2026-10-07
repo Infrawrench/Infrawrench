@@ -7,6 +7,7 @@ import type {
 import { REGIONS, hostFor, influxJson } from "./api.js";
 import { InfluxClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { influxRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -87,6 +88,7 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new InfluxClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
+  remediationCommands: influxRemediationCommands,
   async listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,

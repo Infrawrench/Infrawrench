@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UpstashClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { upstashRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { upstashTerraformExport } from "./terraform.js";
@@ -54,4 +55,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new UpstashClient(credentials, services),
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: upstashTerraformExport,
+  remediationCommands: upstashRemediationCommands,
 };

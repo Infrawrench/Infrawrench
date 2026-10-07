@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { DopplerClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { dopplerRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dopplerTerraformExport } from "./terraform.js";
@@ -39,4 +40,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new DopplerClient(credentials, services),
   parseStatusFeed,
   terraformExport: dopplerTerraformExport,
+  remediationCommands: dopplerRemediationCommands,
 };

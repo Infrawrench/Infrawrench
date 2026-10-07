@@ -15,6 +15,7 @@ import {
 } from "./api.js";
 import { HcpTerraformClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { tfeRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { tfeTerraformExport } from "./terraform.js";
@@ -134,4 +135,5 @@ export const plugin: Plugin = {
   listCredentialOptions,
   validateServerCredentials,
   terraformExport: tfeTerraformExport,
+  remediationCommands: tfeRemediationCommands,
 };
