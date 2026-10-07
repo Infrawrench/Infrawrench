@@ -2732,7 +2732,7 @@ export const slackApprovalMessages = pgTable(
      * "chat" (`chat_pending_actions`) or "access" (`access_requests`).
      * Widening this is a `$type` change only: the column is already `text`.
      */
-    kind: text("kind").$type<"workflow" | "chat" | "access">().notNull(),
+    kind: text("kind").$type<"workflow" | "chat" | "access" | "jit">().notNull(),
     approvalId: text("approval_id").notNull(),
     installationId: text("installation_id")
       .notNull()
@@ -5296,3 +5296,4 @@ export * from "./query-monitor-schema.js";
 export * from "./cost-visibility-schema.js";
 export * from "./github-issues-schema.js";
 export * from "./paging-provider-schema.js";
+export * from "./jit-access-schema.js";

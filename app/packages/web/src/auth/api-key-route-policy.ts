@@ -103,6 +103,20 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
       "API keys cannot request, approve, deny or revoke break-glass access. They may read the queue.",
   },
   {
+    // Just-in-time access, the cloud half of the break-glass argument above.
+    // Asking for, approving, denying, extending, cancelling or revoking a
+    // grant of somebody's cloud role is a person's act on a stated reason; a
+    // key doing any of it removes the human from the loop the approval exists
+    // to keep. Policies stay writable (`/jit-access/policies`): they are
+    // configuration, and the Terraform provider manages them with a key.
+    // Reads stay open so a monitor can watch the queue and the live grants.
+    prefix: "/jit-access/requests",
+    methods: MUTATING,
+    reason:
+      "API keys cannot request, approve, deny, extend, cancel or revoke just-in-time access. " +
+      "They may read requests and manage policies.",
+  },
+  {
     // Shared consoles, by the same argument as break-glass one entry up. A
     // share is a person deciding to put a named colleague on a live shell for
     // the length of a conversation; joining one is that colleague accepting.

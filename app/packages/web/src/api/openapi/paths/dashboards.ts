@@ -202,6 +202,7 @@ const TabTarget = strict({
     "expiring",
     "posture",
     "access-review",
+    "jit-access",
     "backups",
     "wallboard",
     "calendar",

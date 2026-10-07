@@ -26,6 +26,7 @@ import { loadPlugins } from "../plugin-loader";
 import { listExpiring } from "../expiry/feed";
 import { lookupResourceOwners } from "../ownership/store";
 import { listPostureDismissals } from "../posture/dismissals";
+import { listJitGrantIssues } from "../jit-access/service";
 
 export interface ListAccessReviewOptions {
   /** Scan instant; defaults to `Date.now()`. Fixed in tests. */
@@ -56,37 +57,48 @@ export async function listAccessReview(
   const staleDays = normalizeStaleDays(opts.staleDays);
   const now = opts.now;
 
-  const [orgResources, orgAccounts, plugins, dismissals, expiry] = await Promise.all([
-    db
-      .select({
-        id: resources.id,
-        pluginId: resources.pluginId,
-        resourceTypeId: resources.resourceTypeId,
-        accountId: resources.accountId,
-        displayName: resources.displayName,
-        externalId: resources.externalId,
-        fieldsJson: resources.fieldsJson,
-      })
-      .from(resources)
-      .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
-    db
-      .select({
-        id: accounts.id,
-        displayName: accounts.displayName,
-        pluginId: accounts.pluginId,
-      })
-      .from(accounts)
-      .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
-    loadPlugins(),
-    // One dismissal store for both recomputed-finding surfaces; a posture
-    // dismissal is simply inert here and vice versa (the rule ids are
-    // disjoint, which `plugin-loader.test.ts` enforces).
-    listPostureDismissals(organizationId),
-    listExpiring(organizationId, now !== undefined ? { now } : {}).catch((err) => {
-      console.error(`[access-review] expiry feed for org ${organizationId} failed:`, err);
-      return undefined;
-    }),
-  ]);
+  const [orgResources, orgAccounts, plugins, dismissals, expiry, jitGrantIssues] =
+    await Promise.all([
+      db
+        .select({
+          id: resources.id,
+          pluginId: resources.pluginId,
+          resourceTypeId: resources.resourceTypeId,
+          accountId: resources.accountId,
+          displayName: resources.displayName,
+          externalId: resources.externalId,
+          fieldsJson: resources.fieldsJson,
+        })
+        .from(resources)
+        .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
+      db
+        .select({
+          id: accounts.id,
+          displayName: accounts.displayName,
+          pluginId: accounts.pluginId,
+        })
+        .from(accounts)
+        .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
+      loadPlugins(),
+      // One dismissal store for both recomputed-finding surfaces; a posture
+      // dismissal is simply inert here and vice versa (the rule ids are
+      // disjoint, which `plugin-loader.test.ts` enforces).
+      listPostureDismissals(organizationId),
+      listExpiring(organizationId, now !== undefined ? { now } : {}).catch((err) => {
+        console.error(`[access-review] expiry feed for org ${organizationId} failed:`, err);
+        return undefined;
+      }),
+      // Just-in-time grants that did not end when they should have. Guarded
+      // like the expiry read: a broken grant store costs the review this
+      // section, not the page.
+      listJitGrantIssues(organizationId).catch((err) => {
+        console.error(
+          `[access-review] just-in-time grant issues for ${organizationId} failed:`,
+          err,
+        );
+        return undefined;
+      }),
+    ]);
 
   const scanPlugins = plugins.map(({ plugin }) => ({
     id: plugin.manifest.id,
@@ -117,7 +129,7 @@ export async function listAccessReview(
     .map((r) => r.id);
   const owners = await lookupResourceOwners(organizationId, principalIds);
 
-  return computeAccessReview(
+  const review = computeAccessReview(
     { plugins: scanPlugins, accounts: orgAccounts, resources: scanResources, owners, dismissals },
     {
       staleDays,
@@ -125,4 +137,5 @@ export async function listAccessReview(
       ...(now !== undefined ? { now } : {}),
     },
   );
+  return jitGrantIssues ? { ...review, jitGrantIssues } : review;
 }

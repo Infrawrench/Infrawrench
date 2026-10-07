@@ -1030,6 +1030,13 @@
       "when": 1791317722481,
       "tag": "0146_paging_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1791368245748,
+      "tag": "0147_jit_access",
+      "breakpoints": true
     }
   ]
 }

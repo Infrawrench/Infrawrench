@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.76.0",
+    "version": "1.77.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3823,6 +3823,7 @@
               "expiring",
               "posture",
               "access-review",
+              "jit-access",
               "backups",
               "wallboard",
               "calendar",
@@ -24130,6 +24131,80 @@
         ],
         "additionalProperties": false
       },
+      "JitGrantIssue": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "revoke_failed",
+              "overdue",
+              "still_present"
+            ]
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "scopeName": {
+            "type": "string"
+          },
+          "roleName": {
+            "type": "string"
+          },
+          "principalName": {
+            "type": "string"
+          },
+          "userName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grantExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revokeAttempts": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requestId",
+          "kind",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "scopeName",
+          "roleName",
+          "principalName",
+          "userName",
+          "grantExpiresAt",
+          "lastError",
+          "revokeAttempts"
+        ],
+        "additionalProperties": false
+      },
       "AccessReviewResponse": {
         "type": "object",
         "properties": {
@@ -24181,6 +24256,13 @@
           "generatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "jitGrantIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JitGrantIssue"
+            },
+            "description": "Just-in-time grants whose revocation failed, that the provider still reports after a revoke, or that are still marked held past their window."
           }
         },
         "required": [
@@ -31986,6 +32068,722 @@
         },
         "required": [
           "error"
+        ],
+        "additionalProperties": false
+      },
+      "JitProviderLabels": {
+        "type": "object",
+        "properties": {
+          "scopeLabel": {
+            "type": "string"
+          },
+          "roleLabel": {
+            "type": "string"
+          },
+          "principalLabel": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "providerEnforcedExpiry": {
+            "type": "boolean",
+            "description": "True when the provider itself ends the access on time (a time-bound IAM Condition)."
+          },
+          "principalPicker": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scopeLabel",
+          "roleLabel",
+          "principalLabel",
+          "providerEnforcedExpiry",
+          "principalPicker"
+        ],
+        "additionalProperties": false
+      },
+      "JitAccessAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/JitProviderLabels"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "pluginId",
+          "labels"
+        ],
+        "additionalProperties": false
+      },
+      "JitPickerOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "privileged": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "JitError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "JitPolicyTarget": {
+        "type": "object",
+        "properties": {
+          "scopeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1224,
+            "description": "Provider id of the scope (account, project, namespace)."
+          },
+          "scopeName": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "roleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1224,
+            "description": "Provider id of the role (permission set ARN, role name)."
+          },
+          "roleName": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "scopeId",
+          "scopeName",
+          "roleId",
+          "roleName"
+        ],
+        "additionalProperties": false
+      },
+      "JitPolicy": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JitPolicyTarget"
+            }
+          },
+          "maxDurationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "defaultDurationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "requestTimeoutMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440
+          },
+          "requesterUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Who may ask. Empty (with requesterRoleIds) means any member with access:request."
+          },
+          "requesterRoleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverRoleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverOnCallScheduleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Rotations whose current on-call person may approve."
+          },
+          "allowSelfApprovalDuringIncident": {
+            "type": "boolean"
+          },
+          "requireReason": {
+            "type": "boolean"
+          },
+          "requireTicket": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "labels": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JitProviderLabels"
+              },
+              {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "canRequest": {
+            "type": "boolean",
+            "description": "Caller-relative: whether the caller may ask under this policy."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "enabled",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "targets",
+          "maxDurationMinutes",
+          "defaultDurationMinutes",
+          "requestTimeoutMinutes",
+          "requesterUserIds",
+          "requesterRoleIds",
+          "approverUserIds",
+          "approverRoleIds",
+          "approverOnCallScheduleIds",
+          "allowSelfApprovalDuringIncident",
+          "requireReason",
+          "requireTicket",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "JitPolicyInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "accountId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JitPolicyTarget"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "maxDurationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "defaultDurationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "requestTimeoutMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440
+          },
+          "requesterUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "requesterRoleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverRoleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "approverOnCallScheduleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "allowSelfApprovalDuringIncident": {
+            "type": "boolean"
+          },
+          "requireReason": {
+            "type": "boolean"
+          },
+          "requireTicket": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "accountId",
+          "targets",
+          "maxDurationMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "JitPrincipalOption": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "JitPrincipalResolution": {
+        "type": "object",
+        "properties": {
+          "principal": {
+            "$ref": "#/components/schemas/JitPrincipalOption"
+          },
+          "canPick": {
+            "type": "boolean"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/JitProviderLabels"
+          }
+        },
+        "required": [
+          "principal",
+          "canPick",
+          "labels"
+        ],
+        "additionalProperties": false
+      },
+      "JitRequestStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "timed_out",
+          "denied",
+          "cancelled",
+          "granting",
+          "active",
+          "grant_failed",
+          "revoking",
+          "revoked",
+          "revoke_failed"
+        ],
+        "description": "`pending` (awaiting an approver) or `timed_out`; `denied` / `cancelled`; `granting` (the provider call is in flight), `active`, `grant_failed`; `revoking` then `revoked` when the window ends; `revoke_failed` while a failed revoke is retried."
+      },
+      "JitAccessRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "policyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policyName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "scopeName": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          },
+          "roleName": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalName": {
+            "type": "string"
+          },
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "principalMatched": {
+            "type": "boolean",
+            "description": "True when the principal was resolved from the requester's own email."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ticket": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationMinutes": {
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JitRequestStatus"
+          },
+          "requestExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "decidedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decidedByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decisionNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selfApproved": {
+            "type": "boolean"
+          },
+          "incidentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grantedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "grantExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "preexisting": {
+            "type": "boolean",
+            "description": "The principal already held the role; nothing was created and nothing is removed."
+          },
+          "extendedMinutes": {
+            "type": "integer"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endedByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "expired",
+              "revoked",
+              "grant_failed"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revokeAttempts": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canDecide": {
+            "type": "boolean"
+          },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "canExtend": {
+            "type": "boolean"
+          },
+          "canRevoke": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "policyId",
+          "policyName",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "scopeId",
+          "scopeName",
+          "roleId",
+          "roleName",
+          "userId",
+          "userName",
+          "principalId",
+          "principalName",
+          "principalKind",
+          "principalMatched",
+          "reason",
+          "ticket",
+          "durationMinutes",
+          "status",
+          "requestExpiresAt",
+          "decidedAt",
+          "decidedByUserId",
+          "decidedByName",
+          "decisionNote",
+          "selfApproved",
+          "incidentId",
+          "grantedAt",
+          "grantExpiresAt",
+          "preexisting",
+          "extendedMinutes",
+          "endedAt",
+          "endedByName",
+          "endReason",
+          "lastError",
+          "revokeAttempts",
+          "createdAt",
+          "canDecide",
+          "canCancel",
+          "canExtend",
+          "canRevoke"
+        ],
+        "additionalProperties": false
+      },
+      "JitCreateRequest": {
+        "type": "object",
+        "properties": {
+          "policyId": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "ticket": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Only when the caller's email does not resolve; must be one the provider lists."
+          }
+        },
+        "required": [
+          "policyId",
+          "scopeId",
+          "roleId",
+          "durationMinutes",
+          "reason"
         ],
         "additionalProperties": false
       },
@@ -75146,6 +75944,1213 @@
         },
         "operationId": "postOrgOrgIdAccessRequestsRequestIdWithdraw",
         "x-required-permission": "access:request"
+      }
+    },
+    "/api/org/{orgId}/jit-access/accounts": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Accounts that can grant just-in-time access",
+        "description": "Connected accounts whose provider plugin declares the just-in-time capability.\n\n_Requires permission: `access:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JitAccessAccount"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessAccounts",
+        "x-required-permission": "access:read"
+      }
+    },
+    "/api/org/{orgId}/jit-access/accounts/{accountId}/scopes": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Scopes on an account (picker)",
+        "description": "The places a role can be granted (AWS accounts, GCP projects, namespaces), read from the provider.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JitPickerOption"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Provider error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessAccountsAccountIdScopes",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/jit-access/accounts/{accountId}/roles": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Grantable roles in a scope (picker)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scopeId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Roles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JitPickerOption"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Provider error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessAccountsAccountIdRoles",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/jit-access/policies": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "List just-in-time access policies",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JitPolicy"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessPolicies",
+        "x-required-permission": "access:read",
+        "description": "_Requires permission: `access:read`._"
+      },
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Create a policy",
+        "description": "Audit-logged. At least one approver (member, role or on-call rotation) is required.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JitPolicyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessPolicies",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/jit-access/policies/{policyId}": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Get a policy",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitPolicy"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessPoliciesPolicyId",
+        "x-required-permission": "access:read",
+        "description": "_Requires permission: `access:read`._"
+      },
+      "put": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Replace a policy",
+        "description": "Live grants keep their window; pending requests are decided against the new approver set.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JitPolicyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdJitAccessPoliciesPolicyId",
+        "x-required-permission": "org:settings:write"
+      },
+      "delete": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Delete a policy",
+        "description": "Grants the policy produced still end on time; its pending requests have no approvers and time out.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdJitAccessPoliciesPolicyId",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/jit-access/policies/{policyId}/principal": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Resolve the caller's provider principal",
+        "description": "Who the grant would go to, matched by the caller's email in the provider.\n\n_Requires permission: `access:request`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitPrincipalResolution"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a requester",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessPoliciesPolicyIdPrincipal",
+        "x-required-permission": "access:request"
+      }
+    },
+    "/api/org/{orgId}/jit-access/policies/{policyId}/principals": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Principals the caller may pick",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Principals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/JitPrincipalOption"
+                      },
+                      {
+                        "type": "object"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessPoliciesPolicyIdPrincipals",
+        "x-required-permission": "access:request",
+        "description": "_Requires permission: `access:request`._"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "List just-in-time access requests",
+        "description": "Newest first, with caller-relative action flags.\n\n_Requires permission: `access:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/JitRequestStatus"
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "required": false,
+            "name": "mine",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ],
+              "description": "Only rows that may be holding access upstream."
+            },
+            "required": false,
+            "description": "Only rows that may be holding access upstream.",
+            "name": "holding",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JitAccessRequest"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessRequests",
+        "x-required-permission": "access:read"
+      },
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Request just-in-time access",
+        "description": "Ask for one of a policy's scope and role pairs for a bounded window. Approvers are notified over push, Slack (with Approve/Deny buttons) and Microsoft Teams. Not available to API keys.\n\n_Requires permission: `access:request`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JitCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a requester under this policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A pending or active request already covers this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequests",
+        "x-required-permission": "access:request"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}": {
+      "get": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Get a request",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdJitAccessRequestsRequestId",
+        "x-required-permission": "access:read",
+        "description": "_Requires permission: `access:read`._"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}/approve": {
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Approve a request",
+        "description": "The caller must be in the policy's approver set at this moment. On approval the provider grant is made; the response may still read `granting` when it completes in the background. Audit-logged. Not available to API keys.\n\n_Requires permission: `access:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided, timed out, or not in a state for this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequestsRequestIdApprove",
+        "x-required-permission": "access:read"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}/deny": {
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Deny a request",
+        "description": "The caller must be in the policy's approver set. Audit-logged. Not available to API keys.\n\n_Requires permission: `access:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided, timed out, or not in a state for this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequestsRequestIdDeny",
+        "x-required-permission": "access:read"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}/cancel": {
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Cancel your pending request",
+        "description": "Requester only. Audit-logged. Not available to API keys.\n\n_Requires permission: `access:request`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided, timed out, or not in a state for this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequestsRequestIdCancel",
+        "x-required-permission": "access:request"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}/revoke": {
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "End a grant early",
+        "description": "Allowed for the holder, an approver, or a member with org:settings:write. Audit-logged. Not available to API keys.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided, timed out, or not in a state for this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequestsRequestIdRevoke"
+      }
+    },
+    "/api/org/{orgId}/jit-access/requests/{requestId}/extend": {
+      "post": {
+        "tags": [
+          "Just-in-time access"
+        ],
+        "summary": "Extend an active grant",
+        "description": "Approvers only, within the policy maximum for the whole window. A provider-enforced expiry is moved upstream first. Audit-logged. Not available to API keys.\n\n_Requires permission: `access:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 720
+                  }
+                },
+                "required": [
+                  "minutes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitAccessRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Beyond the policy maximum",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an approver",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JitError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJitAccessRequestsRequestIdExtend",
+        "x-required-permission": "access:read"
       }
     },
     "/api/org/{orgId}/credential-hygiene": {

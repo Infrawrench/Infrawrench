@@ -43,6 +43,7 @@
 import type { PrincipalRole, PrincipalRoleDeclaration } from "@infrawrench/plugin-base";
 
 import type { ExpiryListResponse } from "./expiry";
+import type { JitGrantIssue } from "./jit-access";
 import { parseExpiryInstant } from "./expiry";
 import type { CloudFetch } from "./fetch";
 import type { ResourceOwnerAnnotation } from "./ownership";
@@ -248,6 +249,14 @@ export interface AccessReviewResponse {
   /** The staleness window this review was computed against, in days. */
   staleDays: number;
   generatedAt: string;
+  /**
+   * Just-in-time grants whose revocation failed, that the provider still
+   * reports after a revoke, or that are still marked held past their window.
+   * Attached by the server feed (the computation above is over synced
+   * resources and knows nothing of grants); absent where the host has no
+   * just-in-time store, which is not the same as "none".
+   */
+  jitGrantIssues?: JitGrantIssue[];
 }
 
 /** The part of a resource type definition the scan reads. */

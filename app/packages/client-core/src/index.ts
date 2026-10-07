@@ -935,6 +935,7 @@ export * from "./remediation";
 export * from "./session-recordings";
 export * from "./shared-console";
 export * from "./access-requests";
+export * from "./jit-access";
 export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";

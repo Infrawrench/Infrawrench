@@ -1,0 +1,78 @@
+CREATE TABLE "jit_access_policies" (
+	"id" text PRIMARY KEY NOT NULL,
+	"organization_id" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"account_id" text NOT NULL,
+	"plugin_id" text NOT NULL,
+	"targets" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"max_duration_minutes" integer NOT NULL,
+	"default_duration_minutes" integer NOT NULL,
+	"request_timeout_minutes" integer DEFAULT 60 NOT NULL,
+	"requester_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"requester_role_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"approver_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"approver_role_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"approver_on_call_schedule_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"allow_self_approval_during_incident" boolean DEFAULT false NOT NULL,
+	"require_reason" boolean DEFAULT true NOT NULL,
+	"require_ticket" boolean DEFAULT false NOT NULL,
+	"created_by_user_id" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "jit_access_requests" (
+	"id" text PRIMARY KEY NOT NULL,
+	"organization_id" text NOT NULL,
+	"policy_id" text,
+	"policy_name" text,
+	"account_id" text NOT NULL,
+	"account_name" text,
+	"plugin_id" text NOT NULL,
+	"scope_id" text NOT NULL,
+	"scope_name" text NOT NULL,
+	"role_id" text NOT NULL,
+	"role_name" text NOT NULL,
+	"user_id" text NOT NULL,
+	"user_name" text,
+	"user_email" text,
+	"principal_id" text NOT NULL,
+	"principal_name" text NOT NULL,
+	"principal_kind" text DEFAULT 'user' NOT NULL,
+	"principal_matched" boolean DEFAULT false NOT NULL,
+	"reason" text NOT NULL,
+	"ticket" text,
+	"duration_minutes" integer NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"request_expires_at" timestamp NOT NULL,
+	"decided_at" timestamp,
+	"decided_by_user_id" text,
+	"decided_by_name" text,
+	"decision_note" text,
+	"self_approved" boolean DEFAULT false NOT NULL,
+	"incident_id" text,
+	"granted_at" timestamp,
+	"grant_expires_at" timestamp,
+	"grant_ref" text,
+	"preexisting" boolean DEFAULT false NOT NULL,
+	"extended_minutes" integer DEFAULT 0 NOT NULL,
+	"ended_at" timestamp,
+	"ended_by_user_id" text,
+	"ended_by_name" text,
+	"end_reason" text,
+	"last_error" text,
+	"grant_attempts" integer DEFAULT 0 NOT NULL,
+	"revoke_attempts" integer DEFAULT 0 NOT NULL,
+	"next_action_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "jit_access_policies" ADD CONSTRAINT "jit_access_policies_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "jit_access_requests" ADD CONSTRAINT "jit_access_requests_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "jit_access_policies_org_idx" ON "jit_access_policies" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "jit_access_requests_org_status_idx" ON "jit_access_requests" USING btree ("organization_id","status");--> statement-breakpoint
+CREATE INDEX "jit_access_requests_org_created_idx" ON "jit_access_requests" USING btree ("organization_id","created_at");--> statement-breakpoint
+CREATE INDEX "jit_access_requests_due_idx" ON "jit_access_requests" USING btree ("status","next_action_at");

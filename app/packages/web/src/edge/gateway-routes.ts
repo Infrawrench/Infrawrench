@@ -78,6 +78,10 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Registering a provider webhook and acknowledging a provider incident both
   // call plugin code, the first after it has already written a settings row.
   new RegExp(`${ORG}/(paging-providers|paging-incidents)(/|$)`),
+  // Just-in-time access: approving grants upstream and revoking removes the
+  // grant, both plugin code; a request resolves the requester's principal
+  // through the plugin too. Policy writes do not, but share the prefix.
+  new RegExp(`${ORG}/jit-access(/|$)`),
 ];
 
 const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);

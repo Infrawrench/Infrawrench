@@ -183,6 +183,28 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
       ),
     staleDays: z.number().int().describe("The staleness window this review was computed against."),
     generatedAt: IsoDateTime,
+    jitGrantIssues: z
+      .array(
+        strict({
+          requestId: z.string(),
+          kind: z.enum(["revoke_failed", "overdue", "still_present"]),
+          accountId: z.string(),
+          accountName: z.string().nullable(),
+          pluginId: z.string(),
+          scopeName: z.string(),
+          roleName: z.string(),
+          principalName: z.string(),
+          userName: z.string().nullable(),
+          grantExpiresAt: IsoDateTime.nullable(),
+          lastError: z.string().nullable(),
+          revokeAttempts: z.number().int(),
+        }).openapi("JitGrantIssue"),
+      )
+      .optional()
+      .describe(
+        "Just-in-time grants whose revocation failed, that the provider still reports after a " +
+          "revoke, or that are still marked held past their window.",
+      ),
   }).openapi("AccessReviewResponse");
 
   const AccessReviewDismissalCreate = strict({

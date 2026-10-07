@@ -74,6 +74,7 @@ import { registerEnvironmentPaths } from "./paths/environments";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerSharedConsolePaths } from "./paths/shared-consoles";
 import { registerAccessRequestPaths } from "./paths/access-requests";
+import { registerJitAccessPaths } from "./paths/jit-access";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
 import { registerCostVisibilityPaths } from "./paths/cost-visibility";
@@ -227,6 +228,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSessionRecordingPaths(ctx);
   registerSharedConsolePaths(ctx);
   registerAccessRequestPaths(ctx);
+  registerJitAccessPaths(ctx);
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
   registerCostVisibilityPaths(ctx);

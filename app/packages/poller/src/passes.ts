@@ -47,6 +47,7 @@ import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metri
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runPagingProvidersPass } from "@infrawrench/server-core/paging/providers";
+import { runJitAccessExpiryPass } from "@infrawrench/server-core/jit-access/service";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
@@ -600,6 +601,26 @@ export const PASSES: readonly Pass[] = [
       const stats = await runPagingProvidersPass();
       if (stats.sent > 0 || stats.synced > 0) {
         console.log(`[poller] paging providers: sent ${stats.sent}, reconciled ${stats.synced}`);
+      }
+    }),
+  },
+
+  // Just-in-time access: revokes grants whose window ended, retries failed
+  // revokes on a backoff (forever, and loudly), finishes grants the approval
+  // could not complete inline, and times out undecided requests. Gateway: it
+  // calls plugin code (grant/revoke) for arbitrary accounts, some behind a
+  // bastion. Runs every tick so a window ends within a minute of its time.
+  {
+    kind: "periodic",
+    name: "jit-access-expiry",
+    runtime: "gateway",
+    run: guarded("[jit-access] expiry tick failed:", async () => {
+      const stats = await runJitAccessExpiryPass({ limit: 50 });
+      if (stats.timedOut || stats.granted || stats.revoked || stats.failed) {
+        console.log(
+          `[jit-access] sweep: ${stats.revoked} revoked, ${stats.granted} granted, ` +
+            `${stats.timedOut} timed out, ${stats.failed} failed`,
+        );
       }
     }),
   },

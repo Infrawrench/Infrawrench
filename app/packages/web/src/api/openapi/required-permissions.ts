@@ -223,6 +223,28 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /access-requests/{requestId}/approve": "access:approve",
   "POST /access-requests/{requestId}/deny": "access:approve",
   "POST /access-requests/{requestId}/withdraw": "access:request",
+  // just-in-time access: the route floor. Deciding and extending also need a
+  // seat in the policy's approver set, which the service checks at decision
+  // time; revoke has no single permission (holder, approver or
+  // org:settings:write), so the handler owns it.
+  "GET /jit-access/accounts": "access:read",
+  "GET /jit-access/accounts/{accountId}/scopes": "org:settings:write",
+  "GET /jit-access/accounts/{accountId}/roles": "org:settings:write",
+  "GET /jit-access/policies": "access:read",
+  "POST /jit-access/policies": "org:settings:write",
+  "GET /jit-access/policies/{policyId}": "access:read",
+  "PUT /jit-access/policies/{policyId}": "org:settings:write",
+  "DELETE /jit-access/policies/{policyId}": "org:settings:write",
+  "GET /jit-access/policies/{policyId}/principal": "access:request",
+  "GET /jit-access/policies/{policyId}/principals": "access:request",
+  "GET /jit-access/requests": "access:read",
+  "POST /jit-access/requests": "access:request",
+  "GET /jit-access/requests/{requestId}": "access:read",
+  "POST /jit-access/requests/{requestId}/approve": "access:read",
+  "POST /jit-access/requests/{requestId}/deny": "access:read",
+  "POST /jit-access/requests/{requestId}/cancel": "access:request",
+  "POST /jit-access/requests/{requestId}/extend": "access:read",
+  "POST /jit-access/requests/{requestId}/revoke": null,
   "GET /session-recordings": "session-recordings:read",
   // shared consoles: deliberately no permission family of their own. A share
   // hands over no capability the guest did not already hold: joining requires
