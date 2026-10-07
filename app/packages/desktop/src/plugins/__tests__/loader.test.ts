@@ -157,6 +157,7 @@ vi.mock("@infrawrench/plugin-wasabi", () => stub("wasabi"));
 vi.mock("@infrawrench/plugin-weaviate-cloud", () => stub("weaviate-cloud"));
 vi.mock("@infrawrench/plugin-s3-compatible", () => stub("s3-compatible"));
 vi.mock("@infrawrench/plugin-couchbase-capella", () => stub("couchbase-capella"));
+vi.mock("@infrawrench/plugin-axiom", () => stub("axiom"));
 
 beforeEach(() => {
   disabled = [];

@@ -2022,6 +2022,18 @@ Verified 2026-10 against the Management API v4 OpenAPI document, which Couchbase
 - **Status**: status.couchbase.com (Statuspage). AWS components are `AWS ec2-<region>`; Azure and GCP components are cloud services, not regions.
 - **Not done**: analytics (Columnar) clusters, AI services, eventing functions, App Endpoints and their OIDC/CORS/import filters, CMEK, cloud snapshot backups, network peer and private endpoint creation (cloud-specific bodies), alert integrations, query indexes, Data API toggle, audit log exports.
 
+### Axiom (`@infrawrench/plugin-axiom`)
+
+Verified against Axiom's published OpenAPI documents (axiomhq/docs `content/docs/(api-reference)/restapi/versions/v1.json`, `v2.json`, `v1-edge-query.json`) and its docs pages on tokens, edge deployments, API limits and the audit log (2026-10). Things the code does not make obvious:
+
+- **Auth is `Authorization: Bearer`**; a personal access token (`xapt-`) also needs `x-axiom-org-id`, an API token (`xaat-`) is org-scoped. Axiom answers a bad token with **403**, not 401, so listers only treat a 403 as "missing capability" (list empty) after `GET /v2/orgs` proved the token good. The org picker (`providerOptions` on `orgId`) lists `GET /v2/orgs`. The organization is the plugin's `accountRoot`: a token belongs to one org.
+- **Two hosts.** Management is `api.axiom.co` (`/v1`, `/v2`); event data lives in edge deployments (`us-east-1.aws.edge.axiom.co`, `eu-central-1.aws.edge.axiom.co`) and queries must run where the dataset lives: `POST https://<edge>/v1/query/_apl?format=tabular`, which accepts **API tokens only**. PATs fall back to `api.axiom.co/v1/datasets/_apl?format=tabular` (default edge only). `queryBase` refuses any host outside `*.axiom.co` so a crafted `edgeDeploymentUrl` cannot leak the token. Tabular results are column-major: `tables[].fields[]` + `tables[].columns[][]`.
+- **Usage has no API but lives in the `axiom-audit` dataset**: `usageCalculated` events carry `properties.hourlyIngestBytes` (and `properties.dataset`), `runAPLQueryCost` events `properties.query_cost_gbms`. These are the queries Axiom's audit-log page documents. Owner-only by default; without access the charts/quota rows are absent (never zero). Query compute allowance (`license.monthlyQueryGbHours`) is GB-hours = GB·ms / 3.6e6.
+- **Quotas** come from `GET /v2/orgs/{id}` `license` (`maxDatasets`, `maxMonitors`, `maxUsers`, `monthlyIngestGb`, `monthlyQueryGbHours`, `billingPeriodStart`) against list counts and audit-log sums; a 0 limit means unlimited and is skipped.
+- **Updates are PUTs of the whole object** (monitors minus `id/createdAt/createdBy/updatedAt`; notifiers need `name` + `properties`; dashboards need the whole `dashboard` document plus `version`, or `overwrite`). Snooze is `disabledUntil` on monitors and notifiers. Trim is `POST /v2/datasets/{id}/trim {maxDuration: "720h"}`; regenerate is `POST /v2/tokens/{id}/regenerate {existingTokenExpiresAt}` and returns the new token, which is stored with `services.secrets` as the `token` output (as are created tokens). Starred queries list with `who=all`.
+- **Status feed**: status.axiom.co is incident.io (no `/incidents/unresolved.json`); the plugin reads `/api/v2/incidents.json` and keeps unresolved incidents. US and EU groups use identical component names and incidents carry no group, so nothing is region-scoped.
+- **Not done**: no billing API exists (no cost rows); RBAC roles/groups (Enterprise add-on), map fields, endpoints/flows and user invites (role ids are undocumented) were left out; dashboard chart editing is left to Axiom; webhook URLs are stored redacted so Terraform export turns them into variables.
+
 ---
 
 ## Publish capability (cross-plugin)

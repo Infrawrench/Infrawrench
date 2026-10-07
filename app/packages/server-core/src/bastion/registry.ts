@@ -278,6 +278,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // user-supplied endpoint; v1 doesn't bastion-route self-hosted S3
   "s3-compatible": [],
   "couchbase-capella": ["cloudapi.cloud.couchbase.com"],
+  // Management API plus the edge deployments (us-east-1.aws.edge.axiom.co, eu-central-1.aws.edge.axiom.co) that APL queries run on.
+  axiom: ["api.axiom.co", "*.edge.axiom.co"],
 };
 
 /**
