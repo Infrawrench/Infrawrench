@@ -160,4 +160,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-openstack"),
   () => import("@infrawrench/plugin-rabbitmq"),
   () => import("@infrawrench/plugin-prometheus"),
+  () => import("@infrawrench/plugin-nomad"),
 ];

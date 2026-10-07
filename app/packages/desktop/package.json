@@ -266,6 +266,7 @@
     "@infrawrench/plugin-openstack": "workspace:*",
     "@infrawrench/plugin-rabbitmq": "workspace:*",
     "@infrawrench/plugin-prometheus": "workspace:*",
+    "@infrawrench/plugin-nomad": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
