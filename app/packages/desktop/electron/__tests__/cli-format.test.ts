@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  githubRepoFromRemote,
+  parseNameStatusZ,
   anomalyDeltaPercent,
   anomalyFeedbackLabel,
   matchIdPrefix,
@@ -666,5 +668,35 @@ describe("precisionChart", () => {
 
   it("handles an empty report", () => {
     expect(precisionChart([])).toEqual(["(no months)"]);
+  });
+});
+
+describe("pr-check helpers", () => {
+  it("reads owner/name from the GitHub remote forms git writes", () => {
+    expect(githubRepoFromRemote("git@github.com:acme/infra.git")).toBe("acme/infra");
+    expect(githubRepoFromRemote("https://github.com/acme/infra")).toBe("acme/infra");
+    expect(githubRepoFromRemote("ssh://git@github.com/acme/my.repo.git\n")).toBe("acme/my.repo");
+    expect(githubRepoFromRemote("https://gitlab.com/acme/infra.git")).toBeNull();
+  });
+
+  it("parses NUL-separated name-status output, renames included", () => {
+    const out = [
+      "M",
+      "main.tf",
+      "R087",
+      "old.tf",
+      "new dir/new.tf",
+      "D",
+      "gone.tf",
+      "A",
+      "Infrafile",
+      "",
+    ].join("\0");
+    expect(parseNameStatusZ(out)).toEqual([
+      { status: "M", path: "main.tf", previousPath: null },
+      { status: "R", path: "new dir/new.tf", previousPath: "old.tf" },
+      { status: "D", path: "gone.tf", previousPath: null },
+      { status: "A", path: "Infrafile", previousPath: null },
+    ]);
   });
 });

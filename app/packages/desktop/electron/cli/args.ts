@@ -266,6 +266,16 @@ export interface PriceFlags {
   desc: boolean;
 }
 
+/** Flags for `pr-check`. */
+export interface PrCheckFlags {
+  /** `--repo owner/name`: whose settings and Terraform state mapping apply. */
+  repo?: string | undefined;
+  /** `--pr <n>`: preview a pull request through the GitHub App instead of a local diff. */
+  pr?: number | undefined;
+  /** `--base <ref>`: what the local diff compares against (default: the upstream default branch). */
+  base?: string | undefined;
+}
+
 /** Flags for `reports move|delete` and `budgets annotate`. */
 export interface BulkFlags {
   /** `reports move --folder <path|id|top>`: the destination. */
@@ -325,6 +335,7 @@ export interface ParsedCli {
   exports: ExportsFlags;
   prices: PriceFlags;
   bulk: BulkFlags;
+  prCheck: PrCheckFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
@@ -523,6 +534,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         status: { type: "string" },
         mine: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
+        // `pr-check`: a pull request by number, or a local diff against a base.
+        repo: { type: "string" },
+        pr: { type: "string" },
+        base: { type: "string" },
       },
     });
   } catch (e) {
@@ -605,6 +620,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       account: str("account") ?? null,
       reason: str("reason") ?? null,
       help: values.help === true,
+    },
+    prCheck: {
+      repo: str("repo"),
+      pr: positiveInt("pr"),
+      base: str("base"),
     },
     bulk: {
       folder: str("folder"),
