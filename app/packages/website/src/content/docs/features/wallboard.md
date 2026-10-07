@@ -21,11 +21,13 @@ and that somebody would cross a room to look at.**
 
 So it shows four tiles and, when there is something to say, two more panels:
 
-| Panel           | Shows                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Overview**    | Open incidents · probes up · monitors breaching · accounts syncing                                                                             |
-| **Incidents**   | Each open [incident](./incident-mode.md), its severity, and how long it has been running                                                       |
-| **Not healthy** | [Probes](./synthetic-probes.md) that are down, [query monitors](./query-monitors.md) breaching or unable to run, accounts that stopped syncing |
+| Panel           | Shows                                                                                                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**    | Open incidents · probes up · monitors breaching · accounts syncing                                                                                                                      |
+| **Incidents**   | Each open [incident](./incident-mode.md), its severity, and how long it has been running                                                                                                |
+| **Not healthy** | [Probes](./synthetic-probes.md) that are down, [query monitors](./query-monitors.md) breaching or unable to run, [SLOs](./slos.md) spent or burning fast, accounts that stopped syncing |
+
+Once the organization has an [SLO](./slos.md), a fifth tile appears: **Lowest error budget**, naming the SLO closest to running out.
 
 And that is all. No trends, no history, no cost breakdowns, no charts. Those
 are the things you look at when you _have_ walked over, and they belong on the

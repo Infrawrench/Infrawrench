@@ -17,6 +17,7 @@ Everything you configure in Infrawrench that isn't a provider account or a live 
 | `dashboards`    | Every [dashboard](./dashboard.md), its name, and its cards in grid order                        |
 | `metricAlerts`  | [Metric alert rules](./metric-alerts.md) — selector, condition, cooldown                        |
 | `probes`        | [Synthetic probes](./synthetic-probes.md) — URL, interval, failure threshold                    |
+| `slos`          | [SLOs](./slos.md) — source (probe key or resource), target, window, alerting                    |
 | `costCentres`   | Cost centres and their [allocation rules](./tag-policy-and-showback.md)                         |
 | `tagPolicy`     | The org's required tags and whether they're enforced at create time                             |
 | `alertSettings` | Cost anomaly tuning, drift/expiry/posture/extended-support alerting, the weekly digest schedule |

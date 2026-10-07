@@ -211,6 +211,14 @@ infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
 ```
 
+`slos` lists the org's [SLOs](./slos.md), worst first: each one's status, SLI against its target, window, error budget left (as a share and as time), 1-hour burn rate and what it measures. Give it an SLO's id or name for its burn rates per window, the page and ticket thresholds, and sparklines of the daily SLI and the budget burndown. Cloud-only, and read-only: SLOs are written from the web or desktop SLOs tab, where the probe and metric pickers live:
+
+```
+infrawrench slos
+infrawrench slos checkout         # one SLO: budget, burn rates, burndown sparkline
+infrawrench slos --json
+```
+
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
 
 ```
