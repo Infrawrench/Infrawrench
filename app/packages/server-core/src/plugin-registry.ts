@@ -119,6 +119,7 @@ import { plugin as weaviateCloudPlugin } from "@infrawrench/plugin-weaviate-clou
 import { plugin as s3CompatiblePlugin } from "@infrawrench/plugin-s3-compatible";
 import { plugin as couchbaseCapellaPlugin } from "@infrawrench/plugin-couchbase-capella";
 import { plugin as axiomPlugin } from "@infrawrench/plugin-axiom";
+import { plugin as algoliaPlugin } from "@infrawrench/plugin-algolia";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -246,4 +247,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   s3CompatiblePlugin,
   couchbaseCapellaPlugin,
   axiomPlugin,
+  algoliaPlugin,
 ];

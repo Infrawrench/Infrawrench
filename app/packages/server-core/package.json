@@ -406,6 +406,7 @@
     "@infrawrench/plugin-s3-compatible": "workspace:*",
     "@infrawrench/plugin-couchbase-capella": "workspace:*",
     "@infrawrench/plugin-axiom": "workspace:*",
+    "@infrawrench/plugin-algolia": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

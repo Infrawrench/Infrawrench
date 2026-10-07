@@ -280,6 +280,17 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "couchbase-capella": ["cloudapi.cloud.couchbase.com"],
   // Management API plus the edge deployments (us-east-1.aws.edge.axiom.co, eu-central-1.aws.edge.axiom.co) that APL queries run on.
   axiom: ["api.axiom.co", "*.edge.axiom.co"],
+  // search hosts are per-application ({appId}-dsn.algolia.net plus algolianet.com fallbacks); analytics, usage, monitoring and crawler APIs each have their own host
+  algolia: [
+    "*.algolia.net",
+    "*.algolianet.com",
+    "analytics.algolia.com",
+    "analytics.us.algolia.com",
+    "analytics.de.algolia.com",
+    "usage.algolia.com",
+    "status.algolia.com",
+    "crawler.algolia.com",
+  ],
 };
 
 /**
