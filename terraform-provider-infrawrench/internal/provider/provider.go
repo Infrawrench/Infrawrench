@@ -202,6 +202,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 
 		// Lifecycle governance.
 		NewOnCallScheduleResource,
+		NewJitAccessPolicyResource,
 		NewScheduleResource,
 		NewChangeFreezeResource,
 		NewDriftAlertSettingsResource,
