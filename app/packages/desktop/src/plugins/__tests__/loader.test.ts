@@ -178,6 +178,7 @@ vi.mock("@infrawrench/plugin-hashicorp-vault", () => stub("hashicorp-vault"));
 vi.mock("@infrawrench/plugin-auth0", () => stub("auth0"));
 vi.mock("@infrawrench/plugin-pulumi-cloud", () => stub("pulumi-cloud"));
 vi.mock("@infrawrench/plugin-cerebras", () => stub("cerebras"));
+vi.mock("@infrawrench/plugin-sambanova", () => stub("sambanova"));
 
 beforeEach(() => {
   disabled = [];

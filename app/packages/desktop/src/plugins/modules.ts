@@ -149,4 +149,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-auth0"),
   () => import("@infrawrench/plugin-pulumi-cloud"),
   () => import("@infrawrench/plugin-cerebras"),
+  () => import("@infrawrench/plugin-sambanova"),
 ];

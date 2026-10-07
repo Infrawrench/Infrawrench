@@ -426,6 +426,7 @@
     "@infrawrench/plugin-auth0": "workspace:*",
     "@infrawrench/plugin-pulumi-cloud": "workspace:*",
     "@infrawrench/plugin-cerebras": "workspace:*",
+    "@infrawrench/plugin-sambanova": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

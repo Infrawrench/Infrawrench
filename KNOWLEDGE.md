@@ -2321,6 +2321,17 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **Status**: Statuspage at status.cerebras.ai (`/api/v2/incidents/unresolved.json`); components are model names plus "Developer Console" (ignored).
 - **Verified as having no usable billing API** (console-only Analytics/Cost tabs): no cost, credits or quotas. No Terraform provider.
 
+### SambaNova (`@infrawrench/plugin-sambanova`)
+
+- **Auth**: one SambaCloud API key, Bearer, `https://api.sambanova.ai/v1`. No scopes, no key-management API.
+- **Spec**: `raw.githubusercontent.com/sambanova/sambanova-inference-api-spec/refs/heads/main/openapi.documented.json` (v1.2.0, Oct 2026) linked from `docs.sambanova.ai/docs/llms.txt`. Paths: chat/completions, completions, responses, messages (+ `count_tokens`), embeddings, audio transcriptions/translations, models. Nothing for usage, billing, keys, files or batches.
+- **`GET /models` is unauthenticated** (returns 200 with a bogus key), so key validation uses `POST /messages/count_tokens` (401 on a bad key, generates nothing). Declared as a one-capability `preflight`.
+- **Pricing quirk**: the spec types `pricing.prompt/completion` as numbers, the live API returns **per-token strings** (`"0.00000300"`). Parsed with `Number()`; transcription models carry `pricing.duration_per_hour`.
+- **Speech**: the STT panel renders only for model ids matching `/whisper/i` (none listed in Oct 2026, the endpoint still exists). Multipart goes through global fetch (host HTTP cannot carry FormData).
+- **Rate limits** are only exposed as `x-ratelimit-*` response headers on inference calls, so no quota pass (it would cost a paid request).
+- **Status**: Statuspage at status.sambanova.ai; per-model components, "SambaCloud API Gateway"/"Supported Models" escalate provider-wide, Playground/Community ignored.
+- **Verified as having no usable billing API.** No Terraform provider.
+
 ---
 
 ## Publish capability (cross-plugin)

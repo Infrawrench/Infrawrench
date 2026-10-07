@@ -259,6 +259,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   "pulumi-cloud": { accessToken: "pul-test", organization: "acme", plan: "pro" },
   cerebras: { apiKey: "csk-test" },
+  sambanova: { apiKey: "sn-test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

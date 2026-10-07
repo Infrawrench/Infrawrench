@@ -139,6 +139,7 @@ import { plugin as hashicorpVaultPlugin } from "@infrawrench/plugin-hashicorp-va
 import { plugin as auth0Plugin } from "@infrawrench/plugin-auth0";
 import { plugin as pulumiCloudPlugin } from "@infrawrench/plugin-pulumi-cloud";
 import { plugin as cerebrasPlugin } from "@infrawrench/plugin-cerebras";
+import { plugin as sambanovaPlugin } from "@infrawrench/plugin-sambanova";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -286,4 +287,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   auth0Plugin,
   pulumiCloudPlugin,
   cerebrasPlugin,
+  sambanovaPlugin,
 ];

@@ -339,6 +339,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "pulumi-cloud": ["api.pulumi.com"],
   // api.cerebras.ai serves inference, the public catalogue and the management API; cloud.cerebras.ai serves Dedicated Inference metrics.
   cerebras: ["api.cerebras.ai", "cloud.cerebras.ai"],
+  sambanova: ["api.sambanova.ai"],
 };
 
 /**
