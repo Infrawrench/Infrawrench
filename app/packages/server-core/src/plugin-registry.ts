@@ -138,6 +138,7 @@ import { plugin as proxmoxPlugin } from "@infrawrench/plugin-proxmox";
 import { plugin as hashicorpVaultPlugin } from "@infrawrench/plugin-hashicorp-vault";
 import { plugin as auth0Plugin } from "@infrawrench/plugin-auth0";
 import { plugin as pulumiCloudPlugin } from "@infrawrench/plugin-pulumi-cloud";
+import { plugin as cerebrasPlugin } from "@infrawrench/plugin-cerebras";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -284,4 +285,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   hashicorpVaultPlugin,
   auth0Plugin,
   pulumiCloudPlugin,
+  cerebrasPlugin,
 ];

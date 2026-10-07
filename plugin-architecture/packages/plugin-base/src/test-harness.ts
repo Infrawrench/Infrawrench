@@ -258,6 +258,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientSecret: "test-auth0-secret",
   },
   "pulumi-cloud": { accessToken: "pul-test", organization: "acme", plan: "pro" },
+  cerebras: { apiKey: "csk-test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

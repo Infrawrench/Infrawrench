@@ -337,6 +337,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   auth0: ["*.auth0.com"],
   // managed Pulumi Cloud API; self-hosted API URLs are user-supplied and not allowlisted
   "pulumi-cloud": ["api.pulumi.com"],
+  // api.cerebras.ai serves inference, the public catalogue and the management API; cloud.cerebras.ai serves Dedicated Inference metrics.
+  cerebras: ["api.cerebras.ai", "cloud.cerebras.ai"],
 };
 
 /**

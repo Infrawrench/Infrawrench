@@ -148,4 +148,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-hashicorp-vault"),
   () => import("@infrawrench/plugin-auth0"),
   () => import("@infrawrench/plugin-pulumi-cloud"),
+  () => import("@infrawrench/plugin-cerebras"),
 ];

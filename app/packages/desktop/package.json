@@ -254,6 +254,7 @@
     "@infrawrench/plugin-hashicorp-vault": "workspace:*",
     "@infrawrench/plugin-auth0": "workspace:*",
     "@infrawrench/plugin-pulumi-cloud": "workspace:*",
+    "@infrawrench/plugin-cerebras": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

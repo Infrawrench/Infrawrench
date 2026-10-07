@@ -2310,6 +2310,17 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **No Terraform export**: there is no Pulumi Cloud provider on the Terraform Registry (the `pulumiservice` provider is a Pulumi provider).
 - Not done: Insights accounts and scans, Neo agent tasks, stack/environment team permissions, member management, stack tags (the API only accepts builtin tag names on POST), stack config editing, policy pack enablement per group, CLI-run update engine events (only Deployments logs are shown).
 
+### Cerebras (`@infrawrench/plugin-cerebras`)
+
+- **Auth**: inference key `csk-…` as Bearer on `api.cerebras.ai/v1`. No scopes, no whoami, no key-management API. Optional Dedicated Inference credentials: `organizationId` (`org_…`, metrics), `orgName` + `managementKey` (separate key, `api.cerebras.ai/management/v1`, Private Preview). No listing exists for org names/ids, so they are typed.
+- **Specs**: docs index at `inference-docs.cerebras.ai/llms.txt`; every page has a `.md` twin. `api-reference/openapi.yaml` only covers chat; `api-reference/customer_management_api/openapi.yaml` covers management (Oct 2026).
+- **Models**: `GET /v1/models` is id/owned_by only; `GET /public/v1/models` (no auth) adds `pricing.prompt/completion` as **per-token strings**, `limits`, `capabilities`, `deprecated`, `preview`, `quantization`, `hugging_face_id`. The plugin lists the key's models and joins metadata by id.
+- **Batches/files** (Private Preview): OpenAI shapes, `limit` ≤ 100, `after=<last id>` + `has_more`. Batch create only accepts `endpoint: /v1/chat/completions` and `completion_window: 24h`; cancel is `POST /v1/batches/{id}/cancel`; batch `errors` can be a plain string. 403/404 read as empty.
+- **Management**: `GET /orgs/{org}/endpoints` (summary), `GET /endpoints/{id}` (`deployed_models[]` with `model: orgs/{org}/models/{arch}/versions/{n}`), `POST /endpoints/{id}:deployModel {model}`, `GET /orgs/{org}/models` (architecture ids), `GET …/models/{arch}/versions`, `POST /orgs/{org}/models:upload {model_arch_id, model:{weight_uri, version_aliases, system_fingerprint_suffix}}`, `PATCH …/versions/{n} {version_aliases}`, `DELETE …/versions/{n}`. Endpoints cannot be created or deleted by API.
+- **Metrics**: `GET https://cloud.cerebras.ai/api/v1/metrics/organizations/{org_id}` returns Prometheus text for the **last complete minute** only (gauges labelled `endpoint`, `statistic`/`percentile`), 6 req/min. Mapped to one-point series per endpoint.
+- **Status**: Statuspage at status.cerebras.ai (`/api/v2/incidents/unresolved.json`); components are model names plus "Developer Console" (ignored).
+- **Verified as having no usable billing API** (console-only Analytics/Cost tabs): no cost, credits or quotas. No Terraform provider.
+
 ---
 
 ## Publish capability (cross-plugin)
