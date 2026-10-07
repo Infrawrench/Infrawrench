@@ -130,6 +130,7 @@ import { plugin as betterStackPlugin } from "@infrawrench/plugin-better-stack";
 import { plugin as chronospherePlugin } from "@infrawrench/plugin-chronosphere";
 import { plugin as dockerHubPlugin } from "@infrawrench/plugin-docker-hub";
 import { plugin as posthogPlugin } from "@infrawrench/plugin-posthog";
+import { plugin as hcpTerraformPlugin } from "@infrawrench/plugin-hcp-terraform";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -268,4 +269,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   chronospherePlugin,
   dockerHubPlugin,
   posthogPlugin,
+  hcpTerraformPlugin,
 ];

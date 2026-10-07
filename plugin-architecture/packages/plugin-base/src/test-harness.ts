@@ -238,6 +238,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   chronosphere: { org: "acme", apiToken: "chrono-test-token" },
   "docker-hub": { username: "acme", token: "dckr_pat_test" },
   posthog: { region: "us", apiKey: "phx_test" },
+  "hcp-terraform": {
+    apiToken: "test.atlasv1.token",
+    hostname: "app.terraform.io",
+    organization: "acme",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

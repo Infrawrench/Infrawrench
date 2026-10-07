@@ -316,6 +316,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "docker-hub": ["hub.docker.com", "auth.docker.io", "registry-1.docker.io"],
   // PostHog Cloud API hosts; self-hosted instances use their own URL.
   posthog: ["us.posthog.com", "eu.posthog.com"],
+  // app.terraform.io (and app.eu.terraform.io) for the API, archivist.terraform.io for run logs and state downloads; Terraform Enterprise hostnames are user-supplied and not allowlisted
+  "hcp-terraform": ["app.terraform.io", "*.terraform.io"],
 };
 
 /**
