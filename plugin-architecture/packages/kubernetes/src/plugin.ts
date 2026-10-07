@@ -16,6 +16,7 @@ import { IngressResourceType } from "./resources/ingress.js";
 import { ConfigMapResourceType } from "./resources/configmap.js";
 import { SecretResourceType } from "./resources/secret.js";
 import { KUBERNETES_NETWORK_FLOW_CAPABILITY } from "./network-flows.js";
+import { KUBERNETES_JIT_ACCESS } from "./jit-access.js";
 
 const manifest: PluginManifest = {
   id: "kubernetes",
@@ -153,6 +154,9 @@ const manifest: PluginManifest = {
   // cloud account's flow logs may already count, so `recut` keeps it out of
   // every org-wide total. See `network-flows.ts`.
   networkFlows: KUBERNETES_NETWORK_FLOW_CAPABILITY,
+  // Just-in-time access: one RoleBinding / ClusterRoleBinding per grant,
+  // deleted when the window ends. See `jit-access.ts`.
+  jitAccess: KUBERNETES_JIT_ACCESS,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

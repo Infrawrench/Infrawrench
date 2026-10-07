@@ -31,6 +31,13 @@ import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceRange,
   BusinessMetricSourceResult,
+  JitAccessPresence,
+  JitGrantResult,
+  JitGrantSpec,
+  JitIdentity,
+  JitPrincipal,
+  JitRole,
+  JitScope,
 } from "@infrawrench/plugin-base";
 import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import type {
@@ -168,7 +175,17 @@ import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
-import { runAwsPreflight } from "./preflight.js";
+import { getCallerIdentity, runAwsPreflight } from "./preflight.js";
+import {
+  checkAwsJitAccess,
+  grantAwsJitAccess,
+  listAwsJitPrincipals,
+  listAwsJitRoles,
+  listAwsJitScopes,
+  resolveAwsJitPrincipal,
+  revokeAwsJitAccess,
+  type AwsJitContext,
+} from "./jit-access.js";
 import { AWS_LOG_TYPES, getAwsLogs } from "./logs.js";
 
 export class AWSClient implements PluginClient {
@@ -677,6 +694,69 @@ export class AWSClient implements PluginClient {
       },
       request,
     );
+  }
+
+  private jitCtx: AwsJitContext | null = null;
+
+  /** The SigV4 transport the just-in-time access module calls through. */
+  private get jit(): AwsJitContext {
+    if (this.jitCtx) return this.jitCtx;
+    this.jitCtx = {
+      call: async <T>(args: {
+        host: string;
+        service: string;
+        region: string;
+        target: string;
+        body: Record<string, unknown>;
+      }): Promise<T> => {
+        const res = await fetchSigned({
+          method: "POST",
+          url: `https://${args.host}/`,
+          headers: {
+            Host: args.host,
+            "Content-Type": "application/x-amz-json-1.1",
+            "X-Amz-Target": args.target,
+          },
+          body: JSON.stringify(args.body),
+          service: args.service,
+          credentials: { ...this.creds, region: args.region },
+        });
+        const text = await res.text();
+        return (text ? JSON.parse(text) : {}) as T;
+      },
+      homeRegion: this.creds.region,
+      regions: () => this.getEnabledRegions(),
+      callerAccountId: async () => (await getCallerIdentity(this.creds)).account,
+    };
+    return this.jitCtx;
+  }
+
+  listJitScopes(): Promise<JitScope[]> {
+    return listAwsJitScopes(this.jit);
+  }
+
+  listJitRoles(scopeId: string): Promise<JitRole[]> {
+    return listAwsJitRoles(this.jit, scopeId);
+  }
+
+  resolveJitPrincipal(identity: JitIdentity): Promise<JitPrincipal | null> {
+    return resolveAwsJitPrincipal(this.jit, identity);
+  }
+
+  listJitPrincipals(query?: string): Promise<JitPrincipal[]> {
+    return listAwsJitPrincipals(this.jit, query);
+  }
+
+  grantJitAccess(spec: JitGrantSpec): Promise<JitGrantResult> {
+    return grantAwsJitAccess(this.jit, spec);
+  }
+
+  revokeJitAccess(spec: JitGrantSpec): Promise<void> {
+    return revokeAwsJitAccess(this.jit, spec);
+  }
+
+  checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
+    return checkAwsJitAccess(this.jit, spec);
   }
 
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {

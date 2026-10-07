@@ -64,6 +64,7 @@ import { SslCertificateResourceType } from "./resources/ssl-certificate.js";
 import { InstanceGroupResourceType } from "./resources/instance-group.js";
 import { InstanceTemplateResourceType } from "./resources/instance-template.js";
 import { GCP_TRANSFER_RATES } from "./transfer-rates.js";
+import { GCP_JIT_ACCESS } from "./jit-access.js";
 
 const manifest: PluginManifest = {
   id: "gcp",
@@ -150,6 +151,11 @@ const manifest: PluginManifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: GCP_TRANSFER_RATES,
+  // Just-in-time access: project IAM bindings with a time-bound IAM Condition.
+  // Needs resourcemanager.projects.getIamPolicy/setIamPolicy on each target
+  // project (Project IAM Admin), iam.roles.list for the picker and
+  // resourcemanager.projects.list to offer more than the key's own project.
+  jitAccess: GCP_JIT_ACCESS,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
