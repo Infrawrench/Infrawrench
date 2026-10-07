@@ -414,6 +414,7 @@
     "@infrawrench/plugin-jfrog": "workspace:*",
     "@infrawrench/plugin-infisical": "workspace:*",
     "@infrawrench/plugin-better-stack": "workspace:*",
+    "@infrawrench/plugin-chronosphere": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

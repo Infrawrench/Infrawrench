@@ -127,6 +127,7 @@ import { plugin as bunnyPlugin } from "@infrawrench/plugin-bunny";
 import { plugin as jfrogPlugin } from "@infrawrench/plugin-jfrog";
 import { plugin as infisicalPlugin } from "@infrawrench/plugin-infisical";
 import { plugin as betterStackPlugin } from "@infrawrench/plugin-better-stack";
+import { plugin as chronospherePlugin } from "@infrawrench/plugin-chronosphere";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -262,4 +263,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   jfrogPlugin,
   infisicalPlugin,
   betterStackPlugin,
+  chronospherePlugin,
 ];

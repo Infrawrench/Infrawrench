@@ -310,6 +310,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "betterstack.com",
     "*.betterstackdata.com",
   ],
+  // Each tenant is <org>.chronosphere.io (config API and Prometheus API on the same host).
+  chronosphere: ["*.chronosphere.io"],
 };
 
 /**

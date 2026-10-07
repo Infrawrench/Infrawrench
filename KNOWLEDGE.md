@@ -2148,6 +2148,19 @@ Verified against Better Stack's API docs (the `.md` twins of `betterstack.com/do
 - **DNS**: status pages declare the `<subdomain>.betteruptime.com` namespace for dangling-CNAME detection (`statuspage.betteruptime.com`, the shared custom-domain target, is excluded).
 - **Not done**: integrations (Slack, PagerDuty, Datadog, …), metadata, catalog, severities, collectors, explorations and dashboard charts (complex documents better edited in Better Stack); status reports are read-only; Telemetry objects are not exported to Terraform because they use a second provider (`BetterStackHQ/logtail`).
 
+### Chronosphere (`@infrawrench/plugin-chronosphere`)
+
+Verified against the Config API v1 swagger vendored by the official Terraform provider (`chronosphereio/terraform-provider-chronosphere`, `chronosphere/pkg/configv1/swagger.json`, v1.38.0) and the product docs, which now live at docs-xcor.paloaltonetworks.com (Chronosphere was acquired by Palo Alto Networks and sold as Cortex XCOR; tenants keep `<org>.chronosphere.io`), 2026-10. Things the code does not make obvious:
+
+- **One host per tenant**: `https://<org>.chronosphere.io`. Config API at `/api/v1/config/<kebab-plural>`, Prometheus API at `/data/metrics/api/v1/{query,query_range}`. Auth header `API-Token` (the docs also accept `Authorization: Bearer`), a service account token (Admin, Platform, Service Accounts; unrestricted for config, restricted ones are telemetry-only) or a personal access token.
+- **The config API is uniform**: list `?page.max_size&page.token` answers `{page:{next_token}, <snake_plural>:[...]}`; read answers `{<singular>:{...}}`; create POST and update PUT take `{<singular>:{...}}` (plus `create_if_missing`, `dry_run`). `CONFIG` in `resource-types.ts` holds the three names per type. Slugs are generated from `name` when omitted and cannot change.
+- **Updates replace the whole object**, so the client reads, drops `created_at`/`updated_at`, changes and PUTs. Muting rules' `starts_at` cannot change and must be sent back unchanged; **End now** sets `ends_at`.
+- Monitor conditions are `series_conditions.defaults.{warn,critical}.conditions[{op, value, sustain_secs}]` with ops `GT/GEQ/LT/LEQ/EQ/NEQ/EXISTS/NOT_EXISTS/SIGNAL_NOT_EXISTS`. Drop rule `mode` is ENABLED/DISABLED/PREVIEW, rollup rule `mode` ENABLED/PREVIEW.
+- **Notifier reads include secrets** (PagerDuty service keys, VictorOps API keys, webhook URLs). Only the type, a Slack channel or a webhook's host are mapped; nothing else is stored.
+- PromQL is the query surface: tenant `sqlEditor` (`supportsRestQuery`) runs instant queries into rows; monitors (PromQL only) and recording rules chart `query_range`.
+- **No cost and no status feed**: there is no billing API, and status.chronosphere.io is a private Statuspage behind Okta SSO.
+- Deliberately not done: creating dashboards, SLOs, notifiers, notification policies and shaping rules (nested documents with per-integration secrets), service account creation (the token is shown once), the unstable config API.
+
 ---
 
 ## Publish capability (cross-plugin)

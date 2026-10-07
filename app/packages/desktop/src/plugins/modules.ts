@@ -137,4 +137,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-jfrog"),
   () => import("@infrawrench/plugin-infisical"),
   () => import("@infrawrench/plugin-better-stack"),
+  () => import("@infrawrench/plugin-chronosphere"),
 ];

@@ -235,6 +235,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientSecret: "test-infisical-secret",
   },
   "better-stack": { apiToken: "test-better-stack-token" },
+  chronosphere: { org: "acme", apiToken: "chrono-test-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
