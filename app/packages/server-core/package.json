@@ -385,6 +385,7 @@
     "@infrawrench/plugin-incident-io": "workspace:*",
     "@infrawrench/plugin-koyeb": "workspace:*",
     "@infrawrench/plugin-sendgrid": "workspace:*",
+    "@infrawrench/plugin-lambda-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

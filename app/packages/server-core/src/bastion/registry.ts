@@ -233,6 +233,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   koyeb: ["app.koyeb.com"],
   // api.eu.sendgrid.com serves EU regional subusers
   sendgrid: ["api.sendgrid.com", "api.eu.sendgrid.com"],
+  "lambda-cloud": ["cloud.lambda.ai"],
 };
 
 /**

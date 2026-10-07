@@ -1737,6 +1737,19 @@ Verified against Twilio's published OpenAPI documents (`twilio/sendgrid-oai`, `s
 - **Status feed** is Twilio's Statuspage (status.sendgrid.com redirects). Incidents are pre-filtered to SendGrid components (groups named "SendGrid …" and children `SMTP`, `API v2/v3`, `Event Webhooks`, `Parse API`, `Dedicated IP Address`) or "SendGrid" in the title, otherwise the shared parser would keep component-less Twilio incidents as provider-wide.
 - **Not done, deliberately**: costs (no billing API), Terraform export (no official provider), the newer IP Address Management API (`/v3/send_ips/*`; the legacy `/v3/ips` and `/v3/ips/pools` cover listing, pools and warmup), template version editing (rename only; versions shown read-only), Marketing Campaigns.
 
+### Lambda Cloud (`@infrawrench/plugin-lambda-cloud`)
+
+Verified 2026-10 against the published OpenAPI document (`https://cloud.lambda.ai/api/v1/openapi.json`, v1.10.0; `cloud.lambdalabs.com` is the deprecated alias).
+
+- **Auth**: `Authorization: Bearer <key>` (Basic with the key as username still works). Keys are team-wide with full access; there is no read-only scope. Success bodies are `{data}`; errors are `{error: {code, message, suggestion?}}` and `code` (e.g. `global/invalid-api-key`) is the stable part. Rate limit: ~1 request/s, launches 1 per 12 s, so the instance-type listing is cached for a minute.
+- **Only `/instances` paginates** (`page_size` 1-100, `page_token` next to `data`, null when done). Everything else is a plain array.
+- **No stop.** Instances only launch (`POST /instance-operations/launch`, returns `instance_ids`), restart and terminate (both take `{instance_ids: []}`). `POST /instances/{id}` updates only `name` and `tags` (tags replace wholesale; `lambda-ai-` keys are reserved and dropped). `actions.restart.available` says whether a restart is possible right now; the reason is stored in `restartBlocked`.
+- **Launch pickers**: `/instance-types` is a map keyed by name with `regions_with_capacity_available`, which feeds both the size picker (types with none are labelled "no capacity") and the region picker (`availableFor` + `filterByFieldKey`). Images repeat per region and version, so the picker is one entry per `family` and launches with `image: {family}`; omitting it gets the latest Lambda Stack. Filesystems are attached by name (`file_system_names`), which mounts at the filesystem's default path. Exactly one SSH key name is required.
+- **Firewall**: per-region rulesets (`/firewall-rulesets`, full CRUD, `instance_ids` says what they protect) plus a singleton `/firewall-rulesets/global` (PATCH `rules`), modelled as the `global-firewall` type with externalId `global`. The legacy `/firewall-rules` PUT is not used. Rules are edited as text lines (`firewall.ts`); `port_range` is required for tcp/udp/all and forbidden for icmp. `sshOpenToInternet` is computed at sync for the posture checks (posture conditions have no "contains").
+- **Jupyter URL and token are credentials**: not stored in outputs; `resolveOutput` fetches them from `GET /instances/{id}` on demand.
+- **Status**: `status.lambda.ai` is incident.io; it 404s on `/incidents/unresolved.json`, so the feed is `/api/v2/incidents.json` filtered to unresolved. Components are product areas only; region codes appear upper-cased in titles (`US-SOUTH-2 ...`) and are lifted and lower-cased into `regions`.
+- **Not done, deliberately**: no cost/credits/quotas (Lambda has no billing, balance or quota API; "Verified as having no usable billing API"); no Terraform export (no Lambda-published provider on the Registry); SSH key generation (`POST /ssh-keys` without `public_key` returns a private key once, which would have to be stored); support tickets and `/audit-events` (no host surface for them yet); Lambda's 1-Click Clusters and Inference API.
+
 ---
 
 ## Publish capability (cross-plugin)

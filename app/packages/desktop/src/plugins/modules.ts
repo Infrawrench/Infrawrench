@@ -108,4 +108,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-incident-io"),
   () => import("@infrawrench/plugin-koyeb"),
   () => import("@infrawrench/plugin-sendgrid"),
+  () => import("@infrawrench/plugin-lambda-cloud"),
 ];
