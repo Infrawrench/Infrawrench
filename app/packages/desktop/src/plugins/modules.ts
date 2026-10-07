@@ -139,4 +139,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-better-stack"),
   () => import("@infrawrench/plugin-chronosphere"),
   () => import("@infrawrench/plugin-docker-hub"),
+  () => import("@infrawrench/plugin-posthog"),
 ];

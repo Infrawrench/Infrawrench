@@ -314,6 +314,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   chronosphere: ["*.chronosphere.io"],
   // auth.docker.io and registry-1.docker.io are only used to read the pull rate limit headers
   "docker-hub": ["hub.docker.com", "auth.docker.io", "registry-1.docker.io"],
+  // PostHog Cloud API hosts; self-hosted instances use their own URL.
+  posthog: ["us.posthog.com", "eu.posthog.com"],
 };
 
 /**

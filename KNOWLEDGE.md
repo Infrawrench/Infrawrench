@@ -2173,6 +2173,20 @@ Verified against the Config API v1 swagger vendored by the official Terraform pr
 - **Terraform**: `docker/docker` ~> 0.7: `docker_hub_repository` (import `ns/name`), `docker_org_team`, `docker_org_member` (import `org/user`).
 - **Not done**: webhooks, vulnerability (Scout) data and pull history/usage: no public API (OAT scopes mention webhook pipelines and registry usage but no route is documented). Metrics are lifetime-count snapshots. Org audit log shown via the Logs tab.
 
+### PostHog (`@infrawrench/plugin-posthog`)
+
+Verified against the OpenAPI schema PostHog serves at `https://us.posthog.com/api/schema/` (OpenAPI 3.1, 2026-10), the official `PostHog/terraform-provider-posthog` docs (v1.0.24) and PostHog's billing frontend tests. Things the code does not make obvious:
+
+- **Hosts**: US `https://us.posthog.com`, EU `https://eu.posthog.com` (not the `*.i.posthog.com` ingest hosts), self-hosted at the instance URL. `resolveHost` maps app and ingest hostnames back to the API host. Auth `Authorization: Bearer phx_…` (personal API key; each route's required scope is its `security` entry in the schema, e.g. `feature_flag:write`).
+- Lists are DRF pages (`limit`/`offset`, `{count, next, previous, results}`). Project objects live under `/api/projects/{project_id}/<route>/`, so external ids are `<projectId>/<id>` (also the Terraform import id).
+- **Hard delete returns 405** for flags, experiments, cohorts, dashboards, insights, actions, annotations and hog functions ("use a patch API call to set deleted to true"); batch exports are the one real DELETE (204). Listers drop `deleted: true` rows.
+- Flag lifecycle has dedicated actions (`/enable`, `/disable`, `/roll_out_to_everyone`); rollout % is `filters.groups[0].rollout_percentage`, rewritten in place so other conditions survive. Experiments have `/launch`, `/pause`, `/resume`, `/end`, `/archive`.
+- **Cost** is `GET /api/billing/spend/?interval=day&breakdowns=["type","team"]&start_date&end_date` (`billing:read`): each series has `breakdown_value: [<usage type>, <team id>]` and a label `<team>::<Product>`, `data[i]` is USD for `dates[i]`, paged with `page_size`/`after`. It reads the key's current organization; the org-scoped `/api/organizations/{id}/billing/*` routes are a feature-flagged beta that answers 403. `/api/billing/` gives the period's running and projected totals.
+- **HogQL** is `POST /api/projects/{id}/query/` with `{query:{kind:"HogQLQuery", query}}` → `{columns, results}` (`query:read`); it backs the project's Query tab and the event/flag-evaluation charts (`$feature_flag_called` with `properties.$feature_flag`).
+- **Status feed**: status.posthog.com redirects to www.posthogstatus.com (incident.io) whose Statuspage JSON paths 404; `/feed.rss` works, keeps resolved incidents, and starts each description with `Status: <state>`.
+- Rate limits (docs): CRUD 480/min and 4,800/h per key, analytics 240/min, query 2,400/h.
+- Deliberately not done: creating experiments, cohorts, insights, actions, destinations and batch exports (query and destination documents), surveys and early access features, organization-scoped billing beta.
+
 ---
 
 ## Publish capability (cross-plugin)
