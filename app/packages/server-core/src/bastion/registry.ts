@@ -333,6 +333,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   proxmox: [],
   // Vault address is user-supplied (self-hosted or HCP Vault); v1 doesn't bastion-route Vault
   "hashicorp-vault": [],
+  // Auth0 tenants: {tenant}.auth0.com and {tenant}.{region}.auth0.com
+  auth0: ["*.auth0.com"],
 };
 
 /**

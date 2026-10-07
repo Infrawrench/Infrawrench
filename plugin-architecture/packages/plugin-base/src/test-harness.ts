@@ -252,6 +252,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     tokenSecret: "00000000-0000-0000-0000-000000000000",
   },
   "hashicorp-vault": { address: "https://vault.example.com:8200", token: "hvs.test" },
+  auth0: {
+    domain: "acme.us.auth0.com",
+    clientId: "test-auth0-client",
+    clientSecret: "test-auth0-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

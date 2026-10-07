@@ -175,6 +175,7 @@ vi.mock("@infrawrench/plugin-checkly", () => stub("checkly"));
 vi.mock("@infrawrench/plugin-huggingface", () => stub("huggingface"));
 vi.mock("@infrawrench/plugin-proxmox", () => stub("proxmox"));
 vi.mock("@infrawrench/plugin-hashicorp-vault", () => stub("hashicorp-vault"));
+vi.mock("@infrawrench/plugin-auth0", () => stub("auth0"));
 
 beforeEach(() => {
   disabled = [];
