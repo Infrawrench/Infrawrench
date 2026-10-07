@@ -4,13 +4,17 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 const ro = { required: false, editable: false } as const;
 const num = (key: string, label: string) => f(key, label, { ...ro, kind: "number" });
 const bool = (key: string, label: string) => f(key, label, { ...ro, kind: "boolean" });
+/** Shown in the Edit form; changes go to the server through the NATS driver. */
+const ed = { required: false } as const;
+const edNum = (key: string, label: string, description?: string) =>
+  f(key, label, { ...ed, kind: "number", ...(description ? { description } : {}) });
 
 export const ServerResourceType = rt({
   name: "Server",
   id: "nats-server",
   accountRoot: true,
   description:
-    "The nats-server behind this monitoring endpoint: version, cluster, connections and subscriptions, traffic, slow consumers, routes, gateways and leaf nodes, JetStream usage against its limits, and health. The Metrics tab records connections, memory, CPU and JetStream storage.",
+    "The nats-server behind this monitoring endpoint: version, cluster, connections and subscriptions, traffic, slow consumers, routes, gateways and leaf nodes, JetStream usage against its limits, and health. The Metrics tab records connections, memory, CPU and JetStream storage. With a server URL on the account, messages can be published to any subject and requests sent.",
   fields: [
     f("serverName", "Server Name", ro),
     f("serverId", "Server ID", ro),
@@ -116,24 +120,27 @@ export const StreamResourceType = rt({
   parentTypeId: "nats-account",
   showInSidebar: true,
   description:
-    "A JetStream stream (or a key-value bucket or object store, which are streams underneath): subjects, retention, storage, replicas and limits, messages, bytes, sequence range, and its cluster leader.",
+    "A JetStream stream (or a key-value bucket or object store, which are streams underneath): subjects, retention, storage, replicas and limits, messages, bytes, sequence range, and its cluster leader. With a server URL on the account it can be created, edited, purged and deleted, its messages read and deleted by sequence, and messages published to it.",
   fields: [
     f("account", "Account", ro),
     f("name", "Name", ro),
     f("kind", "Kind", ro),
-    f("description", "Description", ro),
-    f("subjects", "Subjects", ro),
+    f("description", "Description", ed),
+    f("subjects", "Subjects", {
+      ...ed,
+      description: "Comma-separated; * matches one token, > the rest.",
+    }),
     f("retention", "Retention", ro),
     f("storage", "Storage", ro),
-    num("replicas", "Replicas"),
-    f("discard", "Discard", ro),
-    num("maxMsgs", "Max Messages"),
-    num("maxBytes", "Max Bytes"),
-    num("maxAgeSeconds", "Max Age (s)"),
-    num("maxMsgsPerSubject", "Max Per Subject"),
-    num("maxMsgSize", "Max Message Size"),
-    num("duplicateWindowSeconds", "Duplicate Window (s)"),
-    f("compression", "Compression", ro),
+    f("replicas", "Replicas", { ...ed, kind: "enum", enumValues: ["1", "2", "3", "4", "5"] }),
+    f("discard", "Discard", { ...ed, kind: "enum", enumValues: ["old", "new"] }),
+    edNum("maxMsgs", "Max Messages", "Blank for no limit."),
+    edNum("maxBytes", "Max Bytes", "Blank for no limit."),
+    edNum("maxAgeSeconds", "Max Age (s)", "Blank to keep messages forever."),
+    edNum("maxMsgsPerSubject", "Max Per Subject", "Blank for no limit."),
+    edNum("maxMsgSize", "Max Message Size", "Blank for the server's max payload."),
+    edNum("duplicateWindowSeconds", "Duplicate Window (s)"),
+    f("compression", "Compression", { ...ed, kind: "enum", enumValues: ["none", "s2"] }),
     bool("sealed", "Sealed"),
     bool("denyDelete", "Deny Delete"),
     bool("denyPurge", "Deny Purge"),
@@ -159,6 +166,9 @@ export const StreamResourceType = rt({
     },
   ],
   supportsMetrics: true,
+  supportsCreate: true,
+  supportsUpdate: true,
+  supportsDelete: true,
   iconKey: "database",
 });
 
@@ -168,20 +178,27 @@ export const ConsumerResourceType = rt({
   parentTypeId: "nats-stream",
   showInSidebar: true,
   description:
-    "A JetStream consumer: push or pull, deliver and ack policies, filter subjects, and its progress (pending, waiting for ack, redelivered, delivered and acknowledged sequences).",
+    "A JetStream consumer: push or pull, deliver and ack policies, filter subjects, and its progress (pending, waiting for ack, redelivered, delivered and acknowledged sequences). With a server URL on the account it can be created, edited, paused, resumed and deleted.",
   fields: [
     f("account", "Account", ro),
     f("stream", "Stream", ro),
     f("name", "Name", ro),
+    f("description", "Description", ed),
     bool("durable", "Durable"),
     f("mode", "Mode", ro),
     f("deliverPolicy", "Deliver Policy", ro),
     f("ackPolicy", "Ack Policy", ro),
-    num("ackWaitSeconds", "Ack Wait (s)"),
-    num("maxDeliver", "Max Deliver"),
-    num("maxAckPending", "Max Ack Pending"),
-    f("filterSubjects", "Filter Subjects", ro),
-    f("deliverSubject", "Deliver Subject", ro),
+    edNum("ackWaitSeconds", "Ack Wait (s)"),
+    edNum("maxDeliver", "Max Deliver", "Blank for unlimited redeliveries."),
+    edNum("maxAckPending", "Max Ack Pending"),
+    f("filterSubjects", "Filter Subjects", {
+      ...ed,
+      description: "Comma-separated; blank for the whole stream.",
+    }),
+    f("deliverSubject", "Deliver Subject", {
+      ...ed,
+      description: "Push consumers only.",
+    }),
     f("replayPolicy", "Replay Policy", ro),
     num("pending", "Pending"),
     num("ackPending", "Waiting For Ack"),
@@ -191,11 +208,79 @@ export const ConsumerResourceType = rt({
     num("ackFloorStreamSeq", "Ack Floor (stream seq)"),
     f("lastActive", "Last Active", ro),
     bool("pushBound", "Push Bound"),
+    bool("paused", "Paused"),
+    f("pausedUntil", "Paused Until", ro),
     f("created", "Created", ro),
   ],
   pinnable: false,
   supportsMetrics: true,
+  supportsCreate: true,
+  supportsUpdate: true,
+  supportsDelete: true,
   iconKey: "inbox",
+});
+
+export const KvBucketResourceType = rt({
+  name: "Key-Value Bucket",
+  id: "nats-kv-bucket",
+  parentTypeId: "nats-account",
+  showInSidebar: true,
+  description:
+    "A JetStream key-value bucket: history depth, expiry, size limits, storage and replicas, with a key browser to read, write and delete keys and the bucket's recent revisions. Needs a server URL on the account for anything beyond its settings.",
+  fields: [
+    f("account", "Account", ro),
+    f("bucket", "Bucket", ro),
+    f("description", "Description", ed),
+    edNum("history", "History", "Revisions kept per key (1 to 64)."),
+    edNum("ttlSeconds", "Expire After (s)", "Blank to keep entries forever."),
+    edNum("maxBytes", "Max Bytes", "Blank for no limit."),
+    edNum("maxValueSize", "Max Value Size", "Blank for the server's max payload."),
+    f("storage", "Storage", ro),
+    f("replicas", "Replicas", { ...ed, kind: "enum", enumValues: ["1", "2", "3", "4", "5"] }),
+    f("compression", "Compression", ro),
+    num("values", "Values (all revisions)"),
+    num("keys", "Keys"),
+    num("bytes", "Bytes"),
+    f("leader", "Leader", ro),
+    f("created", "Created", ro),
+  ],
+  outputs: [o("bucket", "Bucket name")],
+  supportsMetrics: true,
+  supportsCreate: true,
+  supportsUpdate: true,
+  supportsDelete: true,
+  iconKey: "key",
+});
+
+export const ObjectStoreResourceType = rt({
+  name: "Object Store",
+  id: "nats-object-store",
+  parentTypeId: "nats-account",
+  showInSidebar: true,
+  description:
+    "A JetStream object store: its objects (name, size, chunks, digest, modified time) in a file browser that can upload and delete them, and the store's expiry, size limit, storage and replicas. Needs a server URL on the account.",
+  fields: [
+    f("account", "Account", ro),
+    f("bucket", "Bucket", ro),
+    f("description", "Description", ed),
+    edNum("ttlSeconds", "Expire After (s)", "Blank to keep objects forever."),
+    edNum("maxBytes", "Max Bytes", "Blank for no limit."),
+    f("storage", "Storage", ro),
+    f("replicas", "Replicas", { ...ed, kind: "enum", enumValues: ["1", "2", "3", "4", "5"] }),
+    f("compression", "Compression", ro),
+    bool("sealed", "Sealed"),
+    num("bytes", "Bytes"),
+    num("chunks", "Chunks"),
+    f("leader", "Leader", ro),
+    f("created", "Created", ro),
+  ],
+  outputs: [o("bucket", "Bucket name")],
+  supportsMetrics: true,
+  supportsCreate: true,
+  supportsUpdate: true,
+  supportsDelete: true,
+  supportsStorageBrowser: true,
+  iconKey: "bucket",
 });
 
 export const ConnectionResourceType = rt({
@@ -233,5 +318,7 @@ export const RESOURCE_TYPES: ResourceTypeDefinition[] = [
   AccountResourceType,
   StreamResourceType,
   ConsumerResourceType,
+  KvBucketResourceType,
+  ObjectStoreResourceType,
   ConnectionResourceType,
 ];

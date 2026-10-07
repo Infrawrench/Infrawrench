@@ -94,6 +94,9 @@ export interface JsConsumer {
   num_waiting?: number;
   num_pending?: number;
   push_bound?: boolean;
+  /** Set by the JetStream API (nats-server 2.11+), not by /jsz. */
+  paused?: boolean;
+  pause_remaining?: number;
 }
 
 export interface AccStat {
@@ -324,6 +327,11 @@ export function mapConsumer(
           ? cons.delivered.last_active
           : undefined,
       pushBound: cons.push_bound,
+      paused: cons.paused,
+      pausedUntil:
+        cons.paused && typeof cons.config?.["pause_until"] === "string"
+          ? (cons.config["pause_until"] as string)
+          : undefined,
       created: cons.created,
     },
     { parentResourceId: `${accountId}:nats-stream:${joinId(account, stream)}` },
@@ -383,5 +391,71 @@ export function mapConnection(accountId: string, c: Conn): ResourceInstance {
       pendingBytes: c.pending_bytes,
       tls: c.tls_version,
     },
+  );
+}
+
+/**
+ * A key-value bucket from its backing `KV_<bucket>` stream: history is
+ * `max_msgs_per_subject`, the TTL `max_age`, the value cap `max_msg_size`.
+ */
+export function mapKvBucket(accountId: string, account: string, st: JsStream): ResourceInstance {
+  const c = st.config ?? {};
+  const stream = st.name ?? s(c["name"]) ?? "";
+  const bucket = stream.replace(/^KV_/, "");
+  return instance(
+    accountId,
+    "nats-kv-bucket",
+    joinId(account, bucket),
+    bucket,
+    {
+      account,
+      bucket,
+      description: s(c["description"]),
+      history:
+        typeof c["max_msgs_per_subject"] === "number"
+          ? (c["max_msgs_per_subject"] as number)
+          : undefined,
+      ttlSeconds: nsToSeconds(c["max_age"]),
+      maxBytes: limit(c["max_bytes"]),
+      maxValueSize: limit(c["max_msg_size"]),
+      storage: s(c["storage"]),
+      replicas: typeof c["num_replicas"] === "number" ? (c["num_replicas"] as number) : undefined,
+      compression: s(c["compression"]),
+      values: st.state?.messages,
+      keys: st.state?.num_subjects,
+      bytes: st.state?.bytes,
+      leader: st.cluster?.leader,
+      created: st.created,
+    },
+    { parentResourceId: accountRef(accountId, account) },
+  );
+}
+
+/** An object store from its backing `OBJ_<bucket>` stream. */
+export function mapObjectStore(accountId: string, account: string, st: JsStream): ResourceInstance {
+  const c = st.config ?? {};
+  const stream = st.name ?? s(c["name"]) ?? "";
+  const bucket = stream.replace(/^OBJ_/, "");
+  return instance(
+    accountId,
+    "nats-object-store",
+    joinId(account, bucket),
+    bucket,
+    {
+      account,
+      bucket,
+      description: s(c["description"]),
+      ttlSeconds: nsToSeconds(c["max_age"]),
+      maxBytes: limit(c["max_bytes"]),
+      storage: s(c["storage"]),
+      replicas: typeof c["num_replicas"] === "number" ? (c["num_replicas"] as number) : undefined,
+      compression: s(c["compression"]),
+      sealed: typeof c["sealed"] === "boolean" ? (c["sealed"] as boolean) : undefined,
+      bytes: st.state?.bytes,
+      chunks: st.state?.messages,
+      leader: st.cluster?.leader,
+      created: st.created,
+    },
+    { parentResourceId: accountRef(accountId, account) },
   );
 }

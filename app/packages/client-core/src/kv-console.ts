@@ -90,6 +90,14 @@ const CONSOLE_PROFILES: Record<string, KvConsoleProfile> = {
     examples: "listTopics, describeCluster, describeTopic <name>",
     placeholder: "listTopics",
   },
+  // The console sends only the server URL, so it authenticates with whatever
+  // the URL carries (nats://user:pass@host); resource views use the account's
+  // full credentials.
+  nats: {
+    label: "NATS",
+    examples: "info, streams, stream <name>, kv-keys <bucket>, publish <subject> <body>",
+    placeholder: "info",
+  },
 };
 
 export function kvConsoleProfile(driverName: string): KvConsoleProfile {
