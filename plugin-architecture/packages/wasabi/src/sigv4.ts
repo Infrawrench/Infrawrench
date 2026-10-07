@@ -1,13 +1,10 @@
 /**
  * AWS Signature Version 4, hand-rolled on WebCrypto.
  *
- * plugin-base's `signedS3Fetch` signs with `@smithy/signature-v4` at its
- * defaults, which URI-escape the path a second time; S3 servers canonicalize
- * the path once, so any object key containing a character that needs
- * percent-encoding (a space, `+`, unicode) fails with SignatureDoesNotMatch.
- * S3 wants the path escaped exactly once, which this signer does, and it
- * works unchanged for the IAM and STS query APIs. Duplicated into each
- * S3-based plugin rather than changing plugin-base.
+ * S3 wants the path escaped exactly once, and this signer does that; it also
+ * signs the IAM and STS query APIs. It predates the fix that made plugin-base's
+ * `signedS3Fetch` encode the path once too, and it is the independent oracle
+ * that fix's tests take their expected signatures from.
  */
 
 const enc = new TextEncoder();

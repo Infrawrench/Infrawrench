@@ -44,6 +44,33 @@ export interface SignedS3FetchOptions {
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
+/** RFC 3986 encoding: unreserved characters stay, everything else is %XX. */
+function uriEncode(s: string): string {
+  return encodeURIComponent(s).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+/**
+ * The path S3 expects in the canonical request: every segment encoded exactly
+ * once. `URL.pathname` is already percent-encoded, but only loosely (`+`, `!`,
+ * `(` and friends pass through), so decode each segment and re-encode it.
+ */
+function canonicalS3Path(pathname: string): string {
+  const path = pathname
+    .split("/")
+    .map((seg) => {
+      try {
+        return uriEncode(decodeURIComponent(seg));
+      } catch {
+        return seg;
+      }
+    })
+    .join("/");
+  return path || "/";
+}
+
 /**
  * Sign an S3-compatible request with AWS SigV4 and `fetch` it.
  *
@@ -61,18 +88,26 @@ export async function signedS3Fetch(opts: SignedS3FetchOptions): Promise<Respons
     query[key] = value;
   });
 
+  // S3 canonicalizes the path once. Smithy's default `uriEscapePath: true`
+  // escapes it a second time (a space signs as `%2520`), so any key with a
+  // space, `+` or non-ASCII character fails with SignatureDoesNotMatch. The
+  // AWS SDK's own S3 client turns escaping off and hands over a path that is
+  // already canonical, and so does this; the request is sent to that same path.
+  const path = canonicalS3Path(parsed.pathname);
+
   const signer = new SignatureV4({
     credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
     region,
     service,
     sha256: Sha256,
+    uriEscapePath: false,
   });
 
   const request = new HttpRequest({
     method,
     protocol: parsed.protocol,
     hostname: parsed.hostname,
-    path: parsed.pathname || "/",
+    path,
     query,
     headers: { host: parsed.host, ...(headers ?? {}) },
     body,
@@ -91,5 +126,5 @@ export async function signedS3Fetch(opts: SignedS3FetchOptions): Promise<Respons
     init.body = body as BodyInit;
   }
 
-  return (opts.fetch ?? fetch)(url, init);
+  return (opts.fetch ?? fetch)(`${parsed.origin}${path}${parsed.search}`, init);
 }
