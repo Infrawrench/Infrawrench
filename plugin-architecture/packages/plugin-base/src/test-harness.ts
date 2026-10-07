@@ -269,6 +269,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   perplexity: { apiKey: "pplx-test" },
   doppler: { token: "dp.pt.test" },
   fal: { apiKey: "key-id:key-secret" },
+  spacelift: { endpoint: "acme", apiKeyId: "01HTEST", apiKeySecret: "secret" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -432,6 +432,7 @@
     "@infrawrench/plugin-perplexity": "workspace:*",
     "@infrawrench/plugin-doppler": "workspace:*",
     "@infrawrench/plugin-fal": "workspace:*",
+    "@infrawrench/plugin-spacelift": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

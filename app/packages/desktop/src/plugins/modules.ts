@@ -155,4 +155,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-perplexity"),
   () => import("@infrawrench/plugin-doppler"),
   () => import("@infrawrench/plugin-fal"),
+  () => import("@infrawrench/plugin-spacelift"),
 ];
