@@ -345,6 +345,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   clerk: ["api.clerk.com"],
   perplexity: ["api.perplexity.ai"],
   doppler: ["api.doppler.com"],
+  fal: ["api.fal.ai"],
 };
 
 /**

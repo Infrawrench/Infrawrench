@@ -183,6 +183,7 @@ vi.mock("@infrawrench/plugin-vsphere", () => stub("vsphere"));
 vi.mock("@infrawrench/plugin-clerk", () => stub("clerk"));
 vi.mock("@infrawrench/plugin-perplexity", () => stub("perplexity"));
 vi.mock("@infrawrench/plugin-doppler", () => stub("doppler"));
+vi.mock("@infrawrench/plugin-fal", () => stub("fal"));
 
 beforeEach(() => {
   disabled = [];

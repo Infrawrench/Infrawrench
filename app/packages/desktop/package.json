@@ -260,6 +260,7 @@
     "@infrawrench/plugin-clerk": "workspace:*",
     "@infrawrench/plugin-perplexity": "workspace:*",
     "@infrawrench/plugin-doppler": "workspace:*",
+    "@infrawrench/plugin-fal": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

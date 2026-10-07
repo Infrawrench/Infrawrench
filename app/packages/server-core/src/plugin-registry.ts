@@ -144,6 +144,7 @@ import { plugin as vspherePlugin } from "@infrawrench/plugin-vsphere";
 import { plugin as clerkPlugin } from "@infrawrench/plugin-clerk";
 import { plugin as perplexityPlugin } from "@infrawrench/plugin-perplexity";
 import { plugin as dopplerPlugin } from "@infrawrench/plugin-doppler";
+import { plugin as falPlugin } from "@infrawrench/plugin-fal";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -296,4 +297,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   clerkPlugin,
   perplexityPlugin,
   dopplerPlugin,
+  falPlugin,
 ];

@@ -2380,6 +2380,20 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **Terraform**: `DopplerHQ/doppler` ~> 1.21: projects, environments (`project.slug`), branch configs (`project.env.config`; root configs belong to their environment), groups (slug). Secrets, tokens and webhooks (secret/payload) not exported.
 - **Not done**: creating integrations/syncs (target credentials), change requests and policies, project/workplace role management, trusted IPs, dynamic secret leases, invites. No billing API.
 
+### fal (`@infrawrench/plugin-fal`)
+
+- **Auth**: `Authorization: Key <key_id:key_secret>` (not Bearer) on `https://api.fal.ai/v1`. Keys are API or ADMIN scope; usage, billing, keys, compute, FOCUS and organization routes are `adminApiKey`-only, everything else accepts either. 403 on admin routes reads as an empty list.
+- **Spec**: `https://api.fal.ai/v1/openapi.json` (OpenAPI 3.1, ~850 KB, Oct 2026), linked from `fal.ai/docs/api-reference/platform-apis/openapi-schema.md`. Docs index: `docs.fal.ai/llms.txt`.
+- **Pagination**: `limit` + `cursor`, responses carry `next_cursor`/`has_more`. Endpoint filters take 1-50 ids, repeated or comma-separated.
+- **Models**: the public catalogue (`GET /models`, works unauthenticated) is thousands of endpoints, so `fal-model` lists endpoints from `GET /models/usage?expand=summary&start=<30d>` and joins `GET /models?endpoint_id=…` (metadata) and `GET /models/pricing?endpoint_id=…` (`unit_price` per `unit`; pricing needs auth). `endpoint_id` is required on pricing, analytics and requests routes.
+- **Analytics**: `/models/analytics` and `/serverless/analytics` need `expand=time_series` **plus each metric name** (only requested metrics are populated). Durations are seconds. Serverless analytics 403s unless you own every endpoint asked about.
+- **Usage/cost**: `/models/usage` and `/serverless/usage` with `timeframe=day&timezone=UTC&expand=time_series`; `start` inclusive, `end` exclusive, buckets are ISO datetimes with offset. Rows use `cost_total` (after discount). `/account/focus` (FOCUS CSV) is enterprise-only and not used. Credits: `GET /account/billing?expand=credits` → `credits.current_balance`.
+- **Serverless**: `GET /serverless/apps?expand=endpoints`, queue `GET|DELETE /serverless/apps/{owner}/{name}/queue`, `…/revisions`, logs `POST /serverless/logs/history?app_id=&limit=` with a JSON array of label filters as the body (`[]` for none).
+- **Keys**: `GET /keys`, `POST /keys {alias}` → `{key_id, key_secret, key}` once, `DELETE /keys/{id}`. Exposed as a "replacement key" credential format on each key.
+- **Compute**: list/get/delete only; the spec has no create route despite the docs page.
+- **Status**: Instatus at status.fal.ai; `/summary.json` has `activeIncidents`/`activeMaintenances` only when open, no components (provider-wide). `index.json` and `/api/v2/incidents.json` 404.
+- **Not done**: assets library, storage ACL/settings, workflow creation, model inference itself (image/video, no fitting panel). No Terraform provider.
+
 ---
 
 ## Publish capability (cross-plugin)
