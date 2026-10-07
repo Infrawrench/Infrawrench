@@ -206,6 +206,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     managementKeySecret: "test-secret",
     configurationKey: "test-config-key",
   },
+  "ibm-cloud": { apiKey: "test-api-key", region: "us-south" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

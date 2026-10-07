@@ -151,6 +151,7 @@ vi.mock("@infrawrench/plugin-paperspace", () => stub("paperspace"));
 vi.mock("@infrawrench/plugin-datastax-astra", () => stub("datastax-astra"));
 vi.mock("@infrawrench/plugin-qdrant-cloud", () => stub("qdrant-cloud"));
 vi.mock("@infrawrench/plugin-honeycomb", () => stub("honeycomb"));
+vi.mock("@infrawrench/plugin-ibm-cloud", () => stub("ibm-cloud"));
 
 beforeEach(() => {
   disabled = [];

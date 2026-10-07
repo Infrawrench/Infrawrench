@@ -122,4 +122,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-datastax-astra"),
   () => import("@infrawrench/plugin-qdrant-cloud"),
   () => import("@infrawrench/plugin-honeycomb"),
+  () => import("@infrawrench/plugin-ibm-cloud"),
 ];

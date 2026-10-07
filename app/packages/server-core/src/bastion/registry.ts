@@ -261,6 +261,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "qdrant-cloud": ["api.cloud.qdrant.io", "*.cloud.qdrant.io"],
   // Honeycomb US and EU API hosts (configuration and management keys share them).
   honeycomb: ["api.honeycomb.io", "api.eu1.honeycomb.io"],
+  // IAM, VPC (*.iaas.cloud.ibm.com), Kubernetes Service, Code Engine, Cloud Databases, Resource Controller, billing, COS config and the status feed are under cloud.ibm.com; COS S3 endpoints are under cloud-object-storage.appdomain.cloud
+  "ibm-cloud": ["iam.cloud.ibm.com", "*.cloud.ibm.com", "*.cloud-object-storage.appdomain.cloud"],
 };
 
 /**

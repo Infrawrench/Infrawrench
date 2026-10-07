@@ -399,6 +399,7 @@
     "@infrawrench/plugin-datastax-astra": "workspace:*",
     "@infrawrench/plugin-qdrant-cloud": "workspace:*",
     "@infrawrench/plugin-honeycomb": "workspace:*",
+    "@infrawrench/plugin-ibm-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
