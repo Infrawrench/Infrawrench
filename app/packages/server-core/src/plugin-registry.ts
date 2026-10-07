@@ -148,6 +148,7 @@ import { plugin as falPlugin } from "@infrawrench/plugin-fal";
 import { plugin as spaceliftPlugin } from "@infrawrench/plugin-spacelift";
 import { plugin as voyagePlugin } from "@infrawrench/plugin-voyage";
 import { plugin as openstackPlugin } from "@infrawrench/plugin-openstack";
+import { plugin as rabbitmqPlugin } from "@infrawrench/plugin-rabbitmq";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -304,4 +305,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   spaceliftPlugin,
   voyagePlugin,
   openstackPlugin,
+  rabbitmqPlugin,
 ];

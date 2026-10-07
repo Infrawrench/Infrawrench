@@ -158,4 +158,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-spacelift"),
   () => import("@infrawrench/plugin-voyage"),
   () => import("@infrawrench/plugin-openstack"),
+  () => import("@infrawrench/plugin-rabbitmq"),
 ];

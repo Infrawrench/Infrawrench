@@ -276,6 +276,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     applicationCredentialId: "423f19a4ac1e4f48bbb4180756e6eb6c",
     applicationCredentialSecret: "test-secret",
   },
+  rabbitmq: { url: "https://mq.example.com:15671", username: "infrawrench", password: "test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -435,6 +435,7 @@
     "@infrawrench/plugin-spacelift": "workspace:*",
     "@infrawrench/plugin-voyage": "workspace:*",
     "@infrawrench/plugin-openstack": "workspace:*",
+    "@infrawrench/plugin-rabbitmq": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

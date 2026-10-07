@@ -351,6 +351,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   voyage: ["api.voyageai.com"],
   // OpenStack clouds are user-chosen: Keystone and every catalog endpoint are per-cloud hosts, so there is no fixed egress list (same as kubernetes).
   openstack: [],
+  // RabbitMQ is self-hosted: the management URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  rabbitmq: [],
 };
 
 /**
