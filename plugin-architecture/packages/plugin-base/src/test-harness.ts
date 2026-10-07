@@ -196,6 +196,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   paperspace: { apiKey: "test-paperspace-key" },
   "datastax-astra": { token: "AstraCS:test:secret" },
+  "qdrant-cloud": {
+    apiKey: "test-qdrant-management-key",
+    accountId: "00000000-0000-0000-0000-000000000001",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -257,6 +257,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "metrics.astra.datastax.com",
     "*.apps.astra.datastax.com",
   ],
+  // cluster database endpoints are per-cluster subdomains of cloud.qdrant.io (port 6333); hybrid clusters use the customer's own endpoint
+  "qdrant-cloud": ["api.cloud.qdrant.io", "*.cloud.qdrant.io"],
 };
 
 /**

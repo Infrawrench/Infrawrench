@@ -226,6 +226,7 @@
     "@infrawrench/plugin-backblaze-b2": "workspace:*",
     "@infrawrench/plugin-paperspace": "workspace:*",
     "@infrawrench/plugin-datastax-astra": "workspace:*",
+    "@infrawrench/plugin-qdrant-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

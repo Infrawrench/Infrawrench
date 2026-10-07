@@ -110,6 +110,7 @@ import { plugin as aivenPlugin } from "@infrawrench/plugin-aiven";
 import { plugin as backblazeB2Plugin } from "@infrawrench/plugin-backblaze-b2";
 import { plugin as paperspacePlugin } from "@infrawrench/plugin-paperspace";
 import { plugin as datastaxAstraPlugin } from "@infrawrench/plugin-datastax-astra";
+import { plugin as qdrantCloudPlugin } from "@infrawrench/plugin-qdrant-cloud";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -228,4 +229,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   backblazeB2Plugin,
   paperspacePlugin,
   datastaxAstraPlugin,
+  qdrantCloudPlugin,
 ];

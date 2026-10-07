@@ -149,6 +149,7 @@ vi.mock("@infrawrench/plugin-aiven", () => stub("aiven"));
 vi.mock("@infrawrench/plugin-backblaze-b2", () => stub("backblaze-b2"));
 vi.mock("@infrawrench/plugin-paperspace", () => stub("paperspace"));
 vi.mock("@infrawrench/plugin-datastax-astra", () => stub("datastax-astra"));
+vi.mock("@infrawrench/plugin-qdrant-cloud", () => stub("qdrant-cloud"));
 
 beforeEach(() => {
   disabled = [];
