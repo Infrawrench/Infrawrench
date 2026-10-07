@@ -2006,6 +2006,22 @@ Verified against the Dynatrace docs (Environment API v2/v1, Settings 2.0, Accoun
 - Metrics are MinIO-only point-in-time readings (the admin API has no history): one point per fetch, the host's metric store builds the series.
 - Not done: cost (no bill), MinIO-specific admin features (users/policies/service accounts, bucket quotas, replication, ILM tiers, Prometheus metrics endpoint which needs a separately generated bearer token), Ceph RGW admin ops API, multipart upload in the browser.
 
+### Couchbase Capella (`@infrawrench/plugin-couchbase-capella`)
+
+Verified 2026-10 against the Management API v4 OpenAPI document, which Couchbase only publishes embedded in the HTML of docs.couchbase.com/cloud/management-api-reference/index.html (the `_attachments/openapi.*` URLs serve a 404 page; the Terraform provider's Makefile extracts it from the HTML the same way), the `couchbasecloud/couchbase-capella` Terraform provider v1.12 docs, and Capella's per-cloud reference pages.
+
+- **Auth**: `Authorization: Bearer <API key token>` against `https://cloudapi.cloud.couchbase.com`. Every path is under `/v4/organizations/{organizationId}`; the organization is a `providerOptions` picker filled from `GET /v4/organizations`. Documented limit 100 requests/minute/key.
+- **Lists page** with `page`/`perPage` and `cursor.pages.last`; buckets, scopes, backups and private endpoints are unpaged.
+- **Free tier is a separate path tree**: `/clusters/freeTier/{id}` for get/update/delete/activationState and `/clusters/{id}/buckets/freeTier[/{bucket}]`. The listing mixes both kinds; `support.plan === "free"` identifies a free cluster, cached per client in `freeTier` before any path is built.
+- **Bucket ids are base64 of the name** and may contain `/`, so composite external ids URI-encode each part (`joinId`/`splitId`).
+- **No catalog endpoints**: regions and node sizes come from docs.couchbase.com/cloud/reference/{aws,gcp,azure}.html (`catalog.ts`). Cluster update is a full PUT of name, description, support and every service group; edits change the service group that runs `data`.
+- **Credentials**: the password is only returned on create (and on create the API accepts our generated one), so it is stored with `services.secrets.setPlaintext` under `capellaCredentialPassword`; reset is `PUT …/users/{id} {password}`. Basic credentials only accept `data_reader`/`data_writer` (aliases `read`/`write`).
+- **On/off and backup schedules** are created with POST and updated with PUT; the client PUTs and falls back to POST on 404.
+- **Cost**: `POST …/billing` (org, by category) and `POST …/clusters/{id}/billing` (per cluster) return daily periods only when the range is inside one month, so ranges are chunked by calendar month. Cluster rows carry the cluster as resource; the org total minus clusters per day and category is written unattributed. `currencySpend` is null on credit-paying orgs, where `creditSpend` is used. Needs Organization Owner. Prepaid credits (`GET …/billing/prePaidCredits`) feed the `credits` capability.
+- **Metrics** are point-in-time: cluster `…/stats` (free/total bucket memory) and bucket `stats` (items, ops/sec, disk, memory). Events (`GET …/events?clusterIds=…`) are the Logs tab.
+- **Status**: status.couchbase.com (Statuspage). AWS components are `AWS ec2-<region>`; Azure and GCP components are cloud services, not regions.
+- **Not done**: analytics (Columnar) clusters, AI services, eventing functions, App Endpoints and their OIDC/CORS/import filters, CMEK, cloud snapshot backups, network peer and private endpoint creation (cloud-specific bodies), alert integrations, query indexes, Data API toggle, audit log exports.
+
 ---
 
 ## Publish capability (cross-plugin)

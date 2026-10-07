@@ -127,4 +127,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-wasabi"),
   () => import("@infrawrench/plugin-weaviate-cloud"),
   () => import("@infrawrench/plugin-s3-compatible"),
+  () => import("@infrawrench/plugin-couchbase-capella"),
 ];

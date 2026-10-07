@@ -221,6 +221,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     accessKey: "minioadmin",
     secretKey: "minioadmin-secret",
   },
+  "couchbase-capella": { apiKey: "test-capella-key", organizationId: "org-1" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

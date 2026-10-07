@@ -277,6 +277,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "weaviate-cloud": ["*.weaviate.cloud", "*.weaviate.network"],
   // user-supplied endpoint; v1 doesn't bastion-route self-hosted S3
   "s3-compatible": [],
+  "couchbase-capella": ["cloudapi.cloud.couchbase.com"],
 };
 
 /**
