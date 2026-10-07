@@ -451,6 +451,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | Resource                   | Manages                                                            |
 | -------------------------- | ------------------------------------------------------------------ |
 | `infrawrench_probe`        | [Synthetic probes](./synthetic-probes.md)                          |
+| `infrawrench_slo`          | [SLOs and error budgets](./slos.md)                                |
 | `infrawrench_status_page`  | [Public status pages](./status-pages.md) and their components      |
 | `infrawrench_metric_alert` | [Metric threshold alerts](./metric-alerts.md)                      |
 | `infrawrench_log_query`    | [Log workspace](./log-workspace.md) saved queries and match alerts |

@@ -58,6 +58,38 @@ func (c *Client) DeleteProbe(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/probes/"+seg(id))
 }
 
+/* ---------------------------------- SLOs ---------------------------------- */
+
+// GetSlo reads the single-GET route and unwraps the SLO from its detail
+// envelope (which also carries hourly history the provider has no use for).
+func (c *Client) GetSlo(ctx context.Context, id string) (*Slo, error) {
+	var out SloDetail
+	if err := c.Get(ctx, "/slos/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out.Slo, nil
+}
+
+func (c *Client) CreateSlo(ctx context.Context, in SloInput) (*Slo, error) {
+	var out Slo
+	if err := c.Post(ctx, "/slos", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateSlo(ctx context.Context, id string, in SloInput) (*Slo, error) {
+	var out Slo
+	if err := c.Put(ctx, "/slos/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteSlo(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/slos/"+seg(id))
+}
+
 /* ------------------------------ metric alerts ------------------------------ */
 
 func (c *Client) GetMetricAlert(ctx context.Context, id string) (*MetricAlertRule, error) {

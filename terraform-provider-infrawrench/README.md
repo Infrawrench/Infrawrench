@@ -256,7 +256,7 @@ permissions.
 | Cost centres, allocation rules, saved filters, reports, folders, canvases, alerts, annotations, scenario models, business metrics, managed accounts | `costs:read`                | `costs:write`                                                              |
 | Tag policy                                                                                                                                          | `resources:read`            | `org:settings:write`                                                       |
 | Billing rules, cost exports, report and canvas notifications, currency and exchange rates                                                           | `costs:read`                | `org:settings:write`                                                       |
-| Probes, status pages, sleep schedules, log queries                                                                                                  | `resources:read`            | `resources:write`                                                          |
+| Probes, SLOs, status pages, sleep schedules, log queries                                                                                            | `resources:read`            | `resources:write`                                                          |
 | Metric alerts                                                                                                                                       | `metric-alerts:read`        | `metric-alerts:write`                                                      |
 | Custom graphs                                                                                                                                       | `dashboards:read`           | `dashboards:write`                                                         |
 | Dashboard notifications                                                                                                                             | `dashboards:read`           | `org:settings:write`                                                       |
@@ -692,6 +692,7 @@ secret store that consumes it rather than into an output.
 | Resource                   | Import | Notes                                                 |
 | -------------------------- | ------ | ----------------------------------------------------- |
 | `infrawrench_probe`        | by id  | Numeric fields are clamped server-side                |
+| `infrawrench_slo`          | by id  | Out-of-range target or threshold is rejected          |
 | `infrawrench_status_page`  | by id  | `slug` is minted with entropy; rotation is not a plan |
 | `infrawrench_metric_alert` | by id  | Selects resources by query, so it covers future ones  |
 | `infrawrench_log_query`    | by id  | One to eight streams; alerting is opt-in              |

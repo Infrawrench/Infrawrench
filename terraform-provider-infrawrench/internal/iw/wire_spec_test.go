@@ -167,6 +167,15 @@ func specChecks() []specCheck {
 		{schema: "SyntheticProbeCreate", value: SyntheticProbeCreate{}},
 		{schema: "SyntheticProbeUpdate", value: SyntheticProbeUpdate{}},
 
+		{schema: "Slo", value: Slo{}},
+		{schema: "SloCreate", value: SloInput{}},
+		{schema: "SloUpdate", value: SloInput{}},
+		{schema: "SloDetail", value: SloDetail{}, ignored: []string{
+			// Hourly good/total history and the freeze in effect: display data
+			// for the detail page, nothing the resource manages or diffs.
+			"buckets", "activeFreeze",
+		}},
+
 		{schema: "MetricAlertRule", value: MetricAlertRule{}},
 		{schema: "MetricAlertRuleInput", value: MetricAlertRuleInput{}},
 		{schema: "MetricAlertRuleWithStatus", value: MetricAlertRule{}},
