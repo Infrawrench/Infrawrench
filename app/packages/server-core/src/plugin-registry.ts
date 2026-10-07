@@ -140,6 +140,7 @@ import { plugin as auth0Plugin } from "@infrawrench/plugin-auth0";
 import { plugin as pulumiCloudPlugin } from "@infrawrench/plugin-pulumi-cloud";
 import { plugin as cerebrasPlugin } from "@infrawrench/plugin-cerebras";
 import { plugin as sambanovaPlugin } from "@infrawrench/plugin-sambanova";
+import { plugin as vspherePlugin } from "@infrawrench/plugin-vsphere";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -288,4 +289,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   pulumiCloudPlugin,
   cerebrasPlugin,
   sambanovaPlugin,
+  vspherePlugin,
 ];

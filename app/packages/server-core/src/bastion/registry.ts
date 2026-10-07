@@ -340,6 +340,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // api.cerebras.ai serves inference, the public catalogue and the management API; cloud.cerebras.ai serves Dedicated Inference metrics.
   cerebras: ["api.cerebras.ai", "cloud.cerebras.ai"],
   sambanova: ["api.sambanova.ai"],
+  // vCenter Server is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  vsphere: [],
 };
 
 /**

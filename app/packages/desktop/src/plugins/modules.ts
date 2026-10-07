@@ -150,4 +150,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-pulumi-cloud"),
   () => import("@infrawrench/plugin-cerebras"),
   () => import("@infrawrench/plugin-sambanova"),
+  () => import("@infrawrench/plugin-vsphere"),
 ];
