@@ -123,6 +123,7 @@ import { plugin as algoliaPlugin } from "@infrawrench/plugin-algolia";
 import { plugin as splunkObservabilityPlugin } from "@infrawrench/plugin-splunk-observability";
 import { plugin as buildkitePlugin } from "@infrawrench/plugin-buildkite";
 import { plugin as influxdbCloudPlugin } from "@infrawrench/plugin-influxdb-cloud";
+import { plugin as bunnyPlugin } from "@infrawrench/plugin-bunny";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -254,4 +255,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   splunkObservabilityPlugin,
   buildkitePlugin,
   influxdbCloudPlugin,
+  bunnyPlugin,
 ];

@@ -296,6 +296,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   buildkite: ["api.buildkite.com"],
   // InfluxDB Cloud regional v2 API hosts and the Cloud Dedicated Management API
   "influxdb-cloud": ["*.cloud2.influxdata.com", "console.influxdata.com"],
+  // Edge Storage answers on the zone's regional storage host
+  bunny: ["api.bunny.net", "storage.bunnycdn.com", "*.storage.bunnycdn.com"],
 };
 
 /**

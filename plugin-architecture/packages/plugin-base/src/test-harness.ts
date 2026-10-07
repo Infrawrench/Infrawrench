@@ -227,6 +227,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   "splunk-observability": { realm: "us1", token: "sf-test-token" },
   buildkite: { apiToken: "bkua_test", organization: "acme" },
   "influxdb-cloud": { region: "us-east-1-1", token: "test-influx-token", orgId: "org1" },
+  bunny: { apiKey: "test-bunny-api-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
