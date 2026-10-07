@@ -2161,6 +2161,18 @@ Verified against the Config API v1 swagger vendored by the official Terraform pr
 - **No cost and no status feed**: there is no billing API, and status.chronosphere.io is a private Statuspage behind Okta SSO.
 - Deliberately not done: creating dashboards, SLOs, notifiers, notification policies and shaping rules (nested documents with per-integration secrets), service account creation (the token is shown once), the unstable config API.
 
+### Docker Hub (`@infrawrench/plugin-docker-hub`)
+
+- **Auth**: Docker ID + PAT (`dckr_pat_`), OAT (`dckr_oat_`, identifier = org name) or password, exchanged at `POST /v2/auth/token {identifier, secret}` for a **10-minute JWT**; the context caches it 9 min and re-exchanges once on a 401. Optional `namespaces` multi-picker (providerOptions) filled from the user plus `GET /v2/user/orgs/` (hub-tool route); empty = all. An OAT manages only its own org.
+- **Types**: `dockerhub-namespace` (user/org), `dockerhub-repository` (`ns/name`), `dockerhub-tag` (`ns/repo:tag`), `dockerhub-team` (`org/team`), `dockerhub-member` (`org/user`), `dockerhub-invite` (invite id), `dockerhub-access-token` (PAT uuid), `dockerhub-org-access-token` (`org/id`). Distinct from the `docker` plugin (engines).
+- **Documented routes** (docs.docker.com/reference/api/hub/latest.yaml): `/v2/namespaces/{ns}/repositories[/{repo}[/tags[/{tag}]]]` (OAT-friendly; legacy `/v2/repositories/{ns}` rejects OATs with 403), `/immutabletags` PATCH, `/v2/repositories/{ns}/{repo}/groups` POST (team access), `/v2/orgs/{org}/{members,groups,invites,access-tokens,settings}`, `/v2/invites/bulk`, `/v2/invites/{id}/resend` (PATCH), `/v2/access-tokens`, `/v2/auditlogs/{ns}`. Lists page with `page`/`page_size` and an absolute `next` URL.
+- **Undocumented but used by Docker's own clients** (`docker/terraform-provider-docker`, `docker/hub-tool`): `PATCH /v2/repositories/{ns}/{repo}/` (writes `description` and `full_description` together, so the untouched one is sent back), `POST /v2/repositories/{ns}/{repo}/privacy {is_private}`, `DELETE /v2/repositories/{ns}/{repo}/`, `DELETE /v2/repositories/{ns}/{repo}/tags/{tag}/`, `PATCH .../groups/{id}/` (used when a team grant already exists).
+- **PATs**: managing them requires a password-authenticated JWT; with a PAT the list errors. Create returns the value once (`token`), kept as plaintext secretState. OAT resources are `{type: TYPE_REPO|TYPE_ORG, path, scopes}`; repo paths take globs (`org/*`, `*/*/public`); scope ids from Docker's OAT docs (`scope-image-pull`, `scope-repository-list`, …).
+- **Quota**: pull rate limit read exactly as Docker documents: `auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull` with Basic auth, then HEAD `registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest`; `ratelimit-limit: 200;w=21600`. No headers = unlimited (paid plan) → no quota returned.
+- **Status feed**: dockerstatus.com serves only `incidents.json` (unresolved.json 404s) and incidents carry no components, so the parser would mark everything provider-wide; incidents are filtered by title keywords (hub, registry, pull/push, image, tag, sign-in…).
+- **Terraform**: `docker/docker` ~> 0.7: `docker_hub_repository` (import `ns/name`), `docker_org_team`, `docker_org_member` (import `org/user`).
+- **Not done**: webhooks, vulnerability (Scout) data and pull history/usage: no public API (OAT scopes mention webhook pipelines and registry usage but no route is documented). Metrics are lifetime-count snapshots. Org audit log shown via the Logs tab.
+
 ---
 
 ## Publish capability (cross-plugin)

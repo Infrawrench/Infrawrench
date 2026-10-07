@@ -312,6 +312,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // Each tenant is <org>.chronosphere.io (config API and Prometheus API on the same host).
   chronosphere: ["*.chronosphere.io"],
+  // auth.docker.io and registry-1.docker.io are only used to read the pull rate limit headers
+  "docker-hub": ["hub.docker.com", "auth.docker.io", "registry-1.docker.io"],
 };
 
 /**

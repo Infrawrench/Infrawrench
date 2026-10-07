@@ -167,6 +167,7 @@ vi.mock("@infrawrench/plugin-jfrog", () => stub("jfrog"));
 vi.mock("@infrawrench/plugin-infisical", () => stub("infisical"));
 vi.mock("@infrawrench/plugin-better-stack", () => stub("better-stack"));
 vi.mock("@infrawrench/plugin-chronosphere", () => stub("chronosphere"));
+vi.mock("@infrawrench/plugin-docker-hub", () => stub("docker-hub"));
 
 beforeEach(() => {
   disabled = [];

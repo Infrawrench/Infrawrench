@@ -236,6 +236,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   "better-stack": { apiToken: "test-better-stack-token" },
   chronosphere: { org: "acme", apiToken: "chrono-test-token" },
+  "docker-hub": { username: "acme", token: "dckr_pat_test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -244,6 +244,7 @@
     "@infrawrench/plugin-infisical": "workspace:*",
     "@infrawrench/plugin-better-stack": "workspace:*",
     "@infrawrench/plugin-chronosphere": "workspace:*",
+    "@infrawrench/plugin-docker-hub": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
