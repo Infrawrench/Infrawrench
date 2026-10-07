@@ -348,6 +348,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   fal: ["api.fal.ai"],
   // account GraphQL endpoints (<account>.app.spacelift.io, .app.us.spacelift.io); presigned S3 URLs for state downloads; self-hosted hostnames are user-supplied
   spacelift: ["*.spacelift.io", "*.amazonaws.com"],
+  voyage: ["api.voyageai.com"],
 };
 
 /**

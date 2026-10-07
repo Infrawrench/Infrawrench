@@ -2409,6 +2409,16 @@ Verified against docs.spacelift.io/integrations/api, the official Bruno collecti
 - **Terraform** (`spacelift-io/spacelift`): stack, space, context, policy, module import by id; environment variables `context/<id>/<name>` (secrets via `var.*`). Mounted files (base64, write-only) and worker pools (created from a CSR) are left out. Delete never passes `destroyResources`.
 - Not done: worker pool creation and CSR reset, module creation/versions/sharing, blueprints, AWS/Azure/GCP integrations, audit trail, users/roles, stack dependencies, task runs, the per-day `usageAspect` series (response shape unverified).
 
+### Voyage AI (`@infrawrench/plugin-voyage`)
+
+- **Auth**: one secret key (dashboard.voyageai.com/organization/api-keys, "Create new secret key"), Bearer, `https://api.voyageai.com/v1`. No scopes, no key-management API. Validation uses `GET /files?limit=1` (free; a bad key answers 401 `{"detail": …}`), declared as a one-capability preflight.
+- **Spec**: no standalone file; each `docs.voyageai.com/reference/<page>.md` embeds a per-route OpenAPI 3.0.2 fragment (`voyage-openapi` "Voyage API" v1.1). Index: `docs.voyageai.com/llms.txt`.
+- **No model-listing endpoint**: the catalogue in `src/catalog.ts` is transcribed from the embeddings, contextualized, multimodal, reranker and pricing docs (Oct 2026, deprecated models dropped). Update it when Voyage ships a model.
+- **Routes used**: `/embeddings {input, model}`, `/contextualizedembeddings {inputs: string[][], model, input_type}` (response nests `data[].data[].embedding`), `/multimodalembeddings {inputs:[{content:[{type:"text", text}]}], model}`, `/rerank {query, documents, model}` (`data[]` sorted by `relevance_score`, `index` points into the input). These back the model "Test" tab (chat panel, one non-streamed reply).
+- **Batches/files**: OpenAI-style cursor pages (`limit` ≤ 100, `after`, `has_more`, `last_id`). `POST /batches` requires `request_params.model` and `completion_window: "12h"` (the only value); endpoints `/v1/embeddings`, `/v1/contextualizedembeddings`, `/v1/rerank`. Cancel only from `validating`/`in_progress`, stays `cancelling` up to 10 minutes. Files expire after 30 days; purposes `batch`, `batch-output`, `batch-error`.
+- **Status**: Statuspage at voyageai-status.statuspage.io (status.voyageai.com 301s there); "API" provider-wide, "User Dashboard" ignored.
+- **Verified as having no usable billing API** (usage/billing are dashboard-only). No Terraform provider.
+
 ---
 
 ## Publish capability (cross-plugin)

@@ -146,6 +146,7 @@ import { plugin as perplexityPlugin } from "@infrawrench/plugin-perplexity";
 import { plugin as dopplerPlugin } from "@infrawrench/plugin-doppler";
 import { plugin as falPlugin } from "@infrawrench/plugin-fal";
 import { plugin as spaceliftPlugin } from "@infrawrench/plugin-spacelift";
+import { plugin as voyagePlugin } from "@infrawrench/plugin-voyage";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -300,4 +301,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   dopplerPlugin,
   falPlugin,
   spaceliftPlugin,
+  voyagePlugin,
 ];
