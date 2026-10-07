@@ -222,6 +222,7 @@
     "@infrawrench/plugin-alibaba-cloud": "workspace:*",
     "@infrawrench/plugin-pinecone": "workspace:*",
     "@infrawrench/plugin-vast-ai": "workspace:*",
+    "@infrawrench/plugin-aiven": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

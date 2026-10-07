@@ -116,4 +116,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-alibaba-cloud"),
   () => import("@infrawrench/plugin-pinecone"),
   () => import("@infrawrench/plugin-vast-ai"),
+  () => import("@infrawrench/plugin-aiven"),
 ];

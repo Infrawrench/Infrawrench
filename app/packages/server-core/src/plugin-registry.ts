@@ -106,6 +106,7 @@ import { plugin as exoscalePlugin } from "@infrawrench/plugin-exoscale";
 import { plugin as alibabaCloudPlugin } from "@infrawrench/plugin-alibaba-cloud";
 import { plugin as pineconePlugin } from "@infrawrench/plugin-pinecone";
 import { plugin as vastAiPlugin } from "@infrawrench/plugin-vast-ai";
+import { plugin as aivenPlugin } from "@infrawrench/plugin-aiven";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -220,4 +221,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   alibabaCloudPlugin,
   pineconePlugin,
   vastAiPlugin,
+  aivenPlugin,
 ];

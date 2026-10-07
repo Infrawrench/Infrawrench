@@ -246,6 +246,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // index and assistant data-plane hosts are per-resource subdomains of pinecone.io; login.pinecone.io issues Admin API tokens
   pinecone: ["api.pinecone.io", "login.pinecone.io", "*.pinecone.io"],
   "vast-ai": ["console.vast.ai"],
+  aiven: ["api.aiven.io"],
 };
 
 /**
