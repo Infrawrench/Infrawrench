@@ -359,6 +359,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   nomad: [],
   // Consul is self-hosted: the agent address is user-supplied, so there is no fixed egress host (same as kubernetes).
   consul: [],
+  // NATS is self-hosted: the monitoring URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  nats: [],
 };
 
 /**

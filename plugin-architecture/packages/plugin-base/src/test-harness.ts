@@ -280,6 +280,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   prometheus: { url: "http://prometheus.internal:9090" },
   nomad: { address: "https://nomad.example.com:4646", token: "test" },
   consul: { address: "http://consul.internal:8500", token: "test" },
+  nats: { url: "http://nats.internal:8222" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

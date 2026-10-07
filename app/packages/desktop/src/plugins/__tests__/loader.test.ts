@@ -191,6 +191,7 @@ vi.mock("@infrawrench/plugin-rabbitmq", () => stub("rabbitmq"));
 vi.mock("@infrawrench/plugin-prometheus", () => stub("prometheus"));
 vi.mock("@infrawrench/plugin-nomad", () => stub("nomad"));
 vi.mock("@infrawrench/plugin-consul", () => stub("consul"));
+vi.mock("@infrawrench/plugin-nats", () => stub("nats"));
 
 beforeEach(() => {
   disabled = [];

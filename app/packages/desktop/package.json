@@ -268,6 +268,7 @@
     "@infrawrench/plugin-prometheus": "workspace:*",
     "@infrawrench/plugin-nomad": "workspace:*",
     "@infrawrench/plugin-consul": "workspace:*",
+    "@infrawrench/plugin-nats": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
