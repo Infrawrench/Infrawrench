@@ -47,6 +47,7 @@ Some endpoints are acts a person performs, where "held the permission" is not th
 - **Push devices and notification preferences.** These describe someone's phone.
 - **Changing team membership** — invites, role assignment, custom roles, removals. Reading the team is allowed.
 - **Requesting, approving, denying or revoking [break-glass access](./break-glass-access.md).** Reading the queue is allowed.
+- **Requesting, approving, denying, extending, cancelling or revoking [just-in-time access](../features/just-in-time-access.md).** Reading requests and managing policies are allowed.
 - **Sharing or joining a [shared console](../features/shared-consoles.md)**, over HTTP or the WebSocket. Listing the sessions currently shared is allowed.
 
 Your own account settings (password, two-factor, email address, active sessions), creating and deleting organizations, and the platform-admin surface are not org-scoped and have never accepted a key. They require a browser sign-in — and the account-security ones require a _recent_ one.

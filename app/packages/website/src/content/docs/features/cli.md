@@ -242,6 +242,20 @@ infrawrench access active         # only what is in force right now
 infrawrench access --json
 ```
 
+`jit` is [just-in-time access](./just-in-time-access.md) to cloud roles: the queue, live grants and failed revokes, plus every action on them. Deciding needs you to be one of the policy's approvers, checked by the server exactly as in the app:
+
+```sh
+infrawrench jit                           # the queue, live grants and failed revokes
+infrawrench jit --mine --holding          # your grants that may be live right now
+infrawrench jit policies                  # what you can request
+infrawrench jit request --policy prod --role AdministratorAccess --for 2h --reason "INC-4417 restore"
+infrawrench jit approve <id> [--note "…"] # or deny; an id prefix is enough
+infrawrench jit cancel <id>
+infrawrench jit extend <id> --by 30m
+infrawrench jit revoke <id>
+infrawrench jit --json
+```
+
 `cost-visibility` lists the organization's [cost visibility scopes](../team-and-billing/cost-visibility.md), and `cost-visibility me` says whether your own cost figures are scoped, which is the first thing to check when your totals disagree with a colleague's. Read-only; scopes are edited in Settings → Cost Visibility. Listing needs `team:read`:
 
 ```

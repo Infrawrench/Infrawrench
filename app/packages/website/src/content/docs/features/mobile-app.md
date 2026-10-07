@@ -107,6 +107,10 @@ The mobile app is deliberately a read-and-respond surface. Some things are demot
 
 If you try to do one of these, the app points you at the web app rather than offering a worse version of the same flow.
 
+## Just-in-time access
+
+[Just-in-time access](./just-in-time-access.md) requests can be raised and decided from the phone (Settings → Just-in-time access): pick a policy, a role and a duration from chips, give a reason, and send. Approvers get a push with **Approve** and **Deny** actions on the notification itself; either opens the app straight onto a confirmation that names who, what, where and for how long, so a single tap on a lock screen never grants cloud access. Extending, revoking and cancelling are there too. Writing policies stays on the web and desktop apps.
+
 ## Break-glass approvals
 
 A colleague blocked mid-incident asking for a permission they do not have is exactly what you approve from wherever you are — so [break-glass requests](../team-and-billing/break-glass-access.md) land on the phone, with the same two-tap confirmation the workflow approvals inbox uses, and an `access_request` push deep-links straight to the request it was raised for.

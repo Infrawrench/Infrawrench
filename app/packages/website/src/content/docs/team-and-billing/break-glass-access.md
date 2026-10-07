@@ -4,6 +4,8 @@ description: Time-boxed permission elevation. Ask for the permissions you need, 
 sidebar_order: 4
 ---
 
+This page is about **Infrawrench's own** permissions. For time-boxed roles **inside your clouds** (an AWS permission set, a GCP IAM role, a Kubernetes ClusterRole), see [Just-in-time access](../features/just-in-time-access.md).
+
 The right steady-state role for most people is narrower than the widest thing they will ever have to do. The usual answer to that — "just make them an admin" — is how an organization ends up with ten admins and no record of why any of them got there.
 
 Break-glass access is the other answer. A member asks for **specific permissions**, for a **specific number of minutes**, with a **reason**. Someone else approves. The elevation lapses on its own.

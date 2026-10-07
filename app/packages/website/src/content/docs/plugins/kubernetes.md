@@ -99,6 +99,14 @@ Workloads nothing measured read **unknown** rather than 0% and sort last. The re
 - **Service picker on create** — when creating an Ingress (Backend Service) or a StatefulSet (Headless Service Name), pick an existing Service from a searchable dropdown instead of typing its name. The list is scoped to the namespace selected in the same form.
 - **Cost and efficiency in the pane** — namespaces are ordered by cost, and every pod, deployment, statefulset and daemonset pill carries its derived daily cost and efficiency. Badly over-requested workloads are flagged amber, and the pane's banner calls out unattached volumes, never-bound claims and any component it could not price.
 
+## Just-in-time access
+
+[Just-in-time access](../features/just-in-time-access.md) on Kubernetes creates one **RoleBinding** in the chosen namespace (or a **ClusterRoleBinding** when the scope is the whole cluster) per grant, named `iw-jit-…` after the request and labelled `app.kubernetes.io/managed-by: infrawrench`, with the expiry as an annotation. Ending the grant deletes that binding and nothing else, so standing access granted by other bindings is never touched.
+
+The role picker offers the cluster's ClusterRoles (leaving out the `system:` ones) and the namespace's own Roles. Kubernetes has no user directory: the subject is the user name your cluster's authenticator assigns, which is the email address on most managed clusters with OIDC. If yours differs, requesters pick themselves from the users and groups already named in the cluster's bindings.
+
+The kubeconfig needs permission to create, get and delete RoleBindings and ClusterRoleBindings, to list namespaces, ClusterRoles and Roles, and `bind` on the roles offered (or to already hold them).
+
 ## Tips & limits
 
 - Cluster connections use the kubeconfig’s context. If the kubeconfig has multiple contexts, pick one at add-time.

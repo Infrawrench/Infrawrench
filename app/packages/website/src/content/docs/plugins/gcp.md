@@ -128,6 +128,14 @@ The PostgreSQL / MySQL / SQL Server tabs on a Cloud SQL instance connect directl
 
 If the instance has no public IP, the tab renders a static guidance pane explaining the options (add public IP, run Infrawrench inside the VPC, or set up Cloud VPN / IAP) — Infrawrench doesn't try to dial through a tunnel automatically.
 
+## Just-in-time access
+
+[Just-in-time access](../features/just-in-time-access.md) on Google Cloud adds a project IAM binding for the requester's Google account with a **time-bound IAM Condition** (`request.time < timestamp("…")`), titled after the request. Google stops honouring the binding when the window ends even if nothing else runs; Infrawrench also removes it, and extending a grant rewrites the condition.
+
+Because each grant is its own conditional binding, removing it never touches the person's standing, unconditional bindings for the same role. Google does not allow conditions on the basic roles (Owner, Editor, Viewer), so those are not offered; every predefined and custom role is. Google advises at most 100 conditional bindings per project policy, which bounds how many grants can be live in one project at once.
+
+The service account needs `resourcemanager.projects.getIamPolicy` and `resourcemanager.projects.setIamPolicy` on each target project (the Project IAM Admin role), `iam.roles.list` for the role picker, and `resourcemanager.projects.list` to offer projects other than its own.
+
 ## Tips & limits
 
 - Service account keys never expire on Google's side, but rotating them is good hygiene — paste a new key any time.

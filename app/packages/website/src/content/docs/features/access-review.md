@@ -10,6 +10,10 @@ The access review is that answer, standing: every principal your connected accou
 
 ![The Access review tab with the Findings view open, grouped by severity, showing a mix of stale, admin and unowned findings across at least two providers](https://agent-assets.infrawrench.com/docs-screenshots/features/access-review/findings-by-severity.png)
 
+## Just-in-time grants that did not end
+
+The review also lists [just-in-time access](./just-in-time-access.md) grants that should have ended and may not have: a revoke that failed (with the provider's error), a grant the provider still reported after it was revoked, or a grant still marked as held more than ten minutes after its window closed. Each is a person holding cloud access past the window an approver agreed to, so they sit at the top of the page rather than among the findings, and they cannot be dismissed: they clear when the revoke succeeds.
+
 ## What counts as a principal
 
 Anything that can hold standing access inside **your** clouds:
