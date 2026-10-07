@@ -267,6 +267,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   clerk: { secretKey: "sk_test_clerkcontract" },
   perplexity: { apiKey: "pplx-test" },
+  doppler: { token: "dp.pt.test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

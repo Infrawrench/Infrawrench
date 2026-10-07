@@ -153,4 +153,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-vsphere"),
   () => import("@infrawrench/plugin-clerk"),
   () => import("@infrawrench/plugin-perplexity"),
+  () => import("@infrawrench/plugin-doppler"),
 ];

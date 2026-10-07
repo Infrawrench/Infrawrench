@@ -344,6 +344,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   vsphere: [],
   clerk: ["api.clerk.com"],
   perplexity: ["api.perplexity.ai"],
+  doppler: ["api.doppler.com"],
 };
 
 /**

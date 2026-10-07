@@ -2368,6 +2368,18 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **Status**: incident.io at status.perplexity.com (`/api/v2/incidents.json`, unresolved.json 404s); only the "API" component counts, provider-wide.
 - **Verified as having no usable billing API.** No Terraform provider.
 
+### Doppler (`@infrawrench/plugin-doppler`)
+
+- **Auth**: one Bearer token against `https://api.doppler.com/v3`: personal (`dp.pt.`), service account (`dp.sa.`) or CLI (`dp.ct.`). Config-scoped service tokens (`dp.st.`) are refused in the constructor (they cannot list projects). A token belongs to one workplace, so `doppler-workplace` is the accountRoot.
+- **Types**: workplace, project, environment (`<project>.<slug>`), config (`<project>.<config>`), secret (`<project>.<config>.<NAME>`), service token (`<project>.<config>.<slug>`), integration, sync (`<project>.<config>.<slug>`, child of integration), webhook (`<project>.<slug>`), user, group, service account, service account token (`<sa>.<token>`). Dots are safe separators: project slugs, config names and secret names never contain one.
+- **API facts** (OpenAPI embedded in docs.doppler.com/reference/*.md): most calls take `project`/`config` as **query** params on GET/DELETE and in the **body** on POST (`/v3/configs/config/lock`, `/clone`, `/inheritable`, `/v3/projects/project` update and delete, service token delete). Lists page with `page`/`per_page` and return no total, so a short page ends the walk; `/v3/workplace/users` has no `per_page`, so it walks until an empty page. Errors are `{"messages": [...]}`.
+- **Secrets**: listing uses `GET /v3/configs/config/secrets`, which returns values (no metadata-only listing has visibility), so only name, visibility, note and "references others" are kept. Edits go through `POST /v3/configs/config/secrets` with `change_requests` (`value: null` keeps the value, `visibility: masked|unmasked|restricted`); notes via `POST /v3/projects/project/note?project=`. The config's kvBrowser uses `secrets/names`, `secret` (raw), `secrets {secrets:{K:V}}` and `DELETE secret`. Restricted secrets return no raw value.
+- **Logs**: workplace `GET /v3/logs`, config `GET /v3/configs/config/logs`, both via getLogs.
+- **Integrations/syncs**: `GET /v3/integrations` includes each integration's `syncs`; sync delete needs `delete_from_target` (sent false).
+- **Status feed**: status.doppler.com (dopplerstatus.com) Statuspage: API/Dashboard provider-wide, the Integrations group mapped to integration/sync types, Cloudflare vendors as services, other vendors ignored.
+- **Terraform**: `DopplerHQ/doppler` ~> 1.21: projects, environments (`project.slug`), branch configs (`project.env.config`; root configs belong to their environment), groups (slug). Secrets, tokens and webhooks (secret/payload) not exported.
+- **Not done**: creating integrations/syncs (target credentials), change requests and policies, project/workplace role management, trusted IPs, dynamic secret leases, invites. No billing API.
+
 ---
 
 ## Publish capability (cross-plugin)

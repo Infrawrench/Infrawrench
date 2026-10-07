@@ -143,6 +143,7 @@ import { plugin as sambanovaPlugin } from "@infrawrench/plugin-sambanova";
 import { plugin as vspherePlugin } from "@infrawrench/plugin-vsphere";
 import { plugin as clerkPlugin } from "@infrawrench/plugin-clerk";
 import { plugin as perplexityPlugin } from "@infrawrench/plugin-perplexity";
+import { plugin as dopplerPlugin } from "@infrawrench/plugin-doppler";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -294,4 +295,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   vspherePlugin,
   clerkPlugin,
   perplexityPlugin,
+  dopplerPlugin,
 ];
