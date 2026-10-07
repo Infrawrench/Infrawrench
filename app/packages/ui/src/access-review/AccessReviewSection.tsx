@@ -546,6 +546,45 @@ export function AccessReviewSection({
         )}
       </p>
 
+      {(data?.jitGrantIssues?.length ?? 0) > 0 && (
+        <section
+          role="alert"
+          aria-label={gt("Just-in-time grants that did not end")}
+          className="mb-4 border border-red-500/40 bg-red-500/5 rounded-xl p-4 space-y-2"
+        >
+          <h2 className="text-sm font-semibold text-red-700 dark:text-red-300">
+            {gt("Just-in-time grants that did not end")}
+          </h2>
+          <p className="text-xs text-on-surface-muted">
+            {gt(
+              "These grants are still held, or may be, after the window an approver agreed to. Infrawrench keeps retrying; remove them in the provider's console if it cannot.",
+            )}
+          </p>
+          <ul className="space-y-1">
+            {data!.jitGrantIssues!.map((issue) => (
+              <li key={issue.requestId} className="text-sm text-on-surface-secondary">
+                {gt("{principal}: {role} on {scope}", {
+                  principal: issue.principalName,
+                  role: issue.roleName,
+                  scope: issue.accountName
+                    ? `${issue.scopeName} (${issue.accountName})`
+                    : issue.scopeName,
+                })}
+                {" · "}
+                {issue.kind === "revoke_failed"
+                  ? gt("revoke failed after {count} attempts", { count: issue.revokeAttempts })
+                  : issue.kind === "still_present"
+                    ? gt("the provider still reports it after revoking")
+                    : gt("still marked as held past its window")}
+                {issue.lastError && (
+                  <span className="block text-xs text-danger break-words">{issue.lastError}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
         <div role="group" aria-label={gt("Staleness window")} className="flex items-center gap-1">
           <span className="text-on-surface-faint mr-1">{gt("Unused for")}</span>
