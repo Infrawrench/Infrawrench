@@ -241,6 +241,7 @@
     "@infrawrench/plugin-influxdb-cloud": "workspace:*",
     "@infrawrench/plugin-bunny": "workspace:*",
     "@infrawrench/plugin-jfrog": "workspace:*",
+    "@infrawrench/plugin-infisical": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

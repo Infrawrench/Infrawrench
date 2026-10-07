@@ -125,6 +125,7 @@ import { plugin as buildkitePlugin } from "@infrawrench/plugin-buildkite";
 import { plugin as influxdbCloudPlugin } from "@infrawrench/plugin-influxdb-cloud";
 import { plugin as bunnyPlugin } from "@infrawrench/plugin-bunny";
 import { plugin as jfrogPlugin } from "@infrawrench/plugin-jfrog";
+import { plugin as infisicalPlugin } from "@infrawrench/plugin-infisical";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -258,4 +259,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   influxdbCloudPlugin,
   bunnyPlugin,
   jfrogPlugin,
+  infisicalPlugin,
 ];

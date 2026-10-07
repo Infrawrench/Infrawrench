@@ -300,6 +300,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   bunny: ["api.bunny.net", "storage.bunnycdn.com", "*.storage.bunnycdn.com"],
   // platform URL is user-supplied (JFrog Cloud or self-hosted); v1 doesn't bastion-route JFrog
   jfrog: [],
+  // Infisical Cloud US/EU; self-hosted instances use the user's own URL
+  infisical: ["app.infisical.com", "us.infisical.com", "eu.infisical.com"],
 };
 
 /**

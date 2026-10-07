@@ -229,6 +229,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   "influxdb-cloud": { region: "us-east-1-1", token: "test-influx-token", orgId: "org1" },
   bunny: { apiKey: "test-bunny-api-key" },
   jfrog: { baseUrl: "https://acme.jfrog.io", accessToken: "test-jfrog-token" },
+  infisical: {
+    siteUrl: "https://app.infisical.com",
+    clientId: "00000000-0000-0000-0000-000000000000",
+    clientSecret: "test-infisical-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
