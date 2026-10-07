@@ -190,6 +190,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   pinecone: { apiKey: "pcsk_test_pinecone_key" },
   "vast-ai": { apiKey: "test-vast-key" },
   aiven: { apiToken: "test-aiven-token" },
+  "backblaze-b2": {
+    applicationKeyId: "005testkeyid0000000000001",
+    applicationKey: "K005testapplicationkey",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

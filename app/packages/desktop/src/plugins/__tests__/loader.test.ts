@@ -146,6 +146,7 @@ vi.mock("@infrawrench/plugin-alibaba-cloud", () => stub("alibaba-cloud"));
 vi.mock("@infrawrench/plugin-pinecone", () => stub("pinecone"));
 vi.mock("@infrawrench/plugin-vast-ai", () => stub("vast-ai"));
 vi.mock("@infrawrench/plugin-aiven", () => stub("aiven"));
+vi.mock("@infrawrench/plugin-backblaze-b2", () => stub("backblaze-b2"));
 
 beforeEach(() => {
   disabled = [];

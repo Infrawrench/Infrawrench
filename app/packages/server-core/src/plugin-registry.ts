@@ -107,6 +107,7 @@ import { plugin as alibabaCloudPlugin } from "@infrawrench/plugin-alibaba-cloud"
 import { plugin as pineconePlugin } from "@infrawrench/plugin-pinecone";
 import { plugin as vastAiPlugin } from "@infrawrench/plugin-vast-ai";
 import { plugin as aivenPlugin } from "@infrawrench/plugin-aiven";
+import { plugin as backblazeB2Plugin } from "@infrawrench/plugin-backblaze-b2";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -222,4 +223,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   pineconePlugin,
   vastAiPlugin,
   aivenPlugin,
+  backblazeB2Plugin,
 ];

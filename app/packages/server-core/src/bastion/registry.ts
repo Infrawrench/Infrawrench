@@ -247,6 +247,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   pinecone: ["api.pinecone.io", "login.pinecone.io", "*.pinecone.io"],
   "vast-ai": ["console.vast.ai"],
   aiven: ["api.aiven.io"],
+  // B2 hands out a per-cluster apiNNN/fNNN/podNNN host at authorize time
+  "backblaze-b2": ["api.backblazeb2.com", "*.backblazeb2.com"],
 };
 
 /**
