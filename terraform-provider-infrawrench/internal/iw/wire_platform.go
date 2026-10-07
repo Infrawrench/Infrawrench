@@ -1739,3 +1739,32 @@ type JitPolicyInput struct {
 	RequireReason                   bool              `json:"requireReason"`
 	RequireTicket                   bool              `json:"requireTicket"`
 }
+
+/* --------------------------- pull request checks --------------------------- */
+
+// PrCheckRepositoryInput is the POST/PUT body for one repository's pull
+// request checks. A PUT replaces every field; CostThreshold has no omitempty
+// because an explicit null is how "no threshold" is said.
+type PrCheckRepositoryInput struct {
+	InstallationID      int64    `json:"installationId"`
+	Repo                string   `json:"repo"`
+	Enabled             bool     `json:"enabled"`
+	CommentEnabled      bool     `json:"commentEnabled"`
+	CostThreshold       *float64 `json:"costThreshold"`
+	ThresholdConclusion string   `json:"thresholdConclusion"`
+	Directories         []string `json:"directories"`
+}
+
+// PrCheckRepository is one repository with pull request checks configured.
+type PrCheckRepository struct {
+	ID                  string   `json:"id"`
+	InstallationID      int64    `json:"installationId"`
+	Repo                string   `json:"repo"`
+	Enabled             bool     `json:"enabled"`
+	CommentEnabled      bool     `json:"commentEnabled"`
+	CostThreshold       *float64 `json:"costThreshold"`
+	ThresholdConclusion string   `json:"thresholdConclusion"`
+	Directories         []string `json:"directories"`
+	CreatedAt           string   `json:"createdAt"`
+	UpdatedAt           string   `json:"updatedAt"`
+}
