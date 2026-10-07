@@ -216,6 +216,7 @@
     "@infrawrench/plugin-sendgrid": "workspace:*",
     "@infrawrench/plugin-lambda-cloud": "workspace:*",
     "@infrawrench/plugin-upstash": "workspace:*",
+    "@infrawrench/plugin-mailgun": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

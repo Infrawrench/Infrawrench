@@ -1764,6 +1764,20 @@ Verified 2026-10 against the published OpenAPI document (`https://cloud.lambda.a
 - **Terraform** (`upstash/upstash` 2.1, provider takes `email` + `api_key`): only `upstash_redis_database` imports (its read falls back to `data.Id()`); vector/search have no importer and the QStash v2 resources' read needs ids that are empty on import, so they export without import ids.
 - **Not done**: flow-control keys, bulk message cancel, Redis security add-ons (IP allowlist, VPC peering) which the Developer API does not expose, Search document browsing, the `start-redis` anonymous endpoints.
 
+### Mailgun (`@infrawrench/plugin-mailgun`)
+
+Verified against Mailgun's published OpenAPI document (`documentation.mailgun.com/_spec/docs/mailgun/api-reference/send/mailgun.json`, 2026-10; it covers keys, accounts and subaccounts as well as sending). Things the code does not make obvious:
+
+- **Two regions, one key.** `api.mailgun.net` (US) and `api.eu.mailgun.net` (EU) hold separate data; the same account key works on both. Domains, routes, mailing lists, domain webhooks, SMTP credentials, suppressions, tags and analytics are read per region (`region` credential: both, us, eu) and their external ids are `{region}/…`. Account-level calls (keys, IPs, IP pools, subaccounts, custom limit, account webhooks, signing key) go to the first configured region. Auth is Basic `api:<key>`; errors are `{ message }`; `MailgunApiError` carries `status`. A 403/404 lists empty; a 401 in one of two regions is skipped.
+- **Writes are form-encoded with repeated keys** (`event_types`, route `action`), except the suppression bulk adds (JSON array of `{address}`), tags and the Metrics API (JSON).
+- **Paging comes in three shapes**: `limit`/`skip` with `total_count` (`/v4/domains`, `/v3/routes`, credentials), absolute `paging.next` URLs that never run out, so stop on an empty page (`/v3/lists/pages`, members, suppressions), and a JSON `pagination` body (`POST /v1/analytics/tags`).
+- **DNS records** come from `GET /v4/domains/{name}` (`sending_dns_records`, `receiving_dns_records`: `record_type`, `name`, `value`, `priority` as a string, `valid` = valid/invalid/unknown, `cached`). Receiving MX records have no `name`; it is the domain. The list endpoint carries none of this, so each domain is re-read (with `/tracking` and `/v3/ips/domain/{name}` for its IP pool) at concurrency 4 and cached 60 s across listers.
+- **Domain webhooks**: v3 `GET` maps event → urls; a resource is one URL with its events, written through the v4 endpoints (`POST/PUT /v4/domains/{d}/webhooks` with `url` + repeated `event_types`, `DELETE ?url=`). Account-level webhooks are `/v1/webhooks`.
+- **Metrics**: `POST /v1/analytics/metrics` with RFC 2822 `start`/`end` (`toUTCString()` with `GMT` → `+0000`), `resolution: day`, `dimensions: ["time"]`, optional `filter.AND[{attribute: "domain", comparator: "=", values: [{label, value}]}]`. Account series sum both regions.
+- **Quota**: `GET /v5/accounts/limit/custom/monthly` → `{limit, current, period}`, 404 when no limit is set (no quota then). Editing the account's limit PUTs `?limit=`; 0 DELETEs it. Subaccounts have the same under `/v5/accounts/subaccounts/{id}/limit/custom/monthly`.
+- **Quirks**: deleting a DIPP requires a replacement; the plugin sends `ip=shared`. `POST /v3/ip_pools` returns a bare string, so the new pool is re-read by name. Deleting a subaccount is `DELETE /v5/accounts/subaccounts` with `X-Mailgun-On-Behalf-Of: <id>`. The list update schema spells `reply_reference` where create says `reply_preference`; both are sent. SMTP credential paths take the login's local part.
+- **Not done, deliberately**: costs (no billing API), Terraform export (no official provider; the old HashiCorp one is archived), Forwards (`/v3/forwards`, the newer alternative to routes), templates, DKIM key management (`/v1/dkim/keys`), dynamic IP pools, email validation and the deliverability tools. The connection's own API key cannot be identified from the key list, so it is not protected from deletion.
+
 ---
 
 ## Publish capability (cross-plugin)

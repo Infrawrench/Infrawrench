@@ -236,6 +236,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "lambda-cloud": ["cloud.lambda.ai"],
   // Developer API plus the two regional QStash APIs
   upstash: ["api.upstash.com", "qstash-eu-central-1.upstash.io", "qstash-us-east-1.upstash.io"],
+  // api.eu.mailgun.net holds EU-region domains
+  mailgun: ["api.mailgun.net", "api.eu.mailgun.net"],
 };
 
 /**
