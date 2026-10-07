@@ -371,6 +371,7 @@ export {
   calendarTabTarget,
   runbooksTabTarget,
   queryMonitorsTabTarget,
+  slosTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -1053,6 +1054,7 @@ export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
+export { SlosIcon } from "./components/icons/SlosIcon.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 
@@ -1125,6 +1127,7 @@ export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordin
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./incidents/index.js";
+export * from "./slos/index.js";
 export * from "./environments/index.js";
 export * from "./savings/index.js";
 // Issue filing (Jira and Linear): the tracker-aware provider a host mounts

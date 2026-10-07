@@ -40,6 +40,7 @@ import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SlosRouteImport } from './routes/slos'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as StatusPagesRouteImport } from './routes/status-pages'
 import { Route as WallboardRouteImport } from './routes/wallboard'
@@ -203,6 +204,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SlosRoute = SlosRouteImport.update({
+  id: '/slos',
+  path: '/slos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SshFanoutRoute = SshFanoutRouteImport.update({
   id: '/ssh-fanout',
   path: '/ssh-fanout',
@@ -272,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
+  '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
   '/wallboard': typeof WallboardRoute
@@ -312,6 +319,7 @@ export interface FileRoutesByTo {
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
+  '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
   '/wallboard': typeof WallboardRoute
@@ -353,6 +361,7 @@ export interface FileRoutesById {
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
+  '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
   '/wallboard': typeof WallboardRoute
@@ -395,6 +404,7 @@ export interface FileRouteTypes {
     | '/runbooks'
     | '/savings'
     | '/settings'
+    | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
     | '/wallboard'
@@ -435,6 +445,7 @@ export interface FileRouteTypes {
     | '/runbooks'
     | '/savings'
     | '/settings'
+    | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
     | '/wallboard'
@@ -475,6 +486,7 @@ export interface FileRouteTypes {
     | '/runbooks'
     | '/savings'
     | '/settings'
+    | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
     | '/wallboard'
@@ -516,6 +528,7 @@ export interface RootRouteChildren {
   RunbooksRoute: typeof RunbooksRoute
   SavingsRoute: typeof SavingsRoute
   SettingsRoute: typeof SettingsRoute
+  SlosRoute: typeof SlosRoute
   SshFanoutRoute: typeof SshFanoutRoute
   StatusPagesRoute: typeof StatusPagesRoute
   WallboardRoute: typeof WallboardRoute
@@ -744,6 +757,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/slos': {
+      id: '/slos'
+      path: '/slos'
+      fullPath: '/slos'
+      preLoaderRoute: typeof SlosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ssh-fanout': {
       id: '/ssh-fanout'
       path: '/ssh-fanout'
@@ -828,6 +848,7 @@ const rootRouteChildren: RootRouteChildren = {
   RunbooksRoute: RunbooksRoute,
   SavingsRoute: SavingsRoute,
   SettingsRoute: SettingsRoute,
+  SlosRoute: SlosRoute,
   SshFanoutRoute: SshFanoutRoute,
   StatusPagesRoute: StatusPagesRoute,
   WallboardRoute: WallboardRoute,

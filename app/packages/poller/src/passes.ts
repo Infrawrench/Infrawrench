@@ -42,6 +42,7 @@ import {
 } from "@infrawrench/server-core/environments/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
+import { runSloPass } from "@infrawrench/server-core/slos/pass";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
@@ -541,6 +542,17 @@ export const PASSES: readonly Pass[] = [
     name: "metric-alerts",
     runtime: "edge",
     run: guarded("[poller] metric alert tick failed:", () => runMetricAlertPass({ limit: 8 })),
+  },
+
+  // SLOs: SLI, error budget and multiwindow burn rates from the 1m metric
+  // rollup, with burn-rate alerts routed through the org's rules. Edge: it
+  // reads Postgres and ClickHouse and calls no plugin code, the metric-alert
+  // pass's footprint exactly.
+  {
+    kind: "periodic",
+    name: "slos",
+    runtime: "edge",
+    run: guarded("[slos] tick failed:", () => runSloPass({ limit: 10 })),
   },
 
   // Query monitors: a small batch of due SQL checks, each opening a

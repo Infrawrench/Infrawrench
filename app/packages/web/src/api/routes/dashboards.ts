@@ -841,6 +841,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "quotas" ||
       target.kind === "price-catalog" ||
       target.kind === "incidents" ||
+      target.kind === "slos" ||
       target.kind === "workflows" ||
       target.kind === "deployments" ||
       target.kind === "settings"

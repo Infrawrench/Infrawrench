@@ -219,6 +219,7 @@ const TabTarget = strict({
     "quotas",
     "price-catalog",
     "incidents",
+    "slos",
     "workflows",
     "deployments",
     "settings",
@@ -250,6 +251,11 @@ const TabTarget = strict({
    * Never used to invalidate the tab, like `reportId`.
    */
   canvasId: Uuid.optional(),
+  /**
+   * Which SLO the SLOs tab was last on. Omitted for the list view. Never used
+   * to invalidate the tab: a deleted SLO just lands on the list.
+   */
+  sloId: Uuid.optional(),
   /** Which app-server session a `linux-app` tab belonged to. */
   sessionId: z.string().max(128).optional(),
   /** Which window of that session. */

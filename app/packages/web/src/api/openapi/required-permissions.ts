@@ -285,6 +285,15 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /probes": "resources:write",
   "PUT /probes/{probeId}": "resources:write",
   "DELETE /probes/{probeId}": "resources:write",
+  // SLOs: the probes stance. Starting a freeze from an SLO needs the same
+  // freezes:write a freeze made in Settings needs.
+  "GET /slos": "resources:read",
+  "GET /slos/sources": "resources:read",
+  "GET /slos/{sloId}": "resources:read",
+  "POST /slos": "resources:write",
+  "PUT /slos/{sloId}": "resources:write",
+  "DELETE /slos/{sloId}": "resources:write",
+  "POST /slos/{sloId}/freeze": "freezes:write",
   // incident mode: the declared kind. `incidents:write` is held by members
   // as well as admins on purpose (see the permission catalog); what a
   // declaration may *do* keeps its own gates, so requesting a change freeze

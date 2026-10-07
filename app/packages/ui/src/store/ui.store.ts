@@ -44,6 +44,11 @@ export type WorkspaceTabTarget =
    * operator flipping between two incidents keeps one tab.
    */
   | { kind: "incidents"; incidentId?: string }
+  /**
+   * Service-level objectives. Single-instance like Incidents, remembering the
+   * SLO whose detail is open so reactivation and reload return to it.
+   */
+  | { kind: "slos"; sloId?: string }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -194,6 +199,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "price-catalog";
     case "incidents":
       return "incidents";
+    case "slos":
+      return "slos";
     case "workflows":
       // Not keyed by workflow: opening a second workflow should retarget the
       // open Workflows tab rather than pile up a tab per workflow. The id on
@@ -289,6 +296,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Price catalog";
     case "incidents":
       return "Incidents";
+    case "slos":
+      return "SLOs";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -351,6 +360,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // incident is what makes the route sync record which one the tab is on,
       // so reactivating it lands back on that incident rather than the list.
       return a.incidentId === (b as { incidentId?: string }).incidentId;
+    case "slos":
+      // Same trick: one tab by id, the SLO compared so the route sync records
+      // which detail is open.
+      return a.sloId === (b as { sloId?: string }).sloId;
     case "cost-reports":
       // The deployments/settings trick: one tab by id, but comparing the report
       // is what makes the route sync record which report the tab is on, so

@@ -48,6 +48,7 @@ import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
 import { Route as OrgOrgIdRunbooksRouteImport } from './routes/org.$orgId.runbooks'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdSlosRouteImport } from './routes/org.$orgId.slos'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdStatusPagesRouteImport } from './routes/org.$orgId.status-pages'
 import { Route as OrgOrgIdWallboardRouteImport } from './routes/org.$orgId.wallboard'
@@ -92,6 +93,7 @@ import { Route as OrgOrgIdSettingsTagKeysRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdSettingsVirtualTagsRouteImport } from './routes/org.$orgId.settings.virtual-tags'
+import { Route as OrgOrgIdSlosSloIdRouteImport } from './routes/org.$orgId.slos.$sloId'
 import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -288,6 +290,11 @@ const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSlosRoute = OrgOrgIdSlosRouteImport.update({
+  id: '/slos',
+  path: '/slos',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
@@ -535,6 +542,11 @@ const OrgOrgIdSettingsVirtualTagsRoute =
     path: '/virtual-tags',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSlosSloIdRoute = OrgOrgIdSlosSloIdRouteImport.update({
+  id: '/$sloId',
+  path: '/$sloId',
+  getParentRoute: () => OrgOrgIdSlosRoute,
+} as any)
 const OrgOrgIdWorkflowsWorkflowIdRoute =
   OrgOrgIdWorkflowsWorkflowIdRouteImport.update({
     id: '/$workflowId',
@@ -587,6 +599,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
@@ -630,6 +643,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
+  '/org/$orgId/slos/$sloId': typeof OrgOrgIdSlosSloIdRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -671,6 +685,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
@@ -714,6 +729,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
+  '/org/$orgId/slos/$sloId': typeof OrgOrgIdSlosSloIdRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -759,6 +775,7 @@ export interface FileRoutesById {
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
@@ -802,6 +819,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings/virtual-tags': typeof OrgOrgIdSettingsVirtualTagsRoute
+  '/org/$orgId/slos/$sloId': typeof OrgOrgIdSlosSloIdRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -848,6 +866,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
+    | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
     | '/org/$orgId/wallboard'
@@ -891,6 +910,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings/virtual-tags'
+    | '/org/$orgId/slos/$sloId'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -932,6 +952,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
     | '/org/$orgId/wallboard'
@@ -975,6 +996,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings/virtual-tags'
+    | '/org/$orgId/slos/$sloId'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
@@ -1019,6 +1041,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
+    | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
     | '/org/$orgId/wallboard'
@@ -1062,6 +1085,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings/virtual-tags'
+    | '/org/$orgId/slos/$sloId'
     | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
@@ -1352,6 +1376,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/org/$orgId/settings'
       preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/slos': {
+      id: '/org/$orgId/slos'
+      path: '/slos'
+      fullPath: '/org/$orgId/slos'
+      preLoaderRoute: typeof OrgOrgIdSlosRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/ssh-fanout': {
@@ -1662,6 +1693,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsVirtualTagsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/slos/$sloId': {
+      id: '/org/$orgId/slos/$sloId'
+      path: '/$sloId'
+      fullPath: '/org/$orgId/slos/$sloId'
+      preLoaderRoute: typeof OrgOrgIdSlosSloIdRouteImport
+      parentRoute: typeof OrgOrgIdSlosRoute
+    }
     '/org/$orgId/workflows/$workflowId': {
       id: '/org/$orgId/workflows/$workflowId'
       path: '/$workflowId'
@@ -1813,6 +1851,18 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
 const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
+interface OrgOrgIdSlosRouteChildren {
+  OrgOrgIdSlosSloIdRoute: typeof OrgOrgIdSlosSloIdRoute
+}
+
+const OrgOrgIdSlosRouteChildren: OrgOrgIdSlosRouteChildren = {
+  OrgOrgIdSlosSloIdRoute: OrgOrgIdSlosSloIdRoute,
+}
+
+const OrgOrgIdSlosRouteWithChildren = OrgOrgIdSlosRoute._addFileChildren(
+  OrgOrgIdSlosRouteChildren,
+)
+
 interface OrgOrgIdWorkflowsRouteChildren {
   OrgOrgIdWorkflowsWorkflowIdRoute: typeof OrgOrgIdWorkflowsWorkflowIdRoute
 }
@@ -1855,6 +1905,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdRunbooksRoute: typeof OrgOrgIdRunbooksRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
+  OrgOrgIdSlosRoute: typeof OrgOrgIdSlosRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdStatusPagesRoute: typeof OrgOrgIdStatusPagesRoute
   OrgOrgIdWallboardRoute: typeof OrgOrgIdWallboardRoute
@@ -1896,6 +1947,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdRunbooksRoute: OrgOrgIdRunbooksRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
+  OrgOrgIdSlosRoute: OrgOrgIdSlosRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdStatusPagesRoute: OrgOrgIdStatusPagesRoute,
   OrgOrgIdWallboardRoute: OrgOrgIdWallboardRoute,

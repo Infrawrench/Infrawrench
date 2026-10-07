@@ -29,6 +29,7 @@ import "./moment";
 import "./schedules";
 import "./leases";
 import "./probes";
+import "./slos";
 import "./incidents";
 import "./status-pages";
 import "./ownership";

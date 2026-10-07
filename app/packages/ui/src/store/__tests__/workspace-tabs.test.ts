@@ -222,6 +222,28 @@ describe("incidents tab kind", () => {
   });
 });
 
+describe("slos tab kind", () => {
+  it("is a singleton tab id regardless of which SLO is open", () => {
+    expect(getWorkspaceTabId({ kind: "slos" })).toBe("slos");
+    expect(getWorkspaceTabId({ kind: "slos", sloId: "slo-1" })).toBe("slos");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "slos" })).toBe("SLOs");
+  });
+
+  it("compares by SLO, so reactivation restores the one that was open", () => {
+    expect(workspaceTabTargetsEqual({ kind: "slos" }, { kind: "slos" })).toBe(true);
+    expect(
+      workspaceTabTargetsEqual({ kind: "slos", sloId: "a" }, { kind: "slos", sloId: "a" }),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual({ kind: "slos", sloId: "a" }, { kind: "slos", sloId: "b" }),
+    ).toBe(false);
+    expect(workspaceTabTargetsEqual({ kind: "slos" }, { kind: "slos", sloId: "a" })).toBe(false);
+  });
+});
+
 describe("workflows tab kind", () => {
   it("is a singleton tab id regardless of which workflow is open", () => {
     expect(getWorkspaceTabId({ kind: "workflows" })).toBe("workflows");
