@@ -157,4 +157,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-fal"),
   () => import("@infrawrench/plugin-spacelift"),
   () => import("@infrawrench/plugin-voyage"),
+  () => import("@infrawrench/plugin-openstack"),
 ];

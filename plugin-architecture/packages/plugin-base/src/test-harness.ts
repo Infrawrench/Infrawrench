@@ -271,6 +271,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   fal: { apiKey: "key-id:key-secret" },
   spacelift: { endpoint: "acme", apiKeyId: "01HTEST", apiKeySecret: "secret" },
   voyage: { apiKey: "pa-test" },
+  openstack: {
+    authUrl: "https://keystone.example.com:5000/v3",
+    applicationCredentialId: "423f19a4ac1e4f48bbb4180756e6eb6c",
+    applicationCredentialSecret: "test-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

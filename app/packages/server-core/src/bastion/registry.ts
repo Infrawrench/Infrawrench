@@ -349,6 +349,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // account GraphQL endpoints (<account>.app.spacelift.io, .app.us.spacelift.io); presigned S3 URLs for state downloads; self-hosted hostnames are user-supplied
   spacelift: ["*.spacelift.io", "*.amazonaws.com"],
   voyage: ["api.voyageai.com"],
+  // OpenStack clouds are user-chosen: Keystone and every catalog endpoint are per-cloud hosts, so there is no fixed egress list (same as kubernetes).
+  openstack: [],
 };
 
 /**

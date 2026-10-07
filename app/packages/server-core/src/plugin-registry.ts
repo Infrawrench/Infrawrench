@@ -147,6 +147,7 @@ import { plugin as dopplerPlugin } from "@infrawrench/plugin-doppler";
 import { plugin as falPlugin } from "@infrawrench/plugin-fal";
 import { plugin as spaceliftPlugin } from "@infrawrench/plugin-spacelift";
 import { plugin as voyagePlugin } from "@infrawrench/plugin-voyage";
+import { plugin as openstackPlugin } from "@infrawrench/plugin-openstack";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -302,4 +303,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   falPlugin,
   spaceliftPlugin,
   voyagePlugin,
+  openstackPlugin,
 ];
