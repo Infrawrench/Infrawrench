@@ -331,6 +331,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // Proxmox VE is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
   proxmox: [],
+  // Vault address is user-supplied (self-hosted or HCP Vault); v1 doesn't bastion-route Vault
+  "hashicorp-vault": [],
 };
 
 /**

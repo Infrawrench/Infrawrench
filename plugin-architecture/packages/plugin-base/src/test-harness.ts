@@ -251,6 +251,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     tokenId: "infrawrench@pve!infrawrench",
     tokenSecret: "00000000-0000-0000-0000-000000000000",
   },
+  "hashicorp-vault": { address: "https://vault.example.com:8200", token: "hvs.test" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

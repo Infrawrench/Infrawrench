@@ -135,6 +135,7 @@ import { plugin as oktaPlugin } from "@infrawrench/plugin-okta";
 import { plugin as checklyPlugin } from "@infrawrench/plugin-checkly";
 import { plugin as huggingfacePlugin } from "@infrawrench/plugin-huggingface";
 import { plugin as proxmoxPlugin } from "@infrawrench/plugin-proxmox";
+import { plugin as hashicorpVaultPlugin } from "@infrawrench/plugin-hashicorp-vault";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -278,4 +279,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   checklyPlugin,
   huggingfacePlugin,
   proxmoxPlugin,
+  hashicorpVaultPlugin,
 ];

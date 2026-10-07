@@ -251,6 +251,7 @@
     "@infrawrench/plugin-checkly": "workspace:*",
     "@infrawrench/plugin-huggingface": "workspace:*",
     "@infrawrench/plugin-proxmox": "workspace:*",
+    "@infrawrench/plugin-hashicorp-vault": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
