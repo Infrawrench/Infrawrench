@@ -2356,6 +2356,18 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **No official Terraform provider** (registry has no `clerk/clerk`), so no `terraformExport`.
 - **Not done**: per-user/org API keys (listing requires a subject), billing endpoints, SCIM directories, email/SMS templates, waitlist, OIDC enterprise connection creation.
 
+### Perplexity (`@infrawrench/plugin-perplexity`)
+
+- **Auth**: one `pplx-…` key, Bearer, on `https://api.perplexity.ai`; keys belong to a console project (console.perplexity.ai/project/keys) and have no scopes.
+- **Specs**: `docs.perplexity.ai/openapi.json` (Sonar, async Sonar, Agent API, search, embeddings, skills, models, Computer analytics), `openapi-auth.json` (`/generate_auth_token`, `/revoke_auth_token`), `openapi-gateway-chat.json` (Router: `/router/v1/chat/completions`, `/router/v1/models[/{model}]`). Index: `docs.perplexity.ai/llms.txt` (Oct 2026).
+- **Models**: three catalogues. Sonar has **no list endpoint**: ids come from the `model` enum in the Sonar request schema (`sonar`, `sonar-pro`, `sonar-reasoning-pro`, `sonar-deep-research`). `GET /v1/models` lists Agent API models (id/owned_by only). `GET /router/v1/models` adds `pricing {input, output, cache_write, cache_read, unit}` per 1M tokens; Router ids contain `/` and go into the path unencoded.
+- **Chat**: Sonar (`POST /v1/sonar`) and Router stream OpenAI-style SSE. Agent API (`POST /v1/agent`, Responses-like `input`/`output[]` with `message` items holding `output_text`) is called non-streaming because its SSE events are typed, not chat deltas.
+- **Async**: `POST /v1/async/sonar {request:{model, messages, …}}`, `GET /v1/async/sonar` (`requests[]` + `next_token`, but **no documented query parameter** to send it back, so one page), `GET /v1/async/sonar/{id}` (status `CREATED|IN_PROGRESS|COMPLETED|FAILED`, `response` with choices/citations/usage.cost).
+- **Skills**: `GET /v1/skills?limit≤200&page_token=`, `GET …/revisions`, `DELETE /v1/skills/{id}?expected_revision=` (required; 409 when stale). Create/update need zip bundles: not wired.
+- **Not used**: `/v1/analytics/computer/usage` is Enterprise web-app ("Computer") analytics with a separate org key, not API spend. `generate_auth_token`/`revoke_auth_token` exist but keys cannot be listed. Search and embeddings APIs have no resources to manage.
+- **Status**: incident.io at status.perplexity.com (`/api/v2/incidents.json`, unresolved.json 404s); only the "API" component counts, provider-wide.
+- **Verified as having no usable billing API.** No Terraform provider.
+
 ---
 
 ## Publish capability (cross-plugin)

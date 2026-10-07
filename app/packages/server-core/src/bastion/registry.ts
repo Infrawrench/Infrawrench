@@ -343,6 +343,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // vCenter Server is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
   vsphere: [],
   clerk: ["api.clerk.com"],
+  perplexity: ["api.perplexity.ai"],
 };
 
 /**

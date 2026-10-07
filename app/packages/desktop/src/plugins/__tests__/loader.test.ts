@@ -181,6 +181,7 @@ vi.mock("@infrawrench/plugin-cerebras", () => stub("cerebras"));
 vi.mock("@infrawrench/plugin-sambanova", () => stub("sambanova"));
 vi.mock("@infrawrench/plugin-vsphere", () => stub("vsphere"));
 vi.mock("@infrawrench/plugin-clerk", () => stub("clerk"));
+vi.mock("@infrawrench/plugin-perplexity", () => stub("perplexity"));
 
 beforeEach(() => {
   disabled = [];

@@ -142,6 +142,7 @@ import { plugin as cerebrasPlugin } from "@infrawrench/plugin-cerebras";
 import { plugin as sambanovaPlugin } from "@infrawrench/plugin-sambanova";
 import { plugin as vspherePlugin } from "@infrawrench/plugin-vsphere";
 import { plugin as clerkPlugin } from "@infrawrench/plugin-clerk";
+import { plugin as perplexityPlugin } from "@infrawrench/plugin-perplexity";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -292,4 +293,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   sambanovaPlugin,
   vspherePlugin,
   clerkPlugin,
+  perplexityPlugin,
 ];
