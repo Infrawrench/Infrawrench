@@ -36,6 +36,11 @@ export default function SettingsScreen() {
           subtitle="Time-boxed permission elevation"
           onPress={go("access-requests")}
         />
+        <Row
+          title="Just-in-time access"
+          subtitle="Request and approve time-boxed cloud roles"
+          onPress={() => router.push(`/org/${orgId}/jit-access`)}
+        />
         <Row title="SSH keys" subtitle="Org SSH keys" onPress={go("ssh-keys")} />
         <Row title="Billing" subtitle="Plan and seats" onPress={go("billing")} />
       </Card>
