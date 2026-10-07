@@ -99,6 +99,7 @@ import { plugin as incidentIoPlugin } from "@infrawrench/plugin-incident-io";
 import { plugin as koyebPlugin } from "@infrawrench/plugin-koyeb";
 import { plugin as sendgridPlugin } from "@infrawrench/plugin-sendgrid";
 import { plugin as lambdaCloudPlugin } from "@infrawrench/plugin-lambda-cloud";
+import { plugin as upstashPlugin } from "@infrawrench/plugin-upstash";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -206,4 +207,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   koyebPlugin,
   sendgridPlugin,
   lambdaCloudPlugin,
+  upstashPlugin,
 ];

@@ -386,6 +386,7 @@
     "@infrawrench/plugin-koyeb": "workspace:*",
     "@infrawrench/plugin-sendgrid": "workspace:*",
     "@infrawrench/plugin-lambda-cloud": "workspace:*",
+    "@infrawrench/plugin-upstash": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

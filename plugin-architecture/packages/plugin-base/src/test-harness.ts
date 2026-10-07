@@ -175,6 +175,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   koyeb: { apiToken: "test-token" },
   sendgrid: { apiKey: "SG.test-key-id.test-secret" },
   "lambda-cloud": { apiKey: "secret_test_key" },
+  upstash: { email: "test@example.com", apiKey: "test-upstash-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

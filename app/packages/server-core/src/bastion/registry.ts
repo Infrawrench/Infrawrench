@@ -234,6 +234,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // api.eu.sendgrid.com serves EU regional subusers
   sendgrid: ["api.sendgrid.com", "api.eu.sendgrid.com"],
   "lambda-cloud": ["cloud.lambda.ai"],
+  // Developer API plus the two regional QStash APIs
+  upstash: ["api.upstash.com", "qstash-eu-central-1.upstash.io", "qstash-us-east-1.upstash.io"],
 };
 
 /**
