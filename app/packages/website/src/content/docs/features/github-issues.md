@@ -87,6 +87,8 @@ Rows on the Savings page then show **Open PR**. It reads the repository and show
 
 <insert [The Open PR window showing the diff that changes instance_type from "m5.xlarge" to "m5.large" in infra/prod/main.tf, with the Open pull request button] here>
 
+The repository mapping here is also what [pull request checks](./pr-checks.md) use to match the Terraform in a pull request to the resources it manages, so those pull requests (and anyone else's) get a cost and blast-radius check too.
+
 ## Permissions
 
 | Permission            | Grants                                                                                         |

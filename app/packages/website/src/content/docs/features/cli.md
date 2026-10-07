@@ -542,6 +542,8 @@ infrawrench routing email      # alert email policy and unsubscribed addresses
 
 Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
 
+`infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything: on the local working tree against the merge base with the default branch (`--base <ref>` for another one, uncommitted edits included), or on an open pull request with `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource; `--json` returns the full report. Needs `iac:read`.
+
 All of these are read-only and need the **Organization settings** permission (an address on the unsubscribed list, or outside the [email](./email-alerts.md) domains your organization allows, is skipped at send time); editing rules lives on the web and desktop Notifications page.
 
 ## Config as code

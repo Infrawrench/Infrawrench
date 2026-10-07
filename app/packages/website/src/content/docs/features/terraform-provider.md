@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 67 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 68 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -489,19 +489,20 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Alert delivery
 
-| Resource                               | Manages                                                                                                                                  |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `infrawrench_alert_routing`            | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included                                |
-| `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                             |
-| `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                      |
-| `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                      |
-| `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                         |
-| `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                     |
-| `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                      |
-| `infrawrench_paging_provider_settings` | Mirroring a [paging provider's](./on-call.md#paging-providers) incidents into Infrawrench                                                |
-| `infrawrench_jira_integration`         | The [Jira](./jira.md) connection                                                                                                         |
-| `infrawrench_linear_integration`       | The [Linear](./linear.md) connection                                                                                                     |
-| `infrawrench_github_issue_settings`    | Filing findings as [GitHub issues](./github-issues.md): default repository, routes, labels, and the Terraform sources pull requests edit |
+| Resource                               | Manages                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `infrawrench_alert_routing`            | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included                                                    |
+| `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                                                 |
+| `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                                          |
+| `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                                          |
+| `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                                             |
+| `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                                         |
+| `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                                          |
+| `infrawrench_paging_provider_settings` | Mirroring a [paging provider's](./on-call.md#paging-providers) incidents into Infrawrench                                                                    |
+| `infrawrench_jira_integration`         | The [Jira](./jira.md) connection                                                                                                                             |
+| `infrawrench_linear_integration`       | The [Linear](./linear.md) connection                                                                                                                         |
+| `infrawrench_github_issue_settings`    | Filing findings as [GitHub issues](./github-issues.md): default repository, routes, labels, and the Terraform sources pull requests edit                     |
+| `infrawrench_pr_check_repository`      | [Pull request checks](./pr-checks.md) on one repository: on/off, the summary comment, the cost threshold and its conclusion, and the directories it looks in |
 
 ### Data sources
 
