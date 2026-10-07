@@ -265,4 +265,11 @@
 // 1.75.0: `advanced` on CredentialField; a rarely needed optional setting (a
 // custom CA bundle) that credential forms collapse under "Advanced options".
 // Additive.
-export const API_VERSION = "1.75.0";
+// 1.76.0: 76 new plugins, which extend the `pluginId` and `resourceTypeId`
+// enums. Paging providers: the `paging-provider` and `provider-on-call`
+// alert-routing destination kinds, `GET /paging-providers` (plus
+// `/destinations`, `/events`, `PUT /{accountId}/settings`,
+// `POST /{accountId}/sync`, `GET /{accountId}/on-call/{sourceId}`),
+// `GET /paging-incidents` with `POST .../acknowledge` and `.../resolve`, and
+// the public `POST /api/paging-webhooks/{token}`. All additive.
+export const API_VERSION = "1.76.0";

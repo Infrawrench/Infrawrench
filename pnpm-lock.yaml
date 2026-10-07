@@ -11,6 +11,8 @@ overrides:
   miniflare>undici: '>=7.29.1 <8'
   '@smithy/middleware-compression>fflate': '>=0.8.3'
 
+packageExtensionsChecksum: sha256-ei3jLnUxokONz+I93eRBuhBqNFJfDTawJfQ/7MmPYu4=
+
 patchedDependencies:
   drizzle-orm@0.45.2: af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba
 
@@ -146,10 +148,19 @@ importers:
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@generaltranslation/compiler':
         specifier: ^1.3.37
-        version: 1.3.37(supports-color@10.2.2)
+        version: 1.3.37(supports-color@10.2.2)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
+      '@infrawrench/plugin-aiven':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/aiven
+      '@infrawrench/plugin-algolia':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/algolia
+      '@infrawrench/plugin-alibaba-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/alibaba-cloud
       '@infrawrench/plugin-anthropic':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/anthropic
@@ -159,24 +170,60 @@ importers:
       '@infrawrench/plugin-assemblyai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/assemblyai
+      '@infrawrench/plugin-auth0':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/auth0
       '@infrawrench/plugin-aws':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/aws
+      '@infrawrench/plugin-axiom':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/axiom
       '@infrawrench/plugin-azure':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/azure
+      '@infrawrench/plugin-backblaze-b2':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/backblaze-b2
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
       '@infrawrench/plugin-baseten':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/baseten
+      '@infrawrench/plugin-better-stack':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/better-stack
+      '@infrawrench/plugin-bitbucket':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/bitbucket
+      '@infrawrench/plugin-buildkite':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/buildkite
+      '@infrawrench/plugin-bunny':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/bunny
       '@infrawrench/plugin-cartesia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cartesia
+      '@infrawrench/plugin-cerebras':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cerebras
+      '@infrawrench/plugin-checkly':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/checkly
+      '@infrawrench/plugin-chronosphere':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/chronosphere
       '@infrawrench/plugin-circleci':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/circleci
+      '@infrawrench/plugin-civo':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/civo
+      '@infrawrench/plugin-clerk':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/clerk
       '@infrawrench/plugin-clickhouse':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/clickhouse
@@ -186,18 +233,30 @@ importers:
       '@infrawrench/plugin-cloudinary':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cloudinary
+      '@infrawrench/plugin-cockroachdb-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cockroachdb-cloud
       '@infrawrench/plugin-cohere':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cohere
       '@infrawrench/plugin-confluent-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/confluent-cloud
+      '@infrawrench/plugin-consul':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/consul
+      '@infrawrench/plugin-convex':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/convex
       '@infrawrench/plugin-coralogix':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/coralogix
       '@infrawrench/plugin-coreweave':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/coreweave
+      '@infrawrench/plugin-couchbase-capella':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/couchbase-capella
       '@infrawrench/plugin-crusoe':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/crusoe
@@ -210,6 +269,9 @@ importers:
       '@infrawrench/plugin-datadog':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/datadog
+      '@infrawrench/plugin-datastax-astra':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/datastax-astra
       '@infrawrench/plugin-deepgram':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/deepgram
@@ -228,12 +290,27 @@ importers:
       '@infrawrench/plugin-docker':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/docker
+      '@infrawrench/plugin-docker-hub':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/docker-hub
+      '@infrawrench/plugin-doppler':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/doppler
+      '@infrawrench/plugin-dynatrace':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/dynatrace
       '@infrawrench/plugin-elastic-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/elastic-cloud
       '@infrawrench/plugin-elevenlabs':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/elevenlabs
+      '@infrawrench/plugin-exoscale':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/exoscale
+      '@infrawrench/plugin-fal':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/fal
       '@infrawrench/plugin-fastly':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/fastly
@@ -252,6 +329,9 @@ importers:
       '@infrawrench/plugin-github':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/github
+      '@infrawrench/plugin-gitlab':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/gitlab
       '@infrawrench/plugin-gladia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gladia
@@ -261,18 +341,57 @@ importers:
       '@infrawrench/plugin-groq':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/groq
+      '@infrawrench/plugin-hashicorp-vault':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/hashicorp-vault
+      '@infrawrench/plugin-hcp-terraform':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/hcp-terraform
+      '@infrawrench/plugin-heroku':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/heroku
       '@infrawrench/plugin-hetzner':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/hetzner
+      '@infrawrench/plugin-honeycomb':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/honeycomb
+      '@infrawrench/plugin-huggingface':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/huggingface
+      '@infrawrench/plugin-ibm-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/ibm-cloud
+      '@infrawrench/plugin-incident-io':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/incident-io
+      '@infrawrench/plugin-infisical':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/infisical
+      '@infrawrench/plugin-influxdb-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/influxdb-cloud
+      '@infrawrench/plugin-jfrog':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/jfrog
       '@infrawrench/plugin-kafka':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kafka
+      '@infrawrench/plugin-koyeb':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/koyeb
       '@infrawrench/plugin-kubernetes':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kubernetes
+      '@infrawrench/plugin-lambda-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/lambda-cloud
       '@infrawrench/plugin-linode':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/linode
+      '@infrawrench/plugin-mailgun':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/mailgun
       '@infrawrench/plugin-memcached':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/memcached
@@ -297,6 +416,9 @@ importers:
       '@infrawrench/plugin-mysql':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/mysql
+      '@infrawrench/plugin-nats':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/nats
       '@infrawrench/plugin-neon':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/neon
@@ -306,6 +428,15 @@ importers:
       '@infrawrench/plugin-newrelic':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/newrelic
+      '@infrawrench/plugin-nomad':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/nomad
+      '@infrawrench/plugin-northflank':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/northflank
+      '@infrawrench/plugin-okta':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/okta
       '@infrawrench/plugin-openai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/openai
@@ -315,51 +446,123 @@ importers:
       '@infrawrench/plugin-opensearch':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/opensearch
+      '@infrawrench/plugin-openstack':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/openstack
       '@infrawrench/plugin-oracle-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/oracle-cloud
       '@infrawrench/plugin-ovh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ovh
+      '@infrawrench/plugin-pagerduty':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pagerduty
+      '@infrawrench/plugin-paperspace':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/paperspace
+      '@infrawrench/plugin-perplexity':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/perplexity
+      '@infrawrench/plugin-pinecone':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pinecone
       '@infrawrench/plugin-planetscale':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/planetscale
       '@infrawrench/plugin-postgres':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/postgres
+      '@infrawrench/plugin-posthog':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/posthog
+      '@infrawrench/plugin-postmark':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/postmark
+      '@infrawrench/plugin-prometheus':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/prometheus
+      '@infrawrench/plugin-proxmox':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/proxmox
+      '@infrawrench/plugin-pulumi-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pulumi-cloud
+      '@infrawrench/plugin-qdrant-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/qdrant-cloud
+      '@infrawrench/plugin-rabbitmq':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/rabbitmq
+      '@infrawrench/plugin-railway':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/railway
       '@infrawrench/plugin-redis':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/redis
       '@infrawrench/plugin-redis-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/redis-cloud
+      '@infrawrench/plugin-render':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/render
       '@infrawrench/plugin-replicate':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/replicate
+      '@infrawrench/plugin-resend':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/resend
       '@infrawrench/plugin-revai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/revai
+      '@infrawrench/plugin-runpod':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/runpod
+      '@infrawrench/plugin-s3-compatible':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/s3-compatible
+      '@infrawrench/plugin-sambanova':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/sambanova
       '@infrawrench/plugin-scaleway':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/scaleway
+      '@infrawrench/plugin-sendgrid':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/sendgrid
       '@infrawrench/plugin-sentry':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/sentry
       '@infrawrench/plugin-snowflake':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/snowflake
+      '@infrawrench/plugin-spacelift':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/spacelift
       '@infrawrench/plugin-speechmatics':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/speechmatics
+      '@infrawrench/plugin-splunk-observability':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/splunk-observability
       '@infrawrench/plugin-ssh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ssh
+      '@infrawrench/plugin-stripe':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/stripe
+      '@infrawrench/plugin-supabase':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/supabase
       '@infrawrench/plugin-tailscale':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/tailscale
       '@infrawrench/plugin-temporal-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/temporal-cloud
+      '@infrawrench/plugin-timescale':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/timescale
       '@infrawrench/plugin-together':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/together
@@ -369,18 +572,45 @@ importers:
       '@infrawrench/plugin-twilio':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/twilio
+      '@infrawrench/plugin-upcloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/upcloud
       '@infrawrench/plugin-uploadthing':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/uploadthing
+      '@infrawrench/plugin-upstash':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/upstash
+      '@infrawrench/plugin-vast-ai':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vast-ai
       '@infrawrench/plugin-vercel':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/vercel
+      '@infrawrench/plugin-voyage':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/voyage
+      '@infrawrench/plugin-vsphere':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vsphere
+      '@infrawrench/plugin-vultr':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vultr
+      '@infrawrench/plugin-wasabi':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/wasabi
+      '@infrawrench/plugin-weaviate-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/weaviate-cloud
       '@infrawrench/plugin-workos':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/workos
       '@infrawrench/plugin-xai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/xai
+      '@infrawrench/plugin-xata':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/xata
       '@infrawrench/sftp-host':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/sftp-host
@@ -714,6 +944,15 @@ importers:
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
+      '@infrawrench/plugin-aiven':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/aiven
+      '@infrawrench/plugin-algolia':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/algolia
+      '@infrawrench/plugin-alibaba-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/alibaba-cloud
       '@infrawrench/plugin-anthropic':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/anthropic
@@ -723,24 +962,60 @@ importers:
       '@infrawrench/plugin-assemblyai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/assemblyai
+      '@infrawrench/plugin-auth0':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/auth0
       '@infrawrench/plugin-aws':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/aws
+      '@infrawrench/plugin-axiom':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/axiom
       '@infrawrench/plugin-azure':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/azure
+      '@infrawrench/plugin-backblaze-b2':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/backblaze-b2
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
       '@infrawrench/plugin-baseten':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/baseten
+      '@infrawrench/plugin-better-stack':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/better-stack
+      '@infrawrench/plugin-bitbucket':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/bitbucket
+      '@infrawrench/plugin-buildkite':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/buildkite
+      '@infrawrench/plugin-bunny':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/bunny
       '@infrawrench/plugin-cartesia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cartesia
+      '@infrawrench/plugin-cerebras':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cerebras
+      '@infrawrench/plugin-checkly':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/checkly
+      '@infrawrench/plugin-chronosphere':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/chronosphere
       '@infrawrench/plugin-circleci':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/circleci
+      '@infrawrench/plugin-civo':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/civo
+      '@infrawrench/plugin-clerk':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/clerk
       '@infrawrench/plugin-clickhouse':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/clickhouse
@@ -750,18 +1025,30 @@ importers:
       '@infrawrench/plugin-cloudinary':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cloudinary
+      '@infrawrench/plugin-cockroachdb-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cockroachdb-cloud
       '@infrawrench/plugin-cohere':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cohere
       '@infrawrench/plugin-confluent-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/confluent-cloud
+      '@infrawrench/plugin-consul':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/consul
+      '@infrawrench/plugin-convex':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/convex
       '@infrawrench/plugin-coralogix':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/coralogix
       '@infrawrench/plugin-coreweave':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/coreweave
+      '@infrawrench/plugin-couchbase-capella':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/couchbase-capella
       '@infrawrench/plugin-crusoe':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/crusoe
@@ -774,6 +1061,9 @@ importers:
       '@infrawrench/plugin-datadog':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/datadog
+      '@infrawrench/plugin-datastax-astra':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/datastax-astra
       '@infrawrench/plugin-deepgram':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/deepgram
@@ -792,12 +1082,27 @@ importers:
       '@infrawrench/plugin-docker':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/docker
+      '@infrawrench/plugin-docker-hub':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/docker-hub
+      '@infrawrench/plugin-doppler':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/doppler
+      '@infrawrench/plugin-dynatrace':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/dynatrace
       '@infrawrench/plugin-elastic-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/elastic-cloud
       '@infrawrench/plugin-elevenlabs':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/elevenlabs
+      '@infrawrench/plugin-exoscale':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/exoscale
+      '@infrawrench/plugin-fal':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/fal
       '@infrawrench/plugin-fastly':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/fastly
@@ -816,6 +1121,9 @@ importers:
       '@infrawrench/plugin-github':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/github
+      '@infrawrench/plugin-gitlab':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/gitlab
       '@infrawrench/plugin-gladia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gladia
@@ -825,18 +1133,57 @@ importers:
       '@infrawrench/plugin-groq':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/groq
+      '@infrawrench/plugin-hashicorp-vault':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/hashicorp-vault
+      '@infrawrench/plugin-hcp-terraform':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/hcp-terraform
+      '@infrawrench/plugin-heroku':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/heroku
       '@infrawrench/plugin-hetzner':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/hetzner
+      '@infrawrench/plugin-honeycomb':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/honeycomb
+      '@infrawrench/plugin-huggingface':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/huggingface
+      '@infrawrench/plugin-ibm-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/ibm-cloud
+      '@infrawrench/plugin-incident-io':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/incident-io
+      '@infrawrench/plugin-infisical':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/infisical
+      '@infrawrench/plugin-influxdb-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/influxdb-cloud
+      '@infrawrench/plugin-jfrog':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/jfrog
       '@infrawrench/plugin-kafka':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kafka
+      '@infrawrench/plugin-koyeb':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/koyeb
       '@infrawrench/plugin-kubernetes':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kubernetes
+      '@infrawrench/plugin-lambda-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/lambda-cloud
       '@infrawrench/plugin-linode':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/linode
+      '@infrawrench/plugin-mailgun':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/mailgun
       '@infrawrench/plugin-memcached':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/memcached
@@ -861,6 +1208,9 @@ importers:
       '@infrawrench/plugin-mysql':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/mysql
+      '@infrawrench/plugin-nats':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/nats
       '@infrawrench/plugin-neon':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/neon
@@ -870,6 +1220,15 @@ importers:
       '@infrawrench/plugin-newrelic':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/newrelic
+      '@infrawrench/plugin-nomad':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/nomad
+      '@infrawrench/plugin-northflank':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/northflank
+      '@infrawrench/plugin-okta':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/okta
       '@infrawrench/plugin-openai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/openai
@@ -879,51 +1238,123 @@ importers:
       '@infrawrench/plugin-opensearch':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/opensearch
+      '@infrawrench/plugin-openstack':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/openstack
       '@infrawrench/plugin-oracle-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/oracle-cloud
       '@infrawrench/plugin-ovh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ovh
+      '@infrawrench/plugin-pagerduty':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pagerduty
+      '@infrawrench/plugin-paperspace':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/paperspace
+      '@infrawrench/plugin-perplexity':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/perplexity
+      '@infrawrench/plugin-pinecone':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pinecone
       '@infrawrench/plugin-planetscale':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/planetscale
       '@infrawrench/plugin-postgres':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/postgres
+      '@infrawrench/plugin-posthog':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/posthog
+      '@infrawrench/plugin-postmark':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/postmark
+      '@infrawrench/plugin-prometheus':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/prometheus
+      '@infrawrench/plugin-proxmox':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/proxmox
+      '@infrawrench/plugin-pulumi-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/pulumi-cloud
+      '@infrawrench/plugin-qdrant-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/qdrant-cloud
+      '@infrawrench/plugin-rabbitmq':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/rabbitmq
+      '@infrawrench/plugin-railway':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/railway
       '@infrawrench/plugin-redis':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/redis
       '@infrawrench/plugin-redis-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/redis-cloud
+      '@infrawrench/plugin-render':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/render
       '@infrawrench/plugin-replicate':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/replicate
+      '@infrawrench/plugin-resend':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/resend
       '@infrawrench/plugin-revai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/revai
+      '@infrawrench/plugin-runpod':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/runpod
+      '@infrawrench/plugin-s3-compatible':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/s3-compatible
+      '@infrawrench/plugin-sambanova':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/sambanova
       '@infrawrench/plugin-scaleway':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/scaleway
+      '@infrawrench/plugin-sendgrid':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/sendgrid
       '@infrawrench/plugin-sentry':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/sentry
       '@infrawrench/plugin-snowflake':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/snowflake
+      '@infrawrench/plugin-spacelift':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/spacelift
       '@infrawrench/plugin-speechmatics':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/speechmatics
+      '@infrawrench/plugin-splunk-observability':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/splunk-observability
       '@infrawrench/plugin-ssh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ssh
+      '@infrawrench/plugin-stripe':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/stripe
+      '@infrawrench/plugin-supabase':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/supabase
       '@infrawrench/plugin-tailscale':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/tailscale
       '@infrawrench/plugin-temporal-cloud':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/temporal-cloud
+      '@infrawrench/plugin-timescale':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/timescale
       '@infrawrench/plugin-together':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/together
@@ -933,18 +1364,45 @@ importers:
       '@infrawrench/plugin-twilio':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/twilio
+      '@infrawrench/plugin-upcloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/upcloud
       '@infrawrench/plugin-uploadthing':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/uploadthing
+      '@infrawrench/plugin-upstash':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/upstash
+      '@infrawrench/plugin-vast-ai':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vast-ai
       '@infrawrench/plugin-vercel':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/vercel
+      '@infrawrench/plugin-voyage':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/voyage
+      '@infrawrench/plugin-vsphere':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vsphere
+      '@infrawrench/plugin-vultr':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vultr
+      '@infrawrench/plugin-wasabi':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/wasabi
+      '@infrawrench/plugin-weaviate-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/weaviate-cloud
       '@infrawrench/plugin-workos':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/workos
       '@infrawrench/plugin-xai':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/xai
+      '@infrawrench/plugin-xata':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/xata
       '@infrawrench/sftp-host':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/sftp-host
@@ -1251,7 +1709,7 @@ importers:
         version: 5.20260808.1
       '@generaltranslation/compiler':
         specifier: ^1.3.37
-        version: 1.3.37(supports-color@10.2.2)
+        version: 1.3.37(supports-color@10.2.2)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -1387,6 +1845,54 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/aiven:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/algolia:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/alibaba-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/anthropic:
     dependencies:
       '@infrawrench/plugin-base':
@@ -1474,6 +1980,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/auth0:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/aws:
     dependencies:
@@ -1638,6 +2160,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/axiom:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/azure:
     dependencies:
       '@infrawrench/plugin-base':
@@ -1660,7 +2198,87 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/backblaze-b2:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/baseten:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/better-stack:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/bitbucket:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/buildkite:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/bunny:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -1695,6 +2313,54 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/cerebras:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/checkly:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/chronosphere:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/circleci:
     dependencies:
       '@infrawrench/plugin-base':
@@ -1713,6 +2379,38 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/civo:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/clerk:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/clickhouse:
     dependencies:
@@ -1771,6 +2469,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/cockroachdb-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/cohere:
     dependencies:
       '@infrawrench/plugin-base':
@@ -1809,6 +2523,38 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/consul:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/convex:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/coralogix:
     dependencies:
       '@infrawrench/plugin-base':
@@ -1846,6 +2592,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/couchbase-capella:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/crusoe:
     dependencies:
@@ -1913,6 +2675,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/datastax-astra:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/deepgram:
     dependencies:
@@ -2025,6 +2803,54 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/docker-hub:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/doppler:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/dynatrace:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/elastic-cloud:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2062,6 +2888,38 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/exoscale:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/fal:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/fastly:
     dependencies:
@@ -2180,6 +3038,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/gitlab:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/gladia:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2237,7 +3111,167 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/hashicorp-vault:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/hcp-terraform:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/heroku:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/hetzner:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/honeycomb:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/huggingface:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/ibm-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/incident-io:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/infisical:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/influxdb-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/jfrog:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -2262,6 +3296,22 @@ importers:
       kafkajs:
         specifier: ^2.2.4
         version: 2.2.4
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/koyeb:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
@@ -2297,7 +3347,39 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/lambda-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/linode:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/mailgun:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -2468,6 +3550,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/nats:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/neon:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2521,6 +3619,54 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/nomad:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/northflank:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/okta:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/openai:
     dependencies:
@@ -2585,6 +3731,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/openstack:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/oracle-cloud:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2602,6 +3764,70 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/ovh:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/pagerduty:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/paperspace:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/perplexity:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/pinecone:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -2683,6 +3909,134 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/posthog:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/postmark:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/prometheus:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/proxmox:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/pulumi-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/qdrant-cloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/rabbitmq:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/railway:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/redis:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2718,6 +4072,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/render:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/replicate:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2737,6 +4107,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/resend:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/revai:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2755,6 +4141,54 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/runpod:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/s3-compatible:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/sambanova:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/scaleway:
     dependencies:
@@ -2776,6 +4210,22 @@ importers:
       '@scaleway/sdk-rdb':
         specifier: ^2.10.0
         version: 2.10.0(@scaleway/sdk-client@2.6.0)
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/sendgrid:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
     devDependencies:
       tsdown:
         specifier: ^0.22.14
@@ -2847,6 +4297,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/spacelift:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/speechmatics:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2865,6 +4331,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/splunk-observability:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/ssh:
     dependencies:
@@ -2910,6 +4392,38 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/stripe:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/supabase:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/tailscale:
     dependencies:
       '@infrawrench/plugin-base':
@@ -2947,6 +4461,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/timescale:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/together:
     dependencies:
@@ -3008,6 +4538,22 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/upcloud:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/uploadthing:
     dependencies:
       '@infrawrench/plugin-base':
@@ -3027,7 +4573,119 @@ importers:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  plugin-architecture/packages/upstash:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/vast-ai:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
   plugin-architecture/packages/vercel:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/voyage:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/vsphere:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/vultr:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/wasabi:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/weaviate-cloud:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
@@ -3080,6 +4738,22 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/xata:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
 packages:
 
@@ -5124,6 +6798,11 @@ packages:
   '@generaltranslation/compiler@1.3.37':
     resolution: {integrity: sha512-CXrSMPwCxmecGObWD5HZHF4YuoC64Adc5iMoHbedM6ed4IHYF38G1IHu5sNxtNv0e9YH9KEy1YQXMz3SzGhYmA==}
     engines: {node: '>=16.0.0'}
+    peerDependencies:
+      vite: '*'
+    peerDependenciesMeta:
+      vite:
+        optional: true
 
   '@generaltranslation/format@0.1.4':
     resolution: {integrity: sha512-ub2umepEL1ndO3bjXyhxmXtMcvq61AwGKhHW+Is5yDDyIy0zmA0V3xME7FVzCzMe9UY8R5F1PpCXZRvyGV9sOQ==}
@@ -17339,7 +19018,7 @@ snapshots:
       chalk: 4.1.2
       js-yaml: 4.3.2
 
-  '@generaltranslation/compiler@1.3.37(supports-color@10.2.2)':
+  '@generaltranslation/compiler@1.3.37(supports-color@10.2.2)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))':
     dependencies:
       '@babel/generator': 7.29.8
       '@babel/parser': 7.29.8
@@ -17348,6 +19027,8 @@ snapshots:
       '@generaltranslation/format': 0.1.4
       generaltranslation: 9.1.2
       unplugin: 2.3.11
+    optionalDependencies:
+      vite: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -20044,7 +21725,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   '@vitest/expect@4.1.10':
     dependencies:

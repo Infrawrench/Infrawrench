@@ -309,6 +309,15 @@ func specChecks() []specCheck {
 		{schema: "OnCallSchedule", value: OnCallSchedule{}},
 		{schema: "OnCallScheduleCreate", value: OnCallScheduleCreate{}},
 		{schema: "OnCallScheduleUpdate", value: OnCallScheduleUpdate{}},
+		{schema: "PagingProviderSettings", value: PagingProviderSettings{}},
+		{
+			schema: "PagingProviderAccount",
+			value:  PagingProviderAccount{},
+			// Capability labels for the Incidents tab (what the provider calls
+			// an incident, and whether one can be acknowledged or resolved from
+			// Infrawrench). No Terraform attribute derives from them.
+			ignored: []string{"incidents"},
+		},
 		{schema: "OnCallParticipant", value: OnCallParticipant{}},
 		{schema: "QuietHours", value: QuietHours{}},
 		{schema: "EscalationPolicy", value: EscalationPolicy{}},
@@ -387,16 +396,11 @@ func specChecks() []specCheck {
 // listed here so the gap is visible rather than merely absent, and so that
 // regenerating the spec makes this test start covering them.
 //
-// It is empty as of the 1.9.0 regeneration, which brought scenario models and
-// billing rules into the document. Keeping the list and its test rather than
+// It is empty as of the 1.76.0 regeneration, which brought the paging-provider
+// schemas into the document. Keeping the list and its test rather than
 // deleting them is deliberate: the next object added ahead of a spec refresh
 // goes here, and the test then says out loud when the refresh catches up.
-var schemasKnownAbsent = []string{
-	// Paging providers (PagerDuty, incident.io): the routes and their OpenAPI
-	// sources landed ahead of the next spec regeneration.
-	"PagingProviderAccount",
-	"PagingProviderSettings",
-}
+var schemasKnownAbsent = []string{}
 
 func loadSpecSchemas(t *testing.T) map[string]map[string]any {
 	t.Helper()

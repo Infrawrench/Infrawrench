@@ -75,6 +75,90 @@ infrawrench/
 │   ├── fastly/               # @infrawrench/plugin-fastly
 │   ├── snowflake/            # @infrawrench/plugin-snowflake
 │   ├── github/               # @infrawrench/plugin-github
+│   ├── linode/               # @infrawrench/plugin-linode
+│   ├── metronome/            # @infrawrench/plugin-metronome
+│   ├── tailscale/            # @infrawrench/plugin-tailscale
+│   ├── coreweave/            # @infrawrench/plugin-coreweave
+│   ├── anyscale/             # @infrawrench/plugin-anyscale
+│   ├── cursor/               # @infrawrench/plugin-cursor
+│   ├── temporal-cloud/       # @infrawrench/plugin-temporal-cloud
+│   ├── uploadthing/          # @infrawrench/plugin-uploadthing
+│   ├── postmark/             # @infrawrench/plugin-postmark
+│   ├── runpod/               # @infrawrench/plugin-runpod
+│   ├── render/               # @infrawrench/plugin-render
+│   ├── stripe/               # @infrawrench/plugin-stripe
+│   ├── supabase/             # @infrawrench/plugin-supabase
+│   ├── vultr/                # @infrawrench/plugin-vultr
+│   ├── resend/               # @infrawrench/plugin-resend
+│   ├── convex/               # @infrawrench/plugin-convex
+│   ├── railway/              # @infrawrench/plugin-railway
+│   ├── gitlab/               # @infrawrench/plugin-gitlab
+│   ├── civo/                 # @infrawrench/plugin-civo
+│   ├── xata/                 # @infrawrench/plugin-xata
+│   ├── heroku/               # @infrawrench/plugin-heroku
+│   ├── pagerduty/            # @infrawrench/plugin-pagerduty
+│   ├── bitbucket/            # @infrawrench/plugin-bitbucket
+│   ├── cockroachdb-cloud/    # @infrawrench/plugin-cockroachdb-cloud
+│   ├── northflank/           # @infrawrench/plugin-northflank
+│   ├── upcloud/              # @infrawrench/plugin-upcloud
+│   ├── incident-io/          # @infrawrench/plugin-incident-io
+│   ├── koyeb/                # @infrawrench/plugin-koyeb
+│   ├── sendgrid/             # @infrawrench/plugin-sendgrid
+│   ├── lambda-cloud/         # @infrawrench/plugin-lambda-cloud
+│   ├── upstash/              # @infrawrench/plugin-upstash
+│   ├── mailgun/              # @infrawrench/plugin-mailgun
+│   ├── timescale/            # @infrawrench/plugin-timescale
+│   ├── exoscale/             # @infrawrench/plugin-exoscale
+│   ├── alibaba-cloud/        # @infrawrench/plugin-alibaba-cloud
+│   ├── pinecone/             # @infrawrench/plugin-pinecone
+│   ├── vast-ai/              # @infrawrench/plugin-vast-ai
+│   ├── aiven/                # @infrawrench/plugin-aiven
+│   ├── backblaze-b2/         # @infrawrench/plugin-backblaze-b2
+│   ├── paperspace/           # @infrawrench/plugin-paperspace
+│   ├── datastax-astra/       # @infrawrench/plugin-datastax-astra
+│   ├── qdrant-cloud/         # @infrawrench/plugin-qdrant-cloud
+│   ├── honeycomb/            # @infrawrench/plugin-honeycomb
+│   ├── ibm-cloud/            # @infrawrench/plugin-ibm-cloud
+│   ├── dynatrace/            # @infrawrench/plugin-dynatrace
+│   ├── wasabi/               # @infrawrench/plugin-wasabi
+│   ├── weaviate-cloud/       # @infrawrench/plugin-weaviate-cloud
+│   ├── s3-compatible/        # @infrawrench/plugin-s3-compatible
+│   ├── couchbase-capella/    # @infrawrench/plugin-couchbase-capella
+│   ├── axiom/                # @infrawrench/plugin-axiom
+│   ├── algolia/              # @infrawrench/plugin-algolia
+│   ├── splunk-observability/ # @infrawrench/plugin-splunk-observability
+│   ├── buildkite/            # @infrawrench/plugin-buildkite
+│   ├── influxdb-cloud/       # @infrawrench/plugin-influxdb-cloud
+│   ├── bunny/                # @infrawrench/plugin-bunny
+│   ├── jfrog/                # @infrawrench/plugin-jfrog
+│   ├── infisical/            # @infrawrench/plugin-infisical
+│   ├── better-stack/         # @infrawrench/plugin-better-stack
+│   ├── chronosphere/         # @infrawrench/plugin-chronosphere
+│   ├── docker-hub/           # @infrawrench/plugin-docker-hub
+│   ├── posthog/              # @infrawrench/plugin-posthog
+│   ├── hcp-terraform/        # @infrawrench/plugin-hcp-terraform
+│   ├── okta/                 # @infrawrench/plugin-okta
+│   ├── checkly/              # @infrawrench/plugin-checkly
+│   ├── huggingface/          # @infrawrench/plugin-huggingface
+│   ├── proxmox/              # @infrawrench/plugin-proxmox
+│   ├── hashicorp-vault/      # @infrawrench/plugin-hashicorp-vault
+│   ├── auth0/                # @infrawrench/plugin-auth0
+│   ├── pulumi-cloud/         # @infrawrench/plugin-pulumi-cloud
+│   ├── cerebras/             # @infrawrench/plugin-cerebras
+│   ├── sambanova/            # @infrawrench/plugin-sambanova
+│   ├── vsphere/              # @infrawrench/plugin-vsphere
+│   ├── clerk/                # @infrawrench/plugin-clerk
+│   ├── perplexity/           # @infrawrench/plugin-perplexity
+│   ├── doppler/              # @infrawrench/plugin-doppler
+│   ├── fal/                  # @infrawrench/plugin-fal
+│   ├── spacelift/            # @infrawrench/plugin-spacelift
+│   ├── voyage/               # @infrawrench/plugin-voyage
+│   ├── openstack/            # @infrawrench/plugin-openstack
+│   ├── rabbitmq/             # @infrawrench/plugin-rabbitmq
+│   ├── prometheus/           # @infrawrench/plugin-prometheus
+│   ├── nomad/                # @infrawrench/plugin-nomad
+│   ├── consul/               # @infrawrench/plugin-consul
+│   ├── nats/                 # @infrawrench/plugin-nats
 
 │   ├── circleci/             # @infrawrench/plugin-circleci
 │   ├── devin/                # @infrawrench/plugin-devin (Devin AI engineer: ACU cost, sessions)
@@ -1819,16 +1903,16 @@ International site, RAM user AccessKey (`accessKeyId`, `accessKeySecret`), a def
 - **Create forms**: the ECS size picker is `DescribeInstanceTypes` over a curated family list, `availableFor` per region from `DescribeAvailableResource` (filtered by the region field). Images are OS keys resolved at create time to the newest public image matching `OSNameEn` in the region and architecture. Zone pickers are `region-picker`s over every region's zones with `filterByFieldKey: "region"`. RDS classes come from `ListClasses` (`CommodityCode: bards_intl`, which returns CPU, memory and an hourly `ReferencePrice` in US cents) with `availableFor` per engine; the handler re-reads the class to get its category and storage type. Tair classes are the documented cloud-native standard list.
 - **Cost**: `DescribeInstanceBill`, `Granularity=DAILY`, one call per day (pages of 300), `PretaxAmount` as amount and `PretaxGrossAmount` as list amount, `Item` Refund/Adjustment as charge types, `Tag` parsed from `key:k value:v; …`. `Region` is a display name, mapped back with `regionIdForLabel`. 18 months of history, current month provisional until the 3rd of the next (hence `restatementDays: 35`), 10 req/s.
 - **Credits** are `QueryAccountBalance` (amounts are strings that can contain commas). **Quotas** are Quota Center `ListProductQuotas` for `ecs` and `vpc` in the default region, only rows with `Consumable` and a positive limit.
-- **Metrics** (`DescribeMetricList`): `Datapoints` is a JSON *string*. Names verified against Alibaba's metric pages: ECS `CPUUtilization`, agent `memory_usedutilization`/`load_1m`; RDS MySQL-style `CpuUsage` etc. with a PostgreSQL fallback (`cpu_usage`, `mem_usage`, and the misspelt `conn_usgae`); Tair `Standard*`; CLB `Instance*`; ALB `LoadBalancer*` with dimension `loadBalancerId`; OSS dimension `BucketName`; FC 3.0 `Function*` with `{region, functionName}` and a fixed 60 s period.
+- **Metrics** (`DescribeMetricList`): `Datapoints` is a JSON _string_. Names verified against Alibaba's metric pages: ECS `CPUUtilization`, agent `memory_usedutilization`/`load_1m`; RDS MySQL-style `CpuUsage` etc. with a PostgreSQL fallback (`cpu_usage`, `mem_usage`, and the misspelt `conn_usgae`); Tair `Standard*`; CLB `Instance*`; ALB `LoadBalancer*` with dimension `loadBalancerId`; OSS dimension `BucketName`; FC 3.0 `Function*` with `{region, functionName}` and a fixed 60 s period.
 - **Status feed** is the status page's own JSON API: `status.alibabacloud.com/api/status/listEventInProgress` (anonymous; the history endpoint `listHistoryEvent` shows the event shape). Regions come from titles like "… Indonesia (Jakarta) Region".
 - ACK kubeconfigs (`DescribeClusterUserKubeconfig`) are client-certificate based, so ACK is a Kubernetes peer. Upgrades send `master_only: true`.
 - Not done: creating functions (needs code), ACK cluster create (dozens of interdependent options), ALB/CLB create and listener editing, RDS/Tair accounts and passwords (never returned by the API, so no connection-string outputs).
 
 ### Pinecone (`@infrawrench/plugin-pinecone`)
 
-- **API version is pinned to `2026-07`** via `X-Pinecone-Api-Version` on every call (control, data plane, Admin, OAuth, Prometheus). Without the header Pinecone answers in the *oldest* supported version's shapes. Specs: `github.com/pinecone-io/pinecone-api/2026-07/*.oas.yaml` (db_control, db_data, admin, oauth, assistant_control/data, inference, db_metrics). 2026-07 is a breaking release: indexes carry `deployment` (`managed`/`pod`/`byoc`) and `schema.fields` instead of `spec`/`dimension`/`metric`/`vector_type`.
+- **API version is pinned to `2026-07`** via `X-Pinecone-Api-Version` on every call (control, data plane, Admin, OAuth, Prometheus). Without the header Pinecone answers in the _oldest_ supported version's shapes. Specs: `github.com/pinecone-io/pinecone-api/2026-07/*.oas.yaml` (db_control, db_data, admin, oauth, assistant_control/data, inference, db_metrics). 2026-07 is a breaking release: indexes carry `deployment` (`managed`/`pod`/`byoc`) and `schema.fields` instead of `spec`/`dimension`/`metric`/`vector_type`.
 - **Auth is two-tier.** The required project API key (`Api-Key` header) covers indexes, collections, backups, schedules, restore jobs, assistants (`https://api.pinecone.io/assistant/...`) and data-plane hosts; one account = one project. Optional service account (`clientId`/`clientSecret`) is exchanged at `POST https://login.pinecone.io/oauth/token` (`grant_type=client_credentials`, `audience=https://api.pinecone.io/`, ~1800 s, cached until a minute before expiry) for the Admin API (`/admin/projects`, `/admin/projects/{id}/api-keys`, `/admin/api-keys/{id}`, `/admin/service-accounts`). `projectId` is a `providerOptions` picker fed by `/admin/projects`; there is no "whoami" for an API key.
-- **Schema quirks**: classic vector indexes report reserved `_values` (dense) / `_sparse_values` fields, and dense ones report *both*; integrated indexes a `semantic_text` field (model, dimension); document indexes named `dense_vector` + `string` fields with `full_text_search`. `indexShape()` in `mappers.ts` collapses this into `kind`. Create uses `schema.fields._values` / `_sparse_values` for classic indexes and `POST /indexes/create-for-model` (`embed.model`, `embed.field_map.text`) for integrated ones.
+- **Schema quirks**: classic vector indexes report reserved `_values` (dense) / `_sparse_values` fields, and dense ones report _both_; integrated indexes a `semantic_text` field (model, dimension); document indexes named `dense_vector` + `string` fields with `full_text_search`. `indexShape()` in `mappers.ts` collapses this into `kind`. Create uses `schema.fields._values` / `_sparse_values` for classic indexes and `POST /indexes/create-for-model` (`embed.model`, `embed.field_map.text`) for integrated ones.
 - **Pod indexes cannot be created in 2026-07**, but `PATCH /indexes/{name}` `deployment: {replicas, pod_type}` still scales them; shards are fixed. Read capacity (`read_capacity` `OnDemand` / `Dedicated` with `node_type` b1/t1, `scaling: Manual`, `manual.replicas/shards`) is managed/BYOC only; moving to Dedicated needs all three. Tags patch with `""` to delete a key (`tagPatch`).
 - **Pod indexes have no region**, only `deployment.environment`; the lister copies it into `fields.region` because the status page names pod components by environment (`us-east1-gcp`) and serverless ones `<Cloud> <region>` (`AWS us-east-1`). "Index Management" and "Console" are provider-wide.
 - `GET /backups` and `/restore-jobs` paginate with `limit` + `paginationToken` and return `pagination.next`; assistants use `pagination_token` instead. Backup schedules are listed per index (`/indexes/{name}/backup-schedules`) and report `index_id`, never the name, and `IndexModel` has no id, so `getResource` resolves the parent by scanning schedules. Restore = `POST /backups/{id}/create-index`.
@@ -1934,7 +2018,7 @@ Verified 2026-10 against the OpenAPI documents in github.com/datastax/astra-clie
 Verified against Honeycomb's published OpenAPI document (`https://docs.honeycomb.io/api/openapi-public.yaml`, 2026-10) and the official Go client in honeycombio/terraform-provider-honeycombio (`client/*.go`, `client/v2/*.go`, release v0.55.1). Things the code does not make obvious:
 
 - **Two key kinds, two API generations, two hosts.** Configuration keys (`X-Honeycomb-Team: <token>`) are per environment and drive every `/1/...` route; management keys (`Authorization: Bearer <keyId>:<secret>`, JSON:API bodies with `application/vnd.api+json`) are per team and only reach `/2/teams/{team}/environments` and `/api-keys`. Neither can do the other's job. US is `api.honeycomb.io`, EU `api.eu1.honeycomb.io`; keys only work in their own region. The team slug comes from `/2/auth` (`included` teams) or `/1/auth`.
-- **Environments are connected per resource**, the Grafana Cloud stack pattern: each environment's configuration key is stored with `services.secrets.setPlaintext(<environment resource id>, "configurationKey")`, either pasted on the edit form (validated with `/1/auth`, ingest keys refused) or minted by **Connect environment** (`POST /2/teams/{team}/api-keys` with `key_type: configuration`; the response's `attributes.secret` *is* the usable configuration key, while an ingest key is `id + secret`). The account's own configuration key connects the environment `/1/auth` names. A Classic team has an empty environment slug, filed as `classic`.
+- **Environments are connected per resource**, the Grafana Cloud stack pattern: each environment's configuration key is stored with `services.secrets.setPlaintext(<environment resource id>, "configurationKey")`, either pasted on the edit form (validated with `/1/auth`, ingest keys refused) or minted by **Connect environment** (`POST /2/teams/{team}/api-keys` with `key_type: configuration`; the response's `attributes.secret` _is_ the usable configuration key, while an ingest key is `id + secret`). The account's own configuration key connects the environment `/1/auth` names. A Classic team has an empty environment slug, filed as `classic`.
 - **`getCreateConfig` has no account id**, so it can only reach stored per-environment keys when the form is opened from a parent: every environment-scoped type is therefore a child of `environment` (`showInSidebar: true`), and the forms scope their dataset pickers to the parent environment. From the sidebar they see only the account key's environment.
 - **External ids are `{env}/{dataset}/{id}`** (`__all__` for environment-wide objects) because every `/1/...` route needs the dataset back. Listers fan out per dataset plus `__all__` and dedupe by provider id (`__all__` may echo dataset-scoped objects). SLOs over several datasets live under `__all__` (`sloDatasetPath`); target is `target_per_million` (99.9% = 999000).
 - **Updates are whole-object PUTs** (datasets need `description` + `expand_json_depth`, columns `key_name`, triggers everything readable). A trigger PUT must not carry both `query` and `query_id` (the Go client sends only `query_id`). Dataset definitions are `PATCH /1/dataset_definitions/{ds}` with `{name: ""}` resetting one; Recipient PUTs re-send the stored PagerDuty key/webhook headers since a blank password field means "keep". Burn alerts require at least one recipient.
@@ -1966,7 +2050,7 @@ Verified against the Dynatrace docs (Environment API v2/v1, Settings 2.0, Accoun
 - Entities: `/api/v2/entities?entitySelector=type("HOST")&fields=+properties,+tags,+managementZones,+fromRelationships` (relationships only for services and process groups; hosts' are huge), `from=now-72h`, capped at 10 pages of 500. `fromRelationships.runsOn` drives `dependsOn` service → process group → host.
 - **SLOs are the "SLO API classic"** (`/api/v2/slo`, still supported; the new SLO app's platform SLOs are not listed). `evaluate=true` caps the page at 25. A disabled SLO cannot be read by id ("Cannot access a disabled SLO"), so single reads fall back to the list. POST returns only a Location header, so the new SLO is found by name. Terraform's `dynatrace_slo_v2` accepts the classic UUID as import id.
 - **Synthetic monitors are still v1** (`/api/v1/synthetic/monitors`, `ExternalSyntheticIntegration`). Toggling is GET + PUT of the whole monitor minus `entityId`/`createdFrom`. HTTP create body shape comes from the Terraform provider's structs (`script.version "1.0"`, `requests[]` with `validation.rules[{type:"httpStatusesList"}]`).
-- **Settings 2.0** for alerting profiles (`builtin:alerting.profile`) and maintenance windows (`builtin:alerting.maintenance-window`): create is a POST of an *array* answering per-item `{code, objectId}`; update is a PUT of the whole `value` (read first, carry `schemaVersion`). Maintenance `onceRecurrence` times are local `YYYY-MM-DDThh:mm:ss` plus `timeZone`, not ISO with Z. The provider has deprecated `dynatrace_maintenance` in favour of `builtin:maintenance-windows`, so maintenance windows are not exported to Terraform.
+- **Settings 2.0** for alerting profiles (`builtin:alerting.profile`) and maintenance windows (`builtin:alerting.maintenance-window`): create is a POST of an _array_ answering per-item `{code, objectId}`; update is a PUT of the whole `value` (read first, carry `schemaVersion`). Maintenance `onceRecurrence` times are local `YYYY-MM-DDThh:mm:ss` plus `timeZone`, not ISO with Z. The provider has deprecated `dynatrace_maintenance` in favour of `builtin:maintenance-windows`, so maintenance windows are not exported to Terraform.
 - Problems: close is `POST /problems/{id}/close {message}`, comments `POST /problems/{id}/comments {message, context}`; both via `prompt-nosql-command` forms.
 - **DQL**: `POST /platform/storage/query/v1/query:execute {query, requestTimeoutMilliseconds, maxResultRecords}` answers `SUCCEEDED` inline or `RUNNING` + `requestToken`; poll `GET query:poll?request-token=&request-timeout-milliseconds=`. Exposed as the environment's SQL editor (`supportsRestQuery`, `executeQuery`); logs use DQL when a platform token is set, else the deprecated `/api/v2/logs/search` (removal planned end of 2027).
 - **Cost is DPS only**: OAuth client credentials at `sso.dynatrace.com/sso/oauth2/token` with `resource=urn:dtaccount:<uuid>` and `account-uac-read` (5-minute token), then `api.dynatrace.com/sub/v2/accounts/{a}/subscriptions` and `.../{sub}/environments/cost?startTime&endTime&environmentIds` (one record per day and capability, `currencyCode`). Filtered to this environment so several connected environments of one account never double count; chunked by 31 days (no documented max range). Classic licences have no cost API.
@@ -1987,7 +2071,7 @@ Verified against the Dynatrace docs (Environment API v2/v1, Settings 2.0, Accoun
 
 ### Weaviate Cloud (`@infrawrench/plugin-weaviate-cloud`)
 
-- **Weaviate Cloud has no public management API** (verified 2026-10 against docs.weaviate.io/cloud and the FAQ): no cluster create/resize/delete, no billing, no Terraform provider, no CLI. Cluster lifecycle stays in the console; the plugin manages what is *inside* a cluster through its REST API (`<endpoint>/v1`, spec `openapi-specs/schema.json` in github.com/weaviate/weaviate). It works unchanged against self-hosted Weaviate.
+- **Weaviate Cloud has no public management API** (verified 2026-10 against docs.weaviate.io/cloud and the FAQ): no cluster create/resize/delete, no billing, no Terraform provider, no CLI. Cluster lifecycle stays in the console; the plugin manages what is _inside_ a cluster through its REST API (`<endpoint>/v1`, spec `openapi-specs/schema.json` in github.com/weaviate/weaviate). It works unchanged against self-hosted Weaviate.
 - **One account = one cluster**: credentials are `endpoint` + optional `apiKey` (sent as `Authorization: Bearer`), so `cluster` is the `accountRoot`. WCD hosts are `<id>.c<n>.<region>.<cloud>.weaviate.cloud` (older `*.weaviate.network`); region/cloud are parsed from the host and gRPC is `grpc-<host>`. Pasted endpoints are normalised (scheme added, trailing `/v1` dropped).
 - Sources: `/v1/meta` (version, loaded modules), `/v1/nodes?output=verbose` (node status plus per-shard `class`/`objectCount`/`vectorQueueLength`; per-collection counts are summed from shards), `/v1/schema` (classes; `vectorConfig` means named vectors). Collection update is `PUT /v1/schema/{class}` with the whole fetched class; only description, `replicationConfig.factor` and the multi-tenancy auto flags are edited.
 - Tenants: `GET/POST/PUT/DELETE /v1/schema/{class}/tenants` (PUT and POST take arrays, DELETE takes an array of names). Activity names changed: `HOT/COLD/FROZEN` are deprecated aliases of `ACTIVE/INACTIVE/OFFLOADED`; mappers normalise.
@@ -2141,7 +2225,7 @@ Verified against Better Stack's API docs (the `.md` twins of `betterstack.com/do
 
 - **Three hosts, one Bearer token.** Uptime is `uptime.betterstack.com` (the docs now print `incidents.betterstack.com`; both answer, and pagination links name the latter, so `bsPaged` strips them to path+query to stay on one host), Telemetry is `telemetry.betterstack.com`, organization-wide routes (usage, team members, roles) are `betterstack.com` and need a **global** API token. Team-scoped Uptime and Telemetry tokens only work on their own host, so the credential has an optional second `telemetryToken`, and a 401/403 lists a whole product empty. With a global token every create needs `team_name`; the team picker is built from team names seen on listed objects (there is no team list endpoint).
 - **Cost is real billed spend**: `GET /api/v2/usage` lists products, `GET /api/v2/usage/{product}?dimension=cost&resolution=day` gives one item per billed thing with daily dollars (`finalized: false` for today). Max 400 days per request (`chunks`). Rows: service = product name, resourceId = `product/item id`, tag `item` = item name. A 401/403 is a `CostSetupError` asking for a global token.
-- **Logs and SQL go through the Telemetry SQL API**, a read-only ClickHouse HTTP endpoint at `https://<data_region>-connect.betterstackdata.com` with basic auth from a *connection* (`POST /api/v1/connections {client_type: "clickhouse", team_ids}`; the password is only in that response). The plugin creates one per team on the explicit **Connect SQL access** action and stores it with `services.secrets` under `<account>:source:__sql__/<teamId>`. Tables: `remote(t<team_id>_<table_name>_logs)`, `s3Cluster(primary, t…_s3)` with `_row_type = 1` for older logs, `remote(t…_metrics)` with `countMerge(events_count)`. Responses are NDJSON (`FORMAT JSONEachRow` appended), so `runSql` calls `services.http` directly. The host-per-region naming is from the docs' sample (`eu-nbg-2` → `eu-nbg-2-connect`); the connection's own `host` is the fallback. Unverified against a live account.
+- **Logs and SQL go through the Telemetry SQL API**, a read-only ClickHouse HTTP endpoint at `https://<data_region>-connect.betterstackdata.com` with basic auth from a _connection_ (`POST /api/v1/connections {client_type: "clickhouse", team_ids}`; the password is only in that response). The plugin creates one per team on the explicit **Connect SQL access** action and stores it with `services.secrets` under `<account>:source:__sql__/<teamId>`. Tables: `remote(t<team_id>_<table_name>_logs)`, `s3Cluster(primary, t…_s3)` with `_row_type = 1` for older logs, `remote(t…_metrics)` with `countMerge(events_count)`. Responses are NDJSON (`FORMAT JSONEachRow` appended), so `runSql` calls `services.http` directly. The host-per-region naming is from the docs' sample (`eu-nbg-2` → `eu-nbg-2-connect`); the connection's own `host` is the fallback. Unverified against a live account.
 - **Pausing is a PATCH**: monitors, heartbeats and their groups take `paused`, sources `ingesting_paused`. Incidents are v3 (`/api/v3/incidents`, `…/acknowledge`, `…/resolve`, list filtered `from`/`to`, 30 days); escalation policies are v3 (`/api/v3/policies`, steps with `urgency_id` and `step_members`). Monitor `response-times` returns the last day per region in **seconds** (converted to ms); availability is `/monitors/{id}/sla` and `/heartbeats/{id}/availability`.
 - **Telemetry single reads return the resource without a `data` wrapper** (sources), Uptime ones with it; `one()` accepts both.
 - **Status feed**: status.betterstack.com is itself a Better Stack status page (`/index.json`, JSON:API with `status_report`s); components "Uptime" and "Telemetry" map to resource types, anything else is provider-wide.

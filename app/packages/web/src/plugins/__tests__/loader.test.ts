@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { loadPlugins } from "@/plugins/loader";
 
 describe("plugin loader", () => {
-  it("loads all 76 plugins successfully", async () => {
+  // The first call pays the cold import of every plugin, which takes well over
+  // the default timeout on a busy machine; the rest of the file reuses it.
+  it("loads all 152 plugins successfully", async () => {
     const plugins = await loadPlugins();
-    expect(plugins).toHaveLength(76);
-  });
+    expect(plugins).toHaveLength(152);
+  }, 60_000);
 
   it("each plugin has a valid manifest with required fields", async () => {
     const plugins = await loadPlugins();
@@ -111,6 +113,82 @@ describe("plugin loader", () => {
       "uploadthing",
       "workos",
       "twilio",
+      "postmark",
+      "runpod",
+      "render",
+      "stripe",
+      "supabase",
+      "vultr",
+      "resend",
+      "convex",
+      "railway",
+      "gitlab",
+      "civo",
+      "xata",
+      "heroku",
+      "pagerduty",
+      "bitbucket",
+      "cockroachdb-cloud",
+      "northflank",
+      "upcloud",
+      "incident-io",
+      "koyeb",
+      "sendgrid",
+      "lambda-cloud",
+      "upstash",
+      "mailgun",
+      "timescale",
+      "exoscale",
+      "alibaba-cloud",
+      "pinecone",
+      "vast-ai",
+      "aiven",
+      "backblaze-b2",
+      "paperspace",
+      "datastax-astra",
+      "qdrant-cloud",
+      "honeycomb",
+      "ibm-cloud",
+      "dynatrace",
+      "wasabi",
+      "weaviate-cloud",
+      "s3-compatible",
+      "couchbase-capella",
+      "axiom",
+      "algolia",
+      "splunk-observability",
+      "buildkite",
+      "influxdb-cloud",
+      "bunny",
+      "jfrog",
+      "infisical",
+      "better-stack",
+      "chronosphere",
+      "docker-hub",
+      "posthog",
+      "hcp-terraform",
+      "okta",
+      "checkly",
+      "huggingface",
+      "proxmox",
+      "hashicorp-vault",
+      "auth0",
+      "pulumi-cloud",
+      "cerebras",
+      "sambanova",
+      "vsphere",
+      "clerk",
+      "perplexity",
+      "doppler",
+      "fal",
+      "spacelift",
+      "voyage",
+      "openstack",
+      "rabbitmq",
+      "prometheus",
+      "nomad",
+      "consul",
+      "nats",
     ];
     expect([...ids].sort()).toEqual([...expected].sort());
   });

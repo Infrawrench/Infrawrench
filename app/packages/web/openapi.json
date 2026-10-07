@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.75.0",
+    "version": "1.76.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -199,6 +199,10 @@
     {
       "name": "On-call",
       "description": "Who to wake. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time. Shift boundaries are calendar-day arithmetic in the rotation's zone, so daylight-saving changes do not drift. Covers override the rotation for their window and are audit-logged."
+    },
+    {
+      "name": "Paging providers",
+      "description": "PagerDuty, incident.io and any plugin with the paging capability. A routing rule's `paging-provider` destination opens an alert on a provider target under a stable dedup key, so the alert's own recovery and an Infrawrench acknowledgement reach the same upstream alert; `provider-on-call` resolves whoever is on call upstream to members by email. Provider incidents can be mirrored into Infrawrench (by signed webhook and a reconcile pass) and acknowledged or resolved from here."
     },
     {
       "name": "Query monitors",
@@ -1226,46 +1230,85 @@
       "PluginId": {
         "type": "string",
         "enum": [
+          "aiven",
+          "algolia",
+          "alibaba-cloud",
           "anthropic",
           "anyscale",
           "assemblyai",
+          "auth0",
           "aws",
+          "axiom",
           "azure",
+          "backblaze-b2",
           "baseten",
+          "better-stack",
+          "bitbucket",
+          "buildkite",
+          "bunny",
           "cartesia",
+          "cerebras",
+          "checkly",
+          "chronosphere",
           "circleci",
+          "civo",
+          "clerk",
           "clickhouse",
           "cloudflare",
           "cloudinary",
+          "cockroachdb-cloud",
           "cohere",
           "confluent-cloud",
+          "consul",
+          "convex",
           "coralogix",
           "coreweave",
+          "couchbase-capella",
           "crusoe",
           "cursor",
           "databricks",
           "datadog",
+          "datastax-astra",
           "deepgram",
           "deepseek",
           "depot",
           "devin",
           "digitalocean",
           "docker",
+          "docker-hub",
+          "doppler",
+          "dynatrace",
           "elastic-cloud",
           "elevenlabs",
+          "exoscale",
+          "fal",
           "fastly",
           "fireworks",
           "fly",
           "gcp",
           "gemini",
           "github",
+          "gitlab",
           "gladia",
           "grafana-cloud",
           "groq",
+          "hashicorp-vault",
+          "hcp-terraform",
+          "heroku",
           "hetzner",
+          "honeycomb",
+          "huggingface",
+          "ibm-cloud",
+          "incident-io",
+          "infisical",
+          "influxdb-cloud",
+          "jfrog",
           "kafka",
+          "koyeb",
           "kubernetes",
+          "lambda-cloud",
           "linode",
+          "mailgun",
           "memcached",
           "metronome",
           "mistral",
@@ -1274,37 +1317,74 @@
           "mongodb-atlas",
           "mssql",
           "mysql",
+          "nats",
           "neon",
           "netlify",
           "newrelic",
+          "nomad",
+          "northflank",
+          "okta",
           "openai",
           "openrouter",
           "opensearch",
+          "openstack",
           "oracle-cloud",
           "ovh",
+          "pagerduty",
+          "paperspace",
+          "perplexity",
+          "pinecone",
           "planetscale",
           "postgres",
+          "posthog",
+          "postmark",
+          "prometheus",
+          "proxmox",
+          "pulumi-cloud",
+          "qdrant-cloud",
+          "rabbitmq",
+          "railway",
           "redis",
           "redis-cloud",
+          "render",
           "replicate",
+          "resend",
           "revai",
+          "runpod",
+          "s3-compatible",
+          "sambanova",
           "scaleway",
+          "sendgrid",
           "sentry",
           "snowflake",
+          "spacelift",
           "speechmatics",
+          "splunk-observability",
           "ssh",
+          "stripe",
+          "supabase",
           "tailscale",
           "temporal-cloud",
+          "timescale",
           "together",
           "turso",
           "twilio",
+          "upcloud",
           "uploadthing",
+          "upstash",
+          "vast-ai",
           "vercel",
+          "voyage",
+          "vsphere",
+          "vultr",
+          "wasabi",
+          "weaviate-cloud",
           "workos",
-          "xai"
+          "xai",
+          "xata"
         ],
         "description": "Manifest id of an installed plugin.",
-        "example": "anthropic"
+        "example": "aiven"
       },
       "PreflightCheck": {
         "type": "object",
@@ -1972,31 +2052,59 @@
       "ResourceTypeId": {
         "type": "string",
         "enum": [
+          "ab-test",
           "access-application",
           "access-key",
           "access-policy",
           "access-policy-token",
+          "access-token",
           "account",
+          "ack-cluster",
+          "ack-node-pool",
           "acm-certificate",
+          "action",
           "actions-cache",
+          "add-on",
           "admin-api-key",
           "agent",
           "agent-api-key",
           "agent-config",
+          "agent-pool",
           "agent-session",
+          "agent-token",
           "agent-variable",
           "ai-gateway",
           "ai-search",
+          "aiven-billing-group",
+          "aiven-connection-pool",
+          "aiven-database",
+          "aiven-integration",
+          "aiven-kafka-acl",
+          "aiven-kafka-connector",
+          "aiven-kafka-topic",
+          "aiven-project",
+          "aiven-schema-subject",
+          "aiven-service",
+          "aiven-service-user",
+          "aiven-vpc",
+          "aiven-vpc-peering",
           "alb",
           "alert",
+          "alert-channel",
           "alert-condition",
           "alert-configuration",
           "alert-policy",
           "alert-rule",
+          "alerting-profile",
+          "alias",
           "alignment-job",
+          "allowlist-identifier",
           "alloydb-cluster",
           "alloydb-instance",
           "analytics-engine-dataset",
+          "annotation",
+          "anti-affinity-group",
+          "api",
           "api-gateway",
           "api-key",
           "api-token",
@@ -2004,10 +2112,26 @@
           "app",
           "app-engine-service",
           "app-secret",
+          "application",
           "application-key",
           "apprunner-service",
           "artifact-registry-repo",
+          "assistant",
+          "astra-access-entry",
+          "astra-cdc",
+          "astra-collection",
+          "astra-database",
+          "astra-keyspace",
+          "astra-pcu-group",
+          "astra-private-endpoint",
+          "astra-region",
+          "astra-role",
+          "astra-snapshot",
+          "astra-streaming-tenant",
+          "astra-token",
+          "astra-user",
           "audit-event",
+          "authorization-server",
           "auto-scaling-group",
           "automation",
           "autonomous-database",
@@ -2051,16 +2175,21 @@
           "azure-vnet",
           "backend",
           "backend-service",
+          "backup",
           "backup-policy",
+          "backup-restore",
+          "backup-schedule",
           "backup-snapshot",
           "backup-vault",
           "balance",
+          "bare-metal",
           "basin-catalog",
           "basin-pipeline",
           "basin-sink",
           "basin-stream",
           "basin-table",
           "batch",
+          "batch-export",
           "batch-inference-job",
           "batch-job-queue",
           "bedrock-model",
@@ -2070,17 +2199,46 @@
           "billable-metric",
           "billing-account",
           "billing-group",
+          "block-storage",
+          "block-storage-snapshot",
           "block-volume",
+          "blocklist-identifier",
+          "blueprint",
+          "board",
+          "board-view",
           "boot-volume",
+          "branch-restriction",
           "browser-application",
           "bucket",
           "budget",
           "budget-alert-rule",
+          "build",
+          "burn-alert",
           "byok-credential",
           "cache-rule",
           "cached-content",
+          "capella-allowed-cidr",
+          "capella-api-key",
+          "capella-app-service",
+          "capella-backup",
+          "capella-bucket",
+          "capella-cluster",
+          "capella-collection",
+          "capella-db-credential",
+          "capella-network-peer",
+          "capella-private-endpoint",
+          "capella-project",
+          "capella-replication",
+          "capella-scope",
+          "capella-user",
           "cdn-endpoint",
+          "cerebras-batch",
+          "cerebras-endpoint",
+          "cerebras-file",
+          "cerebras-model",
+          "cerebras-model-version",
           "certificate",
+          "certificate-authority",
           "ch-api-key",
           "ch-backup",
           "ch-clickpipe",
@@ -2089,6 +2247,9 @@
           "ch-postgres",
           "ch-service",
           "chain",
+          "chart",
+          "check",
+          "check-group",
           "cks-cluster",
           "client-key",
           "cloud",
@@ -2111,34 +2272,93 @@
           "cloudwatch-alarm",
           "cloudwatch-log-group",
           "cluster",
+          "cluster-secret",
+          "code-engine-app",
+          "code-engine-project",
           "codebuild-project",
           "codepipeline-pipeline",
           "codespace",
           "cognito-user-pool",
+          "cohort",
           "collection",
           "collection-document",
+          "column",
           "compartment",
           "composer-environment",
           "compute-config",
           "config-store",
+          "config-var",
           "connection",
           "connectivity-rule",
           "connector",
+          "consul-acl-policy",
+          "consul-acl-role",
+          "consul-acl-token",
+          "consul-check",
+          "consul-cluster",
+          "consul-config-entry",
+          "consul-intention",
+          "consul-namespace",
+          "consul-node",
+          "consul-partition",
+          "consul-peering",
+          "consul-service",
+          "consul-session",
           "contact-point",
           "container",
+          "container-app",
           "container-registry",
+          "container-registry-auth",
+          "container-repository",
           "context",
           "context-variable",
+          "convex-access-token",
+          "convex-custom-domain",
+          "convex-custom-role",
+          "convex-default-env-var",
+          "convex-deploy-key",
+          "convex-deployment",
+          "convex-env-var",
+          "convex-invite",
+          "convex-log-stream",
+          "convex-member",
+          "convex-preview-deploy-key",
+          "convex-project",
+          "convex-team",
+          "convex-usage-limit",
           "copilot-seat",
+          "cors-rule",
+          "cos-bucket",
           "cost-center",
+          "crawler",
+          "crdb-allowlist-entry",
+          "crdb-api-key",
+          "crdb-backup",
+          "crdb-blackout-window",
+          "crdb-cluster",
+          "crdb-database",
+          "crdb-egress-rule",
+          "crdb-folder",
+          "crdb-log-export",
+          "crdb-metric-export",
+          "crdb-organization",
+          "crdb-restore",
+          "crdb-service-account",
+          "crdb-sql-user",
           "cron-monitor",
+          "custom-domain",
           "custom-enrichment",
           "custom-hostname",
+          "custom-template",
           "custom-voice",
           "customer",
           "d1-database",
           "dashboard",
+          "dashboard-group",
           "database",
+          "database-api-key",
+          "database-backup",
+          "database-db",
           "database-user",
           "databricks-app",
           "databricks-catalog",
@@ -2169,15 +2389,24 @@
           "datasource",
           "db-subnet-group",
           "db-user",
+          "dbaas",
+          "dbaas-database",
+          "dbaas-user",
           "dedicated-inference",
+          "deploy",
+          "deploy-key",
+          "deploy-token",
           "deployed-model",
           "deployment",
+          "deployment-variable",
           "depot-actions-repo",
           "depot-build",
           "depot-project",
           "depot-registry-image",
           "depot-token",
           "depot-trust-policy",
+          "derived-column",
+          "detector",
           "device",
           "dict",
           "dictionary",
@@ -2186,26 +2415,55 @@
           "directory-user",
           "disk",
           "distribution-credential",
+          "dns-domain",
           "dns-record",
           "dns-zone",
           "docker-container",
           "docker-image",
           "docker-network",
           "docker-volume",
+          "dockerhub-access-token",
+          "dockerhub-invite",
+          "dockerhub-member",
+          "dockerhub-namespace",
+          "dockerhub-org-access-token",
+          "dockerhub-repository",
+          "dockerhub-tag",
+          "dockerhub-team",
           "documentdb-cluster",
           "doks-cluster",
           "domain",
           "domain-record",
+          "doppler-config",
+          "doppler-environment",
+          "doppler-group",
+          "doppler-integration",
+          "doppler-project",
+          "doppler-secret",
+          "doppler-service-account",
+          "doppler-service-account-token",
+          "doppler-service-token",
+          "doppler-sync",
+          "doppler-user",
+          "doppler-webhook",
+          "doppler-workplace",
           "downtime",
           "dpo-job",
+          "drop-rule",
           "droplet",
           "durable-object-namespace",
+          "dynamic-secret",
           "dynamodb-table",
+          "dyno",
           "ebs-volume",
           "ec2-instance",
           "ecr-repository",
+          "ecs-instance",
           "ecs-service",
+          "edge-rule",
+          "edge-script",
           "efs-file-system",
+          "eip",
           "eks-cluster",
           "elastic-ip",
           "elasticache-cluster",
@@ -2215,30 +2473,48 @@
           "encryption-key",
           "endpoint",
           "enrichment",
+          "enterprise-connection",
+          "env-group",
+          "env-group-var",
+          "env-var",
           "environment",
+          "escalation-policy",
           "eval",
           "evaluation",
           "evaluation-job",
           "evaluator",
+          "event-hook",
           "eventbridge-rule",
           "events2metrics",
+          "experiment",
           "export-sink",
           "extension",
+          "fal-api-key",
+          "fal-app",
+          "fal-compute-instance",
+          "fal-model",
+          "fal-workflow",
+          "fc-function",
           "feature-flag",
+          "field",
           "file",
           "file-search-document",
           "file-search-store",
+          "filesystem",
           "fine-tune",
           "fine-tuning-job",
           "finetuned-model",
           "firestore-database",
           "firewall",
+          "firewall-group",
           "firewall-rule",
+          "firewall-ruleset",
           "flex-cluster",
           "flexible-ip",
           "flink-compute-pool",
           "floating-ip",
           "folder",
+          "formation",
           "forwarding-rule",
           "function",
           "gateway",
@@ -2251,6 +2527,7 @@
           "gen-ai-knowledge-base",
           "gen-ai-model-router",
           "gke-cluster",
+          "global-firewall",
           "glue-database",
           "gpu-cluster",
           "groq-batch",
@@ -2258,22 +2535,72 @@
           "groq-fine-tuning",
           "groq-model",
           "group",
+          "group-deploy-token",
+          "group-member",
+          "group-variable",
+          "group-webhook",
           "guardrail",
           "hardware",
           "health-check",
           "healthcheck",
+          "heartbeat",
+          "heartbeat-group",
+          "hf-dataset",
+          "hf-inference-endpoint",
+          "hf-job",
+          "hf-member-token",
+          "hf-model",
+          "hf-provider-model",
+          "hf-scheduled-job",
+          "hf-service-account",
+          "hf-space",
+          "hf-webhook",
           "history-item",
+          "hog-function",
           "host",
           "hosted-runner",
+          "hostname",
+          "hybrid-environment",
           "hyperdrive",
           "iam-role",
           "iam-user",
           "image",
+          "incident",
+          "incident-io-alert-route",
+          "incident-io-alert-source",
+          "incident-io-catalog-type",
+          "incident-io-escalation",
+          "incident-io-escalation-path",
+          "incident-io-incident",
+          "incident-io-maintenance-window",
+          "incident-io-schedule",
+          "incident-io-severity",
+          "incident-io-status",
+          "incident-io-status-page",
+          "incident-io-team",
+          "incident-io-user",
+          "incident-io-workflow",
+          "index",
           "inference-batch",
+          "influx-bucket",
+          "influx-check",
+          "influx-dashboard",
+          "influx-dedicated-database",
+          "influx-dedicated-token",
+          "influx-notification-endpoint",
+          "influx-notification-rule",
+          "influx-org",
+          "influx-task",
+          "influx-telegraf",
+          "influx-token",
+          "insight",
           "instance",
           "instance-group",
+          "instance-pool",
+          "instance-snapshot",
           "instance-template",
           "instance-type",
+          "integration",
           "internet-gateway",
           "invitation",
           "invite",
@@ -2282,7 +2609,19 @@
           "ip-access-rule",
           "ip-allocation",
           "issue",
+          "jfrog-access-token",
+          "jfrog-build",
+          "jfrog-build-run",
+          "jfrog-group",
+          "jfrog-permission",
+          "jfrog-platform",
+          "jfrog-repository",
+          "jfrog-user",
+          "jfrog-xray-policy",
+          "jfrog-xray-violation",
+          "jfrog-xray-watch",
           "job",
+          "jwt-template",
           "k8s-cluster",
           "k8s-configmap",
           "k8s-cronjob",
@@ -2301,6 +2640,7 @@
           "kafka-topic",
           "kapsule-cluster",
           "key",
+          "key-value",
           "kinesis-stream",
           "kms-key",
           "kms-key-ring",
@@ -2312,20 +2652,41 @@
           "kv-store",
           "lambda-function",
           "language-id-job",
+          "lifecycle-rule",
           "linode",
           "live-session",
           "lke-cluster",
           "lke-node-pool",
           "llm-model",
           "load-balancer",
+          "log-drain",
           "log-sink",
+          "log-stream",
           "logging-endpoint",
           "logpush-job",
           "machine",
+          "machine-identity",
+          "mailgun-account",
+          "mailgun-account-webhook",
+          "mailgun-api-key",
+          "mailgun-dns-record",
+          "mailgun-domain",
+          "mailgun-ip",
+          "mailgun-ip-pool",
+          "mailgun-mailing-list",
+          "mailgun-route",
+          "mailgun-smtp-credential",
+          "mailgun-subaccount",
+          "mailgun-tag",
+          "mailgun-webhook",
+          "maintenance",
+          "maintenance-window",
           "managed-database",
           "managed-db",
           "managed-endpoint",
           "managed-kube",
+          "marker",
+          "marker-setting",
           "media-asset",
           "member",
           "memcached-instance",
@@ -2334,6 +2695,7 @@
           "memorystore-valkey",
           "message-batch",
           "messaging-service",
+          "minio-server",
           "mistral-agent",
           "mistral-api-key",
           "mistral-batch-job",
@@ -2347,14 +2709,23 @@
           "model-api-key",
           "model-endpoint",
           "model-version",
+          "module",
           "mongodb-database",
           "monitor",
+          "monitor-group",
           "mq-broker",
           "msk-cluster",
           "mssql-database",
+          "muting-rule",
           "mysql-database",
           "namespace",
           "nat-gateway",
+          "nats-account",
+          "nats-connection",
+          "nats-consumer",
+          "nats-peer",
+          "nats-server",
+          "nats-stream",
           "neon-ai-gateway",
           "neon-auth",
           "neon-auth-domain",
@@ -2382,48 +2753,157 @@
           "netlify-snippet",
           "network",
           "network-connection",
+          "network-volume",
+          "network-zone",
           "nexus-endpoint",
+          "nf-account",
+          "nf-addon",
+          "nf-cluster",
+          "nf-domain",
+          "nf-job",
+          "nf-pipeline",
+          "nf-project",
+          "nf-secret-group",
+          "nf-service",
+          "nf-subdomain",
+          "nf-volume",
           "nfs-share",
+          "nlb",
+          "node-group",
           "node-pool",
           "nodebalancer",
+          "nomad-acl-policy",
+          "nomad-acl-token",
+          "nomad-allocation",
+          "nomad-cluster",
+          "nomad-csi-plugin",
+          "nomad-deployment",
+          "nomad-job",
+          "nomad-namespace",
+          "nomad-node",
+          "nomad-node-pool",
+          "nomad-service",
+          "nomad-variable",
+          "nomad-volume",
           "notification-policy",
+          "notification-rule",
+          "notifier",
+          "oauth-application",
+          "object-storage",
           "object-storage-bucket",
+          "object-storage-user",
+          "object-store",
+          "object-store-credential",
           "octavia-load-balancer",
           "oke-cluster",
+          "on-call-calendar",
           "online-archive",
           "opensearch-cluster",
           "opensearch-domain",
+          "org",
+          "org-token",
           "organization",
           "organization-api-key",
           "organization-domain",
           "organization-membership",
           "organization-role",
           "organization-user",
+          "os-container",
+          "os-dns-recordset",
+          "os-dns-zone",
+          "os-flavor",
+          "os-floating-ip",
+          "os-image",
+          "os-keypair",
+          "os-lb-listener",
+          "os-lb-pool",
+          "os-loadbalancer",
+          "os-network",
+          "os-router",
+          "os-security-group",
+          "os-security-group-rule",
+          "os-server",
+          "os-stack",
+          "os-subnet",
+          "os-volume",
+          "os-volume-backup",
+          "os-volume-snapshot",
+          "oss-bucket",
           "outgoing-webhook",
+          "package",
           "page-rule",
+          "pagerduty-business-service",
+          "pagerduty-escalation-policy",
+          "pagerduty-event-orchestration",
+          "pagerduty-incident",
+          "pagerduty-maintenance-window",
+          "pagerduty-schedule",
+          "pagerduty-service",
+          "pagerduty-team",
+          "pagerduty-user",
           "parsing-rule-group",
           "permission",
+          "perplexity-agent-model",
+          "perplexity-async-request",
+          "perplexity-router-model",
+          "perplexity-skill",
+          "perplexity-sonar-model",
           "pg-database",
           "pg-schema",
           "phone-number",
           "pipeline",
+          "pipeline-cache",
+          "pipeline-coupling",
+          "pipeline-schedule",
+          "pipeline-template",
           "placement-group",
           "playbook",
+          "pod",
+          "policy",
+          "policy-group",
+          "policy-pack",
+          "policy-set",
+          "postgres",
           "postgres-cluster",
+          "postmark-dns-record",
+          "postmark-domain",
+          "postmark-inbound-rule",
+          "postmark-message-stream",
+          "postmark-sender-signature",
+          "postmark-server",
+          "postmark-template",
+          "postmark-webhook",
           "posture-integration",
           "prediction",
           "primary-ip",
           "private-endpoint-service",
+          "private-location",
           "private-network",
+          "problem",
+          "process-group",
           "product-environment",
           "project",
           "project-api-key",
+          "project-deploy-key",
+          "project-member",
           "project-rate-limit",
           "project-service-account",
           "project-user",
           "project-variable",
+          "project-webhook",
+          "prometheus-alert",
+          "prometheus-alertmanager",
+          "prometheus-am-alert",
+          "prometheus-receiver",
+          "prometheus-rule",
+          "prometheus-rule-group",
+          "prometheus-scrape-pool",
+          "prometheus-server",
+          "prometheus-silence",
+          "prometheus-target",
           "pronunciation-dict",
           "pronunciation-dictionary",
+          "protected-branch",
           "provider",
           "ps-backup",
           "ps-branch",
@@ -2432,13 +2912,45 @@
           "ps-password",
           "ps-role",
           "ps-webhook",
+          "public-ip",
           "pubsub-subscription",
           "pubsub-topic",
+          "pull-zone",
           "purchase",
+          "pve-backup",
+          "pve-backup-job",
+          "pve-cluster",
+          "pve-ct",
+          "pve-firewall-alias",
+          "pve-firewall-rule",
+          "pve-ha-resource",
+          "pve-ha-rule",
+          "pve-ipset",
+          "pve-node",
+          "pve-pool",
+          "pve-security-group",
+          "pve-storage",
+          "pve-vm",
           "queue",
           "quota",
           "quota-rule",
           "r2-bucket",
+          "rabbitmq-binding",
+          "rabbitmq-channel",
+          "rabbitmq-cluster",
+          "rabbitmq-connection",
+          "rabbitmq-exchange",
+          "rabbitmq-federation-upstream",
+          "rabbitmq-node",
+          "rabbitmq-operator-policy",
+          "rabbitmq-permission",
+          "rabbitmq-policy",
+          "rabbitmq-queue",
+          "rabbitmq-shovel",
+          "rabbitmq-topic-permission",
+          "rabbitmq-user",
+          "rabbitmq-vhost",
+          "ram-user",
           "rate-limit",
           "rate-limit-rule",
           "rc-account",
@@ -2454,25 +2966,57 @@
           "rdb-instance",
           "rds-cluster",
           "rds-instance",
+          "recipient",
+          "recording-rule",
           "redirect-rule",
+          "redirect-url",
           "redis-instance",
           "redshift-cluster",
+          "registry-module",
           "registry-namespace",
+          "registry-provider",
           "reinforcement-fine-tuning-job",
           "release",
+          "replication-rule",
           "repo-blocklist",
+          "repository",
+          "repository-variable",
+          "repository-webhook",
+          "resend-account",
+          "resend-api-key",
+          "resend-automation",
+          "resend-broadcast",
+          "resend-contact",
+          "resend-contact-property",
+          "resend-dns-record",
+          "resend-domain",
+          "resend-email",
+          "resend-oauth-grant",
+          "resend-segment",
+          "resend-suppression",
+          "resend-template",
+          "resend-topic",
+          "resend-webhook",
           "reservation",
           "reserved-ip",
+          "resource-group",
+          "restore-job",
+          "review-app",
           "role",
+          "rollup-rule",
           "route-table",
           "route53-health-check",
           "route53-hosted-zone",
           "route53-record-set",
           "router",
+          "run",
+          "run-task",
           "runner",
           "runner-resource-class",
           "s3-bucket",
           "sagemaker-endpoint",
+          "sambanova-model",
+          "saved-query",
           "schedule",
           "scheduled-function",
           "schema-registry",
@@ -2480,24 +3024,49 @@
           "secret",
           "secret-manager-secret",
           "secret-store",
+          "secret-sync",
           "secrets-manager-secret",
           "secrets-store-secret",
           "security-group",
           "security-list",
+          "sendgrid-account",
+          "sendgrid-alert",
+          "sendgrid-api-key",
+          "sendgrid-dns-record",
+          "sendgrid-domain",
+          "sendgrid-event-webhook",
+          "sendgrid-inbound-parse",
+          "sendgrid-ip",
+          "sendgrid-ip-pool",
+          "sendgrid-link-branding",
+          "sendgrid-reverse-dns",
+          "sendgrid-subuser",
+          "sendgrid-template",
+          "sendgrid-unsubscribe-group",
+          "sendgrid-verified-sender",
           "sentiment-job",
           "server",
           "serverless-container",
+          "serverless-endpoint",
           "serverless-function",
           "serverless-instance",
           "serverless-traffic-filter",
           "service",
           "service-account",
+          "service-instance",
           "service-version",
           "session",
+          "shared-drive",
+          "shared-variable",
           "shared-volume",
+          "signal",
           "skill",
+          "sks-cluster",
+          "sks-nodepool",
+          "slb",
           "slo",
           "snapshot",
+          "sni-endpoint",
           "snowflake-account",
           "snowflake-database",
           "snowflake-dynamic-table",
@@ -2509,6 +3078,9 @@
           "snowflake-user",
           "snowflake-warehouse",
           "sns-topic",
+          "source",
+          "source-group",
+          "space",
           "spaces-bucket",
           "spanner-backup",
           "spanner-database",
@@ -2523,23 +3095,64 @@
           "ssl-certificate",
           "ssm-parameter",
           "stack",
+          "stack-output",
           "stack-plugin",
           "stackscript",
+          "starred-query",
+          "startup-script",
+          "state-output",
           "static-ip",
+          "status-page",
+          "status-page-resource",
+          "status-page-section",
+          "status-report",
           "step-function",
+          "storage",
           "storage-box",
+          "storage-zone",
+          "stripe-account",
+          "stripe-connected-account",
+          "stripe-event-destination",
+          "stripe-meter",
+          "stripe-payout",
+          "stripe-price",
+          "stripe-product",
+          "stripe-report-run",
+          "stripe-sigma-query-run",
+          "stripe-webhook-endpoint",
+          "sub-account",
           "subaccount",
           "subnet",
+          "supabase-api-key",
+          "supabase-auth",
+          "supabase-backup",
+          "supabase-branch",
+          "supabase-bucket",
+          "supabase-function",
+          "supabase-organization",
+          "supabase-project",
+          "supabase-read-replica",
+          "supabase-secret",
+          "supabase-signing-key",
+          "supabase-sso-provider",
+          "supabase-third-party-auth",
           "supervised-fine-tuning-job",
           "synthetic-check",
           "synthetic-monitor",
+          "synthetic-test",
           "synthetics-test",
           "tailnet",
           "target-group",
           "tco-policy",
+          "tcp-proxy",
           "team",
           "team-member",
+          "telemetry-alert",
+          "template",
           "tenancy",
+          "tenant",
+          "test",
+          "test-suite",
           "tls-certificate",
           "tls-subscription",
           "topic-job",
@@ -2551,6 +3164,15 @@
           "transcription",
           "transformation",
           "trigger",
+          "trusted-origin",
+          "ts-allow-list",
+          "ts-backup",
+          "ts-exporter",
+          "ts-project",
+          "ts-read-replica",
+          "ts-service",
+          "ts-vpc",
+          "ts-vpc-peering",
           "tuned-model",
           "tunnel",
           "turnstile-widget",
@@ -2564,6 +3186,15 @@
           "twiml-app",
           "upload-mapping",
           "upload-preset",
+          "upstash-account",
+          "upstash-qstash",
+          "upstash-qstash-queue",
+          "upstash-qstash-schedule",
+          "upstash-qstash-url-group",
+          "upstash-redis",
+          "upstash-search",
+          "upstash-team",
+          "upstash-vector",
           "uptime-check",
           "uptime-monitor",
           "usage-trigger",
@@ -2571,6 +3202,19 @@
           "user-invite",
           "ut-app",
           "ut-file",
+          "variable",
+          "variable-set",
+          "varset-variable",
+          "vault-audit-device",
+          "vault-auth-method",
+          "vault-cluster",
+          "vault-kv-secret",
+          "vault-lease",
+          "vault-mount",
+          "vault-pki-cert",
+          "vault-pki-role",
+          "vault-policy",
+          "vault-token",
           "vcn",
           "vector-store",
           "vectorize-index",
@@ -2584,33 +3228,65 @@
           "verify-service",
           "vertex-ai-endpoint",
           "vertex-gemini-model",
+          "video-library",
+          "view",
+          "virtual-field",
           "vm",
           "vocabulary",
           "voice",
           "voice-agent",
           "volume",
           "volume-snapshot",
+          "voyage-batch",
+          "voyage-file",
+          "voyage-model",
           "vpc",
           "vpc-nat-gateway",
           "vpc-network",
           "vpc-peering",
           "vpc-subnet",
+          "vsphere-cluster",
+          "vsphere-content-library",
+          "vsphere-customization-spec",
+          "vsphere-datacenter",
+          "vsphere-datastore",
+          "vsphere-folder",
+          "vsphere-host",
+          "vsphere-library-item",
+          "vsphere-network",
+          "vsphere-resource-pool",
+          "vsphere-tag",
+          "vsphere-tag-category",
+          "vsphere-vcenter",
+          "vsphere-vm",
+          "vswitch",
           "waf-web-acl",
           "waiting-room",
           "webhook",
           "webhook-endpoint",
           "webhook-subscription",
           "worker",
+          "worker-pool",
           "worker-route",
+          "workergroup",
           "workers-ai-model",
           "workflow",
           "workload",
           "workspace",
           "workspace-member",
+          "workspace-variable",
+          "workspace-webhook",
+          "xata-api-key",
+          "xata-backup",
+          "xata-branch",
+          "xata-invitation",
+          "xata-member",
+          "xata-organization",
+          "xata-project",
           "zone"
         ],
         "description": "Resource type id. Note: not every plugin exposes every type; see the plugin's `resourceTypes` for the valid (pluginId, typeId) pairs.",
-        "example": "access-application"
+        "example": "ab-test"
       },
       "Dashboard": {
         "type": "object",
@@ -26019,6 +26695,620 @@
         ],
         "additionalProperties": false
       },
+      "PagingProviderSettings": {
+        "type": "object",
+        "properties": {
+          "inboundEnabled": {
+            "type": "boolean",
+            "description": "Mirror this account's incidents into Infrawrench."
+          },
+          "webhookConfigured": {
+            "type": "boolean",
+            "description": "A webhook (subscribed by Infrawrench, or a pasted signing secret) is in place."
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The URL a manually configured webhook must point at. Null until inbound is enabled, or when the deployment has no public URL."
+          },
+          "lastSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSyncError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "inboundEnabled",
+          "webhookConfigured",
+          "webhookUrl",
+          "lastSyncedAt",
+          "lastSyncError"
+        ],
+        "additionalProperties": false
+      },
+      "PagingProviderAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string",
+            "example": "pagerduty"
+          },
+          "targetLabel": {
+            "type": "string",
+            "example": "Service"
+          },
+          "targetDescription": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supportsAcknowledgeEvent": {
+            "type": "boolean",
+            "description": "Whether an Infrawrench acknowledgement is written back as an event."
+          },
+          "onCallSourceLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "incidents": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "canAcknowledge": {
+                "type": "boolean"
+              },
+              "canResolve": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "label",
+              "canAcknowledge",
+              "canResolve"
+            ],
+            "additionalProperties": false
+          },
+          "webhookMode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "managed",
+              "manual"
+            ],
+            "description": "`managed`: Infrawrench subscribes the webhook through the provider's API. `manual`: the user adds the URL in the provider's dashboard and pastes its signing secret."
+          },
+          "webhookSetupHelp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settings": {
+            "$ref": "#/components/schemas/PagingProviderSettings"
+          }
+        },
+        "required": [
+          "accountId",
+          "displayName",
+          "pluginId",
+          "targetLabel",
+          "targetDescription",
+          "supportsAcknowledgeEvent",
+          "onCallSourceLabel",
+          "incidents",
+          "webhookMode",
+          "webhookSetupHelp",
+          "settings"
+        ],
+        "additionalProperties": false
+      },
+      "PagingProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PagingProviderAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "PagingDestinationAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "targetLabel": {
+            "type": "string"
+          },
+          "onCallSourceLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "onCallSources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "schedule",
+                    "escalation-policy"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this account's lists could not be loaded; the other accounts still load."
+          }
+        },
+        "required": [
+          "accountId",
+          "displayName",
+          "pluginId",
+          "targetLabel",
+          "onCallSourceLabel",
+          "targets",
+          "onCallSources",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "PagingDestinationsResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PagingDestinationAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "PagingEventRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "dedupKey": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "triggered",
+              "acknowledged",
+              "resolved"
+            ]
+          },
+          "pendingAction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "trigger",
+              "acknowledge",
+              "resolve"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "targetId",
+          "dedupKey",
+          "trigger",
+          "title",
+          "state",
+          "pendingAction",
+          "attempts",
+          "lastError",
+          "createdAt",
+          "updatedAt",
+          "sentAt"
+        ],
+        "additionalProperties": false
+      },
+      "PagingEventsResponse": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PagingEventRecord"
+            }
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "PagingProviderSettingsResult": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/PagingProviderAccount"
+          },
+          "warning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "warning"
+        ],
+        "additionalProperties": false
+      },
+      "PagingProviderSettingsInput": {
+        "type": "object",
+        "properties": {
+          "inboundEnabled": {
+            "type": "boolean"
+          },
+          "webhookSecret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512,
+            "description": "For a `manual` webhook only: the signing secret copied from the provider. `null` forgets it; omit to keep the stored one. Never returned."
+          }
+        },
+        "required": [
+          "inboundEnabled"
+        ],
+        "additionalProperties": false
+      },
+      "PagingSyncResult": {
+        "type": "object",
+        "properties": {
+          "synced": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "synced"
+        ],
+        "additionalProperties": false
+      },
+      "PagingOnCallNowResponse": {
+        "type": "object",
+        "properties": {
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "memberUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "until": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "level": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "email",
+                "memberUserId",
+                "until",
+                "level"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "people"
+        ],
+        "additionalProperties": false
+      },
+      "PagerIncident": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Infrawrench's id for the mirrored incident."
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "#1234"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "triggered",
+              "acknowledged",
+              "resolved"
+            ]
+          },
+          "statusLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "urgency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serviceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "fromInfrawrench": {
+            "type": "boolean",
+            "description": "True when an Infrawrench alert opened this incident."
+          },
+          "canAcknowledge": {
+            "type": "boolean"
+          },
+          "canResolve": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "externalId",
+          "reference",
+          "title",
+          "status",
+          "statusLabel",
+          "urgency",
+          "url",
+          "serviceName",
+          "assignees",
+          "createdAt",
+          "updatedAt",
+          "resolvedAt",
+          "fromInfrawrench",
+          "canAcknowledge",
+          "canResolve"
+        ],
+        "additionalProperties": false
+      },
+      "PagerIncidentsResponse": {
+        "type": "object",
+        "properties": {
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PagerIncident"
+            }
+          }
+        },
+        "required": [
+          "incidents"
+        ],
+        "additionalProperties": false
+      },
       "QueryMonitor": {
         "type": "object",
         "properties": {
@@ -41352,6 +42642,56 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "paging-provider"
+                ]
+              },
+              "accountId": {
+                "type": "string",
+                "description": "A connected account whose plugin can page (GET /paging-providers)"
+              },
+              "targetId": {
+                "type": "string",
+                "description": "The provider's id for the target (a PagerDuty service, an incident.io alert source), from GET /paging-providers/destinations"
+              }
+            },
+            "required": [
+              "kind",
+              "accountId",
+              "targetId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "provider-on-call"
+                ]
+              },
+              "accountId": {
+                "type": "string",
+                "description": "A connected account whose plugin can say who is on call"
+              },
+              "sourceId": {
+                "type": "string",
+                "description": "A provider schedule or escalation policy id, from GET /paging-providers/destinations"
+              }
+            },
+            "required": [
+              "kind",
+              "accountId",
+              "sourceId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
                   "email-address"
                 ]
               },
@@ -41368,7 +42708,7 @@
             "additionalProperties": false
           }
         ],
-        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes; an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody (disabled, empty, not yet started) contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates."
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes; an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody (disabled, empty, not yet started) contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates.\n\n`paging-provider` opens an alert on a provider target under a stable dedup key. The alert's own recovery (a probe coming back, a declared incident resolving, a page being cleared) resolves it upstream, an Infrawrench acknowledgement acknowledges it, and an acknowledgement upstream settles the Infrawrench escalation. `provider-on-call` asks the provider who is on call and pushes to the members whose email matches."
       },
       "QuietHours": {
         "type": [
@@ -68040,6 +69380,1228 @@
           }
         },
         "operationId": "deleteOrgOrgIdOnCallOverridesOverrideId"
+      }
+    },
+    "/api/org/{orgId}/paging-providers": {
+      "get": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "List paging provider accounts and their settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts whose plugin can page, with their inbound settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingProvidersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPagingProviders"
+      }
+    },
+    "/api/org/{orgId}/paging-providers/destinations": {
+      "get": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "List the targets and on-call sources a routing rule can name",
+        "description": "Listed live from each provider, so a destination is picked by name. A failure is reported per account in `error` rather than failing the response.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-account pickers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingDestinationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPagingProvidersDestinations"
+      }
+    },
+    "/api/org/{orgId}/paging-providers/events": {
+      "get": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "List upstream alerts Infrawrench opened",
+        "description": "One row per (account, target, dedup key): a trigger, its acknowledgement and its resolution are one alert upstream. `pendingAction` is set while a send is queued or being retried.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPagingProvidersEvents"
+      }
+    },
+    "/api/org/{orgId}/paging-providers/{accountId}/settings": {
+      "put": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Configure incident mirroring for a paging provider account",
+        "description": "Turning inbound on with a `managed` webhook subscribes one through the provider's API; turning it off removes the subscription and forgets the mirrored incidents. A webhook that cannot be subscribed is reported in `warning` and mirroring falls back to reconciling on a timer.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "A connected account whose plugin can page"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PagingProviderSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The account with its new settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingProviderSettingsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdPagingProvidersAccountIdSettings"
+      }
+    },
+    "/api/org/{orgId}/paging-providers/{accountId}/sync": {
+      "post": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Reconcile an account's incidents now",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "A connected account whose plugin can page"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many incidents the provider returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingSyncResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPagingProvidersAccountIdSync"
+      }
+    },
+    "/api/org/{orgId}/paging-providers/{accountId}/on-call/{sourceId}": {
+      "get": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Who is on call on a provider schedule or escalation policy",
+        "description": "Takes `team:read`, like the rotation preview. Each person is matched to an organization member by email; `memberUserId` is null for somebody who is on call upstream but not a member here.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "A connected account whose plugin can page"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "sourceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The people on call now, first escalation level first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagingOnCallNowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPagingProvidersAccountIdOnCallSourceId"
+      }
+    },
+    "/api/org/{orgId}/paging-incidents": {
+      "get": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "List incidents mirrored from paging providers",
+        "description": "Only accounts with inbound mirroring turned on contribute. Open incidents by default; `status=all` includes resolved ones. These are a provider's pages, distinct from incidents declared in Infrawrench (`/incidents`).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "all"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagerIncidentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPagingIncidents"
+      }
+    },
+    "/api/org/{orgId}/paging-incidents/{id}/acknowledge": {
+      "post": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Acknowledge a provider incident",
+        "description": "Written to the provider as the acting member where the provider records who acted (PagerDuty's `From` header), falling back to the account's default user. The returned state is the provider's answer, not an assumption.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The incident's new state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagerIncident"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPagingIncidentsIdAcknowledge"
+      }
+    },
+    "/api/org/{orgId}/paging-incidents/{id}/resolve": {
+      "post": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Resolve a provider incident",
+        "description": "Written to the provider as the acting member where the provider records who acted (PagerDuty's `From` header), falling back to the account's default user. The returned state is the provider's answer, not an assumption.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The incident's new state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagerIncident"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPagingIncidentsIdResolve"
+      }
+    },
+    "/api/paging-webhooks/{token}": {
+      "post": {
+        "tags": [
+          "Paging providers"
+        ],
+        "summary": "Inbound paging provider webhook",
+        "description": "Called by the provider, not by clients. The token in the path picks the account; the provider's signature, verified with the stored secret, authenticates the delivery. The payload is treated as a nudge: each incident it names is re-read from the provider's API.",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "The signature did not verify"
+          },
+          "404": {
+            "description": "Unknown token"
+          }
+        },
+        "operationId": "postPagingWebhooksToken"
       }
     },
     "/api/org/{orgId}/query-monitors": {
