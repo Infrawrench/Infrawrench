@@ -230,6 +230,18 @@ export type {
 export { bytesToHex, constantTimeEqual, hmacSha256, rejectedPagingWebhook } from "./paging.js";
 
 export type {
+  JitAccessDeclaration,
+  JitAccessPresence,
+  JitGrantResult,
+  JitGrantSpec,
+  JitIdentity,
+  JitPrincipal,
+  JitRole,
+  JitScope,
+} from "./jit-access.js";
+export { jitGrantName } from "./jit-access.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,

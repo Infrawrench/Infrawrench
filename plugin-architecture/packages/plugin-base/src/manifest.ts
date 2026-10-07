@@ -293,6 +293,13 @@ export interface PluginManifest {
    * nothing provider-specific about any of it.
    */
   paging?: PagingCapabilityDeclaration;
+  /**
+   * If present, this plugin can grant a provider role to a person for a
+   * bounded window and take it away again, and the host offers its accounts
+   * in just-in-time access policies. See `jit-access.ts` for the contract;
+   * the host owns approvals and expiry, the plugin owns the provider calls.
+   */
+  jitAccess?: JitAccessDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -955,6 +962,42 @@ export interface PluginClient {
   /** Paging: remove a subscription made by `registerPagingWebhook`. */
   removePagingWebhook?(webhookId: string): Promise<void>;
   /**
+   * Just-in-time access: the places a role can be granted (accounts,
+   * projects, namespaces). Required when the manifest declares `jitAccess`.
+   */
+  listJitScopes?(): Promise<JitScope[]>;
+  /** Just-in-time access: the roles grantable inside one scope. Required with `jitAccess`. */
+  listJitRoles?(scopeId: string): Promise<JitRole[]>;
+  /**
+   * Just-in-time access: the provider principal for a host member, matched by
+   * email, or null when the provider has nobody by that address. Required
+   * with `jitAccess`.
+   */
+  resolveJitPrincipal?(identity: JitIdentity): Promise<JitPrincipal | null>;
+  /**
+   * Just-in-time access: principals a requester may pick when their name in
+   * the provider is not their email. Required when `jitAccess.principalPicker`.
+   */
+  listJitPrincipals?(query?: string): Promise<JitPrincipal[]>;
+  /**
+   * Just-in-time access: create (or, on a retry, find) the grant. Idempotent
+   * by `spec.grantId`; calling it again with a later `expiresAt` extends a
+   * provider-enforced expiry. Required with `jitAccess`.
+   */
+  grantJitAccess?(spec: JitGrantSpec): Promise<JitGrantResult>;
+  /**
+   * Just-in-time access: remove the grant. Idempotent: a grant that is
+   * already gone (or never finished being created) is a success. Must not
+   * need `spec.ref`. Required with `jitAccess`.
+   */
+  revokeJitAccess?(spec: JitGrantSpec): Promise<void>;
+  /**
+   * Just-in-time access: whether the grant's access exists upstream. Called
+   * before granting (so standing access is never revoked) and after revoking
+   * (so a revoke that did not take is raised). Required with `jitAccess`.
+   */
+  checkJitAccess?(spec: JitGrantSpec): Promise<JitAccessPresence>;
+  /**
    * Publish one message to a pub/sub resource: Cloudflare Queue, AWS SQS/SNS/
    * Kinesis/EventBridge, GCP Pub/Sub topic, GCP Cloud Tasks, Azure Service
    * Bus / Event Hub, Kafka topic, etc. Called by the host's Publish tab when
@@ -1396,3 +1439,13 @@ import type {
   PagingWebhookRequest,
   PagingWebhookResult,
 } from "./paging.js";
+import type {
+  JitAccessDeclaration,
+  JitAccessPresence,
+  JitGrantResult,
+  JitGrantSpec,
+  JitIdentity,
+  JitPrincipal,
+  JitRole,
+  JitScope,
+} from "./jit-access.js";
