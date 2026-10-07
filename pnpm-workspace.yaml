@@ -12,6 +12,19 @@ overrides:
   "miniflare>undici": ">=7.29.1 <8"
   "@smithy/middleware-compression>fflate": ">=0.8.3"
 
+# @generaltranslation/compiler's typings import `vite` but the package declares
+# no dependency on it, so TypeScript found whichever vite pnpm hoisted. Adding
+# plugin packages whose vitest resolves vite 8 flipped that from web's vite 6
+# and broke `vite.config.ts` (two incompatible `Plugin` types). As an optional
+# peer it resolves the consuming app's own vite instead.
+packageExtensions:
+  "@generaltranslation/compiler":
+    peerDependencies:
+      vite: "*"
+    peerDependenciesMeta:
+      vite:
+        optional: true
+
 # drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
 # `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
 # `drizzle-orm/clickhouse` (a driver binding for `@clickhouse/client`) from
