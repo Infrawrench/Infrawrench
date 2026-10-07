@@ -211,6 +211,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     environmentUrl: "https://abc12345.live.dynatrace.com",
     apiToken: "dt0c01.TEST.SECRET",
   },
+  wasabi: { accessKey: "TESTACCESSKEY0000000", secretKey: "test-wasabi-secret" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

@@ -401,6 +401,7 @@
     "@infrawrench/plugin-honeycomb": "workspace:*",
     "@infrawrench/plugin-ibm-cloud": "workspace:*",
     "@infrawrench/plugin-dynatrace": "workspace:*",
+    "@infrawrench/plugin-wasabi": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

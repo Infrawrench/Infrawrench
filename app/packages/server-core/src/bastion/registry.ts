@@ -271,6 +271,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "sso.dynatrace.com",
     "api.dynatrace.com",
   ],
+  // s3.<region>, iam, stats and partner (Account Control) hosts
+  wasabi: ["*.wasabisys.com"],
 };
 
 /**
