@@ -552,7 +552,7 @@ export function AccessReviewSection({
           aria-label={gt("Just-in-time grants that did not end")}
           className="mb-4 border border-red-500/40 bg-red-500/5 rounded-xl p-4 space-y-2"
         >
-          <h2 className="text-sm font-semibold text-red-700 dark:text-red-300">
+          <h2 className="text-sm font-semibold text-danger">
             {gt("Just-in-time grants that did not end")}
           </h2>
           <p className="text-xs text-on-surface-muted">

@@ -322,11 +322,11 @@ function RequestRow({
   const headroom = jitExtensionHeadroom(r, maxDuration);
   const tone =
     r.status === "revoke_failed" || r.status === "grant_failed"
-      ? "bg-red-500/15 text-red-600 dark:text-red-300"
+      ? "bg-red-500/15 text-danger"
       : r.status === "active"
-        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        ? "bg-amber-500/15 text-warning"
         : r.status === "pending"
-          ? "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+          ? "bg-blue-500/15 text-info"
           : "bg-surface-overlay text-on-surface-tertiary";
   const confirmRevoke = () => {
     if (window.confirm(gt("End this grant now and remove the access from the provider?"))) {
@@ -360,7 +360,7 @@ function RequestRow({
           ` · ${formatElevationCountdown(r.grantExpiresAt)}`}
       </p>
       {!r.principalMatched && (
-        <p className="text-xs text-amber-700 dark:text-amber-300">
+        <p className="text-xs text-warning">
           {gt(
             "This grant goes to a principal that was not matched from the requester's own email.",
           )}
