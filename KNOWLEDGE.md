@@ -2079,6 +2079,20 @@ Verified against the REST API reference (`buildkite.com/docs/apis/rest-api/*.md`
 - **Terraform** (`buildkite/buildkite`): pipeline, cluster, cluster queue (import `clusterUuid/key`), pipeline schedule (`pipelineSlug/scheduleUuid`), pipeline template, cluster secret (`clusterUuid/secretUuid`, value via `value_wo` + variable). The provider uses GraphQL ids, so listers store `graphqlId` and parents' GraphQL ids on children. Agent tokens (no import, value unrecoverable) and test suites (need `team_owner_id`) are not exported.
 - Not done: pipeline triggers, teams/members, notification services, portals, package registries, hosted agent images/cache volumes, annotation creation; GraphQL is not used.
 
+### InfluxDB Cloud (`@infrawrench/plugin-influxdb-cloud`)
+
+Verified 2026-10 against the OpenAPI documents in github.com/influxdata/docs-v2 (`api-docs/influxdb/cloud/influxdb-cloud-v2-openapi.yaml`, `api-docs/influxdb3/cloud-serverless/…`, `api-docs/influxdb3/cloud-dedicated/management/openapi.yml`) and the region pages on docs.influxdata.com.
+
+- **Two products, one account.** InfluxDB Cloud (TSM) and Cloud Serverless share the v2 API on a regional host (`https://<region>.<cloud>.cloud2.influxdata.com`, `Authorization: Token <token>`); the region id stored on every resource is the host's first label (`us-east-1-1`, `westeurope-1`). InfluxDB 3 Cloud Dedicated is optional on the same account: Management API `https://console.influxdata.com/api/v0/accounts/{account}/clusters/{cluster}`, `Authorization: Bearer <management token>` (from `influxctl management create`). Either set of credentials is enough; types of the missing product list empty.
+- **Org picker** is `providerOptions` on `orgId`, from `GET /api/v2/orgs` with region + token.
+- **Lists** page with `limit=100&offset=…` and need `orgID`; tasks also pass `type=basic`. System buckets (`_monitoring`, `_tasks`) are skipped. Bucket retention is `retentionRules[0].everySeconds`; an empty array means forever. Dedicated `retentionPeriod` is **nanoseconds**.
+- **Tokens are only returned on create** (both products): the create result carries `token` in `resolvedOutputs`; listing never does. Token permissions are `{action, resource:{type, id?, orgID}}`; "all access" is read+write on every type in the spec's `Resource.type` enum.
+- **Query**: `supportsRestQuery` on buckets. InfluxQL goes through the v1 compatibility `GET /query?db=<bucket>&epoch=ms` (works on TSM and Serverless); text containing `|>` or starting with `import "` goes to `POST /api/v2/query` as Flux and the annotated CSV is parsed (`parseAnnotatedCsv`). Introspection is `SHOW MEASUREMENTS` / `SHOW FIELD KEYS` / `SHOW TAG KEYS`, capped at 50 measurements. Serverless SQL is Flight (gRPC) only, so it is not offered.
+- **Usage**: `GET /api/v2/orgs/{id}/usage?start=&stop=` (unix seconds) returns annotated CSV; the only documented measurement is `storage_usage_bucket_bytes` (per `bucket_id`), which feeds bucket storage and the bucket chart. The org chart shows every measurement/field the CSV carries. It is not priced: no billing API exists and the usage measurements are undocumented beyond storage.
+- **Quotas** come from `GET /api/v2/orgs/{id}/limits` paired with live counts; limits ≤ 0 are skipped (unknown or unlimited).
+- **Status**: status.influxdata.com groups components per region with identical child names, so incidents map to regions through `components[].group_id` (ids hard-coded in `status-feed.ts`, read from `summary.json` 2026-10).
+- **Not done**: cost (no billing API), Terraform (no official provider; the old `influxdata/influxdb` one is archived and 1.x only), check/rule/endpoint creation (the query-builder payloads), InfluxDB 3 Cloud single-instance `/api/v3/configure/*`, Dedicated table management, labels, variables, stacks, members.
+
 ---
 
 ## Publish capability (cross-plugin)

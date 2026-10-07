@@ -161,6 +161,7 @@ vi.mock("@infrawrench/plugin-axiom", () => stub("axiom"));
 vi.mock("@infrawrench/plugin-algolia", () => stub("algolia"));
 vi.mock("@infrawrench/plugin-splunk-observability", () => stub("splunk-observability"));
 vi.mock("@infrawrench/plugin-buildkite", () => stub("buildkite"));
+vi.mock("@infrawrench/plugin-influxdb-cloud", () => stub("influxdb-cloud"));
 
 beforeEach(() => {
   disabled = [];

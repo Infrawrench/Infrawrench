@@ -238,6 +238,7 @@
     "@infrawrench/plugin-algolia": "workspace:*",
     "@infrawrench/plugin-splunk-observability": "workspace:*",
     "@infrawrench/plugin-buildkite": "workspace:*",
+    "@infrawrench/plugin-influxdb-cloud": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
