@@ -245,6 +245,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   okta: { orgUrl: "https://acme.okta.com", apiToken: "00test-okta-token" },
   checkly: { apiKey: "cu_test", accountId: "00000000-0000-0000-0000-000000000000" },
+  huggingface: { apiToken: "hf_test_token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

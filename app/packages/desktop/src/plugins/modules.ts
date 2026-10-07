@@ -143,4 +143,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-hcp-terraform"),
   () => import("@infrawrench/plugin-okta"),
   () => import("@infrawrench/plugin-checkly"),
+  () => import("@infrawrench/plugin-huggingface"),
 ];

@@ -321,6 +321,14 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // Okta orgs live on per-tenant subdomains; orgs on a custom URL domain use the user's own host
   okta: ["*.okta.com", "*.oktapreview.com", "*.okta-emea.com", "*.okta-gov.com"],
   checkly: ["api.checklyhq.com"],
+  // huggingface.co is the Hub API; api.endpoints.huggingface.cloud manages Inference Endpoints; endpoints.huggingface.co serves the Inference Catalog; router.huggingface.co is Inference Providers; *.endpoints.huggingface.cloud are the endpoints themselves (Playground).
+  huggingface: [
+    "huggingface.co",
+    "api.endpoints.huggingface.cloud",
+    "endpoints.huggingface.co",
+    "router.huggingface.co",
+    "*.endpoints.huggingface.cloud",
+  ],
 };
 
 /**
