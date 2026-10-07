@@ -320,6 +320,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "hcp-terraform": ["app.terraform.io", "*.terraform.io"],
   // Okta orgs live on per-tenant subdomains; orgs on a custom URL domain use the user's own host
   okta: ["*.okta.com", "*.oktapreview.com", "*.okta-emea.com", "*.okta-gov.com"],
+  checkly: ["api.checklyhq.com"],
 };
 
 /**

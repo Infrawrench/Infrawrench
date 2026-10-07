@@ -2222,6 +2222,20 @@ Verified against the API v2 docs in `hashicorp/web-unified-docs` (`content/terra
 - **Not done**: creating apps and policies (mode/type-specific settings), identity providers, authenticators, group rules.
 - The spec is `okta/okta-management-openapi-spec` (`dist/current/management-minimal.yaml`, 2026.09.1).
 
+### Checkly (`@infrawrench/plugin-checkly`)
+
+Verified against Checkly's published OpenAPI document (`https://api.checklyhq.com/openapi.json`, 2026-10), the Analytics API page in checkly/docs and the official Terraform provider (checkly/terraform-provider-checkly v1.29.0). Things the code does not make obvious:
+
+- **Auth is `Authorization: Bearer <user api key>` plus `X-Checkly-Account`** on every call; `GET /v1/accounts` (sent without the account header) feeds the account picker. The key acts with its user's role; a 403 lists that type empty.
+- **Updates are per type** (`PUT /v1/checks/{api|browser|dns|grpc|heartbeat|icmp|multistep|ssl|tcp|traceroute|url}/{id}`); the generic `PUT /v1/checks/{id}` is deprecated and only used for Playwright suites and agentic checks, which have no route of their own. Nothing in the bodies is required, but whether omitted keys are left alone is undocumented, so the client GETs the check and PUTs back only the writable keys (`CHECK_WRITABLE`, the union of the per-type PUT schemas) with the change applied. Activate/mute are the same path with `activated`/`muted`. Groups likewise (`GROUP_WRITABLE`).
+- **Run now is `POST /v2/check-sessions/trigger {target: {checkId: [...]}}`** (v1 is deprecated). A group run triggers its checks' ids (`/v1/check-groups/{id}/checks`).
+- **Metrics** come from raw results (`GET /v2/check-results/{id}`, `resultType=FINAL`, UNIX-second `from`/`to`, cursor `nextId`, 30-day retention, 60 req/min): response time bucketed per `runLocation` plus failed runs. The Analytics API (`/v1/analytics/<type path>/{id}`, 30 req/min) has a different path and metric vocabulary per check type (`ANALYTICS` in `metrics.ts`); its time-bucketed rows' time key is undocumented, so it is only used for window aggregates (availability, p95) on the detail page. Private locations chart `queueSize`/`oldestScheduledCheckRun` (`/v1/private-locations/{id}/metrics`, last 15 days only).
+- **Usage is credits, never money.** `/v2/usage/terms` + `/v2/usage/summary` report credit consumption for credit packages; it is reported as a quota (`creditsUsed` vs the term's `creditBudget`), not cost rows, and plans with fixed limits report nothing.
+- **Secrets that are shown once**: private location agent keys (`POST /v1/private-locations/{id}/keys` returns `rawKey`) are stored with `services.secrets` as the `agentKey` output; heartbeat ping URLs (`heartbeat.pingUrl`, else `https://ping.checklyhq.com/<pingToken>`) are a sensitive output. Webhook/Slack URLs are shown host-only.
+- **Status feed**: status.checklyhq.com redirects to `is.checkly.online`, Checkly's own status page product, which has no JSON; `/feed.rss` has one item per update (guid = incident URL, description `Status: <state>` and an "Affected components" list). The first item per guid is the newest; "Maintenance scheduled" announcements are skipped.
+- **DNS**: dashboards declare `<subdomain>.checklyhq.com` for dangling-record detection (www/app/api excluded).
+- **Not done**: browser/multistep/Playwright check creation (needs scripts and code bundles: the CLI's job), snippets, client certificates, incidents and status page components/incidents, test sessions, error groups and root-cause analyses, members.
+
 ---
 
 ## Publish capability (cross-plugin)
