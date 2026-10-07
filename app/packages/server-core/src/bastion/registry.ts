@@ -273,7 +273,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // s3.<region>, iam, stats and partner (Account Control) hosts
   wasabi: ["*.wasabisys.com"],
-  // each account is one cluster endpoint: Weaviate Cloud clusters live under weaviate.cloud (older ones weaviate.network); self-hosted endpoints are user-supplied
+  // Weaviate Cloud clusters and its provisioning API (api-cloud, auth) live under weaviate.cloud, older clusters under weaviate.network; self-hosted endpoints are user-supplied
   "weaviate-cloud": ["*.weaviate.cloud", "*.weaviate.network"],
   // user-supplied endpoint; v1 doesn't bastion-route self-hosted S3
   "s3-compatible": [],

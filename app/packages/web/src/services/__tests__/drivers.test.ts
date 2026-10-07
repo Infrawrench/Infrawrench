@@ -12,13 +12,14 @@ describe("driver registry", () => {
     expect(sqlDrivers.size).toBe(5);
   });
 
-  it("kvDrivers contains redis, memcached, mongodb, and kafka", () => {
+  it("kvDrivers contains redis, memcached, mongodb, kafka, and nats", () => {
     const ids = [...kvDrivers.keys()];
     expect(ids).toContain("redis");
     expect(ids).toContain("memcached");
     expect(ids).toContain("mongodb");
     expect(ids).toContain("kafka");
-    expect(kvDrivers.size).toBe(4);
+    expect(ids).toContain("nats");
+    expect(kvDrivers.size).toBe(5);
   });
 
   it("dockerDrivers contains docker", () => {

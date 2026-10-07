@@ -2723,6 +2723,8 @@
           "nats-account",
           "nats-connection",
           "nats-consumer",
+          "nats-kv-bucket",
+          "nats-object-store",
           "nats-peer",
           "nats-server",
           "nats-stream",

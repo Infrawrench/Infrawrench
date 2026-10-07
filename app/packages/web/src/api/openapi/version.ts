@@ -266,7 +266,7 @@
 // custom CA bundle) that credential forms collapse under "Advanced options".
 // Additive.
 // 1.76.0: 76 new plugins, which extend the `pluginId` and `resourceTypeId`
-// enums. Paging providers: the `paging-provider` and `provider-on-call`
+// enums (NATS includes `nats-kv-bucket` and `nats-object-store`). Paging providers: the `paging-provider` and `provider-on-call`
 // alert-routing destination kinds, `GET /paging-providers` (plus
 // `/destinations`, `/events`, `PUT /{accountId}/settings`,
 // `POST /{accountId}/sync`, `GET /{accountId}/on-call/{sourceId}`),
