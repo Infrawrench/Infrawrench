@@ -277,4 +277,9 @@
 // `jit-access` member on the workspace TabTarget enum, the
 // `jit_access_request` push payload, and `jitGrantIssues` on the access
 // review response. All additive.
-export const API_VERSION = "1.77.0";
+// 1.78.0: service-level objectives. `/slos` CRUD plus `/slos/sources`,
+// `GET /slos/{id}` (with hourly history) and `POST /slos/{id}/freeze`; the
+// `sloAlerts` alert trigger; `slos` on the workspace `TabTarget` kind enum
+// (with an optional `sloId`); and an `slos` section in the org config
+// document. All additive.
+export const API_VERSION = "1.78.0";
