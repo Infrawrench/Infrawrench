@@ -113,6 +113,7 @@ import { plugin as datastaxAstraPlugin } from "@infrawrench/plugin-datastax-astr
 import { plugin as qdrantCloudPlugin } from "@infrawrench/plugin-qdrant-cloud";
 import { plugin as honeycombPlugin } from "@infrawrench/plugin-honeycomb";
 import { plugin as ibmCloudPlugin } from "@infrawrench/plugin-ibm-cloud";
+import { plugin as dynatracePlugin } from "@infrawrench/plugin-dynatrace";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -234,4 +235,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   qdrantCloudPlugin,
   honeycombPlugin,
   ibmCloudPlugin,
+  dynatracePlugin,
 ];

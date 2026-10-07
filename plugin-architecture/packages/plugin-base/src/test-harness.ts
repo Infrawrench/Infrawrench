@@ -207,6 +207,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     configurationKey: "test-config-key",
   },
   "ibm-cloud": { apiKey: "test-api-key", region: "us-south" },
+  dynatrace: {
+    environmentUrl: "https://abc12345.live.dynatrace.com",
+    apiToken: "dt0c01.TEST.SECRET",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

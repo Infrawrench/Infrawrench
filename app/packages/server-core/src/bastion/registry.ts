@@ -263,6 +263,14 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   honeycomb: ["api.honeycomb.io", "api.eu1.honeycomb.io"],
   // IAM, VPC (*.iaas.cloud.ibm.com), Kubernetes Service, Code Engine, Cloud Databases, Resource Controller, billing, COS config and the status feed are under cloud.ibm.com; COS S3 endpoints are under cloud-object-storage.appdomain.cloud
   "ibm-cloud": ["iam.cloud.ibm.com", "*.cloud.ibm.com", "*.cloud-object-storage.appdomain.cloud"],
+  // SaaS environment API (live) and Grail (apps); SSO + Account Management API for DPS cost. Managed clusters and ActiveGates are user-supplied hosts.
+  dynatrace: [
+    "*.live.dynatrace.com",
+    "*.apps.dynatrace.com",
+    "*.dynatracelabs.com",
+    "sso.dynatrace.com",
+    "api.dynatrace.com",
+  ],
 };
 
 /**

@@ -123,4 +123,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-qdrant-cloud"),
   () => import("@infrawrench/plugin-honeycomb"),
   () => import("@infrawrench/plugin-ibm-cloud"),
+  () => import("@infrawrench/plugin-dynatrace"),
 ];
