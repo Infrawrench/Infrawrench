@@ -302,6 +302,14 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   jfrog: [],
   // Infisical Cloud US/EU; self-hosted instances use the user's own URL
   infisical: ["app.infisical.com", "us.infisical.com", "eu.infisical.com"],
+  // Uptime, Telemetry and organization APIs, plus the regional Telemetry SQL endpoints (<region>-connect.betterstackdata.com).
+  "better-stack": [
+    "uptime.betterstack.com",
+    "incidents.betterstack.com",
+    "telemetry.betterstack.com",
+    "betterstack.com",
+    "*.betterstackdata.com",
+  ],
 };
 
 /**

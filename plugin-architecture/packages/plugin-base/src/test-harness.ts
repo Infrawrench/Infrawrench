@@ -234,6 +234,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientId: "00000000-0000-0000-0000-000000000000",
     clientSecret: "test-infisical-secret",
   },
+  "better-stack": { apiToken: "test-better-stack-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

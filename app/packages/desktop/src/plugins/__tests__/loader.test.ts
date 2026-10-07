@@ -165,6 +165,7 @@ vi.mock("@infrawrench/plugin-influxdb-cloud", () => stub("influxdb-cloud"));
 vi.mock("@infrawrench/plugin-bunny", () => stub("bunny"));
 vi.mock("@infrawrench/plugin-jfrog", () => stub("jfrog"));
 vi.mock("@infrawrench/plugin-infisical", () => stub("infisical"));
+vi.mock("@infrawrench/plugin-better-stack", () => stub("better-stack"));
 
 beforeEach(() => {
   disabled = [];
