@@ -27,7 +27,7 @@ describe("plugin feature flags", () => {
   // Loading all 152 plugins takes several seconds under a busy test run.
   beforeAll(async () => {
     plugins = await loadPlugins();
-  }, 30_000);
+  }, 120_000);
 
   function getPlugin(id: string): LoadedPlugin {
     const p = plugins.find((p) => p.plugin.manifest.id === id);

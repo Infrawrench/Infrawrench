@@ -22,6 +22,18 @@ const kpi = (id: string, title: string): CostCanvasBlock => ({
 const text = (id: string, body: string): CostCanvasBlock => ({ id, kind: "text", text: body });
 const spec = (...blocks: CostCanvasBlock[]): CostCanvasSpec => ({ version: 1, blocks });
 
+/**
+ * Money renders in the runtime's default locale, so the expected string is
+ * built the same way: en-GB writes `US$1,234` where en-US writes `$1,234`.
+ */
+const usd = (value: number, digits: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  }).format(value);
+
 describe("renderCostCanvasText", () => {
   const kpis = new Map<string, CostCanvasKpiValue | null>([
     ["spend", { value: 1234, unit: "money", currency: "USD", changePercent: 12.34 }],
@@ -29,8 +41,8 @@ describe("renderCostCanvasText", () => {
   ]);
 
   it("fills values and changes, never leaving template syntax", () => {
-    expect(renderCostCanvasText("Spend {{spend}} ({{spend.change}})", kpis)).toMatch(
-      /Spend \$1,234 \(\+12\.3%\)/,
+    expect(renderCostCanvasText("Spend {{spend}} ({{spend.change}})", kpis)).toBe(
+      `Spend ${usd(1234, 0)} (+12.3%)`,
     );
     expect(renderCostCanvasText("Missing {{nope}} and {{empty}}", kpis)).toBe("Missing - and -");
   });
@@ -150,6 +162,6 @@ describe("helpers", () => {
         currency: "USD",
         perUnit: "user",
       }),
-    ).toBe("$0.37 / user");
+    ).toBe(`${usd(0.37, 2)} / user`);
   });
 });

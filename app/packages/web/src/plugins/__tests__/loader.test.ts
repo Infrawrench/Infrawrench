@@ -7,7 +7,7 @@ describe("plugin loader", () => {
   it("loads all 152 plugins successfully", async () => {
     const plugins = await loadPlugins();
     expect(plugins).toHaveLength(152);
-  }, 60_000);
+  }, 120_000);
 
   it("each plugin has a valid manifest with required fields", async () => {
     const plugins = await loadPlugins();

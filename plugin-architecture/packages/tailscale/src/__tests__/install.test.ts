@@ -159,13 +159,16 @@ describe("Tailscale enrollment", () => {
       try {
         // Only fake commands run: the test never installs or joins Tailscale.
         writeFileSync(join(dir, "id"), '#!/bin/sh\nprintf "0\\n"\n', { mode: 0o755 });
+        // The script refuses anything but Linux, so pin `uname` too and let the
+        // suite run on a macOS workstation.
+        writeFileSync(join(dir, "uname"), '#!/bin/sh\nprintf "Linux\\n"\n', { mode: 0o755 });
         writeFileSync(
           join(dir, "tailscale"),
           `#!/bin/sh
 if [ "$1" = up ]; then
   file="\${2#--auth-key=file:}"
   test "$(cat "$file")" = '${key.key}' || exit 90
-  test "$(stat -c %a "$file")" = 600 || exit 91
+  test "$(stat -c %a "$file" 2>/dev/null || stat -f %Lp "$file")" = 600 || exit 91
   printf 'verified-file\\n'
   exit ${exitCode}
 fi
@@ -181,7 +184,7 @@ printf '{"BackendState":"NeedsMachineAuth","Self":{"ID":"node-1"}}\\n'
         expect(output).toContain("verified-file");
         expect(output).toContain('"NeedsMachineAuth"');
         expect(output).not.toContain(key.key);
-        expect(readdirSync(dir).sort()).toEqual(["id", "tailscale"]);
+        expect(readdirSync(dir).sort()).toEqual(["id", "tailscale", "uname"]);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

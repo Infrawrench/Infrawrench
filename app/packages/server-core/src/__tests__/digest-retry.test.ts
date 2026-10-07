@@ -211,6 +211,20 @@ vi.mock("../email", () => ({
   sendEmails: async () => emailResult,
 }));
 vi.mock("../digest/narrative", () => ({ generateDigestNarrative: async () => null }));
+// The point-in-time feeds each load every plugin through `loadPlugins()`,
+// which is seconds of module evaluation per test and not what these tests
+// are about; empty feeds keep the digest lines at zero.
+vi.mock("../expiry/feed", () => ({ listExpiring: async () => ({ items: [] }) }));
+vi.mock("../posture/feed", () => ({
+  listPosture: async () => ({ counts: { critical: 0, high: 0 } }),
+}));
+vi.mock("../quotas/feed", () => ({ getQuotaFeed: async () => ({ rows: [] }) }));
+vi.mock("../access-review/feed", () => ({
+  listAccessReview: async () => ({ totalCount: 0, counts: { critical: 0, high: 0 } }),
+}));
+vi.mock("../backups/feed", () => ({
+  listBackupCoverage: async () => ({ kindCounts: { unprotected: 0, "rpo-breach": 0 } }),
+}));
 vi.mock("../clickhouse/cost-readers", () => ({
   queryCosts: async () => {
     if (buildShouldThrow) throw new Error("ClickHouse unavailable");
