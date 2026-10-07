@@ -88,6 +88,7 @@ import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
+import { cmdSlos } from "./commands/slos";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
 import { cmdStatusPages } from "./commands/status-pages";
@@ -324,6 +325,8 @@ COMMANDS
                       (pipe it: infrawrench recordings get <id> | asciinema play -)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
+  slos [id|name]      service-level objectives: SLI against target, error budget left (as a
+                      share and as time) & burn rate (give an id/name for its burn rates & charts)
   status-pages [name] public status pages built from your probes: what each publishes and the
                       URL it is live at (give a name/id for its components)
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
@@ -999,6 +1002,10 @@ export async function runCli(): Promise<void> {
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.
         await cmdProbes(ctx, rest[0]);
+        break;
+      case "slos":
+        // `infrawrench slos <id|name>` shows one SLO's burn rates and charts.
+        await cmdSlos(ctx, rest[0]);
         break;
       case "paging":
         // Incidents mirrored from paging providers: the third "incident".
