@@ -238,6 +238,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   upstash: ["api.upstash.com", "qstash-eu-central-1.upstash.io", "qstash-us-east-1.upstash.io"],
   // api.eu.mailgun.net holds EU-region domains
   mailgun: ["api.mailgun.net", "api.eu.mailgun.net"],
+  // Tiger Cloud (Timescale) REST API; the timescale.com host is the legacy alias
+  timescale: ["console.cloud.tigerdata.com", "console.cloud.timescale.com"],
 };
 
 /**

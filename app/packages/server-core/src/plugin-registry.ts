@@ -101,6 +101,7 @@ import { plugin as sendgridPlugin } from "@infrawrench/plugin-sendgrid";
 import { plugin as lambdaCloudPlugin } from "@infrawrench/plugin-lambda-cloud";
 import { plugin as upstashPlugin } from "@infrawrench/plugin-upstash";
 import { plugin as mailgunPlugin } from "@infrawrench/plugin-mailgun";
+import { plugin as timescalePlugin } from "@infrawrench/plugin-timescale";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -210,4 +211,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   lambdaCloudPlugin,
   upstashPlugin,
   mailgunPlugin,
+  timescalePlugin,
 ];

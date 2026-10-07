@@ -111,4 +111,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-lambda-cloud"),
   () => import("@infrawrench/plugin-upstash"),
   () => import("@infrawrench/plugin-mailgun"),
+  () => import("@infrawrench/plugin-timescale"),
 ];

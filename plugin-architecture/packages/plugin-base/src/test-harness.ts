@@ -177,6 +177,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   "lambda-cloud": { apiKey: "secret_test_key" },
   upstash: { email: "test@example.com", apiKey: "test-upstash-key" },
   mailgun: { apiKey: "test-mailgun-api-key" },
+  timescale: { accessKey: "tskey_test", secretKey: "test-secret" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
