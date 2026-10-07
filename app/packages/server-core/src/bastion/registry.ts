@@ -291,6 +291,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "status.algolia.com",
     "crawler.algolia.com",
   ],
+  // api.<realm> for REST, stream.<realm> for SignalFlow; signalfx.com is the legacy alias of the same hosts.
+  "splunk-observability": ["*.observability.splunkcloud.com", "*.signalfx.com"],
 };
 
 /**

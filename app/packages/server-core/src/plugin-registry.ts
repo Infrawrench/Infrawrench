@@ -120,6 +120,7 @@ import { plugin as s3CompatiblePlugin } from "@infrawrench/plugin-s3-compatible"
 import { plugin as couchbaseCapellaPlugin } from "@infrawrench/plugin-couchbase-capella";
 import { plugin as axiomPlugin } from "@infrawrench/plugin-axiom";
 import { plugin as algoliaPlugin } from "@infrawrench/plugin-algolia";
+import { plugin as splunkObservabilityPlugin } from "@infrawrench/plugin-splunk-observability";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -248,4 +249,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   couchbaseCapellaPlugin,
   axiomPlugin,
   algoliaPlugin,
+  splunkObservabilityPlugin,
 ];

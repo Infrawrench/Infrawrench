@@ -2045,6 +2045,20 @@ Verified against Axiom's published OpenAPI documents (axiomhq/docs `content/docs
 - Terraform: Algolia's own `algolia/algolia` 1.x (Sep 2026) groups settings into blocks (`attributes`, `ranking`, `faceting`, `pagination`, `typos`, `languages`, `query_strategy`, `advanced`); only primary indices are exported (replicas come from `advanced.replicas`); `algolia_api_key` imports by key value, which the export never contains; `algolia_ab_test` is skipped (write-once `metrics` the API never returns).
 - **No costs** (no billing API; usage is operations, not money). No quota API.
 
+### Splunk Observability Cloud (`@infrawrench/plugin-splunk-observability`)
+
+Verified against the published API reference (dev.splunk.com/observability/reference, whose Next.js pages embed the OpenAPI operations, parameters and examples in the page data), the official `signalfx-go` and `signalfx-python` clients and the `splunk-terraform/signalfx` provider docs (2026-10). Things the code does not make obvious:
+
+- **Base URLs are per realm**: REST `https://api.<realm>.observability.splunkcloud.com/v2` (the reference's `servers`; `api.<realm>.signalfx.com` still resolves), Synthetics under `/v2/synthetics`, `timeserieswindow` under `/v1`, SignalFlow on `https://stream.<realm>.observability.splunkcloud.com/v2/signalflow`. Realms (us0, us1, us2, eu0, eu1, eu2, jp0, au0, sg0) come from the index at status.signalfx.com.
+- **Auth is `X-SF-Token`** with an org access token of API scope (role power/usage/read_only). Org tokens, members and integrations need a token tied to an admin (an admin's user API access token); those listers return 403 otherwise and list empty.
+- Lists are `limit`/`offset` with `{count, results}`, except `GET /incident` (bare array), synthetics (`page`/`perPage`, `{tests, totalCount}`), and SLOs, which have no list route: `POST /slo/search` with a JSON body.
+- **Every object update is a whole-object PUT**, so the client GETs, merges and PUTs. Token GETs include `secret`; it is stripped before the PUT and never stored. Tokens are addressed by **name**, not id. Rotation (`POST /token/{name}/rotate`) is exposed as `exportCredential` so the new secret is shown once.
+- Detector enable/disable is `PUT /detector/{id}/(enable|disable)` with a JSON array of detect labels; editing a program reconciles rules to its `detect(...).publish('label')` labels.
+- **SignalFlow over REST**: `POST /v2/signalflow/execute?start&stop&resolution&immediate=true`, `Content-Type: text/plain` body = program, answer is SSE (`event: metadata|data|control-message|error`), finite for a past window. Message shapes from `signalfx-python/signalflow/messages.py`. Used for detector, chart and org metrics and for quotas.
+- **Usage, not cost**: there is no billing API. Org metrics (`sf.org.numActiveTimeSeries`/`sf.org.limit.activeTimeSeries`, `sf.org.numCustomMetrics`/`sf.org.limit.customMetricMaxLimit`, `sf.org.num.detector`/`sf.org.limit.detector`, `sf.org.numResourcesMonitored` by `resourceType`) feed the Metrics tab and `fetchQuotas` (both halves from the provider).
+- **No status feed**: Splunk runs one Statuspage per realm (`status.<realm>.observability.splunkcloud.com`) and the manifest takes one URL.
+- Deliberately not done: creating dashboards/charts/SLOs/synthetic tests (large visual or script documents), integration creation (per-type credentials), muting filter editing after creation.
+
 ---
 
 ## Publish capability (cross-plugin)

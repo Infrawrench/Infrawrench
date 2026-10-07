@@ -159,6 +159,7 @@ vi.mock("@infrawrench/plugin-s3-compatible", () => stub("s3-compatible"));
 vi.mock("@infrawrench/plugin-couchbase-capella", () => stub("couchbase-capella"));
 vi.mock("@infrawrench/plugin-axiom", () => stub("axiom"));
 vi.mock("@infrawrench/plugin-algolia", () => stub("algolia"));
+vi.mock("@infrawrench/plugin-splunk-observability", () => stub("splunk-observability"));
 
 beforeEach(() => {
   disabled = [];

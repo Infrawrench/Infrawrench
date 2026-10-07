@@ -224,6 +224,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   "couchbase-capella": { apiKey: "test-capella-key", organizationId: "org-1" },
   axiom: { token: "xaat-test-token" },
   algolia: { appId: "TESTAPP123", apiKey: "test-algolia-admin-key" },
+  "splunk-observability": { realm: "us1", token: "sf-test-token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
