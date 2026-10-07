@@ -180,6 +180,7 @@ vi.mock("@infrawrench/plugin-pulumi-cloud", () => stub("pulumi-cloud"));
 vi.mock("@infrawrench/plugin-cerebras", () => stub("cerebras"));
 vi.mock("@infrawrench/plugin-sambanova", () => stub("sambanova"));
 vi.mock("@infrawrench/plugin-vsphere", () => stub("vsphere"));
+vi.mock("@infrawrench/plugin-clerk", () => stub("clerk"));
 
 beforeEach(() => {
   disabled = [];

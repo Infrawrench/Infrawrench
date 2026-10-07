@@ -2343,6 +2343,19 @@ Verified against the live OpenAPI spec (`https://api.pulumi.com/api/openapi/pulu
 - **Not in the REST API (verified absent from 9.1.1)**: snapshots, alarms, VM rename, host maintenance mode, folder create. Performance metrics exist only as the Technology Preview vStats service (`/api/stats/...`, needs acquisition specs, "not for production"), so no Metrics tab. `/vcenter/capacity/usage` (9.1) is recommended configuration maximums, not enforced limits, so it is not reported as quotas.
 - **Terraform**: provider `vmware/vsphere` (VMware-maintained successor of hashicorp/vsphere, 2.17.x). Exported: tag categories (import by name), tags (import JSON `{"category_name","tag_name"}`), content libraries (import id), datacenters (`/name`), resource pools (no import id: needs an inventory path the REST API never returns). VMs are not exported.
 
+### Clerk (`@infrawrench/plugin-clerk`)
+
+- **Auth**: `Authorization: Bearer sk_live_…`/`sk_test_…` against `https://api.clerk.com/v1`; the key is per instance (dev and prod are separate accounts). The client rejects `pk_` keys up front and pins `Clerk-API-Version: 2026-05-12` (header and `__clerk_api_version` query param are mutually exclusive). Spec: `github.com/clerk/openapi-specs`, `bapi/2026-05-12.yml`.
+- **Pagination**: `limit` (≤ 500) + `offset`. Responses are inconsistent: users, JWT templates, allowlist, invitations, redirect URLs and sessions answer **bare arrays** (some return `{data, total_count}` with `paginated=true`); organizations, domains, OAuth apps, enterprise connections, machines and org memberships answer `{data, total_count}`. `ClerkApi.list` handles both. All timestamps are Unix **milliseconds**.
+- **Errors**: `{errors: [{message, long_message, code}]}`; the plugin surfaces `long_message (code)` with the HTTP status.
+- **Types**: `instance` (**accountRoot**; `GET /instance` returns only id, environment_type, allowed origins; support email is write-only via `PATCH /instance`), `user` (ban/unban, lock/unlock, `DELETE /users/{id}/mfa`, sessions via `GET /sessions?user_id=&status=active` + `POST /sessions/{id}/revoke`), `organization` (memberships `{user_id, role}` where role is an organization role **key** like `org:admin`, from `GET /organization_roles`), `domain` (`cname_targets` / newer `dns_targets` with record type and `required`), `jwt-template` (PATCH needs `name` and `claims` every time), `oauth-application` (secret only on create/`rotate_secret`), `enterprise-connection` (`/enterprise_connections`; `/saml_connections` is deprecated in this version), `machine` (`GET /machines/{id}/secret_key`; rotate needs `previous_token_ttl`), allowlist/blocklist identifiers, invitations (delete = `POST /invitations/{id}/revoke`), redirect URLs.
+- **Settings editor** on the instance: `/instance/restrictions` has **no GET**, so an empty `PATCH {}` reads the current values; `/instance/organization_settings` and `/instance/protect` have GET + PATCH.
+- **Webhooks** are Svix-backed: `POST /webhooks/svix` creates the Svix app once, `POST /webhooks/svix_url` returns a short-lived dashboard sign-in URL (exposed as a credential export). Endpoint-level CRUD is not in the BAPI.
+- **Metrics**: no analytics API. `GET /users/count` takes `created_at_after/_before` and `last_active_at_since` (ms), so new users per day is one count call per bucket (≤ 31) and active users are snapshot counts.
+- **Status feed**: incident.io; `/api/v2/incidents.json` filtered to unresolved (unresolved.json 404s). Components (from summary.json) are not attached to incidents in that feed.
+- **No official Terraform provider** (registry has no `clerk/clerk`), so no `terraformExport`.
+- **Not done**: per-user/org API keys (listing requires a subject), billing endpoints, SCIM directories, email/SMS templates, waitlist, OIDC enterprise connection creation.
+
 ---
 
 ## Publish capability (cross-plugin)

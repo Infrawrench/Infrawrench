@@ -151,4 +151,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-cerebras"),
   () => import("@infrawrench/plugin-sambanova"),
   () => import("@infrawrench/plugin-vsphere"),
+  () => import("@infrawrench/plugin-clerk"),
 ];

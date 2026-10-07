@@ -342,6 +342,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   sambanova: ["api.sambanova.ai"],
   // vCenter Server is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
   vsphere: [],
+  clerk: ["api.clerk.com"],
 };
 
 /**

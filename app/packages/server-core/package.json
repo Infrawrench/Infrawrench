@@ -428,6 +428,7 @@
     "@infrawrench/plugin-cerebras": "workspace:*",
     "@infrawrench/plugin-sambanova": "workspace:*",
     "@infrawrench/plugin-vsphere": "workspace:*",
+    "@infrawrench/plugin-clerk": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

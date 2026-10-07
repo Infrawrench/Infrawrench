@@ -265,6 +265,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     username: "svc-infrawrench@vsphere.local",
     password: "test-password",
   },
+  clerk: { secretKey: "sk_test_clerkcontract" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
