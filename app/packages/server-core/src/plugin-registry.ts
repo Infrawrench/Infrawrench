@@ -121,6 +121,7 @@ import { plugin as couchbaseCapellaPlugin } from "@infrawrench/plugin-couchbase-
 import { plugin as axiomPlugin } from "@infrawrench/plugin-axiom";
 import { plugin as algoliaPlugin } from "@infrawrench/plugin-algolia";
 import { plugin as splunkObservabilityPlugin } from "@infrawrench/plugin-splunk-observability";
+import { plugin as buildkitePlugin } from "@infrawrench/plugin-buildkite";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -250,4 +251,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   axiomPlugin,
   algoliaPlugin,
   splunkObservabilityPlugin,
+  buildkitePlugin,
 ];

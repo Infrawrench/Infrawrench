@@ -225,6 +225,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   axiom: { token: "xaat-test-token" },
   algolia: { appId: "TESTAPP123", apiKey: "test-algolia-admin-key" },
   "splunk-observability": { realm: "us1", token: "sf-test-token" },
+  buildkite: { apiToken: "bkua_test", organization: "acme" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

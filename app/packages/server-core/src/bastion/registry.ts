@@ -293,6 +293,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   // api.<realm> for REST, stream.<realm> for SignalFlow; signalfx.com is the legacy alias of the same hosts.
   "splunk-observability": ["*.observability.splunkcloud.com", "*.signalfx.com"],
+  buildkite: ["api.buildkite.com"],
 };
 
 /**

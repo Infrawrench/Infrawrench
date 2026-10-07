@@ -408,6 +408,7 @@
     "@infrawrench/plugin-axiom": "workspace:*",
     "@infrawrench/plugin-algolia": "workspace:*",
     "@infrawrench/plugin-splunk-observability": "workspace:*",
+    "@infrawrench/plugin-buildkite": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

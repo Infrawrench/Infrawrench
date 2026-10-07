@@ -160,6 +160,7 @@ vi.mock("@infrawrench/plugin-couchbase-capella", () => stub("couchbase-capella")
 vi.mock("@infrawrench/plugin-axiom", () => stub("axiom"));
 vi.mock("@infrawrench/plugin-algolia", () => stub("algolia"));
 vi.mock("@infrawrench/plugin-splunk-observability", () => stub("splunk-observability"));
+vi.mock("@infrawrench/plugin-buildkite", () => stub("buildkite"));
 
 beforeEach(() => {
   disabled = [];

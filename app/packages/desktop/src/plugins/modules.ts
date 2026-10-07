@@ -131,4 +131,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-axiom"),
   () => import("@infrawrench/plugin-algolia"),
   () => import("@infrawrench/plugin-splunk-observability"),
+  () => import("@infrawrench/plugin-buildkite"),
 ];
