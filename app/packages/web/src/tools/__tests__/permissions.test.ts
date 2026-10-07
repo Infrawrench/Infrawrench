@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 // The registry import reaches db/client and the WorkOS client, both of which
 // throw at import time without these. No connection is opened.
@@ -16,6 +16,13 @@ const { authorizeToolCall, denyUnlessPermitted, effectiveToolPermissions } =
   await import("../permissions");
 const { getToolRegistry } = await import("../registry");
 const { needsApproval } = await import("../approval");
+
+// The first registry build loads every plugin for the per-plugin create tools,
+// which outruns the default test timeout under a full run. Pay it once here,
+// with the same budget the plugin loader tests use; later calls hit the cache.
+beforeAll(async () => {
+  await getToolRegistry();
+}, 120_000);
 
 const auth = { userId: "u1", organizationId: "o1", source: "mcp" as const };
 
