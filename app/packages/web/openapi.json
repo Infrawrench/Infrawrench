@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.78.0",
+    "version": "1.79.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -18878,7 +18878,6 @@
           "dashboards",
           "metricAlerts",
           "probes",
-          "slos",
           "costCentres",
           "tagPolicy",
           "alertSettings"
@@ -43869,7 +43868,6 @@
           "logMatchAlerts",
           "postureAlerts",
           "probeAlerts",
-          "sloAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
@@ -46765,6 +46763,779 @@
           "link"
         ],
         "additionalProperties": false
+      },
+      "PrCheckInstallationAccess": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer"
+          },
+          "accountLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checks": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "pullRequests": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "contents": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "manageUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked": {
+            "type": "boolean",
+            "description": "False when GitHub could not be asked; the levels are then all `none`."
+          }
+        },
+        "required": [
+          "installationId",
+          "accountLogin",
+          "checks",
+          "pullRequests",
+          "contents",
+          "suspended",
+          "manageUrl",
+          "checked"
+        ],
+        "additionalProperties": false,
+        "description": "What an installation has **accepted** of the permissions checks need: `checks: write`, `pull_requests` (read, or write for the comment) and `contents: read`. An installation made before checks existed shows `checks: none` until an owner of the GitHub account approves the app's updated permissions."
+      },
+      "PrCheckThresholdConclusion": {
+        "type": "string",
+        "enum": [
+          "neutral",
+          "failure"
+        ],
+        "description": "What the check concludes when the priced monthly increase exceeds `costThreshold`: `neutral` flags it without blocking, `failure` fails it (and blocks merging where branch protection requires the check)."
+      },
+      "PrCheckRepositoryInput": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "A GitHub App installation connected to the organization (`/github/status`)."
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 201,
+            "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$",
+            "description": "`owner/name`, as listed by `/github/repos`.",
+            "example": "acme/infra"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Post checks on this repository's pull requests. Off keeps the settings."
+          },
+          "commentEnabled": {
+            "type": "boolean",
+            "description": "Also keep one summary comment on each infrastructure pull request, edited in place on every push rather than re-posted. Needs the installation's `pull_requests: write`."
+          },
+          "costThreshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 10000000,
+            "description": "Monthly cost increase, in the estimate's currency (USD for every provider that prices today), above which the check concludes `thresholdConclusion`. Null never trips. An increase that could not be priced never trips it either.",
+            "example": 500
+          },
+          "thresholdConclusion": {
+            "$ref": "#/components/schemas/PrCheckThresholdConclusion"
+          },
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "maxItems": 20,
+            "description": "Path prefixes the check looks in, without leading or trailing slashes. Empty covers the whole repository.",
+            "example": [
+              "infra/prod"
+            ]
+          }
+        },
+        "required": [
+          "installationId",
+          "repo",
+          "enabled",
+          "commentEnabled",
+          "costThreshold",
+          "thresholdConclusion",
+          "directories"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckRepository": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PrCheckRepositoryInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "PrCheckStatus": {
+        "type": "object",
+        "properties": {
+          "appConfigured": {
+            "type": "boolean"
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrCheckInstallationAccess"
+            }
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrCheckRepository"
+            }
+          }
+        },
+        "required": [
+          "appConfigured",
+          "installations",
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckConclusion": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "success",
+          "neutral",
+          "failure"
+        ]
+      },
+      "PrCheckEstimateSide": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "monthlyAmount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "monthlyAmount",
+          "currency",
+          "partial"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckChange": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "terraformType": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The synced resource the block manages, matched through uploaded Terraform state."
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changedAttributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The block's literal `count`; null for `for_each` or a computed count."
+          },
+          "before": {
+            "$ref": "#/components/schemas/PrCheckEstimateSide"
+          },
+          "after": {
+            "$ref": "#/components/schemas/PrCheckEstimateSide"
+          },
+          "monthlyDelta": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Null when either side could not be priced; never zero for unknown."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unpricedReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blastRadius": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "directDependants": {
+                "type": "integer"
+              },
+              "transitiveDependants": {
+                "type": "integer"
+              },
+              "references": {
+                "type": "integer"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "unknown"
+                ]
+              },
+              "headline": {
+                "type": "string"
+              },
+              "topDependants": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unchecked": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "directDependants",
+              "transitiveDependants",
+              "references",
+              "severity",
+              "headline",
+              "topDependants",
+              "unchecked"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "rightsizing",
+                    "tag-policy",
+                    "posture",
+                    "parse"
+                  ]
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "notice",
+                    "warning"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "severity",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "address",
+          "terraformType",
+          "action",
+          "path",
+          "line",
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "resourceTypeId",
+          "changedAttributes",
+          "count",
+          "before",
+          "after",
+          "monthlyDelta",
+          "currency",
+          "unpricedReason",
+          "blastRadius",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckReport": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "terraform",
+                    "infrafile",
+                    "kubernetes"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "added",
+                    "modified",
+                    "removed",
+                    "renamed"
+                  ]
+                },
+                "analysed": {
+                  "type": "boolean"
+                },
+                "note": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "kind",
+                "status",
+                "analysed",
+                "note"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrCheckChange"
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "monthlyDelta": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "currency": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "partial": {
+                "type": "boolean"
+              },
+              "pricedChanges": {
+                "type": "integer"
+              },
+              "unpricedChanges": {
+                "type": "integer"
+              },
+              "otherCurrencyChanges": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "monthlyDelta",
+              "currency",
+              "partial",
+              "pricedChanges",
+              "unpricedChanges",
+              "otherCurrencyChanges"
+            ],
+            "additionalProperties": false
+          },
+          "blast": {
+            "type": "object",
+            "properties": {
+              "touchedResources": {
+                "type": "integer"
+              },
+              "dependants": {
+                "type": "integer"
+              },
+              "highestSeverity": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "touchedResources",
+              "dependants",
+              "highestSeverity"
+            ],
+            "additionalProperties": false
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "files",
+          "changes",
+          "totals",
+          "blast",
+          "notes",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repositoryId": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "pullNumber": {
+            "type": "integer"
+          },
+          "pullTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pullUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "headSha": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/PrCheckConclusion"
+          },
+          "checkRunUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commentUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "report": {
+            "$ref": "#/components/schemas/PrCheckReport"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "repositoryId",
+          "repo",
+          "pullNumber",
+          "pullTitle",
+          "pullUrl",
+          "headSha",
+          "status",
+          "conclusion",
+          "checkRunUrl",
+          "commentUrl",
+          "report",
+          "error",
+          "createdAt",
+          "completedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckPreview": {
+        "type": "object",
+        "properties": {
+          "report": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PrCheckReport"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "conclusion": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PrCheckConclusion"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "markdown": {
+            "type": "string",
+            "description": "The check run summary, as GitHub renders it."
+          }
+        },
+        "required": [
+          "report",
+          "conclusion",
+          "title",
+          "markdown"
+        ],
+        "additionalProperties": false
+      },
+      "PrCheckPreviewInput": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "repositoryId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "pullNumber": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "repositoryId",
+              "pullNumber"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "before": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 524288
+                    },
+                    "after": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 524288
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "before",
+                    "after"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "repo": {
+                "type": "string",
+                "maxLength": 201,
+                "description": "`owner/name`, to apply that repository's settings and its Terraform state mapping."
+              }
+            },
+            "required": [
+              "files"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "Either a configured repository and pull request number (read through the GitHub App), or file contents from a local diff (`before` null for an added file, `after` null for a removed one)."
       },
       "DigestSettings": {
         "type": "object",
@@ -63320,7 +64091,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings.",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, costCentres, tagPolicy, alertSettings.",
               "example": "budgets,workflows"
             },
             "required": false,
@@ -91970,6 +92741,494 @@
         },
         "operationId": "postOrgOrgIdGithubIssuesPullRequests",
         "x-required-permission": "github-issues:write"
+      }
+    },
+    "/api/org/{orgId}/pr-checks": {
+      "get": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Get pull request check settings and installation access",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrCheckStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPrChecks",
+        "x-required-permission": "iac:read",
+        "description": "_Requires permission: `iac:read`._"
+      }
+    },
+    "/api/org/{orgId}/pr-checks/repositories": {
+      "get": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "List repositories with pull request checks",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrCheckRepository"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPrChecksRepositories",
+        "x-required-permission": "iac:read",
+        "description": "_Requires permission: `iac:read`._"
+      },
+      "post": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Turn on pull request checks for a repository",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrCheckRepositoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrCheckRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPrChecksRepositories",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/pr-checks/repositories/{id}": {
+      "get": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Get one repository's pull request check settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrCheckRepository"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPrChecksRepositoriesId",
+        "x-required-permission": "iac:read",
+        "description": "_Requires permission: `iac:read`._"
+      },
+      "put": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Replace one repository's pull request check settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrCheckRepositoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrCheckRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdPrChecksRepositoriesId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Stop pull request checks for a repository",
+        "description": "Removes the settings and the repository's check history.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdPrChecksRepositoriesId",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/pr-checks/runs": {
+      "get": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "List recent pull request checks",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "required": false,
+            "name": "repositoryId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrCheckRun"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPrChecksRuns",
+        "x-required-permission": "iac:read",
+        "description": "_Requires permission: `iac:read`._"
+      }
+    },
+    "/api/org/{orgId}/pr-checks/preview": {
+      "post": {
+        "tags": [
+          "Pull request checks"
+        ],
+        "summary": "Preview a pull request check without posting it",
+        "description": "Runs the same analysis the check posts, for a pull request in a configured repository or for file contents from a local diff. Reads only: nothing is posted to GitHub and nothing is stored.\n\n_Requires permission: `iac:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrCheckPreviewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrCheckPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPrChecksPreview",
+        "x-required-permission": "iac:read"
       }
     },
     "/api/org/{orgId}/digest": {

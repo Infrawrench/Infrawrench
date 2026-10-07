@@ -477,6 +477,15 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /github-issues/links": "github-issues:read",
   "POST /github-issues/pull-requests/preview": "github-issues:write",
   "POST /github-issues/pull-requests": "github-issues:write",
+  // pull request checks
+  "GET /pr-checks": "iac:read",
+  "GET /pr-checks/repositories": "iac:read",
+  "POST /pr-checks/repositories": "org:settings:write",
+  "GET /pr-checks/repositories/{id}": "iac:read",
+  "PUT /pr-checks/repositories/{id}": "org:settings:write",
+  "DELETE /pr-checks/repositories/{id}": "org:settings:write",
+  "GET /pr-checks/runs": "iac:read",
+  "POST /pr-checks/preview": "iac:read",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

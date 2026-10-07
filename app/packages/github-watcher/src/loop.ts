@@ -9,6 +9,7 @@ import {
 } from "@infrawrench/server-core/infrafile/triggers";
 import { getBranchHeadSha, isGithubAppConfigured } from "@infrawrench/server-core/github/app";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
+import { runPrCheckPass } from "@infrawrench/server-core/pr-checks/pass";
 
 const TICK_MS = 30_000;
 
@@ -47,7 +48,9 @@ interface LoopOptions {
  *
  * Deploy-on-push triggers ride the same tick: two independent passes over the
  * same installations, so one slow deploy never delays a workflow (or the
- * reverse) beyond the tick it is in.
+ * reverse) beyond the tick it is in. Pull request checks are the third pass:
+ * cost and blast radius posted as a check run on each new head commit of an
+ * open pull request in a repository the org enabled them on.
  */
 export class GithubWatcher extends TickLoop {
   constructor(options: LoopOptions = {}) {
@@ -59,6 +62,7 @@ export class GithubWatcher extends TickLoop {
 
     await this.workflowPass();
     await this.deploymentPass();
+    await runPrCheckPass().catch((e) => console.error("[github-watcher] pr-check pass failed:", e));
   }
 
   private async workflowPass(): Promise<void> {

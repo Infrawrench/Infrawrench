@@ -82,6 +82,10 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // grant, both plugin code; a request resolves the requester's principal
   // through the plugin too. Policy writes do not, but share the prefix.
   new RegExp(`${ORG}/jit-access(/|$)`),
+  // A pull request check preview prices Terraform through plugin estimators
+  // and reads the pull request from GitHub: the github-watcher's work, on
+  // demand.
+  new RegExp(`${ORG}/pr-checks/preview$`),
 ];
 
 const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);

@@ -14,6 +14,7 @@ import type { UnderivableTerraformType } from "./type-map";
 
 export * from "./state";
 export * from "./type-map";
+export * from "./attribute-map";
 export * from "./reconcile";
 
 /** Labels used by every surface, so the three words mean one thing. */

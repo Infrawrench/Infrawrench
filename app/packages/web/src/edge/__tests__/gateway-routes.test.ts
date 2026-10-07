@@ -42,6 +42,14 @@ describe("routeRequest", () => {
       "gateway",
     );
     expect(routeRequest("POST", "/api/workflows/git/tok", null).target).toBe("gateway");
+    // The pull request check preview runs plugin estimators; its settings
+    // CRUD is ordinary Postgres and stays on the edge.
+    expect(routeRequest("POST", "/api/org/org_1/pr-checks/preview", null).target).toBe(
+      "gateway",
+    );
+    expect(routeRequest("POST", "/api/org/org_1/pr-checks/repositories", null).target).toBe(
+      "edge",
+    );
   });
 
   it("does not mistake a prefix for a gateway route", () => {

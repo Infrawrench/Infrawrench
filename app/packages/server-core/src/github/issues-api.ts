@@ -432,3 +432,257 @@ export async function createPullRequest(
   }
   return { number: body.number, url: body.html_url };
 }
+
+// --- Pull request checks ---
+//
+//   pulls         GET /repos/{o}/{r}/pulls[/{n}]             `pull_requests: read`
+//   pull files    GET /repos/{o}/{r}/pulls/{n}/files         `pull_requests: read`
+//                 (GitHub stops at 3000 files across all pages)
+//   check runs    POST /repos/{o}/{r}/check-runs, PATCH …/check-runs/{id}
+//                 `checks: write`, which only GitHub Apps can hold
+//   comments      GET/POST /repos/{o}/{r}/issues/{n}/comments,
+//                 PATCH /repos/{o}/{r}/issues/comments/{id}
+//                 `issues: write` *or* `pull_requests: write` on a pull request
+
+export interface GithubOpenPullRequest {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  headSha: string;
+  baseSha: string;
+  draft: boolean;
+}
+
+interface RawPull {
+  number?: number;
+  title?: string;
+  html_url?: string;
+  draft?: boolean;
+  head?: { sha?: string };
+  base?: { sha?: string };
+}
+
+function toPull(p: RawPull | null | undefined): GithubOpenPullRequest | null {
+  if (!p?.number || !p.head?.sha || !p.base?.sha) return null;
+  return {
+    number: p.number,
+    title: p.title ?? "",
+    htmlUrl: p.html_url ?? "",
+    headSha: p.head.sha,
+    baseSha: p.base.sha,
+    draft: Boolean(p.draft),
+  };
+}
+
+/** Open pull requests, most recently updated first (one page of `limit`). */
+export async function listOpenPullRequests(
+  installationId: number,
+  repo: string,
+  limit = 50,
+): Promise<GithubOpenPullRequest[]> {
+  const body = await call<RawPull[]>(
+    { installationId, what: "list pull requests", permission: "pull_requests" },
+    `${repoPath(repo)}/pulls?state=open&sort=updated&direction=desc&per_page=${Math.min(100, limit)}`,
+  );
+  return (body ?? []).flatMap((p) => {
+    const pull = toPull(p);
+    return pull ? [pull] : [];
+  });
+}
+
+/** One pull request, for a preview by number. Null when it does not exist. */
+export async function getPullRequest(
+  installationId: number,
+  repo: string,
+  pullNumber: number,
+): Promise<GithubOpenPullRequest | null> {
+  const body = await call<RawPull>(
+    { installationId, what: "read the pull request", permission: "pull_requests" },
+    `${repoPath(repo)}/pulls/${pullNumber}`,
+    { allow404: true },
+  );
+  return toPull(body);
+}
+
+/**
+ * The merge base of a pull request (`GET /compare/{base}...{head}`,
+ * `contents: read`). The pull request's file list is relative to it, so the
+ * "before" side of each file has to be read there, not at the base branch's
+ * tip, or changes that landed on the base since would read as this pull
+ * request's. Null when GitHub cannot say.
+ */
+export async function getMergeBaseSha(
+  installationId: number,
+  repo: string,
+  baseSha: string,
+  headSha: string,
+): Promise<string | null> {
+  const body = await call<{ merge_base_commit?: { sha?: string } }>(
+    { installationId, what: "compare the pull request's commits", permission: "contents" },
+    `${repoPath(repo)}/compare/${encodeURIComponent(baseSha)}...${encodeURIComponent(headSha)}?per_page=1`,
+    { allow404: true },
+  );
+  return body?.merge_base_commit?.sha ?? null;
+}
+
+export interface GithubPullRequestFile {
+  filename: string;
+  status: string;
+  previousFilename: string | null;
+}
+
+/** Files a pull request changes, up to `max`. */
+export async function listPullRequestFiles(
+  installationId: number,
+  repo: string,
+  pullNumber: number,
+  max = 300,
+): Promise<{ files: GithubPullRequestFile[]; truncated: boolean }> {
+  const files: GithubPullRequestFile[] = [];
+  for (let page = 1; files.length < max; page++) {
+    const body = await call<
+      Array<{ filename?: string; status?: string; previous_filename?: string }>
+    >(
+      { installationId, what: "list the pull request's files", permission: "pull_requests" },
+      `${repoPath(repo)}/pulls/${pullNumber}/files?per_page=100&page=${page}`,
+    );
+    const list = body ?? [];
+    for (const f of list) {
+      if (!f.filename) continue;
+      files.push({
+        filename: f.filename,
+        status: f.status ?? "modified",
+        previousFilename: f.previous_filename ?? null,
+      });
+    }
+    if (list.length < 100) return { files: files.slice(0, max), truncated: false };
+  }
+  return { files: files.slice(0, max), truncated: true };
+}
+
+export interface GithubCheckRunAnnotation {
+  path: string;
+  start_line: number;
+  end_line: number;
+  annotation_level: "notice" | "warning" | "failure";
+  message: string;
+  title?: string;
+}
+
+export interface GithubCheckRunOutput {
+  title: string;
+  /** Markdown, at most 65535 characters. */
+  summary: string;
+  /** Markdown, at most 65535 characters. */
+  text?: string;
+  /** At most 50 per request. */
+  annotations?: GithubCheckRunAnnotation[];
+}
+
+/** Open an in-progress check run on a commit. */
+export async function createCheckRun(
+  installationId: number,
+  repo: string,
+  input: { name: string; headSha: string; externalId: string; detailsUrl: string | null },
+): Promise<{ id: number; htmlUrl: string | null }> {
+  const body = await call<{ id?: number; html_url?: string }>(
+    { installationId, what: "create the check run", permission: "checks" },
+    `${repoPath(repo)}/check-runs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.name,
+        head_sha: input.headSha,
+        status: "in_progress",
+        external_id: input.externalId,
+        started_at: new Date().toISOString(),
+        ...(input.detailsUrl ? { details_url: input.detailsUrl } : {}),
+      }),
+    },
+  );
+  if (!body?.id) throw new GithubApiError("GitHub returned no check run id.", installationId);
+  return { id: body.id, htmlUrl: body.html_url ?? null };
+}
+
+/** Complete a check run with its conclusion and output. */
+export async function completeCheckRun(
+  installationId: number,
+  repo: string,
+  checkRunId: number,
+  input: {
+    conclusion: "success" | "neutral" | "failure";
+    output: GithubCheckRunOutput;
+    detailsUrl: string | null;
+  },
+): Promise<void> {
+  await call(
+    { installationId, what: "update the check run", permission: "checks" },
+    `${repoPath(repo)}/check-runs/${checkRunId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "completed",
+        conclusion: input.conclusion,
+        completed_at: new Date().toISOString(),
+        output: input.output,
+        ...(input.detailsUrl ? { details_url: input.detailsUrl } : {}),
+      }),
+    },
+  );
+}
+
+/** Post a comment on a pull request (pull requests are issues to this endpoint). */
+export async function createPullRequestComment(
+  installationId: number,
+  repo: string,
+  pullNumber: number,
+  body: string,
+): Promise<{ id: number; htmlUrl: string | null }> {
+  const res = await call<{ id?: number; html_url?: string }>(
+    { installationId, what: "comment on the pull request", permission: "pull_requests" },
+    `${repoPath(repo)}/issues/${pullNumber}/comments`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+  if (!res?.id) throw new GithubApiError("GitHub returned no comment id.", installationId);
+  return { id: res.id, htmlUrl: res.html_url ?? null };
+}
+
+/**
+ * Replace a comment's body. Null when the comment is gone (someone deleted
+ * it on GitHub), so the caller posts a fresh one.
+ */
+export async function updatePullRequestComment(
+  installationId: number,
+  repo: string,
+  commentId: number,
+  body: string,
+): Promise<{ id: number; htmlUrl: string | null } | null> {
+  const res = await call<{ id?: number; html_url?: string }>(
+    { installationId, what: "update the pull request comment", permission: "pull_requests" },
+    `${repoPath(repo)}/issues/comments/${commentId}`,
+    { method: "PATCH", body: JSON.stringify({ body }), allow404: true },
+  );
+  return res?.id ? { id: res.id, htmlUrl: res.html_url ?? null } : null;
+}
+
+/**
+ * The first comment on a pull request whose body carries `marker`: the
+ * fallback when the stored comment id is lost. Reads at most three pages.
+ */
+export async function findPullRequestCommentByMarker(
+  installationId: number,
+  repo: string,
+  pullNumber: number,
+  marker: string,
+): Promise<{ id: number; htmlUrl: string | null } | null> {
+  for (let page = 1; page <= 3; page++) {
+    const list = await call<Array<{ id?: number; html_url?: string; body?: string }>>(
+      { installationId, what: "read the pull request comments", permission: "pull_requests" },
+      `${repoPath(repo)}/issues/${pullNumber}/comments?per_page=100&page=${page}`,
+    );
+    const hit = (list ?? []).find((c) => c.id && c.body?.includes(marker));
+    if (hit?.id) return { id: hit.id, htmlUrl: hit.html_url ?? null };
+    if ((list ?? []).length < 100) break;
+  }
+  return null;
+}
