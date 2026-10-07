@@ -173,6 +173,7 @@ vi.mock("@infrawrench/plugin-hcp-terraform", () => stub("hcp-terraform"));
 vi.mock("@infrawrench/plugin-okta", () => stub("okta"));
 vi.mock("@infrawrench/plugin-checkly", () => stub("checkly"));
 vi.mock("@infrawrench/plugin-huggingface", () => stub("huggingface"));
+vi.mock("@infrawrench/plugin-proxmox", () => stub("proxmox"));
 
 beforeEach(() => {
   disabled = [];

@@ -329,6 +329,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "router.huggingface.co",
     "*.endpoints.huggingface.cloud",
   ],
+  // Proxmox VE is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  proxmox: [],
 };
 
 /**

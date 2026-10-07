@@ -134,6 +134,7 @@ import { plugin as hcpTerraformPlugin } from "@infrawrench/plugin-hcp-terraform"
 import { plugin as oktaPlugin } from "@infrawrench/plugin-okta";
 import { plugin as checklyPlugin } from "@infrawrench/plugin-checkly";
 import { plugin as huggingfacePlugin } from "@infrawrench/plugin-huggingface";
+import { plugin as proxmoxPlugin } from "@infrawrench/plugin-proxmox";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -276,4 +277,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   oktaPlugin,
   checklyPlugin,
   huggingfacePlugin,
+  proxmoxPlugin,
 ];
