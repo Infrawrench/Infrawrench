@@ -182,6 +182,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiKey: "EXO0123456789abcdef01234567",
     apiSecret: "test-secret-0000000000000000000000000000",
   },
+  "alibaba-cloud": {
+    accessKeyId: "LTAI5ttest",
+    accessKeySecret: "test-secret",
+    region: "ap-southeast-1",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

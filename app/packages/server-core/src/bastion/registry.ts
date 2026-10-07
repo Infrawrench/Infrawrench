@@ -241,6 +241,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // Tiger Cloud (Timescale) REST API; the timescale.com host is the legacy alias
   timescale: ["console.cloud.tigerdata.com", "console.cloud.timescale.com"],
   exoscale: ["*.exoscale.com", "*.exo.io"],
+  // Every OpenAPI product and OSS live under aliyuncs.com (regional and central endpoints); the status feed is on status.alibabacloud.com
+  "alibaba-cloud": ["*.aliyuncs.com", "status.alibabacloud.com"],
 };
 
 /**
