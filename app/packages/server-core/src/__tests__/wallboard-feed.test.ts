@@ -221,4 +221,78 @@ describe("getWallboard", () => {
     expect(wall.failures).toEqual([]);
     expect(wall.tiles.find((tile) => tile.id === "probes")?.value).toBe("1/1");
   });
+
+  it("adds the SLO tile only once the org has an SLO, with the lowest budget", async () => {
+    rows.set("slos", [
+      {
+        id: "slo_1",
+        name: "Checkout availability",
+        sli: 0.9995,
+        budgetRemaining: 0.5,
+        burnAlert: "none",
+        burnAlertChangedAt: null,
+        burnRates: {},
+        exhaustedAt: null,
+        targetPercent: 99.9,
+        windowDays: 30,
+      },
+      {
+        id: "slo_2",
+        name: "Search latency",
+        sli: 0.995,
+        budgetRemaining: 0.12,
+        burnAlert: "none",
+        burnAlertChangedAt: null,
+        burnRates: {},
+        exhaustedAt: null,
+        targetPercent: 99,
+        windowDays: 28,
+      },
+    ]);
+
+    const wall = await getWallboard("org_1", { now: NOW });
+
+    expect(wall.status).toBe("ok");
+    expect(wall.tiles.find((tile) => tile.id === "slos")).toMatchObject({
+      value: "12%",
+      detail: "Search latency",
+      status: "ok",
+    });
+  });
+
+  it("puts a spent budget on the wall and goes amber, not red", async () => {
+    rows.set("slos", [
+      {
+        id: "slo_1",
+        name: "Checkout availability",
+        sli: 0.99,
+        budgetRemaining: -0.5,
+        burnAlert: "none",
+        burnAlertChangedAt: null,
+        burnRates: {},
+        exhaustedAt: new Date(NOW - 600_000),
+        targetPercent: 99.9,
+        windowDays: 30,
+      },
+    ]);
+
+    const wall = await getWallboard("org_1", { now: NOW });
+
+    expect(wall.status).toBe("degraded");
+    expect(wall.failures[0]).toMatchObject({
+      id: "slo:slo_1",
+      label: "Checkout availability",
+      since: new Date(NOW - 600_000).toISOString(),
+    });
+    expect(wall.tiles.find((tile) => tile.id === "slos")?.value).toBe("spent");
+  });
+
+  it("names the SLO source when it cannot be read", async () => {
+    throwing.add("slos");
+
+    const wall = await getWallboard("org_1", { now: NOW });
+
+    expect(wall.failedSources).toEqual(["SLOs"]);
+    expect(wall.tiles.find((tile) => tile.id === "slos")?.detail).toBe("could not be read");
+  });
 });

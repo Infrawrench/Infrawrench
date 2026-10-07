@@ -295,6 +295,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // latency and history (mobile has no probe editor: web/desktop own that).
     case "probe_alert":
       return `/org/${data.orgId}/probes`;
+    // An SLO alert names one objective; its screen has the budget and burn
+    // rates that say how bad and whether it is still burning.
+    case "slo_alert":
+      return `/org/${data.orgId}/slos/${data.sloId}`;
     // A declared incident names exactly one thing to look at, and its screen
     // carries the timeline and the note box, which is the whole reason to open
     // a phone at 03:14.
@@ -569,6 +573,20 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       const status = data["status"];
       if (typeof probeId !== "string" || (status !== "down" && status !== "up")) return null;
       return { type: "probe_alert", orgId, probeId, status };
+    }
+    case "slo_alert": {
+      const sloId = data["sloId"];
+      const status = data["status"];
+      if (
+        typeof sloId !== "string" ||
+        (status !== "fast_burn" &&
+          status !== "slow_burn" &&
+          status !== "exhausted" &&
+          status !== "recovered")
+      ) {
+        return null;
+      }
+      return { type: "slo_alert", orgId, sloId, status };
     }
     case "incident": {
       const incidentId = data["incidentId"];

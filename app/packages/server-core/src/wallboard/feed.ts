@@ -1,7 +1,7 @@
 /**
  * Assemble the wallboard from what is true right now.
  *
- * Four sources: declared incidents, synthetic probes, query monitors and
+ * Five sources: declared incidents, synthetic probes, query monitors, SLOs and
  * account sync health. Every one of them is a read of a table this product
  * already keeps, and every one is guarded independently: a wallboard that goes
  * blank because one query threw is a television showing nothing to a room that
@@ -26,6 +26,10 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   QUERY_MONITOR_OPERATOR_LABELS,
   WALLBOARD_LIMITS,
+  deriveSloStatus,
+  formatBudgetDuration,
+  formatBurnRate,
+  sloBudgetTotalMinutes,
   wallboardStatus,
   type WallboardFailureLine,
   type WallboardIncidentLine,
@@ -34,7 +38,14 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { accounts, incidents, pagingIncidents, queryMonitors, syntheticProbes } from "../db/schema";
+import {
+  accounts,
+  incidents,
+  pagingIncidents,
+  queryMonitors,
+  slos,
+  syntheticProbes,
+} from "../db/schema";
 
 export interface WallboardOptions {
   /** Scan instant; defaults to `Date.now()`. Fixed in tests. */
@@ -85,7 +96,7 @@ export async function getWallboard(
 ): Promise<WallboardResponse> {
   const now = options.now ?? Date.now();
 
-  const [incidentResult, probeResult, monitorResult, accountResult] = await Promise.all([
+  const [incidentResult, probeResult, monitorResult, sloResult, accountResult] = await Promise.all([
     guard("incidents", [] as WallboardIncidentLine[], async () => {
       const rows = await db
         .select({
@@ -190,6 +201,67 @@ export async function getWallboard(
       },
     ),
 
+    // SLOs: only the two states somebody would cross a room for go on the
+    // wall as lines, a spent budget and a page-severity burn. A slow burn is a
+    // ticket, which is a sitting-down problem. The tile carries the lowest
+    // budget left, the one number that says how close the org is to the next
+    // of those lines. An SLO with no data is not failing (the probes rule).
+    guard(
+      "slos",
+      {
+        lines: [] as WallboardFailureLine[],
+        total: 0,
+        lowest: null as { name: string; remaining: number } | null,
+      },
+      async () => {
+        const rows = await db
+          .select({
+            id: slos.id,
+            name: slos.name,
+            sli: slos.sli,
+            budgetRemaining: slos.budgetRemaining,
+            burnAlert: slos.burnAlert,
+            burnAlertChangedAt: slos.burnAlertChangedAt,
+            burnRates: slos.burnRates,
+            exhaustedAt: slos.exhaustedAt,
+            targetPercent: slos.targetPercent,
+            windowDays: slos.windowDays,
+          })
+          .from(slos)
+          .where(and(eq(slos.organizationId, organizationId), eq(slos.enabled, true)));
+        const lines: WallboardFailureLine[] = [];
+        let lowest: { name: string; remaining: number } | null = null;
+        for (const row of rows) {
+          const status = deriveSloStatus(row);
+          if (row.budgetRemaining !== null && (!lowest || row.budgetRemaining < lowest.remaining)) {
+            lowest = { name: row.name, remaining: row.budgetRemaining };
+          }
+          if (status === "exhausted") {
+            const over =
+              (row.budgetRemaining ?? 0) * sloBudgetTotalMinutes(row.targetPercent, row.windowDays);
+            lines.push({
+              id: `slo:${row.id}`,
+              label: row.name,
+              detail: `error budget spent, over by ${formatBudgetDuration(over)}`,
+              since: row.exhaustedAt?.toISOString() ?? null,
+            });
+          } else if (status === "fast_burn") {
+            const rate = row.burnRates?.["1h"];
+            lines.push({
+              id: `slo:${row.id}`,
+              label: row.name,
+              detail:
+                rate === null || rate === undefined
+                  ? "burning its error budget fast"
+                  : `burning its error budget at ${formatBurnRate(rate)}`,
+              since: row.burnAlertChangedAt?.toISOString() ?? null,
+            });
+          }
+        }
+        return { lines: lines.slice(0, WALLBOARD_LIMITS.maxLines), total: rows.length, lowest };
+      },
+    ),
+
     // Sync health comes from the *paging* incidents rather than from a column
     // on the account, because that is the signal the org already gets woken up
     // by: a wall that disagreed with the pager about whether an account is
@@ -236,12 +308,14 @@ export async function getWallboard(
     ...(incidentResult.failed ? ["incidents"] : []),
     ...(probeResult.failed ? ["probes"] : []),
     ...(monitorResult.failed ? ["query monitors"] : []),
+    ...(sloResult.failed ? ["SLOs"] : []),
     ...(accountResult.failed ? ["accounts"] : []),
   ];
 
   const failures = [
     ...probeResult.value.down,
     ...monitorResult.value.lines,
+    ...sloResult.value.lines,
     ...accountResult.value.broken,
   ].slice(0, WALLBOARD_LIMITS.maxLines);
 
@@ -304,6 +378,26 @@ export async function getWallboard(
           : "ok",
     },
   ];
+
+  // The SLO tile only exists once the org has an SLO (or the read failed, which
+  // must be visible): an org that never wrote one gains nothing from a tile
+  // saying so, and the other four tiles are a fixed contract walls are set up
+  // around.
+  if (sloResult.failed || sloResult.value.total > 0) {
+    const lowest = sloResult.value.lowest;
+    tiles.push({
+      id: "slos",
+      label: "Lowest error budget",
+      value:
+        lowest === null
+          ? "-"
+          : lowest.remaining <= 0
+            ? "spent"
+            : `${Math.floor(lowest.remaining * 100)}%`,
+      detail: sloResult.failed ? "could not be read" : (lowest?.name ?? "no data yet"),
+      status: sloResult.failed || sloResult.value.lines.length > 0 ? "degraded" : "ok",
+    });
+  }
 
   return {
     status,
