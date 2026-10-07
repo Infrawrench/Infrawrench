@@ -51,6 +51,25 @@ export const DNS_IPV4_SOURCES: AssociationSource[] = [
   { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv4" },
   { pluginId: "linode", resourceTypeId: "reserved-ip", outputKey: "ip" },
   { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv4" },
+  { pluginId: "vultr", resourceTypeId: "instance", outputKey: "ipv4" },
+  { pluginId: "vultr", resourceTypeId: "bare-metal", outputKey: "ipv4" },
+  { pluginId: "vultr", resourceTypeId: "load-balancer", outputKey: "ipv4" },
+  { pluginId: "vultr", resourceTypeId: "reserved-ip", outputKey: "ip" },
+  { pluginId: "civo", resourceTypeId: "instance", outputKey: "ipv4" },
+  { pluginId: "civo", resourceTypeId: "load-balancer", outputKey: "ipv4" },
+  { pluginId: "civo", resourceTypeId: "reserved-ip", outputKey: "ip" },
+  { pluginId: "upcloud", resourceTypeId: "server", outputKey: "ipv4" },
+  { pluginId: "upcloud", resourceTypeId: "floating-ip", outputKey: "ip" },
+  { pluginId: "exoscale", resourceTypeId: "instance", outputKey: "ipv4" },
+  { pluginId: "exoscale", resourceTypeId: "elastic-ip", outputKey: "ip" },
+  { pluginId: "exoscale", resourceTypeId: "nlb", outputKey: "ipv4" },
+  { pluginId: "alibaba-cloud", resourceTypeId: "ecs-instance", outputKey: "publicIp" },
+  { pluginId: "alibaba-cloud", resourceTypeId: "eip", outputKey: "ipAddress" },
+  { pluginId: "ibm-cloud", resourceTypeId: "instance", outputKey: "publicIp" },
+  { pluginId: "openstack", resourceTypeId: "os-server", outputKey: "publicIp" },
+  { pluginId: "openstack", resourceTypeId: "os-floating-ip", outputKey: "ip" },
+  { pluginId: "lambda-cloud", resourceTypeId: "instance", outputKey: "ip" },
+  { pluginId: "paperspace", resourceTypeId: "machine", outputKey: "publicIp" },
 ];
 
 /** IPv6-producing outputs across providers, for AAAA records. */
@@ -60,6 +79,12 @@ export const DNS_IPV6_SOURCES: AssociationSource[] = [
   { pluginId: "fly", resourceTypeId: "machine", outputKey: "privateIp" },
   { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv6" },
   { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv6" },
+  { pluginId: "vultr", resourceTypeId: "instance", outputKey: "ipv6" },
+  { pluginId: "vultr", resourceTypeId: "bare-metal", outputKey: "ipv6" },
+  { pluginId: "vultr", resourceTypeId: "load-balancer", outputKey: "ipv6" },
+  { pluginId: "civo", resourceTypeId: "instance", outputKey: "ipv6" },
+  { pluginId: "upcloud", resourceTypeId: "server", outputKey: "ipv6" },
+  { pluginId: "exoscale", resourceTypeId: "instance", outputKey: "ipv6" },
 ];
 
 /** Hostname-producing outputs across providers, for CNAME records. */
@@ -74,6 +99,9 @@ export const DNS_HOSTNAME_SOURCES: AssociationSource[] = [
   { pluginId: "azure", resourceTypeId: "azure-public-ip", outputKey: "fqdn" },
   { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "hostname" },
   { pluginId: "linode", resourceTypeId: "bucket", outputKey: "hostname" },
+  { pluginId: "upcloud", resourceTypeId: "load-balancer", outputKey: "hostname" },
+  { pluginId: "alibaba-cloud", resourceTypeId: "alb", outputKey: "dnsName" },
+  { pluginId: "ibm-cloud", resourceTypeId: "load-balancer", outputKey: "hostname" },
 ];
 
 /**
