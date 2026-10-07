@@ -396,7 +396,9 @@ const UserType = rt({
   pinnable: false,
   supportsCreate: true,
   supportsDelete: true,
-  principalRole: { role: "user", adminIndicatorKey: "isAdmin", revokeActionId: "revoke" },
+  // No revokeActionId: removing a user from the Astra organization is a
+  // delete, which the access review's Revoke must never do.
+  principalRole: { role: "user", adminIndicatorKey: "isAdmin" },
 });
 
 const TokenType = rt({

@@ -788,11 +788,21 @@ describe("principalRole declarations", () => {
     expect(declared.sort()).toEqual([
       "anthropic/api-key:deactivate-key",
       "clickhouse/ch-api-key:disable",
+      // Deleting a Capella API key or an Astra token is how those providers
+      // revoke a credential; there is no disabled state to move it to.
+      "couchbase-capella/capella-api-key:revoke",
       "datadog/user:disable",
+      "datastax-astra/astra-token:revoke",
+      "docker-hub/dockerhub-access-token:deactivate",
+      "docker-hub/dockerhub-org-access-token:deactivate",
       "fastly/api-token:revoke",
+      "influxdb-cloud/influx-token:deactivate",
+      "jfrog/jfrog-access-token:revoke",
       "snowflake/snowflake-user:disable",
       "tailscale/user:suspend",
       "temporal-cloud/api-key:disable",
+      "wasabi/access-key:deactivate",
+      "weaviate-cloud/db-user:deactivate",
       "workos/organization-api-key:expire",
       "workos/organization-membership:deactivate",
     ]);

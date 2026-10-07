@@ -459,11 +459,12 @@ const UserType = rt({
   pinnable: false,
   supportsCreate: true,
   supportsDelete: true,
+  // No revokeActionId: Capella's only way to revoke a user is to delete them
+  // from the organization, which the access review's Revoke must never do.
   principalRole: {
     role: "user",
     lastUsedKey: "lastLogin",
     adminIndicatorKey: "isOwner",
-    revokeActionId: "revoke",
   },
   orphanRule: {
     conditions: [{ fieldKey: "inactive", when: "equals", value: "true" }],
