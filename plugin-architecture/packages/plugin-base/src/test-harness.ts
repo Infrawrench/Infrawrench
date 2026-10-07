@@ -277,6 +277,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     applicationCredentialSecret: "test-secret",
   },
   rabbitmq: { url: "https://mq.example.com:15671", username: "infrawrench", password: "test" },
+  prometheus: { url: "http://prometheus.internal:9090" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

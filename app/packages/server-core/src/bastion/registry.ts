@@ -353,6 +353,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   openstack: [],
   // RabbitMQ is self-hosted: the management URL is user-supplied, so there is no fixed egress host (same as kubernetes).
   rabbitmq: [],
+  // Prometheus is self-hosted: the server and Alertmanager URLs are user-supplied, so there is no fixed egress host (same as kubernetes).
+  prometheus: [],
 };
 
 /**
