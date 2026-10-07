@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { parseCloudHost } from "./api.js";
 import type {
+  WcCluster,
   WvAlias,
   WvBackup,
   WvClass,
@@ -13,8 +14,19 @@ import type {
 
 export const PLUGIN_ID = "weaviate-cloud";
 
-/** The single cluster an account points at. */
-export const CLUSTER_EXTERNAL_ID = "cluster";
+/**
+ * Which cluster a resource lives in. Every external id below the cluster
+ * starts with the cluster key (`<host>[:port]`, see `clusterKeyOf`), so
+ * `<key>/Article` is a collection and `<key>/Article/acme` one of its tenants.
+ */
+export interface ClusterScope {
+  accountId: string;
+  key: string;
+}
+
+export function clusterResourceId(scope: ClusterScope): string {
+  return `${scope.accountId}:cluster:${scope.key}`;
+}
 
 type Fields = ResourceInstance["fields"];
 
@@ -29,13 +41,20 @@ export function makeInstance(opts: {
   createdAt?: string | null | undefined;
 }): ResourceInstance {
   const now = new Date().toISOString();
+  // Children name their cluster, so flat sidebar lists across several
+  // clusters stay readable.
+  const slash = opts.externalId.indexOf("/");
+  const fields =
+    opts.typeId !== "cluster" && slash > 0
+      ? { cluster: opts.externalId.slice(0, slash), ...opts.fields }
+      : opts.fields;
   return {
     id: `${opts.accountId}:${opts.typeId}:${opts.externalId}`,
     pluginId: PLUGIN_ID,
     resourceTypeId: opts.typeId,
     accountId: opts.accountId,
     displayName: opts.displayName,
-    fields: opts.fields,
+    fields,
     resolvedOutputs: opts.outputs ?? {},
     secretStates: [],
     externalId: opts.externalId,
@@ -50,12 +69,38 @@ export function externalOf(resourceId: string): string {
   return resourceId.includes(":") ? resourceId.split(":").slice(2).join(":") : resourceId;
 }
 
-/** Split `<collection>/<child>` external ids (tenants). */
-export function splitScoped(resourceIdOrExternal: string): { scope: string; name: string } {
-  const ext = externalOf(resourceIdOrExternal);
+export function accountOf(resourceId: string): string {
+  return resourceId.split(":")[0] ?? "";
+}
+
+export function typeOf(resourceId: string): string {
+  return resourceId.split(":")[1] ?? "";
+}
+
+/**
+ * Split a resource id (or external id) into its cluster and the path inside
+ * it: `acct:tenant:<key>/Article/acme` gives key `<key>` and parts
+ * `["Article", "acme"]`. A cluster's own id has no parts.
+ */
+export function splitScoped(resourceId: string): { scope: ClusterScope; parts: string[] } {
+  const ext = externalOf(resourceId);
   const slash = ext.indexOf("/");
-  if (slash <= 0) throw new Error(`Weaviate plugin: cannot parse id "${ext}"`);
-  return { scope: ext.slice(0, slash), name: ext.slice(slash + 1) };
+  const key = slash < 0 ? ext : ext.slice(0, slash);
+  if (!key) throw new Error(`Weaviate plugin: cannot parse id "${ext}"`);
+  const rest = slash < 0 ? "" : ext.slice(slash + 1);
+  return {
+    scope: { accountId: accountOf(resourceId), key },
+    parts: rest ? rest.split("/") : [],
+  };
+}
+
+/** The cluster-relative parts of a child id, which must have exactly `n` of them. */
+export function partsOf(resourceId: string, n: number): string[] {
+  const { parts } = splitScoped(resourceId);
+  if (parts.length < n) throw new Error(`Weaviate plugin: cannot parse id "${resourceId}"`);
+  // A tenant or user name never holds a slash, but keep anything after the
+  // last expected part together rather than dropping it.
+  return [...parts.slice(0, n - 1), parts.slice(n - 1).join("/")];
 }
 
 /** Per-collection totals summed over every node's shards (`/v1/nodes?output=verbose`). */
@@ -87,55 +132,106 @@ export function grpcHost(endpoint: string): string {
   }
 }
 
-export function mapCluster(
-  endpoint: string,
-  meta: WvMeta,
-  nodes: WvNode[],
-  accountId: string,
-): ResourceInstance {
-  const cloud = parseCloudHost(endpoint);
+/** How a cluster's in-cluster key reached the plugin. */
+export type ClusterConnection = "credentials" | "stored" | "none";
+
+export interface ClusterView {
+  scope: ClusterScope;
+  /** Normalised REST endpoint, when known. */
+  endpoint: string;
+  /** From the Weaviate Cloud organization API, when the account is signed in. */
+  cloud?: WcCluster | undefined;
+  /** Region id to cloud provider, from `/v1/regions`. */
+  regionClouds?: Map<string, string> | undefined;
+  connection: ClusterConnection;
+  /** In-cluster readings; absent when not connected or unreachable. */
+  meta?: WvMeta | undefined;
+  nodes?: WvNode[] | undefined;
+  /** Why the in-cluster readings are missing. */
+  error?: string | undefined;
+}
+
+export function clusterHealth(nodes: WvNode[]): string {
   const healthy = nodes.filter((n) => n.status === "HEALTHY").length;
-  const objects = nodes.reduce((s, n) => s + (n.stats?.objectCount ?? 0), 0);
-  const shards = nodes.reduce((s, n) => s + (n.stats?.shardCount ?? n.shards?.length ?? 0), 0);
-  const status = !nodes.length
-    ? "UNKNOWN"
-    : healthy === nodes.length
-      ? "HEALTHY"
-      : healthy === 0
-        ? "UNAVAILABLE"
-        : "DEGRADED";
+  if (!nodes.length) return "UNKNOWN";
+  if (healthy === nodes.length) return "HEALTHY";
+  return healthy === 0 ? "UNAVAILABLE" : "DEGRADED";
+}
+
+const CONNECTION_LABELS: Record<ClusterConnection, string> = {
+  credentials: "Account credentials",
+  stored: "Connected key",
+  none: "Not connected",
+};
+
+export function mapCluster(view: ClusterView): ResourceInstance {
+  const { endpoint, cloud, meta, nodes } = view;
   const host = (() => {
     try {
       return new URL(endpoint).hostname;
     } catch {
-      return endpoint;
+      return view.scope.key;
     }
   })();
+  const parsed = endpoint ? parseCloudHost(endpoint) : null;
+  const isCloud = Boolean(cloud) || Boolean(parsed);
   const fields: Fields = {
     endpoint,
     hostname: host,
-    version: meta.version ?? nodes[0]?.version ?? "",
-    status,
-    nodes: nodes.length,
-    healthyNodes: healthy,
-    objectCount: objects,
-    shardCount: shards,
-    modules: Object.keys(meta.modules ?? {})
-      .sort()
-      .join(", "),
-    hosting: cloud ? "Weaviate Cloud" : "Self-hosted",
+    hosting: isCloud ? "Weaviate Cloud" : "Self-hosted",
+    connection: CONNECTION_LABELS[view.connection],
   };
   if (cloud) {
-    fields["cloud"] = cloud.cloud;
-    fields["region"] = cloud.region;
+    fields["clusterId"] = cloud.id;
+    if (cloud.name) fields["name"] = cloud.name;
+    if (cloud.tier) fields["tier"] = cloud.tier;
+    if (cloud.status) fields["lifecycle"] = cloud.status;
+    if (cloud.status_reason) fields["statusReason"] = cloud.status_reason;
+    if (cloud.created_at) fields["createdAt"] = cloud.created_at;
+    if (cloud.expires_at) fields["expiresAt"] = cloud.expires_at;
+  }
+  const region = cloud?.region || parsed?.region;
+  if (region) fields["region"] = region;
+  const provider = (cloud?.region && view.regionClouds?.get(cloud.region)) || parsed?.cloud;
+  if (provider) fields["cloud"] = provider;
+
+  if (nodes) {
+    fields["status"] = clusterHealth(nodes);
+    fields["nodes"] = nodes.length;
+    fields["healthyNodes"] = nodes.filter((n) => n.status === "HEALTHY").length;
+    fields["objectCount"] = nodes.reduce((s, n) => s + (n.stats?.objectCount ?? 0), 0);
+    fields["shardCount"] = nodes.reduce(
+      (s, n) => s + (n.stats?.shardCount ?? n.shards?.length ?? 0),
+      0,
+    );
+  } else if (view.connection === "none") {
+    fields["status"] = "NOT_CONNECTED";
+  } else {
+    fields["status"] = "UNREACHABLE";
+  }
+  if (meta || nodes) {
+    fields["version"] = meta?.version ?? nodes?.[0]?.version ?? "";
+  }
+  if (meta?.modules) {
+    fields["modules"] = Object.keys(meta.modules).sort().join(", ");
+  }
+  if (view.error) fields["error"] = view.error.slice(0, 300);
+
+  const outputs: Record<string, string> = {};
+  if (endpoint) {
+    outputs["url"] = endpoint;
+    outputs["grpcHost"] = cloud?.grpc_endpoint
+      ? cloud.grpc_endpoint.replace(/^https?:\/\//, "").replace(/\/+$/, "")
+      : grpcHost(endpoint);
   }
   return makeInstance({
-    accountId,
+    accountId: view.scope.accountId,
     typeId: "cluster",
-    externalId: CLUSTER_EXTERNAL_ID,
-    displayName: host.split(".")[0] || "Weaviate cluster",
+    externalId: view.scope.key,
+    displayName: cloud?.name || host.split(".")[0] || "Weaviate cluster",
     fields,
-    outputs: { url: endpoint, grpcHost: grpcHost(endpoint) },
+    outputs,
+    createdAt: cloud?.created_at,
   });
 }
 
@@ -167,7 +263,7 @@ export function vectorSummary(c: WvClass): {
 export function mapCollection(
   c: WvClass,
   stats: { objects: number; shards: number; queue: number } | undefined,
-  accountId: string,
+  scope: ClusterScope,
 ): ResourceInstance {
   const v = vectorSummary(c);
   const fields: Fields = {
@@ -191,23 +287,24 @@ export function mapCollection(
     fields["vectorQueueLength"] = stats.queue;
   }
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "collection",
-    externalId: c.class,
+    externalId: `${scope.key}/${c.class}`,
     displayName: c.class,
     fields,
     outputs: { collectionName: c.class },
+    parentResourceId: clusterResourceId(scope),
   });
 }
 
-export function mapTenant(collection: string, t: WvTenant, accountId: string): ResourceInstance {
+export function mapTenant(collection: string, t: WvTenant, scope: ClusterScope): ResourceInstance {
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "tenant",
-    externalId: `${collection}/${t.name}`,
+    externalId: `${scope.key}/${collection}/${t.name}`,
     displayName: t.name,
     fields: { name: t.name, collection, activityStatus: normalizeActivity(t.activityStatus) },
-    parentResourceId: `${accountId}:collection:${collection}`,
+    parentResourceId: `${scope.accountId}:collection:${scope.key}/${collection}`,
   });
 }
 
@@ -229,17 +326,18 @@ export function normalizeActivity(s: string | undefined): string {
   }
 }
 
-export function mapAlias(a: WvAlias, accountId: string): ResourceInstance {
+export function mapAlias(a: WvAlias, scope: ClusterScope): ResourceInstance {
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "alias",
-    externalId: a.alias,
+    externalId: `${scope.key}/${a.alias}`,
+    parentResourceId: clusterResourceId(scope),
     displayName: a.alias,
     fields: { alias: a.alias, collection: a.class },
   });
 }
 
-export function mapBackup(b: WvBackup, backend: string, accountId: string): ResourceInstance {
+export function mapBackup(b: WvBackup, backend: string, scope: ClusterScope): ResourceInstance {
   const fields: Fields = {
     backupId: b.id,
     backend,
@@ -250,16 +348,17 @@ export function mapBackup(b: WvBackup, backend: string, accountId: string): Reso
   if (b.completedAt) fields["completedAt"] = b.completedAt;
   if (b.size !== undefined) fields["sizeGb"] = b.size;
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "backup",
-    externalId: `${backend}/${b.id}`,
+    externalId: `${scope.key}/${backend}/${b.id}`,
+    parentResourceId: clusterResourceId(scope),
     displayName: b.id,
     fields,
     createdAt: b.startedAt,
   });
 }
 
-export function mapUser(u: WvDbUser, accountId: string): ResourceInstance {
+export function mapUser(u: WvDbUser, scope: ClusterScope): ResourceInstance {
   const fields: Fields = {
     userId: u.userId,
     userType: u.dbUserType ?? "db_user",
@@ -270,9 +369,10 @@ export function mapUser(u: WvDbUser, accountId: string): ResourceInstance {
   if (u.createdAt) fields["createdAt"] = u.createdAt;
   if (u.lastUsedAt) fields["lastUsedAt"] = u.lastUsedAt;
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "db-user",
-    externalId: u.userId,
+    externalId: `${scope.key}/${u.userId}`,
+    parentResourceId: clusterResourceId(scope),
     displayName: u.userId,
     fields,
     createdAt: u.createdAt,
@@ -281,12 +381,13 @@ export function mapUser(u: WvDbUser, accountId: string): ResourceInstance {
 
 export const BUILTIN_ROLES = new Set(["admin", "viewer", "root", "read-only"]);
 
-export function mapRole(r: WvRole, accountId: string): ResourceInstance {
+export function mapRole(r: WvRole, scope: ClusterScope): ResourceInstance {
   const actions = [...new Set((r.permissions ?? []).map((p) => p.action ?? "").filter(Boolean))];
   return makeInstance({
-    accountId,
+    accountId: scope.accountId,
     typeId: "role",
-    externalId: r.name,
+    externalId: `${scope.key}/${r.name}`,
+    parentResourceId: clusterResourceId(scope),
     displayName: r.name,
     fields: {
       name: r.name,

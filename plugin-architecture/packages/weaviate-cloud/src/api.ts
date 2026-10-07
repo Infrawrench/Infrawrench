@@ -1,18 +1,14 @@
 import type { HostServices } from "@infrawrench/plugin-base";
 
 /**
- * Transport for a Weaviate cluster's REST API (`<endpoint>/v1/...`), verified
- * against `openapi-specs/schema.json` in github.com/weaviate/weaviate
- * (2026-10).
+ * Transport for one Weaviate cluster's REST API (`<endpoint>/v1/...`),
+ * verified against `openapi-specs/schema.json` in github.com/weaviate/weaviate
+ * (2026-10). This is the in-cluster half of the plugin; the organization half
+ * (listing and creating Weaviate Cloud clusters) is `cloud.ts`.
  *
- * Weaviate Cloud publishes **no management API**: clusters are created,
- * resized and deleted only in the console, and there is no Terraform provider
- * or CLI for them. Everything this plugin does goes through the cluster's own
- * REST API with a cluster API key sent as `Authorization: Bearer <key>`, so it
- * works the same against a self-hosted Weaviate.
- *
- * Errors are `{error: [{message}]}`; the HTTP status rides on the thrown
- * error for the poller.
+ * Requests carry a cluster API key as `Authorization: Bearer <key>`, so the
+ * same code drives a self-hosted Weaviate. Errors are `{error: [{message}]}`;
+ * the HTTP status rides on the thrown error for the poller.
  */
 
 export class WeaviateApiError extends Error {
@@ -66,6 +62,21 @@ export function parseCloudHost(endpoint: string): { cloud: string; region: strin
   const m = /^[^.]+\.c\d+\.([a-z0-9-]+)\.([a-z]+)\.weaviate\.(cloud|network)$/i.exec(host);
   if (!m) return null;
   return { region: m[1]!.toLowerCase(), cloud: m[2]!.toLowerCase() };
+}
+
+/**
+ * The stable key a cluster is filed under: its lowercased host, plus the port
+ * when it is not the scheme's default. Weaviate Cloud reports the same host
+ * the console shows, so a cluster listed by the organization API and one
+ * typed into the account's credentials land on the same resource.
+ */
+export function clusterKeyOf(endpoint: string): string {
+  try {
+    const u = new URL(normalizeEndpoint(endpoint));
+    return u.port ? `${u.hostname.toLowerCase()}:${u.port}` : u.hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export type QueryValue = string | number | boolean | undefined | null;

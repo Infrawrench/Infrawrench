@@ -116,7 +116,7 @@ describe("client", () => {
       respond(404, { error: [{ message: "class not found" }] }),
     );
     const err = await c
-      .getResource("collection", `${ACCOUNT}:collection:Missing`, ACCOUNT)
+      .getResource("collection", `${ACCOUNT}:collection:${HOST}/Missing`, ACCOUNT)
       .catch((e) => e);
     expect(err).toBeInstanceOf(WeaviateApiError);
     expect((err as WeaviateApiError).status).toBe(404);
@@ -183,7 +183,7 @@ describe("client", () => {
       name: "acme",
       activityStatus: "COLD",
     });
-    const t = await c.updateResource("tenant", `${ACCOUNT}:tenant:Article/acme`, ACCOUNT, {
+    const t = await c.updateResource("tenant", `${ACCOUNT}:tenant:${HOST}/Article/acme`, ACCOUNT, {
       activityStatus: "INACTIVE",
     });
     expect(http.calls[0]!.body).toEqual([{ name: "acme", activityStatus: "INACTIVE" }]);
@@ -193,7 +193,7 @@ describe("client", () => {
   it("returns node stats as current-value metrics", async () => {
     const { http, c } = client();
     http.route("GET", `${HOST}/v1/nodes`, nodes);
-    const s = await c.fetchMetricSeries("collection", `${ACCOUNT}:collection:Article`);
+    const s = await c.fetchMetricSeries("collection", `${ACCOUNT}:collection:${HOST}/Article`);
     expect(s.map((x) => [x.label, x.points[0]!.value])).toEqual([
       ["Objects", 12],
       ["Shards", 2],

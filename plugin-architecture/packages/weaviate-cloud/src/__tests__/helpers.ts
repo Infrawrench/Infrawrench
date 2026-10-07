@@ -31,8 +31,14 @@ export function fakeHttp() {
     http: {
       async request(req) {
         const url = new URL(req.url);
-        const body =
-          typeof req.body === "string" && req.body ? (JSON.parse(req.body) as unknown) : undefined;
+        let body: unknown;
+        if (typeof req.body === "string" && req.body) {
+          try {
+            body = JSON.parse(req.body) as unknown;
+          } catch {
+            body = req.body;
+          }
+        }
         const call: Call = { method: req.method, url, headers: req.headers, body };
         calls.push(call);
         const handler = routes.get(`${req.method} ${url.host}${url.pathname}`);

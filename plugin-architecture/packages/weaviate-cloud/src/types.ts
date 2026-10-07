@@ -88,3 +88,34 @@ export interface WvRole {
   name: string;
   permissions?: Array<{ action?: string; [k: string]: unknown }>;
 }
+
+/** Weaviate Cloud provisioning API shapes (`api-cloud.weaviate.cloud/v1`, see cloud.ts). */
+
+export interface WcCluster {
+  id: string;
+  name?: string;
+  status?: string;
+  tier?: string;
+  region?: string;
+  endpoint?: string;
+  grpc_endpoint?: string;
+  expires_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  status_reason?: string;
+  api_key?: { value?: string; warning?: string } | null;
+}
+
+export interface WcRegion {
+  id: string;
+  name?: string;
+  cloud_provider?: string;
+  status?: string;
+  is_default?: boolean;
+}
+
+export interface WcWhoAmI {
+  user_id?: string;
+  email?: string;
+  org_id?: string;
+}

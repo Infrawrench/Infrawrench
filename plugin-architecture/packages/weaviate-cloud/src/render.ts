@@ -33,11 +33,19 @@ export function resourceStatus(resource: ResourceInstance): ResourceStatus {
   const f = resource.fields;
   const s = String(f["status"] ?? f["activityStatus"] ?? "");
   switch (resource.resourceTypeId) {
-    case "cluster":
+    case "cluster": {
+      const lifecycle = String(f["lifecycle"] ?? "");
+      if (["PENDING", "CREATING", "UPDATING", "WAITING", "DELETING"].includes(lifecycle)) {
+        return "provisioning";
+      }
+      if (lifecycle === "FAILED") return "error";
+      if (["SUSPENDED", "EXPIRED", "DELETED"].includes(lifecycle)) return "info";
       if (s === "HEALTHY") return "healthy";
       if (s === "DEGRADED") return "degraded";
-      if (s === "UNAVAILABLE") return "error";
+      if (s === "UNAVAILABLE" || s === "UNREACHABLE") return "error";
+      if (s === "NOT_CONNECTED") return "info";
       return "unknown";
+    }
     case "tenant":
       if (s === "ACTIVE") return "healthy";
       if (s === "OFFLOADING" || s === "ONLOADING") return "provisioning";
@@ -74,11 +82,54 @@ function action(
   };
 }
 
-function headerActions(resource: ResourceInstance): ActionNode[] {
+export interface RenderOptions {
+  /** The account has a Weaviate Cloud sign-in, so a cluster's one-time key can be claimed. */
+  signedIn?: boolean;
+}
+
+function connectAction(resource: ResourceInstance, opts: RenderOptions): ActionNode {
+  const claimable = opts.signedIn === true && Boolean(resource.fields["clusterId"]);
+  return {
+    kind: "action",
+    label: resource.fields["connection"] === "Connected key" ? "Replace API key" : "Connect",
+    action: {
+      type: "prompt-nosql-command",
+      command: "connect",
+      title: "Connect Infrawrench to this cluster",
+      description: claimable
+        ? "Paste an Admin API key from the cluster's API Keys panel in the Weaviate Cloud console. Leave it empty to take the key Weaviate Cloud shows once for a new cluster, if it has not been shown yet."
+        : "Paste an Admin API key from the cluster's API Keys panel in the Weaviate Cloud console.",
+      fields: [
+        {
+          key: "apiKey",
+          label: "API key",
+          kind: "password",
+          required: !claimable,
+        },
+      ],
+      submitLabel: "Connect",
+    },
+  };
+}
+
+function headerActions(resource: ResourceInstance, opts: RenderOptions): ActionNode[] {
   const f = resource.fields;
   const out: ActionNode[] = [];
   switch (resource.resourceTypeId) {
     case "cluster": {
+      const connected = f["connection"] !== "Not connected";
+      if (f["connection"] !== "Account credentials") out.push(connectAction(resource, opts));
+      if (f["connection"] === "Connected key") {
+        out.push(
+          action("Disconnect", "disconnect", {
+            confirm:
+              "Forget this cluster's API key? The cluster keeps running; Infrawrench stops managing what is inside it.",
+            success: "Cluster disconnected.",
+            danger: true,
+          }),
+        );
+      }
+      if (!connected) break;
       const collections = parseJson<string[]>(f[ENRICH_COLLECTIONS], []);
       out.push({
         kind: "action",
@@ -270,17 +321,23 @@ function extraSections(resource: ResourceInstance): SectionNode[] {
     );
   }
   if (resource.resourceTypeId === "cluster") {
+    const notes: string[] = [];
+    if (f["connection"] === "Not connected") {
+      notes.push(
+        "Infrawrench has no API key for this cluster yet, so it cannot see inside it. Use Connect.",
+      );
+    }
+    notes.push(
+      "Weaviate Cloud's provisioning API lists and creates free clusters only. Resizing, upgrading, deleting, paid tiers and organization members stay in the Weaviate Cloud console. Everything inside a connected cluster (collections, tenants, aliases, backups, users and roles) is managed here.",
+    );
     out.push({
       kind: "section",
       title: "Cluster management",
-      children: [
-        {
-          kind: "text",
-          variant: "muted",
-          content:
-            "Weaviate Cloud has no public management API, so creating, resizing, upgrading and deleting clusters happens in the Weaviate Cloud console. Everything inside the cluster (collections, tenants, aliases, backups, users and roles) is managed here.",
-        },
-      ],
+      children: notes.map((content) => ({
+        kind: "text" as const,
+        variant: "muted" as const,
+        content,
+      })),
     });
   }
   return out;
@@ -289,6 +346,7 @@ function extraSections(resource: ResourceInstance): SectionNode[] {
 export function renderWeaviateDetail(
   resource: ResourceInstance,
   types: ResourceTypeDefinition[],
+  opts: RenderOptions = {},
 ): DetailViewSchema {
   const f = resource.fields;
   const sections: SectionNode[] = [
@@ -317,11 +375,12 @@ export function renderWeaviateDetail(
       resourceTypeDisplayName(types, resource.resourceTypeId),
       f["version"],
       f["region"],
+      f["tier"],
       f["collection"],
     ),
     status: { kind: "status-dot", status: resourceStatus(resource) },
     sections,
-    headerActions: headerActions(resource),
+    headerActions: headerActions(resource, opts),
   };
 }
 
