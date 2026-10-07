@@ -104,6 +104,7 @@ import { plugin as mailgunPlugin } from "@infrawrench/plugin-mailgun";
 import { plugin as timescalePlugin } from "@infrawrench/plugin-timescale";
 import { plugin as exoscalePlugin } from "@infrawrench/plugin-exoscale";
 import { plugin as alibabaCloudPlugin } from "@infrawrench/plugin-alibaba-cloud";
+import { plugin as pineconePlugin } from "@infrawrench/plugin-pinecone";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -216,4 +217,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   timescalePlugin,
   exoscalePlugin,
   alibabaCloudPlugin,
+  pineconePlugin,
 ];

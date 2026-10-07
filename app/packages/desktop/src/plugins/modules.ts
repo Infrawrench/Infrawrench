@@ -114,4 +114,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-timescale"),
   () => import("@infrawrench/plugin-exoscale"),
   () => import("@infrawrench/plugin-alibaba-cloud"),
+  () => import("@infrawrench/plugin-pinecone"),
 ];

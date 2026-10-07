@@ -243,6 +243,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   exoscale: ["*.exoscale.com", "*.exo.io"],
   // Every OpenAPI product and OSS live under aliyuncs.com (regional and central endpoints); the status feed is on status.alibabacloud.com
   "alibaba-cloud": ["*.aliyuncs.com", "status.alibabacloud.com"],
+  // index and assistant data-plane hosts are per-resource subdomains of pinecone.io; login.pinecone.io issues Admin API tokens
+  pinecone: ["api.pinecone.io", "login.pinecone.io", "*.pinecone.io"],
 };
 
 /**

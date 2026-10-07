@@ -143,6 +143,7 @@ vi.mock("@infrawrench/plugin-mailgun", () => stub("mailgun"));
 vi.mock("@infrawrench/plugin-timescale", () => stub("timescale"));
 vi.mock("@infrawrench/plugin-exoscale", () => stub("exoscale"));
 vi.mock("@infrawrench/plugin-alibaba-cloud", () => stub("alibaba-cloud"));
+vi.mock("@infrawrench/plugin-pinecone", () => stub("pinecone"));
 
 beforeEach(() => {
   disabled = [];

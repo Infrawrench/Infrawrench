@@ -187,6 +187,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     accessKeySecret: "test-secret",
     region: "ap-southeast-1",
   },
+  pinecone: { apiKey: "pcsk_test_pinecone_key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
