@@ -1887,6 +1887,19 @@ Verified 2026-10 against the full OpenAPI document (`https://docs.vast.ai/api-re
 - Terraform: `Backblaze/b2` ~> 0.14 (`b2_bucket`, `b2_application_key`). The HCL serializer cannot repeat a block, so CORS and lifecycle rule lists are emitted as `dynamic` blocks over object literals. Keys cannot be imported; replication and `b2_bucket_notification_rules` are not mapped.
 - Not done: bucket access logging (`readBucketLogging`), legal holds/per-file retention, large-file (multipart) uploads in the browser.
 
+### Paperspace (`@infrawrench/plugin-paperspace`)
+
+Verified 2026-10 against the live OpenAPI document (`https://api.paperspace.com/v1/openapi.json`) and DigitalOcean's Paperspace reference (docs.digitalocean.com/reference/paperspace, regenerated 2026-10-06). Paperspace is a DigitalOcean product (acquired 2023) and still live: the 2024-05-15 API replaced the legacy Core and Gradient endpoints, which no longer answer. Third-party claims that Paperspace was sunset in 2026 are not reflected in DigitalOcean's docs or release notes.
+
+- **Auth**: `Authorization: Bearer <key>`, team-scoped keys from Team Settings, API Keys. Errors are `{code, message, details?}`. Lists are cursor paginated (`after`, `limit` <= 120; response `{items, hasMore, nextPage}`). CORS is open (`api.paperspace.com` echoes the origin).
+- **Machine operations are async events**: create/update/delete/start/stop/restart and snapshot/template create return `{event, data}`; `awaitEvent` polls `/machine-events/{id}` (2 s, 90 s cap) and throws `event.error` on `state: error`. Lifecycle actions are `PATCH /machines/{id}/{start|stop|restart}`.
+- **Machine create pickers**: regions are the spec's enum (`ny2`, `ca1`, `ams1`); disk sizes are an enum (50 GB to 16 TB). There is **no machine-types endpoint**: machine types are collected from `availableMachineTypes` on OS templates and custom templates. `/machine-availability?machineType&region` exists but would be one call per pair, so it is not used for the picker. RAM and storage come back in bytes.
+- **Public IPs** are addressed by the IP; assignment is `PUT /public-ips/{ip} {machineId}` (modelled as attach to machine). There is no documented unassign, so none is offered. Startup scripts assign/unassign via `POST /startup-scripts/{id}/assign|unassign {machineId}` and never return their body (`script` is a write-only edit field).
+- **Secrets kept out of inventory**: shared drive `password` (resolved on demand), container registry password (write-only field).
+- **Deployments**: read and delete only (upsert takes a full v0alpha0/v0alpha1 spec). Metrics from `GET /deployments/{id}/metrics?metric&timeframe` with fixed timeframes (`hour` ... `2_weeks`); responses come in three shapes, normalised in `metrics.ts`. Deployment `endpoint` is a bare host.
+- **Status**: `status.paperspace.com` is Atlassian Statuspage; components "US (NY2)", "US (CA1)", "Europe (AMS1)" map to region codes.
+- **Not done**: no cost or credits (billing moved to DigitalOcean, no Paperspace billing API; a DigitalOcean token would be needed); no Terraform (`Paperspace/paperspace` 0.4.5, 2023, targets the retired legacy API); datasets, models, team and project secrets, machine accessors and project collaborators are not modelled.
+
 ---
 
 ## Publish capability (cross-plugin)

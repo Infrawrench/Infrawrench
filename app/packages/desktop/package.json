@@ -224,6 +224,7 @@
     "@infrawrench/plugin-vast-ai": "workspace:*",
     "@infrawrench/plugin-aiven": "workspace:*",
     "@infrawrench/plugin-backblaze-b2": "workspace:*",
+    "@infrawrench/plugin-paperspace": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",

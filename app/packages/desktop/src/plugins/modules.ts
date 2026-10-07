@@ -118,4 +118,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-vast-ai"),
   () => import("@infrawrench/plugin-aiven"),
   () => import("@infrawrench/plugin-backblaze-b2"),
+  () => import("@infrawrench/plugin-paperspace"),
 ];

@@ -147,6 +147,7 @@ vi.mock("@infrawrench/plugin-pinecone", () => stub("pinecone"));
 vi.mock("@infrawrench/plugin-vast-ai", () => stub("vast-ai"));
 vi.mock("@infrawrench/plugin-aiven", () => stub("aiven"));
 vi.mock("@infrawrench/plugin-backblaze-b2", () => stub("backblaze-b2"));
+vi.mock("@infrawrench/plugin-paperspace", () => stub("paperspace"));
 
 beforeEach(() => {
   disabled = [];

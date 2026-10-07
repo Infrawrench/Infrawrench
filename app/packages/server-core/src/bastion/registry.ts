@@ -249,6 +249,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   aiven: ["api.aiven.io"],
   // B2 hands out a per-cluster apiNNN/fNNN/podNNN host at authorize time
   "backblaze-b2": ["api.backblazeb2.com", "*.backblazeb2.com"],
+  paperspace: ["api.paperspace.com"],
 };
 
 /**

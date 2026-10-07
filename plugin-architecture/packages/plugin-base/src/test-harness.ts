@@ -194,6 +194,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     applicationKeyId: "005testkeyid0000000000001",
     applicationKey: "K005testapplicationkey",
   },
+  paperspace: { apiKey: "test-paperspace-key" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
