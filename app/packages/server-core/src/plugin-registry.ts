@@ -116,6 +116,7 @@ import { plugin as ibmCloudPlugin } from "@infrawrench/plugin-ibm-cloud";
 import { plugin as dynatracePlugin } from "@infrawrench/plugin-dynatrace";
 import { plugin as wasabiPlugin } from "@infrawrench/plugin-wasabi";
 import { plugin as weaviateCloudPlugin } from "@infrawrench/plugin-weaviate-cloud";
+import { plugin as s3CompatiblePlugin } from "@infrawrench/plugin-s3-compatible";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -240,4 +241,5 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   dynatracePlugin,
   wasabiPlugin,
   weaviateCloudPlugin,
+  s3CompatiblePlugin,
 ];

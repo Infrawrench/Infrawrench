@@ -216,6 +216,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     endpoint: "https://test.c0.europe-west3.gcp.weaviate.cloud",
     apiKey: "test-weaviate-key",
   },
+  "s3-compatible": {
+    endpoint: "https://minio.example.com:9000",
+    accessKey: "minioadmin",
+    secretKey: "minioadmin-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

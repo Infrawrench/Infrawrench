@@ -1997,6 +1997,15 @@ Verified against the Dynatrace docs (Environment API v2/v1, Settings 2.0, Accoun
 - **No status feed**: status.weaviate.cloud is an incident.io page whose Statuspage-compatible `/api/v2/*.json` returns `{"page": null}` and whose advertised `feed.rss`/`feed.atom` 404 (2026-10).
 - Logo: gradient symbol from weaviate.io's 2026 wordmark SVG on #151515.
 
+### S3-Compatible Storage (`@infrawrench/plugin-s3-compatible`)
+
+- Generic connector for any S3 API endpoint (MinIO, Ceph RGW, Garage, SeaweedFS…). Credentials: `endpoint` (normalised to an origin, `https://` added when missing), `region` (default `us-east-1`), access/secret key, `addressing` (`path` default / `virtual`, a `providerOptions` picker answered statically by `listCredentialOptions`), optional `sessionToken`, `caCert`. Everything goes through `services.http`, so the CA cert applies; the bastion allowlist is `[]` (user-supplied host, like `kubernetes`), so a private endpoint needs the desktop app.
+- `s3.ts`/`sigv4.ts` are copies of the wasabi plugin's (hand-rolled WebCrypto SigV4 that escapes the path once, hand-rolled MD5 for `Content-MD5`); see the Wasabi section for why plugin-base's `signedS3Fetch` is not used.
+- Server software is read from the `Server` header of ListBuckets (`MinIO`, `Ceph Object Gateway`, `Garage/…`). Only for MinIO does the plugin call the admin API: `GET /minio/admin/v4|v3/info` and `/datausageinfo?capacity=true`, SigV4 service `s3` with the same key (needs `admin:ServerInfo`). madmin-go calls v4 and falls back to v3 on 426; the plugin probes v4 once and falls back on 426/404/400. Field names from madmin-go `info-commands.go`: `servers[].{state,endpoint,uptime,version,edition,poolNumber,drives[].{path,state,healing,usedspace,totalspace}}`, `bucketsUsageInfo{name:{size,objectsCount,versionsCount}}`, `capacity`/`freeCapacity`.
+- Types: `endpoint` (one per account), `minio-server` (child of endpoint, sidebar-visible, id `{host}/{serverEndpoint}`), `bucket` (id = name; policy editor via get/applyManifest, storage browser), `lifecycle-rule` and `cors-rule` children (`{bucket}/{ruleId}`; S3 rules without an ID get `rule-N`). CORS 501/NotImplemented (MinIO has no bucket CORS API) lists as empty and refuses create with a clear message.
+- Metrics are MinIO-only point-in-time readings (the admin API has no history): one point per fetch, the host's metric store builds the series.
+- Not done: cost (no bill), MinIO-specific admin features (users/policies/service accounts, bucket quotas, replication, ILM tiers, Prometheus metrics endpoint which needs a separately generated bearer token), Ceph RGW admin ops API, multipart upload in the browser.
+
 ---
 
 ## Publish capability (cross-plugin)

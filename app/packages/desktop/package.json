@@ -232,6 +232,7 @@
     "@infrawrench/plugin-dynatrace": "workspace:*",
     "@infrawrench/plugin-wasabi": "workspace:*",
     "@infrawrench/plugin-weaviate-cloud": "workspace:*",
+    "@infrawrench/plugin-s3-compatible": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
