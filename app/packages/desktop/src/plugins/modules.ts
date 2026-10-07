@@ -112,4 +112,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-upstash"),
   () => import("@infrawrench/plugin-mailgun"),
   () => import("@infrawrench/plugin-timescale"),
+  () => import("@infrawrench/plugin-exoscale"),
 ];

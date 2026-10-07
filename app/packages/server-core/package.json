@@ -389,6 +389,7 @@
     "@infrawrench/plugin-upstash": "workspace:*",
     "@infrawrench/plugin-mailgun": "workspace:*",
     "@infrawrench/plugin-timescale": "workspace:*",
+    "@infrawrench/plugin-exoscale": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",

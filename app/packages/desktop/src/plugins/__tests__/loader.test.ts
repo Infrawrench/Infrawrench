@@ -141,6 +141,7 @@ vi.mock("@infrawrench/plugin-lambda-cloud", () => stub("lambda-cloud"));
 vi.mock("@infrawrench/plugin-upstash", () => stub("upstash"));
 vi.mock("@infrawrench/plugin-mailgun", () => stub("mailgun"));
 vi.mock("@infrawrench/plugin-timescale", () => stub("timescale"));
+vi.mock("@infrawrench/plugin-exoscale", () => stub("exoscale"));
 
 beforeEach(() => {
   disabled = [];

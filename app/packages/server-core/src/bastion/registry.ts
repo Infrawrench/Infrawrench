@@ -240,6 +240,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   mailgun: ["api.mailgun.net", "api.eu.mailgun.net"],
   // Tiger Cloud (Timescale) REST API; the timescale.com host is the legacy alias
   timescale: ["console.cloud.tigerdata.com", "console.cloud.timescale.com"],
+  exoscale: ["*.exoscale.com", "*.exo.io"],
 };
 
 /**

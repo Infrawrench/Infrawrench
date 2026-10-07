@@ -1794,6 +1794,20 @@ Verified 2026-10 against the OpenAPI document Tiger Data ships in its CLI repo (
 - **Status feed**: status.tigerdata.com is a Rootly page whose JSON is behind a Cloudflare challenge; `/history.rss` is plain. One item per incident, state as a `[Resolved]`/`[Completed]`/`[In Progress]` prefix, component as a trailing `Impacted: …`; maintenance bodies list region codes, which become `regions`.
 - **Not done**: cost (no billing or usage API), quotas, credits; connectors (S3/Postgres source) and Terraform log/metric exporter resources; per-replica metrics. The postgres plugin's `resolvableFrom` was not extended (shared file).
 
+### Exoscale (`@infrawrench/plugin-exoscale`)
+
+- Auth: API v2 at `https://api-{zone}.exoscale.com/v2` (one endpoint per zone; DNS, IAM, quota, organization, SOS usage and DBaaS lists are global and go to `ch-gva-2`). Requests are signed EXO2-HMAC-SHA256 as `exoscale/egoscale` v3 does: message `"{METHOD} {path}\n{body}\n{values of single-valued query params, sorted by name, concatenated}\n\n{expires}"`, header `EXO2-HMAC-SHA256 credential={key}[,signed-query-args=a;b],expires={unix},signature={base64 HMAC-SHA256}`. WebCrypto, no dependency. Verified against egoscale v3's OpenAPI (`v3/generator/source.yaml`) and its signer.
+- Mutations return an operation (`{id,state,reference:{id}}`); `api.mutate` polls `/operation/{id}` (20 x 1.5 s) and throws with a numeric status on `failure`/`timeout`. Zonal resource ids are `{zone}/{uuid}`; DBaaS ids are `{zone}/{name}` (services are addressed by name and engine path, `pg` → `/dbaas-postgres/{name}`); DNS records are `{domainId}/{recordId}`; security groups and anti-affinity groups are global uuids; SSH keys by name.
+- The zone is stored in `fields.region` (labelled Zone) so status incidents correlate. `/zone` and `/instance-type` are public; instance types are picked by UUID and shown as `family.size`.
+- SOS (S3) is signed SigV4 with the same API key and secret, region = zone, host `sos-{zone}.exo.io`, path-style; this drives bucket create/delete and the storage browser. Buckets are listed from `/sos-buckets-usage`.
+- SKS kubeconfig: `POST /sks-cluster-kubeconfig/{id}` `{user, groups:["system:masters"], ttl}` returns the file base64-encoded.
+- Costs: `GET /focus-report/{YYYY-MM}` ([BETA]) returns a presigned URL to the FOCUS export. The encoding is undocumented, so the body is sniffed (gzip, JSON array, JSON Lines, CSV; Parquet refused with `CostSetupError`). Rows aggregate `BilledCost` per `ChargePeriodStart` day, `ServiceName`, `RegionId`, `ResourceId`, `Tags`, with `ChargeCategory` mapped to charge types. `/usage-report` has quantities without prices and is not used.
+- Quotas: `/quota` gives usage and limit. Credits: `/live-balance` (`balance`, `currency`), floored at 0.
+- Metrics: `POST /dbaas-service-metrics/{name}` `{period: hour|day|week|month|year}`; logs `POST /dbaas-service-logs/{name}` `{limit, sort-order}`. No instance metrics API.
+- Status: exoscalestatus.com has no Statuspage API; `/history.rss` is parsed directly (zones like `CH-GVA-2`, `CH-DK-2` in titles and descriptions; latest state from the first `<strong>` after the first `<small>`).
+- Terraform: `exoscale/exoscale ~> 0.74`, provider block `key`/`secret` from variables. Import ids `uuid@zone`, node pool `cluster/pool@zone`, record `record@domain`; volumes and DBaaS document none.
+- Not done: static DHCP leases, SG external sources editing, IAM, DBaaS integrations/pools, bucket policies, AI services, instance price estimates (no public price API found).
+
 ---
 
 ## Publish capability (cross-plugin)

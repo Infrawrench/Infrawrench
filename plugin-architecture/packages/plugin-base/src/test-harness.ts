@@ -178,6 +178,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   upstash: { email: "test@example.com", apiKey: "test-upstash-key" },
   mailgun: { apiKey: "test-mailgun-api-key" },
   timescale: { accessKey: "tskey_test", secretKey: "test-secret" },
+  exoscale: {
+    apiKey: "EXO0123456789abcdef01234567",
+    apiSecret: "test-secret-0000000000000000000000000000",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
