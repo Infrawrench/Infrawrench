@@ -37,6 +37,7 @@ const SECTION_LABELS: Record<OrgConfigSection, string> = {
   dashboards: "dashboards",
   metricAlerts: "metric alerts",
   probes: "probes",
+  slos: "SLOs",
   costCentres: "cost centres",
   tagPolicy: "tag policy",
   alertSettings: "alert settings",

@@ -25,6 +25,7 @@ import {
   EXTENDED_SUPPORT_LIMITS,
   METRIC_ALERT_LIMITS,
   PROBE_LIMITS,
+  SLO_LIMITS,
   type OrgConfigAllocationRule,
   type OrgConfigBudget,
   type OrgConfigCostCentre,
@@ -35,6 +36,7 @@ import {
   type OrgConfigMetricAlert,
   type OrgConfigProbe,
   type OrgConfigSection,
+  type OrgConfigSlo,
   type OrgConfigWorkflow,
   type OrgConfigWorkflowTrigger,
 } from "@infrawrench/client-core";
@@ -249,6 +251,41 @@ const probeSchema = z
   })
   .strict();
 
+/* ----------------------------------- SLOs ---------------------------------- */
+
+const sloSchema = z
+  .object({
+    key,
+    name,
+    description: z.string().max(SLO_LIMITS.maxDescriptionLength).nullable().default(null),
+    sliKind: z.enum(["probe_availability", "probe_latency", "metric_threshold"]),
+    probeKey: key.optional(),
+    latencyThresholdMs: z
+      .number()
+      .int()
+      .min(SLO_LIMITS.minLatencyThresholdMs)
+      .max(SLO_LIMITS.maxLatencyThresholdMs)
+      .optional(),
+    resource: z
+      .object({
+        pluginId: z.string().min(1).max(100),
+        resourceTypeId: z.string().min(1).max(100),
+        externalId: z.string().max(1000),
+        account: z.string().min(1).max(ORG_CONFIG_LIMITS.maxNameLength),
+      })
+      .strict()
+      .optional(),
+    metricKey: z.string().trim().min(1).max(SLO_LIMITS.maxMetricKeyLength).optional(),
+    comparator: z.enum(["<", "<=", ">", ">="]).optional(),
+    threshold: z.number().finite().optional(),
+    targetPercent: z.number().min(SLO_LIMITS.minTargetPercent).max(SLO_LIMITS.maxTargetPercent),
+    windowDays: z.union([z.literal(7), z.literal(28), z.literal(30)]).default(30),
+    alertsEnabled: z.boolean().default(true),
+    suggestFreeze: z.boolean().default(true),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
+
 /* ------------------------------- cost centres ------------------------------ */
 
 const allocationRuleSchema = z
@@ -377,6 +414,7 @@ const orgConfigDocumentSchema = z
     dashboards: collection(dashboardSchema).optional(),
     metricAlerts: collection(metricAlertSchema).optional(),
     probes: collection(probeSchema).optional(),
+    slos: collection(sloSchema).optional(),
     costCentres: collection(costCentreSchema).optional(),
     tagPolicy: z
       .object({
@@ -473,12 +511,14 @@ type SchemaMatchesOrgConfigContract = [
   Exact<z.infer<typeof dashboardSchema>, OrgConfigDashboard>,
   Exact<z.infer<typeof metricAlertSchema>, OrgConfigMetricAlert>,
   Exact<z.infer<typeof probeSchema>, OrgConfigProbe>,
+  Exact<z.infer<typeof sloSchema>, OrgConfigSlo>,
   Exact<z.infer<typeof allocationRuleSchema>, OrgConfigAllocationRule>,
   Exact<z.infer<typeof costCentreSchema>, OrgConfigCostCentre>,
   Exact<z.infer<typeof orgConfigDocumentSchema>, OrgConfigDocument>,
 ];
 
 const schemaMatchesContract: SchemaMatchesOrgConfigContract = [
+  true,
   true,
   true,
   true,

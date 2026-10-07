@@ -23,6 +23,7 @@
  * contract), and everything that is operational state rather than
  * configuration: firing history, cooldown claims, run logs, change freezes.
  */
+import type { SloComparator, SloSliKind, SloWindowDays } from "./slos";
 import type { CostFilter, DashboardWidgetKind } from "./costs";
 import type { BudgetPeriod } from "./budgets";
 import type { TagPolicy } from "./tag-policy";
@@ -38,6 +39,7 @@ export const ORG_CONFIG_SECTIONS = [
   "dashboards",
   "metricAlerts",
   "probes",
+  "slos",
   "costCentres",
   "tagPolicy",
   "alertSettings",
@@ -53,6 +55,7 @@ export const ORG_CONFIG_SECTION_LABELS: Record<OrgConfigSection, string> = {
   dashboards: "Dashboards",
   metricAlerts: "Metric alerts",
   probes: "Synthetic probes",
+  slos: "SLOs",
   costCentres: "Cost centres",
   tagPolicy: "Tag policy",
   alertSettings: "Alert settings",
@@ -72,6 +75,7 @@ export const ORG_CONFIG_SECTION_WRITE_PERMISSIONS: Record<OrgConfigSection, stri
   dashboards: "dashboards:write",
   metricAlerts: "metric-alerts:write",
   probes: "resources:write",
+  slos: "resources:write",
   costCentres: "costs:write",
   tagPolicy: "org:settings:write",
   alertSettings: "org:settings:write",
@@ -85,6 +89,7 @@ export const ORG_CONFIG_SECTION_READ_PERMISSIONS: Record<OrgConfigSection, strin
   dashboards: "dashboards:read",
   metricAlerts: "metric-alerts:read",
   probes: "resources:read",
+  slos: "resources:read",
   costCentres: "costs:read",
   tagPolicy: "resources:read",
   alertSettings: "org:settings:write",
@@ -247,6 +252,34 @@ export interface OrgConfigProbe {
   enabled: boolean;
 }
 
+/**
+ * A service-level objective. The source is named the way the rest of the
+ * document names things: a probe by its document key, a metric resource by
+ * the dashboard resource pin's identity (resolved against the target org's
+ * inventory on apply, reported unresolved when it is not there yet). Only the
+ * fields the SLI kind uses are present.
+ */
+export interface OrgConfigSlo {
+  key: string;
+  name: string;
+  description: string | null;
+  sliKind: SloSliKind;
+  /** `probe_*`: `key` of an entry in this document's `probes` (or the org's). */
+  probeKey?: string | undefined;
+  latencyThresholdMs?: number | undefined;
+  /** `metric_threshold`: the resource reporting the series. */
+  resource?:
+    { pluginId: string; resourceTypeId: string; externalId: string; account: string } | undefined;
+  metricKey?: string | undefined;
+  comparator?: SloComparator | undefined;
+  threshold?: number | undefined;
+  targetPercent: number;
+  windowDays: SloWindowDays;
+  alertsEnabled: boolean;
+  suggestFreeze: boolean;
+  enabled: boolean;
+}
+
 /** An allocation rule, nested under the centre it allocates to. */
 export interface OrgConfigAllocationRule {
   priority: number;
@@ -332,6 +365,7 @@ export interface OrgConfigDocument {
   dashboards?: OrgConfigDashboard[] | undefined;
   metricAlerts?: OrgConfigMetricAlert[] | undefined;
   probes?: OrgConfigProbe[] | undefined;
+  slos?: OrgConfigSlo[] | undefined;
   costCentres?: OrgConfigCostCentre[] | undefined;
   tagPolicy?: TagPolicy | undefined;
   alertSettings?: OrgConfigAlertSettings | undefined;
