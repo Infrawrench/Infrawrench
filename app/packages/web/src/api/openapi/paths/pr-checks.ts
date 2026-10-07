@@ -15,10 +15,12 @@ const L = PR_CHECK_LIMITS;
 
 const PermissionLevel = z.enum(["none", "read", "write", "admin"]);
 
-const ThresholdConclusion = z.enum(PR_CHECK_THRESHOLD_CONCLUSIONS).openapi("PrCheckThresholdConclusion", {
-  description:
-    "What the check concludes when the priced monthly increase exceeds `costThreshold`: `neutral` flags it without blocking, `failure` fails it (and blocks merging where branch protection requires the check).",
-});
+const ThresholdConclusion = z
+  .enum(PR_CHECK_THRESHOLD_CONCLUSIONS)
+  .openapi("PrCheckThresholdConclusion", {
+    description:
+      "What the check concludes when the priced monthly increase exceeds `costThreshold`: `neutral` flags it without blocking, `failure` fails it (and blocks merging where branch protection requires the check).",
+  });
 
 export const PrCheckRepositoryInput = strict({
   installationId: z.number().int().positive().openapi({
@@ -198,14 +200,10 @@ export const PrCheckPreviewInput = z
     }),
     strict({
       files: z.array(PreviewFile).min(1).max(L.maxFiles),
-      repo: z
-        .string()
-        .max(201)
-        .optional()
-        .openapi({
-          description:
-            "`owner/name`, to apply that repository's settings and its Terraform state mapping.",
-        }),
+      repo: z.string().max(201).optional().openapi({
+        description:
+          "`owner/name`, to apply that repository's settings and its Terraform state mapping.",
+      }),
     }),
   ])
   .openapi("PrCheckPreviewInput", {
@@ -282,7 +280,10 @@ export function registerPrChecksPaths(ctx: BuildContext) {
     summary: "Get one repository's pull request check settings",
     request: { params: IdParam },
     responses: {
-      200: { description: "Repository", content: { "application/json": { schema: PrCheckRepository } } },
+      200: {
+        description: "Repository",
+        content: { "application/json": { schema: PrCheckRepository } },
+      },
       404: ErrorResponses[404],
     },
   });

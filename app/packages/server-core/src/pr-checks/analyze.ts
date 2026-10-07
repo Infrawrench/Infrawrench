@@ -248,7 +248,9 @@ export async function analyzePrCheck(
     return map;
   };
   const fieldsOf = (pluginId: string, typeId: string, block: HclResourceBlock | null) =>
-    block ? terraformAttributesToFields(attributeMap(pluginId, typeId), literalAttributes(block)) : {};
+    block
+      ? terraformAttributesToFields(attributeMap(pluginId, typeId), literalAttributes(block))
+      : {};
 
   let pricedSoFar = 0;
   const estimate = async (args: {
@@ -284,7 +286,8 @@ export async function analyzePrCheck(
       path: c.path,
       line: c.line,
       resourceId: matched?.resourceId ?? null,
-      displayName: matched?.displayName ?? (matches.length > 1 ? `${matches.length} instances` : null),
+      displayName:
+        matched?.displayName ?? (matches.length > 1 ? `${matches.length} instances` : null),
       pluginId: typed?.pluginId ?? null,
       resourceTypeId: typed?.resourceTypeId ?? null,
       changedAttributes: c.changedAttributes,
@@ -324,7 +327,9 @@ export async function analyzePrCheck(
     const graph = await loadDependencyGraph(organizationId, null).catch(() => null);
     if (!graph) notes.push("The dependency graph could not be loaded, so blast radius is unknown.");
     if (touched.length > MAX_BLAST_RADIUS) {
-      notes.push(`Blast radius was checked for the first ${MAX_BLAST_RADIUS} existing resources only.`);
+      notes.push(
+        `Blast radius was checked for the first ${MAX_BLAST_RADIUS} existing resources only.`,
+      );
       report.truncated = true;
     }
     for (const c of touched.slice(0, MAX_BLAST_RADIUS)) {

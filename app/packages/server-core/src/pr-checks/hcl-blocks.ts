@@ -123,7 +123,12 @@ function valueEnd(
   return limit;
 }
 
-function stripTrailingComment(src: string, from: number, to: number, scan: ReturnType<typeof scanHcl>) {
+function stripTrailingComment(
+  src: string,
+  from: number,
+  to: number,
+  scan: ReturnType<typeof scanHcl>,
+) {
   let end = to;
   // Only a comment that starts at bracket depth zero on the last line is
   // trailing; comments inside a multi-line map stay in the raw text.

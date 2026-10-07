@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveTerraformAttributeFieldMap, terraformAttributesToFields } from "@infrawrench/client-core";
+import {
+  deriveTerraformAttributeFieldMap,
+  terraformAttributesToFields,
+} from "@infrawrench/client-core";
 import { plugin as aws } from "@infrawrench/plugin-aws";
 
 import { literalAttributes, parseHclFile } from "../hcl-blocks.js";

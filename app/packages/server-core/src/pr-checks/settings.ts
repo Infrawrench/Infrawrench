@@ -70,7 +70,9 @@ export async function getPrCheckRepository(
   const [row] = await db
     .select()
     .from(prCheckRepositories)
-    .where(and(eq(prCheckRepositories.organizationId, organizationId), eq(prCheckRepositories.id, id)))
+    .where(
+      and(eq(prCheckRepositories.organizationId, organizationId), eq(prCheckRepositories.id, id)),
+    )
     .limit(1);
   return row ? toPrCheckRepository(row) : null;
 }
@@ -170,10 +172,15 @@ export async function updatePrCheckRepository(
   }
 }
 
-export async function deletePrCheckRepository(organizationId: string, id: string): Promise<boolean> {
+export async function deletePrCheckRepository(
+  organizationId: string,
+  id: string,
+): Promise<boolean> {
   const rows = await db
     .delete(prCheckRepositories)
-    .where(and(eq(prCheckRepositories.organizationId, organizationId), eq(prCheckRepositories.id, id)))
+    .where(
+      and(eq(prCheckRepositories.organizationId, organizationId), eq(prCheckRepositories.id, id)),
+    )
     .returning({ id: prCheckRepositories.id });
   return rows.length > 0;
 }

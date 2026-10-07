@@ -111,7 +111,13 @@ export function diffInfrastructureFiles(
   for (const f of relevant.slice(0, PR_CHECK_LIMITS.maxFiles)) {
     const kind = classifyPrCheckPath(f.path, f.after ?? f.before)!;
     if (kind !== "terraform") {
-      files.push({ path: f.path, kind, status: fileStatus(f), analysed: false, note: NOT_ANALYSED[kind] });
+      files.push({
+        path: f.path,
+        kind,
+        status: fileStatus(f),
+        analysed: false,
+        note: NOT_ANALYSED[kind],
+      });
       continue;
     }
     files.push({ path: f.path, kind, status: fileStatus(f), analysed: true, note: null });
@@ -207,7 +213,9 @@ export function diffInfrastructureFiles(
   }
   if (changes.length > MAX_BLOCK_CHANGES) {
     truncated = true;
-    notes.push(`Only the first ${MAX_BLOCK_CHANGES} of ${changes.length} changed blocks were analysed.`);
+    notes.push(
+      `Only the first ${MAX_BLOCK_CHANGES} of ${changes.length} changed blocks were analysed.`,
+    );
   }
 
   return {

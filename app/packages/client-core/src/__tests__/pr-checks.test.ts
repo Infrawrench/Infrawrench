@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fieldNumber, fieldString, tf, type TerraformExportCapability } from "@infrawrench/plugin-base";
+import {
+  fieldNumber,
+  fieldString,
+  tf,
+  type TerraformExportCapability,
+} from "@infrawrench/plugin-base";
 
 import {
   classifyPrCheckPath,
@@ -60,7 +65,9 @@ describe("deriveTerraformAttributeFieldMap", () => {
   });
 
   it("maps nothing for an unsupported type or a missing capability", () => {
-    expect(deriveTerraformAttributeFieldMap(capability, "acme", "db").fieldByAttribute.size).toBe(0);
+    expect(deriveTerraformAttributeFieldMap(capability, "acme", "db").fieldByAttribute.size).toBe(
+      0,
+    );
     expect(deriveTerraformAttributeFieldMap(undefined, "acme", "vm").attributes.size).toBe(0);
   });
 });

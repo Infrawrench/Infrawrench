@@ -205,9 +205,7 @@ app.post("/preview", async (c) => {
           (r) => r.repo.toLowerCase() === repoName.toLowerCase(),
         ) ?? null)
       : null;
-    return c.json(
-      await previewFilesCheck(organizationId, parsed.data.files, repository, repoName),
-    );
+    return c.json(await previewFilesCheck(organizationId, parsed.data.files, repository, repoName));
   } catch (err) {
     return failure(c, err);
   }

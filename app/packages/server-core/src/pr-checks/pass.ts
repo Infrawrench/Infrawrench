@@ -52,7 +52,12 @@ import {
   type GithubOpenPullRequest,
 } from "../github/issues-api.js";
 import { analyzePrCheck, type PrCheckSourceFile } from "./analyze.js";
-import { renderCheckOutput, renderComment, renderReportMarkdown, type RenderLinks } from "./render.js";
+import {
+  renderCheckOutput,
+  renderComment,
+  renderReportMarkdown,
+  type RenderLinks,
+} from "./render.js";
 import { prunePrCheckRuns } from "./runs.js";
 import { toPrCheckRepository } from "./settings.js";
 
@@ -225,7 +230,11 @@ export async function runPrCheckPass(): Promise<void> {
     if (budget <= 0) return;
     let pulls: GithubOpenPullRequest[];
     try {
-      pulls = await listOpenPullRequests(repository.installationId, repository.repo, MAX_OPEN_PULLS);
+      pulls = await listOpenPullRequests(
+        repository.installationId,
+        repository.repo,
+        MAX_OPEN_PULLS,
+      );
     } catch (e) {
       console.warn(`[pr-checks] could not list pull requests in ${repository.repo}:`, e);
       continue;
@@ -255,10 +264,7 @@ export async function runPrCheckPass(): Promise<void> {
   }
 }
 
-async function previousComment(
-  repositoryId: string,
-  pullNumber: number,
-): Promise<number | null> {
+async function previousComment(repositoryId: string, pullNumber: number): Promise<number | null> {
   const [row] = await db
     .select({ commentId: prCheckRuns.commentId })
     .from(prCheckRuns)
@@ -283,8 +289,14 @@ async function upsertComment(
   const { installationId, repo } = repository;
   const known =
     (await previousComment(repository.id, pullNumber)) ??
-    (await findPullRequestCommentByMarker(installationId, repo, pullNumber, PR_CHECK_COMMENT_MARKER))
-      ?.id ??
+    (
+      await findPullRequestCommentByMarker(
+        installationId,
+        repo,
+        pullNumber,
+        PR_CHECK_COMMENT_MARKER,
+      )
+    )?.id ??
     null;
   if (known !== null) {
     const updated = await updatePullRequestComment(installationId, repo, known, body);

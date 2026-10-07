@@ -52,7 +52,7 @@ describe("parseHclFile", () => {
   it("treats expressions as opaque and never evaluates them", () => {
     expect(parseAttributeValue("var.size")).toEqual({ kind: "expression", raw: "var.size" });
     expect(parseAttributeValue('merge(local.tags, { a = "b" })').kind).toBe("expression");
-    expect(parseAttributeValue('{ a = var.x }').kind).toBe("expression");
+    expect(parseAttributeValue("{ a = var.x }").kind).toBe("expression");
     expect(parseAttributeValue("true")).toMatchObject({ kind: "bool", value: true });
   });
 

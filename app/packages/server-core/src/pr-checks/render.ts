@@ -56,7 +56,10 @@ function deltaCell(c: PrCheckChange): string {
 function sideCell(c: PrCheckChange, which: "before" | "after"): string {
   const s = c[which];
   if (s) return money(s.monthlyAmount, s.currency, s.partial);
-  if ((which === "before" && c.action === "create") || (which === "after" && c.action === "delete")) {
+  if (
+    (which === "before" && c.action === "create") ||
+    (which === "after" && c.action === "delete")
+  ) {
     return "-";
   }
   return "?";
@@ -126,13 +129,15 @@ export function renderReportMarkdown(report: PrCheckReport, links: RenderLinks):
   }
 
   const risky = report.changes.filter(
-    (c) => c.blastRadius && (c.blastRadius.severity === "high" || c.blastRadius.severity === "medium"),
+    (c) =>
+      c.blastRadius && (c.blastRadius.severity === "high" || c.blastRadius.severity === "medium"),
   );
   if (risky.length > 0) {
     lines.push("### Blast radius", "");
     for (const c of risky.slice(0, 15)) {
       const b = c.blastRadius!;
-      const top = b.topDependants.length > 0 ? ` Directly: ${b.topDependants.map(cell).join(", ")}.` : "";
+      const top =
+        b.topDependants.length > 0 ? ` Directly: ${b.topDependants.map(cell).join(", ")}.` : "";
       lines.push(`- \`${c.address}\` (${ACTION_LABEL[c.action]}): ${b.headline}${top}`);
     }
     lines.push("");
@@ -195,7 +200,10 @@ export function renderAnnotations(report: PrCheckReport): GithubCheckRunAnnotati
       messages.push(`Estimated ${formatMonthlyDelta(c.monthlyDelta, c.currency)}/month.`);
     }
     for (const w of c.warnings) messages.push(w.message);
-    if (c.blastRadius && (c.blastRadius.severity === "high" || c.blastRadius.severity === "medium")) {
+    if (
+      c.blastRadius &&
+      (c.blastRadius.severity === "high" || c.blastRadius.severity === "medium")
+    ) {
       messages.push(c.blastRadius.headline);
     }
     if (messages.length === 0) continue;

@@ -99,12 +99,16 @@ describe("renderReportMarkdown", () => {
       links,
     );
     expect(md).toContain("Estimated monthly cost change: **at least +$60**");
-    expect(md).toContain("| `aws_instance.web` ([web-1](https://app.example.com/r)) | change | $60 | $120 | **+$60** |");
+    expect(md).toContain(
+      "| `aws_instance.web` ([web-1](https://app.example.com/r)) | change | $60 | $120 | **+$60** |",
+    );
     expect(md).toContain("high: 7 dependants, 1 reference");
     expect(md).toContain("lb \\| main");
     expect(md).toContain("`aws_instance.web`: Oversized.");
     expect(md).toContain("`aws_s3_bucket.x`: no rate");
-    expect(md).toContain("[Open in Infrawrench](https://app.example.com/org/o1/settings/pr-checks)");
+    expect(md).toContain(
+      "[Open in Infrawrench](https://app.example.com/org/o1/settings/pr-checks)",
+    );
   });
 
   it("says plainly when no infrastructure changed", () => {
