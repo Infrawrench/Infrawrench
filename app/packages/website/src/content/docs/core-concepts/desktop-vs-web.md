@@ -51,6 +51,7 @@ The desktop app connects from your own machine and has none of these limits: `lo
 - **The [`infrawrench` CLI](../features/cli.md)** ships with the desktop app (it launches the app headlessly), so the terminal/TUI experience is desktop-only — though it can browse all your cloud organizations once you're signed in.
 - **SFTP file browser** is available on desktop (direct SSH connection) and mobile (proxied through the cloud); the web app cannot open a raw SSH file system.
 - **Docker Unix socket** is desktop-only; web needs a remote Docker daemon reachable over TCP at a public address, or through an SSH tunnel or bastion if it is private.
+- **[Connect with OAuth](../features/connect-with-oauth.md)** offers the same providers on the web and in desktop cloud mode. For accounts stored locally on the desktop it offers only the providers that allow a sign-in returning to an app on your own computer; the rest take a pasted token there.
 - **Pageant** is Windows desktop only.
 - **Ephemeral Kubernetes scratch pods** work in both, but the launch button opens a [terminal](../features/ssh-terminal.md) which on web is proxied.
 - **[AI chat](../features/ai-chat.md)** requires a cloud org — the agent loop, billing, and conversation history live in the web backend. On desktop it appears once you sign in to Infrawrench Cloud and select an organization; in local-only mode there is no chat.
