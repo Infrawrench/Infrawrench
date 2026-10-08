@@ -178,6 +178,84 @@ app_env = {
   # PROVIDER_OAUTH_<ID>_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_<ID>_CLIENT_SECRET = "..."
 
+  # Per provider; uncomment a pair to enable that button (a placeholder value
+  # would show a Connect button that fails). OpenRouter needs no client and
+  # CircleCI is desktop-only, so neither appears here.
+  # Bitbucket: an OAuth consumer under Bitbucket workspace settings -> OAuth
+  # consumers (key = client id, secret = client secret).
+  # PROVIDER_OAUTH_BITBUCKET_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_BITBUCKET_CLIENT_SECRET = "..."
+  # Cloudflare: an OAuth client under Cloudflare dashboard -> Manage account ->
+  # OAuth clients, promoted to public (DNS TXT check) so other accounts can
+  # connect.
+  # PROVIDER_OAUTH_CLOUDFLARE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_CLOUDFLARE_CLIENT_SECRET = "..."
+  # Cloudinary: an OAuth app in the Cloudinary Console (beta, max 10 apps).
+  # PROVIDER_OAUTH_CLOUDINARY_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_CLOUDINARY_CLIENT_SECRET = "..."
+  # Convex: an OAuth application in Convex team settings (unverified apps cap at
+  # 100 teams).
+  # PROVIDER_OAUTH_CONVEX_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_CONVEX_CLIENT_SECRET = "..."
+  # DigitalOcean: an OAuth application under DigitalOcean control panel -> API
+  # -> OAuth Applications.
+  # PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_SECRET = "..."
+  # GitHub: a GitHub App's OAuth credentials (separate from GITHUB_APP_* below)
+  # with expiring user tokens on.
+  # PROVIDER_OAUTH_GITHUB_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_GITHUB_CLIENT_SECRET = "..."
+  # GitLab: an application under gitlab.com user, group or instance settings ->
+  # Applications (gitlab.com only).
+  # PROVIDER_OAUTH_GITLAB_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_GITLAB_CLIENT_SECRET = "..."
+  # Heroku: an API client under Heroku dashboard -> Account settings ->
+  # Applications.
+  # PROVIDER_OAUTH_HEROKU_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_HEROKU_CLIENT_SECRET = "..."
+  # Hugging Face: a connected app at huggingface.co/settings/applications/new.
+  # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_SECRET = "..."
+  # Linode: an OAuth app in Akamai Cloud Manager -> OAuth Apps (private, not
+  # public).
+  # PROVIDER_OAUTH_LINODE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_LINODE_CLIENT_SECRET = "..."
+  # Netlify: an OAuth application under Netlify user settings -> Applications.
+  # PROVIDER_OAUTH_NETLIFY_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_NETLIFY_CLIENT_SECRET = "..."
+  # PagerDuty: a classic user OAuth app in PagerDuty's app registration.
+  # PROVIDER_OAUTH_PAGERDUTY_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_PAGERDUTY_CLIENT_SECRET = "..."
+  # PlanetScale: an OAuth application under PlanetScale organization settings ->
+  # OAuth applications.
+  # PROVIDER_OAUTH_PLANETSCALE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_PLANETSCALE_CLIENT_SECRET = "..."
+  # PostHog: the client id is the HTTPS URL of the client metadata document this
+  # deployment hosts (the website's /oauth/posthog-server.json); no secret.
+  # PROVIDER_OAUTH_POSTHOG_CLIENT_ID     = "..."
+  # Railway: an OAuth app under Railway workspace settings -> Developer.
+  # PROVIDER_OAUTH_RAILWAY_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_RAILWAY_CLIENT_SECRET = "..."
+  # Resend: a client registered once through Resend's OAuth client registration
+  # call (no console page; see the plugin docs).
+  # PROVIDER_OAUTH_RESEND_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_RESEND_CLIENT_SECRET = "..."
+  # Sentry: an OAuth application under Sentry user settings -> API ->
+  # Applications.
+  # PROVIDER_OAUTH_SENTRY_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_SENTRY_CLIENT_SECRET = "..."
+  # Stripe: the public Stripe App's `ca_` client id, and as the secret the
+  # platform's live secret key (the token call authenticates with it).
+  # PROVIDER_OAUTH_STRIPE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_STRIPE_CLIENT_SECRET = "..."
+  # Supabase: an OAuth app under Supabase organization settings -> OAuth Apps.
+  # PROVIDER_OAUTH_SUPABASE_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_SUPABASE_CLIENT_SECRET = "..."
+  # Vercel: an integration in the Vercel integrations console with URL slug
+  # `infrawrench`.
+  # PROVIDER_OAUTH_VERCEL_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_VERCEL_CLIENT_SECRET = "..."
+
   # Optional: transactional email via Mailgun — the weekly digest's email
   # recipients, scheduled report deliveries, and sending a managed account's
   # invoice to the customer with its CSV attached. The first three are required
