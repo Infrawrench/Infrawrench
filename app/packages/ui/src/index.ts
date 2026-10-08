@@ -228,6 +228,21 @@ export type {
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
+export {
+  ProviderOAuthConnectPanel,
+  ProviderOAuthConnectedChip,
+  ProviderOAuthDivider,
+  ProviderOAuthReconnectBadge,
+  ProviderOAuthReconnectBanner,
+  isProviderOAuthCancelled,
+  oauthTokenFieldKey,
+  useProviderOAuthConnect,
+} from "./components/ProviderOAuth.js";
+export type {
+  ConnectProviderOAuth,
+  ProviderOAuthInfo,
+  ProviderOAuthResult,
+} from "./components/ProviderOAuth.js";
 export type {
   CredentialFieldOption,
   LoadCredentialOptions,
@@ -562,6 +577,7 @@ export type {
 export type {
   Account,
   AccountListItem,
+  AccountOAuthStatus,
   Dashboard,
   SshKey,
   Bastion,

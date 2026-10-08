@@ -12,6 +12,7 @@ export type {
   Account,
   AccountDetail,
   AccountListItem,
+  AccountOAuthStatus,
   Bastion,
   BillingStatus,
   CapacitySlot,
