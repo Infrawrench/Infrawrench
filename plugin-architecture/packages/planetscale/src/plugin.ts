@@ -10,6 +10,7 @@ import { PsBackupResourceType } from "./resources/ps-backup.js";
 import { PsRoleResourceType } from "./resources/ps-role.js";
 import { PsWebhookResourceType } from "./resources/ps-webhook.js";
 import { planetscaleTerraformExport } from "./terraform.js";
+import { PLANETSCALE_OAUTH, completePlanetScaleOAuth } from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "planetscale",
@@ -31,6 +32,8 @@ const manifest: PluginManifest = {
         "Your PlanetScale service token ID. Create one at Settings > Service tokens in the PlanetScale dashboard.",
       sensitive: false,
       placeholder: "psc_...",
+      // Empty for Connect with PlanetScale, whose OAuth token needs no ID.
+      optional: true,
     },
     {
       key: "serviceTokenSecret",
@@ -61,6 +64,7 @@ const manifest: PluginManifest = {
     periodNative: true,
   },
   statusFeed,
+  oauth: PLANETSCALE_OAUTH,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -79,4 +83,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new PlanetScaleClient(credentials, services),
   parseStatusFeed,
   terraformExport: planetscaleTerraformExport,
+  completeOAuthConnection: completePlanetScaleOAuth,
 };
