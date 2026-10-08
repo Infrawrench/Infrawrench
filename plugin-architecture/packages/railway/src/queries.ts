@@ -6,6 +6,14 @@
 
 export const Q_TOKEN_WORKSPACES = `query { apiToken { workspaces { id name } } }`;
 
+/**
+ * The workspaces an OAuth grant covers: the ones the user picked on Railway's
+ * consent screen. An OAuth access token is not an API token, so the
+ * `apiToken` query above has nothing to answer for it
+ * (docs.railway.com/integrations/oauth/fetching-workspaces-or-projects).
+ */
+export const Q_ME_WORKSPACES = `query { me { name email workspaces { id name } } }`;
+
 export const Q_WORKSPACE = `query Workspace($id: String!) {
   workspace(workspaceId: $id) {
     id name plan has2FAEnforcement preferredRegion createdAt
