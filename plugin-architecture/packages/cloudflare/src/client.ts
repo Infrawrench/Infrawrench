@@ -31,6 +31,7 @@ import type {
   LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import {
+  OAUTH_CREDENTIAL_KEY,
   streamOpenAiSseChat,
   dnsZoneStatus,
   renderDnsRecordDetail,
@@ -133,16 +134,20 @@ const RULE_SPECS: Record<string, RulePhaseSpec> = {
 export class CloudflareClient implements PluginClient {
   private readonly api: CloudflareApi;
   private readonly resourceTypes: ResourceTypeDefinition[];
+  private readonly oauth: boolean;
 
   constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
     this.api = new CloudflareApi(token);
     this.resourceTypes = resourceTypes;
+    // OAuth access tokens authenticate exactly like API tokens (Bearer); only
+    // the preflight treats them differently.
+    this.oauth = Boolean(credentials[OAUTH_CREDENTIAL_KEY]);
   }
 
   async verifyCredentials(): Promise<PreflightResult> {
-    return runCloudflarePreflight(this.api.apiToken);
+    return runCloudflarePreflight(this.api.apiToken, { oauth: this.oauth });
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {

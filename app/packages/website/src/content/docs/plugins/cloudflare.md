@@ -101,9 +101,20 @@ Cloudflare's legacy (pre-streams) Pipelines API is deprecated and isn't listed; 
 
 Needs **Account Analytics: Read**, which the "Create a token with these scopes" link includes.
 
+## Connect with Cloudflare
+
+Pick Cloudflare in the add-account form and click **Connect with Cloudflare**. Cloudflare asks you to sign in, choose which Cloudflare account(s) Infrawrench may reach, and approve the permissions; the account name is filled in from the Cloudflare account you picked.
+
+- **What the consent grants:** the same permission groups as the token template below (read and edit on zones, DNS, Workers, R2, KV, D1, Queues, Hyperdrive, Tunnels, Access, rules and the rest of what Infrawrench manages; Analytics and Account Analytics read), plus your user details and account memberships so it can find your accounts. Nothing outside the plugin's features.
+- **Cost graphs need an API token.** Cloudflare's OAuth has no Billing Read permission, so a connected account shows **Cost reporting** as missing in the credential check. Paste an API token with **Billing Read** (below) if you want cost graphs for that account.
+- **Refresh:** Cloudflare access tokens are short-lived. Infrawrench requests offline access and refreshes them in the background, saving the new refresh token Cloudflare returns each time.
+- **Revoking:** Cloudflare dashboard → **My Profile → Access Management → Authorizations** (Manage OAuth authorizations). Infrawrench then marks the account **Reconnect required**.
+- If an account is missing from Cloudflare's account picker, an administrator of that account may have turned off **Public OAuth App access** (Manage Account → Members → Settings).
+- Works from the web app, the desktop app in cloud mode and desktop-local accounts.
+
 ## Credentials
 
-The API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
+To paste an API token instead of connecting: the API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
 
 If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage. A resource type the token can't read shows the exact permission to add (for example **Account · Hyperdrive:Read**) instead of an empty list. Spectrum has no permission of its own; the **Zone** permission covers it.
 
