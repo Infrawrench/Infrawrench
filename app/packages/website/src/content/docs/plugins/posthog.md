@@ -23,7 +23,21 @@ PostHog never deletes flags, experiments, cohorts, dashboards, insights, actions
 
 <insert [PostHog feature flag detail page showing the rollout, release conditions and the Metrics tab charting evaluations] here>
 
+## Connect with PostHog
+
+For PostHog Cloud, **Connect with PostHog** on the add-account form signs you in to PostHog instead of creating a personal API key. If you are signed in to one region PostHog picks it; otherwise it asks whether your organization is on US or EU Cloud. On the consent screen, choose which organization (or project) Infrawrench may use, and approve the scopes it asks for: the same ones the personal API key instructions list, read and write for feature flags, experiments, dashboards, insights, cohorts, actions, annotations, destinations, batch exports and members, plus `query:read` for HogQL and metrics and `billing:read` for costs. Nothing changes unless you act in Infrawrench.
+
+After you approve, the **Region** and the **Organization** are filled in and the account is named after the organization. Grant a whole organization rather than a single project: projects, members and costs are read at the organization level.
+
+The connection refreshes itself: PostHog access tokens last a week and are renewed automatically. If you revoke Infrawrench in PostHog, or the account goes unused for about a month, it is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with PostHog works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). Self-hosted PostHog uses a personal API key, as below.
+
+<insert [PostHog add-account form showing the Connect with PostHog button above the Region and Personal API Key fields] here>
+
 ## Credentials
+
+To use a personal API key instead:
 
 1. **Region**: US Cloud or EU Cloud. For self-hosted PostHog, fill in **Instance URL** under Advanced options instead.
 2. **Personal API key**: in PostHog open your account settings, **Personal API keys**, **+ Create a personal API key**, limit it to your organization, and pick the scopes you need. **Check credentials** lists them; the policy generator prints the exact list. `billing:read` is needed for costs and `query:read` for HogQL and metrics.

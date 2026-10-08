@@ -1,0 +1,38 @@
+{
+  "client_id": "https://infrawrench.com/oauth/posthog-server.json",
+  "client_name": "Infrawrench",
+  "client_uri": "https://infrawrench.com",
+  "logo_uri": "https://infrawrench.com/icon.png",
+  "redirect_uris": ["https://app.infrawrench.com/api/provider-oauth/posthog/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "com.posthog": {
+    "scopes": [
+      "organization:read",
+      "project:read",
+      "feature_flag:read",
+      "feature_flag:write",
+      "experiment:read",
+      "experiment:write",
+      "dashboard:read",
+      "dashboard:write",
+      "insight:read",
+      "insight:write",
+      "cohort:read",
+      "cohort:write",
+      "action:read",
+      "action:write",
+      "annotation:read",
+      "annotation:write",
+      "hog_function:read",
+      "hog_function:write",
+      "batch_export:read",
+      "batch_export:write",
+      "query:read",
+      "organization_member:read",
+      "organization_member:write",
+      "billing:read"
+    ]
+  }
+}
