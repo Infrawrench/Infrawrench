@@ -55,6 +55,9 @@ import {
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
+/** Resource types only a management key can list. */
+const MANAGEMENT_ONLY_TYPES = new Set(["api-key", "guardrail", "workspace", "byok-credential"]);
+
 /** GET /models caps `limit` at 1000. Pagination is offset+limit, not a cursor. */
 const MODELS_PAGE_SIZE = 1000;
 
@@ -309,6 +312,12 @@ interface OrSttResponse {
 export class OpenRouterClient implements PluginClient {
   private readonly managementKey: string;
   private readonly inferenceKey: string | undefined;
+  /**
+   * False for an account holding only an inference key (Connect with
+   * OpenRouter mints one of those): the console objects below answer 403 to
+   * it, so their lists are empty instead of failing every sync.
+   */
+  private readonly hasManagementKey: boolean;
   private readonly caCert: string | undefined;
   private readonly services: HostServices | undefined;
   private speechModelsPromise: Promise<{ tts: OrModel[]; stt: OrModel[] }> | undefined;
@@ -316,8 +325,10 @@ export class OpenRouterClient implements PluginClient {
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const managementKey = credentials["managementKey"] || credentials["apiKey"];
-    if (!managementKey) throw new Error("OpenRouter plugin: missing managementKey credential");
+    if (!managementKey)
+      throw new Error("OpenRouter plugin: enter a management key or an inference API key");
     this.managementKey = managementKey;
+    this.hasManagementKey = Boolean(credentials["managementKey"]);
     this.inferenceKey = credentials["apiKey"] || undefined;
     this.caCert = credentials["caCert"] || undefined;
     this.services = services;
@@ -353,6 +364,7 @@ export class OpenRouterClient implements PluginClient {
   // ------------------------------------------------------------------ list
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    if (!this.hasManagementKey && MANAGEMENT_ONLY_TYPES.has(typeId)) return [];
     switch (typeId) {
       case "model":
         return this.listModels(accountId);

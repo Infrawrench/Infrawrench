@@ -14,13 +14,25 @@ sidebar_order: 36
 - **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, member count, and a Metrics tab. Full CRUD.
 - **BYOK credentials**: your own keys for upstream providers, with fallback and BYOK-only routing. Create, edit and delete.
 
+## Connect with OpenRouter
+
+**Connect with OpenRouter** on the add-account form signs you in to OpenRouter and creates an inference API key named **Infrawrench** for you, instead of copying one from the settings page. No refresh is involved: the key works until you delete it under [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).
+
+OpenRouter has no narrower kind of key, so this one can make requests billed to your credits. Infrawrench only uses it when you act, for the **Speech** tab.
+
+It is an inference key, not a management key, and OpenRouter only creates management keys in its settings. On its own it shows the model catalogue, endpoints, providers and the Speech tab; API keys, guardrails, workspaces, BYOK credentials, credits and costs need a **Management Key** as well, which you can add to the account at any time.
+
+Connect with OpenRouter works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
+
+<insert [OpenRouter add-account form showing the Connect with OpenRouter button above the Management Key and Inference API Key fields] here>
+
 ## Credentials
 
-OpenRouter needs **two keys**, because neither one can do the other's job.
+OpenRouter has **two kinds of key**, because neither one can do the other's job. Enter at least one.
 
-**Management Key** (required) — [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). This is what OpenRouter used to call a _provisioning key_; the schema still carries both names. It is the only credential `/credits`, `/activity` and `/keys` accept — a plain inference key gets a `403` from all of them, which is very nearly the whole console surface. This is the key the plugin lists resources with.
+**Management Key**: [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). This is what OpenRouter used to call a _provisioning key_; the schema still carries both names. It is the only credential `/credits`, `/activity` and `/keys` accept: a plain inference key gets a `403` from all of them, which is very nearly the whole console surface. Without one, the account lists only the model catalogue, endpoints and providers.
 
-**Inference API Key** (optional) — [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). A normal `sk-or-v1-…` key. Management keys are explicitly rejected by the completion endpoints, so the **Speech tab** needs one of these. Without it every list still works and the Speech tab renders with an explanation instead of failing.
+**Inference API Key**: [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), or the one **Connect with OpenRouter** creates. A normal `sk-or-v1-…` key. Management keys are explicitly rejected by the completion endpoints, so the **Speech tab** needs one of these. Without it every list still works and the Speech tab renders with an explanation instead of failing.
 
 ![OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/add-account.png)
 
