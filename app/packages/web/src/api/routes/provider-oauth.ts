@@ -28,6 +28,7 @@ import {
   createPkcePair,
   exchangeOAuthCode,
   randomOAuthToken,
+  type OAuthAuthorizeUrlParams,
   type OAuthCompletionResult,
   type OAuthExchangeRequest,
   type OAuthTokenSet,
@@ -39,12 +40,14 @@ import {
   providerOAuthRedirectUri,
   sealGrant,
   sealState,
+  configuredClientCredentials,
+  oauthClientRegistration,
+  registeredClientCredentials,
   sealableTokens,
-  serverClientCredentials,
-  serverOAuthClient,
   serverOAuthDeclaration,
   unsealState,
   type OAuthReturnTo,
+  type RegisteredOAuthClient,
 } from "@infrawrench/server-core/provider-oauth";
 import { db } from "../../db/client";
 import { accounts } from "../../db/schema";
@@ -95,16 +98,14 @@ app.post("/:pluginId/authorize", async (c) => {
 
   const loaded = await getPlugin(pluginId);
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
-  const declaration = serverOAuthDeclaration(loaded.plugin.manifest);
-  const client = serverOAuthClient(pluginId);
-  if (!declaration || !client) {
-    return c.json(
-      {
-        error: `Connecting ${loaded.plugin.manifest.displayName} is not configured on this server.`,
-      },
+  const { plugin } = loaded;
+  const declaration = serverOAuthDeclaration(plugin.manifest);
+  const notConfigured = () =>
+    c.json(
+      { error: `Connecting ${plugin.manifest.displayName} is not configured on this server.` },
       400,
     );
-  }
+  if (!declaration) return notConfigured();
 
   if (accountId) {
     const [account] = await db
@@ -126,6 +127,34 @@ app.post("/:pluginId/authorize", async (c) => {
   const userId = c.get("session")?.userId;
   if (!userId) return c.json({ error: "A connection must be started by a user." }, 400);
 
+  // The client: configured (`static`), none needed (`none`, an empty id), or
+  // registered for this flow by the plugin (`dynamic`), in which case it
+  // rides in the sealed state to the exchange and on into the grant.
+  let clientId: string;
+  let registeredClient: RegisteredOAuthClient | undefined;
+  if (oauthClientRegistration(declaration) === "dynamic") {
+    if (!plugin.registerOAuthClient) return notConfigured();
+    try {
+      registeredClient = await plugin.registerOAuthClient({
+        redirectUri: providerOAuthRedirectUri(pluginId),
+        fetch,
+      });
+    } catch (e) {
+      console.error(`[provider-oauth] ${pluginId} client registration failed:`, e);
+      return c.json(
+        {
+          error: `${plugin.manifest.displayName} did not accept the app registration: ${e instanceof Error ? e.message : String(e)}`,
+        },
+        400,
+      );
+    }
+    clientId = registeredClient.clientId;
+  } else {
+    const configured = configuredClientCredentials(plugin.manifest);
+    if (!configured) return notConfigured();
+    clientId = configured.clientId;
+  }
+
   const pkce = declaration.clients.server?.pkce ? await createPkcePair() : null;
   const state = await sealState({
     orgId: organizationId,
@@ -134,15 +163,19 @@ app.post("/:pluginId/authorize", async (c) => {
     returnTo,
     ...(accountId ? { accountId } : {}),
     ...(pkce ? { codeVerifier: pkce.verifier } : {}),
+    ...(registeredClient ? { registeredClient } : {}),
     nonce: randomOAuthToken(16),
     exp: Date.now() + STATE_TTL_MS,
   });
-  const url = buildOAuthAuthorizeUrl(declaration, {
-    clientId: client.clientId,
+  const params: OAuthAuthorizeUrlParams = {
+    clientId,
     redirectUri: providerOAuthRedirectUri(pluginId),
     state,
     ...(pkce ? { codeChallenge: pkce.challenge } : {}),
-  });
+  };
+  const url = plugin.buildOAuthAuthorizeUrl
+    ? plugin.buildOAuthAuthorizeUrl(params)
+    : buildOAuthAuthorizeUrl(declaration, params);
   return c.json({ url });
 });
 
@@ -174,9 +207,10 @@ function escapeHtml(value: string): string {
 
 /**
  * The page the popup lands on: posts the result to the window that opened it
- * (only to the app's own origin), then closes. Without an opener (the link
- * was opened directly, or the browser severed it) it just says what
- * happened; the token is never sent anywhere else.
+ * (only to the app's own origin), then closes. Without an opener (a strict
+ * COOP on the provider's pages severs it) it posts on the same-origin
+ * `BroadcastChannel("infrawrench:provider-oauth")` instead, which only this
+ * app's own pages can hear; the token is never sent anywhere else.
  */
 export function renderPopupResultPage(result: ProviderOAuthResult, appOrigin: string): string {
   const heading = result.ok ? "Connected" : "Connection failed";
@@ -210,6 +244,17 @@ export function renderPopupResultPage(result: ProviderOAuthResult, appOrigin: st
   if (window.opener && !window.opener.closed) {
     try { window.opener.postMessage(payload, origin); } catch (e) {}
     window.close();
+    return;
+  }
+  // A provider with a strict Cross-Origin-Opener-Policy severs the opener;
+  // the app listens on a same-origin channel as well.
+  if (typeof BroadcastChannel === "function") {
+    try {
+      var channel = new BroadcastChannel(${scriptSafeJson(PROVIDER_OAUTH_MESSAGE_TYPE)});
+      channel.postMessage(payload);
+      channel.close();
+      window.close();
+    } catch (e) {}
   }
 })();
 </script>
@@ -262,7 +307,12 @@ providerOAuthCallbackRoute.get("/provider-oauth/:pluginId/callback", async (c) =
 
   const loaded = await getPlugin(pluginId);
   const declaration = loaded ? serverOAuthDeclaration(loaded.plugin.manifest) : null;
-  const client = serverOAuthClient(pluginId);
+  const client =
+    loaded && declaration
+      ? state.registeredClient
+        ? registeredClientCredentials(declaration, state.registeredClient)
+        : configuredClientCredentials(loaded.plugin.manifest)
+      : null;
   if (!loaded || !declaration || !client) {
     return fail("Connecting this provider is not configured on this server.", returnTo);
   }
@@ -274,7 +324,7 @@ providerOAuthCallbackRoute.get("/provider-oauth/:pluginId/callback", async (c) =
       code,
       redirectUri: providerOAuthRedirectUri(pluginId),
       ...(state.codeVerifier ? { codeVerifier: state.codeVerifier } : {}),
-      client: serverClientCredentials(declaration, client),
+      client,
       fetch,
     };
     tokens = plugin.exchangeOAuthCode
@@ -310,6 +360,7 @@ providerOAuthCallbackRoute.get("/provider-oauth/:pluginId/callback", async (c) =
     pluginId,
     tokens: sealableTokens(tokens),
     client: "server",
+    ...(state.registeredClient ? { registeredClient: state.registeredClient } : {}),
     exp: Date.now() + GRANT_TTL_MS,
   });
 

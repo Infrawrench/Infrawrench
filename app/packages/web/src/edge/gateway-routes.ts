@@ -39,10 +39,9 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
   // work afterwards, often through plugin code; a gateway-only miss there
   // happens after the response and cannot be replayed.
   /^\/api\/slack\/(commands|interactions)$/,
-  // Provider OAuth callback: exchanges the code through the plugin's own
-  // hooks (`exchangeOAuthCode`, `completeOAuthConnection`), which the web
-  // Worker does not carry. The authorize step reads only the manifest and
-  // stays on the edge.
+  // Provider OAuth: both halves may run plugin hooks the web Worker does not
+  // carry (authorize: `registerOAuthClient`, `buildOAuthAuthorizeUrl`;
+  // callback: `exchangeOAuthCode`, `completeOAuthConnection`).
   /^\/api\/provider-oauth\/[^/]+\/callback$/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
@@ -63,6 +62,8 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
         "deployments",
         "session-recordings",
         "ssh-host-keys",
+        // Provider OAuth authorize: plugin client registration and URL hooks.
+        "provider-oauth",
         // Connection features: socket drivers by definition.
         "sql",
         "kv",
