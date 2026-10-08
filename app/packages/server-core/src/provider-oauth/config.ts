@@ -21,16 +21,31 @@ import { appBaseUrl } from "../app-url";
 
 export interface ServerOAuthClient {
   clientId: string;
-  clientSecret: string;
+  /** Absent only for a public server client (`clients.server.auth: "none"`). */
+  clientSecret?: string;
 }
 
-/** The configured server client for a plugin, or null when either variable is missing. */
-export function serverOAuthClient(pluginId: string): ServerOAuthClient | null {
+/**
+ * The configured server client for a plugin, or null when a required
+ * variable is missing. A public client (`publicClient`, the declaration's
+ * `auth: "none"`) needs only the id; a confidential one needs both.
+ */
+export function serverOAuthClient(
+  pluginId: string,
+  publicClient = false,
+): ServerOAuthClient | null {
   const prefix = oauthEnvPrefix(pluginId);
   const clientId = process.env[`${prefix}_CLIENT_ID`]?.trim();
+  if (!clientId) return null;
+  if (publicClient) return { clientId };
   const clientSecret = process.env[`${prefix}_CLIENT_SECRET`]?.trim();
-  if (!clientId || !clientSecret) return null;
+  if (!clientSecret) return null;
   return { clientId, clientSecret };
+}
+
+/** True when the server client is public: PKCE, no secret, none sent. */
+export function isPublicServerClient(declaration: OAuthDeclaration): boolean {
+  return declaration.clients.server?.auth === "none";
 }
 
 /** A client registered for one flow (`clientRegistration: "dynamic"`). */
@@ -56,7 +71,7 @@ export function serverOAuthDeclaration(manifest: PluginManifest): OAuthDeclarati
   const declaration = manifest.oauth;
   if (!declaration?.clients.server) return null;
   if (oauthClientRegistration(declaration) !== "static") return declaration;
-  return serverOAuthClient(manifest.id) ? declaration : null;
+  return serverOAuthClient(manifest.id, isPublicServerClient(declaration)) ? declaration : null;
 }
 
 /** Token-endpoint client identity for the server client of `declaration`. */
@@ -64,6 +79,9 @@ export function serverClientCredentials(
   declaration: OAuthDeclaration,
   client: ServerOAuthClient,
 ): OAuthClientCredentials {
+  if (isPublicServerClient(declaration) || !client.clientSecret) {
+    return { clientId: client.clientId, auth: "none" };
+  }
   return {
     clientId: client.clientId,
     clientSecret: client.clientSecret,
@@ -76,13 +94,7 @@ export function registeredClientCredentials(
   declaration: OAuthDeclaration,
   client: RegisteredOAuthClient,
 ): OAuthClientCredentials {
-  return client.clientSecret
-    ? {
-        clientId: client.clientId,
-        clientSecret: client.clientSecret,
-        auth: declaration.clients.server?.auth ?? "client_secret_post",
-      }
-    : { clientId: client.clientId, auth: "none" };
+  return serverClientCredentials(declaration, client);
 }
 
 /**
@@ -98,7 +110,7 @@ export function configuredClientCredentials(
   const registration = oauthClientRegistration(declaration);
   if (registration === "none") return { clientId: "", auth: "none" };
   if (registration === "dynamic") return null;
-  const client = serverOAuthClient(manifest.id);
+  const client = serverOAuthClient(manifest.id, isPublicServerClient(declaration));
   return client ? serverClientCredentials(declaration, client) : null;
 }
 

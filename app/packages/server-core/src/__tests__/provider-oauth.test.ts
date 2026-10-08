@@ -598,6 +598,71 @@ describe("resolveOAuthCredentials client selection", () => {
   });
 });
 
+describe("public server clients and lapsed tokens", () => {
+  beforeEach(() => {
+    resetOAuthRefreshStateForTests();
+    delete process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_SECRET"];
+    process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_ID"] = "public-id";
+  });
+
+  const publicManifest = {
+    ...manifest,
+    oauth: { ...manifest.oauth!, clients: { server: { auth: "none", pkce: true } } },
+  } as PluginManifest;
+
+  it("offers a public client with only a client id", () => {
+    expect(pluginOAuthSummary(publicManifest)).toBeDefined();
+    expect(pluginOAuthSummary(manifest)).toBeUndefined();
+  });
+
+  it("refreshes a public client without sending a secret", async () => {
+    process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_SECRET"] = "should-not-be-sent";
+    const stale = grantCredentials(Date.now() - 1);
+    const fake = fakeStore(stale);
+    const doFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = new URLSearchParams(String(init.body));
+      expect(body.get("client_id")).toBe("public-id");
+      expect(body.has("client_secret")).toBe(false);
+      return new Response(JSON.stringify({ access_token: "at-new", expires_in: 3600 }));
+    });
+    await resolveOAuthCredentials({
+      accountId: "a",
+      organizationId: ORG,
+      manifest: publicManifest,
+      credentials: stale,
+      store: fake.store,
+      fetch: doFetch as unknown as typeof fetch,
+    });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks reconnect_required when a token without a refresh token has lapsed", async () => {
+    const lapsed = {
+      apiToken: "at-old",
+      [OAUTH_CREDENTIAL_KEY]: JSON.stringify({
+        v: 1,
+        client: "server",
+        expiresAt: Date.now() - 1,
+        connectedAt: 1,
+      }),
+    };
+    const fake = fakeStore(lapsed);
+    const doFetch = vi.fn();
+    await expect(
+      resolveOAuthCredentials({
+        accountId: "a",
+        organizationId: ORG,
+        manifest,
+        credentials: lapsed,
+        store: fake.store,
+        fetch: doFetch as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(OAuthReconnectRequiredError);
+    expect(fake.status).toBe("reconnect_required");
+    expect(doFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("updateAccountCredentials", () => {
   it("merges under the lock without losing the stored grant", async () => {
     const fake = fakeStore(grantCredentials(Date.now() + 3_600_000, "rt-9"));

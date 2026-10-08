@@ -162,9 +162,19 @@ export async function resolveOAuthCredentials(
   const declaration = manifest.oauth;
   const state = readOAuthGrantState(credentials);
   const now = options.now ?? Date.now;
-  if (!declaration || !state || state.client !== "server" || !oauthNeedsRefresh(state, now())) {
-    return { ...credentials };
+  if (!declaration || !state || state.client !== "server") return { ...credentials };
+  // An expiring token with nothing to refresh it (a long-lived token that
+  // finally lapsed): say so the same way a revoked refresh token does,
+  // rather than handing the plugin a dead token to fail on obscurely.
+  if (!state.refreshToken && state.expiresAt !== undefined && state.expiresAt <= now()) {
+    await (options.store ?? postgresCredentialStore).setOAuthStatus(
+      accountId,
+      organizationId,
+      "reconnect_required",
+    );
+    throw new OAuthReconnectRequiredError(manifest.displayName);
   }
+  if (!oauthNeedsRefresh(state, now())) return { ...credentials };
 
   const key = `${organizationId}:${accountId}`;
   let pending = inflight.get(key);
