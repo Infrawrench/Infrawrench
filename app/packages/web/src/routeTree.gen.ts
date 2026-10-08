@@ -85,6 +85,7 @@ import { Route as OrgOrgIdSettingsJitAccessRouteImport } from './routes/org.$org
 import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
 import { Route as OrgOrgIdSettingsOnCallRouteImport } from './routes/org.$orgId.settings.on-call'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
+import { Route as OrgOrgIdSettingsPrChecksRouteImport } from './routes/org.$orgId.settings.pr-checks'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
 import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
@@ -498,6 +499,12 @@ const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
   path: '/paging',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsPrChecksRoute =
+  OrgOrgIdSettingsPrChecksRouteImport.update({
+    id: '/pr-checks',
+    path: '/pr-checks',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
   id: '/roles',
   path: '/roles',
@@ -635,6 +642,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
+  '/org/$orgId/settings/pr-checks': typeof OrgOrgIdSettingsPrChecksRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -721,6 +729,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
+  '/org/$orgId/settings/pr-checks': typeof OrgOrgIdSettingsPrChecksRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -811,6 +820,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
+  '/org/$orgId/settings/pr-checks': typeof OrgOrgIdSettingsPrChecksRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -902,6 +912,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
+    | '/org/$orgId/settings/pr-checks'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -988,6 +999,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
+    | '/org/$orgId/settings/pr-checks'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -1077,6 +1089,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
+    | '/org/$orgId/settings/pr-checks'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -1637,6 +1650,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsPagingRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/pr-checks': {
+      id: '/org/$orgId/settings/pr-checks'
+      path: '/pr-checks'
+      fullPath: '/org/$orgId/settings/pr-checks'
+      preLoaderRoute: typeof OrgOrgIdSettingsPrChecksRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/roles': {
       id: '/org/$orgId/settings/roles'
       path: '/roles'
@@ -1799,6 +1819,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
   OrgOrgIdSettingsOnCallRoute: typeof OrgOrgIdSettingsOnCallRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
+  OrgOrgIdSettingsPrChecksRoute: typeof OrgOrgIdSettingsPrChecksRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
   OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -1836,6 +1857,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
   OrgOrgIdSettingsOnCallRoute: OrgOrgIdSettingsOnCallRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
+  OrgOrgIdSettingsPrChecksRoute: OrgOrgIdSettingsPrChecksRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
   OrgOrgIdSettingsSessionRecordingsRoute:
     OrgOrgIdSettingsSessionRecordingsRoute,

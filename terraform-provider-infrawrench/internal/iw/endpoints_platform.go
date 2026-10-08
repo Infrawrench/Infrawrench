@@ -1427,3 +1427,33 @@ func (c *Client) UpdateJitPolicy(ctx context.Context, id string, in JitPolicyInp
 func (c *Client) DeleteJitPolicy(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/jit-access/policies/"+seg(id))
 }
+
+/* --------------------------- pull request checks --------------------------- */
+
+func (c *Client) GetPrCheckRepository(ctx context.Context, id string) (*PrCheckRepository, error) {
+	var out PrCheckRepository
+	if err := c.Get(ctx, "/pr-checks/repositories/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreatePrCheckRepository(ctx context.Context, in PrCheckRepositoryInput) (*PrCheckRepository, error) {
+	var out PrCheckRepository
+	if err := c.Post(ctx, "/pr-checks/repositories", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdatePrCheckRepository(ctx context.Context, id string, in PrCheckRepositoryInput) (*PrCheckRepository, error) {
+	var out PrCheckRepository
+	if err := c.Put(ctx, "/pr-checks/repositories/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeletePrCheckRepository(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/pr-checks/repositories/"+seg(id))
+}

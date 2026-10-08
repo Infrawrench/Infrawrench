@@ -64,6 +64,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
+import { cmdPrCheck } from "./commands/pr-check";
 import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
@@ -265,6 +266,9 @@ COMMANDS
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)
+  pr-check            the pull request check (monthly cost change, blast radius, warnings) for
+                      the local working tree vs a base, or for an open pull request; posts
+                      nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
   carbon              estimated CO2e of the estate by provider, region and resource, with what
@@ -899,6 +903,9 @@ export async function runCli(): Promise<void> {
       case "github-issues":
         if (rest[0] === "settings") await cmdGithubIssueSettings(ctx);
         else await cmdGithubIssues(ctx);
+        break;
+      case "pr-check":
+        await cmdPrCheck(ctx, parsed.prCheck);
         break;
       case "extended-support":
         await cmdExtendedSupport(ctx);

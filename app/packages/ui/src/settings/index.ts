@@ -36,6 +36,7 @@ export { OnCallSection } from "./OnCallSection.js";
 export { JiraSection } from "./JiraSection.js";
 export { LinearSection } from "./LinearSection.js";
 export { GithubIssuesSection } from "./GithubIssuesSection.js";
+export { PrChecksSection } from "./PrChecksSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 export { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
 export { WeeklyDigestSection } from "./WeeklyDigestSection.js";

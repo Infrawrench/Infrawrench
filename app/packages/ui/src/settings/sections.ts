@@ -80,6 +80,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "jira", label: msg("Jira"), requiresPermission: "jira:read" },
   { key: "linear", label: msg("Linear"), requiresPermission: "linear:read" },
   { key: "github-issues", label: msg("GitHub Issues"), requiresPermission: "github-issues:read" },
+  // Beside GitHub Issues: the same GitHub App installation, the other
+  // direction (Infrawrench commenting on the org's changes rather than filing
+  // its own findings). Readable on `iac:read` because the check reads the
+  // uploaded Terraform state; editing needs `org:settings:write`.
+  { key: "pr-checks", label: msg("Pull Request Checks"), requiresPermission: "iac:read" },
   { key: "billing", label: msg("Billing") },
   { key: "audit-log", label: msg("Audit Log") },
 ];

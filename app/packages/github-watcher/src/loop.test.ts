@@ -55,6 +55,11 @@ vi.mock("@infrawrench/server-core/infrafile/triggers", () => ({
   claimDueDeploymentTriggers: () => claimDueDeploymentTriggers(),
 }));
 
+const runPrCheckPass = vi.fn().mockResolvedValue(undefined);
+vi.mock("@infrawrench/server-core/pr-checks/pass", () => ({
+  runPrCheckPass: () => runPrCheckPass(),
+}));
+
 const { GithubWatcher } = await import("./loop");
 const { runDeployment } = vi.mocked(await import("@infrawrench/server-core/infrafile/runner"));
 

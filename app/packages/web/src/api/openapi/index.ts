@@ -120,6 +120,7 @@ import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
 import { registerLinearPaths } from "./paths/linear";
 import { registerGithubIssuesPaths } from "./paths/github-issues";
+import { registerPrChecksPaths } from "./paths/pr-checks";
 import { registerDigestPaths } from "./paths/digest";
 import { REQUIRED_PERMISSION, normalizePathForPermissionLookup } from "./required-permissions";
 
@@ -275,6 +276,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerJiraPaths(ctx);
   registerLinearPaths(ctx);
   registerGithubIssuesPaths(ctx);
+  registerPrChecksPaths(ctx);
   registerDigestPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);

@@ -5296,5 +5296,6 @@ export * from "./query-monitor-schema.js";
 export * from "./slo-schema.js";
 export * from "./cost-visibility-schema.js";
 export * from "./github-issues-schema.js";
+export * from "./pr-check-schema.js";
 export * from "./paging-provider-schema.js";
 export * from "./jit-access-schema.js";

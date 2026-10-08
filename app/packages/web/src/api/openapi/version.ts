@@ -282,4 +282,7 @@
 // `sloAlerts` alert trigger; `slos` on the workspace `TabTarget` kind enum
 // (with an optional `sloId`); and an `slos` section in the org config
 // document. All additive.
-export const API_VERSION = "1.78.0";
+// 1.79.0: pull request checks. `GET /pr-checks`, `GET|POST
+// /pr-checks/repositories`, `GET|PUT|DELETE /pr-checks/repositories/{id}`,
+// `GET /pr-checks/runs` and `POST /pr-checks/preview`. Additive.
+export const API_VERSION = "1.79.0";

@@ -858,3 +858,53 @@ export function matchVirtualTag<T extends { id: string; key: string; name: strin
   if (byKey) return { match: byKey };
   return matchCostReport(tags, q);
 }
+
+/* ------------------------------------------------------------------ *
+ * Pull request checks (`infrawrench pr-check`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * `owner/name` from a git remote URL, for the GitHub forms git writes
+ * (`git@github.com:o/r.git`, `https://github.com/o/r(.git)`,
+ * `ssh://git@github.com/o/r.git`). Null for anything else.
+ */
+export function githubRepoFromRemote(url: string): string | null {
+  const m = /github\.com[:/]+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(url.trim());
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+export interface NameStatusEntry {
+  /** A, M, D or R (C and T are read as M). */
+  status: "A" | "M" | "D" | "R";
+  path: string;
+  /** The old path of a rename. */
+  previousPath: string | null;
+}
+
+/**
+ * Parse `git diff --name-status -M -z` output: NUL-separated, a status then
+ * one path (two for renames and copies). `-z` keeps paths with spaces or
+ * quotes intact.
+ */
+export function parseNameStatusZ(output: string): NameStatusEntry[] {
+  const parts = output.split("\0").filter((p) => p.length > 0);
+  const out: NameStatusEntry[] = [];
+  for (let i = 0; i < parts.length;) {
+    const code = parts[i++]!;
+    const kind = code[0];
+    if (kind === "R" || kind === "C") {
+      const from = parts[i++];
+      const to = parts[i++];
+      if (from && to) out.push({ status: kind === "R" ? "R" : "A", path: to, previousPath: from });
+      continue;
+    }
+    const path = parts[i++];
+    if (!path) break;
+    out.push({
+      status: kind === "A" || kind === "D" ? kind : "M",
+      path,
+      previousPath: null,
+    });
+  }
+  return out;
+}

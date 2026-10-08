@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 67 resources and 7 data sources, each with its own
+control, and alert delivery. 68 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -743,6 +743,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_jira_integration`         | by org id     | Org singleton; omitting the token keeps the stored one      |
 | `infrawrench_linear_integration`       | by org id     | Org singleton; omitting the key keeps the stored one        |
 | `infrawrench_github_issue_settings`    | by org id     | Org singleton; destroy restores the defaults (filing off)   |
+| `infrawrench_pr_check_repository`      | by id         | One per repository; destroy turns its checks off            |
 
 ### Data sources
 
