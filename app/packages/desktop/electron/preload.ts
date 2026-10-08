@@ -121,6 +121,7 @@ const INVOKE_CHANNELS = [
   "cloud_auth_orgs",
   "cloud_get_url",
   "cloud_list_accounts",
+  "cloud_list_account_plugins",
   "cloud_get_account_detail",
   "cloud_create_account",
   "cloud_delete_account",

@@ -9,6 +9,17 @@ ipcMain.handle("cloud_list_accounts", async (_e, { orgId }: { orgId: string }) =
   );
 });
 
+// The org's plugin catalog as the server sees it. The desktop renders plugins
+// from its own bundle; this is read for what only the server knows, e.g.
+// `oauth` (present only when the server can run that plugin's OAuth flow).
+ipcMain.handle("cloud_list_account_plugins", async (_e, { orgId }: { orgId: string }) => {
+  return (
+    (await cloudFetch<
+      Array<{ id: string; oauth?: Record<string, unknown> | null } & Record<string, unknown>>
+    >(orgId, "/accounts/plugins")) ?? []
+  );
+});
+
 ipcMain.handle(
   "cloud_create_account",
   async (

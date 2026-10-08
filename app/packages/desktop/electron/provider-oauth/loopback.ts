@@ -16,21 +16,36 @@ import {
   createPkcePair,
   desktopOAuthRedirectUri,
   randomOAuthToken,
+  type OAuthAuthorizeUrlParams,
   type OAuthDeclaration,
 } from "@infrawrench/plugin-base";
 
 export const LOOPBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** What the caller does with the code before the browser tab is answered. */
+/** The client the flow runs as. `clientId` is empty for `clientRegistration: "none"`. */
+export interface LoopbackClient {
+  clientId: string;
+  clientSecret?: string;
+}
+
 export interface LoopbackCodeHandlerArgs {
   code: string;
   codeVerifier: string;
   redirectUri: string;
+  client: LoopbackClient;
 }
 
 export interface LoopbackFlowOptions<T> {
   declaration: OAuthDeclaration;
-  clientId: string;
+  /**
+   * The client: fixed (a build-time id, or none), or obtained once the
+   * redirect URI is known (dynamic client registration, which runs after the
+   * listener is up and before the authorize URL is built).
+   */
+  client: LoopbackClient | ((redirectUri: string) => Promise<LoopbackClient>);
+  /** The plugin's own authorize URL builder, when it has one. */
+  buildAuthorizeUrl?: (params: OAuthAuthorizeUrlParams) => string;
   /** Open the authorize URL in the user's browser. */
   openExternal: (url: string) => void | Promise<void>;
   /** Exchange the code (and anything else); its outcome decides the page the user sees. */
@@ -124,7 +139,8 @@ async function listenWithRetry(server: http.Server, host: string, port: number):
  * result.
  */
 export async function runLoopbackAuthorization<T>(options: LoopbackFlowOptions<T>): Promise<T> {
-  const { declaration, clientId, providerName } = options;
+  const { declaration, providerName } = options;
+  let client: LoopbackClient | null = typeof options.client === "function" ? null : options.client;
   const port = options.port ?? DESKTOP_OAUTH_LOOPBACK_PORT;
   const redirectUri =
     options.port === undefined
@@ -219,12 +235,12 @@ export async function runLoopbackAuthorization<T>(options: LoopbackFlowOptions<T
         return;
       }
       const code = url.searchParams.get("code");
-      if (!code) {
+      if (!code || !client) {
         send(400, resultPage(false, "Missing authorization code", "Try connecting again."));
         return;
       }
       handling = true;
-      options.onCode({ code, codeVerifier: verifier, redirectUri }).then(
+      options.onCode({ code, codeVerifier: verifier, redirectUri, client }).then(
         (value) => {
           send(
             200,
@@ -283,12 +299,17 @@ export async function runLoopbackAuthorization<T>(options: LoopbackFlowOptions<T
             ),
           options.timeoutMs ?? LOOPBACK_TIMEOUT_MS,
         );
-        const authorizeUrl = buildOAuthAuthorizeUrl(declaration, {
-          clientId,
+        if (typeof options.client === "function") client = await options.client(redirectUri);
+        if (settled || !client) return;
+        const params: OAuthAuthorizeUrlParams = {
+          clientId: client.clientId,
           redirectUri,
           state,
           codeChallenge: challenge,
-        });
+        };
+        const authorizeUrl = options.buildAuthorizeUrl
+          ? options.buildAuthorizeUrl(params)
+          : buildOAuthAuthorizeUrl(declaration, params);
         await options.openExternal(authorizeUrl);
       } catch (err) {
         finish(() => reject(err));

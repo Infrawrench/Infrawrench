@@ -302,7 +302,7 @@ describe("runLoopbackAuthorization", () => {
     );
     const flow = runLoopbackAuthorization({
       declaration,
-      clientId: "client-123",
+      client: { clientId: "client-123" },
       providerName: "Provider",
       port,
       openExternal: (url) => {
@@ -337,7 +337,7 @@ describe("runLoopbackAuthorization", () => {
     let authorizeUrl = "";
     const flow = runLoopbackAuthorization({
       declaration,
-      clientId: "c",
+      client: { clientId: "c" },
       providerName: "Provider",
       port: port + 1,
       openExternal: (url) => {
@@ -358,7 +358,7 @@ describe("runLoopbackAuthorization", () => {
     const controller = new AbortController();
     const cancelled = runLoopbackAuthorization({
       declaration,
-      clientId: "c",
+      client: { clientId: "c" },
       providerName: "Provider",
       port: port + 2,
       signal: controller.signal,
@@ -369,7 +369,7 @@ describe("runLoopbackAuthorization", () => {
 
     const timedOut = runLoopbackAuthorization({
       declaration,
-      clientId: "c",
+      client: { clientId: "c" },
       providerName: "Provider",
       port: port + 3,
       timeoutMs: 50,
@@ -377,5 +377,55 @@ describe("runLoopbackAuthorization", () => {
       onCode: async () => "never",
     });
     await expect(timedOut).rejects.toMatchObject({ reason: "timeout" });
+  });
+});
+
+describe("client registration modes", () => {
+  it("refreshes a dynamically registered grant with its own client id", async () => {
+    const creds = {
+      apiToken: "at-1",
+      __oauth: grant({ expiresAt: NOW + 1000, clientId: "dyn-client" }),
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      tokenResponse({ access_token: "at-2", refresh_token: "rt-2", expires_in: 3600 }),
+    );
+    const { host, current } = makeHost(creds, {
+      fetch: fetchMock,
+      getClientId: () => undefined,
+    });
+    await createLocalOAuthRefresher(host).resolve("a", "p", creds);
+    expect(String(fetchMock.mock.calls[0]![1]!.body)).toContain("client_id=dyn-client");
+    const state = JSON.parse(current()["__oauth"]!) as Record<string, unknown>;
+    expect(state["clientId"]).toBe("dyn-client");
+  });
+
+  it("registers the client with the redirect URI and uses the plugin's URL builder", async () => {
+    const port = 43800 + Math.floor(Math.random() * 100);
+    let opened = "";
+    const register = vi.fn(async (redirectUri: string) => ({
+      clientId: `registered-for-${redirectUri}`,
+    }));
+    const flow = runLoopbackAuthorization({
+      declaration: { ...declaration, clientRegistration: "dynamic" },
+      client: register,
+      buildAuthorizeUrl: (p) =>
+        `https://provider.test/custom?callback_url=${encodeURIComponent(p.redirectUri)}&state=${p.state}&cid=${encodeURIComponent(p.clientId)}`,
+      providerName: "Provider",
+      port,
+      openExternal: (url) => {
+        opened = url;
+      },
+      onCode: async ({ client }) => client.clientId,
+    });
+    await vi.waitFor(() => expect(opened).not.toBe(""));
+    const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
+    expect(register).toHaveBeenCalledWith(redirectUri);
+    const url = new URL(opened);
+    expect(url.pathname).toBe("/custom");
+    expect(url.searchParams.get("cid")).toBe(`registered-for-${redirectUri}`);
+    await fetch(
+      `${redirectUri}?code=c&state=${encodeURIComponent(url.searchParams.get("state")!)}`,
+    );
+    await expect(flow).resolves.toBe(`registered-for-${redirectUri}`);
   });
 });

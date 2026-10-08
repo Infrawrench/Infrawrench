@@ -193,8 +193,12 @@ export function createLocalOAuthRefresher(host: LocalOAuthHost): LocalOAuthRefre
     if (!state || !needsLocalRefresh(state, now())) return credentials;
 
     const provider = await host.getProvider(pluginId);
-    const clientId = host.getClientId(pluginId);
-    if (!provider || !clientId) {
+    // A dynamically registered grant carries its own client id; a provider
+    // without registered clients has none; otherwise the build-time id.
+    const clientId =
+      state.clientId ??
+      (provider?.declaration.clientRegistration === "none" ? "" : host.getClientId(pluginId));
+    if (!provider || clientId === undefined) {
       console.warn(
         `[provider-oauth] ${pluginId}: token is expiring but no desktop client is configured to refresh it`,
       );

@@ -20,13 +20,19 @@ import {
   applyOAuthTokens,
   exchangeOAuthCode,
   OAUTH_CREDENTIAL_KEY,
+  readOAuthGrantState,
   type OAuthTokenSet,
 } from "@infrawrench/plugin-base";
 import { cloudFetch } from "../cloud-data/shared";
 import { registerProtocolRoute } from "../cloud-auth";
 import { loadPlugins, getPlugin } from "../infrafile/plugins";
 import { getDesktopOAuthClientId } from "./build-env";
-import { runLoopbackAuthorization, LoopbackFlowError, LOOPBACK_TIMEOUT_MS } from "./loopback";
+import {
+  runLoopbackAuthorization,
+  LoopbackFlowError,
+  LOOPBACK_TIMEOUT_MS,
+  type LoopbackClient,
+} from "./loopback";
 import {
   PROVIDER_OAUTH_DEEP_LINK_HOST,
   deliverToPendingFlow,
@@ -56,14 +62,37 @@ function cancelCurrent(): void {
   current = null;
 }
 
+type LoadedPlugin = NonNullable<Awaited<ReturnType<typeof getPlugin>>>;
+
+/**
+ * How a local flow gets its client, or null when this build cannot run it:
+ * `static` needs the build-time id, `none` needs nothing, `dynamic` needs the
+ * plugin's registration hook.
+ */
+function localClientSource(
+  loaded: LoadedPlugin,
+): LoopbackClient | ((redirectUri: string) => Promise<LoopbackClient>) | null {
+  const { manifest } = loaded.plugin;
+  const declaration = manifest.oauth;
+  if (!declaration?.clients.desktop) return null;
+  switch (declaration.clientRegistration ?? "static") {
+    case "none":
+      return { clientId: "" };
+    case "dynamic": {
+      const register = loaded.plugin.registerOAuthClient?.bind(loaded.plugin);
+      if (!register) return null;
+      return (redirectUri) => register({ redirectUri, fetch: (input, init) => fetch(input, init) });
+    }
+    default: {
+      const clientId = getDesktopOAuthClientId(manifest.id);
+      return clientId ? { clientId } : null;
+    }
+  }
+}
+
 async function localClientPluginIds(): Promise<string[]> {
   const plugins = await loadPlugins();
-  return plugins
-    .filter(
-      (p) =>
-        p.plugin.manifest.oauth?.clients.desktop && getDesktopOAuthClientId(p.plugin.manifest.id),
-    )
-    .map((p) => p.plugin.manifest.id);
+  return plugins.filter((p) => localClientSource(p) !== null).map((p) => p.plugin.manifest.id);
 }
 
 async function connectLocal(
@@ -72,8 +101,8 @@ async function connectLocal(
 ): Promise<ProviderOAuthConnectResult> {
   const loaded = await getPlugin(pluginId);
   const declaration = loaded?.plugin.manifest.oauth;
-  const clientId = getDesktopOAuthClientId(pluginId);
-  if (!loaded || !declaration?.clients.desktop || !clientId) {
+  const clientSource = loaded ? localClientSource(loaded) : null;
+  if (!loaded || !declaration || !clientSource) {
     throw new Error(
       `${loaded?.plugin.manifest.displayName ?? pluginId} cannot be connected from this app.`,
     );
@@ -81,19 +110,27 @@ async function connectLocal(
   const { plugin } = loaded;
   const providerName = plugin.manifest.displayName;
   const doFetch: typeof fetch = (input, init) => fetch(input, init);
+  const pluginAuthorizeUrl = plugin.buildOAuthAuthorizeUrl?.bind(plugin);
 
   return runLoopbackAuthorization({
     declaration,
-    clientId,
+    client: clientSource,
+    ...(pluginAuthorizeUrl ? { buildAuthorizeUrl: pluginAuthorizeUrl } : {}),
     providerName,
     signal,
     openExternal: (url) => shell.openExternal(url),
-    onCode: async ({ code, codeVerifier, redirectUri }) => {
+    onCode: async ({ code, codeVerifier, redirectUri, client }) => {
       const request = {
         code,
         codeVerifier,
         redirectUri,
-        client: { clientId, auth: "none" as const },
+        client: client.clientSecret
+          ? {
+              clientId: client.clientId,
+              clientSecret: client.clientSecret,
+              auth: "client_secret_post" as const,
+            }
+          : { clientId: client.clientId, auth: "none" as const },
         fetch: doFetch,
       };
       const tokens: OAuthTokenSet = plugin.exchangeOAuthCode
@@ -111,6 +148,16 @@ async function connectLocal(
         }
       }
       applyOAuthTokens(declaration, credentials, tokens, "desktop");
+      if (declaration.clientRegistration === "dynamic") {
+        // Refreshes must use the client this grant was issued to.
+        const state = readOAuthGrantState(credentials);
+        if (state) {
+          credentials[OAUTH_CREDENTIAL_KEY] = JSON.stringify({
+            ...state,
+            clientId: client.clientId,
+          });
+        }
+      }
       return {
         credentials,
         ...(completion.accountName ? { accountName: completion.accountName } : {}),
@@ -204,9 +251,14 @@ setOAuthStatusListener((accountId, status) => {
 
 ipcMain.handle("provider_oauth_local_clients", () => localClientPluginIds());
 
+/**
+ * Resolves `{ cancelled: true }` instead of rejecting when the user (or a
+ * newer flow) cancelled, so the renderer can go quietly back to idle: an
+ * error's class does not survive the IPC boundary.
+ */
 ipcMain.handle(
   "provider_oauth_connect",
-  async (_e, raw: unknown): Promise<ProviderOAuthConnectResult> => {
+  async (_e, raw: unknown): Promise<ProviderOAuthConnectResult | { cancelled: true }> => {
     const { pluginId, target, orgId, accountId } = ConnectArgs.parse(raw);
     cancelCurrent();
     const controller = new AbortController();
@@ -217,6 +269,11 @@ ipcMain.handle(
         return await connectCloud(pluginId, orgId, accountId, controller.signal);
       }
       return await connectLocal(pluginId, controller.signal);
+    } catch (err) {
+      if (err instanceof LoopbackFlowError && err.reason === "cancelled") {
+        return { cancelled: true };
+      }
+      throw err;
     } finally {
       if (current === controller) current = null;
     }

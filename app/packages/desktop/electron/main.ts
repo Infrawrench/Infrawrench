@@ -481,6 +481,7 @@ const MAX_PLAINTEXT_BYTES = 64 * 1024; // fits PEM keys + credential JSON
 const MAX_CIPHERTEXT_BYTES = 96 * 1024;
 
 const AccountIdArgs = z.object({ accountId: z.string().min(1).max(128) });
+const AccountGetCredentialsArgs = AccountIdArgs.extend({ refresh: z.boolean().optional() });
 const AccountSaveArgs = z.object({
   accountId: z.string().min(1).max(128),
   credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
@@ -519,13 +520,18 @@ const SecretFieldEncryptArgs = z.object({
 });
 
 ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
-  const { accountId } = AccountIdArgs.parse(raw);
+  const { accountId, refresh } = AccountGetCredentialsArgs.parse(raw);
   // Decrypts, and refreshes an OAuth-connected account's access token when it
   // is about to expire (provider-oauth/local-accounts.ts). Every plugin the
   // renderer runs gets its credentials here, so this covers all of them.
+  // `refresh: false` is for the credentials editor, which must open even when
+  // the grant was revoked and a refresh can only fail.
   let credentials: Record<string, string>;
   try {
-    credentials = await loadLocalAccountCredentials(accountId);
+    credentials =
+      refresh === false
+        ? (await readStoredAccount(accountId)).credentials
+        : await loadLocalAccountCredentials(accountId);
   } catch (err) {
     if (err instanceof LocalAccountNotFoundError) throw new Error("Account not found");
     throw err;
