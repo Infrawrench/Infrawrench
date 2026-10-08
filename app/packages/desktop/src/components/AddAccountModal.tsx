@@ -11,6 +11,7 @@ import type { AccountRow } from "../db/rows";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createCloudAccount } from "../lib/cloud-api";
+import { cancelProviderOAuth, connectProviderOAuth, resolveOAuthInfo } from "../lib/provider-oauth";
 
 interface Props {
   onClose: () => void;
@@ -57,11 +58,20 @@ export function AddAccountModal({
 
   const handleLoadPlugins = useCallback(async (): Promise<PluginInfo[]> => {
     const loaded = await loadPlugins();
+    // "Connect with X" shows only where this mode can run the flow: the
+    // server's client for a cloud org, this build's desktop client locally.
+    const oauthInfo = await resolveOAuthInfo(
+      orgId ?? null,
+      loaded.map((l) => l.plugin.manifest),
+    );
     return loaded.map((l) => ({
       id: l.plugin.manifest.id,
       displayName: l.plugin.manifest.displayName,
       logoSvg: l.plugin.manifest.logoSvg,
       preflight: l.plugin.manifest.preflight ?? null,
+      ...(oauthInfo.has(l.plugin.manifest.id)
+        ? { oauth: oauthInfo.get(l.plugin.manifest.id)! }
+        : {}),
       credentialFields: l.plugin.manifest.credentialFields.map((f) => ({
         key: f.key,
         label: f.label,
@@ -78,7 +88,13 @@ export function AddAccountModal({
         ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),
       })),
     }));
-  }, []);
+  }, [orgId]);
+
+  const connectOAuth = useCallback(
+    (pluginId: string, opts: { accountId?: string }) =>
+      connectProviderOAuth(orgId ?? null, pluginId, opts),
+    [orgId],
+  );
 
   // Desktop doesn't expose bastions today; the bastionId argument from the
   // shared modal is ignored here.
@@ -153,6 +169,8 @@ export function AddAccountModal({
       loadCredentialOptions={loadCredentialOptions}
       accounts={accounts}
       onOpenExternal={(url) => void invoke("open_external_url", { url })}
+      connectOAuth={connectOAuth}
+      cancelOAuth={cancelProviderOAuth}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}
       {...(prefilledCredentials ? { prefilledCredentials } : {})}
       {...(prefilledDisplayName ? { prefilledDisplayName } : {})}
