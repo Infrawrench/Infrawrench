@@ -29,10 +29,17 @@ describe("routeRequest", () => {
       "/api/org/org_1/v1/sftp/list",
       "/api/slack/commands",
       "/api/slack/interactions",
+      "/api/provider-oauth/github/callback",
     ]) {
       expect(routeRequest("GET", path, null).target, path).toBe("gateway");
       expect(routeRequest("POST", path, null).target, path).toBe("gateway");
     }
+  });
+
+  it("starts provider OAuth at the edge but finishes it on the gateway", () => {
+    expect(
+      routeRequest("POST", "/api/org/org_1/provider-oauth/github/authorize", null).target,
+    ).toBe("edge");
   });
 
   it("serves reads of mutation-on-gateway routes at the edge", () => {

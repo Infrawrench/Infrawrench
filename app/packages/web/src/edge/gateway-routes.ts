@@ -39,6 +39,11 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
   // work afterwards, often through plugin code; a gateway-only miss there
   // happens after the response and cannot be replayed.
   /^\/api\/slack\/(commands|interactions)$/,
+  // Provider OAuth callback: exchanges the code through the plugin's own
+  // hooks (`exchangeOAuthCode`, `completeOAuthConnection`), which the web
+  // Worker does not carry. The authorize step reads only the manifest and
+  // stays on the edge.
+  /^\/api\/provider-oauth\/[^/]+\/callback$/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
   /^\/api\/internal(\/|$)/,
