@@ -22,25 +22,7 @@ import type {
 import { dockerDrivers, k8sDrivers, kvDrivers, sqlDrivers } from "../drivers";
 import { getSqlite } from "../db";
 import { buildAad, decryptValue, getEncryptionKey } from "../main-utils";
-
-/** Decrypt one account's credentials straight out of the local database. */
-async function getAccountCredentials(accountId: string): Promise<Record<string, string>> {
-  const db = await getSqlite();
-  const stmt = db.prepare(
-    "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = ? LIMIT 1",
-  );
-  stmt.bind([accountId]);
-  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-  stmt.free();
-  if (!row) throw new Error(`Account "${accountId}" not found in the local database.`);
-  const plaintext = decryptValue(
-    String(row["encrypted_credentials"] ?? ""),
-    String(row["credentials_iv"] ?? ""),
-    getEncryptionKey(),
-    buildAad("account", accountId, "credentials"),
-  );
-  return JSON.parse(plaintext) as Record<string, string>;
-}
+import { getOAuthProvider, loadLocalAccountCredentials } from "../provider-oauth/local-accounts";
 
 /**
  * Main-process HTTP for plugins. Unlike the renderer's, this needs no proxying
@@ -196,20 +178,39 @@ function buildHostServices(
 export async function createPluginClientFromCredentials(
   pluginId: string,
   credentials: Record<string, string>,
+  extraServices: Partial<HostServices> = {},
 ): Promise<PluginClient> {
   // Imported lazily: the plugin registry is large, and a CLI invocation that
   // never touches a plugin (login, orgs, costs) should not pay to load it.
   const { getPlugin } = await import("./plugins.js");
   const loaded = await getPlugin(pluginId);
   if (!loaded) throw new Error(`Plugin "${pluginId}" is not available.`);
-  const services = buildHostServices(loaded.plugin.manifest, credentials);
+  const services = { ...buildHostServices(loaded.plugin.manifest, credentials), ...extraServices };
   return loaded.plugin.createClient(credentials, services);
 }
 
-/** A ready-to-use plugin client for one locally-stored account. */
+/**
+ * A ready-to-use plugin client for one locally-stored account. Credentials go
+ * through the same provider OAuth refresh as the app's (an OAuth-connected
+ * account gets a valid access token, and `HostServices.oauth` for a fresh one
+ * mid-run).
+ */
 export async function createLocalPluginClient(
   accountId: string,
   pluginId: string,
 ): Promise<PluginClient> {
-  return createPluginClientFromCredentials(pluginId, await getAccountCredentials(accountId));
+  const credentials = await loadLocalAccountCredentials(accountId);
+  const oauth: Partial<HostServices> =
+    "__oauth" in credentials
+      ? {
+          oauth: {
+            getAccessToken: async () => {
+              const tokenField = (await getOAuthProvider(pluginId))?.declaration.tokenField;
+              const fresh = await loadLocalAccountCredentials(accountId);
+              return tokenField ? (fresh[tokenField] ?? "") : "";
+            },
+          },
+        }
+      : {};
+  return createPluginClientFromCredentials(pluginId, credentials, oauth);
 }
