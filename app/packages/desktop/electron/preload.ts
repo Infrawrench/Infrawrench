@@ -16,6 +16,10 @@ const INVOKE_CHANNELS = [
   "account_get_credentials",
   "account_save_credentials",
   "account_create",
+  // provider OAuth ("Connect with X"): local loopback flow or the cloud's flow
+  "provider_oauth_local_clients",
+  "provider_oauth_connect",
+  "provider_oauth_cancel",
   "ssh_key_get_private_key",
   "ssh_key_get_public_key",
   "ssh_key_ensure_agent_key",
@@ -520,6 +524,8 @@ const INVOKE_CHANNELS = [
 
 const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
+  // a local account's OAuth connection changed state (e.g. needs reconnecting)
+  "provider_oauth_status",
   "storage_download_progress",
   "ssh_host_key_prompt",
   "update_available_prompt",
