@@ -35,8 +35,13 @@ export type OAuthClientKind = "server" | "desktop";
 export type OAuthClientAuthMethod = "client_secret_post" | "client_secret_basic" | "none";
 
 export interface OAuthServerClientDeclaration {
-  /** How the client secret is sent to the token endpoint. Default `client_secret_post`. */
-  auth?: Exclude<OAuthClientAuthMethod, "none">;
+  /**
+   * How the client secret is sent to the token endpoint. Default
+   * `client_secret_post`. `none` is a public web client (PKCE, no secret):
+   * the host then needs only the client id, and must send no secret, since
+   * some providers reject a request that carries one.
+   */
+  auth?: OAuthClientAuthMethod;
   /** Also send a PKCE S256 challenge. Harmless where unsupported; set it where documented. */
   pkce?: boolean;
 }

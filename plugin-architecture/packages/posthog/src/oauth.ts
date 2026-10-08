@@ -72,7 +72,7 @@ export const POSTHOG_OAUTH: OAuthDeclaration = {
   tokenUrl: "https://oauth.posthog.com/oauth/token/",
   scopes: POSTHOG_OAUTH_SCOPES,
   tokenField: "apiKey",
-  clients: { server: { pkce: true }, desktop: { loopbackHost: "127.0.0.1" } },
+  clients: { server: { auth: "none", pkce: true }, desktop: { loopbackHost: "127.0.0.1" } },
   access: "read-write",
   refresh: "reusable",
   docsUrl: "https://posthog.com/docs/api/oauth",
