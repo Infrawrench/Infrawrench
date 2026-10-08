@@ -181,8 +181,8 @@ app_env = {
   # Per provider; uncomment a pair to enable that button (a placeholder value
   # would show a Connect button that fails). OpenRouter needs no client and
   # CircleCI is desktop-only, so neither appears here.
-  # Bitbucket: an OAuth consumer under Bitbucket workspace settings -> OAuth
-  # consumers (key = client id, secret = client secret).
+  # Bitbucket: an OAuth client under Bitbucket workspace settings -> Apps and
+  # features -> OAuth clients, grant types Authorization code + Refresh token.
   # PROVIDER_OAUTH_BITBUCKET_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_BITBUCKET_CLIENT_SECRET = "..."
   # Cloudflare: an OAuth client under Cloudflare dashboard -> Manage account ->

@@ -5881,7 +5881,7 @@ Set on the account when a refresh fails with `invalidGrant`, or when a non-refre
 
 Where the app is registered, and what is unusual. Callback and loopback URIs are always the two above.
 
-- **Bitbucket** (server only): workspace settings, OAuth consumers; not a private consumer. Scopes live on the consumer. Client secret as HTTP Basic.
+- **Bitbucket** (server only): workspace settings > Apps and features > OAuth clients (formerly "OAuth consumers"), grant types Authorization code + Refresh token; leave Client credentials off. Scopes live on the client. Client secret as HTTP Basic.
 - **CircleCI** (desktop local only): no registration, `dynamic` against `app.circleci.com/oauth/register`; CircleCI only accepts loopback redirects. Token is a 90-day personal token with no refresh.
 - **Cloudflare**: dashboard, Manage Account, OAuth clients; two clients (token auth method is per client). New clients are private to our account until promoted to public, which needs DNS TXT verification of the client URL's domain. No billing OAuth scope exists, so cost graphs still need a pasted API token.
 - **Cloudinary** (OAuth apps in Beta): Console, Settings, Developers, OAuth Apps; two apps (post / none), scopes on the app. Token in the `apiSecret` field, 5-minute access tokens.
