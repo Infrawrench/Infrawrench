@@ -5,6 +5,8 @@ import {
   ResourcePill,
   ConfirmDeleteModal,
   EditCredentialsModal,
+  ProviderOAuthReconnectBanner,
+  isProviderOAuthCancelled,
   TerraformExportModal,
   CredentialPreflightModal,
   dispatchResourcesChanged,
@@ -26,6 +28,11 @@ import type {
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
+import {
+  cancelProviderOAuth,
+  connectProviderOAuth,
+  reconnectProviderAccount,
+} from "@/lib/provider-oauth";
 import type { AccountListItem, ResourceTypeSummary } from "@/lib/api-types";
 import { CreateResourceModal } from "./CreateResourceModal";
 
@@ -91,6 +98,10 @@ export function AccountDetailView({
     null,
   );
   const [preflightOpen, setPreflightOpen] = useState(false);
+  // Whether the server can run this plugin's OAuth flow (the catalog carries
+  // `oauth` only when a client is configured): decides if Reconnect shows.
+  const [oauthAvailable, setOauthAvailable] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account.displayName);
   const [isSaving, setIsSaving] = useState(false);
@@ -104,10 +115,13 @@ export function AccountDetailView({
     let cancelled = false;
     setPreflightDeclaration(null);
     setPreflightOpen(false);
+    setOauthAvailable(false);
     fetchPluginCatalog(orgId)
       .then((plugins) => {
         if (cancelled) return;
-        setPreflightDeclaration(plugins.find((p) => p.id === account.pluginId)?.preflight ?? null);
+        const plugin = plugins.find((p) => p.id === account.pluginId);
+        setPreflightDeclaration(plugin?.preflight ?? null);
+        setOauthAvailable(!!plugin?.oauth);
       })
       .catch(() => {
         // Catalog unavailable: leave the affordance hidden rather than error.
@@ -154,6 +168,21 @@ export function AccountDetailView({
     await apiPut(`/api/org/${orgId}/accounts/${account.id}/credentials`, { credentials });
     toast.success(gt("Credentials updated"));
     dispatchResourcesChanged({ accountId: account.id });
+  }
+
+  function reconnect() {
+    setReconnecting(true);
+    reconnectProviderAccount(orgId, account.id, account.pluginId)
+      .then(() => {
+        toast.success(gt("Reconnected {provider}", { provider: gtData(pluginDisplayName) }));
+        useUIStore.getState().bumpAccounts();
+        dispatchResourcesChanged({ accountId: account.id });
+      })
+      .catch((e: unknown) => {
+        if (isProviderOAuthCancelled(e)) return;
+        toast.error(gt("Couldn't reconnect: {message}", { message: formatErrorMessage(e) }));
+      })
+      .finally(() => setReconnecting(false));
   }
 
   async function handleRename() {
@@ -277,6 +306,16 @@ export function AccountDetailView({
         </div>
       </div>
 
+      {account.oauthStatus === "reconnect_required" && (
+        <ProviderOAuthReconnectBanner
+          className="mb-6"
+          providerName={pluginDisplayName}
+          onReconnect={oauthAvailable ? reconnect : undefined}
+          reconnecting={reconnecting}
+          onUpdateCredentials={() => void openEditCredentials()}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmDeleteModal
           kind="account"
@@ -324,6 +363,10 @@ export function AccountDetailView({
           currentCredentials={editCredsState.current}
           onSave={saveCredentials}
           onClose={() => setEditCredsState(null)}
+          accountId={account.id}
+          oauthStatus={account.oauthStatus ?? null}
+          connectOAuth={(pluginId, opts) => connectProviderOAuth(orgId, pluginId, opts)}
+          cancelOAuth={cancelProviderOAuth}
           loadCredentialOptions={async (fieldKey, credentials) => {
             const { options } = await apiPost<{ options: CredentialFieldOption[] }>(
               `/api/org/${orgId}/accounts/credential-options`,
