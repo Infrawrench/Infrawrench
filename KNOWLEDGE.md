@@ -3364,7 +3364,7 @@ The synthetic probes, pointed outward: a chosen set of probes published at an un
 - **Surfaces**: shared `ui/src/status-pages/` (`StatusPagesPanel` on its own `"status-pages"` workspace tab on both hosts — full chain incl. `validate-tabs` + the `TabTarget` enum; `StatusPageEditorModal`; `PublicStatusPageView`, which lives in `ui` so the editor's preview and the real page are the same component). Desktop cloud-only (`cloud_status_pages_*` IPC ×5) and takes `appOrigin` from `CLOUD_URL`, since it isn't served from the cloud app. Mobile is a **read-only** list of pages with live/draft state that opens the URL in the browser. CLI `infrawrench status-pages [name|id]`. MCP `list_status_pages`. Docs: `features/status-pages.md`.
 - `probeMetricResourceId` moved to a db-free leaf `probes/metric-ids.ts` (the `cost/workflow-cost-ids.ts` split) — importing it from `probes/pass.ts` dragged the poller's whole Slack/Teams/push stack into the MCP tool module and broke `tools/__tests__/generic.test.ts`'s schema mock.
 
-### SLOs and error budgets (cloud-only; migration `0147_slos`, API `1.77.0`)
+### SLOs and error budgets (cloud-only; migration `0148_slos`, API `1.78.0`)
 
 An Infrawrench-native service-level objective over data the product already records. One table `slos` (`server-core/src/db/slo-schema.ts`); new alert trigger `sloAlerts`; push payload `type: "slo_alert"` (statuses `fast_burn` / `slow_burn` / `exhausted` / `recovered`, deep-linking `/org/{orgId}/slos/{sloId}`).
 
