@@ -1,6 +1,12 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useGT } from "gt-react";
-import { ChevronIcon, type DraggableResource, CloseIcon, IssueIndicator } from "@infrawrench/ui";
+import {
+  ChevronIcon,
+  type DraggableResource,
+  CloseIcon,
+  IssueIndicator,
+  ProviderOAuthReconnectBadge,
+} from "@infrawrench/ui";
 import { accountTabTarget } from "../../lib/workspace-tabs";
 import type { Account, PluginGroup } from "./types";
 
@@ -13,6 +19,8 @@ export function AccountDraggableRow({
   onToggleExpand,
   onNavigate,
   onDelete,
+  onReconnect,
+  reconnecting = false,
 }: {
   account: Account;
   group: PluginGroup;
@@ -23,6 +31,9 @@ export function AccountDraggableRow({
   onToggleExpand: () => void;
   onNavigate: () => void;
   onDelete?: (() => void) | undefined;
+  /** Runs the provider OAuth reconnect; omitted when this mode cannot. */
+  onReconnect?: (() => void) | undefined;
+  reconnecting?: boolean;
 }) {
   const gt = useGT();
   const draggableData: DraggableResource = {
@@ -99,6 +110,15 @@ export function AccountDraggableRow({
         <span className="truncate">{account.displayName}</span>
         {issue && <IssueIndicator reason={issue} />}
       </button>
+      {account.oauthStatus === "reconnect_required" && (
+        <span draggable={false} className="ml-1">
+          <ProviderOAuthReconnectBadge
+            accountName={account.displayName}
+            onReconnect={onReconnect}
+            reconnecting={reconnecting}
+          />
+        </span>
+      )}
       {showDropHint && <span className="text-xs text-accent flex-shrink-0">{gt("Drop")}</span>}
       {!showDropHint && onDelete && (
         <button
