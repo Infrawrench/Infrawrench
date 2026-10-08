@@ -27,12 +27,8 @@ import { cloudFetch } from "../cloud-data/shared";
 import { registerProtocolRoute } from "../cloud-auth";
 import { loadPlugins, getPlugin } from "../infrafile/plugins";
 import { getDesktopOAuthClientId } from "./build-env";
-import {
-  runLoopbackAuthorization,
-  LoopbackFlowError,
-  LOOPBACK_TIMEOUT_MS,
-  type LoopbackClient,
-} from "./loopback";
+import { localClientPluginIds, localClientSource } from "./client-source";
+import { runLoopbackAuthorization, LoopbackFlowError, LOOPBACK_TIMEOUT_MS } from "./loopback";
 import {
   PROVIDER_OAUTH_DEEP_LINK_HOST,
   deliverToPendingFlow,
@@ -62,46 +58,25 @@ function cancelCurrent(): void {
   current = null;
 }
 
-type LoadedPlugin = NonNullable<Awaited<ReturnType<typeof getPlugin>>>;
-
-/**
- * How a local flow gets its client, or null when this build cannot run it:
- * `static` needs the build-time id, `none` needs nothing, `dynamic` needs the
- * plugin's registration hook.
- */
-function localClientSource(
-  loaded: LoadedPlugin,
-): LoopbackClient | ((redirectUri: string) => Promise<LoopbackClient>) | null {
-  const { manifest } = loaded.plugin;
-  const declaration = manifest.oauth;
-  if (!declaration?.clients.desktop) return null;
-  switch (declaration.clientRegistration ?? "static") {
-    case "none":
-      return { clientId: "" };
-    case "dynamic": {
-      const register = loaded.plugin.registerOAuthClient?.bind(loaded.plugin);
-      if (!register) return null;
-      return (redirectUri) => register({ redirectUri, fetch: (input, init) => fetch(input, init) });
-    }
-    default: {
-      const clientId = getDesktopOAuthClientId(manifest.id);
-      return clientId ? { clientId } : null;
-    }
-  }
-}
-
-async function localClientPluginIds(): Promise<string[]> {
-  const plugins = await loadPlugins();
-  return plugins.filter((p) => localClientSource(p) !== null).map((p) => p.plugin.manifest.id);
+function localPluginIds(): Promise<string[]> {
+  return loadPlugins().then((plugins) =>
+    localClientPluginIds(
+      plugins.map((p) => p.plugin),
+      getDesktopOAuthClientId,
+    ),
+  );
 }
 
 async function connectLocal(
   pluginId: string,
   signal: AbortSignal,
 ): Promise<ProviderOAuthConnectResult> {
+  const doFetch: typeof fetch = (input, init) => fetch(input, init);
   const loaded = await getPlugin(pluginId);
   const declaration = loaded?.plugin.manifest.oauth;
-  const clientSource = loaded ? localClientSource(loaded) : null;
+  const clientSource = loaded
+    ? localClientSource(loaded.plugin, getDesktopOAuthClientId, doFetch)
+    : null;
   if (!loaded || !declaration || !clientSource) {
     throw new Error(
       `${loaded?.plugin.manifest.displayName ?? pluginId} cannot be connected from this app.`,
@@ -109,7 +84,6 @@ async function connectLocal(
   }
   const { plugin } = loaded;
   const providerName = plugin.manifest.displayName;
-  const doFetch: typeof fetch = (input, init) => fetch(input, init);
   const pluginAuthorizeUrl = plugin.buildOAuthAuthorizeUrl?.bind(plugin);
 
   return runLoopbackAuthorization({
@@ -149,12 +123,16 @@ async function connectLocal(
       }
       applyOAuthTokens(declaration, credentials, tokens, "desktop");
       if (declaration.clientRegistration === "dynamic") {
-        // Refreshes must use the client this grant was issued to.
+        // Refreshes must use the client this grant was issued to, secret
+        // included when the registration issued one. Both are stored in the
+        // encrypted local credentials, and account_get_credentials hands the
+        // renderer a copy without the secret (redactGrantForRenderer).
         const state = readOAuthGrantState(credentials);
         if (state) {
           credentials[OAUTH_CREDENTIAL_KEY] = JSON.stringify({
             ...state,
             clientId: client.clientId,
+            ...(client.clientSecret ? { clientSecret: client.clientSecret } : {}),
           });
         }
       }
@@ -249,7 +227,7 @@ setOAuthStatusListener((accountId, status) => {
   }
 });
 
-ipcMain.handle("provider_oauth_local_clients", () => localClientPluginIds());
+ipcMain.handle("provider_oauth_local_clients", () => localPluginIds());
 
 /**
  * Resolves `{ cancelled: true }` instead of rejecting when the user (or a
