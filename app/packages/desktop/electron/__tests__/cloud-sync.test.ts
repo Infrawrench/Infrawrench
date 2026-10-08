@@ -36,6 +36,7 @@ const h = vi.hoisted(() => {
     dbExecute,
     dbSelect,
     getAccessToken: vi.fn<() => Promise<string | null>>(),
+    decryptValue: vi.fn(() => JSON.stringify({ apiKey: "plain" })),
     fetchMock: vi.fn<typeof fetch>(),
   };
 });
@@ -63,7 +64,7 @@ vi.mock("../../env", () => ({ CLOUD_URL: "https://cloud.test" }));
 vi.mock("../main-utils", () => ({
   getDb: async () => ({ select: h.dbSelect, execute: h.dbExecute }),
   getEncryptionKey: () => Buffer.alloc(32),
-  decryptValue: () => JSON.stringify({ apiKey: "plain" }),
+  decryptValue: () => h.decryptValue(),
   buildAad: (t: string, i: string, f: string) => `${t}:${i}:${f}`,
 }));
 
@@ -155,5 +156,32 @@ describe("runSyncCycle", () => {
 
     expect(statusEvents()).toEqual([]);
     expect(h.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never pushes a desktop-issued OAuth grant", async () => {
+    h.getAccessToken.mockResolvedValue("tok");
+    h.decryptValue.mockReturnValueOnce(
+      JSON.stringify({ apiToken: "at", __oauth: '{"v":1,"client":"desktop","refreshToken":"rt"}' }),
+    );
+    h.localRows.accounts = [
+      {
+        id: "a1",
+        plugin_id: "github",
+        display_name: "GitHub",
+        encrypted_credentials: "ct",
+        credentials_iv: "iv",
+        updated_at: "2026-01-01T00:00:00Z",
+        deleted_at: null,
+      },
+    ];
+    h.fetchMock.mockResolvedValueOnce(jsonResponse({}));
+
+    await runSyncCycle();
+
+    const [, init] = h.fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as {
+      accounts: Array<{ credentials: Record<string, string> }>;
+    };
+    expect(body.accounts[0]?.credentials).toEqual({ apiToken: "at" });
   });
 });
