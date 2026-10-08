@@ -44,7 +44,7 @@ export function hfError(status: number, label: string, body: string): HfError {
     status === 401
       ? " The access token was rejected: check it has not been revoked."
       : status === 403
-        ? " The access token lacks a permission this call needs (fine-grained tokens must be granted it explicitly)."
+        ? " The access token lacks a permission this call needs (fine-grained tokens must be granted it explicitly; an account connected with Hugging Face reaches only the organizations granted at sign-in, and cannot read usage, service accounts or member tokens)."
         : "";
   const err = new Error(
     `Hugging Face API error ${status} for ${label}${detail ? `: ${detail}` : ""}${hint}`,

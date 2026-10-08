@@ -15,7 +15,25 @@ sidebar_order: 41
 - **Member Access Tokens** (Team and Enterprise organizations): every member token the organization can see, with role, last use and approval state. Revoke a token's access to the organization.
 - **Webhooks**: your Hub webhooks, with enable, disable and delete.
 
+## Connect with Hugging Face
+
+**Connect with Hugging Face** on the add-account form signs you in to Hugging Face instead of creating an access token. Hugging Face asks you to approve:
+
+- your profile and which organizations you belong to, to name the account and fill the **Namespace** picker;
+- managing your repositories, Inference Endpoints, Jobs and webhooks, and calling Inference Providers, which the account needs to create, scale, pause and delete them;
+- whether you have a payment method set up.
+
+On the same screen, tick each organization you want to manage: Infrawrench only reaches organizations granted there. Nothing changes unless you act in Infrawrench. After you approve, the account is named after your user; pick the **Namespace** as usual.
+
+Hugging Face's sign-in does not cover usage reports, organization service accounts or member tokens, so **Costs** and those pages need an access token (below). The connection refreshes itself; if you revoke Infrawrench under **Settings → Connected Apps** on huggingface.co, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with Hugging Face works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
+
+<insert [Hugging Face add-account form showing the Connect with Hugging Face button above the Access Token field] here>
+
 ## Credentials
+
+To use an access token instead:
 
 1. On huggingface.co open **Settings → Access Tokens → Create new token**.
 2. A **Write** token covers everything. For a **fine-grained** token, grant on your user and on each organization you want to manage:
