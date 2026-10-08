@@ -23,7 +23,21 @@ Connect a Bitbucket Cloud workspace to run and watch Pipelines and manage the se
 
 <insert [Bitbucket pipeline detail page with the Steps table and the Logs tab open on a failed step] here>
 
+## Connect with Bitbucket
+
+**Connect with Bitbucket** on the add-account form signs you in to Bitbucket instead of creating an API token. Bitbucket shows what Infrawrench asks for before you grant access: reading your account and workspace membership, and reading and administering projects, repositories, Pipelines (including variables), runners and webhooks. The write access is what lets you run and stop pipelines and edit variables, environments, deploy keys, branch restrictions, webhooks and runners from Infrawrench; nothing changes unless you act. You still only see what your Bitbucket permissions allow.
+
+After you grant access, the account is named after you and the **Workspace** is filled in when you belong to just one; otherwise pick it from the list. No email is needed.
+
+The connection refreshes itself: Bitbucket's access tokens last an hour and are renewed automatically. If you revoke Infrawrench in Bitbucket (**Personal settings**, **App authorizations**), or the account goes unused for three months, it is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with Bitbucket is offered on the web app and in the desktop app's cloud mode. Bitbucket requires a client secret for every sign-in, so accounts stored locally on the desktop use an API token, as below.
+
+<insert [Bitbucket add-account form showing the Connect with Bitbucket button above the email and API token fields] here>
+
 ## Credentials
+
+To use an API token instead:
 
 1. In Bitbucket, open your avatar menu, **Personal settings**, then **Atlassian account settings**, **Security**, **Create and manage API tokens**, and choose **Create API token with scopes**. Pick **Bitbucket** as the app.
 2. Select the scopes. To look around: `read:workspace:bitbucket`, `read:project:bitbucket`, `read:repository:bitbucket`, `read:pipeline:bitbucket`, `read:runner:bitbucket` and `read:webhook:bitbucket`. To make changes, add `admin:repository:bitbucket`, `admin:project:bitbucket`, `write:pipeline:bitbucket`, `admin:pipeline:bitbucket`, `write:runner:bitbucket`, `write:webhook:bitbucket` and `delete:webhook:bitbucket`; deploy keys also need `write:ssh-key:bitbucket` and `delete:ssh-key:bitbucket`.

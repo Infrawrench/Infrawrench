@@ -12,6 +12,7 @@ import { bitbucketRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { BbWorkspaceAccess } from "./types.js";
+import { BITBUCKET_OAUTH, completeBitbucketOAuth, emailFor, isOAuthConnected } from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "bitbucket",
@@ -57,6 +58,7 @@ const manifest: PluginManifest = {
   // Bitbucket meters most repository data at about 1,000 requests an hour per
   // user (more on paid plans); stay under it.
   rateLimit: { capacity: 10, refillPerSecond: 0.25 },
+  oauth: BITBUCKET_OAUTH,
 };
 
 /**
@@ -72,7 +74,7 @@ async function listCredentialOptions(
   if (fieldKey !== "workspace") return [];
   const token = (credentials["token"] ?? "").trim();
   if (!token) throw new Error("Enter an API token first.");
-  const email = (credentials["email"] ?? "").trim();
+  const email = emailFor(credentials);
   const ctx: BitbucketContext = {
     token,
     workspace: "",
@@ -92,9 +94,11 @@ async function listCredentialOptions(
   } catch (err) {
     if (isPermissionError(err)) {
       throw new Error(
-        email
-          ? "Bitbucket rejected the email and token. Use your Atlassian account email (not your Bitbucket username) and an API token with the read:workspace scope."
-          : "Access tokens cannot list workspaces. Type the workspace slug from the workspace's URL.",
+        isOAuthConnected(credentials)
+          ? "Bitbucket rejected the connection. Reconnect with Bitbucket, or type the workspace slug from the workspace's URL."
+          : email
+            ? "Bitbucket rejected the email and token. Use your Atlassian account email (not your Bitbucket username) and an API token with the read:workspace scope."
+            : "Access tokens cannot list workspaces. Type the workspace slug from the workspace's URL.",
       );
     }
     throw err;
@@ -108,4 +112,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   listCredentialOptions,
   remediationCommands: bitbucketRemediationCommands,
+  completeOAuthConnection: completeBitbucketOAuth,
 };

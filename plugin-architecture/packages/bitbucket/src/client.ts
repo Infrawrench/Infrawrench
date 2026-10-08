@@ -45,6 +45,7 @@ import {
   slugOf,
 } from "./mappers.js";
 import { deploymentSeries, pipelineSeries, rangeOrDefault } from "./metrics.js";
+import { emailFor } from "./oauth.js";
 import { DETAIL_KEYS, renderBitbucketDetail, renderBitbucketSidebar } from "./render.js";
 import type {
   BbBranchRestriction,
@@ -197,7 +198,7 @@ export class BitbucketClient implements PluginClient {
     if (!token) throw new Error("Bitbucket plugin: missing token credential");
     const workspace = (credentials["workspace"] ?? "").trim();
     if (!workspace) throw new Error("Bitbucket plugin: pick a workspace");
-    const email = (credentials["email"] ?? "").trim();
+    const email = emailFor(credentials);
     this.ctx = {
       token,
       workspace,
