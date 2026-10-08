@@ -6,7 +6,9 @@
  * developer docs (docs.pagerduty.com/developer, 2026-10):
  *
  * - REST: `https://api.pagerduty.com` (EU service region:
- *   `https://api.eu.pagerduty.com`). `Authorization: Token token=<key>`,
+ *   `https://api.eu.pagerduty.com`). `Authorization: Token token=<key>` for a
+ *   REST API key, `Authorization: Bearer <token>` for an OAuth access token
+ *   (Connect with PagerDuty; tokens start `pdus+_`),
  *   `Accept: application/vnd.pagerduty+json;version=2`. Writes that act as a
  *   person (incident status, notes, snooze, creating incidents and maintenance
  *   windows) need a `From: <email of a PagerDuty user>` header with an
@@ -48,6 +50,8 @@ export const PAGE_LIMIT = 100;
 
 export interface PagerDutyTransport {
   apiKey: string;
+  /** Send the key as an OAuth Bearer token instead of `Token token=`. */
+  bearer?: boolean;
   region: PagerDutyRegion;
   caCert?: string;
   http?: HttpHostServices;
@@ -101,7 +105,7 @@ function describeError(status: number, text: string, path: string): PagerDutyApi
   }
   const hint =
     status === 401
-      ? " Check the API key (Integrations, API Access Keys in PagerDuty)."
+      ? " Check the API key (Integrations, API Access Keys in PagerDuty), or reconnect the account if it was connected with PagerDuty."
       : status === 403
         ? " The key cannot do this: a read-only key cannot change anything, and some objects need an admin's key."
         : status === 429
@@ -156,7 +160,9 @@ export async function pdFetch<T>(
   const url = `${restBase(transport.region)}${path}${queryString(req.query)}`;
   const headers: Record<string, string> = {
     Accept: "application/vnd.pagerduty+json;version=2",
-    Authorization: `Token token=${transport.apiKey}`,
+    Authorization: transport.bearer
+      ? `Bearer ${transport.apiKey}`
+      : `Token token=${transport.apiKey}`,
   };
   if (req.from) headers["From"] = req.from;
   const body = req.body !== undefined ? JSON.stringify(req.body) : undefined;
