@@ -22,9 +22,18 @@ Akamai Cloud Computing is the platform formerly known as Linode. Infrawrench tal
 
 <insert [Linode account page showing the resource sections: Linodes, Volumes, NodeBalancers, Kubernetes Clusters, Buckets, Managed Databases] here>
 
+## Connect with Linode
+
+In the web app (and the desktop app in cloud mode), pick Linode in the add-account form and click **Connect with Linode**. Linode asks you to sign in and approve the request; the account name is filled in from your Linode account's company name or your username.
+
+- **What the consent grants:** the same areas as the table below: Account and Monitor read only, Read/Write on Linodes, Volumes, NodeBalancers, Kubernetes, Object Storage, Databases, Firewalls, Domains, VPCs, IPs, Images and StackScripts. If you want a read-only account, paste a Read Only token instead.
+- **Refresh:** Linode access tokens expire after two hours. Infrawrench refreshes them in the background with the refresh token Linode issues alongside, so the connection keeps working until you revoke it.
+- **Revoking:** Cloud Manager → your profile → **API Tokens**, under **Third Party Apps**. Infrawrench then marks the account **Reconnect required**.
+- **Desktop-local accounts** can't connect this way: Linode only issues refresh tokens to apps that keep a client secret on a server, so local accounts use a personal access token.
+
 ## Credentials
 
-In Cloud Manager, open your profile, then **API Tokens**, and **Create a Personal Access Token**. Give each area the access you want Infrawrench to have:
+To paste a token instead of connecting: in Cloud Manager, open your profile, then **API Tokens**, and **Create a Personal Access Token**. Give each area the access you want Infrawrench to have:
 
 | Area           | For                                                       |
 | -------------- | --------------------------------------------------------- |
