@@ -4,8 +4,11 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  * GitLab REST API v4 (https://docs.gitlab.com/api/rest/, verified against
  * `doc/api/*.md` on gitlab-org/gitlab master, 2026-10).
  *
- * - Auth: `PRIVATE-TOKEN: <token>` works for personal, group and project
- *   access tokens alike.
+ * - Auth: `Authorization: Bearer <token>`, which GitLab accepts for personal,
+ *   group and project access tokens and is the only header an OAuth access
+ *   token (Connect with GitLab) works with. Using it for every token keeps one
+ *   code path, even when a host hands over an OAuth token without its grant
+ *   state (desktop cloud mode reads credentials with it stripped).
  * - Offset pagination: `page` / `per_page` (max 100), with `X-Next-Page`
  *   naming the next page (empty on the last one). `X-Total` is omitted above
  *   10,000 rows, so it is only ever read as a hint.
@@ -167,7 +170,7 @@ export async function glRaw(
 }
 
 function authHeaders(ctx: GitLabContext): Record<string, string> {
-  return { "PRIVATE-TOKEN": ctx.token, Accept: "application/json" };
+  return { Authorization: `Bearer ${ctx.token}`, Accept: "application/json" };
 }
 
 /** A REST call that also hands back the response headers (pagination, totals). */

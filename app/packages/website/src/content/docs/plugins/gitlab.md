@@ -26,7 +26,24 @@ Connect GitLab.com or your own GitLab instance to run and watch pipelines, manag
 
 <insert [GitLab project detail page showing the Recent pipelines table and the Metrics tab with pipeline success rate and queue time charts] here>
 
+## Connect with GitLab
+
+For GitLab.com, **Connect with GitLab** on the add-account form signs you in to GitLab instead of pasting a token. GitLab asks you to approve two scopes:
+
+- **api**: read and write access to the API, which the account needs to run pipelines and to create, edit and delete projects, variables, schedules and the rest. Nothing changes unless you act in Infrawrench.
+- **create_runner**: register runners from Infrawrench.
+
+After you approve, the GitLab URL is set to `https://gitlab.com` and the account is named after your GitLab user; pick a **Group** if you want to narrow it. What you see still follows your GitLab role, exactly as with a token.
+
+The connection refreshes itself: GitLab's access tokens last two hours and are renewed automatically. If you revoke Infrawrench under **Edit profile**, **Access**, **Applications** in GitLab, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with GitLab works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). Self-managed and Dedicated instances use a token, as below.
+
+<insert [GitLab add-account form showing the Connect with GitLab button above the GitLab URL and token fields] here>
+
 ## Credentials
+
+To use a token instead:
 
 1. In GitLab, create an access token:
    - **Personal access token**: avatar menu, **Edit profile**, **Access tokens**, **Add new token**.
