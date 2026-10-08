@@ -17,6 +17,8 @@
 import type { CredentialFieldOption, HostServices } from "@infrawrench/plugin-base";
 import type { GitHubHost } from "./api.js";
 import { formatOwner, ghFetch, ghGraphql, resolveHost } from "./api.js";
+import type { GhInstallation } from "./oauth.js";
+import { installationOwners, isOAuthConnected } from "./oauth.js";
 
 interface ViewerOwners {
   viewer?: {
@@ -46,6 +48,31 @@ export async function listOwnerOptions(
     ...(caCert ? { caCert } : {}),
     ...(services?.http ? { http: services.http } : {}),
   };
+
+  // A Connect with GitHub token only reaches what the app is installed on,
+  // so its installations are the complete and correct list.
+  if (isOAuthConnected(credentials)) {
+    const installations: GhInstallation[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const body = await ghFetch<{ installations?: GhInstallation[] }>(ctx, "/user/installations", {
+        query: { per_page: 100, page },
+      });
+      const batch = body?.installations ?? [];
+      installations.push(...batch);
+      if (batch.length < 100) break;
+    }
+    const owners = installationOwners(installations);
+    if (owners.length === 0) {
+      throw new Error(
+        "The Infrawrench GitHub App is not installed on any organization or enterprise you can see. Install it on the organization whose bill to read, then reopen this list.",
+      );
+    }
+    return owners.sort((a, b) => {
+      const ea = a.id.startsWith("enterprise:") ? 0 : 1;
+      const eb = b.id.startsWith("enterprise:") ? 0 : 1;
+      return ea - eb || a.label.localeCompare(b.label);
+    });
+  }
 
   const options = new Map<string, CredentialFieldOption>();
   const errors: string[] = [];
