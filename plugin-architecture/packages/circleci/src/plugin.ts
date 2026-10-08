@@ -8,6 +8,7 @@ import type { CircleContext } from "./api.js";
 import { circleFetch, isPermissionError } from "./api.js";
 import { CircleCIClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { CIRCLECI_OAUTH, completeCircleCIOAuth, registerCircleCIClient } from "./oauth.js";
 import type { CircleCollaboration } from "./mappers.js";
 import { DEFAULT_PRICE_PER_CREDIT, RATE_KEYS } from "./rates.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -83,6 +84,7 @@ const manifest: PluginManifest = {
   statusFeed,
   // 5,000 requests an hour per token across the v2 API; stay well under it.
   rateLimit: { capacity: 10, refillPerSecond: 2 },
+  oauth: CIRCLECI_OAUTH,
 };
 
 /**
@@ -127,4 +129,6 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new CircleCIClient(credentials, services),
   parseStatusFeed,
   listCredentialOptions,
+  registerOAuthClient: registerCircleCIClient,
+  completeOAuthConnection: completeCircleCIOAuth,
 };

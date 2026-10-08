@@ -18,7 +18,21 @@ sidebar_order: 51
 - **Runner resource classes**: how many self-hosted runners are connected and how many tasks are waiting for one or running. **Create** a resource class, **Edit** its description, use **Get credentials** to mint a runner token for installing another runner, or delete the class (which also revokes its tokens).
 - **Runners**: each connected runner agent with its version, whether it is running a job, and when it first and last connected.
 
+## Connect with CircleCI
+
+In the desktop app, for accounts stored on your computer, **Connect with CircleCI** signs you in to CircleCI in your browser instead of creating a token by hand. On the consent screen pick **Write** access (Read is enough to browse, but the account edits projects, contexts, variables, schedules and runners), and authorize each SSO organization you want to manage. The access you pick is a ceiling: it never goes beyond your own CircleCI role.
+
+CircleCI then issues a personal API token for Infrawrench, exactly like one you would create yourself. If you belong to a single organization it is picked for you, and the account is named after your CircleCI user.
+
+The token lasts 90 days and CircleCI offers no refresh, so when it expires, **Edit credentials**, **Reconnect** signs you in again (which also revokes the old token). You can delete it any time under **User Settings**, **Personal API Tokens**.
+
+CircleCI only allows this sign-in to return to an app on your own computer, so the web app and the desktop app's cloud mode use a token, as below.
+
+<insert [CircleCI add-account form in the desktop app showing the Connect with CircleCI button above the Personal API Token field] here>
+
 ## Credentials
+
+To use a token instead:
 
 1. In CircleCI, open **User Settings**, then **Personal API Tokens**, and create a token. It acts as your user, so it sees the organizations and projects you can. Cost reporting needs a user who can see the organization's plan usage, normally an organization admin. Project API tokens do not work.
 2. In Infrawrench, paste the token. The **Organization** picker then lists every organization your user belongs to; pick one.
