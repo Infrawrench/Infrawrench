@@ -4,7 +4,7 @@ import { eq, and, isNull, or, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
-import { encrypt, buildAad } from "../../services/encryption";
+import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
@@ -19,9 +19,10 @@ import {
   OAuthCredentialError,
   OAuthReconnectRequiredError,
   acceptSubmittedCredentials,
-  decryptAccountCredentials,
   pluginOAuthSummary,
   postgresCredentialStore,
+  redactOAuthGrantState,
+  resolveOAuthCredentials,
   resolveCredentialUpdate,
   type AcceptedCredentials,
   type OAuthStatus,
@@ -484,6 +485,7 @@ app.get("/:id/credentials", async (c) => {
       id: accounts.id,
       organizationId: accounts.organizationId,
       pluginId: accounts.pluginId,
+      oauthStatus: accounts.oauthStatus,
       encryptedCredentials: accounts.encryptedCredentials,
       credentialsIv: accounts.credentialsIv,
     })
@@ -491,20 +493,32 @@ app.get("/:id/credentials", async (c) => {
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!row) return c.json({ error: "Account not found" }, 404);
   // Refresh an expiring OAuth token first, so a caller (the desktop in cloud
-  // mode) always receives one that works, then withhold the grant state: the
-  // refresh token never leaves the server.
-  let credentials: Record<string, string>;
-  try {
-    const loaded = await getPlugin(row.pluginId);
-    credentials = stripOAuthGrantState(
-      await decryptAccountCredentials(row, loaded?.plugin.manifest),
-    );
-  } catch (e) {
-    if (e instanceof OAuthReconnectRequiredError) {
-      return c.json({ error: e.message, code: "oauth_reconnect_required" }, 409);
+  // mode) always receives one that works, then redact the grant state: the
+  // refresh token never leaves the server, but plugins that branch on the
+  // grant still find it. A dead grant (`reconnect_required`) is not an error
+  // here; the stored credentials come back so the reconnect flow can run.
+  const stored = JSON.parse(
+    await decrypt(
+      row.encryptedCredentials,
+      row.credentialsIv,
+      buildAad("account", accountId, "credentials"),
+    ),
+  ) as Record<string, string>;
+  let current = stored;
+  const loaded = await getPlugin(row.pluginId);
+  if (loaded && row.oauthStatus !== "reconnect_required") {
+    try {
+      current = await resolveOAuthCredentials({
+        accountId,
+        organizationId,
+        manifest: loaded.plugin.manifest,
+        credentials: stored,
+      });
+    } catch (e) {
+      if (!(e instanceof OAuthReconnectRequiredError)) throw e;
     }
-    throw e;
   }
+  const credentials = redactOAuthGrantState(current);
   // This is the only route that hands a provider credential back in the clear,
   // and it is the supported way for a client to obtain one. Every other
   // secret-reading path audits (`export_credential`, `access_secret_version`,

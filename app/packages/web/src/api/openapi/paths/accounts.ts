@@ -188,7 +188,7 @@ const Account = strict({
 }).openapi("Account");
 
 const OAUTH_CREDENTIALS_NOTE =
-  "An `__oauth` key may only carry the sealed grant returned by the provider OAuth callback, for this organization, the calling user and this plugin, within 30 minutes; any other value is rejected with 400.";
+  "An `__oauth` key may only carry the sealed grant returned by the provider OAuth callback (for this organization, the calling user and this plugin, within 30 minutes) or the redacted grant `GET .../credentials` returned, which counts as no grant (the stored one is kept while the token is unchanged). Any other value is rejected with 400.";
 
 const CreateAccountRequest = strict({
   pluginId: z.string(),
@@ -472,8 +472,8 @@ export function registerAccountPaths(ctx: BuildContext) {
     summary: "Fetch the decrypted credentials for an account",
     description:
       "Returns the credentials map as it was originally submitted. Sensitive: gate access carefully. " +
-      "For an account connected through provider OAuth, the access token is refreshed first when it is about to expire, and the grant state (`__oauth`, which holds the refresh token) is never returned. " +
-      "409 with `code: oauth_reconnect_required` when the provider revoked the connection.",
+      "For an account connected through provider OAuth, the access token is refreshed first when it is about to expire, and `__oauth` comes back redacted: the grant state without its refresh token (or a registered client secret), so plugins can tell an OAuth token from a pasted one. Sending that redacted value back on `PUT .../credentials` keeps the stored connection. " +
+      "An account whose connection was revoked (`oauthStatus: reconnect_required`) returns its stored credentials without refreshing.",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
     },
@@ -483,17 +483,6 @@ export function registerAccountPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.record(z.string()) } },
       },
       404: ErrorResponses[404],
-      409: {
-        description: "The OAuth connection was revoked or expired; reconnect the account.",
-        content: {
-          "application/json": {
-            schema: strict({
-              error: z.string(),
-              code: z.literal("oauth_reconnect_required"),
-            }).openapi("OAuthReconnectRequired"),
-          },
-        },
-      },
     },
   });
 

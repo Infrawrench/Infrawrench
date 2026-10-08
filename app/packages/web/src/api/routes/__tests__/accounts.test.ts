@@ -7,6 +7,7 @@ const mockSelect = vi.fn();
 const mockSelectDistinct = vi.fn();
 const mockDelete = vi.fn();
 const mockUpdate = vi.fn();
+const mockTransaction = vi.fn();
 
 const dbMock = {
   db: {
@@ -15,6 +16,7 @@ const dbMock = {
     selectDistinct: (...args: unknown[]) => mockSelectDistinct(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
+    transaction: (...args: unknown[]) => mockTransaction(...args),
   },
 };
 vi.mock("@/db/client", () => dbMock);
@@ -282,6 +284,147 @@ describe("Account routes", () => {
 
       expect(res.status).toBe(404);
       expect(mockLogAudit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("provider OAuth credentials", () => {
+    const oauthManifest = {
+      id: "acme",
+      displayName: "Acme",
+      credentialFields: [],
+      oauth: {
+        authorizeUrl: "https://acme.example/authorize",
+        tokenUrl: "https://acme.example/token",
+        scopes: [],
+        tokenField: "token",
+        clients: { server: {} },
+        access: "read-only",
+        refresh: "rotating",
+      },
+    };
+    const grantJson = (expiresAt: number) =>
+      JSON.stringify({
+        v: 1,
+        client: "server",
+        refreshToken: "rt-secret",
+        expiresAt,
+        connectedAt: 1,
+      });
+
+    function selectRow(row: Record<string, unknown>) {
+      const where = vi.fn().mockResolvedValue([row]);
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+    }
+
+    it("GET /:id/credentials returns the grant redacted, never the refresh token", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      encryptionMock.decrypt.mockResolvedValueOnce(
+        JSON.stringify({ token: "at", __oauth: grantJson(Date.now() + 3_600_000) }),
+      );
+      selectRow({ id: "a1", pluginId: "acme", oauthStatus: "connected" });
+
+      const res = await buildApp().request("/a1/credentials");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.token).toBe("at");
+      expect(body.__oauth).not.toContain("rt-secret");
+      expect(JSON.parse(body.__oauth)).toMatchObject({ v: 1, client: "server" });
+    });
+
+    it("GET /:id/credentials does not refresh or fail a reconnect_required account", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      encryptionMock.decrypt.mockResolvedValueOnce(
+        JSON.stringify({ token: "at-dead", __oauth: grantJson(Date.now() - 1000) }),
+      );
+      selectRow({ id: "a1", pluginId: "acme", oauthStatus: "reconnect_required" });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const res = await buildApp().request("/a1/credentials");
+      expect(res.status).toBe(200);
+      expect((await res.json()).token).toBe("at-dead");
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    function lockedRow(stored: Record<string, string>) {
+      encryptionMock.decrypt.mockResolvedValueOnce(JSON.stringify(stored));
+      const txUpdateWhere = vi.fn().mockResolvedValue(undefined);
+      const txSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+      const tx = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              for: vi.fn().mockResolvedValue([{ encryptedCredentials: "e", credentialsIv: "i" }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({ set: txSet }),
+      };
+      mockTransaction.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx));
+      mockUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+      });
+      return { txSet };
+    }
+
+    it("PUT /:id/credentials keeps the stored grant when only a picker changed", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      mockSelect.mockReturnValue(
+        chainMock([{ id: "a1", pluginId: "acme", oauthStatus: "connected" }]),
+      );
+      const stored = { token: "at", region: "eu", __oauth: grantJson(Date.now() + 3_600_000) };
+      const { txSet } = lockedRow(stored);
+
+      const res = await buildApp().request("/a1/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // What the edit form sends back: the redacted grant from GET.
+        body: JSON.stringify({
+          credentials: {
+            token: "at",
+            region: "us",
+            __oauth: JSON.stringify({ v: 1, client: "server", connectedAt: 1 }),
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const written = JSON.parse(encryptionMock.encrypt.mock.calls.at(-1)![0] as string);
+      expect(written).toEqual({ token: "at", region: "us", __oauth: stored.__oauth });
+      expect(txSet).toHaveBeenCalledWith(expect.objectContaining({ oauthStatus: "connected" }));
+    });
+
+    it("PUT /:id/credentials drops the grant for a newly pasted token", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      mockSelect.mockReturnValue(
+        chainMock([{ id: "a1", pluginId: "acme", oauthStatus: "connected" }]),
+      );
+      const { txSet } = lockedRow({ token: "at", __oauth: grantJson(Date.now() + 3_600_000) });
+
+      const res = await buildApp().request("/a1/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentials: { token: "pasted" } }),
+      });
+      expect(res.status).toBe(200);
+      const written = JSON.parse(encryptionMock.encrypt.mock.calls.at(-1)![0] as string);
+      expect(written).toEqual({ token: "pasted" });
+      expect(txSet).toHaveBeenCalledWith(expect.objectContaining({ oauthStatus: null }));
+    });
+
+    it("POST / rejects a forged __oauth value", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "acme",
+          displayName: "Acme",
+          credentials: { token: "x", __oauth: grantJson(Date.now() + 3_600_000) },
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(mockInsert).not.toHaveBeenCalled();
     });
   });
 
