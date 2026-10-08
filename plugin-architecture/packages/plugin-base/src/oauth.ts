@@ -105,6 +105,12 @@ export interface OAuthDeclaration {
    * authorize URL.
    */
   clientRegistration?: "static" | "none" | "dynamic";
+  /**
+   * Access-token lifetime in seconds to assume when a token response has no
+   * `expires_in`, for providers that document a lifetime but do not send it
+   * (Stripe: one hour). Without an expiry the host never refreshes.
+   */
+  defaultExpiresIn?: number;
 }
 
 /** Host-owned grant state stored (JSON-encoded) under {@link OAUTH_CREDENTIAL_KEY}. */
@@ -315,12 +321,14 @@ export class OAuthTokenError extends Error {
 export function parseOAuthTokenResponse(
   body: Record<string, unknown>,
   now: number = Date.now(),
+  defaultExpiresIn?: number,
 ): OAuthTokenSet {
   const accessToken = body["access_token"];
   if (typeof accessToken !== "string" || accessToken.length === 0) {
     throw new OAuthTokenError("The provider's token response had no access token.", 200, false);
   }
-  const expiresIn = Number(body["expires_in"]);
+  const sent = Number(body["expires_in"]);
+  const expiresIn = Number.isFinite(sent) && sent > 0 ? sent : Number(defaultExpiresIn);
   const refreshToken = body["refresh_token"];
   const scope = body["scope"];
   const tokenType = body["token_type"];
@@ -339,11 +347,12 @@ export function parseOAuthTokenResponse(
 }
 
 async function postTokenEndpoint(
-  tokenUrl: string,
+  declaration: OAuthDeclaration,
   form: Record<string, string>,
   client: OAuthClientCredentials,
   doFetch: typeof fetch,
 ): Promise<OAuthTokenSet> {
+  const tokenUrl = declaration.tokenUrl;
   const body = new URLSearchParams(form);
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
@@ -381,7 +390,7 @@ async function postTokenEndpoint(
         error === "bad_refresh_token",
     );
   }
-  return parseOAuthTokenResponse(json);
+  return parseOAuthTokenResponse(json, Date.now(), declaration.defaultExpiresIn);
 }
 
 /** Standard authorization-code exchange. */
@@ -390,7 +399,7 @@ export function exchangeOAuthCode(
   request: OAuthExchangeRequest,
 ): Promise<OAuthTokenSet> {
   return postTokenEndpoint(
-    declaration.tokenUrl,
+    declaration,
     {
       grant_type: "authorization_code",
       code: request.code,
@@ -410,7 +419,7 @@ export function refreshOAuthToken(
   doFetch: typeof fetch = fetch,
 ): Promise<OAuthTokenSet> {
   return postTokenEndpoint(
-    declaration.tokenUrl,
+    declaration,
     { grant_type: "refresh_token", refresh_token: refreshToken },
     client,
     doFetch,

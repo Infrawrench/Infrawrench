@@ -99,6 +99,24 @@ describe("provider oauth helpers", () => {
     expect((err as OAuthTokenError).invalidGrant).toBe(true);
   });
 
+  it("assumes the declared lifetime when a token response has no expires_in", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: "at", refresh_token: "rt2" }));
+    const before = Date.now();
+    const tokens = await refreshOAuthToken(
+      { ...declaration, defaultExpiresIn: 3600 },
+      "rt",
+      { clientId: "cid", clientSecret: "sec", auth: "client_secret_post" },
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(tokens.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
+    expect(tokens.expiresAt).toBeLessThanOrEqual(Date.now() + 3600 * 1000);
+    // A sent expires_in still wins, and without a default nothing is assumed.
+    expect(parseOAuthTokenResponse({ access_token: "a", expires_in: 60 }, 0, 3600).expiresAt).toBe(
+      60_000,
+    );
+    expect(parseOAuthTokenResponse({ access_token: "a" }, 0).expiresAt).toBeUndefined();
+  });
+
   it("stores, reads and strips grant state, keeping the refresh token across rotations", () => {
     const credentials: Record<string, string> = { region: "eu" };
     applyOAuthTokens(
