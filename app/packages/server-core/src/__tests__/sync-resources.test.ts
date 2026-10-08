@@ -60,7 +60,10 @@ vi.mock("../clickhouse/writers", () => ({
 
 // --- plugin-base -----------------------------------------------------------
 const evaluatePeerIntegrationUnreachable = vi.fn(() => false);
-vi.mock("@infrawrench/plugin-base", () => ({ evaluatePeerIntegrationUnreachable }));
+vi.mock("@infrawrench/plugin-base", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@infrawrench/plugin-base")>()),
+  evaluatePeerIntegrationUnreachable,
+}));
 
 let sync: typeof import("../sync-resources");
 

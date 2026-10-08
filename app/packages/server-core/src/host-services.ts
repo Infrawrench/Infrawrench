@@ -8,17 +8,20 @@ import * as http from "node:http";
 import { URL } from "node:url";
 import { eq, and } from "drizzle-orm";
 import { fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
-import type {
-  HostServices,
-  HttpHostServices,
-  PluginManifest,
-  SecretHostServices,
+import {
+  readOAuthGrantState,
+  type HostServices,
+  type HttpHostServices,
+  type OAuthHostServices,
+  type PluginManifest,
+  type SecretHostServices,
 } from "@infrawrench/plugin-base";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
 import { accounts, secretFieldStates } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { setLiteralSecretState } from "./secret-states";
+import { freshAccountCredentials } from "./provider-oauth/refresh";
 import { resourceIdBelongsToAccount } from "./resource-ids";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
@@ -358,6 +361,29 @@ async function getAccountBastionId(accountId: string): Promise<string | null> {
  * who already know the bastion id (e.g. peer-pane resolution) can pass
  * `bastionId` directly to skip the DB round-trip.
  */
+/**
+ * The `oauth` host service, for a stored account whose credentials carry a
+ * provider OAuth grant. Each call re-reads the account, so it sees a token
+ * another request rotated, and refreshes when the token is about to expire.
+ */
+function oauthHostServices(
+  manifest: PluginManifest,
+  credentials: Record<string, string>,
+  options: { accountId?: string; organizationId?: string | undefined },
+): OAuthHostServices | undefined {
+  const declaration = manifest.oauth;
+  const { accountId, organizationId } = options;
+  if (!declaration || !accountId || !organizationId || !readOAuthGrantState(credentials)) {
+    return undefined;
+  }
+  return {
+    getAccessToken: async () => {
+      const fresh = await freshAccountCredentials(accountId, organizationId, manifest);
+      return fresh[declaration.tokenField] ?? "";
+    },
+  };
+}
+
 export async function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
@@ -372,9 +398,11 @@ export async function buildPluginHostServices(
     bastionId = await getAccountBastionId(options.accountId);
   }
   const scope: DialScope = { accountId: options.accountId, organizationId: options.organizationId };
+  const oauth = oauthHostServices(manifest, credentials, options);
   const base: HostServices = {
     http: buildHttpHostServices(bastionId ?? null, scope),
     secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
+    ...(oauth ? { oauth } : {}),
   };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";

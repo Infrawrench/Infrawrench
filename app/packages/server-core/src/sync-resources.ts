@@ -12,6 +12,7 @@ import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
 import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
+import { decryptAccountCredentials } from "./provider-oauth";
 import { captureSavingsFromChanges } from "./savings/capture";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
@@ -64,12 +65,8 @@ export async function loadAccountClient(accountId: string, organizationId: strin
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) throw new Error(`Plugin "${account.pluginId}" not loaded`);
 
-  const plaintext = await decrypt(
-    account.encryptedCredentials,
-    account.credentialsIv,
-    buildAad("account", account.id, "credentials"),
-  );
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  // Refreshes an expiring OAuth access token (and persists the rotation).
+  const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
   await rewriteCredentialsThroughTunnel(accountId, credentials);
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
