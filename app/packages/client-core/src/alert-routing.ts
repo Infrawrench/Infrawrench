@@ -250,6 +250,19 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "critical",
   },
   {
+    // Error budgets: a multiwindow burn-rate pair fired (page or ticket
+    // severity), the budget ran out, or the burn stopped. `critical` by
+    // default because the page-severity pairs are the ones that exist to wake
+    // somebody; the ticket pair and recoveries are sent at lower severities
+    // by the evaluator itself.
+    id: "sloAlerts",
+    label: "SLOs",
+    description: "An SLO's error budget is burning too fast, has run out, or recovered.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     // The deadline family's third member, beside expiry and commitment lapse:
     // a limit you will hit rather than a date you will pass. `warning` and not
     // `critical` because the alert fires at a *threshold*: 80% by default,

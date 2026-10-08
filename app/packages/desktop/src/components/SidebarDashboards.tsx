@@ -15,6 +15,7 @@ import {
   QuotasIcon,
   PriceCatalogIcon,
   IncidentsIcon,
+  SlosIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -343,6 +344,14 @@ export function SidebarDashboards() {
             label: gt("Probes"),
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
+          },
+          // Cloud-only: an SLO is evaluated by the cloud poller over the cloud
+          // metric store, the probes stance.
+          {
+            key: "slos",
+            label: gt("SLOs"),
+            icon: <SlosIcon />,
+            onClick: () => void navigate({ to: "/slos" }),
           },
           {
             key: "status-pages",

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.77.0",
+    "version": "1.78.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -175,6 +175,10 @@
     {
       "name": "Synthetic probes",
       "description": "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures."
+    },
+    {
+      "name": "SLOs",
+      "description": "Service-level objectives measured from the metric store (probe availability, probe latency, or a resource metric against a threshold) over a rolling 7, 28 or 30 day window, with error budget remaining and multiwindow burn-rate alerting routed through the org's alert rules."
     },
     {
       "name": "Quota radar",
@@ -3840,6 +3844,7 @@
               "quotas",
               "price-catalog",
               "incidents",
+              "slos",
               "workflows",
               "deployments",
               "settings",
@@ -3876,6 +3881,11 @@
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "canvasId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sloId": {
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
@@ -18408,6 +18418,136 @@
         ],
         "additionalProperties": false
       },
+      "OrgConfigSlo": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "sliKind": {
+            "type": "string",
+            "enum": [
+              "probe_availability",
+              "probe_latency",
+              "metric_threshold"
+            ]
+          },
+          "probeKey": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "`probe_*`: key of a probe in this document's `probes` or the organization's.",
+            "example": "monthly-cloud-spend"
+          },
+          "latencyThresholdMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "externalId": {
+                "type": "string"
+              },
+              "account": {
+                "type": "string",
+                "description": "Account display name."
+              }
+            },
+            "required": [
+              "pluginId",
+              "resourceTypeId",
+              "externalId",
+              "account"
+            ],
+            "additionalProperties": false,
+            "description": "`metric_threshold`: the resource, resolved against the organization's inventory on apply."
+          },
+          "metricKey": {
+            "type": "string"
+          },
+          "comparator": {
+            "type": "string",
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">="
+            ]
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "targetPercent": {
+            "type": "number",
+            "minimum": 50,
+            "maximum": 99.999
+          },
+          "windowDays": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  7
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  28
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  30
+                ]
+              }
+            ],
+            "default": 30
+          },
+          "alertsEnabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "suggestFreeze": {
+            "type": "boolean",
+            "default": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "sliKind",
+          "targetPercent"
+        ],
+        "additionalProperties": false
+      },
       "OrgConfigCostCentre": {
         "type": "object",
         "properties": {
@@ -18676,6 +18816,12 @@
               "$ref": "#/components/schemas/OrgConfigProbe"
             }
           },
+          "slos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigSlo"
+            }
+          },
           "costCentres": {
             "type": "array",
             "items": {
@@ -18732,6 +18878,7 @@
           "dashboards",
           "metricAlerts",
           "probes",
+          "slos",
           "costCentres",
           "tagPolicy",
           "alertSettings"
@@ -36459,6 +36606,748 @@
         ],
         "additionalProperties": false
       },
+      "Slo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 500 characters."
+          },
+          "targetPercent": {
+            "type": "number",
+            "description": "Objective as a percentage, at least 50 and at most 99.999.",
+            "example": 99.9
+          },
+          "windowDays": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  7
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  28
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  30
+                ]
+              }
+            ],
+            "description": "Rolling window in days.",
+            "example": 30
+          },
+          "alertsEnabled": {
+            "type": "boolean",
+            "description": "Route burn-rate and exhaustion alerts through the org's alert routing rules."
+          },
+          "suggestFreeze": {
+            "type": "boolean",
+            "description": "When the budget runs out, the alert and the page suggest a change freeze."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "sliKind": {
+            "type": "string",
+            "enum": [
+              "probe_availability",
+              "probe_latency",
+              "metric_threshold"
+            ],
+            "description": "Where the SLI comes from: a synthetic probe's success ratio, the share of a probe's checks at or under a latency threshold, or the share of minutes a resource's metric series satisfies a comparison."
+          },
+          "probeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`probe_*`: the synthetic probe the SLI is read from.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "latencyThresholdMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "`probe_latency`: a check is good at or under this many ms (1-60000)."
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the synced resource reporting the series."
+          },
+          "metricKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the series label as the resource reports it, e.g. \"CPU %\"."
+          },
+          "comparator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">="
+            ],
+            "description": "`metric_threshold` only: a minute is good when `value <comparator> threshold`."
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`metric_threshold`: the comparison's right side."
+          },
+          "probeName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The probe's name; null when it was deleted."
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource's name; null when it is gone."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginId"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "exhausted",
+              "fast_burn",
+              "slow_burn",
+              "ok",
+              "unknown"
+            ],
+            "description": "Worst true thing first: `exhausted` (no budget left), `fast_burn` (a page-severity burn-rate pair is firing), `slow_burn` (the ticket pair), `ok`, or `unknown` (no data in the window, never evaluated, or disabled)."
+          },
+          "sli": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Fraction of good events over the window (0-1)."
+          },
+          "goodEvents": {
+            "type": "number"
+          },
+          "totalEvents": {
+            "type": "number",
+            "description": "Minutes with data in the window."
+          },
+          "budgetRemaining": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Fraction of the window's error budget left; negative when overspent."
+          },
+          "budgetTotalMinutes": {
+            "type": "number",
+            "description": "The window's whole budget in minutes (43.2 for 99.9% over 30 days)."
+          },
+          "budgetRemainingMinutes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "burnRates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "description": "Burn rate per window (`5m`, `30m`, `1h`, `6h`, `3d`); 1 is exactly on budget, null where the window held no events."
+          },
+          "burnAlert": {
+            "type": "string",
+            "enum": [
+              "none",
+              "slow",
+              "fast"
+            ],
+            "description": "The alert level the evaluator last settled on."
+          },
+          "exhaustedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastEvalAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "targetPercent",
+          "windowDays",
+          "alertsEnabled",
+          "suggestFreeze",
+          "enabled",
+          "sliKind",
+          "probeId",
+          "latencyThresholdMs",
+          "resourceId",
+          "metricKey",
+          "comparator",
+          "threshold",
+          "probeName",
+          "resourceName",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "status",
+          "sli",
+          "goodEvents",
+          "totalEvents",
+          "budgetRemaining",
+          "budgetTotalMinutes",
+          "budgetRemainingMinutes",
+          "burnRates",
+          "burnAlert",
+          "exhaustedAt",
+          "lastEvalAt",
+          "lastError",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SloList": {
+        "type": "object",
+        "properties": {
+          "slos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Slo"
+            }
+          }
+        },
+        "required": [
+          "slos"
+        ],
+        "additionalProperties": false
+      },
+      "SloSources": {
+        "type": "object",
+        "properties": {
+          "probes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "up",
+                    "down",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "url",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "metricResources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "series": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "accountId",
+                "pluginId",
+                "resourceTypeId",
+                "series"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "probes",
+          "metricResources"
+        ],
+        "additionalProperties": false
+      },
+      "SloBucket": {
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "number",
+            "description": "Hour start, Unix epoch ms."
+          },
+          "good": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number",
+            "description": "Minutes with data in the hour."
+          }
+        },
+        "required": [
+          "startMs",
+          "good",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "SloActiveFreeze": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "endsAt"
+        ],
+        "additionalProperties": false,
+        "description": "The change freeze in effect, if any."
+      },
+      "SloDetail": {
+        "type": "object",
+        "properties": {
+          "slo": {
+            "$ref": "#/components/schemas/Slo"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SloBucket"
+            },
+            "description": "Hourly events over the window, oldest first."
+          },
+          "activeFreeze": {
+            "$ref": "#/components/schemas/SloActiveFreeze"
+          }
+        },
+        "required": [
+          "slo",
+          "buckets",
+          "activeFreeze"
+        ],
+        "additionalProperties": false
+      },
+      "SloCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 500 characters."
+          },
+          "sliKind": {
+            "type": "string",
+            "enum": [
+              "probe_availability",
+              "probe_latency",
+              "metric_threshold"
+            ],
+            "description": "Where the SLI comes from: a synthetic probe's success ratio, the share of a probe's checks at or under a latency threshold, or the share of minutes a resource's metric series satisfies a comparison."
+          },
+          "probeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`probe_*`: the synthetic probe the SLI is read from.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "latencyThresholdMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "`probe_latency`: a check is good at or under this many ms (1-60000)."
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the synced resource reporting the series."
+          },
+          "metricKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the series label as the resource reports it, e.g. \"CPU %\"."
+          },
+          "comparator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">="
+            ],
+            "description": "`metric_threshold` only: a minute is good when `value <comparator> threshold`."
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`metric_threshold`: the comparison's right side."
+          },
+          "targetPercent": {
+            "type": "number",
+            "description": "Objective as a percentage, at least 50 and at most 99.999.",
+            "example": 99.9
+          },
+          "windowDays": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  7
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  28
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  30
+                ]
+              }
+            ],
+            "description": "Rolling window in days.",
+            "example": 30
+          },
+          "alertsEnabled": {
+            "type": "boolean"
+          },
+          "suggestFreeze": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "sliKind"
+        ],
+        "additionalProperties": false
+      },
+      "SloUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 500 characters."
+          },
+          "sliKind": {
+            "type": "string",
+            "enum": [
+              "probe_availability",
+              "probe_latency",
+              "metric_threshold"
+            ],
+            "description": "Where the SLI comes from: a synthetic probe's success ratio, the share of a probe's checks at or under a latency threshold, or the share of minutes a resource's metric series satisfies a comparison."
+          },
+          "probeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`probe_*`: the synthetic probe the SLI is read from.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "latencyThresholdMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "`probe_latency`: a check is good at or under this many ms (1-60000)."
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the synced resource reporting the series."
+          },
+          "metricKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`metric_threshold`: the series label as the resource reports it, e.g. \"CPU %\"."
+          },
+          "comparator": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">="
+            ],
+            "description": "`metric_threshold` only: a minute is good when `value <comparator> threshold`."
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`metric_threshold`: the comparison's right side."
+          },
+          "targetPercent": {
+            "type": "number",
+            "description": "Objective as a percentage, at least 50 and at most 99.999.",
+            "example": 99.9
+          },
+          "windowDays": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  7
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  28
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  30
+                ]
+              }
+            ],
+            "description": "Rolling window in days.",
+            "example": 30
+          },
+          "alertsEnabled": {
+            "type": "boolean"
+          },
+          "suggestFreeze": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SloFreezeRequest": {
+        "type": "object",
+        "properties": {
+          "durationHours": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  24
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  72
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  168
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the freeze lasts; null or omitted means until somebody ends it."
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "IncidentArtifactRequest": {
         "type": [
           "object",
@@ -42980,6 +43869,7 @@
           "logMatchAlerts",
           "postureAlerts",
           "probeAlerts",
+          "sloAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
@@ -62414,7 +63304,7 @@
           "Config as Code"
         ],
         "summary": "Export the organization's configuration as one document",
-        "description": "Dashboards, workflows, custom graphs, budgets, metric alerts, synthetic probes, cost centres, the tag policy and the org-wide alert settings, addressed by stable keys rather than row ids so the result applies to any organization.\n\nCredentials, accounts, resources and workflow signing secrets are never included. Ordering is stable, so re-exporting an unchanged organization produces the same bytes; commit it to git and the diff is the change.\n\nRequires the read permission of every section exported; it refuses rather than silently omitting one, because a partial document applied in `replace` mode would delete what the exporter could not see.\n\n_Requires permission: `config:read`._",
+        "description": "Dashboards, workflows, custom graphs, budgets, metric alerts, synthetic probes, SLOs, cost centres, the tag policy and the org-wide alert settings, addressed by stable keys rather than row ids so the result applies to any organization.\n\nCredentials, accounts, resources and workflow signing secrets are never included. Ordering is stable, so re-exporting an unchanged organization produces the same bytes; commit it to git and the diff is the change.\n\nRequires the read permission of every section exported; it refuses rather than silently omitting one, because a partial document applied in `replace` mode would delete what the exporter could not see.\n\n_Requires permission: `config:read`._",
         "parameters": [
           {
             "schema": {
@@ -62430,7 +63320,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, costCentres, tagPolicy, alertSettings.",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings.",
               "example": "budgets,workflows"
             },
             "required": false,
@@ -79959,6 +80849,419 @@
         },
         "operationId": "getOrgOrgIdProbesProbeIdMetrics",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/slos": {
+      "get": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "List SLOs",
+        "description": "Every service-level objective with its last snapshot: SLI, error budget remaining (as a fraction and in minutes) and burn rates over the alerting windows.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The SLOs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SloList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlos",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "Create an SLO",
+        "description": "Out-of-range inputs are rejected, not clamped. The source must exist in the organization. The first evaluation runs within one poller tick. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SloCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created SLO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Slo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSlos",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/slos/sources": {
+      "get": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "List what an SLO can be measured from",
+        "description": "Every synthetic probe, and every synced resource that reported a metric series in the last week with the series it reported. Feeds the editor's pickers.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Probes and metric-reporting resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SloSources"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlosSources",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/slos/{sloId}": {
+      "get": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "Read an SLO with its history",
+        "description": "The SLO plus hourly good/total buckets over its window (the SLI and budget-burndown charts are drawn from these) and the change freeze in effect, if any.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "sloId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The SLO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SloDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSlosSloId",
+        "x-required-permission": "resources:read"
+      },
+      "put": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "Update an SLO",
+        "description": "Omitted fields keep their value. Changing the source, target or window resets the snapshot and the alert state. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "sloId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SloUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated SLO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Slo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSlosSloId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "Delete an SLO",
+        "description": "The measured series are untouched. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "sloId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSlosSloId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/slos/{sloId}/freeze": {
+      "post": {
+        "tags": [
+          "SLOs"
+        ],
+        "summary": "Start a change freeze for an SLO",
+        "description": "Acts on the freeze suggestion an exhausted budget makes: creates an ordinary change freeze named after the SLO, listed and ended like any other. Needs `freezes:write`.\n\n_Requires permission: `freezes:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "sloId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SloFreezeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The freeze",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SloActiveFreeze"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSlosSloIdFreeze",
+        "x-required-permission": "freezes:write"
       }
     },
     "/api/org/{orgId}/incidents": {

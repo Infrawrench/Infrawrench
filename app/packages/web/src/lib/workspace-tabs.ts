@@ -31,6 +31,7 @@ import {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  slosTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -50,6 +51,7 @@ export {
   accountTabTarget,
   chatTabTarget,
   incidentsTabTarget,
+  slosTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
@@ -321,6 +323,20 @@ export function getWorkspaceNavigateArgs(
           }
         : {
             to: "/org/$orgId/incidents",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
+    case "slos":
+      // The incidents shape: the SLO id is a path segment, so an SLO link
+      // reads as a place, /org/{org}/slos/{id}.
+      return target.sloId
+        ? {
+            to: "/org/$orgId/slos/$sloId",
+            params: { orgId, sloId: target.sloId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/slos",
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
@@ -602,6 +618,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "incidents") {
     return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "slos") {
+    return slosTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "settings") {
     return settingsTabTarget(s.slice(1).join("/") || undefined);

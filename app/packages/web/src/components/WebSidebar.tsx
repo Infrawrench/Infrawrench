@@ -49,6 +49,7 @@ import {
   QuotasIcon,
   PriceCatalogIcon,
   IncidentsIcon,
+  SlosIcon,
   EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
@@ -677,6 +678,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <ProbesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
+              },
+              {
+                key: "slos",
+                label: gt("SLOs"),
+                icon: <SlosIcon />,
+                onClick: () => void navigate({ to: "/org/$orgId/slos", params: { orgId: orgId! } }),
               },
               {
                 key: "status-pages",

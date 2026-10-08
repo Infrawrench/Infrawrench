@@ -27,6 +27,7 @@ import type {
   OrgConfigDashboardCard,
   OrgConfigMetricAlert,
   OrgConfigProbe,
+  OrgConfigSlo,
   OrgConfigWorkflow,
   OrgConfigWorkflowMetric,
   OrgConfigWorkflowTrigger,
@@ -54,6 +55,7 @@ import {
   dashboards,
   metricAlertRules,
   resources,
+  slos,
   syntheticProbes,
   workflows,
 } from "../../db/schema";
@@ -92,12 +94,15 @@ export interface OrgConfigState {
    * unresolved instead of accepted and then silently skipped on apply.
    */
   resourceKeys: Set<string>;
+  /** {@link orgConfigResourceKey} → resource row id, for SLO resource references. */
+  resourceIdByKey: Map<string, string>;
   budgets: OrgConfigEntity<OrgConfigBudget>[];
   customGraphs: OrgConfigEntity<OrgConfigCustomGraph>[];
   workflows: OrgConfigEntity<OrgConfigWorkflow>[];
   dashboards: OrgConfigEntity<OrgConfigDashboard>[];
   metricAlerts: OrgConfigEntity<OrgConfigMetricAlert>[];
   probes: OrgConfigEntity<OrgConfigProbe>[];
+  slos: OrgConfigEntity<OrgConfigSlo>[];
   costCentres: OrgConfigEntity<OrgConfigCostCentre>[];
   tagPolicy: TagPolicy;
   alertSettings: OrgConfigAlertSettingsResolved;
@@ -134,6 +139,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     centreRows,
     allocationRows,
     resourceRows,
+    sloRows,
   ] = await Promise.all([
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
@@ -190,6 +196,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     // synced it yet.
     db
       .select({
+        id: resources.id,
         accountId: resources.accountId,
         pluginId: resources.pluginId,
         resourceTypeId: resources.resourceTypeId,
@@ -197,6 +204,11 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       })
       .from(resources)
       .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt))),
+    db
+      .select()
+      .from(slos)
+      .where(eq(slos.organizationId, organizationId))
+      .orderBy(asc(slos.createdAt), asc(slos.id)),
   ]);
 
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.displayName]));
@@ -211,6 +223,13 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       orgConfigResourceKey(r.accountId, r.pluginId, r.resourceTypeId, r.externalId ?? ""),
     ),
   );
+  const resourceIdByKey = new Map(
+    resourceRows.map((r) => [
+      orgConfigResourceKey(r.accountId, r.pluginId, r.resourceTypeId, r.externalId ?? ""),
+      r.id,
+    ]),
+  );
+  const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
 
   const budgetEntities = withKeys(
     budgetRows,
@@ -323,6 +342,47 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     }),
   );
 
+  // SLOs name their source the way the document names everything: a probe by
+  // its key, a resource by its pin identity. A source that has since gone is
+  // exported without it rather than with a dangling id; apply then reports it.
+  const probeKeyById = new Map(probeEntities.map((p) => [p.id, p.key]));
+  const sloEntities = withKeys(
+    sloRows,
+    (r) => r.id,
+    (r) => r.name,
+    (r, key): OrgConfigSlo => {
+      const resource = r.resourceId ? resourceById.get(r.resourceId) : undefined;
+      const account = resource ? accountNameById.get(resource.accountId) : undefined;
+      const probeKey = r.probeId ? probeKeyById.get(r.probeId) : undefined;
+      return {
+        key,
+        name: r.name,
+        description: r.description,
+        sliKind: r.sliKind,
+        ...(probeKey ? { probeKey } : {}),
+        ...(r.latencyThresholdMs !== null ? { latencyThresholdMs: r.latencyThresholdMs } : {}),
+        ...(resource && account
+          ? {
+              resource: {
+                pluginId: resource.pluginId,
+                resourceTypeId: resource.resourceTypeId,
+                externalId: resource.externalId ?? "",
+                account,
+              },
+            }
+          : {}),
+        ...(r.metricKey !== null ? { metricKey: r.metricKey } : {}),
+        ...(r.comparator !== null ? { comparator: r.comparator } : {}),
+        ...(r.threshold !== null ? { threshold: r.threshold } : {}),
+        targetPercent: r.targetPercent,
+        windowDays: r.windowDays as OrgConfigSlo["windowDays"],
+        alertsEnabled: r.alertsEnabled,
+        suggestFreeze: r.suggestFreeze,
+        enabled: r.enabled,
+      };
+    },
+  );
+
   const centreEntities = withKeys(
     centreRows,
     (c) => c.id,
@@ -367,12 +427,14 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     accountNameById,
     accountIdByName,
     resourceKeys,
+    resourceIdByKey,
     budgets: budgetEntities,
     customGraphs: graphEntities,
     workflows: workflowEntities,
     dashboards: dashboardEntities,
     metricAlerts: alertEntities,
     probes: probeEntities,
+    slos: sloEntities,
     costCentres: centreEntities,
     tagPolicy,
     alertSettings: {

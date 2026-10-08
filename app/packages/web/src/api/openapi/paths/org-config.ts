@@ -166,6 +166,36 @@ const ConfigProbe = strict({
   enabled: z.boolean().default(true),
 }).openapi("OrgConfigProbe");
 
+const ConfigSlo = strict({
+  key: ConfigKey,
+  name: z.string(),
+  description: z.string().nullable().default(null),
+  sliKind: z.enum(["probe_availability", "probe_latency", "metric_threshold"]),
+  probeKey: ConfigKey.optional().openapi({
+    description: "`probe_*`: key of a probe in this document's `probes` or the organization's.",
+  }),
+  latencyThresholdMs: z.number().int().min(1).max(60_000).optional(),
+  resource: strict({
+    pluginId: z.string(),
+    resourceTypeId: z.string(),
+    externalId: z.string(),
+    account: z.string().openapi({ description: "Account display name." }),
+  })
+    .optional()
+    .openapi({
+      description:
+        "`metric_threshold`: the resource, resolved against the organization's inventory on apply.",
+    }),
+  metricKey: z.string().optional(),
+  comparator: z.enum(["<", "<=", ">", ">="]).optional(),
+  threshold: z.number().optional(),
+  targetPercent: z.number().min(50).max(99.999),
+  windowDays: z.union([z.literal(7), z.literal(28), z.literal(30)]).default(30),
+  alertsEnabled: z.boolean().default(true),
+  suggestFreeze: z.boolean().default(true),
+  enabled: z.boolean().default(true),
+}).openapi("OrgConfigSlo");
+
 const ConfigCostCentre = strict({
   key: ConfigKey,
   name: z.string(),
@@ -230,6 +260,7 @@ const ConfigDocument = strict({
   dashboards: z.array(ConfigDashboard).optional(),
   metricAlerts: z.array(ConfigMetricAlert).optional(),
   probes: z.array(ConfigProbe).optional(),
+  slos: z.array(ConfigSlo).optional(),
   costCentres: z.array(ConfigCostCentre).optional(),
   tagPolicy: strict({
     requiredTags: z.array(
@@ -314,7 +345,7 @@ export function registerOrgConfigPaths(ctx: BuildContext) {
     tags: ["Config as Code"],
     summary: "Export the organization's configuration as one document",
     description:
-      "Dashboards, workflows, custom graphs, budgets, metric alerts, synthetic probes, cost " +
+      "Dashboards, workflows, custom graphs, budgets, metric alerts, synthetic probes, SLOs, cost " +
       "centres, the tag policy and the org-wide alert settings, addressed by stable keys rather " +
       "than row ids so the result applies to any organization.\n\n" +
       "Credentials, accounts, resources and workflow signing secrets are never included. " +

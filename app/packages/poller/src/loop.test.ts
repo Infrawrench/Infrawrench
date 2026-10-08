@@ -106,6 +106,12 @@ vi.mock("@infrawrench/server-core/metric-alerts/pass", () => ({
   runMetricAlertPass: (...a: unknown[]) => runMetricAlertPass(...a),
 }));
 
+// The SLO pass reads ClickHouse too; mocked for the metric-alert reason.
+const runSloPass = vi.fn();
+vi.mock("@infrawrench/server-core/slos/pass", () => ({
+  runSloPass: (...a: unknown[]) => runSloPass(...a),
+}));
+
 // Mocked for the same reason as the metric-alert pass: the real module pulls
 // in the whole instantiate chain (plugin loading, org account clients), which
 // this suite has no business importing.
@@ -162,6 +168,7 @@ beforeEach(() => {
   settleAbandonedRecordings.mockResolvedValue(0);
   pruneCreditSnapshots.mockResolvedValue(0);
   runMetricAlertPass.mockResolvedValue({ claimed: 0 });
+  runSloPass.mockResolvedValue({ claimed: 0 });
   runEnvironmentRepairPass.mockResolvedValue({ claimed: 0, repaired: 0, failed: 0 });
   runEnvironmentReconcilePass.mockResolvedValue({ organizations: 0 });
 });
@@ -412,6 +419,29 @@ describe("PollerLoop change-timeline retention", () => {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(pruneResourceChanges).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+});
+
+describe("PollerLoop SLOs", () => {
+  it("runs the SLO pass on every tick with a bounded batch", async () => {
+    const loop = new PollerLoop({ tickMs: 1_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runSloPass).toHaveBeenCalledWith({ limit: 10 });
+    await loop.stop();
+  });
+
+  it("swallows a failing SLO pass so account polling still runs", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    runSloPass.mockRejectedValueOnce(new Error("clickhouse down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[slos] tick failed:", expect.any(Error));
     errSpy.mockRestore();
     await loop.stop();
   });

@@ -11,6 +11,7 @@ import {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  slosTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -100,6 +101,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(incidentsTabTarget("inc-1"));
     expect(detail.to).toBe("/incidents");
     expect(detail.search).toEqual({ incident: "inc-1" });
+  });
+
+  it("returns slos route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(slosTabTarget());
+    expect(list.to).toBe("/slos");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(slosTabTarget("slo-1"));
+    expect(detail.to).toBe("/slos");
+    expect(detail.search).toEqual({ slo: "slo-1" });
   });
 
   it("returns workflows route args, clearing the param for the list view", () => {
@@ -421,6 +432,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/incidents", undefined, "?incident=inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the slos path, with and without a selected SLO", () => {
+    expect(syncWorkspaceRouteFromPath("/slos")).toEqual({ kind: "slos" });
+    expect(syncWorkspaceRouteFromPath("/slos", undefined, "?slo=slo-1")).toEqual({
+      kind: "slos",
+      sloId: "slo-1",
     });
   });
 

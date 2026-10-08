@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 66 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 67 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -451,6 +451,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | Resource                   | Manages                                                            |
 | -------------------------- | ------------------------------------------------------------------ |
 | `infrawrench_probe`        | [Synthetic probes](./synthetic-probes.md)                          |
+| `infrawrench_slo`          | [SLOs and error budgets](./slos.md)                                |
 | `infrawrench_status_page`  | [Public status pages](./status-pages.md) and their components      |
 | `infrawrench_metric_alert` | [Metric threshold alerts](./metric-alerts.md)                      |
 | `infrawrench_log_query`    | [Log workspace](./log-workspace.md) saved queries and match alerts |

@@ -30,7 +30,10 @@ import {
   ORG_CONFIG_SECTIONS,
   ORG_CONFIG_VERSION,
   PROBE_LIMITS,
+  SLO_LIMITS,
   nextCronOccurrence,
+  normalizeSloSource,
+  validateSloInput,
   normalizeProbeMethod,
   normalizeProbeUrl,
   tallyOrgConfigChanges,
@@ -43,6 +46,7 @@ import {
   type OrgConfigDocument,
   type OrgConfigPlan,
   type OrgConfigSection,
+  type OrgConfigSlo,
   type OrgConfigUnresolved,
   type OrgConfigWorkflowTrigger,
 } from "@infrawrench/client-core";
@@ -73,6 +77,7 @@ import {
   orgExtendedSupportSettings,
   orgTagPolicies,
   resources,
+  slos,
   syntheticProbes,
   workflows,
 } from "../../db/schema";
@@ -131,6 +136,7 @@ export async function exportOrgConfig(
     ...(want("dashboards") ? { dashboards: state.dashboards.map((d) => d.config) } : {}),
     ...(want("metricAlerts") ? { metricAlerts: state.metricAlerts.map((a) => a.config) } : {}),
     ...(want("probes") ? { probes: state.probes.map((p) => p.config) } : {}),
+    ...(want("slos") ? { slos: state.slos.map((s) => s.config) } : {}),
     ...(want("costCentres") ? { costCentres: state.costCentres.map((c) => c.config) } : {}),
     ...(want("tagPolicy") ? { tagPolicy: state.tagPolicy } : {}),
     ...(want("alertSettings") ? { alertSettings: state.alertSettings } : {}),
@@ -597,7 +603,7 @@ async function buildOrgConfigPlan(
       );
     }
   }
-  planCollection(plan, "probes", mode, state.probes, doc.probes, {
+  const probeIdByKey = planCollection(plan, "probes", mode, state.probes, doc.probes, {
     create: (id, entry) => {
       const url = requireProbeUrl(entry.name, entry.url);
       return async (tx) => {
@@ -635,6 +641,88 @@ async function buildOrgConfigPlan(
     },
     remove: (entity) => async (tx) => {
       await tx.delete(syntheticProbes).where(eq(syntheticProbes.id, entity.id));
+    },
+  });
+
+  // --- SLOs ----------------------------------------------------------------
+  if (doc.slos) {
+    const existingKeys = new Set(state.slos.map((s) => s.key));
+    const kept =
+      mode === "replace"
+        ? doc.slos.length
+        : existingKeys.size + doc.slos.filter((s) => !existingKeys.has(s.key)).length;
+    if (kept > SLO_LIMITS.maxPerOrg) {
+      throw new OrgConfigError(
+        `This document would leave ${kept} SLOs; the limit is ${SLO_LIMITS.maxPerOrg}.`,
+      );
+    }
+  }
+  const sloSources = new Map<string, { probeId: string | null; resourceId: string | null }>();
+  const resolvableSlos = (doc.slos ?? []).flatMap((entry): OrgConfigSlo[] => {
+    const resolved = resolveSloSource(plan, entry, probeIdByKey, state);
+    const current = state.slos.find((s) => s.key === entry.key);
+    if (!resolved) {
+      // Leave an existing SLO exactly as it is rather than deleting it (replace)
+      // or rewriting it with no source: a restore is not held hostage by one
+      // dangling reference, and nothing is invented.
+      return current ? [current.config] : [];
+    }
+    sloSources.set(entry.key, resolved);
+    return [entry];
+  });
+  planCollection(plan, "slos", mode, state.slos, doc.slos ? resolvableSlos : undefined, {
+    create: (id, entry) => {
+      const row = sloRow(entry, sloSources.get(entry.key));
+      return async (tx) => {
+        await tx.insert(slos).values({
+          id,
+          organizationId,
+          ...row,
+          nextEvalAt: null,
+          createdByUserId: opts.userId,
+        });
+      };
+    },
+    update: (id, entry, current) => {
+      const row = sloRow(entry, sloSources.get(entry.key));
+      // The store's rule: a change to what is measured resets the snapshot
+      // and the alert state, because the stored numbers answered a different
+      // question.
+      const measurementChanged = changedFields(current, entry).some(
+        (f) =>
+          f !== "name" &&
+          f !== "description" &&
+          f !== "alertsEnabled" &&
+          f !== "suggestFreeze" &&
+          f !== "enabled",
+      );
+      return async (tx) => {
+        await tx
+          .update(slos)
+          .set({
+            ...row,
+            ...(measurementChanged
+              ? {
+                  sli: null,
+                  goodEvents: 0,
+                  totalEvents: 0,
+                  budgetRemaining: null,
+                  burnRates: {},
+                  burnAlert: "none" as const,
+                  burnAlertChangedAt: null,
+                  exhaustedAt: null,
+                  lastError: null,
+                  lastEvalAt: null,
+                  nextEvalAt: null,
+                }
+              : {}),
+            updatedAt: now,
+          })
+          .where(eq(slos.id, id));
+      };
+    },
+    remove: (entity) => async (tx) => {
+      await tx.delete(slos).where(eq(slos.id, entity.id));
     },
   });
 
@@ -717,6 +805,79 @@ async function buildOrgConfigPlan(
     operations: plan.operations,
     touchesCustomGraphs,
   };
+}
+
+/**
+ * Resolve an SLO's source references to row ids, or report why not. A probe
+ * key resolves against this document's probes and the org's; a resource
+ * against the org's synced inventory (the dashboard resource pin rule).
+ */
+function resolveSloSource(
+  plan: PlanBuilder,
+  entry: OrgConfigSlo,
+  probeIdByKey: Map<string, string>,
+  state: OrgConfigState,
+): { probeId: string | null; resourceId: string | null } | null {
+  if (entry.sliKind === "probe_availability" || entry.sliKind === "probe_latency") {
+    const probeId = entry.probeKey ? probeIdByKey.get(entry.probeKey) : undefined;
+    if (!probeId) {
+      plan.miss(
+        "slos",
+        entry.key,
+        entry.probeKey
+          ? `probe "${entry.probeKey}" is neither in this document nor in the organization; the SLO is skipped`
+          : "a probe SLO needs a probeKey; the SLO is skipped",
+      );
+      return null;
+    }
+    return { probeId, resourceId: null };
+  }
+  const ref = entry.resource;
+  if (!ref) {
+    plan.miss("slos", entry.key, "a metric SLO needs a resource; the SLO is skipped");
+    return null;
+  }
+  const accountId = state.accountIdByName.get(ref.account.toLowerCase());
+  const resourceId = accountId
+    ? state.resourceIdByKey.get(
+        orgConfigResourceKey(accountId, ref.pluginId, ref.resourceTypeId, ref.externalId),
+      )
+    : undefined;
+  if (!resourceId) {
+    plan.miss(
+      "slos",
+      entry.key,
+      `resource ${ref.pluginId}/${ref.resourceTypeId} "${ref.externalId}" on account "${ref.account}" is not in this organization's inventory yet; sync the account and re-apply`,
+    );
+    return null;
+  }
+  return { probeId: null, resourceId };
+}
+
+/** Document SLO → row columns, validated by the same function the editors run. */
+function sloRow(
+  entry: OrgConfigSlo,
+  source: { probeId: string | null; resourceId: string | null } | undefined,
+) {
+  const input = {
+    name: entry.name,
+    description: entry.description,
+    sliKind: entry.sliKind,
+    probeId: source?.probeId ?? null,
+    latencyThresholdMs: entry.latencyThresholdMs ?? null,
+    resourceId: source?.resourceId ?? null,
+    metricKey: entry.metricKey ?? null,
+    comparator: entry.comparator ?? null,
+    threshold: entry.threshold ?? null,
+    targetPercent: entry.targetPercent,
+    windowDays: entry.windowDays,
+    alertsEnabled: entry.alertsEnabled,
+    suggestFreeze: entry.suggestFreeze,
+    enabled: entry.enabled,
+  };
+  const problem = validateSloInput(input);
+  if (problem) throw new OrgConfigError(`SLO "${entry.name}": ${problem}`);
+  return { ...input, ...normalizeSloSource(input), description: entry.description?.trim() || null };
 }
 
 /** How many probes the org would have after a merge apply. */

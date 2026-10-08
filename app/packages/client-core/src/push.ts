@@ -337,6 +337,21 @@ export type PushNotificationData =
     }
   | {
       /**
+       * An SLO's burn-rate alert changed level, its error budget ran out, or
+       * the burn stopped (see server-core `slos/eval.ts`). One notification
+       * per transition, never per evaluation.
+       *
+       * Target route: the SLO, `/org/{orgId}/slos/{sloId}`.
+       */
+      type: "slo_alert";
+      orgId: string;
+      /** SLO row id (`slos.id`). */
+      sloId: string;
+      /** What the notification announces. */
+      status: "fast_burn" | "slow_burn" | "exhausted" | "recovered";
+    }
+  | {
+      /**
        * A daily digest of provider quotas at or heading for their limit (see
        * server-core `quotas/alerts.ts`). Never one notification per quota: the
        * server batches everything over the org's threshold into this single

@@ -929,6 +929,7 @@ export * from "./paging-providers";
 export * from "./metric-alerts";
 // A SQL query on a schedule: what the data says, which no metric reports.
 export * from "./query-monitors";
+export * from "./slos";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./remediation";

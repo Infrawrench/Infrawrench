@@ -77,6 +77,79 @@ type SyntheticProbe struct {
 	UpdatedAt           string   `json:"updatedAt"`
 }
 
+/* ---------------------------------- SLOs ---------------------------------- */
+
+// SloInput is the POST and PUT body. One struct serves both because the two
+// routes accept the same keys and the PUT leaves an omitted key alone; the
+// provider always sends the full set.
+//
+// Description and the source fields marshal nil as an explicit null (no
+// omitempty), which the server reads as "clear it": switching an SLO from a
+// probe to a metric must not leave the old probe id behind.
+type SloInput struct {
+	Name               string   `json:"name"`
+	Description        *string  `json:"description"`
+	SliKind            string   `json:"sliKind"`
+	ProbeID            *string  `json:"probeId"`
+	LatencyThresholdMs *int64   `json:"latencyThresholdMs"`
+	ResourceID         *string  `json:"resourceId"`
+	MetricKey          *string  `json:"metricKey"`
+	Comparator         *string  `json:"comparator"`
+	Threshold          *float64 `json:"threshold"`
+	TargetPercent      float64  `json:"targetPercent"`
+	WindowDays         int64    `json:"windowDays"`
+	AlertsEnabled      bool     `json:"alertsEnabled"`
+	SuggestFreeze      bool     `json:"suggestFreeze"`
+	Enabled            bool     `json:"enabled"`
+}
+
+// Slo is a service-level objective. Everything from Status down is the last
+// evaluation's snapshot rather than configuration.
+type Slo struct {
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Description        *string  `json:"description"`
+	SliKind            string   `json:"sliKind"`
+	ProbeID            *string  `json:"probeId"`
+	ProbeName          *string  `json:"probeName"`
+	LatencyThresholdMs *int64   `json:"latencyThresholdMs"`
+	ResourceID         *string  `json:"resourceId"`
+	ResourceName       *string  `json:"resourceName"`
+	AccountID          *string  `json:"accountId"`
+	PluginID           *string  `json:"pluginId"`
+	ResourceTypeID     *string  `json:"resourceTypeId"`
+	MetricKey          *string  `json:"metricKey"`
+	Comparator         *string  `json:"comparator"`
+	Threshold          *float64 `json:"threshold"`
+	TargetPercent      float64  `json:"targetPercent"`
+	WindowDays         int64    `json:"windowDays"`
+	AlertsEnabled      bool     `json:"alertsEnabled"`
+	SuggestFreeze      bool     `json:"suggestFreeze"`
+	Enabled            bool     `json:"enabled"`
+
+	Status                 string              `json:"status"`
+	Sli                    *float64            `json:"sli"`
+	GoodEvents             float64             `json:"goodEvents"`
+	TotalEvents            float64             `json:"totalEvents"`
+	BudgetRemaining        *float64            `json:"budgetRemaining"`
+	BudgetTotalMinutes     float64             `json:"budgetTotalMinutes"`
+	BudgetRemainingMinutes *float64            `json:"budgetRemainingMinutes"`
+	BurnRates              map[string]*float64 `json:"burnRates"`
+	BurnAlert              string              `json:"burnAlert"`
+	ExhaustedAt            *string             `json:"exhaustedAt"`
+	LastEvalAt             *string             `json:"lastEvalAt"`
+	LastError              *string             `json:"lastError"`
+	CreatedAt              string              `json:"createdAt"`
+	UpdatedAt              string              `json:"updatedAt"`
+}
+
+// SloDetail is the single-GET envelope: the SLO plus its hourly history and
+// the freeze in effect. The provider only reads `slo`; the rest is display
+// data with nothing to manage.
+type SloDetail struct {
+	Slo Slo `json:"slo"`
+}
+
 /* ------------------------------ metric alerts ------------------------------ */
 
 // MetricAlertRuleInput is the POST/PUT body.

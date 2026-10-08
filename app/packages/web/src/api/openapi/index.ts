@@ -83,6 +83,7 @@ import { registerSavingsPaths } from "./paths/savings";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
+import { registerSloPaths } from "./paths/slos";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -237,6 +238,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerNetworkFlowPaths(ctx);
   registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);
+  registerSloPaths(ctx);
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
@@ -456,6 +458,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Synthetic probes",
         description:
           "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures.",
+      },
+      {
+        name: "SLOs",
+        description:
+          "Service-level objectives measured from the metric store (probe availability, probe latency, or a resource metric against a threshold) over a rolling 7, 28 or 30 day window, with error budget remaining and multiwindow burn-rate alerting routed through the org's alert rules.",
       },
       {
         name: "Quota radar",

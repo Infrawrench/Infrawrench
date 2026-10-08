@@ -175,6 +175,20 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns slos list route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "slos" })).toEqual({
+      to: "/org/$orgId/slos",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns SLO detail route args when the tab remembers one", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "slos", sloId: "slo-1" })).toEqual({
+      to: "/org/$orgId/slos/$sloId",
+      params: { orgId: "test-org", sloId: "slo-1" },
+    });
+  });
+
   it("returns workflows list route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "workflows" });
     expect(args).toEqual({
@@ -580,6 +594,17 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/incidents/inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the slos list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/slos")).toEqual({ kind: "slos" });
+  });
+
+  it("parses an SLO detail path back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/slos/slo-1")).toEqual({
+      kind: "slos",
+      sloId: "slo-1",
     });
   });
 

@@ -172,6 +172,14 @@ export function incidentsTabTarget(incidentId?: string): WorkspaceTabTarget {
   return { kind: "incidents", ...(incidentId ? { incidentId } : {}) };
 }
 
+/**
+ * Service-level objectives. One tab, optionally remembering which SLO's
+ * detail is open (the incidents shape).
+ */
+export function slosTabTarget(sloId?: string): WorkspaceTabTarget {
+  return { kind: "slos", ...(sloId ? { sloId } : {}) };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

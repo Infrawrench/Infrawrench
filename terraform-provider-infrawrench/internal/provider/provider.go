@@ -195,6 +195,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 
 		// Monitoring.
 		NewProbeResource,
+		NewSloResource,
 		NewStatusPageResource,
 		NewMetricAlertResource,
 		NewLogQueryResource,

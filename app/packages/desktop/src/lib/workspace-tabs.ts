@@ -31,6 +31,7 @@ import {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  slosTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -76,6 +77,7 @@ export {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  slosTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -219,6 +221,14 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/incidents",
         search: target.incidentId ? { incident: target.incidentId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    case "slos":
+      // The incidents rule: search passed explicitly so going back to the
+      // list CLEARS ?slo= instead of resolving straight back into the SLO.
+      return {
+        to: "/slos",
+        search: target.sloId ? { slo: target.sloId } : {},
         ...(replace ? { replace: true } : {}),
       };
     case "settings":
@@ -431,6 +441,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");
     return incidentsTabTarget(params.get("incident") ?? undefined);
+  }
+  if (segments[0] === "slos") {
+    const params = new URLSearchParams(search ?? "");
+    return slosTabTarget(params.get("slo") ?? undefined);
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

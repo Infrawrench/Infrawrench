@@ -14,12 +14,14 @@ const state = {
   accountNameById: new Map<string, string>(),
   accountIdByName: new Map<string, string>(),
   resourceKeys: new Set<string>(),
+  resourceIdByKey: new Map<string, string>(),
   budgets: [] as unknown[],
   customGraphs: [] as unknown[],
   workflows: [] as unknown[],
   dashboards: [] as unknown[],
   metricAlerts: [] as unknown[],
   probes: [] as unknown[],
+  slos: [] as unknown[],
   costCentres: [] as unknown[],
   tagPolicy: { requiredTags: [] as unknown[], enforceOnCreate: false },
   alertSettings: {
@@ -107,12 +109,14 @@ function reset() {
   state.accountNameById = new Map([["acct-1", "Production"]]);
   state.accountIdByName = new Map([["production", "acct-1"]]);
   state.resourceKeys = new Set();
+  state.resourceIdByKey = new Map();
   state.budgets = [];
   state.customGraphs = [];
   state.workflows = [];
   state.dashboards = [];
   state.metricAlerts = [];
   state.probes = [];
+  state.slos = [];
   state.costCentres = [];
   state.tagPolicy = { requiredTags: [], enforceOnCreate: false };
 }
@@ -438,5 +442,81 @@ describe("probes", () => {
     await expect(
       plan({ probes: [{ key: "health", name: "health", url: "not-a-url" }] }),
     ).rejects.toThrow(/must be absolute/);
+  });
+});
+
+describe("SLOs", () => {
+  const availability = (probeKey: string) => ({
+    key: "checkout",
+    name: "Checkout availability",
+    sliKind: "probe_availability",
+    probeKey,
+    targetPercent: 99.9,
+  });
+
+  it("resolves a probe key defined in the same document", async () => {
+    const result = await plan({
+      probes: [{ key: "health", name: "health", url: "https://example.com/health" }],
+      slos: [availability("health")],
+    });
+    expect(result.unresolved).toEqual([]);
+    expect(result.changes).toContainEqual({
+      section: "slos",
+      key: "checkout",
+      name: "Checkout availability",
+      action: "create",
+    });
+  });
+
+  it("reports a probe key nobody defines and skips the SLO", async () => {
+    const result = await plan({ slos: [availability("missing")] });
+    expect(result.changes.filter((c) => c.section === "slos")).toEqual([]);
+    expect(result.unresolved).toEqual([
+      expect.objectContaining({ section: "slos", key: "checkout" }),
+    ]);
+  });
+
+  it("keeps an existing SLO in replace mode when its new reference cannot resolve", async () => {
+    state.slos = [{ key: "checkout", id: "slo-1", config: availability("health") }];
+    const result = await plan({ slos: [availability("missing")] }, "replace");
+    expect(result.changes).toContainEqual({
+      section: "slos",
+      key: "checkout",
+      name: "Checkout availability",
+      action: "unchanged",
+    });
+  });
+
+  it("resolves a metric SLO's resource against the inventory", async () => {
+    state.resourceIdByKey.set(`acct-1\0gcp\0gce-instance\0i-1`, "res-1");
+    const result = await plan({
+      slos: [
+        {
+          key: "cpu",
+          name: "CPU headroom",
+          sliKind: "metric_threshold",
+          resource: {
+            pluginId: "gcp",
+            resourceTypeId: "gce-instance",
+            externalId: "i-1",
+            account: "Production",
+          },
+          metricKey: "CPU %",
+          comparator: "<",
+          threshold: 80,
+          targetPercent: 99,
+          windowDays: 7,
+        },
+      ],
+    });
+    expect(result.unresolved).toEqual([]);
+    expect(result.changes).toContainEqual(expect.objectContaining({ section: "slos", key: "cpu" }));
+  });
+
+  it("refuses a target the editor would refuse", async () => {
+    // The schema rejects it while parsing, before any planning happens.
+    expect(() => plan({ slos: [{ ...availability("x"), targetPercent: 100 }] })).toThrow(
+      /Invalid config document/,
+    );
   });
 });
