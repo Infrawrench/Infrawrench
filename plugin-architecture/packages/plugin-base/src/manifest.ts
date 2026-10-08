@@ -142,6 +142,12 @@ export interface PluginManifest {
   /** Fields the host must collect from the user when adding an account */
   credentialFields: CredentialField[];
   /**
+   * If present, the host offers "Connect with <provider>" beside the manual
+   * credential form: an OAuth flow whose access token fills `oauth.tokenField`.
+   * Manual entry stays available; see `oauth.ts` for the contract.
+   */
+  oauth?: OAuthDeclaration;
+  /**
    * If present, the host will offer a SQL editor for resources from this plugin.
    * The host is responsible for the actual connection and query execution:
    * plugins only declare intent.
@@ -1261,7 +1267,7 @@ export interface LogsFetchResult {
   activeContainer: string;
 }
 
-export interface Plugin {
+export interface Plugin extends OAuthPluginHooks {
   manifest: PluginManifest;
   resourceTypes: ResourceTypeDefinition[];
   /** Create a scoped client for a set of credentials: host never exposes raw credentials */
@@ -1349,6 +1355,7 @@ export interface Plugin {
 }
 
 // Forward declarations: defined in their own modules but used here
+import type { OAuthDeclaration, OAuthPluginHooks } from "./oauth.js";
 import type { RemediationCommand, RemediationFinding } from "./remediation.js";
 import type {
   BusinessMetricSourceDeclaration,
