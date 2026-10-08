@@ -299,6 +299,16 @@ export const pluginManifestSchema = z.object({
         .optional(),
     })
     .optional(),
+  jitAccess: z
+    .object({
+      scopeLabel: z.string().min(1),
+      roleLabel: z.string().min(1),
+      principalLabel: z.string().min(1),
+      description: z.string().optional(),
+      providerEnforcedExpiry: z.boolean(),
+      principalPicker: z.boolean(),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

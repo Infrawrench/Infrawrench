@@ -70,6 +70,8 @@ import { Route53HealthCheckResourceType } from "./resources/route53-health-check
 import { CognitoUserPoolResourceType } from "./resources/cognito-user-pool.js";
 import { BackupVaultResourceType } from "./resources/backup-vault.js";
 
+import { AWS_JIT_ACCESS } from "./jit-access.js";
+
 const manifest: PluginManifest = {
   id: "aws",
   version: "0.1.0",
@@ -183,6 +185,13 @@ const manifest: PluginManifest = {
   businessMetricSource: AWS_BUSINESS_METRIC_SOURCE,
   statusFeed,
   preflight: awsPreflight,
+  // Just-in-time access through IAM Identity Center account assignments.
+  // Needs sso:ListInstances, sso:ListPermissionSets, sso:DescribePermissionSet,
+  // sso:ListAccountAssignments, sso:CreateAccountAssignment,
+  // sso:DeleteAccountAssignment, sso:DescribeAccountAssignment*Status,
+  // identitystore:GetUserId/DescribeUser/ListUsers and
+  // organizations:ListAccounts. See `jit-access.ts`.
+  jitAccess: AWS_JIT_ACCESS,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

@@ -27,6 +27,12 @@ export interface ExpoPushMessage {
    * grant ourselves in `app.config.ts`.
    */
   interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
+  /**
+   * Notification category registered by the app (`setNotificationCategoryAsync`),
+   * which adds action buttons. Only `jit_access` exists today: Approve/Deny on
+   * a just-in-time access request.
+   */
+  categoryId?: string;
 }
 
 export interface ExpoTicket {

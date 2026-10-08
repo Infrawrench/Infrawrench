@@ -125,7 +125,11 @@ vi.mock("@infrawrench/server-core/slack-approvals", () => ({
     if (typeof raw !== "string") return null;
     try {
       const p = JSON.parse(raw) as { k?: string; a?: string; o?: string };
-      if ((p.k !== "workflow" && p.k !== "chat" && p.k !== "access") || !p.a || !p.o) {
+      if (
+        (p.k !== "workflow" && p.k !== "chat" && p.k !== "access" && p.k !== "jit") ||
+        !p.a ||
+        !p.o
+      ) {
         return null;
       }
       return { kind: p.k, approvalId: p.a, organizationId: p.o };
@@ -196,6 +200,28 @@ vi.mock("@infrawrench/server-core/workflows/approvals", () => ({
 const decideAccessRequest = vi.fn(async () => ({ outcome: "decided" }) as unknown);
 vi.mock("@infrawrench/server-core/access/break-glass", () => ({
   decideAccessRequest: (...a: unknown[]) => decideAccessRequest(...(a as [])),
+}));
+
+class FakeJitAccessError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+const decideJitRequest = vi.fn(async () => ({}) as unknown);
+vi.mock("@infrawrench/server-core/jit-access/service", () => ({
+  JitAccessError: FakeJitAccessError,
+  decideJitRequest: (...a: unknown[]) => decideJitRequest(...(a as [])),
+  loadJitCaller: async (_org: string, userId: string, permissions: readonly string[]) => ({
+    userId,
+    name: "Astrid",
+    email: "astrid@example.com",
+    roleId: null,
+    permissions,
+  }),
 }));
 
 vi.mock("@infrawrench/client-core", () => ({
@@ -641,6 +667,39 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
     });
     await flushAsync();
     expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("billing:write");
+  });
+
+  it("routes a just-in-time button through the jit decision path", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:read"];
+    await interactionRequest("infrawrench_approval_deny", { k: "jit", a: "jit-1", o: "org-1" });
+    await flushAsync();
+    expect(decideJitRequest).toHaveBeenCalledWith(
+      "org-1",
+      "jit-1",
+      "deny",
+      expect.objectContaining({ userId: "user-1", permissions: ["access:read"] }),
+      { via: "Slack" },
+    );
+  });
+
+  it("relays the service's refusal for a just-in-time button", async () => {
+    linkedAstrid();
+    memberPermissions = ["access:read"];
+    decideJitRequest.mockRejectedValueOnce(
+      new FakeJitAccessError("You are not one of this policy's approvers.", 403, "not_approver"),
+    );
+    await interactionRequest("infrawrench_approval_approve", { k: "jit", a: "jit-1", o: "org-1" });
+    await flushAsync();
+    expect(JSON.stringify(postToSlackResponseUrl.mock.calls[0])).toContain("approvers");
+  });
+
+  it("requires access:read for a just-in-time button", async () => {
+    linkedAstrid();
+    memberPermissions = ["resources:read"];
+    await interactionRequest("infrawrench_approval_approve", { k: "jit", a: "jit-1", o: "org-1" });
+    await flushAsync();
+    expect(decideJitRequest).not.toHaveBeenCalled();
   });
 
   it("refuses a button whose echoed value names an org the clicker isn't linked in", async () => {

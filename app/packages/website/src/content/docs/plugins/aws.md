@@ -75,6 +75,14 @@ The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission)
 
 ![DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dynamodb-create-secondary-indexes.png)
 
+## Just-in-time access
+
+[Just-in-time access](../features/just-in-time-access.md) on AWS goes through **IAM Identity Center**: a grant is an account assignment (this permission set, for this Identity Center user, on this AWS account) and ending it deletes the assignment. Connect the organization's management account, or the delegated administrator for IAM Identity Center. Infrawrench finds the Identity Center instance in whichever region it was enabled, and lists your organization's accounts and permission sets as pickers.
+
+The credentials need `sso:ListInstances`, `sso:ListPermissionSets`, `sso:DescribePermissionSet`, `sso:ListAccountAssignments`, `sso:CreateAccountAssignment`, `sso:DeleteAccountAssignment`, `sso:DescribeAccountAssignmentCreationStatus`, `sso:DescribeAccountAssignmentDeletionStatus`, `identitystore:GetUserId`, `identitystore:DescribeUser`, `identitystore:ListUsers` and `organizations:ListAccounts`. Without `organizations:ListAccounts` only the connected account is offered. Creating assignments also needs the IAM permissions Identity Center uses to provision the permission set into the target account; the AWS managed `AWSSSOMemberAccountAdministrator` policy covers them.
+
+Requesters are matched to Identity Center users by email address (then by user name). AWS does not expire an assignment on its own, so the window is enforced by Infrawrench removing it. If the user already holds that permission set on that account, nothing is created and nothing is removed at the end.
+
 ## Size pickers
 
 The create forms offer current-generation sizes: Graviton (`db.t4g`, `db.m7g`/`db.r7g`, and Graviton4 `db.m8g`/`db.r8g`) RDS classes, `cache.t4g`, `cache.m7g` and `cache.r7g` ElastiCache nodes, Graviton3 and Graviton4 OpenSearch instances, and RA3 and Graviton RG nodes for Redshift. DC2 Redshift nodes are no longer offered, because AWS stopped accepting new DC2 clusters. Graviton4 and RG sizes are not available in every region yet; if AWS rejects one, pick the previous generation.

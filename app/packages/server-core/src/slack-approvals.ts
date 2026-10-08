@@ -30,6 +30,7 @@ import {
   slackApprovalMessages,
   workflowApprovals,
 } from "./db/schema";
+import { jitAccessRequests } from "./db/jit-access-schema";
 import {
   escapeMrkdwn,
   loadOrgSlackTokens,
@@ -39,8 +40,12 @@ import {
   type SlackPostedMessage,
 } from "./slack";
 
-/** Which table the approval id points at. */
-export type SlackApprovalKind = "workflow" | "chat" | "access";
+/**
+ * Which table the approval id points at: `access` is break-glass
+ * (`access_requests`), `jit` is just-in-time cloud access
+ * (`jit_access_requests`).
+ */
+export type SlackApprovalKind = "workflow" | "chat" | "access" | "jit";
 
 export const SLACK_APPROVE_ACTION_ID = "infrawrench_approval_approve";
 export const SLACK_DENY_ACTION_ID = "infrawrench_approval_deny";
@@ -68,7 +73,10 @@ export function parseSlackApprovalButtonValue(raw: unknown): SlackApprovalButton
   try {
     const parsed = JSON.parse(raw) as { k?: string; a?: string; o?: string };
     if (
-      (parsed.k !== "workflow" && parsed.k !== "chat" && parsed.k !== "access") ||
+      (parsed.k !== "workflow" &&
+        parsed.k !== "chat" &&
+        parsed.k !== "access" &&
+        parsed.k !== "jit") ||
       !parsed.a ||
       !parsed.o
     ) {
@@ -116,6 +124,19 @@ async function decidedApprovalState(
         row.status === "approved" ? "approved" : row.status === "denied" ? "denied" : "expired",
       decidedByName: row.decidedByName ?? null,
     };
+  }
+  if (kind === "jit") {
+    const [row] = await db
+      .select({ status: jitAccessRequests.status, decidedByName: jitAccessRequests.decidedByName })
+      .from(jitAccessRequests)
+      .where(eq(jitAccessRequests.id, approvalId))
+      .limit(1);
+    if (!row || row.status === "pending") return null;
+    if (row.status === "denied") return { decision: "denied", decidedByName: row.decidedByName };
+    if (row.status === "timed_out" || row.status === "cancelled") {
+      return { decision: "expired", decidedByName: null };
+    }
+    return { decision: "approved", decidedByName: row.decidedByName ?? null };
   }
   const [row] = await db
     .select({ status: chatPendingActions.status })

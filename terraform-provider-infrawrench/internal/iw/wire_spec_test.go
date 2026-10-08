@@ -306,6 +306,9 @@ func specChecks() []specCheck {
 		{schema: "AlertEmailSettingsView", value: AlertEmailSettingsView{}},
 		{schema: "AlertEmailSuppression", value: AlertEmailSuppression{}},
 
+		{schema: "JitPolicy", value: JitPolicy{}},
+		{schema: "JitPolicyInput", value: JitPolicyInput{}},
+		{schema: "JitPolicyTarget", value: JitPolicyTarget{}},
 		{schema: "OnCallSchedule", value: OnCallSchedule{}},
 		{schema: "OnCallScheduleCreate", value: OnCallScheduleCreate{}},
 		{schema: "OnCallScheduleUpdate", value: OnCallScheduleUpdate{}},

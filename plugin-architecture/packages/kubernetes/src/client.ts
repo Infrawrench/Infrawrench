@@ -1,4 +1,22 @@
 import type {
+  JitAccessPresence,
+  JitGrantResult,
+  JitGrantSpec,
+  JitIdentity,
+  JitPrincipal,
+  JitRole,
+  JitScope,
+} from "@infrawrench/plugin-base";
+import {
+  checkK8sJitAccess,
+  grantK8sJitAccess,
+  listK8sJitPrincipals,
+  listK8sJitRoles,
+  listK8sJitScopes,
+  resolveK8sJitPrincipal,
+  revokeK8sJitAccess,
+} from "./jit-access.js";
+import type {
   CostFetchRange,
   CostRow,
   QuotaUsage,
@@ -365,6 +383,38 @@ export class KubernetesClient implements PluginClient {
    * unpaginated list across every namespace. See `quotas.ts` for why node
    * capacity and `LimitRange` are deliberately not in here.
    */
+  private get jitCtx() {
+    return { fetch: this.k8sFetch };
+  }
+
+  listJitScopes(): Promise<JitScope[]> {
+    return listK8sJitScopes(this.jitCtx);
+  }
+
+  listJitRoles(scopeId: string): Promise<JitRole[]> {
+    return listK8sJitRoles(this.jitCtx, scopeId);
+  }
+
+  resolveJitPrincipal(identity: JitIdentity): Promise<JitPrincipal | null> {
+    return resolveK8sJitPrincipal(this.jitCtx, identity);
+  }
+
+  listJitPrincipals(query?: string): Promise<JitPrincipal[]> {
+    return listK8sJitPrincipals(this.jitCtx, query);
+  }
+
+  grantJitAccess(spec: JitGrantSpec): Promise<JitGrantResult> {
+    return grantK8sJitAccess(this.jitCtx, spec);
+  }
+
+  revokeJitAccess(spec: JitGrantSpec): Promise<void> {
+    return revokeK8sJitAccess(this.jitCtx, spec);
+  }
+
+  checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
+    return checkK8sJitAccess(this.jitCtx, spec);
+  }
+
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
     return fetchK8sQuotas({ fetch: this.k8sFetch });
   }

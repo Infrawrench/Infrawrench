@@ -1361,3 +1361,37 @@ func (c *Client) PutPagingProviderSettings(ctx context.Context, accountID string
 	}
 	return &out.Account, out.Warning, nil
 }
+
+/* ------------------------- just-in-time access ---------------------------- */
+
+// GetJitPolicy reads one policy; this route has a single-object GET.
+func (c *Client) GetJitPolicy(ctx context.Context, id string) (*JitPolicy, error) {
+	var out JitPolicy
+	if err := c.Get(ctx, "/jit-access/policies/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateJitPolicy(ctx context.Context, in JitPolicyInput) (*JitPolicy, error) {
+	var out JitPolicy
+	if err := c.Post(ctx, "/jit-access/policies", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateJitPolicy replaces the policy (PUT).
+func (c *Client) UpdateJitPolicy(ctx context.Context, id string, in JitPolicyInput) (*JitPolicy, error) {
+	var out JitPolicy
+	if err := c.Put(ctx, "/jit-access/policies/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteJitPolicy deletes the policy. Grants it already made still end on
+// time; its pending requests lose their approvers and time out.
+func (c *Client) DeleteJitPolicy(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/jit-access/policies/"+seg(id))
+}

@@ -31,6 +31,40 @@ export function configureNotificationHandler(): void {
       shouldSetBadge: false,
     }),
   });
+  // Approve/Deny buttons on a just-in-time access request. Both open the app:
+  // the decision still goes through the in-app confirmation that names who,
+  // what and for how long (a lock-screen tap must not hand out cloud access on
+  // its own), but it opens straight onto that dialog instead of a list.
+  void Notifications.setNotificationCategoryAsync(JIT_NOTIFICATION_CATEGORY, [
+    {
+      identifier: JIT_APPROVE_ACTION,
+      buttonTitle: "Approve",
+      options: { opensAppToForeground: true, isAuthenticationRequired: true },
+    },
+    {
+      identifier: JIT_DENY_ACTION,
+      buttonTitle: "Deny",
+      options: { opensAppToForeground: true, isDestructive: true, isAuthenticationRequired: true },
+    },
+  ]).catch(() => undefined);
+}
+
+/** Must match the `categoryId` the server sets on actionable jit pushes. */
+export const JIT_NOTIFICATION_CATEGORY = "jit_access";
+export const JIT_APPROVE_ACTION = "jit_approve";
+export const JIT_DENY_ACTION = "jit_deny";
+
+/**
+ * The route for a tapped notification, including which action button (if any)
+ * was pressed. Only the just-in-time category has actions; everything else
+ * routes exactly as `pushDataToPath` says.
+ */
+export function pushResponseToPath(data: MobilePushData, actionIdentifier: string): string {
+  const path = pushDataToPath(data);
+  if (data.type !== "jit_access_request") return path;
+  if (actionIdentifier === JIT_APPROVE_ACTION) return `${path}&action=approve`;
+  if (actionIdentifier === JIT_DENY_ACTION) return `${path}&action=deny`;
+  return path;
 }
 
 let registering = false;
@@ -185,6 +219,8 @@ export function pushDataToPath(data: MobilePushData): string {
     // blocked mid-incident is exactly what you decide from a phone.
     case "access_request":
       return `/org/${data.orgId}/settings/access-requests?requestId=${encodeURIComponent(data.requestId)}`;
+    case "jit_access_request":
+      return `/org/${data.orgId}/jit-access?requestId=${encodeURIComponent(data.requestId)}`;
     // API pages name a source Infrawrench has no page for, so the org home is
     // the closest thing to "where this alert came from".
     case "api_page":
@@ -473,6 +509,22 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         requestId,
         requestedByName: typeof requestedByName === "string" ? requestedByName : "A member",
         durationMinutes: typeof durationMinutes === "number" ? durationMinutes : 0,
+      };
+    }
+    case "jit_access_request": {
+      const requestId = data["requestId"];
+      if (typeof requestId !== "string") return null;
+      const requestedByName = data["requestedByName"];
+      const summary = data["summary"];
+      const durationMinutes = data["durationMinutes"];
+      return {
+        type: "jit_access_request",
+        orgId,
+        requestId,
+        requestedByName: typeof requestedByName === "string" ? requestedByName : "A member",
+        summary: typeof summary === "string" ? summary : "",
+        durationMinutes: typeof durationMinutes === "number" ? durationMinutes : 0,
+        actionable: data["actionable"] === true,
       };
     }
     case "api_page": {

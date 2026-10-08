@@ -80,6 +80,7 @@ import { cmdSchedules } from "./commands/schedules";
 import { cmdLeases } from "./commands/leases";
 import { cmdRecordings } from "./commands/recordings";
 import { cmdAccess } from "./commands/access";
+import { cmdJit } from "./commands/jit";
 import { cmdCostVisibility } from "./commands/cost-visibility";
 import { cmdHygiene } from "./commands/hygiene";
 import { cmdAgents } from "./commands/agents";
@@ -307,6 +308,15 @@ COMMANDS
   agents              agent credentials that can reach this org: who claimed
                       each one, when it was last used & which are unclaimed
   access active       only the elevations in force right now
+  jit                 just-in-time access to cloud roles: the queue, live grants & failed revokes
+                      [--mine] [--holding] [--status pending|active|revoke_failed|…]
+  jit policies        the policies you can request under, and what each offers
+  jit request         ask for a role   --policy <name> --role <name> [--scope <name>] --for 2h
+                      --reason "…" [--ticket <ref>]
+  jit approve|deny <id>  decide a request (you must be one of its approvers)   [--note "…"]
+  jit cancel <id>     withdraw your pending request
+  jit extend <id>     lengthen an active grant, within the policy maximum   --by 30m
+  jit revoke <id>     end a grant now and remove it from the provider
   cost-visibility     cost visibility scopes on roles, members & API keys
   cost-visibility me  whether your own cost figures are scoped
   recordings          recorded SSH sessions: who connected, to what, for how long
@@ -950,6 +960,9 @@ export async function runCli(): Promise<void> {
         break;
       case "access":
         await cmdAccess(ctx, rest);
+        break;
+      case "jit":
+        await cmdJit(ctx, rest, parsed.jit);
         break;
       case "cost-visibility":
         await cmdCostVisibility(ctx, rest);

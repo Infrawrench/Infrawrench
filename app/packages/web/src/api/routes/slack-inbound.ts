@@ -67,6 +67,11 @@ import { resolveEffectivePermissions } from "@infrawrench/server-core/permission
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { decideWorkflowApproval } from "@infrawrench/server-core/workflows/approvals";
 import { decideAccessRequest } from "@infrawrench/server-core/access/break-glass";
+import {
+  JitAccessError,
+  decideJitRequest,
+  loadJitCaller,
+} from "@infrawrench/server-core/jit-access/service";
 import { formatMoney } from "@infrawrench/client-core";
 
 import { db } from "../../db/client";
@@ -873,6 +878,39 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
       );
     } else if (result.outcome === "conflict") {
       await respond(ephemeral("This request has already been decided or has expired."));
+    }
+    return;
+  }
+
+  if (value.kind === "jit") {
+    // Same floor as POST /jit-access/requests/:id/approve; the approver-set,
+    // self-approval and timeout rules are the service's, so the button cannot
+    // decide anything the web route would refuse.
+    if (!hasPermission(permissions, "access:read")) {
+      await respond(
+        ephemeral(
+          `You need the access:read permission in ${member.orgName} to decide just-in-time requests.`,
+        ),
+      );
+      return;
+    }
+    try {
+      const decider = await loadJitCaller(value.organizationId, member.userId, permissions);
+      await decideJitRequest(
+        value.organizationId,
+        value.approvalId,
+        decision === "approved" ? "approve" : "deny",
+        decider,
+        { via: "Slack" },
+      );
+    } catch (err) {
+      if (err instanceof JitAccessError) {
+        await respond(
+          ephemeral(err.status === 404 ? "This request no longer exists." : err.message),
+        );
+        return;
+      }
+      throw err;
     }
     return;
   }

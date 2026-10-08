@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 64 resources and 7 data sources, each with its own
+control, and alert delivery. 66 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -718,6 +718,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                        |
 | `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                            |
 | `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                                |
+| `infrawrench_jit_access_policy`     | by id                                | Policies only; requests and grants are runtime objects, closed to API keys         |
 | `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                           |
 | `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder, canvas or dashboard; destroy resets it |
 | `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                         |

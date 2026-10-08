@@ -208,6 +208,28 @@ export type PushNotificationData =
       durationMinutes: number;
     }
   | {
+      /**
+       * Just-in-time access: somebody asked for a provider role under a policy
+       * (sent to approvers), or a decision landed on the requester's own
+       * request (sent to them). Not break-glass, which is `access_request`.
+       *
+       * Target route: the mobile **Just-in-time access** screen, opened on
+       * `requestId`, which carries the Approve/Deny buttons. The notification
+       * category `jit_access` adds Approve/Deny actions on the notification
+       * itself when `actionable` is true.
+       */
+      type: "jit_access_request";
+      orgId: string;
+      requestId: string;
+      /** Who is asking, so the notification reads without a fetch. */
+      requestedByName: string;
+      /** "AdministratorAccess on prod (123456789012)". */
+      summary: string;
+      durationMinutes: number;
+      /** True on the approvers' copy; false on the requester's decision notice. */
+      actionable: boolean;
+    }
+  | {
       /** A page a server outside Infrawrench raised over `POST /pages`. */
       type: "api_page";
       orgId: string;

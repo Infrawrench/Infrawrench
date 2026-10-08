@@ -7,6 +7,7 @@ import {
   invoicesTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
@@ -67,6 +68,7 @@ describe("tab target factories", () => {
 
   it("accessReviewTabTarget", () => {
     expect(accessReviewTabTarget()).toEqual({ kind: "access-review" });
+    expect(jitAccessTabTarget()).toEqual({ kind: "jit-access" });
   });
 
   it("iacTabTarget", () => {

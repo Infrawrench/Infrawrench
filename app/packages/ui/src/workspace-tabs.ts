@@ -61,6 +61,16 @@ export function accessReviewTabTarget(): WorkspaceTabTarget {
   return { kind: "access-review" };
 }
 
+/**
+ * Just-in-time access: the queue of requests for time-boxed provider roles,
+ * the grants live right now, and their history. Single-instance: which request
+ * is in view is not part of the tab's identity (a request deep link lands on
+ * the queue, where pending requests are at the top).
+ */
+export function jitAccessTabTarget(): WorkspaceTabTarget {
+  return { kind: "jit-access" };
+}
+
 /** Backup & restore coverage: "what is your actual RPO?". */
 export function backupsTabTarget(): WorkspaceTabTarget {
   return { kind: "backups" };

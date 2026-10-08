@@ -11,6 +11,7 @@ export { TeamSection } from "./TeamSection.js";
 export { RolesSection } from "./RolesSection.js";
 export { CostVisibilitySection } from "./CostVisibilitySection.js";
 export { AccessRequestsSection } from "./AccessRequestsSection.js";
+export { JitAccessPoliciesSection } from "./JitAccessPoliciesSection.js";
 export { SshKeysSection } from "./SshKeysSection.js";
 export { SshHostKeysSection } from "./SshHostKeysSection.js";
 export { SessionRecordingsSection } from "./SessionRecordingsSection.js";

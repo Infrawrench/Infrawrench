@@ -31,7 +31,24 @@ import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceRange,
   BusinessMetricSourceResult,
+  JitAccessPresence,
+  JitGrantResult,
+  JitGrantSpec,
+  JitIdentity,
+  JitPrincipal,
+  JitRole,
+  JitScope,
 } from "@infrawrench/plugin-base";
+import {
+  checkGcpJitAccess,
+  grantGcpJitAccess,
+  listGcpJitPrincipals,
+  listGcpJitRoles,
+  listGcpJitScopes,
+  resolveGcpJitPrincipal,
+  revokeGcpJitAccess,
+  type GcpJitContext,
+} from "./jit-access.js";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
 import {
@@ -1128,6 +1145,61 @@ export class GcpClient implements PluginClient {
    * list response carries each region's full `quotas[]`, so there is no
    * per-region fan-out to bound. See `quotas.ts`.
    */
+  /** Authenticated JSON POST with the same 401 retry as `get`. */
+  private async post<T>(url: string, body: unknown): Promise<T> {
+    const send = async (tok: string) =>
+      fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    let res = await send(await this.token());
+    if (res.status === 401) {
+      invalidateAccessToken(this.key);
+      res = await send(await this.token());
+    }
+    if (!res.ok) throw gcpApiError(res.status, url, await res.text(), this.project);
+    const text = await res.text();
+    return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  private get jitCtx(): GcpJitContext {
+    return {
+      project: this.project,
+      get: this.get.bind(this),
+      paginate: this.paginate.bind(this),
+      post: this.post.bind(this),
+    };
+  }
+
+  listJitScopes(): Promise<JitScope[]> {
+    return listGcpJitScopes(this.jitCtx);
+  }
+
+  listJitRoles(scopeId: string): Promise<JitRole[]> {
+    return listGcpJitRoles(this.jitCtx, scopeId);
+  }
+
+  resolveJitPrincipal(identity: JitIdentity): Promise<JitPrincipal | null> {
+    return resolveGcpJitPrincipal(this.jitCtx, identity);
+  }
+
+  listJitPrincipals(query?: string): Promise<JitPrincipal[]> {
+    return listGcpJitPrincipals(this.jitCtx, query);
+  }
+
+  grantJitAccess(spec: JitGrantSpec): Promise<JitGrantResult> {
+    return grantGcpJitAccess(this.jitCtx, spec);
+  }
+
+  revokeJitAccess(spec: JitGrantSpec): Promise<void> {
+    return revokeGcpJitAccess(this.jitCtx, spec);
+  }
+
+  checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
+    return checkGcpJitAccess(this.jitCtx, spec);
+  }
+
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
     const base = `https://compute.googleapis.com/compute/v1/projects/${this.project}`;
     return fetchGcpQuotas({

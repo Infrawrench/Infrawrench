@@ -1601,3 +1601,68 @@ type PagingProviderSettingsInput struct {
 	InboundEnabled bool    `json:"inboundEnabled"`
 	WebhookSecret  *string `json:"webhookSecret,omitempty"`
 }
+
+/* ------------------------- just-in-time access ---------------------------- */
+
+// JitPolicyTarget is one scope and role pair a policy lets members request:
+// an AWS account and a permission set, a GCP project and an IAM role, a
+// Kubernetes namespace and a ClusterRole. The names are display snapshots; the
+// server falls back to the id when a name is empty.
+type JitPolicyTarget struct {
+	ScopeID   string `json:"scopeId"`
+	ScopeName string `json:"scopeName"`
+	RoleID    string `json:"roleId"`
+	RoleName  string `json:"roleName"`
+}
+
+// JitPolicy is a just-in-time access policy as the API returns it. Labels and
+// CanRequest are caller-relative presentation (what the plugin calls a scope,
+// whether the key's owner may ask); no attribute derives from them, but they
+// are decoded so the spec check sees every property accounted for.
+type JitPolicy struct {
+	ID                              string            `json:"id"`
+	Name                            string            `json:"name"`
+	Description                     *string           `json:"description"`
+	Enabled                         bool              `json:"enabled"`
+	AccountID                       string            `json:"accountId"`
+	AccountName                     *string           `json:"accountName"`
+	PluginID                        string            `json:"pluginId"`
+	Targets                         []JitPolicyTarget `json:"targets"`
+	MaxDurationMinutes              int64             `json:"maxDurationMinutes"`
+	DefaultDurationMinutes          int64             `json:"defaultDurationMinutes"`
+	RequestTimeoutMinutes           int64             `json:"requestTimeoutMinutes"`
+	RequesterUserIDs                []string          `json:"requesterUserIds"`
+	RequesterRoleIDs                []string          `json:"requesterRoleIds"`
+	ApproverUserIDs                 []string          `json:"approverUserIds"`
+	ApproverRoleIDs                 []string          `json:"approverRoleIds"`
+	ApproverOnCallScheduleIDs       []string          `json:"approverOnCallScheduleIds"`
+	AllowSelfApprovalDuringIncident bool              `json:"allowSelfApprovalDuringIncident"`
+	RequireReason                   bool              `json:"requireReason"`
+	RequireTicket                   bool              `json:"requireTicket"`
+	CreatedAt                       string            `json:"createdAt"`
+	UpdatedAt                       string            `json:"updatedAt"`
+	Labels                          json.RawMessage   `json:"labels,omitempty"`
+	CanRequest                      *bool             `json:"canRequest,omitempty"`
+}
+
+// JitPolicyInput is the POST and PUT body; PUT replaces the whole policy, so
+// every field is sent on both. Lists are always sent (empty, never omitted),
+// because an omitted list on a PUT would read as "everyone may request".
+type JitPolicyInput struct {
+	Name                            string            `json:"name"`
+	Description                     *string           `json:"description"`
+	Enabled                         bool              `json:"enabled"`
+	AccountID                       string            `json:"accountId"`
+	Targets                         []JitPolicyTarget `json:"targets"`
+	MaxDurationMinutes              int64             `json:"maxDurationMinutes"`
+	DefaultDurationMinutes          *int64            `json:"defaultDurationMinutes,omitempty"`
+	RequestTimeoutMinutes           int64             `json:"requestTimeoutMinutes"`
+	RequesterUserIDs                []string          `json:"requesterUserIds"`
+	RequesterRoleIDs                []string          `json:"requesterRoleIds"`
+	ApproverUserIDs                 []string          `json:"approverUserIds"`
+	ApproverRoleIDs                 []string          `json:"approverRoleIds"`
+	ApproverOnCallScheduleIDs       []string          `json:"approverOnCallScheduleIds"`
+	AllowSelfApprovalDuringIncident bool              `json:"allowSelfApprovalDuringIncident"`
+	RequireReason                   bool              `json:"requireReason"`
+	RequireTicket                   bool              `json:"requireTicket"`
+}

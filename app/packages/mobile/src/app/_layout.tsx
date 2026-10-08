@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/lib/auth/AuthProvider";
 import { HostKeyTrustHost } from "@/components/HostKeyTrustHost";
-import { configureNotificationHandler, parsePushData, pushDataToPath } from "@/lib/push";
+import { configureNotificationHandler, parsePushData, pushResponseToPath } from "@/lib/push";
 import { colors } from "@/lib/theme";
 
 configureNotificationHandler();
@@ -32,7 +32,7 @@ function NotificationRouter() {
       const data = parsePushData(response.notification.request.content.data);
       if (!data) return;
       if (data.orgId && data.orgId !== orgId) await selectOrg(data.orgId);
-      router.push(pushDataToPath(data) as never);
+      router.push(pushResponseToPath(data, response.actionIdentifier) as never);
     };
 
     // Cold-start tap: the response that launched the app.

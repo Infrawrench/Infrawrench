@@ -43,6 +43,10 @@ for (const plugin of BUNDLED_PLUGINS) {
   add(manifest.sshInstall?.description);
   for (const message of manifest.sshInstall?.messages ?? []) add(message);
   // Warehouse sink copy shown on the cost export destination picker.
+  add(manifest.jitAccess?.scopeLabel);
+  add(manifest.jitAccess?.roleLabel);
+  add(manifest.jitAccess?.principalLabel);
+  add(manifest.jitAccess?.description);
   add(manifest.warehouseSink?.label);
   add(manifest.warehouseSink?.description);
   for (const field of manifest.warehouseSink?.targetFields ?? []) {

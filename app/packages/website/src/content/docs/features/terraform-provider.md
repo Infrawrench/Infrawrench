@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 64 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 66 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -477,6 +477,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                              |
 | `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                                       |
 | `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                                        |
+| `infrawrench_jit_access_policy`     | [Just-in-time access](./just-in-time-access.md) policies: which cloud roles may be requested, for how long, and who approves        |
 | `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                                     |
 | `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder, cost canvas or dashboard |
 | `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                                         |

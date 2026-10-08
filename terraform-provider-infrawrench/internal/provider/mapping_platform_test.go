@@ -758,3 +758,50 @@ func TestGithubIssueSettingsNoDefaultRepository(t *testing.T) {
 		t.Error("an absent default repository must be sent as null")
 	}
 }
+
+// A just-in-time policy target whose name was omitted is stored with its id as
+// the name. Reading that back as the id would turn an omitted attribute into a
+// permanent diff, so a name equal to its id maps to null; a real name survives,
+// and the input side puts the id back.
+func TestJitPolicyTargetNamesRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	remote := &iw.JitPolicy{
+		ID:        "p1",
+		Name:      "Prod",
+		AccountID: "a1",
+		Targets: []iw.JitPolicyTarget{
+			{ScopeID: "123456789012", ScopeName: "123456789012", RoleID: "ps-1", RoleName: "Admin"},
+		},
+		MaxDurationMinutes:     120,
+		DefaultDurationMinutes: 60,
+		RequestTimeoutMinutes:  30,
+		ApproverRoleIDs:        []string{"r1"},
+	}
+	state, diags := jitPolicyStateFrom(ctx, remote)
+	if diags.HasError() {
+		t.Fatalf("jitPolicyStateFrom: %v", diags)
+	}
+	if !state.Target[0].ScopeName.IsNull() {
+		t.Errorf("a name equal to its id should read as unset, got %q", state.Target[0].ScopeName.ValueString())
+	}
+	if state.Target[0].RoleName.ValueString() != "Admin" {
+		t.Errorf("a real role name should survive, got %v", state.Target[0].RoleName)
+	}
+	if state.RequesterUserIDs.IsNull() || len(state.RequesterUserIDs.Elements()) != 0 {
+		t.Errorf("an empty list must read as [] (the attribute's default), got %v", state.RequesterUserIDs)
+	}
+	if !state.Description.IsNull() {
+		t.Errorf("no description should read as null, got %v", state.Description)
+	}
+
+	input, diags := jitPolicyInputFrom(ctx, state)
+	if diags.HasError() {
+		t.Fatalf("jitPolicyInputFrom: %v", diags)
+	}
+	if input.Targets[0].ScopeName != "123456789012" {
+		t.Errorf("an unset name is sent as the id, got %q", input.Targets[0].ScopeName)
+	}
+	if input.RequesterUserIDs == nil {
+		t.Errorf("lists are always sent, never omitted: an omitted list on a PUT reads as everyone")
+	}
+}

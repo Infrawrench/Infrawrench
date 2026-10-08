@@ -548,6 +548,23 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         }
       }
 
+      const jitAccess = plugin.manifest.jitAccess;
+      if (jitAccess) {
+        it("manifest.jitAccess → client implements the grant lifecycle", () => {
+          expect(typeof client.listJitScopes).toBe("function");
+          expect(typeof client.listJitRoles).toBe("function");
+          expect(typeof client.resolveJitPrincipal).toBe("function");
+          expect(typeof client.grantJitAccess).toBe("function");
+          expect(typeof client.revokeJitAccess).toBe("function");
+          expect(typeof client.checkJitAccess).toBe("function");
+        });
+        if (jitAccess.principalPicker) {
+          it("jitAccess.principalPicker → client lists principals", () => {
+            expect(typeof client.listJitPrincipals).toBe("function");
+          });
+        }
+      }
+
       const hasSupportsStorageBrowser = plugin.resourceTypes.some(
         (rt) => rt.supportsStorageBrowser,
       );

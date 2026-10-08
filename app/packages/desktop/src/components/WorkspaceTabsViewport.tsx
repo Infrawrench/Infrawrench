@@ -27,6 +27,7 @@ import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import {
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
+  settingsTabTarget,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
@@ -58,6 +59,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
+import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
@@ -481,6 +483,16 @@ function renderPanel(
                 ),
               ),
             )
+          }
+        />
+      );
+    case "jit-access":
+      return (
+        <DesktopJitAccessPanel
+          // Keyed by org so switching org remounts and refetches.
+          key={activeCloudOrgId ?? "local"}
+          openPolicies={() =>
+            void navigate(getWorkspaceNavigateArgs(settingsTabTarget("jit-access")))
           }
         />
       );

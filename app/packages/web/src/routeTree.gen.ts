@@ -36,6 +36,7 @@ import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdIacRouteImport } from './routes/org.$orgId.iac'
 import { Route as OrgOrgIdIncidentsRouteImport } from './routes/org.$orgId.incidents'
 import { Route as OrgOrgIdInvoicesRouteImport } from './routes/org.$orgId.invoices'
+import { Route as OrgOrgIdJitAccessRouteImport } from './routes/org.$orgId.jit-access'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
@@ -79,6 +80,7 @@ import { Route as OrgOrgIdSettingsCustomCostSourcesRouteImport } from './routes/
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsGithubIssuesRouteImport } from './routes/org.$orgId.settings.github-issues'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
+import { Route as OrgOrgIdSettingsJitAccessRouteImport } from './routes/org.$orgId.settings.jit-access'
 import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
 import { Route as OrgOrgIdSettingsOnCallRouteImport } from './routes/org.$orgId.settings.on-call'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
@@ -226,6 +228,11 @@ const OrgOrgIdIncidentsRoute = OrgOrgIdIncidentsRouteImport.update({
 const OrgOrgIdInvoicesRoute = OrgOrgIdInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdJitAccessRoute = OrgOrgIdJitAccessRouteImport.update({
+  id: '/jit-access',
+  path: '/jit-access',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdLogsRoute = OrgOrgIdLogsRouteImport.update({
@@ -463,6 +470,12 @@ const OrgOrgIdSettingsJiraRoute = OrgOrgIdSettingsJiraRouteImport.update({
   path: '/jira',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsJitAccessRoute =
+  OrgOrgIdSettingsJitAccessRouteImport.update({
+    id: '/jit-access',
+    path: '/jit-access',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsLinearRoute = OrgOrgIdSettingsLinearRouteImport.update({
   id: '/linear',
   path: '/linear',
@@ -562,6 +575,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
+  '/org/$orgId/jit-access': typeof OrgOrgIdJitAccessRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -604,6 +618,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
@@ -645,6 +660,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
+  '/org/$orgId/jit-access': typeof OrgOrgIdJitAccessRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -686,6 +702,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
@@ -730,6 +747,7 @@ export interface FileRoutesById {
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
+  '/org/$orgId/jit-access': typeof OrgOrgIdJitAccessRoute
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
@@ -772,6 +790,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
+  '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
   '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
@@ -817,6 +836,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
+    | '/org/$orgId/jit-access'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -859,6 +879,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/jit-access'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
@@ -900,6 +921,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
+    | '/org/$orgId/jit-access'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -941,6 +963,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/jit-access'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
@@ -984,6 +1007,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
+    | '/org/$orgId/jit-access'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
     | '/org/$orgId/moment'
@@ -1026,6 +1050,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
+    | '/org/$orgId/settings/jit-access'
     | '/org/$orgId/settings/linear'
     | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
@@ -1243,6 +1268,13 @@ declare module '@tanstack/react-router' {
       path: '/invoices'
       fullPath: '/org/$orgId/invoices'
       preLoaderRoute: typeof OrgOrgIdInvoicesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/jit-access': {
+      id: '/org/$orgId/jit-access'
+      path: '/jit-access'
+      fullPath: '/org/$orgId/jit-access'
+      preLoaderRoute: typeof OrgOrgIdJitAccessRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/logs': {
@@ -1546,6 +1578,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsJiraRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/jit-access': {
+      id: '/org/$orgId/settings/jit-access'
+      path: '/jit-access'
+      fullPath: '/org/$orgId/settings/jit-access'
+      preLoaderRoute: typeof OrgOrgIdSettingsJitAccessRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/linear': {
       id: '/org/$orgId/settings/linear'
       path: '/linear'
@@ -1718,6 +1757,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsGithubIssuesRoute: typeof OrgOrgIdSettingsGithubIssuesRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
+  OrgOrgIdSettingsJitAccessRoute: typeof OrgOrgIdSettingsJitAccessRoute
   OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
   OrgOrgIdSettingsOnCallRoute: typeof OrgOrgIdSettingsOnCallRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
@@ -1754,6 +1794,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsGithubIssuesRoute: OrgOrgIdSettingsGithubIssuesRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
+  OrgOrgIdSettingsJitAccessRoute: OrgOrgIdSettingsJitAccessRoute,
   OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
   OrgOrgIdSettingsOnCallRoute: OrgOrgIdSettingsOnCallRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
@@ -1802,6 +1843,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdIacRoute: typeof OrgOrgIdIacRoute
   OrgOrgIdIncidentsRoute: typeof OrgOrgIdIncidentsRouteWithChildren
   OrgOrgIdInvoicesRoute: typeof OrgOrgIdInvoicesRouteWithChildren
+  OrgOrgIdJitAccessRoute: typeof OrgOrgIdJitAccessRoute
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
@@ -1842,6 +1884,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdIacRoute: OrgOrgIdIacRoute,
   OrgOrgIdIncidentsRoute: OrgOrgIdIncidentsRouteWithChildren,
   OrgOrgIdInvoicesRoute: OrgOrgIdInvoicesRouteWithChildren,
+  OrgOrgIdJitAccessRoute: OrgOrgIdJitAccessRoute,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,

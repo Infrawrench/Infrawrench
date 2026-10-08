@@ -272,4 +272,9 @@
 // `POST /{accountId}/sync`, `GET /{accountId}/on-call/{sourceId}`),
 // `GET /paging-incidents` with `POST .../acknowledge` and `.../resolve`, and
 // the public `POST /api/paging-webhooks/{token}`. All additive.
-export const API_VERSION = "1.76.0";
+// 1.77.0: just-in-time access: `/jit-access` accounts, pickers, policies
+// (CRUD) and requests (create, approve, deny, cancel, extend, revoke), the
+// `jit-access` member on the workspace TabTarget enum, the
+// `jit_access_request` push payload, and `jitGrantIssues` on the access
+// review response. All additive.
+export const API_VERSION = "1.77.0";

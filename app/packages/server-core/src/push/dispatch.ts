@@ -193,6 +193,11 @@ function toExpoMessage(
     channelId: "incidents",
     priority: "high",
     interruptionLevel,
+    // Approve/Deny buttons on the approvers' copy of a just-in-time request
+    // (the category the mobile app registers in `configureNotificationHandler`).
+    ...(msg.data.type === "jit_access_request" && msg.data.actionable
+      ? { categoryId: "jit_access" }
+      : {}),
   };
 }
 

@@ -365,6 +365,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
@@ -802,6 +803,33 @@ export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
 export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
+export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
+
+/**
+ * Just-in-time access: time-boxed provider roles under admin-written
+ * policies. The contract lives in `@infrawrench/client-core`; re-exported here
+ * because web and desktop import it from `ui`.
+ */
+export { JitAccessPanel } from "./jit-access/JitAccessPanel.js";
+export type { JitAccessPanelProps } from "./jit-access/JitAccessPanel.js";
+export {
+  JIT_LIMITS,
+  JIT_REQUEST_STATUSES,
+  jitCanDecide,
+  jitExtensionHeadroom,
+  jitIsApprover,
+  jitMayRequest,
+  jitStatusLabel,
+} from "@infrawrench/client-core";
+export type {
+  JitAccessAccount,
+  JitAccessRequest,
+  JitGrantIssue,
+  JitPolicy,
+  JitPolicyInput,
+  JitPolicyTarget,
+  JitRequestStatus,
+} from "@infrawrench/client-core";
 
 /**
  * Backup coverage: the pure contract (coverage computation, wire types,

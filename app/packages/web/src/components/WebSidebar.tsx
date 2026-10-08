@@ -33,6 +33,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   AccessReviewIcon,
+  JitAccessIcon,
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
@@ -611,6 +612,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <AccessReviewIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/access-review", params: { orgId: orgId! } }),
+              },
+              {
+                key: "jit-access",
+                label: gt("Just-in-time access"),
+                icon: <JitAccessIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/jit-access", params: { orgId: orgId! } }),
               },
               {
                 key: "backups",

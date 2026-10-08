@@ -63,6 +63,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
+import { WebJitAccessPanel } from "./WebJitAccessPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebWallboardPanel } from "./WebWallboardPanel";
 import { WebCalendarPanel } from "./WebCalendarPanel";
@@ -492,6 +493,20 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                 ),
               ),
             )
+          }
+        />
+      );
+    case "jit-access":
+      return (
+        <WebJitAccessPanel
+          // Keyed by org so switching org remounts and refetches.
+          key={orgId}
+          orgId={orgId}
+          openPolicies={() =>
+            void navigate({
+              to: "/org/$orgId/settings/jit-access",
+              params: { orgId },
+            })
           }
         />
       );

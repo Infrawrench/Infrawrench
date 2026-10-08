@@ -14,6 +14,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
@@ -58,6 +59,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  jitAccessTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
@@ -167,6 +169,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
     case "access-review":
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
+    case "jit-access":
+      return { to: "/jit-access", ...(replace ? { replace: true } : {}) };
     case "backups":
       return { to: "/backups", ...(replace ? { replace: true } : {}) };
     case "wallboard":
@@ -374,6 +378,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "access-review") {
     return accessReviewTabTarget();
+  }
+  if (segments[0] === "jit-access") {
+    return jitAccessTabTarget();
   }
   if (segments[0] === "backups") {
     return backupsTabTarget();
