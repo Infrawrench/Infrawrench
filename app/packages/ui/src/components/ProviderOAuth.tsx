@@ -198,8 +198,6 @@ interface ConnectPanelProps {
   onConnect: () => void;
   onCancel?: (() => void) | undefined;
   onOpenExternal?: ((url: string) => void) | undefined;
-  /** `reconnect` relabels the button for an existing account. */
-  mode?: "connect" | "reconnect";
 }
 
 /**
@@ -214,15 +212,11 @@ export function ProviderOAuthConnectPanel({
   onConnect,
   onCancel,
   onOpenExternal,
-  mode = "connect",
 }: ConnectPanelProps) {
   const gt = useGT();
   const gtData = useDataString();
   const provider = gtData(plugin.displayName);
-  const label =
-    mode === "reconnect"
-      ? gt("Reconnect with {provider}", { provider })
-      : gt("Connect with {provider}", { provider });
+  const label = gt("Connect with {provider}", { provider });
 
   return (
     <div className="space-y-2">
