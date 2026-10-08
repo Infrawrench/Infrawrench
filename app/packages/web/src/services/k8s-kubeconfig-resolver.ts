@@ -6,7 +6,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, resources } from "@/db/schema";
-import { decrypt, buildAad } from "@/services/encryption";
+import { decryptAccountCredentials } from "@infrawrench/server-core/provider-oauth";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
 import { withEgressScope } from "@infrawrench/server-core/egress-guard";
@@ -37,12 +37,8 @@ export async function resolveKubeconfig(
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) return null;
 
-  const plaintext = await decrypt(
-    account.encryptedCredentials,
-    account.credentialsIv,
-    buildAad("account", account.id, "credentials"),
-  );
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  // Refreshes an expiring OAuth access token before the client is built.
+  const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId: account.id,
     organizationId,
