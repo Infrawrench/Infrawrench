@@ -13,6 +13,7 @@ import { NetlifyNotificationHookResourceType } from "./resources/notification-ho
 import { NetlifySnippetResourceType } from "./resources/snippet.js";
 import { NetlifyDatabaseResourceType } from "./resources/database.js";
 import { netlifyTerraformExport } from "./terraform.js";
+import { completeNetlifyOAuth, netlifyOAuth } from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "netlify",
@@ -39,6 +40,8 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   statusFeed,
+  // "Connect with Netlify" (server only). Pasted tokens keep working; see oauth.ts.
+  oauth: netlifyOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -60,4 +63,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new NetlifyClient(credentials, services),
   parseStatusFeed,
   terraformExport: netlifyTerraformExport,
+  completeOAuthConnection: completeNetlifyOAuth,
 };

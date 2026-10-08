@@ -18,9 +18,18 @@ Netlify renamed "sites" to "projects" in its dashboard in 2025. The API still ca
 - Snippets injected into every page
 - Netlify DB databases
 
+## Connect with Netlify
+
+Pick Netlify in the add-account form and click **Connect with Netlify**, then sign in to Netlify and click **Authorize**. The account is named after your Netlify user.
+
+- **What the consent grants:** Netlify OAuth has no scopes, so the token can do everything your Netlify user can, across every team you belong to. Infrawrench only reads unless you act.
+- **Refresh:** none needed. Netlify OAuth tokens do not expire. Resetting your Netlify password invalidates them (and all personal access tokens); reconnect the account afterwards. You can also revoke Infrawrench under **User settings → Applications → Authorized applications**.
+- **SAML teams:** a team that enforces SAML SSO may refuse tokens that were not granted access to it; if a team's sites are missing, sign in to that team with SSO and reconnect.
+- Works from the web app and the desktop app in cloud mode. Desktop-local accounts use a pasted token, because Netlify's OAuth needs the server's client secret.
+
 ## Credentials
 
-Netlify → **User settings → Applications → Personal access tokens → New access token**.
+To paste a token instead of connecting: Netlify → **User settings → Applications → Personal access tokens → New access token**.
 
 ![Netlify Add-account form with PAT field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/netlify/add-account.png)
 
