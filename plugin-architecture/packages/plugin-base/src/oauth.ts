@@ -91,6 +91,15 @@ export interface OAuthDeclaration {
   refresh: "rotating" | "reusable" | "none";
   /** Provider docs page explaining the consent/app, linked from the UI. */
   docsUrl?: string;
+  /**
+   * How the host obtains a client id. `static` (default): from env
+   * (`oauthEnvPrefix`). `none`: the provider needs no registered client (the
+   * flow is identified by its callback URL), so the flow is available with no
+   * configuration. `dynamic`: the plugin registers a client per flow through
+   * {@link OAuthPluginHooks.registerOAuthClient} before building the
+   * authorize URL.
+   */
+  clientRegistration?: "static" | "none" | "dynamic";
 }
 
 /** Host-owned grant state stored (JSON-encoded) under {@link OAUTH_CREDENTIAL_KEY}. */
@@ -105,6 +114,8 @@ export interface OAuthGrantState {
   scope?: string;
   /** Epoch milliseconds the grant was first obtained. */
   connectedAt: number;
+  /** Client id a dynamically registered grant must refresh with. */
+  clientId?: string;
 }
 
 /** A token endpoint response, normalized. `raw` keeps provider-specific extras. */
@@ -173,6 +184,32 @@ export interface OAuthPluginHooks {
    * call is non-standard (a JSON body, a key-minting endpoint). Optional.
    */
   exchangeOAuthCode?(request: OAuthExchangeRequest): Promise<OAuthTokenSet>;
+  /**
+   * Replace the standard authorize URL, for providers whose consent page
+   * takes non-standard parameters (`callback_url` instead of `redirect_uri`,
+   * no client id). When present the host calls it instead of
+   * {@link buildOAuthAuthorizeUrl}. Pure and synchronous.
+   */
+  buildOAuthAuthorizeUrl?(params: OAuthAuthorizeUrlParams): string;
+  /**
+   * Register a client for one flow (RFC 7591 dynamic client registration).
+   * Required when `manifest.oauth.clientRegistration === "dynamic"`; the host
+   * calls it with the redirect URI before building the authorize URL and
+   * uses the returned client for the exchange and later refreshes (the
+   * client id is kept in the grant state as `clientId`).
+   */
+  registerOAuthClient?(request: {
+    redirectUri: string;
+    fetch: typeof fetch;
+  }): Promise<{ clientId: string; clientSecret?: string }>;
+}
+
+/** Parameters for building an authorize URL. `clientId` is empty for `clientRegistration: "none"`. */
+export interface OAuthAuthorizeUrlParams {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  codeChallenge?: string;
 }
 
 /**
@@ -231,7 +268,7 @@ export async function createPkcePair(): Promise<{ verifier: string; challenge: s
 /** Build the provider authorize URL. */
 export function buildOAuthAuthorizeUrl(
   declaration: OAuthDeclaration,
-  params: { clientId: string; redirectUri: string; state: string; codeChallenge?: string },
+  params: OAuthAuthorizeUrlParams,
 ): string {
   const url = new URL(declaration.authorizeUrl);
   url.searchParams.set("response_type", "code");
@@ -396,6 +433,7 @@ export function grantStateFromTokens(
     ...(tokens.expiresAt ? { expiresAt: tokens.expiresAt } : {}),
     ...(scope ? { scope } : {}),
     connectedAt: previous?.connectedAt ?? Date.now(),
+    ...(previous?.clientId ? { clientId: previous.clientId } : {}),
   };
 }
 

@@ -625,6 +625,7 @@ export {
   stripOAuthGrantState,
 } from "./oauth.js";
 export type {
+  OAuthAuthorizeUrlParams,
   OAuthClientAuthMethod,
   OAuthClientCredentials,
   OAuthClientKind,
