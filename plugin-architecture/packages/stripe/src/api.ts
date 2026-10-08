@@ -249,9 +249,17 @@ export async function listV2<T>(
   return out;
 }
 
-/** `sk_live_…` / `rk_live_…` → live; anything else (test, sandbox) → test. */
+/**
+ * `sk_live_…` / `rk_live_…` → live; other secret and restricted keys (test,
+ * sandbox) → test. Anything else is an OAuth access token from "Connect with
+ * Stripe" (see oauth.ts), which says nothing about its mode: those come from
+ * the live-mode install link, so they count as live unless they carry a
+ * `_test_` marker.
+ */
 export function keyMode(apiKey: string): "live" | "test" {
-  return /^(sk|rk)_live_/.test(apiKey) ? "live" : "test";
+  if (/^(sk|rk)_live_/.test(apiKey)) return "live";
+  if (/^(sk|rk)_/.test(apiKey)) return "test";
+  return /_test_/.test(apiKey) ? "test" : "live";
 }
 
 /** Dashboard deep link, honouring test mode (`/test/` prefix). */

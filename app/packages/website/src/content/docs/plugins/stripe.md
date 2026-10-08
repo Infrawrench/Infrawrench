@@ -22,9 +22,19 @@ Infrawrench treats Stripe as part of your infrastructure rather than as a paymen
 
 <insert [Stripe account overview showing the Balance, Subscriptions and Failing Webhook Deliveries sections] here>
 
+## Connect with Stripe
+
+Pick Stripe in the add-account form and click **Connect with Stripe**. Stripe opens the Infrawrench app's install page: choose the Stripe account, review the permissions and install. The account is named after your Stripe account.
+
+- **What the consent grants:** the Infrawrench Stripe App's permissions, which match the restricted-key list below: write on webhook endpoints and event destinations, products, prices, billing meters and payouts; read on the account, balance, balance transactions, events, subscriptions, connected accounts, financial reports and files. Sigma has no Stripe App permission, so Sigma runs need a pasted key.
+- **Refresh:** Stripe's app access tokens last an hour. Infrawrench refreshes them in the background and saves the new refresh token Stripe rolls on every refresh; a connection unused for a year expires.
+- **Revoking:** uninstall the Infrawrench app from the installed apps in your Stripe Dashboard settings. The account then shows **Reconnect required**.
+- Connected accounts manage live mode. To manage a sandbox or test mode, paste a test-mode key instead.
+- Works from the web app and the desktop app in cloud mode. Desktop-local accounts use a pasted key, because Stripe's token exchange needs the Infrawrench server's own Stripe secret key.
+
 ## Credentials
 
-Use a **restricted key**. In the Stripe Dashboard open **Developers → API keys → Create restricted key** and set:
+To paste a key instead of connecting, use a **restricted key**. In the Stripe Dashboard open **Developers → API keys → Create restricted key** and set:
 
 - **Write**: Webhook Endpoints, Event Destinations, Products, Prices, Billing Meters, Payouts, and Connect accounts if you run a platform.
 - **Read**: Account, Balance, Balance Transaction Sources, Events, Subscriptions, Report Runs and Report Types, Files, and Sigma.
