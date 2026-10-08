@@ -114,7 +114,7 @@ Pick Cloudflare in the add-account form and click **Connect with Cloudflare**. C
 
 ## Credentials
 
-To paste an API token instead of connecting: the API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
+To paste an API token instead of connecting: the API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected. Review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
 
 If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage. A resource type the token can't read shows the exact permission to add (for example **Account · Hyperdrive:Read**) instead of an empty list. Spectrum has no permission of its own; the **Zone** permission covers it.
 
