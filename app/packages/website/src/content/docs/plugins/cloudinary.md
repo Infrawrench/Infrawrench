@@ -14,9 +14,18 @@ sidebar_order: 25
 - **Upload mappings**: map a folder name to a remote URL prefix for auto-upload
 - **Webhook notifications**: create, edit and delete the product environment's notification triggers
 
+## Connect with Cloudinary
+
+Pick Cloudinary in the add-account form and click **Connect with Cloudinary**, sign in, choose the product environment (cloud) and approve. The cloud name is filled in when Cloudinary reports it; otherwise type it in. Leave **API Key** empty: the connection takes the place of the key and secret.
+
+- **What the consent grants:** the Upload and Asset Management scopes (Cloudinary has no read-only scope), plus offline access so the connection survives. What you can actually do is still limited by your role in Cloudinary. Infrawrench only reads unless you act.
+- **Refresh:** Cloudinary access tokens last five minutes, so Infrawrench refreshes them in the background and before requests, saving the new single-use refresh token each time. A connection unused for three months expires and needs reconnecting.
+- **Beta:** Cloudinary's self-service OAuth is in beta. If a feature misbehaves on a connected account, add the account with an API key and secret instead.
+- Works from the web app, the desktop app in cloud mode and desktop-local accounts.
+
 ## Credentials
 
-Cloudinary console → **Settings → Access Keys**. Paste:
+To paste keys instead of connecting: Cloudinary console → **Settings → Access Keys**. Paste:
 
 - **Cloud name**
 - **API key**

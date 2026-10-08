@@ -14,6 +14,7 @@ import {
   formatBytes,
   joinSubtitle,
   jsonRestFetch,
+  readOAuthGrantState,
   normalizeQuotaUsage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
@@ -253,8 +254,11 @@ function formatTransformationSetting(value: unknown): string {
 
 /**
  * Cloudinary plugin client.
- * Created per account (per API key + secret + cloud name).
- * All API calls use Basic Auth (API key:API secret) over HTTPS.
+ * Created per account (per cloud name plus either an API key and secret, or
+ * an OAuth connection). Pasted keys use Basic Auth (API key:API secret);
+ * an OAuth connection ("Connect with Cloudinary", see oauth.ts) keeps its
+ * access token in the API Secret field, leaves the API key empty, and sends
+ * `Authorization: Bearer`.
  */
 export class CloudinaryClient implements PluginClient {
   private readonly apiKey: string;
@@ -262,14 +266,18 @@ export class CloudinaryClient implements PluginClient {
   private readonly cloudName: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /** True for an OAuth access token rather than an API key + secret pair. */
+  private readonly oauth: boolean;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const cloudName = credentials["cloudName"];
-    const apiKey = credentials["apiKey"];
+    const apiKey = credentials["apiKey"] ?? "";
     const apiSecret = credentials["apiSecret"];
     if (!cloudName) throw new Error("Cloudinary plugin: missing cloudName credential");
-    if (!apiKey) throw new Error("Cloudinary plugin: missing apiKey credential");
     if (!apiSecret) throw new Error("Cloudinary plugin: missing apiSecret credential");
+    // The grant state is stripped where credentials leave the host (desktop
+    // cloud mode), so an empty API key is what marks an OAuth token there.
+    this.oauth = readOAuthGrantState(credentials) !== null || !apiKey.trim();
     this.cloudName = cloudName;
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
@@ -281,8 +289,18 @@ export class CloudinaryClient implements PluginClient {
     return `https://api.cloudinary.com/v1_1/${this.cloudName}`;
   }
 
-  private get authHeader(): string {
-    return `Basic ${btoa(`${this.apiKey}:${this.apiSecret}`)}`;
+  /**
+   * Cloudinary access tokens live five minutes, so an OAuth connection asks
+   * the host for a current one before every request (it refreshes and saves
+   * the rotated refresh token); without the host service the stored token is
+   * used as is.
+   */
+  private async authHeader(): Promise<string> {
+    if (!this.oauth) return `Basic ${btoa(`${this.apiKey}:${this.apiSecret}`)}`;
+    const token = this.services?.oauth
+      ? await this.services.oauth.getAccessToken()
+      : this.apiSecret;
+    return `Bearer ${token}`;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -290,7 +308,7 @@ export class CloudinaryClient implements PluginClient {
       vendor: "Cloudinary",
       url: `${this.baseUrl}${path}`,
       errorPath: path,
-      headers: { Authorization: this.authHeader },
+      headers: { Authorization: await this.authHeader() },
       ...(options ? { init: options } : {}),
       ...(this.caCert && this.services?.http
         ? { caCert: this.caCert, http: this.services.http }

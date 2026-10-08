@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CloudinaryClient } from "./client.js";
+import { cloudinaryOAuth, completeCloudinaryOAuth } from "./oauth.js";
 import { FolderResourceType } from "./resources/folder.js";
 import { MediaAssetResourceType } from "./resources/media-asset.js";
 import { UploadPresetResourceType } from "./resources/upload-preset.js";
@@ -32,8 +33,11 @@ const manifest: PluginManifest = {
     {
       key: "apiKey",
       label: "API Key",
-      description: "Your Cloudinary API key, found in Settings > API Keys.",
+      description:
+        "Your Cloudinary API key, found in Settings > API Keys. Leave it empty when you connect with Cloudinary.",
       sensitive: false,
+      // Empty for an OAuth connection, whose access token sits in API Secret.
+      optional: true,
       placeholder: "123456789012345",
     },
     {
@@ -52,6 +56,8 @@ const manifest: PluginManifest = {
     label: "Usage",
     increaseUrl: "https://console.cloudinary.com/settings/billing/plans",
   },
+  // "Connect with Cloudinary" (OAuth, beta). Pasted keys keep working; see oauth.ts.
+  oauth: cloudinaryOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -68,4 +74,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new CloudinaryClient(credentials, services),
+  completeOAuthConnection: completeCloudinaryOAuth,
 };
