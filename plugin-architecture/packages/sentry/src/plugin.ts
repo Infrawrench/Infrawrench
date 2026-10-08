@@ -17,6 +17,7 @@ import { DEFAULT_REGION_ID, REGION_PICKER, resolveInstance } from "./regions.js"
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { sentryTerraformExport } from "./terraform.js";
+import { SENTRY_OAUTH, completeSentryOAuth, validateOAuthInstance } from "./oauth.js";
 
 const PRICING_LINK = { label: "Sentry pricing", url: "https://docs.sentry.io/pricing/" };
 
@@ -200,6 +201,7 @@ const manifest: PluginManifest = {
   // Sentry limits per caller and endpoint (about 40 requests a second on most
   // endpoints, 20 on stats_v2); stay well under it.
   rateLimit: { capacity: 10, refillPerSecond: 5 },
+  oauth: SENTRY_OAUTH,
 };
 
 /**
@@ -251,4 +253,6 @@ export const plugin: Plugin = {
   policyTemplate: sentryPolicyTemplate,
   terraformExport: sentryTerraformExport,
   listCredentialOptions,
+  completeOAuthConnection: completeSentryOAuth,
+  validateServerCredentials: validateOAuthInstance,
 };
