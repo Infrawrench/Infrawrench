@@ -98,6 +98,33 @@ const PreflightDeclaration = strict({
   }).optional(),
 }).openapi("PreflightDeclaration");
 
+const PluginOAuthSummary = strict({
+  access: z.enum(["read-only", "read-write", "full"]).openapi({
+    description:
+      "What the granted token can do. `full` means the provider offers no narrower scope.",
+  }),
+  refresh: z.enum(["rotating", "reusable", "none"]).openapi({
+    description:
+      "How the server keeps the access token valid: `rotating` and `reusable` refresh it before expiry, `none` means it does not expire.",
+  }),
+  docsUrl: z.string().url().optional(),
+  tokenField: z.string().openapi({
+    description: "The credential field the connection fills with the access token.",
+  }),
+  clients: z.array(z.enum(["server", "desktop"])).openapi({
+    description:
+      "OAuth clients the plugin declares. Always contains `server` here; `desktop` means the desktop app can also connect accounts it stores locally.",
+  }),
+}).openapi("PluginOAuthSummary");
+
+const OAuthStatus = z
+  .enum(["connected", "reconnect_required"])
+  .nullable()
+  .openapi("AccountOAuthStatus", {
+    description:
+      "Provider OAuth connection state. `null` for pasted credentials; `reconnect_required` when the provider revoked the connection or its refresh token expired, and the account needs `POST /provider-oauth/{pluginId}/authorize` with its `accountId` again.",
+  });
+
 const PluginSummary = strict({
   id: z.string(),
   displayName: z.string(),
@@ -106,6 +133,10 @@ const PluginSummary = strict({
   preflight: PreflightDeclaration.nullable().openapi({
     description:
       "Declared when the plugin supports credential preflight (per-capability permission checks). `null` for plugins without it.",
+  }),
+  oauth: PluginOAuthSummary.optional().openapi({
+    description:
+      "Present only when this server can connect the plugin through provider OAuth (the plugin supports it and the server has a client configured). See `POST /provider-oauth/{pluginId}/authorize`.",
   }),
 }).openapi("PluginSummary");
 
@@ -152,13 +183,17 @@ const Account = strict({
     description:
       "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
   }),
+  oauthStatus: OAuthStatus,
   createdAt: IsoDateTime,
 }).openapi("Account");
+
+const OAUTH_CREDENTIALS_NOTE =
+  "An `__oauth` key may only carry the sealed grant returned by the provider OAuth callback, for this organization, the calling user and this plugin, within 30 minutes; any other value is rejected with 400.";
 
 const CreateAccountRequest = strict({
   pluginId: z.string(),
   displayName: z.string().min(1),
-  credentials: z.record(z.string()),
+  credentials: z.record(z.string()).openapi({ description: OAUTH_CREDENTIALS_NOTE }),
   bastionId: Uuid.optional().nullable().openapi({
     description: "Optional bastion id to route this account's cloud API traffic through.",
   }),
@@ -236,6 +271,7 @@ const AccountDetail = strict({
     id: Uuid,
     pluginId: z.string(),
     displayName: z.string(),
+    oauthStatus: OAuthStatus,
   }),
   resourceTypes: z.array(ResourceTypeSummary),
   pluginDisplayName: z.string(),
@@ -435,7 +471,9 @@ export function registerAccountPaths(ctx: BuildContext) {
     tags: ["Accounts"],
     summary: "Fetch the decrypted credentials for an account",
     description:
-      "Returns the credentials map as it was originally submitted. Sensitive: gate access carefully.",
+      "Returns the credentials map as it was originally submitted. Sensitive: gate access carefully. " +
+      "For an account connected through provider OAuth, the access token is refreshed first when it is about to expire, and the grant state (`__oauth`, which holds the refresh token) is never returned. " +
+      "409 with `code: oauth_reconnect_required` when the provider revoked the connection.",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
     },
@@ -445,6 +483,17 @@ export function registerAccountPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.record(z.string()) } },
       },
       404: ErrorResponses[404],
+      409: {
+        description: "The OAuth connection was revoked or expired; reconnect the account.",
+        content: {
+          "application/json": {
+            schema: strict({
+              error: z.string(),
+              code: z.literal("oauth_reconnect_required"),
+            }).openapi("OAuthReconnectRequired"),
+          },
+        },
+      },
     },
   });
 
@@ -467,7 +516,9 @@ export function registerAccountPaths(ctx: BuildContext) {
                 description:
                   "Complete credentials map. Sensitive fields the caller doesn't want " +
                   "to change should be re-sent with their previous value (the server " +
-                  "doesn't merge with the existing blob).",
+                  "doesn't merge with the existing blob). " +
+                  "For an account connected through provider OAuth, the stored connection is kept when the token field is omitted or unchanged; a different token switches the account to that pasted token. " +
+                  OAUTH_CREDENTIALS_NOTE,
               }),
             }),
           },
