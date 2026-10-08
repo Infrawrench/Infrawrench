@@ -44,22 +44,42 @@ export class OAuthRefreshUnavailableError extends Error {
 
 /**
  * The grant state as the renderer may see it: everything but the refresh
- * token. Plugins can still tell an OAuth account from a pasted one with
- * `readOAuthGrantState`, and the save path recognises the redacted copy
- * coming back (see {@link mergeIncomingCredentials}).
+ * token and a dynamically registered client's secret. Plugins can still tell
+ * an OAuth account from a pasted one with `readOAuthGrantState`, and the save
+ * path recognises the redacted copy coming back (see
+ * {@link mergeIncomingCredentials}).
  */
 export function redactGrantForRenderer(
   credentials: Record<string, string>,
 ): Record<string, string> {
   const state = readOAuthGrantState(credentials);
   if (!state) return credentials;
-  const { refreshToken: _refreshToken, ...rest } = state;
+  const { refreshToken: _refreshToken, clientSecret: _clientSecret, ...rest } = state;
   return { ...credentials, [OAUTH_CREDENTIAL_KEY]: JSON.stringify(rest) };
 }
 
+/**
+ * True when a grant this desktop issued has expired and can never be
+ * refreshed: it carries no refresh token (CircleCI's 90-day token, for
+ * example). Only connecting again brings the account back.
+ */
+export function oauthGrantIsDead(state: OAuthGrantState, now: number = Date.now()): boolean {
+  return (
+    state.client === "desktop" &&
+    !state.refreshToken &&
+    state.expiresAt !== undefined &&
+    state.expiresAt <= now
+  );
+}
+
 /** `oauth_status` for a credential set about to be stored. */
-export function oauthStatusFor(credentials: Record<string, string>): LocalOAuthStatus | null {
-  return readOAuthGrantState(credentials) ? "connected" : null;
+export function oauthStatusFor(
+  credentials: Record<string, string>,
+  now: number = Date.now(),
+): LocalOAuthStatus | null {
+  const state = readOAuthGrantState(credentials);
+  if (!state) return null;
+  return oauthGrantIsDead(state, now) ? "reconnect_required" : "connected";
 }
 
 /**
@@ -213,7 +233,11 @@ export function createLocalOAuthRefresher(host: LocalOAuthHost): LocalOAuthRefre
       const tokens = await refreshOAuthToken(
         declaration,
         state.refreshToken!,
-        { clientId, auth: "none" },
+        // A dynamically registered client that was issued a secret must
+        // authenticate with it; every other desktop client is public.
+        state.clientSecret
+          ? { clientId, clientSecret: state.clientSecret, auth: "client_secret_post" }
+          : { clientId, auth: "none" },
         host.fetch,
       );
       const next = { ...credentials };
@@ -229,9 +253,34 @@ export function createLocalOAuthRefresher(host: LocalOAuthHost): LocalOAuthRefre
     }
   }
 
+  // Dead grants already reported, keyed by account, valued by the grant's
+  // identity, so a dead token is reported once rather than on every use and a
+  // reconnect (new `connectedAt`) that dies again is reported again.
+  const reportedDead = new Map<string, string>();
+
+  async function reportDead(accountId: string, state: OAuthGrantState): Promise<void> {
+    const identity = `${state.connectedAt}:${state.expiresAt}`;
+    if (reportedDead.get(accountId) === identity) return;
+    reportedDead.set(accountId, identity);
+    try {
+      await host.setStatus(accountId, "reconnect_required");
+    } catch (err) {
+      reportedDead.delete(accountId);
+      console.warn(`[provider-oauth] could not mark ${accountId} for reconnect:`, err);
+    }
+  }
+
   return {
     async resolve(accountId, pluginId, credentials) {
       const state = readOAuthGrantState(credentials);
+      if (state && oauthGrantIsDead(state, now())) {
+        // Nothing to refresh with. Flag the account the same way a rejected
+        // refresh does, and still hand the credentials over: the editor and
+        // the reconnect flow need them, and the provider's own 401 says the
+        // rest to anything that calls it.
+        await reportDead(accountId, state);
+        return credentials;
+      }
       if (!state || !needsLocalRefresh(state, now())) {
         if (state) remember(accountId, credentials[await tokenFieldOf(pluginId)]);
         return credentials;

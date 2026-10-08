@@ -5,6 +5,7 @@ import {
   OAuthRefreshUnavailableError,
   createLocalOAuthRefresher,
   mergeIncomingCredentials,
+  oauthGrantIsDead,
   oauthStatusFor,
   redactGrantForRenderer,
   type LocalOAuthHost,
@@ -15,6 +16,11 @@ import {
   type ProviderOAuthPayload,
 } from "../provider-oauth/deep-link";
 import { LoopbackFlowError, runLoopbackAuthorization } from "../provider-oauth/loopback";
+import {
+  localClientPluginIds,
+  localClientSource,
+  type OAuthCapablePlugin,
+} from "../provider-oauth/client-source";
 
 const declaration: OAuthDeclaration = {
   authorizeUrl: "https://provider.test/oauth/authorize",
@@ -51,6 +57,42 @@ describe("redactGrantForRenderer", () => {
   it("leaves a pasted credential alone", () => {
     const creds = { apiToken: "pasted" };
     expect(redactGrantForRenderer(creds)).toBe(creds);
+  });
+
+  it("removes a dynamically registered client's secret but keeps its id", () => {
+    const out = redactGrantForRenderer({
+      apiToken: "at",
+      __oauth: grant({ clientId: "dyn", clientSecret: "dyn-secret" }),
+    });
+    const state = JSON.parse(out["__oauth"]!) as Record<string, unknown>;
+    expect(state["clientSecret"]).toBeUndefined();
+    expect(state["refreshToken"]).toBeUndefined();
+    expect(state["clientId"]).toBe("dyn");
+    expect(out["__oauth"]).not.toContain("dyn-secret");
+  });
+});
+
+describe("dead grants (expired, no refresh token)", () => {
+  const dead = { v: 1 as const, client: "desktop" as const, expiresAt: NOW - 1, connectedAt: 1 };
+
+  it("is dead only when a desktop grant without a refresh token has expired", () => {
+    expect(oauthGrantIsDead(dead, NOW)).toBe(true);
+    expect(oauthGrantIsDead({ ...dead, expiresAt: NOW + 1 }, NOW)).toBe(false);
+    expect(oauthGrantIsDead({ ...dead, refreshToken: "rt" }, NOW)).toBe(false);
+    expect(oauthGrantIsDead({ v: 1, client: "desktop", connectedAt: 1 }, NOW)).toBe(false);
+    expect(oauthGrantIsDead({ ...dead, client: "server" }, NOW)).toBe(false);
+  });
+
+  it("stores a dead grant as reconnect_required", () => {
+    expect(oauthStatusFor({ apiToken: "x", __oauth: JSON.stringify(dead) }, NOW)).toBe(
+      "reconnect_required",
+    );
+    expect(
+      oauthStatusFor(
+        { apiToken: "x", __oauth: JSON.stringify({ ...dead, expiresAt: NOW + 1 }) },
+        NOW,
+      ),
+    ).toBe("connected");
   });
 });
 
@@ -229,6 +271,43 @@ describe("createLocalOAuthRefresher", () => {
     expect(host.fetch).not.toHaveBeenCalled();
   });
 
+  it("marks an expired grant with no refresh token for reconnect, once, and still returns it", async () => {
+    const dead = {
+      apiToken: "ccipat_dead",
+      __oauth: grant({ refreshToken: undefined, expiresAt: NOW - 1000 }),
+    };
+    const { host, statuses, saves } = makeHost(dead);
+    const refresher = createLocalOAuthRefresher(host);
+    expect(await refresher.resolve("a", "p", dead)).toBe(dead);
+    expect(await refresher.resolve("a", "p", dead)).toBe(dead);
+    expect(statuses).toEqual(["reconnect_required"]);
+    expect(saves).toHaveLength(0);
+    expect(host.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not flag a grant with no refresh token before it expires", async () => {
+    const live = {
+      apiToken: "ccipat_live",
+      __oauth: grant({ refreshToken: undefined, expiresAt: NOW + 1000 }),
+    };
+    const { host, statuses } = makeHost(live);
+    expect(await createLocalOAuthRefresher(host).resolve("a", "p", live)).toBe(live);
+    expect(statuses).toEqual([]);
+    expect(host.fetch).not.toHaveBeenCalled();
+  });
+
+  it("still returns a dead grant when the status cannot be written", async () => {
+    const dead = { apiToken: "x", __oauth: grant({ refreshToken: undefined, expiresAt: NOW }) };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { host } = makeHost(dead, {
+      setStatus: async () => {
+        throw new Error("disk full");
+      },
+    });
+    expect(await createLocalOAuthRefresher(host).resolve("a", "p", dead)).toBe(dead);
+    warn.mockRestore();
+  });
+
   it("never refreshes a server-issued grant", async () => {
     const serverGrant = { apiToken: "x", __oauth: grant({ client: "server", expiresAt: NOW }) };
     const { host } = makeHost(serverGrant);
@@ -399,6 +478,26 @@ describe("client registration modes", () => {
     expect(state["clientId"]).toBe("dyn-client");
   });
 
+  it("refreshes a dynamically registered grant with its own client secret", async () => {
+    const creds = {
+      apiToken: "at-1",
+      __oauth: grant({ expiresAt: NOW + 1000, clientId: "dyn", clientSecret: "dyn-secret" }),
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      tokenResponse({ access_token: "at-2", refresh_token: "rt-2", expires_in: 3600 }),
+    );
+    const { host, current } = makeHost(creds, {
+      fetch: fetchMock,
+      getClientId: () => undefined,
+    });
+    await createLocalOAuthRefresher(host).resolve("a", "p", creds);
+    const body = String(fetchMock.mock.calls[0]![1]!.body);
+    expect(body).toContain("client_id=dyn");
+    expect(body).toContain("client_secret=dyn-secret");
+    const state = JSON.parse(current()["__oauth"]!) as Record<string, unknown>;
+    expect(state["clientSecret"]).toBe("dyn-secret");
+  });
+
   it("registers the client with the redirect URI and uses the plugin's URL builder", async () => {
     const port = 43800 + Math.floor(Math.random() * 100);
     let opened = "";
@@ -427,5 +526,89 @@ describe("client registration modes", () => {
       `${redirectUri}?code=c&state=${encodeURIComponent(url.searchParams.get("state")!)}`,
     );
     await expect(flow).resolves.toBe(`registered-for-${redirectUri}`);
+  });
+});
+
+describe("local client availability", () => {
+  const base: OAuthDeclaration = { ...declaration, clients: {} };
+  const plugin = (
+    id: string,
+    oauth: OAuthDeclaration | undefined,
+    registerOAuthClient?: OAuthCapablePlugin["registerOAuthClient"],
+  ): OAuthCapablePlugin => ({
+    manifest: { id, ...(oauth ? { oauth } : {}) },
+    ...(registerOAuthClient ? { registerOAuthClient } : {}),
+  });
+  const noEnv = () => undefined;
+  const allEnv = () => "build-client-id";
+
+  it("never offers a server-only plugin, even with a public server client or a stray env id", () => {
+    const plugins = [
+      plugin("secret-server", { ...base, clients: { server: {} } }),
+      plugin("public-server", { ...base, clients: { server: { auth: "none", pkce: true } } }),
+      plugin("none-server", {
+        ...base,
+        clients: { server: {} },
+        clientRegistration: "none",
+      }),
+      plugin("pasted-only", undefined),
+    ];
+    expect(localClientPluginIds(plugins, allEnv)).toEqual([]);
+  });
+
+  it("offers `none` and `dynamic` registration without build env", async () => {
+    const register = vi.fn(async () => ({ clientId: "dyn", clientSecret: "dyn-secret" }));
+    const plugins = [
+      plugin("openrouter-like", {
+        ...base,
+        clients: { server: { pkce: true }, desktop: { loopbackHost: "localhost" } },
+        clientRegistration: "none",
+      }),
+      plugin(
+        "circleci-like",
+        { ...base, clientRegistration: "dynamic", clients: { desktop: {} } },
+        register,
+      ),
+      plugin("dynamic-without-hook", {
+        ...base,
+        clientRegistration: "dynamic",
+        clients: { desktop: {} },
+      }),
+      plugin("static-desktop", { ...base, clients: { desktop: {} } }),
+    ];
+    expect(localClientPluginIds(plugins, noEnv)).toEqual(["openrouter-like", "circleci-like"]);
+    expect(localClientSource(plugins[0]!, noEnv)).toEqual({ clientId: "" });
+    const source = localClientSource(plugins[1]!, noEnv);
+    expect(typeof source).toBe("function");
+    // The registered secret travels with the client so it can be stored for refreshes.
+    await expect(
+      (source as (uri: string) => Promise<unknown>)("http://127.0.0.1:43118/oauth/callback"),
+    ).resolves.toEqual({ clientId: "dyn", clientSecret: "dyn-secret" });
+  });
+
+  it("offers a static desktop client only when the build carries its id", () => {
+    const p = plugin("static-desktop", {
+      ...base,
+      clients: { server: { auth: "none" }, desktop: {} },
+    });
+    expect(localClientPluginIds([p], noEnv)).toEqual([]);
+    expect(localClientPluginIds([p], allEnv)).toEqual(["static-desktop"]);
+    expect(localClientSource(p, allEnv)).toEqual({ clientId: "build-client-id" });
+  });
+
+  it("matches the real manifests: Heroku server-only, OpenRouter and CircleCI without env", async () => {
+    const [heroku, openrouter, circleci, posthog] = await Promise.all([
+      import("@infrawrench/plugin-heroku"),
+      import("@infrawrench/plugin-openrouter"),
+      import("@infrawrench/plugin-circleci"),
+      import("@infrawrench/plugin-posthog"),
+    ]);
+    const plugins = [heroku.plugin, openrouter.plugin, circleci.plugin, posthog.plugin];
+    expect(localClientPluginIds(plugins, noEnv)).toEqual(["openrouter", "circleci"]);
+    expect(localClientPluginIds(plugins, (id) => (id === "posthog" ? "ph" : undefined))).toEqual([
+      "openrouter",
+      "circleci",
+      "posthog",
+    ]);
   });
 });

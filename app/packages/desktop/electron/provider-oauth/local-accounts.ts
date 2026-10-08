@@ -79,7 +79,14 @@ export function setOAuthStatusListener(listener: StatusListener | null): void {
 
 async function writeStatus(accountId: string, status: LocalOAuthStatus): Promise<void> {
   const db = await getSqlite();
-  db.run("UPDATE accounts SET oauth_status = ? WHERE id = ?", [status, accountId]);
+  // Only a real change is written and announced, so a dead grant met again
+  // after a restart does not re-notify every window.
+  db.run("UPDATE accounts SET oauth_status = ? WHERE id = ? AND oauth_status IS NOT ?", [
+    status,
+    accountId,
+    status,
+  ]);
+  if (db.getRowsModified() === 0) return;
   persist();
   statusListener?.(accountId, status);
 }
