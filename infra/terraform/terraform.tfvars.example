@@ -166,6 +166,18 @@ app_env = {
   # (commands error, approval messages carry buttons that don't work).
   SLACK_SIGNING_SECRET = "..."
 
+  # Optional, per plugin: provider OAuth ("Connect with X" when adding an
+  # account). A plugin whose manifest declares OAuth shows the Connect button
+  # only once its client is configured; without it, pasting a token keeps
+  # working. One pair per plugin, named from the plugin id upper-cased with
+  # non-alphanumerics as `_` (`hugging-face` -> PROVIDER_OAUTH_HUGGING_FACE_*).
+  # Register the OAuth app with the provider using redirect URI
+  # <APP_URL>/api/provider-oauth/<plugin-id>/callback. A public client (PKCE,
+  # no secret) needs only _CLIENT_ID; plugins that register a client per flow,
+  # or need none, need neither. Each plugin's docs page lists its scopes.
+  # PROVIDER_OAUTH_<ID>_CLIENT_ID     = "..."
+  # PROVIDER_OAUTH_<ID>_CLIENT_SECRET = "..."
+
   # Optional: transactional email via Mailgun — the weekly digest's email
   # recipients, scheduled report deliveries, and sending a managed account's
   # invoice to the customer with its CSV attached. The first three are required
