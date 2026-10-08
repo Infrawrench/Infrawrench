@@ -10,6 +10,12 @@ import { VercelTeamResourceType } from "./resources/team.js";
 import { VercelDnsRecordResourceType } from "./resources/dns-record.js";
 import { VercelWebhookResourceType } from "./resources/webhook.js";
 import { vercelTerraformExport } from "./terraform.js";
+import {
+  buildVercelAuthorizeUrl,
+  completeVercelOAuth,
+  exchangeVercelCode,
+  vercelOAuth,
+} from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "vercel",
@@ -52,6 +58,9 @@ const manifest: PluginManifest = {
     restatementDays: 3,
   },
   statusFeed,
+  // "Connect with Vercel" installs the Infrawrench integration (server only).
+  // Pasted access tokens keep working; see oauth.ts.
+  oauth: vercelOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -70,4 +79,7 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new VercelClient(credentials, services),
   parseStatusFeed,
   terraformExport: vercelTerraformExport,
+  buildOAuthAuthorizeUrl: buildVercelAuthorizeUrl,
+  exchangeOAuthCode: exchangeVercelCode,
+  completeOAuthConnection: completeVercelOAuth,
 };
