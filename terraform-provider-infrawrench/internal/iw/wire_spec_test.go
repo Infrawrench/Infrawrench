@@ -383,7 +383,14 @@ func specChecks() []specCheck {
 		},
 		{schema: "WorkflowScheduleInput", value: WorkflowScheduleInput{}},
 
-		{schema: "Account", value: Account{}},
+		{
+			schema: "Account",
+			value:  Account{},
+			// Server-managed provider OAuth connection state. It changes when
+			// a provider revokes a grant, and fixing it means a browser
+			// consent Terraform cannot run, so it has no place in state.
+			ignored: []string{"oauthStatus"},
+		},
 		{
 			schema: "Resource",
 			value:  Resource{},
@@ -399,8 +406,9 @@ func specChecks() []specCheck {
 			// logoSvg is multi-kilobyte markup and credentialFields/preflight
 			// describe a UI form. None of it belongs in Terraform state, so the
 			// plugins data source drops all three rather than bloating every
-			// state file that reads it.
-			ignored: []string{"logoSvg", "credentialFields", "preflight"},
+			// state file that reads it. oauth describes the "Connect with X"
+			// button, a browser consent flow Terraform cannot drive.
+			ignored: []string{"logoSvg", "credentialFields", "preflight", "oauth"},
 		},
 	}
 }
