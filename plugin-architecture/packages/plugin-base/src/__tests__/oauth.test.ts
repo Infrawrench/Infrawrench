@@ -122,6 +122,30 @@ describe("provider oauth helpers", () => {
     expect(credentials[OAUTH_CREDENTIAL_KEY]).toBeDefined();
   });
 
+  it("keeps a dynamically registered client's id and secret across refreshes", () => {
+    const credentials: Record<string, string> = {
+      [OAUTH_CREDENTIAL_KEY]: JSON.stringify({
+        v: 1,
+        client: "desktop",
+        refreshToken: "r1",
+        connectedAt: 5,
+        clientId: "dyn",
+        clientSecret: "dyn-secret",
+      }),
+    };
+    applyOAuthTokens(
+      declaration,
+      credentials,
+      parseOAuthTokenResponse({ access_token: "a2", refresh_token: "r2" }),
+      "desktop",
+    );
+    const state = readOAuthGrantState(credentials);
+    expect(state?.clientId).toBe("dyn");
+    expect(state?.clientSecret).toBe("dyn-secret");
+    expect(state?.refreshToken).toBe("r2");
+    expect(state?.connectedAt).toBe(5);
+  });
+
   it("refreshes inside the margin only when a refresh token exists", () => {
     const now = 1_000_000;
     expect(

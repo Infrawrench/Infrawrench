@@ -121,6 +121,12 @@ export interface OAuthGrantState {
   connectedAt: number;
   /** Client id a dynamically registered grant must refresh with. */
   clientId?: string;
+  /**
+   * Client secret a dynamically registered grant must refresh with, when the
+   * registration issued one. Stored only in encrypted credentials; hosts
+   * strip it with the refresh token before grant state leaves them.
+   */
+  clientSecret?: string;
 }
 
 /** A token endpoint response, normalized. `raw` keeps provider-specific extras. */
@@ -439,6 +445,7 @@ export function grantStateFromTokens(
     ...(scope ? { scope } : {}),
     connectedAt: previous?.connectedAt ?? Date.now(),
     ...(previous?.clientId ? { clientId: previous.clientId } : {}),
+    ...(previous?.clientSecret ? { clientSecret: previous.clientSecret } : {}),
   };
 }
 
