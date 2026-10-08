@@ -5,7 +5,8 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  * https://github.com/resend/resend-openapi `resend.json`, version 1.5.1,
  * verified 2026-10).
  *
- * - One host, `api.resend.com`, Bearer auth with an `re_…` API key.
+ * - One host, `api.resend.com`, Bearer auth with an `re_…` API key or an
+ *   OAuth access token ("Connect with Resend", see oauth.ts).
  * - JSON bodies; updates are `PATCH`.
  * - Lists page with `limit` (1–100) and an `after=<last id>` cursor, and say
  *   `has_more`.
@@ -22,6 +23,13 @@ export const DASHBOARD_BASE = "https://resend.com";
 
 export interface ResendContext {
   apiKey: string;
+  /**
+   * A currently valid OAuth access token, for an account connected with
+   * Resend. Its access tokens live 15 minutes, so each request asks the host
+   * (which refreshes and persists the rotated refresh token) instead of
+   * reusing the token the client was built with.
+   */
+  getToken?: () => Promise<string>;
   http?: HttpHostServices;
   caCert?: string;
   /** Injected in tests so 429 back-off does not actually wait. */
@@ -98,11 +106,15 @@ export async function resendFetch<T>(
     Authorization: `Bearer ${ctx.apiKey}`,
     Accept: "application/json",
   };
+  const authorize = async () => {
+    if (ctx.getToken) headers["Authorization"] = `Bearer ${await ctx.getToken()}`;
+  };
   const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   for (let attempt = 0; ; attempt++) {
+    await authorize();
     let status: number;
     let text: string;
     let retryAfter: string | undefined;
