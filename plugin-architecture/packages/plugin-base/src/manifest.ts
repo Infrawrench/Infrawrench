@@ -442,6 +442,11 @@ export interface HostServices {
   http?: HttpHostServices;
   /** Always available: read decrypted plaintext for the plugin's own persisted secretStates */
   secrets?: SecretHostServices;
+  /**
+   * Present only when the account is connected through provider OAuth (its
+   * credentials carry `__oauth`). Returns a currently valid access token.
+   */
+  oauth?: OAuthHostServices;
 }
 
 /**
@@ -1355,7 +1360,7 @@ export interface Plugin extends OAuthPluginHooks {
 }
 
 // Forward declarations: defined in their own modules but used here
-import type { OAuthDeclaration, OAuthPluginHooks } from "./oauth.js";
+import type { OAuthDeclaration, OAuthHostServices, OAuthPluginHooks } from "./oauth.js";
 import type { RemediationCommand, RemediationFinding } from "./remediation.js";
 import type {
   BusinessMetricSourceDeclaration,

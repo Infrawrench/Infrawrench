@@ -175,6 +175,19 @@ export interface OAuthPluginHooks {
   exchangeOAuthCode?(request: OAuthExchangeRequest): Promise<OAuthTokenSet>;
 }
 
+/**
+ * Host service handed to an OAuth-connected account's client
+ * (`HostServices.oauth`). Present only when the account's credentials carry
+ * grant state. A plugin whose provider issues very short-lived access tokens
+ * can call it before a request to get a token that is valid right now; the
+ * host refreshes (and persists the rotation) when needed. Most plugins never
+ * need it: the host already refreshes before building the client.
+ */
+export interface OAuthHostServices {
+  /** A currently valid access token, refreshed by the host if it was about to expire. */
+  getAccessToken(): Promise<string>;
+}
+
 /** Fixed desktop loopback port for provider OAuth (the CLI's sign-in uses 43117). */
 export const DESKTOP_OAUTH_LOOPBACK_PORT = 43118;
 export const DESKTOP_OAUTH_LOOPBACK_PATH = "/oauth/callback";

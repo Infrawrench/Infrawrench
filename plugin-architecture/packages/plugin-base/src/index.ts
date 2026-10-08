@@ -634,6 +634,7 @@ export type {
   OAuthDesktopClientDeclaration,
   OAuthExchangeRequest,
   OAuthGrantState,
+  OAuthHostServices,
   OAuthPluginHooks,
   OAuthServerClientDeclaration,
   OAuthTokenSet,
