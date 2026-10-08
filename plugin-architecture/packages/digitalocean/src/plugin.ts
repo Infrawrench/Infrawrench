@@ -37,6 +37,7 @@ import { VpcPeeringResourceType } from "./resources/vpc-peering.js";
 import { AppResourceType } from "./resources/app.js";
 import { AutoscalePoolResourceType } from "./resources/autoscale-pool.js";
 import { DIGITALOCEAN_TRANSFER_RATES } from "./transfer-rates.js";
+import { completeDigitalOceanOAuth, digitaloceanOAuth } from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -105,6 +106,8 @@ const manifest: PluginManifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: DIGITALOCEAN_TRANSFER_RATES,
+  // "Connect with DigitalOcean". Pasted tokens keep working; see oauth.ts.
+  oauth: digitaloceanOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -149,4 +152,5 @@ export const plugin: Plugin = {
   terraformExport: digitaloceanTerraformExport,
   remediationCommands: digitaloceanRemediationCommands,
   parseStatusFeed,
+  completeOAuthConnection: completeDigitalOceanOAuth,
 };

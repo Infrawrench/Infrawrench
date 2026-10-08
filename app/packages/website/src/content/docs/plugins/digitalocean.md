@@ -272,7 +272,18 @@ DO's managed vector database offerings are managed through the existing **Manage
 
 The connection string and CA certificate outputs flow the same way as the other managed databases, so the same peer-pane tabs and secret-export templates work.
 
+## Connect with DigitalOcean
+
+The quickest way in: pick DigitalOcean in the add-account form and click **Connect with DigitalOcean**. DigitalOcean asks you to sign in, choose the team to connect, and approve the request; the account name is filled in from that team.
+
+- **What the consent grants:** the granular scopes the plugin uses and nothing broader. That is read access to everything it lists, `billing:read` for cost graphs, `database:view_credentials` for the database users it mints, `kubernetes:access_cluster` for kubeconfigs, and create, update and delete on the resource types you can create, edit or delete from Infrawrench. It never requests the catch-all **Full Access** alias, SSH key or team management, or Functions.
+- **Refresh:** DigitalOcean access tokens expire (after 30 days for the web app, one hour for a desktop-local account) and come with a single-use refresh token. Infrawrench refreshes them in the background, so the connection keeps working until you revoke it.
+- **Revoking:** DigitalOcean → **API → OAuth Applications → Authorized applications**. Infrawrench then marks the account **Reconnect required**; reconnect from the account's credentials.
+- Works from the web app, the desktop app in cloud mode and desktop-local accounts.
+
 ## Credentials
+
+To paste a token instead of connecting:
 
 1. DigitalOcean → **API → Tokens → Generate new token**. Read + write scope.
 2. Paste into the add-account form.
