@@ -326,7 +326,11 @@ async function postTokenEndpoint(
     throw new OAuthTokenError(
       description ?? error ?? `Token endpoint returned HTTP ${res.status}`,
       res.status,
-      error === "invalid_grant" || error === "invalid_token" || error === "unauthorized_client",
+      // GitHub reports a dead refresh token as HTTP 200 with `bad_refresh_token`.
+      error === "invalid_grant" ||
+        error === "invalid_token" ||
+        error === "unauthorized_client" ||
+        error === "bad_refresh_token",
     );
   }
   return parseOAuthTokenResponse(json);
