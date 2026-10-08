@@ -18,6 +18,7 @@
 import type { OAuthTokenSet } from "@infrawrench/plugin-base";
 
 import { decrypt, encrypt } from "../encryption";
+import type { RegisteredOAuthClient } from "./config";
 
 export const STATE_AAD = "provider-oauth:state";
 export const GRANT_AAD = "provider-oauth:grant";
@@ -36,6 +37,8 @@ export interface ProviderOAuthState {
   returnTo: OAuthReturnTo;
   accountId?: string;
   codeVerifier?: string;
+  /** The client registered for this flow (`clientRegistration: "dynamic"`). */
+  registeredClient?: RegisteredOAuthClient;
   nonce: string;
   /** Epoch milliseconds. */
   exp: number;
@@ -50,6 +53,8 @@ export interface ProviderOAuthGrant {
   pluginId: string;
   tokens: SealedTokenSet;
   client: "server";
+  /** Dynamically registered client the grant must refresh with. */
+  registeredClient?: RegisteredOAuthClient;
   /** Epoch milliseconds. */
   exp: number;
 }

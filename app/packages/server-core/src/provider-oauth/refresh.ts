@@ -19,6 +19,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import {
+  OAUTH_CREDENTIAL_KEY,
   OAuthTokenError,
   applyOAuthTokens,
   oauthNeedsRefresh,
@@ -30,7 +31,8 @@ import {
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { buildAad, decrypt, encrypt } from "../encryption";
-import { serverClientCredentials, serverOAuthClient } from "./config";
+import { configuredClientCredentials, registeredClientCredentials } from "./config";
+import { readServerGrantState, type ServerOAuthGrantState } from "./credentials";
 
 /** The connection was revoked or its refresh token expired: the user must reconnect. */
 export class OAuthReconnectRequiredError extends Error {
@@ -120,6 +122,21 @@ export function updateAccountCredentials(
   });
 }
 
+/**
+ * The client a grant refreshes with: the one registered for its flow when it
+ * carries a `clientId`, otherwise the configured (or empty, for
+ * `clientRegistration: "none"`) client.
+ */
+function refreshClient(manifest: PluginManifest, state: ServerOAuthGrantState) {
+  if (state.clientId) {
+    return registeredClientCredentials(manifest.oauth!, {
+      clientId: state.clientId,
+      ...(state.clientSecret ? { clientSecret: state.clientSecret } : {}),
+    });
+  }
+  return configuredClientCredentials(manifest);
+}
+
 export interface ResolveOAuthOptions {
   accountId: string;
   organizationId: string;
@@ -175,7 +192,7 @@ async function refreshUnderLock(options: ResolveOAuthOptions): Promise<Record<st
       if (!state || state.client !== "server" || !oauthNeedsRefresh(state, now())) {
         return { result: current };
       }
-      const client = serverOAuthClient(manifest.id);
+      const client = refreshClient(manifest, readServerGrantState(current)!);
       if (!client) {
         throw new Error(
           `${manifest.displayName} OAuth is not configured on this server, so its connection cannot be refreshed.`,
@@ -185,11 +202,18 @@ async function refreshUnderLock(options: ResolveOAuthOptions): Promise<Record<st
         const tokens = await refreshOAuthToken(
           declaration,
           state.refreshToken!,
-          serverClientCredentials(declaration, client),
+          client,
           options.fetch ?? fetch,
         );
         const next = { ...current };
         applyOAuthTokens(declaration, next, tokens, "server");
+        // `applyOAuthTokens` keeps `clientId`; a registered client's secret
+        // is a server-only field it does not know about.
+        const secret = readServerGrantState(current)?.clientSecret;
+        if (secret) {
+          const updated = { ...readServerGrantState(next)!, clientSecret: secret };
+          next[OAUTH_CREDENTIAL_KEY] = JSON.stringify(updated);
+        }
         return { result: next, write: { credentials: next, oauthStatus: "connected" } };
       } catch (e) {
         if (e instanceof OAuthTokenError && e.invalidGrant) {

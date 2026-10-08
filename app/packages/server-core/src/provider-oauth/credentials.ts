@@ -8,15 +8,75 @@
  * this user and this plugin, and not yet expired. Anything else is refused,
  * so a client cannot plant grant state (say, a refresh token for another
  * client) that the server would then use.
+ *
+ * Clients do see a *redacted* grant: `GET .../credentials` returns the grant
+ * state without its refresh token (and registered client secret), because
+ * plugins branch on `readOAuthGrantState` (Bearer vs Basic, say) and the
+ * desktop in cloud mode builds clients from those credentials. When such a
+ * copy comes back on a save it counts as no grant at all: the stored grant is
+ * kept by the preservation rule, never replaced by the copy.
  */
 import {
   OAUTH_CREDENTIAL_KEY,
   applyOAuthTokens,
   readOAuthGrantState,
+  type OAuthGrantState,
   type PluginManifest,
 } from "@infrawrench/plugin-base";
 
+import type { RegisteredOAuthClient } from "./config";
 import { unsealGrant } from "./seal";
+
+/**
+ * Grant state as the server stores it. `clientSecret` sits beside
+ * `clientId` for a dynamically registered confidential client; it never
+ * leaves the server (see {@link redactOAuthGrantState}).
+ */
+export type ServerOAuthGrantState = OAuthGrantState & { clientSecret?: string };
+
+/** Parse the stored grant state, including the server-only fields. */
+export function readServerGrantState(
+  credentials: Record<string, string>,
+): ServerOAuthGrantState | null {
+  return readOAuthGrantState(credentials) as ServerOAuthGrantState | null;
+}
+
+/**
+ * The credentials a client may see: the grant state minus the refresh token
+ * and any registered client secret. Plugins still find the grant (and branch
+ * on it); nothing in it can mint a token.
+ */
+export function redactOAuthGrantState(credentials: Record<string, string>): Record<string, string> {
+  const { [OAUTH_CREDENTIAL_KEY]: raw, ...rest } = credentials;
+  if (!raw) return rest;
+  const state = readServerGrantState(credentials);
+  if (!state) return rest;
+  const { refreshToken: _refreshToken, clientSecret: _clientSecret, ...redacted } = state;
+  return { ...rest, [OAUTH_CREDENTIAL_KEY]: JSON.stringify(redacted) };
+}
+
+/** True for a redacted copy handed out by {@link redactOAuthGrantState}. */
+function isRedactedGrantCopy(value: string): boolean {
+  if (!value.startsWith("{")) return false;
+  const state = readServerGrantState({ [OAUTH_CREDENTIAL_KEY]: value });
+  return state !== null && !state.refreshToken && !state.clientSecret;
+}
+
+/** Write a dynamically registered client into the grant state JSON. */
+function withRegisteredClient(
+  credentials: Record<string, string>,
+  client: RegisteredOAuthClient | undefined,
+): void {
+  if (!client) return;
+  const state = readServerGrantState(credentials);
+  if (!state) return;
+  const next: ServerOAuthGrantState = {
+    ...state,
+    clientId: client.clientId,
+    ...(client.clientSecret ? { clientSecret: client.clientSecret } : {}),
+  };
+  credentials[OAUTH_CREDENTIAL_KEY] = JSON.stringify(next);
+}
 
 export type OAuthStatus = "connected" | "reconnect_required";
 
@@ -41,9 +101,10 @@ export interface AcceptedCredentials {
   oauthStatus: OAuthStatus | null;
 }
 
+/** A non-empty `__oauth` that is not a redacted copy: it must be a sealed grant. */
 function hasSubmittedGrant(credentials: Record<string, string>): boolean {
   const value = credentials[OAUTH_CREDENTIAL_KEY];
-  return typeof value === "string" && value.length > 0;
+  return typeof value === "string" && value.length > 0 && !isRedactedGrantCopy(value);
 }
 
 function withoutGrantKey(credentials: Record<string, string>): Record<string, string> {
@@ -86,6 +147,7 @@ export async function acceptSubmittedCredentials(
   }
   const opened = withoutGrantKey(credentials);
   applyOAuthTokens(declaration, opened, { ...grant.tokens, raw: {} }, "server");
+  withRegisteredClient(opened, grant.registeredClient);
   return { credentials: opened, oauthStatus: "connected" };
 }
 

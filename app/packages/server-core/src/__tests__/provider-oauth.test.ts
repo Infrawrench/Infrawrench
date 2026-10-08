@@ -15,6 +15,7 @@ import {
   OAuthReconnectRequiredError,
   acceptSubmittedCredentials,
   pluginOAuthSummary,
+  redactOAuthGrantState,
   providerOAuthRedirectUri,
   resetOAuthRefreshStateForTests,
   resolveCredentialUpdate,
@@ -209,6 +210,77 @@ describe("acceptSubmittedCredentials", () => {
       ctx,
     );
     expect(out.credentials).toEqual({ apiToken: "p" });
+  });
+});
+
+describe("redacted grants", () => {
+  const full = {
+    apiToken: "at",
+    [OAUTH_CREDENTIAL_KEY]: JSON.stringify({
+      v: 1,
+      client: "server",
+      refreshToken: "rt-secret",
+      clientId: "dyn-client",
+      clientSecret: "dyn-secret",
+      expiresAt: 5,
+      connectedAt: 1,
+    }),
+  };
+
+  it("removes the refresh token and client secret but keeps the grant readable", () => {
+    const redacted = redactOAuthGrantState(full);
+    expect(redacted[OAUTH_CREDENTIAL_KEY]).not.toContain("rt-secret");
+    expect(redacted[OAUTH_CREDENTIAL_KEY]).not.toContain("dyn-secret");
+    expect(readOAuthGrantState(redacted)).toMatchObject({
+      v: 1,
+      client: "server",
+      clientId: "dyn-client",
+      expiresAt: 5,
+    });
+    expect(redactOAuthGrantState({ apiToken: "p" })).toEqual({ apiToken: "p" });
+  });
+
+  it("treats a redacted copy on create as no grant", async () => {
+    const out = await acceptSubmittedCredentials(redactOAuthGrantState(full), ctx);
+    expect(out).toEqual({ credentials: { apiToken: "at" }, oauthStatus: null });
+  });
+
+  it("keeps the stored grant when a redacted copy comes back on PUT", async () => {
+    const out = await resolveCredentialUpdate(
+      { ...redactOAuthGrantState(full), region: "us" },
+      full,
+      {
+        ...ctx,
+        currentStatus: "connected",
+      },
+    );
+    expect(out.oauthStatus).toBe("connected");
+    expect(out.credentials[OAUTH_CREDENTIAL_KEY]).toBe(full[OAUTH_CREDENTIAL_KEY]);
+    expect(out.credentials["region"]).toBe("us");
+  });
+
+  it("drops the grant when a redacted copy comes back with a new pasted token", async () => {
+    const out = await resolveCredentialUpdate(
+      { ...redactOAuthGrantState(full), apiToken: "pasted" },
+      full,
+      { ...ctx, currentStatus: "connected" },
+    );
+    expect(out).toEqual({ credentials: { apiToken: "pasted" }, oauthStatus: null });
+  });
+
+  it("stores a dynamically registered client with the opened grant", async () => {
+    const sealed = await sealGrant(
+      grant({ registeredClient: { clientId: "dyn", clientSecret: "dyn-s" } }),
+    );
+    const out = await acceptSubmittedCredentials(
+      { apiToken: "x", [OAUTH_CREDENTIAL_KEY]: sealed },
+      ctx,
+    );
+    expect(JSON.parse(out.credentials[OAUTH_CREDENTIAL_KEY]!)).toMatchObject({
+      clientId: "dyn",
+      clientSecret: "dyn-s",
+      refreshToken: "rt-1",
+    });
   });
 });
 
@@ -457,6 +529,72 @@ describe("resolveOAuthCredentials", () => {
       }),
     ).rejects.toThrow();
     expect(fake.status).toBe("connected");
+  });
+});
+
+describe("resolveOAuthCredentials client selection", () => {
+  beforeEach(() => resetOAuthRefreshStateForTests());
+
+  it("refreshes a dynamically registered grant with its own client and keeps its secret", async () => {
+    const stale = {
+      apiToken: "at-old",
+      [OAUTH_CREDENTIAL_KEY]: JSON.stringify({
+        v: 1,
+        client: "server",
+        refreshToken: "rt-1",
+        expiresAt: Date.now() - 1,
+        connectedAt: 1,
+        clientId: "dyn",
+        clientSecret: "dyn-s",
+      }),
+    };
+    const fake = fakeStore(stale);
+    const doFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = new URLSearchParams(String(init.body));
+      expect(body.get("client_id")).toBe("dyn");
+      expect(body.get("client_secret")).toBe("dyn-s");
+      return new Response(JSON.stringify({ access_token: "at-new", expires_in: 60 * 60 }));
+    });
+    const dynamicManifest = {
+      ...manifest,
+      oauth: { ...manifest.oauth!, clientRegistration: "dynamic" },
+    } as PluginManifest;
+    await resolveOAuthCredentials({
+      accountId: "a",
+      organizationId: ORG,
+      manifest: dynamicManifest,
+      credentials: stale,
+      store: fake.store,
+      fetch: doFetch as unknown as typeof fetch,
+    });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fake.credentials[OAUTH_CREDENTIAL_KEY]!)).toMatchObject({
+      clientId: "dyn",
+      clientSecret: "dyn-s",
+      refreshToken: "rt-1",
+    });
+  });
+
+  it("refreshes a clientRegistration none grant without any configuration", async () => {
+    delete process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_ID"];
+    delete process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_SECRET"];
+    const stale = grantCredentials(Date.now() - 1);
+    const fake = fakeStore(stale);
+    const doFetch = vi.fn(
+      async () => new Response(JSON.stringify({ access_token: "at-new", expires_in: 3600 })),
+    );
+    const out = await resolveOAuthCredentials({
+      accountId: "a",
+      organizationId: ORG,
+      manifest: {
+        ...manifest,
+        oauth: { ...manifest.oauth!, clientRegistration: "none" },
+      } as PluginManifest,
+      credentials: stale,
+      store: fake.store,
+      fetch: doFetch as unknown as typeof fetch,
+    });
+    expect(out["apiToken"]).toBe("at-new");
   });
 });
 
