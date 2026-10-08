@@ -9,6 +9,7 @@ import { HerokuApi } from "./api.js";
 import { HerokuClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
+import { HEROKU_OAUTH, completeHerokuOAuth } from "./oauth.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { herokuRemediationCommands } from "./remediation.js";
@@ -61,6 +62,7 @@ const manifest: PluginManifest = {
     topUpUrl: "https://dashboard.heroku.com/account/billing",
   },
   statusFeed,
+  oauth: HEROKU_OAUTH,
 };
 
 async function listCredentialOptions(
@@ -93,4 +95,5 @@ export const plugin: Plugin = {
   terraformExport: herokuTerraformExport,
   listCredentialOptions,
   remediationCommands: herokuRemediationCommands,
+  completeOAuthConnection: completeHerokuOAuth,
 };
