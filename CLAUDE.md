@@ -12,6 +12,10 @@ The mobile app (`app/packages/mobile`, Expo + expo-router) is a cloud companion 
 
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
+## Type checking (tsc-rs)
+
+TypeScript 7 packages depend on `"typescript": "workspace:@infrawrench/typescript@*"`, never the npm `typescript`; a new package copies that line. The shim (`app/packages/typescript`) runs tsc-rs for both `tsc` and tsdown's declaration emit, falling back to TypeScript 7 on platforms tsc-rs has no binary for. A package on plain `typescript` still builds, silently without tsc-rs. Rationale and bump procedure are in KNOWLEDGE.md ("Type checking").
+
 ## Workspace tabs
 
 Org-level pages opened from the sidebar are **workspace-tab kinds, never plain routes**; a page outside the tab system leaves a stale active tab and a stale window title. The only exceptions are Moment and `/admin`, which get their titles from `plainRouteDocumentTitle` instead.
@@ -51,7 +55,7 @@ The web and desktop UIs are internationalized with gt-react (General Translation
 
 ## Desktop changelog (git-cliff)
 
-`include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime}` plus all of `plugin-architecture/`; a new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural; the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
+`include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime,typescript}` plus all of `plugin-architecture/`; a new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural; the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
 
 ## Terraform provider
 

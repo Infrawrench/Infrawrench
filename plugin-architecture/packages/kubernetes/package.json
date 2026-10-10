@@ -39,7 +39,7 @@
     "@kubernetes/client-node": "^1.4.0",
     "@types/js-yaml": "^4.0.9",
     "tsdown": "^0.22.14",
-    "typescript": "^7.0.2",
+    "typescript": "workspace:@infrawrench/typescript@*",
     "vitest": "^4.1.10"
   }
 }

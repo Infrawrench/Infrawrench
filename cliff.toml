@@ -101,6 +101,9 @@ include_paths = [
     "app/packages/client-core/**",
     "app/packages/ui/**",
     "app/packages/workflow-runtime/**",
+    # The tsc shim: a devDependency of the desktop and of everything it builds
+    # from, so it emits the declarations those packages ship.
+    "app/packages/typescript/**",
     "plugin-architecture/**",
     # The desktop app ships the remote app server binary, so a change to it is
     # a user-visible desktop change even though it is a standalone Rust module.

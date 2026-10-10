@@ -33,8 +33,8 @@ importers:
         specifier: ^2.10.9
         version: 2.10.9
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:app/packages/typescript
       unrun:
         specifier: ^0.3.1
         version: 0.3.1
@@ -61,8 +61,8 @@ importers:
         specifier: ^4.23.11
         version: 4.23.11
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -75,10 +75,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -690,8 +690,8 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vite:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0)
@@ -708,8 +708,8 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -757,8 +757,8 @@ importers:
         specifier: ^4.23.11
         version: 4.23.11
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -924,8 +924,8 @@ importers:
         specifier: ^4.23.11
         version: 4.23.11
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1444,8 +1444,8 @@ importers:
         specifier: ^4.23.11
         version: 4.23.11
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1469,14 +1469,23 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
       wrangler:
         specifier: ^4.120.0
         version: 4.120.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0)
+
+  app/packages/typescript:
+    dependencies:
+      tsc-rs:
+        specifier: 0.2.0
+        version: 0.2.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   app/packages/ui:
     dependencies:
@@ -1552,10 +1561,10 @@ importers:
         version: 29.1.1(@noble/hashes@2.3.0)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1765,8 +1774,8 @@ importers:
         specifier: ^4.23.11
         version: 4.23.11
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vite:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0)
@@ -1830,7 +1839,7 @@ importers:
         version: 0.32.0
       '@sebastianwessel/quickjs':
         specifier: ^3.1.0
-        version: 3.1.0(typescript@7.0.2)
+        version: 3.1.0(typescript@app+packages+typescript)
       '@typescript/typescript6':
         specifier: ^6.0.2
         version: 6.0.2
@@ -1839,8 +1848,8 @@ importers:
         specifier: ^22.20.1
         version: 22.20.1
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1853,10 +1862,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1869,10 +1878,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1885,10 +1894,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1901,10 +1910,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1920,10 +1929,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1935,10 +1944,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1954,10 +1963,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1973,10 +1982,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -1989,10 +1998,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2152,10 +2161,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2168,10 +2177,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2190,10 +2199,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2206,10 +2215,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2222,10 +2231,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2238,10 +2247,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2254,10 +2263,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2270,10 +2279,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2286,10 +2295,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2305,10 +2314,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2321,10 +2330,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2337,10 +2346,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2353,10 +2362,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2372,10 +2381,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2388,10 +2397,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2404,10 +2413,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2423,10 +2432,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2445,10 +2454,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2461,10 +2470,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2477,10 +2486,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2496,10 +2505,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2515,10 +2524,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2531,10 +2540,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2547,10 +2556,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2566,10 +2575,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2585,10 +2594,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2601,10 +2610,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2617,10 +2626,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2633,10 +2642,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2649,10 +2658,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2668,10 +2677,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2684,10 +2693,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2703,10 +2712,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2719,10 +2728,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2738,10 +2747,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2757,10 +2766,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2773,10 +2782,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2795,10 +2804,10 @@ importers:
         version: 5.0.1(supports-color@10.2.2)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2811,10 +2820,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2827,10 +2836,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2843,10 +2852,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2862,10 +2871,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2881,10 +2890,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2897,10 +2906,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2913,10 +2922,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2929,10 +2938,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2948,10 +2957,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2964,10 +2973,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -2992,10 +3001,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3011,10 +3020,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3030,10 +3039,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3046,10 +3055,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3065,10 +3074,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3084,10 +3093,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3103,10 +3112,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3119,10 +3128,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3135,10 +3144,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3151,10 +3160,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3167,10 +3176,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3183,10 +3192,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3199,10 +3208,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3215,10 +3224,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3231,10 +3240,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3247,10 +3256,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3263,10 +3272,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3279,10 +3288,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3298,10 +3307,10 @@ importers:
         version: 2.2.4
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3314,10 +3323,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3339,10 +3348,10 @@ importers:
         version: 4.0.9
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3355,10 +3364,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3371,10 +3380,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3387,10 +3396,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3409,10 +3418,10 @@ importers:
         version: 1.3.2
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3425,10 +3434,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3444,10 +3453,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3463,10 +3472,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3482,10 +3491,10 @@ importers:
         version: 7.5.0(@aws-sdk/credential-providers@3.1045.0)(socks@2.8.9)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3501,10 +3510,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3523,10 +3532,10 @@ importers:
         version: 12.7.0(supports-color@10.2.2)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3542,10 +3551,10 @@ importers:
         version: 3.23.2(@types/node@26.2.0)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3570,10 +3579,10 @@ importers:
         version: 3.4.0
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3589,10 +3598,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3605,10 +3614,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3624,10 +3633,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3640,10 +3649,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3656,10 +3665,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3672,10 +3681,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3691,10 +3700,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3710,10 +3719,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3735,10 +3744,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3751,10 +3760,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3767,10 +3776,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3783,10 +3792,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3799,10 +3808,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3815,10 +3824,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3831,10 +3840,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3847,10 +3856,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3866,10 +3875,10 @@ importers:
         version: 3.23.2(@types/node@26.2.0)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3891,10 +3900,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3913,10 +3922,10 @@ importers:
         version: 8.22.0
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3929,10 +3938,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3945,10 +3954,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3961,10 +3970,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3977,10 +3986,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -3993,10 +4002,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4009,10 +4018,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4025,10 +4034,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4041,10 +4050,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4060,10 +4069,10 @@ importers:
         version: 5.11.1(supports-color@10.2.2)
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4076,10 +4085,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4092,10 +4101,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4111,10 +4120,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4127,10 +4136,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4146,10 +4155,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4162,10 +4171,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4178,10 +4187,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4194,10 +4203,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4225,10 +4234,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4241,10 +4250,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4260,10 +4269,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4285,10 +4294,10 @@ importers:
         version: 1.17.0
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4301,10 +4310,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4317,10 +4326,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4336,10 +4345,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4352,10 +4361,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4371,10 +4380,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4396,10 +4405,10 @@ importers:
         version: 1.17.0
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4412,10 +4421,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4428,10 +4437,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4447,10 +4456,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4466,10 +4475,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4482,10 +4491,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4501,10 +4510,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4523,10 +4532,10 @@ importers:
         version: 0.14.0
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4542,10 +4551,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4558,10 +4567,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4577,10 +4586,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4593,10 +4602,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4609,10 +4618,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4625,10 +4634,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4641,10 +4650,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4657,10 +4666,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4673,10 +4682,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4689,10 +4698,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4705,10 +4714,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4724,10 +4733,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4743,10 +4752,10 @@ importers:
         version: 22.20.1
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -4759,10 +4768,10 @@ importers:
     devDependencies:
       tsdown:
         specifier: ^0.22.14
-        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1)
       typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
+        specifier: workspace:@infrawrench/typescript@*
+        version: link:../../../app/packages/typescript
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
@@ -9246,6 +9255,24 @@ packages:
         optional: true
       '@types/react-dom':
         optional: true
+
+  '@tsc-rs/darwin-arm64@0.2.0':
+    resolution: {integrity: sha512-sf8+KeIFuENwGM/rf09g0Yp6ttMxvJXUsM1rvc/h6RhsvFhzmwUwj3fe/YtHm80EoJCQ/TtFUT2CjHJu6Pl1EQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tsc-rs/linux-arm64@0.2.0':
+    resolution: {integrity: sha512-3j4Res9jkcwt5H5M6MLoNZEvWbx49Pg2rjJcylpRk767wW3Rm4TboQkTJmhWTnjewT9CeTIjKaXn/DU3QRCxPQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@tsc-rs/linux-x64@0.2.0':
+    resolution: {integrity: sha512-gdzYIwgtFANiAdGi8xzDRk9o5gUXGeCEHYLggXmthclYlOJnZv82dAeOLIcrL//p6+K4SAogTKy2fFm8sARGtw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
 
   '@turbo/darwin-64@2.10.9':
     resolution: {integrity: sha512-Jh+pTGXLNz8+1tkUU13TI/f+ZOI+OvC4YbHi1H+57iSpLt5DR3xgptd+4sA07RdjdRR/RX/01uQQu2OkbzIefA==}
@@ -15208,6 +15235,11 @@ packages:
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
+  tsc-rs@0.2.0:
+    resolution: {integrity: sha512-cALwflE/WoaqyD22552kPPVhDe3v4yMZ1X0LsLJFoBz2VrL6RrGE6Uuss7kfNpFpDICtSXYgE+muz5zV25qtVA==}
+    engines: {node: '>=16.20.0'}
+    hasBin: true
+
   tsconfig-paths@4.2.0:
     resolution: {integrity: sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg==}
     engines: {node: '>=6'}
@@ -20840,13 +20872,13 @@ snapshots:
     dependencies:
       '@scaleway/sdk-client': 2.6.0
 
-  '@sebastianwessel/quickjs@3.1.0(typescript@7.0.2)':
+  '@sebastianwessel/quickjs@3.1.0(typescript@app+packages+typescript)':
     dependencies:
       memfs: 4.68.0
       quickjs-emscripten-core: 0.32.0
       rate-limiter-flexible: 11.2.0
     optionalDependencies:
-      typescript: 7.0.2
+      typescript: link:app/packages/typescript
 
   '@sentry/conventions@0.16.0': {}
 
@@ -21416,6 +21448,15 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.4(@types/react@19.2.18)
 
+  '@tsc-rs/darwin-arm64@0.2.0':
+    optional: true
+
+  '@tsc-rs/linux-arm64@0.2.0':
+    optional: true
+
+  '@tsc-rs/linux-x64@0.2.0':
+    optional: true
+
   '@turbo/darwin-64@2.10.9':
     optional: true
 
@@ -21920,13 +21961,13 @@ snapshots:
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
 
-  '@volar/typescript@2.4.28(typescript@7.0.2)':
+  '@volar/typescript@2.4.28(typescript@app+packages+typescript)':
     dependencies:
       '@volar/language-core': 2.4.28
       path-browserify: 1.0.1
       vscode-uri: 3.1.0
     optionalDependencies:
-      typescript: 7.0.2
+      typescript: link:app/packages/typescript
     optional: true
 
   '@vscode/emmet-helper@2.11.0':
@@ -28012,7 +28053,7 @@ snapshots:
       sprintf-js: 1.1.3
     optional: true
 
-  rolldown-plugin-dts@0.27.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(rolldown@1.2.3)(typescript@7.0.2):
+  rolldown-plugin-dts@0.27.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(rolldown@1.2.3)(typescript@app+packages+typescript):
     dependencies:
       dts-resolver: 3.0.0(oxc-resolver@11.24.2)
       get-tsconfig: 5.0.0-beta.5
@@ -28022,8 +28063,8 @@ snapshots:
       yuku-codegen: 0.8.4
       yuku-parser: 0.8.4
     optionalDependencies:
-      '@volar/typescript': 2.4.28(typescript@7.0.2)
-      typescript: 7.0.2
+      '@volar/typescript': 2.4.28(typescript@app+packages+typescript)
+      typescript: link:app/packages/typescript
     transitivePeerDependencies:
       - oxc-resolver
 
@@ -28857,13 +28898,19 @@ snapshots:
 
   ts-interface-checker@0.1.13: {}
 
+  tsc-rs@0.2.0:
+    optionalDependencies:
+      '@tsc-rs/darwin-arm64': 0.2.0
+      '@tsc-rs/linux-arm64': 0.2.0
+      '@tsc-rs/linux-x64': 0.2.0
+
   tsconfig-paths@4.2.0:
     dependencies:
       json5: 2.2.3
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tsdown@0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1):
+  tsdown@0.22.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@app+packages+typescript)(unrun@0.3.1):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -28874,7 +28921,7 @@ snapshots:
       obug: 2.1.4
       picomatch: 4.0.5
       rolldown: 1.2.3
-      rolldown-plugin-dts: 0.27.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(rolldown@1.2.3)(typescript@7.0.2)
+      rolldown-plugin-dts: 0.27.14(@volar/typescript@2.4.28(typescript@app+packages+typescript))(oxc-resolver@11.24.2)(rolldown@1.2.3)(typescript@app+packages+typescript)
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
       tree-kill: 1.2.2
@@ -28882,7 +28929,7 @@ snapshots:
       verkit: 0.3.2
     optionalDependencies:
       tsx: 4.23.11
-      typescript: 7.0.2
+      typescript: link:app/packages/typescript
       unrun: 0.3.1
     transitivePeerDependencies:
       - '@typescript/native-preview'

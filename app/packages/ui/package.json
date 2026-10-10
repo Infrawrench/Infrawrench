@@ -135,7 +135,7 @@
     "@types/react-dom": "^19.2.4",
     "jsdom": "^29.1.1",
     "tsdown": "^0.22.14",
-    "typescript": "^7.0.2",
+    "typescript": "workspace:@infrawrench/typescript@*",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {

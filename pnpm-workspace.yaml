@@ -58,3 +58,13 @@ allowBuilds:
   # The gt CLI pulls this in for parsing Python sources, which this repo never
   # feeds it — TS/TSX parsing doesn't touch it, so skip the native build.
   tree-sitter-python: false
+  # tsc-rs's postinstall only rewrites its own `tsc-rs` bin into a faster sh
+  # launcher. Nothing runs that bin: `tsc` comes from @infrawrench/typescript,
+  # which finds the native binary itself.
+  tsc-rs: false
+
+minimumReleaseAgeExclude:
+  - "@tsc-rs/darwin-arm64@0.2.0"
+  - "@tsc-rs/linux-arm64@0.2.0"
+  - "@tsc-rs/linux-x64@0.2.0"
+  - tsc-rs@0.2.0
