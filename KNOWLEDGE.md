@@ -2792,6 +2792,15 @@ Desktop-only feature: the web app's server-side ssh2 has no path to reach a user
 
 ---
 
+## Type checking (`@infrawrench/typescript`, tsc-rs)
+
+Every TypeScript 7 package declares `"typescript": "workspace:@infrawrench/typescript@*"` rather than the npm `typescript`. That workspace package (`app/packages/typescript`) is a shim installed under the name `typescript`, so package scripts keep calling `tsc` and tsdown keeps finding a `typescript` peer, while the compiler that runs is [tsc-rs](https://github.com/pingdotgg/ts-rust), a Rust port of TypeScript 7 with the same diagnostics.
+
+- **`bin/tsc.js`** execs the binary chosen by **`lib/getExePath.js`**: tsc-rs's native `tsc` where it ships one (linux-x64, linux-arm64, darwin-arm64), else TypeScript 7's own. Windows and Intel macOS (desktop release runners) take the fallback with no configuration. `INFRAWRENCH_TSC=typescript` forces the fallback, for checking whether a surprising diagnostic is a tsc-rs difference. The two exit with different codes on errors (tsc-rs 2, TypeScript 1); both are non-zero.
+- **Why rolldown needed the shim, not just tsc-rs.** tsdown's dts step (rolldown-plugin-dts) uses the native compiler only when `require("typescript").versionMajorMinor === "7.0"`, then loads `<typescript>/lib/getExePath.js` and spawns that binary with `--emitDeclarationOnly`. tsc-rs reports `7.1` (the upstream revision it ports), which sends the plugin to its classic JS-API generator, which TypeScript 7 does not have. The shim's `lib/version.cjs` re-exports the real `typescript@7.0.2` metadata (also satisfying the plugin's `~7.0.0` peer range), and its `getExePath.js` is the same chooser as `tsc`, so declaration emit runs on tsc-rs too. Its "Emit types with typescript@7.0.2" log line reports the package version, not the binary. Run with `DEBUG=rolldown-plugin-dts:tsgo` to see the actual path.
+- **Bumping.** The shim pins `tsc-rs` and `typescript` exactly and its own `version` mirrors the `typescript` it re-exports; move all three together. A new tsc-rs release is newer than pnpm's `minimumReleaseAge`, so `pnpm install` adds it to `minimumReleaseAgeExclude`; delete those entries once the release ages past the window. `tsc-rs: false` in `allowBuilds` skips its postinstall, which only rewrites its own `tsc-rs` bin that nothing here runs.
+- Out of scope: `website` and `mobile` alias `typescript` to `@typescript/typescript6` (astro check and Expo need TypeScript 6's JS API) and are untouched.
+
 ## Common pitfalls
 
 | Symptom | Cause | Fix |

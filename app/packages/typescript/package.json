@@ -1,0 +1,19 @@
+{
+  "name": "@infrawrench/typescript",
+  "version": "7.0.2",
+  "description": "Aliased in as `typescript`: runs tsc-rs where it ships a binary, TypeScript 7 everywhere else.",
+  "license": "BUSL-1.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tsc": "./bin/tsc.js"
+  },
+  "exports": {
+    ".": "./lib/version.cjs",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "tsc-rs": "0.2.0",
+    "typescript": "7.0.2"
+  }
+}

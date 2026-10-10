@@ -38,7 +38,7 @@
     "@types/dockerode": "^3.3.47",
     "dockerode": "^5.0.1",
     "tsdown": "^0.22.14",
-    "typescript": "^7.0.2",
+    "typescript": "workspace:@infrawrench/typescript@*",
     "vitest": "^4.1.10"
   }
 }
