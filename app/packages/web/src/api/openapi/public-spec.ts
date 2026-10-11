@@ -99,6 +99,7 @@ interface StrippableDoc {
   tags?: Array<{ name: string }>;
   security?: SecurityRequirement[];
   components?: Record<string, Record<string, unknown> | undefined>;
+  webhooks?: Record<string, unknown>;
 }
 
 /**
@@ -204,6 +205,8 @@ function pruneUnreachableComponents(doc: StrippableDoc) {
   const queue: string[] = [];
   const seed = new Set<string>();
   collectRefs(doc.paths ?? {}, seed);
+  // Event subscription payloads are reachable from `webhooks`, not `paths`.
+  collectRefs(doc.webhooks ?? {}, seed);
   for (const ref of seed) queue.push(ref);
 
   while (queue.length > 0) {

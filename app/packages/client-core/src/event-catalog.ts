@@ -138,6 +138,78 @@ export function eventSchemaName(def: Pick<EventTypeDef, "type" | "version">): st
   return `EventData_${def.type.replace(/\./g, "_")}_v${def.version}`;
 }
 
+/**
+ * JSON Schema (draft 2020-12 subset, also valid OpenAPI 3.1) for a type's
+ * `data`. The catalog endpoint serves it and the web spec builds the same
+ * shape as Zod; both come from the field spec, so they cannot drift.
+ */
+export function eventDataJsonSchema(def: EventTypeDef): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  for (const [key, f] of Object.entries(def.fields)) {
+    const base: Record<string, unknown> =
+      f.type === "string[]"
+        ? { type: "array", items: { type: "string" } }
+        : f.type === "datetime"
+          ? { type: "string", format: "date-time" }
+          : { type: f.type };
+    if (f.enum) base["enum"] = [...f.enum];
+    if (f.nullable) base["type"] = [base["type"], "null"];
+    base["description"] = f.description;
+    properties[key] = base;
+  }
+  return {
+    type: "object",
+    title: def.label,
+    description: def.description,
+    properties,
+    required: Object.keys(def.fields),
+    additionalProperties: true,
+  };
+}
+
+/** The catalog endpoint's entry for one type. */
+export interface EventTypeInfo {
+  type: string;
+  version: number;
+  label: string;
+  description: string;
+  category: EventCategory;
+  defaultSeverity: AlertSeverity;
+  carriesCost: boolean;
+  schema: Record<string, unknown>;
+}
+
+export function eventTypeInfo(def: EventTypeDef): EventTypeInfo {
+  return {
+    type: def.type,
+    version: def.version,
+    label: def.label,
+    description: def.description,
+    category: def.category,
+    defaultSeverity: def.defaultSeverity,
+    carriesCost: def.carriesCost === true,
+    schema: eventDataJsonSchema(def),
+  };
+}
+
+/** What the settings form's pickers offer: `GET /event-subscriptions/options`. */
+export interface EventSubscriptionOptions {
+  accounts: Array<{ id: string; name: string; pluginId: string }>;
+  environments: string[];
+  sinks: Array<{
+    accountId: string;
+    accountName: string;
+    pluginId: string;
+    pluginName: string;
+    resourceTypeId: string;
+    resourceTypeName: string;
+    resourceId: string;
+    resourceName: string;
+  }>;
+  /** False when the caller lacks `costs:read`: cost types are shown but not selectable. */
+  canSubscribeToCost: boolean;
+}
+
 // --- The envelope ---
 
 /** What every destination receives: the webhook body, the EventBridge detail, the Pub/Sub data. */

@@ -17,6 +17,7 @@ import {
   type EventDestination,
   type EventSubscription,
   type EventSubscriptionInput,
+  type EventSubscriptionOptions,
   type InfrawrenchEvent,
 } from "@infrawrench/client-core";
 
@@ -26,6 +27,7 @@ import { buildAad, decrypt, encrypt } from "../encryption";
 import { loadPlugins } from "../plugin-loader";
 import { EgressBlockedError, resolveDialAddress } from "../egress-guard";
 import { isEdgeRuntime } from "../runtime/gateway-only";
+import { listOrgEnvironments } from "./publish";
 
 export type SubscriptionRow = typeof eventSubscriptions.$inferSelect;
 export type DeliveryRow = typeof eventDeliveries.$inferSelect;
@@ -557,4 +559,21 @@ export async function queueRedelivery(
     })
     .returning();
   return row!;
+}
+
+/** Everything the subscription form's pickers need, in one round trip. */
+export async function listEventSubscriptionOptions(
+  organizationId: string,
+  caller: Pick<EventSubscriptionCaller, "canReadCosts">,
+): Promise<EventSubscriptionOptions> {
+  const [accountRows, environments, sinks] = await Promise.all([
+    db
+      .select({ id: accounts.id, name: accounts.displayName, pluginId: accounts.pluginId })
+      .from(accounts)
+      .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)))
+      .orderBy(accounts.displayName),
+    listOrgEnvironments(organizationId),
+    listEventSinkOptions(organizationId),
+  ]);
+  return { accounts: accountRows, environments, sinks, canSubscribeToCost: caller.canReadCosts };
 }

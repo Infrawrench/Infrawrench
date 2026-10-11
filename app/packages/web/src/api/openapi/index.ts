@@ -117,6 +117,7 @@ import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerAlertEmailPaths } from "./paths/alert-email";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
+import { registerEventSubscriptionPaths } from "./paths/event-subscriptions";
 import { registerJiraPaths } from "./paths/jira";
 import { registerLinearPaths } from "./paths/linear";
 import { registerGithubIssuesPaths } from "./paths/github-issues";
@@ -273,6 +274,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAlertEmailPaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
+  registerEventSubscriptionPaths(ctx);
   registerJiraPaths(ctx);
   registerLinearPaths(ctx);
   registerGithubIssuesPaths(ctx);
@@ -603,6 +605,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Microsoft Teams",
         description:
           "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
+      },
+      {
+        name: "Event subscriptions",
+        description:
+          "Outbound delivery of Infrawrench's own events (cost anomalies, budget thresholds, posture findings, drift, incidents, just-in-time access, SLO and metric alerts, sync failures) to a signed HTTPS webhook, an AWS EventBridge bus or a GCP Pub/Sub topic. The payload of every event type is described under `webhooks`.",
       },
       {
         name: "Jira",

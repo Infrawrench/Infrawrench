@@ -167,3 +167,22 @@ describe("EventData typing", () => {
     void bad;
   });
 });
+
+describe("eventDataJsonSchema", () => {
+  it("describes enums, nullables, arrays and datetimes", async () => {
+    const { eventDataJsonSchema, BUDGET_THRESHOLD_CROSSED, DRIFT_DETECTED } =
+      await import("../event-catalog");
+    const budget = eventDataJsonSchema(BUDGET_THRESHOLD_CROSSED) as {
+      properties: Record<string, Record<string, unknown>>;
+      required: string[];
+    };
+    expect(budget.properties["currency"]?.["type"]).toEqual(["string", "null"]);
+    expect(budget.properties["measure"]?.["enum"]).toEqual(["spend", "usage"]);
+    expect(budget.required).toContain("budgetId");
+    const drift = eventDataJsonSchema(DRIFT_DETECTED) as {
+      properties: Record<string, Record<string, unknown>>;
+    };
+    expect(drift.properties["accountIds"]).toMatchObject({ type: "array" });
+    expect(drift.properties["since"]).toMatchObject({ type: "string", format: "date-time" });
+  });
+});
