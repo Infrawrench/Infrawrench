@@ -27,6 +27,7 @@ import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdCostCanvasesRouteImport } from './routes/org.$orgId.cost-canvases'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
+import { Route as OrgOrgIdDeliveryRouteImport } from './routes/org.$orgId.delivery'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
@@ -186,6 +187,11 @@ const OrgOrgIdCostReportsRoute = OrgOrgIdCostReportsRouteImport.update({
 const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
   id: '/costs',
   path: '/costs',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdDeliveryRoute = OrgOrgIdDeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
@@ -585,6 +591,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -673,6 +680,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -763,6 +771,7 @@ export interface FileRoutesById {
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -855,6 +864,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -943,6 +953,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -1032,6 +1043,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -1242,6 +1254,13 @@ declare module '@tanstack/react-router' {
       path: '/costs'
       fullPath: '/org/$orgId/costs'
       preLoaderRoute: typeof OrgOrgIdCostsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/delivery': {
+      id: '/org/$orgId/delivery'
+      path: '/delivery'
+      fullPath: '/org/$orgId/delivery'
+      preLoaderRoute: typeof OrgOrgIdDeliveryRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/deployments': {
@@ -1906,6 +1925,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdCostCanvasesRoute: typeof OrgOrgIdCostCanvasesRouteWithChildren
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
+  OrgOrgIdDeliveryRoute: typeof OrgOrgIdDeliveryRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
@@ -1948,6 +1968,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdCostCanvasesRoute: OrgOrgIdCostCanvasesRouteWithChildren,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
+  OrgOrgIdDeliveryRoute: OrgOrgIdDeliveryRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,

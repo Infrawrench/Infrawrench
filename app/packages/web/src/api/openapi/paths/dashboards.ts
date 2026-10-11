@@ -220,6 +220,7 @@ const TabTarget = strict({
     "price-catalog",
     "incidents",
     "slos",
+    "delivery",
     "workflows",
     "deployments",
     "settings",

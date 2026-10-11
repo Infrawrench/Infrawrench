@@ -925,3 +925,41 @@ export interface DoraDeploymentInput {
   isRollback?: boolean;
   url?: string | null;
 }
+
+/** What every client asks the report and drill-down routes for. */
+export interface DoraQuery {
+  from: string;
+  to: string;
+  /** Filter dimension; with `value` undefined or null it filters to "not known". */
+  dimension?: string | undefined;
+  value?: string | null | undefined;
+  groupBy?: string | undefined;
+  bucket?: DoraBucketSize | undefined;
+  failedOnly?: boolean | undefined;
+}
+
+/** The query string for `/dora`, `/dora/changes` and `/dora/restores`, without the `?`. */
+export function doraQueryString(q: DoraQuery): string {
+  const p = new URLSearchParams({ from: q.from, to: q.to });
+  if (q.dimension) {
+    p.set("dimension", q.dimension);
+    if (q.value) p.set("value", q.value);
+  }
+  if (q.groupBy) p.set("groupBy", q.groupBy);
+  if (q.bucket) p.set("bucket", q.bucket);
+  if (q.failedOnly) p.set("failedOnly", "true");
+  return p.toString();
+}
+
+/** `[from, to)` covering the last `days` days ending now, as ISO strings. */
+export function doraRangeForDays(
+  days: number,
+  now: Date = new Date(),
+): { from: string; to: string } {
+  return {
+    from: new Date(now.getTime() - days * DAY_MS).toISOString(),
+    to: now.toISOString(),
+  };
+}
+
+export const DORA_RANGE_DAYS: readonly number[] = [7, 30, 90, 180, 365];

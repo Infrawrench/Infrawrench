@@ -244,6 +244,14 @@ describe("slos tab kind", () => {
   });
 });
 
+describe("delivery tab kind", () => {
+  it("is a singleton with the sidebar tile's title", () => {
+    expect(getWorkspaceTabId({ kind: "delivery" })).toBe("delivery");
+    expect(getWorkspaceTabFallbackTitle({ kind: "delivery" })).toBe("Delivery");
+    expect(workspaceTabTargetsEqual({ kind: "delivery" }, { kind: "delivery" })).toBe(true);
+  });
+});
+
 describe("workflows tab kind", () => {
   it("is a singleton tab id regardless of which workflow is open", () => {
     expect(getWorkspaceTabId({ kind: "workflows" })).toBe("workflows");

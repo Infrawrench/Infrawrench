@@ -180,6 +180,14 @@ export function slosTabTarget(sloId?: string): WorkspaceTabTarget {
   return { kind: "slos", ...(sloId ? { sloId } : {}) };
 }
 
+/**
+ * Delivery: DORA metrics. Single-instance with no remembered state; the range
+ * and scope are view state, like the Changes feed's filters.
+ */
+export function deliveryTabTarget(): WorkspaceTabTarget {
+  return { kind: "delivery" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

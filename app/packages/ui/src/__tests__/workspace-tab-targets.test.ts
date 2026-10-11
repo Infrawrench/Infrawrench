@@ -19,6 +19,7 @@ import {
   statusPagesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  deliveryTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -105,6 +106,10 @@ describe("tab target factories", () => {
   it("slosTabTarget omits sloId for the list view", () => {
     expect(slosTabTarget()).toEqual({ kind: "slos" });
     expect(slosTabTarget("slo-1")).toEqual({ kind: "slos", sloId: "slo-1" });
+  });
+
+  it("deliveryTabTarget carries no state", () => {
+    expect(deliveryTabTarget()).toEqual({ kind: "delivery" });
   });
 
   it("workflowsTabTarget omits workflowId for the list view", () => {

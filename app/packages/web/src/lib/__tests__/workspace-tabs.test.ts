@@ -189,6 +189,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns delivery route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({
+      to: "/org/$orgId/delivery",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns workflows list route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "workflows" });
     expect(args).toEqual({
@@ -595,6 +602,10 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "incidents",
       incidentId: "inc-1",
     });
+  });
+
+  it("parses the delivery path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/delivery")).toEqual({ kind: "delivery" });
   });
 
   it("parses the slos list path", () => {
