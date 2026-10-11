@@ -591,7 +591,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
 `drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
-`session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
+`vulnerability_alert_settings`, `session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
 **Report notifications** hang off a report, so the notification's own id cannot
@@ -700,17 +700,18 @@ secret store that consumes it rather than into an output.
 
 ### Lifecycle governance
 
-| Resource                                  | Import        | Notes                                                        |
-| ----------------------------------------- | ------------- | ------------------------------------------------------------ |
-| `infrawrench_schedule`                    | by id         | Resource and account are create-only                         |
-| `infrawrench_change_freeze`               | by id         | `starts_at` is Optional and Computed; ending is an action    |
-| `infrawrench_drift_alert_settings`        | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_expiry_alert_settings`       | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_extended_support_settings`   | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_posture_alert_settings`      | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_session_recording_settings`  | by org id     | Org singleton; destroy deliberately leaves it running        |
-| `infrawrench_network_flow_settings`       | by org id     | Org singleton; destroy turns collection **off**              |
-| `infrawrench_kubernetes_network_settings` | by account id | One per Kubernetes account; destroy clears the billed source |
+| Resource                                   | Import        | Notes                                                        |
+| ------------------------------------------ | ------------- | ------------------------------------------------------------ |
+| `infrawrench_schedule`                     | by id         | Resource and account are create-only                         |
+| `infrawrench_change_freeze`                | by id         | `starts_at` is Optional and Computed; ending is an action    |
+| `infrawrench_drift_alert_settings`         | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_expiry_alert_settings`        | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_extended_support_settings`    | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_posture_alert_settings`       | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_vulnerability_alert_settings` | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_session_recording_settings`   | by org id     | Org singleton; destroy deliberately leaves it running        |
+| `infrawrench_network_flow_settings`        | by org id     | Org singleton; destroy turns collection **off**              |
+| `infrawrench_kubernetes_network_settings`  | by account id | One per Kubernetes account; destroy clears the billed source |
 
 ### Accounts and access
 

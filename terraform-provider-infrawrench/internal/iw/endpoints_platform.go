@@ -951,6 +951,24 @@ func (c *Client) PutPostureAlertSettings(ctx context.Context, in PostureAlertSet
 	return &out, nil
 }
 
+// GetVulnerabilityAlertSettings reads the org's vulnerability alert settings.
+func (c *Client) GetVulnerabilityAlertSettings(ctx context.Context) (*VulnerabilityAlertSettings, error) {
+	var out VulnerabilityAlertSettings
+	if err := c.Get(ctx, "/vulnerabilities/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutVulnerabilityAlertSettings writes the org's vulnerability alert settings.
+func (c *Client) PutVulnerabilityAlertSettings(ctx context.Context, in VulnerabilityAlertSettingsUpdate) (*VulnerabilityAlertSettings, error) {
+	var out VulnerabilityAlertSettings
+	if err := c.Put(ctx, "/vulnerabilities/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetSessionRecordingSettings(ctx context.Context) (*SessionRecordingSettings, error) {
 	var out SessionRecordingSettings
 	if err := c.Get(ctx, "/session-recordings/settings", &out); err != nil {

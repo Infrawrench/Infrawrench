@@ -152,7 +152,7 @@ var (
 	alertTriggers        = []string{
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
 		"commitmentIdleAlerts", "unitCostRegressionAlerts", "savingsFindings", "metricAlerts", "resourceDrift", "workflowPages",
-		"providerIncidents", "expiryAlerts", "logMatchAlerts", "postureAlerts", "probeAlerts", "quotaAlerts",
+		"providerIncidents", "expiryAlerts", "logMatchAlerts", "postureAlerts", "vulnerabilityAlerts", "probeAlerts", "quotaAlerts",
 		"extendedSupportAlerts", "incidentAlerts", "weeklyDigest",
 	}
 )

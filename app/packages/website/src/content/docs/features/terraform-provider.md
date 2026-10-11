@@ -381,7 +381,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, the [vulnerability](./vulnerabilities.md) alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -459,17 +459,18 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Lifecycle governance
 
-| Resource                                  | Manages                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `infrawrench_schedule`                    | [Sleep schedules](./sleep-schedules.md)                                                       |
-| `infrawrench_change_freeze`               | [Change freezes](../team-and-billing/change-freeze.md)                                        |
-| `infrawrench_drift_alert_settings`        | What the [change timeline](./change-timeline.md) notifies about                               |
-| `infrawrench_expiry_alert_settings`       | [Expiry radar](./expiry-radar.md) lead time                                                   |
-| `infrawrench_extended_support_settings`   | [Extended support](./extended-support.md) alert and look-ahead                                |
-| `infrawrench_posture_alert_settings`      | Whether [posture findings](./posture-checks.md) notify                                        |
-| `infrawrench_session_recording_settings`  | [Session recording](./session-recording.md) and retention                                     |
-| `infrawrench_network_flow_settings`       | Whether [network flow costs](./network-costs.md) are collected                                |
-| `infrawrench_kubernetes_network_settings` | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
+| Resource                                   | Manages                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `infrawrench_schedule`                     | [Sleep schedules](./sleep-schedules.md)                                                       |
+| `infrawrench_change_freeze`                | [Change freezes](../team-and-billing/change-freeze.md)                                        |
+| `infrawrench_drift_alert_settings`         | What the [change timeline](./change-timeline.md) notifies about                               |
+| `infrawrench_expiry_alert_settings`        | [Expiry radar](./expiry-radar.md) lead time                                                   |
+| `infrawrench_extended_support_settings`    | [Extended support](./extended-support.md) alert and look-ahead                                |
+| `infrawrench_posture_alert_settings`       | Whether [posture findings](./posture-checks.md) notify                                        |
+| `infrawrench_vulnerability_alert_settings` | Which [vulnerability findings](./vulnerabilities.md) notify, and from what severity           |
+| `infrawrench_session_recording_settings`   | [Session recording](./session-recording.md) and retention                                     |
+| `infrawrench_network_flow_settings`        | Whether [network flow costs](./network-costs.md) are collected                                |
+| `infrawrench_kubernetes_network_settings`  | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
 
 ### Accounts and access
 
@@ -527,7 +528,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 - The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
 - Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
-- The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.
+- The drift, expiry, posture and vulnerability alert settings are **left alone** — they have no documented shipped values to restore to.
 - The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains. Of the two ways to be wrong, the one that sends mail to fewer outside mailboxes is the safer.
 - [Network flow collection](./network-costs.md) is **turned off**, and it's the singleton where destroy most deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
 

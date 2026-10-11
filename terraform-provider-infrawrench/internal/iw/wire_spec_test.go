@@ -342,6 +342,8 @@ func specChecks() []specCheck {
 		{schema: "ExtendedSupportSettingsUpdate", value: ExtendedSupportSettingsUpdate{}},
 		{schema: "PostureAlertSettings", value: PostureAlertSettings{}},
 		{schema: "PostureAlertSettingsUpdate", value: PostureAlertSettingsUpdate{}},
+		{schema: "VulnerabilitySettings", value: VulnerabilityAlertSettings{}},
+		{schema: "VulnerabilitySettingsUpdate", value: VulnerabilityAlertSettingsUpdate{}},
 		{schema: "SessionRecordingSettings", value: SessionRecordingSettings{}},
 		{schema: "SessionRecordingSettingsUpdate", value: SessionRecordingSettingsUpdate{}},
 		{schema: "SessionRecordingUsage", value: SessionRecordingUsage{}},
