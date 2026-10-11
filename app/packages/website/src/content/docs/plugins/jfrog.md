@@ -33,6 +33,14 @@ Connect a JFrog Platform, on JFrog Cloud or self-hosted, to manage its Artifacto
 
 <insert [JFrog repository Files tab browsing a Maven repository's folders] here>
 
+## Vulnerability findings
+
+Infrawrench reads the CVEs JFrog Xray has found in your artifacts, independent of any watch or policy, and shows them in the vulnerability inventory.
+
+- **What is read**: for every local, remote and federated repository with **Xray Indexing** on (up to 25), the 50 most recently modified scannable artifacts (Docker and OCI image manifests, and the package files of Maven, Gradle, npm, PyPI, NuGet, Go, RPM, Debian, Alpine, RubyGems, Composer, Cargo, Conda and Helm repositories), at most 500 artifacts per collection. Xray's artifact summary supplies each security issue's CVE (or Xray id), severity, CVSS score and vector, and on Xray versions with the v2 summary the affected package, its installed version and the fixed version Xray reports. Generic and virtual repositories are skipped. Because of these bounds the list is marked partial.
+- **What it needs**: Xray in your JFrog subscription, and a token with Read on the indexed repositories; an admin token reaches every repository. Without Xray, or when the token is refused, the inventory says so instead of showing an empty list.
+- **What joins to running resources**: Docker and OCI images are reported as `<platform host>/<repository key>/<image>` with the manifest digest and tag, which is how they are pulled with JFrog's default repository path method, so a Kubernetes pod or ECS task running `acme.jfrog.io/docker-local/team/api:1.4.0` is matched to the image's findings. A platform configured for the Docker subdomain method (`docker-local.acme.jfrog.io/team/api`) is not matched. Other packages are listed as packages in their repository.
+
 ## Tips & limits
 
 - Storage figures are a snapshot Artifactory recalculates periodically, so the Metrics tab builds its history from Infrawrench's own readings.
