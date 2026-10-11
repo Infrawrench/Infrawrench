@@ -27,6 +27,11 @@ export default function SettingsScreen() {
           onPress={go("notifications")}
         />
         <Row
+          title="Event subscriptions"
+          subtitle="Webhooks and event buses receiving org events"
+          onPress={go("event-subscriptions")}
+        />
+        <Row
           title="Approvals"
           subtitle="Workflow runs waiting on a decision"
           onPress={go("approvals")}
