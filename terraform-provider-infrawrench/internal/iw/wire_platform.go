@@ -1768,3 +1768,56 @@ type PrCheckRepository struct {
 	CreatedAt           string   `json:"createdAt"`
 	UpdatedAt           string   `json:"updatedAt"`
 }
+
+/* --------------------------- event subscriptions --------------------------- */
+
+// EventDestination is the tagged union the API calls EventDestination: kind
+// "webhook" carries URL, kind "publish" the three picker ids.
+type EventDestination struct {
+	Kind           string `json:"kind"`
+	URL            string `json:"url,omitempty"`
+	AccountID      string `json:"accountId,omitempty"`
+	ResourceTypeID string `json:"resourceTypeId,omitempty"`
+	ResourceID     string `json:"resourceId,omitempty"`
+}
+
+// EventSubscriptionInput is the POST and PUT body (PUT is whole-object).
+type EventSubscriptionInput struct {
+	Name         string           `json:"name"`
+	Enabled      bool             `json:"enabled"`
+	Destination  EventDestination `json:"destination"`
+	EventTypes   []string         `json:"eventTypes"`
+	MinSeverity  *string          `json:"minSeverity"`
+	AccountIDs   []string         `json:"accountIds"`
+	Environments []string         `json:"environments"`
+}
+
+// EventSubscription is the read shape. The signing secret is never in it.
+type EventSubscription struct {
+	ID                      string           `json:"id"`
+	Name                    string           `json:"name"`
+	Enabled                 bool             `json:"enabled"`
+	Destination             EventDestination `json:"destination"`
+	DestinationLabel        string           `json:"destinationLabel"`
+	EventTypes              []string         `json:"eventTypes"`
+	MinSeverity             *string          `json:"minSeverity"`
+	AccountIDs              []string         `json:"accountIds"`
+	Environments            []string         `json:"environments"`
+	SecretHint              *string          `json:"secretHint"`
+	PreviousSecretExpiresAt *string          `json:"previousSecretExpiresAt"`
+	DisabledReason          *string          `json:"disabledReason"`
+	DisabledAt              *string          `json:"disabledAt"`
+	ConsecutiveFailures     int64            `json:"consecutiveFailures"`
+	FailingSince            *string          `json:"failingSince"`
+	LastSuccessAt           *string          `json:"lastSuccessAt"`
+	LastFailureAt           *string          `json:"lastFailureAt"`
+	CreatedAt               string           `json:"createdAt"`
+	UpdatedAt               string           `json:"updatedAt"`
+}
+
+// EventSubscriptionWithSecret is what create and reroll return: the only two
+// responses that carry the secret.
+type EventSubscriptionWithSecret struct {
+	Subscription EventSubscription `json:"subscription"`
+	Secret       *string           `json:"secret"`
+}

@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 68 resources and 7 data sources, each with its own
+control, and alert delivery. 69 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -634,6 +634,7 @@ stored one", leave it out.
 | `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
 | `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
 | `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
+| `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
 | `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
@@ -736,6 +737,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_on_call_schedule`         | by id         | Rotation order is the list order; covers stay in the app    |
 | `infrawrench_slack_channel`            | by id         | The workspace connection is an OAuth flow, read not written |
 | `infrawrench_msteams_webhook`          | by id         | URL is write-only and Microsoft-host-restricted             |
+| `infrawrench_event_subscription`       | by id         | Signed webhook or EventBridge/Pub/Sub; `secret_version` rerolls |
 | `infrawrench_alert_email_settings`     | by org id     | Org singleton; destroy restores `member-domains`            |
 | `infrawrench_digest_settings`          | by org id     | Org singleton; destinations come from the routing table     |
 | `infrawrench_digest_recipient`         | by id         | Address is normalized server-side                           |
