@@ -235,8 +235,12 @@ export const BUDGET_THRESHOLD_CROSSED = defineEventType({
     budgetId: str("Budget id."),
     budgetName: str("Budget name."),
     periodKey: str("The budget period the threshold fired in."),
-    periodStart: str("First day of the period (YYYY-MM-DD)."),
-    periodEnd: str("Last day of the period (YYYY-MM-DD)."),
+    periodStart: str("First day of the period (YYYY-MM-DD); null for a calendar month.", {
+      nullable: true,
+    }),
+    periodEnd: str("Last day of the period (YYYY-MM-DD); null for a calendar month.", {
+      nullable: true,
+    }),
     thresholdType: str("Whether actual or forecast crossed.", { enum: ["actual", "forecast"] }),
     thresholdPercent: num("The threshold, as a percent of the limit."),
     measure: str("A spend budget or a usage budget.", { enum: ["spend", "usage"] }),

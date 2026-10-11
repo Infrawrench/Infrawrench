@@ -15,7 +15,7 @@
  * `void keepAlive(publishEvent(...))` from request paths.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   eventMatchesFilters,
   isAlertSeverity,
@@ -26,7 +26,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { eventDeliveries, eventSubscriptions } from "../db/schema";
+import { eventDeliveries, eventSubscriptions, resources } from "../db/schema";
 
 export interface PublishEventMeta {
   /** One line for a human. */
@@ -186,6 +186,28 @@ export async function resourceEnvironment(
   } catch {
     return null;
   }
+}
+
+/** {@link resourceEnvironment} for many resources in one query. */
+export async function resourceEnvironments(
+  organizationId: string,
+  resourceIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (resourceIds.length === 0) return out;
+  try {
+    const rows = await db
+      .select({ id: resources.id, fields: resources.fieldsJson })
+      .from(resources)
+      .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, resourceIds)));
+    for (const r of rows) {
+      const env = environmentFromFields(r.fields);
+      if (env) out.set(r.id, env);
+    }
+  } catch (err) {
+    console.error(`[events] reading resource environments for org ${organizationId} failed:`, err);
+  }
+  return out;
 }
 
 /** Distinct environment values across the org's resources, for the filter picker. */

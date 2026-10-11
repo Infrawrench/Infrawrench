@@ -47,6 +47,10 @@ import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pas
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
+import {
+  pruneEventDeliveries,
+  runEventDeliveryPass,
+} from "@infrawrench/server-core/events/deliver";
 import { runPagingProvidersPass } from "@infrawrench/server-core/paging/providers";
 import { runJitAccessExpiryPass } from "@infrawrench/server-core/jit-access/service";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
@@ -258,6 +262,12 @@ async function runRetention(): Promise<void> {
     await pruneAlertDeliveries();
   } catch (e) {
     console.error("[poller] alert delivery retention failed:", e);
+  }
+  // Event subscription deliveries: terminal rows past 30 days.
+  try {
+    await pruneEventDeliveries();
+  } catch (e) {
+    console.error("[poller] event delivery retention failed:", e);
   }
   // Uploaded Terraform state documents, same hourly slot. The newest per
   // org+account scope is always kept: retention here is about superseded
@@ -595,6 +605,24 @@ export const PASSES: readonly Pass[] = [
       if (stats.flushed > 0 || stats.escalated > 0) {
         console.log(
           `[poller] alert follow-up: released ${stats.flushed} held, escalated ${stats.escalated}`,
+        );
+      }
+    }),
+  },
+
+  // Event subscriptions: sends queued deliveries (webhooks, EventBridge,
+  // Pub/Sub) and their retries. Gateway: a publish destination runs plugin
+  // code for an arbitrary account, and webhook sends go through the Node
+  // egress guard. Cheap when idle: one indexed range scan.
+  {
+    kind: "periodic",
+    name: "event-deliveries",
+    runtime: "gateway",
+    run: guarded("[events] delivery tick failed:", async () => {
+      const stats = await runEventDeliveryPass({ limit: 100 });
+      if (stats.claimed > 0) {
+        console.log(
+          `[events] deliveries: ${stats.delivered} delivered, ${stats.failed} failed of ${stats.claimed}`,
         );
       }
     }),

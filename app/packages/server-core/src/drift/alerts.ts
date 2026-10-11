@@ -35,6 +35,8 @@
  * Never throws. Drift alerting sits on the poller's hot path and must not be
  * able to fail a sync.
  */
+import { DRIFT_DETECTED } from "@infrawrench/client-core";
+import { publishEvent } from "../events/publish";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, orgDriftAlertSettings, resourceChanges } from "../db/schema";
@@ -253,6 +255,28 @@ async function deliverWindow(
   const title = driftTitle(summary);
   const context = driftContext(summary);
   const url = orgAppUrl(organizationId, "changes");
+
+  // A window that is rolled back (nobody routed) is re-read from the same
+  // `since`; keying on the window and its size keeps that from emitting the
+  // same drift twice while still emitting a re-read that found more.
+  await publishEvent(
+    DRIFT_DETECTED,
+    organizationId,
+    {
+      since: since.toISOString(),
+      changeCount: summary.total,
+      created: summary.created,
+      updated: summary.updated,
+      deleted: summary.deleted,
+      accountIds: summary.accountIds,
+    },
+    {
+      title,
+      url,
+      accountId: summary.accountIds.length === 1 ? (summary.accountIds[0] ?? null) : null,
+      idempotencyKey: `drift:${since.toISOString()}:${summary.total}`,
+    },
+  );
 
   const routed = await routeAlert({
     organizationId,

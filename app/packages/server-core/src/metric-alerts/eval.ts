@@ -24,6 +24,8 @@
  * Errors are logged, never thrown: evaluation must not break the poller's
  * pass (the `budget-eval.ts` stance).
  */
+import { METRIC_ALERT_FIRED, METRIC_ALERT_RESOLVED } from "@infrawrench/client-core";
+import { publishEvent, resourceEnvironment } from "../events/publish";
 import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
@@ -75,6 +77,25 @@ async function inCooldown(
   return Number(rows[0]?.n ?? 0) > 0;
 }
 
+function metricEventData(
+  rule: MetricAlertRuleRow,
+  resourceId: string,
+  resourceName: string,
+  alertEventId: string,
+) {
+  return {
+    ruleId: rule.id,
+    ruleName: rule.name,
+    metricKey: rule.metricKey,
+    comparator: rule.comparator,
+    threshold: rule.threshold,
+    forMinutes: rule.forMinutes,
+    resourceId,
+    resourceName,
+    alertEventId,
+  };
+}
+
 async function notifyFiring(
   rule: MetricAlertRuleRow,
   resource: SelectedResource,
@@ -87,6 +108,18 @@ async function notifyFiring(
     `"${resource.displayName}" is ${formatValue(observed)} (${rule.comparator} ${formatValue(rule.threshold)} ` +
     `for ${rule.forMinutes} minutes)`;
   const context = `${rule.metricKey} ${rule.comparator} ${formatValue(rule.threshold)} · firing`;
+
+  await publishEvent(
+    METRIC_ALERT_FIRED,
+    rule.organizationId,
+    { ...metricEventData(rule, resource.id, resource.displayName, eventId), observed },
+    {
+      title,
+      url: orgAppUrl(rule.organizationId, "metric-alerts"),
+      environment: await resourceEnvironment(rule.organizationId, resource.id),
+      idempotencyKey: `metric-alert:${eventId}:fired`,
+    },
+  );
 
   const routed = await routeAlert({
     organizationId: rule.organizationId,
@@ -119,6 +152,18 @@ async function notifyResolved(rule: MetricAlertRuleRow, event: OpenEventRow): Pr
     `infrawrench metric alert "${rule.name}" resolved: ${rule.metricKey} on ` +
     `"${event.resourceName}" is back within threshold (was ${rule.comparator} ${formatValue(rule.threshold)})`;
   const context = `${rule.metricKey} ${rule.comparator} ${formatValue(rule.threshold)} · resolved`;
+
+  await publishEvent(
+    METRIC_ALERT_RESOLVED,
+    rule.organizationId,
+    { ...metricEventData(rule, event.resourceId, event.resourceName, event.id), observed: null },
+    {
+      title,
+      url: orgAppUrl(rule.organizationId, "metric-alerts"),
+      environment: await resourceEnvironment(rule.organizationId, event.resourceId),
+      idempotencyKey: `metric-alert:${event.id}:resolved`,
+    },
+  );
 
   const routed = await routeAlert({
     organizationId: rule.organizationId,
