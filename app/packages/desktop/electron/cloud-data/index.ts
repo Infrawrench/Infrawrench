@@ -10,6 +10,7 @@ import "./metric-alerts";
 import "./orphans";
 import "./rightsizing";
 import "./extended-support";
+import "./seats";
 import "./expiring";
 import "./quotas";
 import "./price-catalog";

@@ -52,11 +52,13 @@ import {
   type OrphansClient,
   type RightsizingClient,
   type ExtendedSupportClient,
+  type SeatsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebExtendedSupportClient } from "@/lib/extended-support-client";
+import { createWebSeatsClient } from "@/lib/seats-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
@@ -248,6 +250,16 @@ function getExtendedSupportClient(orgId: string): ExtendedSupportClient {
   return client;
 }
 
+const seatsClients = new Map<string, SeatsClient>();
+function getSeatsClient(orgId: string): SeatsClient {
+  let client = seatsClients.get(orgId);
+  if (!client) {
+    client = createWebSeatsClient(orgId);
+    seatsClients.set(orgId, client);
+  }
+  return client;
+}
+
 const schedulesClients = new Map<string, SchedulesClient>();
 function getSchedulesClient(orgId: string): SchedulesClient {
   let client = schedulesClients.get(orgId);
@@ -357,6 +369,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             )
           }
+          seats={getSeatsClient(orgId)}
           schedules={getSchedulesClient(orgId)}
           onOpenScheduledResource={(s) =>
             void navigate(
