@@ -528,7 +528,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 - The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
 - Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
-- The drift, expiry, posture and vulnerability alert settings are **left alone** — they have no documented shipped values to restore to.
+- The drift, expiry, posture and vulnerability alert settings are **left alone**: they have no documented shipped values to restore to.
 - The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains. Of the two ways to be wrong, the one that sends mail to fewer outside mailboxes is the safer.
 - [Network flow collection](./network-costs.md) is **turned off**, and it's the singleton where destroy most deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
 

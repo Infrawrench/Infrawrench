@@ -302,7 +302,7 @@ export async function claimDueQuotaAccounts(
       -- account as due; the conflict clause is re-evaluated against the row as
       -- it stands now, so the loser matches nothing, updates nothing, and
       -- RETURNINGs nothing. Unconditional, both callers get the account back
-      -- and both do the work — which for AWS means paying for the same
+      -- and both do the work, which for AWS means paying for the same
       -- CloudWatch reads twice.
       WHERE account_quota_polls.next_poll_at IS NULL
          OR account_quota_polls.next_poll_at <= now()
@@ -377,7 +377,7 @@ export async function claimDueVulnerabilityAccounts(
       -- account as due; the conflict clause is re-evaluated against the row as
       -- it stands now, so the loser matches nothing, updates nothing, and
       -- RETURNINGs nothing. Unconditional, both callers get the account back
-      -- and both do the work — which for AWS means paying for the same
+      -- and both do the work, which for AWS means paying for the same
       -- CloudWatch reads twice.
       WHERE account_vulnerability_polls.next_poll_at IS NULL
          OR account_vulnerability_polls.next_poll_at <= now()
