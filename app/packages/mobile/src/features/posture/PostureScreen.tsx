@@ -161,6 +161,14 @@ export function PostureScreen() {
         Computed from synced fields. Critical and high findings feed the daily posture alerts.
         Dismissed findings stay off the list and out of alerts until restored.
       </Text>
+
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
+        hitSlop={8}
+      >
+        <Text style={styles.link}>Vulnerabilities in running images →</Text>
+      </Pressable>
     </Screen>
   );
 }
@@ -296,4 +304,5 @@ const styles = StyleSheet.create({
   action: { color: colors.textMuted, fontSize: 12 },
   actionBusy: { opacity: 0.5 },
   footnote: { color: colors.textFaint, fontSize: 11 },
+  link: { color: colors.accent, fontSize: 12 },
 });
