@@ -8,811 +8,830 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AccessReviewRouteImport } from './routes/access-review'
-import { Route as AgentsRouteImport } from './routes/agents'
-import { Route as BackupsRouteImport } from './routes/backups'
-import { Route as CalendarRouteImport } from './routes/calendar'
-import { Route as ChangesRouteImport } from './routes/changes'
-import { Route as ChatRouteImport } from './routes/chat'
-import { Route as CostCanvasesRouteImport } from './routes/cost-canvases'
-import { Route as CostReportsRouteImport } from './routes/cost-reports'
-import { Route as CostsRouteImport } from './routes/costs'
-import { Route as DeploymentsRouteImport } from './routes/deployments'
-import { Route as DnsRouteImport } from './routes/dns'
-import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
-import { Route as EnvironmentsRouteImport } from './routes/environments'
-import { Route as ExpiringRouteImport } from './routes/expiring'
-import { Route as GraphRouteImport } from './routes/graph'
-import { Route as IacRouteImport } from './routes/iac'
-import { Route as IncidentsRouteImport } from './routes/incidents'
-import { Route as InvoicesRouteImport } from './routes/invoices'
-import { Route as JitAccessRouteImport } from './routes/jit-access'
-import { Route as LogsRouteImport } from './routes/logs'
-import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
-import { Route as MomentRouteImport } from './routes/moment'
-import { Route as PostureRouteImport } from './routes/posture'
-import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
-import { Route as ProbesRouteImport } from './routes/probes'
-import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
-import { Route as QuotasRouteImport } from './routes/quotas'
-import { Route as RunbooksRouteImport } from './routes/runbooks'
-import { Route as SavingsRouteImport } from './routes/savings'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as SlosRouteImport } from './routes/slos'
-import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
-import { Route as StatusPagesRouteImport } from './routes/status-pages'
-import { Route as WallboardRouteImport } from './routes/wallboard'
-import { Route as WorkflowsRouteImport } from './routes/workflows'
-import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
-import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
-import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resource.$accountId.$resourceId'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as AccessReviewRouteImport } from "./routes/access-review";
+import { Route as AgentsRouteImport } from "./routes/agents";
+import { Route as BackupsRouteImport } from "./routes/backups";
+import { Route as CalendarRouteImport } from "./routes/calendar";
+import { Route as ChangesRouteImport } from "./routes/changes";
+import { Route as ChatRouteImport } from "./routes/chat";
+import { Route as CostCanvasesRouteImport } from "./routes/cost-canvases";
+import { Route as CostReportsRouteImport } from "./routes/cost-reports";
+import { Route as CostsRouteImport } from "./routes/costs";
+import { Route as DeliveryRouteImport } from "./routes/delivery";
+import { Route as DeploymentsRouteImport } from "./routes/deployments";
+import { Route as DnsRouteImport } from "./routes/dns";
+import { Route as EnvironmentDiffRouteImport } from "./routes/environment-diff";
+import { Route as EnvironmentsRouteImport } from "./routes/environments";
+import { Route as ExpiringRouteImport } from "./routes/expiring";
+import { Route as GraphRouteImport } from "./routes/graph";
+import { Route as IacRouteImport } from "./routes/iac";
+import { Route as IncidentsRouteImport } from "./routes/incidents";
+import { Route as InvoicesRouteImport } from "./routes/invoices";
+import { Route as JitAccessRouteImport } from "./routes/jit-access";
+import { Route as LogsRouteImport } from "./routes/logs";
+import { Route as MetricAlertsRouteImport } from "./routes/metric-alerts";
+import { Route as MomentRouteImport } from "./routes/moment";
+import { Route as PostureRouteImport } from "./routes/posture";
+import { Route as PriceCatalogRouteImport } from "./routes/price-catalog";
+import { Route as ProbesRouteImport } from "./routes/probes";
+import { Route as QueryMonitorsRouteImport } from "./routes/query-monitors";
+import { Route as QuotasRouteImport } from "./routes/quotas";
+import { Route as RunbooksRouteImport } from "./routes/runbooks";
+import { Route as SavingsRouteImport } from "./routes/savings";
+import { Route as SettingsRouteImport } from "./routes/settings";
+import { Route as SlosRouteImport } from "./routes/slos";
+import { Route as SshFanoutRouteImport } from "./routes/ssh-fanout";
+import { Route as StatusPagesRouteImport } from "./routes/status-pages";
+import { Route as WallboardRouteImport } from "./routes/wallboard";
+import { Route as WorkflowsRouteImport } from "./routes/workflows";
+import { Route as AccountsAccountIdRouteImport } from "./routes/accounts.$accountId";
+import { Route as DashboardDashboardIdRouteImport } from "./routes/dashboard.$dashboardId";
+import { Route as ResourceAccountIdResourceIdRouteImport } from "./routes/resource.$accountId.$resourceId";
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AccessReviewRoute = AccessReviewRouteImport.update({
-  id: '/access-review',
-  path: '/access-review',
+  id: "/access-review",
+  path: "/access-review",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AgentsRoute = AgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
+  id: "/agents",
+  path: "/agents",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const BackupsRoute = BackupsRouteImport.update({
-  id: '/backups',
-  path: '/backups',
+  id: "/backups",
+  path: "/backups",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CalendarRoute = CalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
+  id: "/calendar",
+  path: "/calendar",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ChangesRoute = ChangesRouteImport.update({
-  id: '/changes',
-  path: '/changes',
+  id: "/changes",
+  path: "/changes",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ChatRoute = ChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
+  id: "/chat",
+  path: "/chat",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CostCanvasesRoute = CostCanvasesRouteImport.update({
-  id: '/cost-canvases',
-  path: '/cost-canvases',
+  id: "/cost-canvases",
+  path: "/cost-canvases",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CostReportsRoute = CostReportsRouteImport.update({
-  id: '/cost-reports',
-  path: '/cost-reports',
+  id: "/cost-reports",
+  path: "/cost-reports",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CostsRoute = CostsRouteImport.update({
-  id: '/costs',
-  path: '/costs',
+  id: "/costs",
+  path: "/costs",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: "/delivery",
+  path: "/delivery",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DeploymentsRoute = DeploymentsRouteImport.update({
-  id: '/deployments',
-  path: '/deployments',
+  id: "/deployments",
+  path: "/deployments",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const DnsRoute = DnsRouteImport.update({
-  id: '/dns',
-  path: '/dns',
+  id: "/dns",
+  path: "/dns",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
-  id: '/environment-diff',
-  path: '/environment-diff',
+  id: "/environment-diff",
+  path: "/environment-diff",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const EnvironmentsRoute = EnvironmentsRouteImport.update({
-  id: '/environments',
-  path: '/environments',
+  id: "/environments",
+  path: "/environments",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ExpiringRoute = ExpiringRouteImport.update({
-  id: '/expiring',
-  path: '/expiring',
+  id: "/expiring",
+  path: "/expiring",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const GraphRoute = GraphRouteImport.update({
-  id: '/graph',
-  path: '/graph',
+  id: "/graph",
+  path: "/graph",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IacRoute = IacRouteImport.update({
-  id: '/iac',
-  path: '/iac',
+  id: "/iac",
+  path: "/iac",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IncidentsRoute = IncidentsRouteImport.update({
-  id: '/incidents',
-  path: '/incidents',
+  id: "/incidents",
+  path: "/incidents",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const InvoicesRoute = InvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
+  id: "/invoices",
+  path: "/invoices",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const JitAccessRoute = JitAccessRouteImport.update({
-  id: '/jit-access',
-  path: '/jit-access',
+  id: "/jit-access",
+  path: "/jit-access",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LogsRoute = LogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
+  id: "/logs",
+  path: "/logs",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const MetricAlertsRoute = MetricAlertsRouteImport.update({
-  id: '/metric-alerts',
-  path: '/metric-alerts',
+  id: "/metric-alerts",
+  path: "/metric-alerts",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const MomentRoute = MomentRouteImport.update({
-  id: '/moment',
-  path: '/moment',
+  id: "/moment",
+  path: "/moment",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const PostureRoute = PostureRouteImport.update({
-  id: '/posture',
-  path: '/posture',
+  id: "/posture",
+  path: "/posture",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const PriceCatalogRoute = PriceCatalogRouteImport.update({
-  id: '/price-catalog',
-  path: '/price-catalog',
+  id: "/price-catalog",
+  path: "/price-catalog",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ProbesRoute = ProbesRouteImport.update({
-  id: '/probes',
-  path: '/probes',
+  id: "/probes",
+  path: "/probes",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const QueryMonitorsRoute = QueryMonitorsRouteImport.update({
-  id: '/query-monitors',
-  path: '/query-monitors',
+  id: "/query-monitors",
+  path: "/query-monitors",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const QuotasRoute = QuotasRouteImport.update({
-  id: '/quotas',
-  path: '/quotas',
+  id: "/quotas",
+  path: "/quotas",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const RunbooksRoute = RunbooksRouteImport.update({
-  id: '/runbooks',
-  path: '/runbooks',
+  id: "/runbooks",
+  path: "/runbooks",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SavingsRoute = SavingsRouteImport.update({
-  id: '/savings',
-  path: '/savings',
+  id: "/savings",
+  path: "/savings",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+  id: "/settings",
+  path: "/settings",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SlosRoute = SlosRouteImport.update({
-  id: '/slos',
-  path: '/slos',
+  id: "/slos",
+  path: "/slos",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SshFanoutRoute = SshFanoutRouteImport.update({
-  id: '/ssh-fanout',
-  path: '/ssh-fanout',
+  id: "/ssh-fanout",
+  path: "/ssh-fanout",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const StatusPagesRoute = StatusPagesRouteImport.update({
-  id: '/status-pages',
-  path: '/status-pages',
+  id: "/status-pages",
+  path: "/status-pages",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const WallboardRoute = WallboardRouteImport.update({
-  id: '/wallboard',
-  path: '/wallboard',
+  id: "/wallboard",
+  path: "/wallboard",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const WorkflowsRoute = WorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
+  id: "/workflows",
+  path: "/workflows",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
-  id: '/accounts/$accountId',
-  path: '/accounts/$accountId',
+  id: "/accounts/$accountId",
+  path: "/accounts/$accountId",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const DashboardDashboardIdRoute = DashboardDashboardIdRouteImport.update({
-  id: '/dashboard/$dashboardId',
-  path: '/dashboard/$dashboardId',
+  id: "/dashboard/$dashboardId",
+  path: "/dashboard/$dashboardId",
   getParentRoute: () => rootRouteImport,
-} as any)
-const ResourceAccountIdResourceIdRoute =
-  ResourceAccountIdResourceIdRouteImport.update({
-    id: '/resource/$accountId/$resourceId',
-    path: '/resource/$accountId/$resourceId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+} as any);
+const ResourceAccountIdResourceIdRoute = ResourceAccountIdResourceIdRouteImport.update({
+  id: "/resource/$accountId/$resourceId",
+  path: "/resource/$accountId/$resourceId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/access-review': typeof AccessReviewRoute
-  '/agents': typeof AgentsRoute
-  '/backups': typeof BackupsRoute
-  '/calendar': typeof CalendarRoute
-  '/changes': typeof ChangesRoute
-  '/chat': typeof ChatRoute
-  '/cost-canvases': typeof CostCanvasesRoute
-  '/cost-reports': typeof CostReportsRoute
-  '/costs': typeof CostsRoute
-  '/deployments': typeof DeploymentsRoute
-  '/dns': typeof DnsRoute
-  '/environment-diff': typeof EnvironmentDiffRoute
-  '/environments': typeof EnvironmentsRoute
-  '/expiring': typeof ExpiringRoute
-  '/graph': typeof GraphRoute
-  '/iac': typeof IacRoute
-  '/incidents': typeof IncidentsRoute
-  '/invoices': typeof InvoicesRoute
-  '/jit-access': typeof JitAccessRoute
-  '/logs': typeof LogsRoute
-  '/metric-alerts': typeof MetricAlertsRoute
-  '/moment': typeof MomentRoute
-  '/posture': typeof PostureRoute
-  '/price-catalog': typeof PriceCatalogRoute
-  '/probes': typeof ProbesRoute
-  '/query-monitors': typeof QueryMonitorsRoute
-  '/quotas': typeof QuotasRoute
-  '/runbooks': typeof RunbooksRoute
-  '/savings': typeof SavingsRoute
-  '/settings': typeof SettingsRoute
-  '/slos': typeof SlosRoute
-  '/ssh-fanout': typeof SshFanoutRoute
-  '/status-pages': typeof StatusPagesRoute
-  '/wallboard': typeof WallboardRoute
-  '/workflows': typeof WorkflowsRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  "/": typeof IndexRoute;
+  "/access-review": typeof AccessReviewRoute;
+  "/agents": typeof AgentsRoute;
+  "/backups": typeof BackupsRoute;
+  "/calendar": typeof CalendarRoute;
+  "/changes": typeof ChangesRoute;
+  "/chat": typeof ChatRoute;
+  "/cost-canvases": typeof CostCanvasesRoute;
+  "/cost-reports": typeof CostReportsRoute;
+  "/costs": typeof CostsRoute;
+  "/delivery": typeof DeliveryRoute;
+  "/deployments": typeof DeploymentsRoute;
+  "/dns": typeof DnsRoute;
+  "/environment-diff": typeof EnvironmentDiffRoute;
+  "/environments": typeof EnvironmentsRoute;
+  "/expiring": typeof ExpiringRoute;
+  "/graph": typeof GraphRoute;
+  "/iac": typeof IacRoute;
+  "/incidents": typeof IncidentsRoute;
+  "/invoices": typeof InvoicesRoute;
+  "/jit-access": typeof JitAccessRoute;
+  "/logs": typeof LogsRoute;
+  "/metric-alerts": typeof MetricAlertsRoute;
+  "/moment": typeof MomentRoute;
+  "/posture": typeof PostureRoute;
+  "/price-catalog": typeof PriceCatalogRoute;
+  "/probes": typeof ProbesRoute;
+  "/query-monitors": typeof QueryMonitorsRoute;
+  "/quotas": typeof QuotasRoute;
+  "/runbooks": typeof RunbooksRoute;
+  "/savings": typeof SavingsRoute;
+  "/settings": typeof SettingsRoute;
+  "/slos": typeof SlosRoute;
+  "/ssh-fanout": typeof SshFanoutRoute;
+  "/status-pages": typeof StatusPagesRoute;
+  "/wallboard": typeof WallboardRoute;
+  "/workflows": typeof WorkflowsRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/access-review': typeof AccessReviewRoute
-  '/agents': typeof AgentsRoute
-  '/backups': typeof BackupsRoute
-  '/calendar': typeof CalendarRoute
-  '/changes': typeof ChangesRoute
-  '/chat': typeof ChatRoute
-  '/cost-canvases': typeof CostCanvasesRoute
-  '/cost-reports': typeof CostReportsRoute
-  '/costs': typeof CostsRoute
-  '/deployments': typeof DeploymentsRoute
-  '/dns': typeof DnsRoute
-  '/environment-diff': typeof EnvironmentDiffRoute
-  '/environments': typeof EnvironmentsRoute
-  '/expiring': typeof ExpiringRoute
-  '/graph': typeof GraphRoute
-  '/iac': typeof IacRoute
-  '/incidents': typeof IncidentsRoute
-  '/invoices': typeof InvoicesRoute
-  '/jit-access': typeof JitAccessRoute
-  '/logs': typeof LogsRoute
-  '/metric-alerts': typeof MetricAlertsRoute
-  '/moment': typeof MomentRoute
-  '/posture': typeof PostureRoute
-  '/price-catalog': typeof PriceCatalogRoute
-  '/probes': typeof ProbesRoute
-  '/query-monitors': typeof QueryMonitorsRoute
-  '/quotas': typeof QuotasRoute
-  '/runbooks': typeof RunbooksRoute
-  '/savings': typeof SavingsRoute
-  '/settings': typeof SettingsRoute
-  '/slos': typeof SlosRoute
-  '/ssh-fanout': typeof SshFanoutRoute
-  '/status-pages': typeof StatusPagesRoute
-  '/wallboard': typeof WallboardRoute
-  '/workflows': typeof WorkflowsRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  "/": typeof IndexRoute;
+  "/access-review": typeof AccessReviewRoute;
+  "/agents": typeof AgentsRoute;
+  "/backups": typeof BackupsRoute;
+  "/calendar": typeof CalendarRoute;
+  "/changes": typeof ChangesRoute;
+  "/chat": typeof ChatRoute;
+  "/cost-canvases": typeof CostCanvasesRoute;
+  "/cost-reports": typeof CostReportsRoute;
+  "/costs": typeof CostsRoute;
+  "/delivery": typeof DeliveryRoute;
+  "/deployments": typeof DeploymentsRoute;
+  "/dns": typeof DnsRoute;
+  "/environment-diff": typeof EnvironmentDiffRoute;
+  "/environments": typeof EnvironmentsRoute;
+  "/expiring": typeof ExpiringRoute;
+  "/graph": typeof GraphRoute;
+  "/iac": typeof IacRoute;
+  "/incidents": typeof IncidentsRoute;
+  "/invoices": typeof InvoicesRoute;
+  "/jit-access": typeof JitAccessRoute;
+  "/logs": typeof LogsRoute;
+  "/metric-alerts": typeof MetricAlertsRoute;
+  "/moment": typeof MomentRoute;
+  "/posture": typeof PostureRoute;
+  "/price-catalog": typeof PriceCatalogRoute;
+  "/probes": typeof ProbesRoute;
+  "/query-monitors": typeof QueryMonitorsRoute;
+  "/quotas": typeof QuotasRoute;
+  "/runbooks": typeof RunbooksRoute;
+  "/savings": typeof SavingsRoute;
+  "/settings": typeof SettingsRoute;
+  "/slos": typeof SlosRoute;
+  "/ssh-fanout": typeof SshFanoutRoute;
+  "/status-pages": typeof StatusPagesRoute;
+  "/wallboard": typeof WallboardRoute;
+  "/workflows": typeof WorkflowsRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/access-review': typeof AccessReviewRoute
-  '/agents': typeof AgentsRoute
-  '/backups': typeof BackupsRoute
-  '/calendar': typeof CalendarRoute
-  '/changes': typeof ChangesRoute
-  '/chat': typeof ChatRoute
-  '/cost-canvases': typeof CostCanvasesRoute
-  '/cost-reports': typeof CostReportsRoute
-  '/costs': typeof CostsRoute
-  '/deployments': typeof DeploymentsRoute
-  '/dns': typeof DnsRoute
-  '/environment-diff': typeof EnvironmentDiffRoute
-  '/environments': typeof EnvironmentsRoute
-  '/expiring': typeof ExpiringRoute
-  '/graph': typeof GraphRoute
-  '/iac': typeof IacRoute
-  '/incidents': typeof IncidentsRoute
-  '/invoices': typeof InvoicesRoute
-  '/jit-access': typeof JitAccessRoute
-  '/logs': typeof LogsRoute
-  '/metric-alerts': typeof MetricAlertsRoute
-  '/moment': typeof MomentRoute
-  '/posture': typeof PostureRoute
-  '/price-catalog': typeof PriceCatalogRoute
-  '/probes': typeof ProbesRoute
-  '/query-monitors': typeof QueryMonitorsRoute
-  '/quotas': typeof QuotasRoute
-  '/runbooks': typeof RunbooksRoute
-  '/savings': typeof SavingsRoute
-  '/settings': typeof SettingsRoute
-  '/slos': typeof SlosRoute
-  '/ssh-fanout': typeof SshFanoutRoute
-  '/status-pages': typeof StatusPagesRoute
-  '/wallboard': typeof WallboardRoute
-  '/workflows': typeof WorkflowsRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/access-review": typeof AccessReviewRoute;
+  "/agents": typeof AgentsRoute;
+  "/backups": typeof BackupsRoute;
+  "/calendar": typeof CalendarRoute;
+  "/changes": typeof ChangesRoute;
+  "/chat": typeof ChatRoute;
+  "/cost-canvases": typeof CostCanvasesRoute;
+  "/cost-reports": typeof CostReportsRoute;
+  "/costs": typeof CostsRoute;
+  "/delivery": typeof DeliveryRoute;
+  "/deployments": typeof DeploymentsRoute;
+  "/dns": typeof DnsRoute;
+  "/environment-diff": typeof EnvironmentDiffRoute;
+  "/environments": typeof EnvironmentsRoute;
+  "/expiring": typeof ExpiringRoute;
+  "/graph": typeof GraphRoute;
+  "/iac": typeof IacRoute;
+  "/incidents": typeof IncidentsRoute;
+  "/invoices": typeof InvoicesRoute;
+  "/jit-access": typeof JitAccessRoute;
+  "/logs": typeof LogsRoute;
+  "/metric-alerts": typeof MetricAlertsRoute;
+  "/moment": typeof MomentRoute;
+  "/posture": typeof PostureRoute;
+  "/price-catalog": typeof PriceCatalogRoute;
+  "/probes": typeof ProbesRoute;
+  "/query-monitors": typeof QueryMonitorsRoute;
+  "/quotas": typeof QuotasRoute;
+  "/runbooks": typeof RunbooksRoute;
+  "/savings": typeof SavingsRoute;
+  "/settings": typeof SettingsRoute;
+  "/slos": typeof SlosRoute;
+  "/ssh-fanout": typeof SshFanoutRoute;
+  "/status-pages": typeof StatusPagesRoute;
+  "/wallboard": typeof WallboardRoute;
+  "/workflows": typeof WorkflowsRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/access-review'
-    | '/agents'
-    | '/backups'
-    | '/calendar'
-    | '/changes'
-    | '/chat'
-    | '/cost-canvases'
-    | '/cost-reports'
-    | '/costs'
-    | '/deployments'
-    | '/dns'
-    | '/environment-diff'
-    | '/environments'
-    | '/expiring'
-    | '/graph'
-    | '/iac'
-    | '/incidents'
-    | '/invoices'
-    | '/jit-access'
-    | '/logs'
-    | '/metric-alerts'
-    | '/moment'
-    | '/posture'
-    | '/price-catalog'
-    | '/probes'
-    | '/query-monitors'
-    | '/quotas'
-    | '/runbooks'
-    | '/savings'
-    | '/settings'
-    | '/slos'
-    | '/ssh-fanout'
-    | '/status-pages'
-    | '/wallboard'
-    | '/workflows'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/access-review"
+    | "/agents"
+    | "/backups"
+    | "/calendar"
+    | "/changes"
+    | "/chat"
+    | "/cost-canvases"
+    | "/cost-reports"
+    | "/costs"
+    | "/delivery"
+    | "/deployments"
+    | "/dns"
+    | "/environment-diff"
+    | "/environments"
+    | "/expiring"
+    | "/graph"
+    | "/iac"
+    | "/incidents"
+    | "/invoices"
+    | "/jit-access"
+    | "/logs"
+    | "/metric-alerts"
+    | "/moment"
+    | "/posture"
+    | "/price-catalog"
+    | "/probes"
+    | "/query-monitors"
+    | "/quotas"
+    | "/runbooks"
+    | "/savings"
+    | "/settings"
+    | "/slos"
+    | "/ssh-fanout"
+    | "/status-pages"
+    | "/wallboard"
+    | "/workflows"
+    | "/accounts/$accountId"
+    | "/dashboard/$dashboardId"
+    | "/resource/$accountId/$resourceId";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/access-review'
-    | '/agents'
-    | '/backups'
-    | '/calendar'
-    | '/changes'
-    | '/chat'
-    | '/cost-canvases'
-    | '/cost-reports'
-    | '/costs'
-    | '/deployments'
-    | '/dns'
-    | '/environment-diff'
-    | '/environments'
-    | '/expiring'
-    | '/graph'
-    | '/iac'
-    | '/incidents'
-    | '/invoices'
-    | '/jit-access'
-    | '/logs'
-    | '/metric-alerts'
-    | '/moment'
-    | '/posture'
-    | '/price-catalog'
-    | '/probes'
-    | '/query-monitors'
-    | '/quotas'
-    | '/runbooks'
-    | '/savings'
-    | '/settings'
-    | '/slos'
-    | '/ssh-fanout'
-    | '/status-pages'
-    | '/wallboard'
-    | '/workflows'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
+    | "/"
+    | "/access-review"
+    | "/agents"
+    | "/backups"
+    | "/calendar"
+    | "/changes"
+    | "/chat"
+    | "/cost-canvases"
+    | "/cost-reports"
+    | "/costs"
+    | "/delivery"
+    | "/deployments"
+    | "/dns"
+    | "/environment-diff"
+    | "/environments"
+    | "/expiring"
+    | "/graph"
+    | "/iac"
+    | "/incidents"
+    | "/invoices"
+    | "/jit-access"
+    | "/logs"
+    | "/metric-alerts"
+    | "/moment"
+    | "/posture"
+    | "/price-catalog"
+    | "/probes"
+    | "/query-monitors"
+    | "/quotas"
+    | "/runbooks"
+    | "/savings"
+    | "/settings"
+    | "/slos"
+    | "/ssh-fanout"
+    | "/status-pages"
+    | "/wallboard"
+    | "/workflows"
+    | "/accounts/$accountId"
+    | "/dashboard/$dashboardId"
+    | "/resource/$accountId/$resourceId";
   id:
-    | '__root__'
-    | '/'
-    | '/access-review'
-    | '/agents'
-    | '/backups'
-    | '/calendar'
-    | '/changes'
-    | '/chat'
-    | '/cost-canvases'
-    | '/cost-reports'
-    | '/costs'
-    | '/deployments'
-    | '/dns'
-    | '/environment-diff'
-    | '/environments'
-    | '/expiring'
-    | '/graph'
-    | '/iac'
-    | '/incidents'
-    | '/invoices'
-    | '/jit-access'
-    | '/logs'
-    | '/metric-alerts'
-    | '/moment'
-    | '/posture'
-    | '/price-catalog'
-    | '/probes'
-    | '/query-monitors'
-    | '/quotas'
-    | '/runbooks'
-    | '/savings'
-    | '/settings'
-    | '/slos'
-    | '/ssh-fanout'
-    | '/status-pages'
-    | '/wallboard'
-    | '/workflows'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/access-review"
+    | "/agents"
+    | "/backups"
+    | "/calendar"
+    | "/changes"
+    | "/chat"
+    | "/cost-canvases"
+    | "/cost-reports"
+    | "/costs"
+    | "/delivery"
+    | "/deployments"
+    | "/dns"
+    | "/environment-diff"
+    | "/environments"
+    | "/expiring"
+    | "/graph"
+    | "/iac"
+    | "/incidents"
+    | "/invoices"
+    | "/jit-access"
+    | "/logs"
+    | "/metric-alerts"
+    | "/moment"
+    | "/posture"
+    | "/price-catalog"
+    | "/probes"
+    | "/query-monitors"
+    | "/quotas"
+    | "/runbooks"
+    | "/savings"
+    | "/settings"
+    | "/slos"
+    | "/ssh-fanout"
+    | "/status-pages"
+    | "/wallboard"
+    | "/workflows"
+    | "/accounts/$accountId"
+    | "/dashboard/$dashboardId"
+    | "/resource/$accountId/$resourceId";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AccessReviewRoute: typeof AccessReviewRoute
-  AgentsRoute: typeof AgentsRoute
-  BackupsRoute: typeof BackupsRoute
-  CalendarRoute: typeof CalendarRoute
-  ChangesRoute: typeof ChangesRoute
-  ChatRoute: typeof ChatRoute
-  CostCanvasesRoute: typeof CostCanvasesRoute
-  CostReportsRoute: typeof CostReportsRoute
-  CostsRoute: typeof CostsRoute
-  DeploymentsRoute: typeof DeploymentsRoute
-  DnsRoute: typeof DnsRoute
-  EnvironmentDiffRoute: typeof EnvironmentDiffRoute
-  EnvironmentsRoute: typeof EnvironmentsRoute
-  ExpiringRoute: typeof ExpiringRoute
-  GraphRoute: typeof GraphRoute
-  IacRoute: typeof IacRoute
-  IncidentsRoute: typeof IncidentsRoute
-  InvoicesRoute: typeof InvoicesRoute
-  JitAccessRoute: typeof JitAccessRoute
-  LogsRoute: typeof LogsRoute
-  MetricAlertsRoute: typeof MetricAlertsRoute
-  MomentRoute: typeof MomentRoute
-  PostureRoute: typeof PostureRoute
-  PriceCatalogRoute: typeof PriceCatalogRoute
-  ProbesRoute: typeof ProbesRoute
-  QueryMonitorsRoute: typeof QueryMonitorsRoute
-  QuotasRoute: typeof QuotasRoute
-  RunbooksRoute: typeof RunbooksRoute
-  SavingsRoute: typeof SavingsRoute
-  SettingsRoute: typeof SettingsRoute
-  SlosRoute: typeof SlosRoute
-  SshFanoutRoute: typeof SshFanoutRoute
-  StatusPagesRoute: typeof StatusPagesRoute
-  WallboardRoute: typeof WallboardRoute
-  WorkflowsRoute: typeof WorkflowsRoute
-  AccountsAccountIdRoute: typeof AccountsAccountIdRoute
-  DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
-  ResourceAccountIdResourceIdRoute: typeof ResourceAccountIdResourceIdRoute
+  IndexRoute: typeof IndexRoute;
+  AccessReviewRoute: typeof AccessReviewRoute;
+  AgentsRoute: typeof AgentsRoute;
+  BackupsRoute: typeof BackupsRoute;
+  CalendarRoute: typeof CalendarRoute;
+  ChangesRoute: typeof ChangesRoute;
+  ChatRoute: typeof ChatRoute;
+  CostCanvasesRoute: typeof CostCanvasesRoute;
+  CostReportsRoute: typeof CostReportsRoute;
+  CostsRoute: typeof CostsRoute;
+  DeliveryRoute: typeof DeliveryRoute;
+  DeploymentsRoute: typeof DeploymentsRoute;
+  DnsRoute: typeof DnsRoute;
+  EnvironmentDiffRoute: typeof EnvironmentDiffRoute;
+  EnvironmentsRoute: typeof EnvironmentsRoute;
+  ExpiringRoute: typeof ExpiringRoute;
+  GraphRoute: typeof GraphRoute;
+  IacRoute: typeof IacRoute;
+  IncidentsRoute: typeof IncidentsRoute;
+  InvoicesRoute: typeof InvoicesRoute;
+  JitAccessRoute: typeof JitAccessRoute;
+  LogsRoute: typeof LogsRoute;
+  MetricAlertsRoute: typeof MetricAlertsRoute;
+  MomentRoute: typeof MomentRoute;
+  PostureRoute: typeof PostureRoute;
+  PriceCatalogRoute: typeof PriceCatalogRoute;
+  ProbesRoute: typeof ProbesRoute;
+  QueryMonitorsRoute: typeof QueryMonitorsRoute;
+  QuotasRoute: typeof QuotasRoute;
+  RunbooksRoute: typeof RunbooksRoute;
+  SavingsRoute: typeof SavingsRoute;
+  SettingsRoute: typeof SettingsRoute;
+  SlosRoute: typeof SlosRoute;
+  SshFanoutRoute: typeof SshFanoutRoute;
+  StatusPagesRoute: typeof StatusPagesRoute;
+  WallboardRoute: typeof WallboardRoute;
+  WorkflowsRoute: typeof WorkflowsRoute;
+  AccountsAccountIdRoute: typeof AccountsAccountIdRoute;
+  DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute;
+  ResourceAccountIdResourceIdRoute: typeof ResourceAccountIdResourceIdRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/access-review': {
-      id: '/access-review'
-      path: '/access-review'
-      fullPath: '/access-review'
-      preLoaderRoute: typeof AccessReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/agents': {
-      id: '/agents'
-      path: '/agents'
-      fullPath: '/agents'
-      preLoaderRoute: typeof AgentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/backups': {
-      id: '/backups'
-      path: '/backups'
-      fullPath: '/backups'
-      preLoaderRoute: typeof BackupsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/calendar': {
-      id: '/calendar'
-      path: '/calendar'
-      fullPath: '/calendar'
-      preLoaderRoute: typeof CalendarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/changes': {
-      id: '/changes'
-      path: '/changes'
-      fullPath: '/changes'
-      preLoaderRoute: typeof ChangesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/chat': {
-      id: '/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cost-canvases': {
-      id: '/cost-canvases'
-      path: '/cost-canvases'
-      fullPath: '/cost-canvases'
-      preLoaderRoute: typeof CostCanvasesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cost-reports': {
-      id: '/cost-reports'
-      path: '/cost-reports'
-      fullPath: '/cost-reports'
-      preLoaderRoute: typeof CostReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/costs': {
-      id: '/costs'
-      path: '/costs'
-      fullPath: '/costs'
-      preLoaderRoute: typeof CostsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/deployments': {
-      id: '/deployments'
-      path: '/deployments'
-      fullPath: '/deployments'
-      preLoaderRoute: typeof DeploymentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dns': {
-      id: '/dns'
-      path: '/dns'
-      fullPath: '/dns'
-      preLoaderRoute: typeof DnsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/environment-diff': {
-      id: '/environment-diff'
-      path: '/environment-diff'
-      fullPath: '/environment-diff'
-      preLoaderRoute: typeof EnvironmentDiffRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/environments': {
-      id: '/environments'
-      path: '/environments'
-      fullPath: '/environments'
-      preLoaderRoute: typeof EnvironmentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/expiring': {
-      id: '/expiring'
-      path: '/expiring'
-      fullPath: '/expiring'
-      preLoaderRoute: typeof ExpiringRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/graph': {
-      id: '/graph'
-      path: '/graph'
-      fullPath: '/graph'
-      preLoaderRoute: typeof GraphRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/iac': {
-      id: '/iac'
-      path: '/iac'
-      fullPath: '/iac'
-      preLoaderRoute: typeof IacRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/incidents': {
-      id: '/incidents'
-      path: '/incidents'
-      fullPath: '/incidents'
-      preLoaderRoute: typeof IncidentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invoices': {
-      id: '/invoices'
-      path: '/invoices'
-      fullPath: '/invoices'
-      preLoaderRoute: typeof InvoicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/jit-access': {
-      id: '/jit-access'
-      path: '/jit-access'
-      fullPath: '/jit-access'
-      preLoaderRoute: typeof JitAccessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/logs': {
-      id: '/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof LogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/metric-alerts': {
-      id: '/metric-alerts'
-      path: '/metric-alerts'
-      fullPath: '/metric-alerts'
-      preLoaderRoute: typeof MetricAlertsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/moment': {
-      id: '/moment'
-      path: '/moment'
-      fullPath: '/moment'
-      preLoaderRoute: typeof MomentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/posture': {
-      id: '/posture'
-      path: '/posture'
-      fullPath: '/posture'
-      preLoaderRoute: typeof PostureRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/price-catalog': {
-      id: '/price-catalog'
-      path: '/price-catalog'
-      fullPath: '/price-catalog'
-      preLoaderRoute: typeof PriceCatalogRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/probes': {
-      id: '/probes'
-      path: '/probes'
-      fullPath: '/probes'
-      preLoaderRoute: typeof ProbesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/query-monitors': {
-      id: '/query-monitors'
-      path: '/query-monitors'
-      fullPath: '/query-monitors'
-      preLoaderRoute: typeof QueryMonitorsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/quotas': {
-      id: '/quotas'
-      path: '/quotas'
-      fullPath: '/quotas'
-      preLoaderRoute: typeof QuotasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/runbooks': {
-      id: '/runbooks'
-      path: '/runbooks'
-      fullPath: '/runbooks'
-      preLoaderRoute: typeof RunbooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/savings': {
-      id: '/savings'
-      path: '/savings'
-      fullPath: '/savings'
-      preLoaderRoute: typeof SavingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/slos': {
-      id: '/slos'
-      path: '/slos'
-      fullPath: '/slos'
-      preLoaderRoute: typeof SlosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ssh-fanout': {
-      id: '/ssh-fanout'
-      path: '/ssh-fanout'
-      fullPath: '/ssh-fanout'
-      preLoaderRoute: typeof SshFanoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/status-pages': {
-      id: '/status-pages'
-      path: '/status-pages'
-      fullPath: '/status-pages'
-      preLoaderRoute: typeof StatusPagesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/wallboard': {
-      id: '/wallboard'
-      path: '/wallboard'
-      fullPath: '/wallboard'
-      preLoaderRoute: typeof WallboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/workflows': {
-      id: '/workflows'
-      path: '/workflows'
-      fullPath: '/workflows'
-      preLoaderRoute: typeof WorkflowsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accounts/$accountId': {
-      id: '/accounts/$accountId'
-      path: '/accounts/$accountId'
-      fullPath: '/accounts/$accountId'
-      preLoaderRoute: typeof AccountsAccountIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard/$dashboardId': {
-      id: '/dashboard/$dashboardId'
-      path: '/dashboard/$dashboardId'
-      fullPath: '/dashboard/$dashboardId'
-      preLoaderRoute: typeof DashboardDashboardIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/resource/$accountId/$resourceId': {
-      id: '/resource/$accountId/$resourceId'
-      path: '/resource/$accountId/$resourceId'
-      fullPath: '/resource/$accountId/$resourceId'
-      preLoaderRoute: typeof ResourceAccountIdResourceIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/access-review": {
+      id: "/access-review";
+      path: "/access-review";
+      fullPath: "/access-review";
+      preLoaderRoute: typeof AccessReviewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/agents": {
+      id: "/agents";
+      path: "/agents";
+      fullPath: "/agents";
+      preLoaderRoute: typeof AgentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/backups": {
+      id: "/backups";
+      path: "/backups";
+      fullPath: "/backups";
+      preLoaderRoute: typeof BackupsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/calendar": {
+      id: "/calendar";
+      path: "/calendar";
+      fullPath: "/calendar";
+      preLoaderRoute: typeof CalendarRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/changes": {
+      id: "/changes";
+      path: "/changes";
+      fullPath: "/changes";
+      preLoaderRoute: typeof ChangesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/chat": {
+      id: "/chat";
+      path: "/chat";
+      fullPath: "/chat";
+      preLoaderRoute: typeof ChatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/cost-canvases": {
+      id: "/cost-canvases";
+      path: "/cost-canvases";
+      fullPath: "/cost-canvases";
+      preLoaderRoute: typeof CostCanvasesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/cost-reports": {
+      id: "/cost-reports";
+      path: "/cost-reports";
+      fullPath: "/cost-reports";
+      preLoaderRoute: typeof CostReportsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/costs": {
+      id: "/costs";
+      path: "/costs";
+      fullPath: "/costs";
+      preLoaderRoute: typeof CostsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/delivery": {
+      id: "/delivery";
+      path: "/delivery";
+      fullPath: "/delivery";
+      preLoaderRoute: typeof DeliveryRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/deployments": {
+      id: "/deployments";
+      path: "/deployments";
+      fullPath: "/deployments";
+      preLoaderRoute: typeof DeploymentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/dns": {
+      id: "/dns";
+      path: "/dns";
+      fullPath: "/dns";
+      preLoaderRoute: typeof DnsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/environment-diff": {
+      id: "/environment-diff";
+      path: "/environment-diff";
+      fullPath: "/environment-diff";
+      preLoaderRoute: typeof EnvironmentDiffRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/environments": {
+      id: "/environments";
+      path: "/environments";
+      fullPath: "/environments";
+      preLoaderRoute: typeof EnvironmentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/expiring": {
+      id: "/expiring";
+      path: "/expiring";
+      fullPath: "/expiring";
+      preLoaderRoute: typeof ExpiringRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/graph": {
+      id: "/graph";
+      path: "/graph";
+      fullPath: "/graph";
+      preLoaderRoute: typeof GraphRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/iac": {
+      id: "/iac";
+      path: "/iac";
+      fullPath: "/iac";
+      preLoaderRoute: typeof IacRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/incidents": {
+      id: "/incidents";
+      path: "/incidents";
+      fullPath: "/incidents";
+      preLoaderRoute: typeof IncidentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/invoices": {
+      id: "/invoices";
+      path: "/invoices";
+      fullPath: "/invoices";
+      preLoaderRoute: typeof InvoicesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/jit-access": {
+      id: "/jit-access";
+      path: "/jit-access";
+      fullPath: "/jit-access";
+      preLoaderRoute: typeof JitAccessRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/logs": {
+      id: "/logs";
+      path: "/logs";
+      fullPath: "/logs";
+      preLoaderRoute: typeof LogsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/metric-alerts": {
+      id: "/metric-alerts";
+      path: "/metric-alerts";
+      fullPath: "/metric-alerts";
+      preLoaderRoute: typeof MetricAlertsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/moment": {
+      id: "/moment";
+      path: "/moment";
+      fullPath: "/moment";
+      preLoaderRoute: typeof MomentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/posture": {
+      id: "/posture";
+      path: "/posture";
+      fullPath: "/posture";
+      preLoaderRoute: typeof PostureRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/price-catalog": {
+      id: "/price-catalog";
+      path: "/price-catalog";
+      fullPath: "/price-catalog";
+      preLoaderRoute: typeof PriceCatalogRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/probes": {
+      id: "/probes";
+      path: "/probes";
+      fullPath: "/probes";
+      preLoaderRoute: typeof ProbesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/query-monitors": {
+      id: "/query-monitors";
+      path: "/query-monitors";
+      fullPath: "/query-monitors";
+      preLoaderRoute: typeof QueryMonitorsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/quotas": {
+      id: "/quotas";
+      path: "/quotas";
+      fullPath: "/quotas";
+      preLoaderRoute: typeof QuotasRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/runbooks": {
+      id: "/runbooks";
+      path: "/runbooks";
+      fullPath: "/runbooks";
+      preLoaderRoute: typeof RunbooksRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/savings": {
+      id: "/savings";
+      path: "/savings";
+      fullPath: "/savings";
+      preLoaderRoute: typeof SavingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings": {
+      id: "/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof SettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/slos": {
+      id: "/slos";
+      path: "/slos";
+      fullPath: "/slos";
+      preLoaderRoute: typeof SlosRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/ssh-fanout": {
+      id: "/ssh-fanout";
+      path: "/ssh-fanout";
+      fullPath: "/ssh-fanout";
+      preLoaderRoute: typeof SshFanoutRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/status-pages": {
+      id: "/status-pages";
+      path: "/status-pages";
+      fullPath: "/status-pages";
+      preLoaderRoute: typeof StatusPagesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/wallboard": {
+      id: "/wallboard";
+      path: "/wallboard";
+      fullPath: "/wallboard";
+      preLoaderRoute: typeof WallboardRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/workflows": {
+      id: "/workflows";
+      path: "/workflows";
+      fullPath: "/workflows";
+      preLoaderRoute: typeof WorkflowsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/accounts/$accountId": {
+      id: "/accounts/$accountId";
+      path: "/accounts/$accountId";
+      fullPath: "/accounts/$accountId";
+      preLoaderRoute: typeof AccountsAccountIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/dashboard/$dashboardId": {
+      id: "/dashboard/$dashboardId";
+      path: "/dashboard/$dashboardId";
+      fullPath: "/dashboard/$dashboardId";
+      preLoaderRoute: typeof DashboardDashboardIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/resource/$accountId/$resourceId": {
+      id: "/resource/$accountId/$resourceId";
+      path: "/resource/$accountId/$resourceId";
+      fullPath: "/resource/$accountId/$resourceId";
+      preLoaderRoute: typeof ResourceAccountIdResourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -827,6 +846,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostCanvasesRoute: CostCanvasesRoute,
   CostReportsRoute: CostReportsRoute,
   CostsRoute: CostsRoute,
+  DeliveryRoute: DeliveryRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
@@ -856,7 +876,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,
   ResourceAccountIdResourceIdRoute: ResourceAccountIdResourceIdRoute,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

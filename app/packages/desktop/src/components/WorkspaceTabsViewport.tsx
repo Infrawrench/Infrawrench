@@ -75,6 +75,7 @@ import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopPriceCatalogPanel } from "@/components/DesktopPriceCatalogPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopSlosPanel } from "@/components/DesktopSlosPanel";
+import { DesktopDeliveryPanel } from "@/components/DesktopDeliveryPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { AppWindowPanel } from "./AppsPanels";
@@ -662,6 +663,8 @@ function renderPanel(
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":
       return <DesktopSlosPanel sloId={t.sloId} />;
+    case "delivery":
+      return <DesktopDeliveryPanel />;
     case "settings":
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":

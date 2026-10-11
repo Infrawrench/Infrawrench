@@ -364,6 +364,8 @@ export interface ParsedCli {
   unitCost: UnitCostFlags;
   /** `jit` flags: raw strings, validated by the command. */
   jit: JitFlags;
+  /** `dora`: `--scope <dimension>[=<value>]` and `--failed` (drill-down to failed changes). */
+  dora: { scope: string | undefined; failed: boolean; restores: boolean };
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -533,6 +535,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         ticket: { type: "string" },
         status: { type: "string" },
         mine: { type: "boolean", default: false },
+        // `dora`: list only failed changes / list recoveries.
+        failed: { type: "boolean", default: false },
+        restores: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
         // `pr-check`: a pull request by number, or a local diff against a base.
         repo: { type: "string" },
@@ -731,6 +736,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       desc: values.desc === true,
     },
     savings: { amount: str("amount"), note: str("note") },
+    dora: {
+      scope: str("scope"),
+      failed: values.failed === true,
+      restores: values.restores === true,
+    },
     jit: {
       policy: str("policy"),
       role: str("role"),
