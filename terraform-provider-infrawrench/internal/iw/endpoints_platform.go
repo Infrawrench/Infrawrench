@@ -1354,6 +1354,24 @@ func (c *Client) PutRealizedSavingsSettings(ctx context.Context, in RealizedSavi
 	return &out, nil
 }
 
+/* --------------------------------- seats ---------------------------------- */
+
+func (c *Client) GetSeatSettings(ctx context.Context) (*SeatSettings, error) {
+	var out SeatSettings
+	if err := c.Get(ctx, "/seats/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutSeatSettings(ctx context.Context, in SeatSettings) (*SeatSettings, error) {
+	var out SeatSettings
+	if err := c.Put(ctx, "/seats/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ---------------------------- paging providers ---------------------------- */
 
 // ListPagingProviders unwraps the {"accounts": […]} envelope.

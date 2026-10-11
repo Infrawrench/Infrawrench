@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 68 resources and 7 data sources, each with its own
+control, and alert delivery. 69 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -589,7 +589,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 ```
 
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
-`anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
+`anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`, `seat_settings`,
 `drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
 `session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
@@ -686,6 +686,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_ai_request_source`         | by id     | LiteLLM `api_key` is write-only; lookback is clamped |
 | `infrawrench_ai_attribution_dimension`  | by id     | No single-GET route; becomes tag key `caller:<key>`  |
 | `infrawrench_realized_savings_settings` | by org id | Org singleton; destroy restores the defaults         |
+| `infrawrench_seat_settings`             | by org id | Org singleton; destroy restores the defaults         |
 
 ### Monitoring
 

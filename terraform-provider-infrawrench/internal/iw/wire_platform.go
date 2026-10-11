@@ -1630,6 +1630,13 @@ type RealizedSavingsSettings struct {
 	BaselineWindowDays        int64 `json:"baselineWindowDays"`
 }
 
+// SeatSettings is the org singleton that sets how long a paid SaaS seat may
+// go unused before the Seats findings flag it. The same shape is read and
+// written.
+type SeatSettings struct {
+	InactiveDays int64 `json:"inactiveDays"`
+}
+
 // deref reads an optional string, empty when absent. Used by the tagged-union
 // marshallers so a missing id serialises as "" and the server's validation
 // names the missing field, rather than the key vanishing from the body.

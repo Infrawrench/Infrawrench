@@ -192,6 +192,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAIRequestSourceResource,
 		NewAIAttributionDimensionResource,
 		NewRealizedSavingsSettingsResource,
+		NewSeatSettingsResource,
 
 		// Monitoring.
 		NewProbeResource,

@@ -155,6 +155,7 @@ func specChecks() []specCheck {
 		{schema: "CostAnomalySuppressionInput", value: CostAnomalySuppressionInput{}},
 		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},
 		{schema: "RealizedSavingsSettings", value: RealizedSavingsSettings{}},
+		{schema: "SeatSettings", value: SeatSettings{}},
 
 		{schema: "CurrencyConfig", value: CurrencyConfig{}},
 		{schema: "CurrencySettings", value: CurrencySettings{}},

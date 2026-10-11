@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 68 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 69 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -440,6 +440,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_anomaly_suppression`       | Expected-spend windows that keep known patterns from raising anomaly alerts                    |
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds              |
 | `infrawrench_realized_savings_settings` | How [realized savings](./realized-savings.md) are measured                                     |
+| `infrawrench_seat_settings`             | How long a [SaaS seat](./saas-seats.md) may go unused before it is flagged                     |
 | `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                                  |
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by                    |
 | `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend               |
