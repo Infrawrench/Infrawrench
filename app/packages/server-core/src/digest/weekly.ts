@@ -74,6 +74,7 @@ import {
   type DigestCostMover,
   type DigestProjection,
   type DigestRealizedSavings,
+  type DigestDelivery,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -81,6 +82,8 @@ import {
 } from "./compose";
 import { orgAppUrl } from "../app-url";
 import { getRealizedSavingsReport } from "../savings/realized";
+import { getDoraReport } from "../dora/load";
+import { getDoraSettings } from "../dora/settings";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -313,7 +316,38 @@ export async function buildWeeklyDigest(
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
     costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
     realizedSavings: await buildRealizedSavings(organizationId, window),
+    delivery: await buildDelivery(organizationId, window),
   });
+}
+
+/**
+ * The delivery line: the reported week's DORA summary for production, from
+ * the same engine as the Delivery page. Dropped when the org turned the
+ * section off. Never the reason a digest fails to send: any error drops it.
+ */
+async function buildDelivery(
+  organizationId: string,
+  window: DigestWindow,
+): Promise<DigestDelivery | null> {
+  try {
+    const settings = await getDoraSettings(organizationId);
+    if (!settings.digestEnabled) return null;
+    // Window dates are local civil dates; UTC day bounds are the same
+    // approximation the spend half makes.
+    const from = new Date(`${window.weekStart}T00:00:00Z`);
+    const to = new Date(Date.parse(`${window.weekEnd}T00:00:00Z`) + 86_400_000);
+    const report = await getDoraReport(organizationId, { from, to, bucket: "day" });
+    return {
+      deploys: report.summary.deploymentFrequency.deploys,
+      previousDeploys: report.previous.deploymentFrequency.deploys,
+      leadTimeHours: report.summary.leadTime.value,
+      changeFailureRate: report.summary.changeFailureRate.value,
+      restoreHours: report.summary.timeToRestore.value,
+    };
+  } catch (err) {
+    console.error(`[digest] delivery metrics for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 /**

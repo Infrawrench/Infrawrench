@@ -730,6 +730,11 @@ export interface DoraReport {
   settings: DoraSettingsView;
   /** How many raw deploy events of any environment the window held. */
   eventCount: number;
+  /**
+   * Every value each dimension took among the window's production changes,
+   * before the filter: what the scope picker offers.
+   */
+  scopeValues: Record<string, DoraScopeValue[]>;
 }
 
 export function doraBucketStart(t: number, bucket: DoraBucketSize): number {
@@ -812,7 +817,8 @@ export interface BuildDoraReportInput extends DoraAnalysisInput {
  * so the previous period's changes can be blamed for failures too.
  */
 export function buildDoraReport(input: BuildDoraReportInput): DoraReport {
-  const analysis = scopeDoraAnalysis(analyzeDora(input), input.filter);
+  const unscoped = analyzeDora(input);
+  const analysis = scopeDoraAnalysis(unscoped, input.filter);
   const span = ms(input.to) - ms(input.from);
   const prevFrom = new Date(ms(input.from) - span).toISOString();
   const fromMs = ms(input.from);
@@ -830,7 +836,27 @@ export function buildDoraReport(input: BuildDoraReportInput): DoraReport {
     dimensions: input.dimensions,
     settings: input.settingsView,
     eventCount: input.events.filter((e) => inRange(e.deployedAt, fromMs, toMs)).length,
+    scopeValues: collectScopeValues(unscoped, input.dimensions, fromMs, toMs),
   };
+}
+
+function collectScopeValues(
+  analysis: DoraAnalysis,
+  dimensions: DoraDimensionInfo[],
+  fromMs: number,
+  toMs: number,
+): Record<string, DoraScopeValue[]> {
+  const out: Record<string, DoraScopeValue[]> = {};
+  for (const d of dimensions) {
+    const seen = new Map<string, DoraScopeValue>();
+    for (const c of analysis.changes) {
+      if (!inRange(c.at, fromMs, toMs)) continue;
+      const v = c.scope[d.id];
+      if (v && !seen.has(v.key)) seen.set(v.key, v);
+    }
+    out[d.id] = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+  return out;
 }
 
 /* -------------------------------- formatting ------------------------------- */

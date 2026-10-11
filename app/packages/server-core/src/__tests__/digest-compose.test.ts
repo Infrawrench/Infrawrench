@@ -17,6 +17,7 @@ import {
   type DigestCostGroup,
   type DigestInput,
   type DigestSchedule,
+  deliverySegments,
 } from "../digest/compose";
 
 /**
@@ -695,5 +696,33 @@ describe("a narrative that contains markup", () => {
     expect(strip(formatDigestSlackBody(digest(), HOSTILE))).toBe(
       strip(formatDigestSlackBody(digest(), "Nothing unusual happened.")),
     );
+  });
+});
+
+describe("deliverySegments", () => {
+  it("names the week's DORA numbers and leaves out what was not measured", () => {
+    const line = deliverySegments({
+      deploys: 12,
+      previousDeploys: 8,
+      leadTimeHours: 6.5,
+      changeFailureRate: 0.083,
+      restoreHours: null,
+    });
+    expect(line?.map((s) => s.text).join("")).toBe(
+      "Delivery: 12 production deploys (8 the week before), lead time 6.5h, change failure rate 8.3%",
+    );
+  });
+
+  it("is silent for an org that does not deploy", () => {
+    expect(
+      deliverySegments({
+        deploys: 0,
+        previousDeploys: 0,
+        leadTimeHours: null,
+        changeFailureRate: null,
+        restoreHours: null,
+      }),
+    ).toBeNull();
+    expect(deliverySegments(null)).toBeNull();
   });
 });
