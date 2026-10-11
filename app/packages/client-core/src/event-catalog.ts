@@ -256,6 +256,21 @@ const int = field("integer");
 const time = field("datetime");
 const list = field("string[]");
 
+/**
+ * Field-spec builders for {@link defineEventType}, so a definition in another
+ * module reads like the built-in ones: `fields: { id: ef.str("…"), n: ef.int("…") }`.
+ * Each keeps its literal `type` (and `enum`/`nullable`) so `EventData` infers
+ * exact payload types.
+ */
+export const ef = {
+  str,
+  num,
+  int,
+  time,
+  list,
+  bool: field("boolean"),
+};
+
 export const TEST_EVENT = defineEventType({
   type: "infrawrench.test",
   version: 1,
