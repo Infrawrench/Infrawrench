@@ -287,6 +287,22 @@ describe("publish-handlers", () => {
     expect(body.messages[0].orderingKey).toBe("ok");
   });
 
+  it("publishPubsubTopic tags an event subscription delivery with event attributes", async () => {
+    fetchSpy.mockResolvedValue(ok({ messageIds: ["m2"] }));
+    await publishPubsubTopic({ token: async () => "tok", project: "proj" }, "topic1", {
+      body: "{}",
+      extras: {},
+      event: { type: "incident.declared", version: 1, id: "evt_2", source: "infrawrench" },
+    });
+    const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.messages[0].attributes).toEqual({
+      eventType: "incident.declared",
+      eventVersion: "1",
+      eventId: "evt_2",
+      source: "infrawrench",
+    });
+  });
+
   it("publishPubsubTopic throws on error", async () => {
     fetchSpy.mockResolvedValue(err(403));
     await expect(
