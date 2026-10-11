@@ -46,9 +46,7 @@ function finding(
     fixedVersion: opts.fix ? "3.0.2" : null,
     fixAvailable: opts.fix ?? null,
     exploitAvailable: null,
-    kev: opts.kev
-      ? { dateAdded: "2026-01-01", dueDate: null, knownRansomware: false }
-      : null,
+    kev: opts.kev ? { dateAdded: "2026-01-01", dueDate: null, knownRansomware: false } : null,
     artifact: {
       kind: "image",
       name: "registry/app",
@@ -146,9 +144,7 @@ describe("vulnerabilityTools", () => {
 
   it("list_vulnerabilities returns dismissed rows only when asked, filtered the same way", async () => {
     mockListVulnerabilities.mockResolvedValue(feed());
-    const out = parse(
-      await tool("list_vulnerabilities").handler({ includeDismissed: true }, auth),
-    );
+    const out = parse(await tool("list_vulnerabilities").handler({ includeDismissed: true }, auth));
     expect(out.dismissed).toHaveLength(1);
     expect(out.dismissed[0].dismissal.reason).toBe("not reachable");
 

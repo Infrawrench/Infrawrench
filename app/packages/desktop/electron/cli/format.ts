@@ -980,7 +980,10 @@ export function formatVulnArtifact(artifact: {
   const name = safe(artifact.name);
   const tag = artifact.tags[0];
   if (tag) return `${name}:${safe(tag)}`;
-  if (artifact.digest) return `${name}@${safe(artifact.digest).replace(/^sha256:/, "").slice(0, 12)}`;
+  if (artifact.digest)
+    return `${name}@${safe(artifact.digest)
+      .replace(/^sha256:/, "")
+      .slice(0, 12)}`;
   return name;
 }
 
