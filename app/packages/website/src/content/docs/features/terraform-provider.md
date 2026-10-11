@@ -496,7 +496,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                                                 |
 | `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                                          |
 | `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                                          |
-| `infrawrench_event_subscription`       | [Event subscriptions](./event-subscriptions.md): org events to a signed webhook, an EventBridge bus or a Pub/Sub topic |
+| `infrawrench_event_subscription`       | [Event subscriptions](./event-subscriptions.md): org events to a signed webhook, an EventBridge bus or a Pub/Sub topic                                       |
 | `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                                             |
 | `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                                         |
 | `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                                          |
