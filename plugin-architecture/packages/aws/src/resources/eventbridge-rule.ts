@@ -15,4 +15,6 @@ export const EventBridgeRuleResourceType = rt({
   iconKey: "event",
   supportsCreate: true,
   supportsMetrics: true,
+  // Event subscriptions deliver to the rule's event bus (PutEvents).
+  eventSink: true,
 });
