@@ -122,7 +122,7 @@ export async function cmdWebhooks(ctx: CliContext, args: string[]): Promise<void
       { header: "tries", value: (d) => String(d.attemptCount) },
       {
         header: "status",
-        value: (d) => (d.responseStatus === null ? c.dim("—") : String(d.responseStatus)),
+        value: (d) => (d.responseStatus === null ? c.dim("-") : String(d.responseStatus)),
       },
       { header: "when", value: (d) => c.dim(formatChangeTime(d.createdAt)) },
       { header: "error", value: (d) => (d.error ? c.red(safe(d.error)) : "") },
