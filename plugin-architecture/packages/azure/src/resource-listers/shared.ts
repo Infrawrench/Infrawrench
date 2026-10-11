@@ -68,6 +68,35 @@ export function registryHost(fxVersion: string): string {
   return host.includes(".") ? host : "";
 }
 
+/**
+ * The container image a Microsoft.Web site runs, from its `linuxFxVersion`
+ * (`DOCKER|myacr.azurecr.io/app:1.4`). Built-in stacks (`NODE|20-lts`),
+ * Compose (`COMPOSE|<base64>`) and sidecar sites (`SITECONTAINERS`) name no
+ * single image and return "".
+ *
+ * The subscription-wide `sites` list does not always fill `siteConfig`; the
+ * same value is then in `siteProperties.properties[]` as `LinuxFxVersion`,
+ * which is in the same response and so costs nothing to read.
+ */
+export function siteContainerImage(site: Record<string, unknown>): string {
+  const props = site["properties"] as Record<string, unknown> | undefined;
+  const siteConfig = props?.["siteConfig"] as Record<string, unknown> | undefined;
+  const siteProps = (props?.["siteProperties"] as Record<string, unknown> | undefined)?.[
+    "properties"
+  ] as Array<Record<string, unknown>> | undefined;
+  const fromSiteProps = (siteProps ?? []).find(
+    (p) => String(p["name"] ?? "").toLowerCase() === "linuxfxversion",
+  )?.["value"];
+  const fx = String(siteConfig?.["linuxFxVersion"] || fromSiteProps || "");
+  const match = /^docker\|(.+)$/i.exec(fx.trim());
+  return match?.[1]?.trim() ?? "";
+}
+
+/** Every image a container template runs (containers, then init containers), comma-joined. */
+export function templateImages(containers: Array<Record<string, unknown>>): string {
+  return joinRefs(containers.map((c) => String(c["image"] ?? "")));
+}
+
 /** Bare names of the user-assigned managed identities attached to an ARM resource. */
 export function userAssignedIdentityNames(resource: Record<string, unknown>): string[] {
   const identity = resource["identity"] as Record<string, unknown> | undefined;

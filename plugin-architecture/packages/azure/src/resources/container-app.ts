@@ -49,6 +49,11 @@ export const ContainerAppResourceType = rt({
     f("latestRevisionName", "Latest Revision", { required: false, editable: false }),
     f("workloadProfileName", "Workload Profile", { required: false, editable: false }),
     f("containerCount", "Containers", { kind: "number", required: false, editable: false }),
+    f("images", "Images", {
+      required: false,
+      editable: false,
+      description: "Every image the app's template runs, init containers included",
+    }),
     f("containerRegistry", "Container Registry", { required: false, editable: false }),
     f("managedIdentities", "Managed Identities", { required: false, editable: false }),
   ],
@@ -90,6 +95,13 @@ export const ContainerAppResourceType = rt({
     statusFieldKey: "runningStatus",
     runningValues: ["Running"],
     stoppedValues: ["Stopped"],
+  },
+  // Vulnerability join: the template's images, counted as running while the
+  // app is (a stopped app has scaled to zero).
+  runningImages: {
+    imageKeys: ["images"],
+    runningKey: "runningStatus",
+    runningValues: ["Running"],
   },
   supportsCreate: true,
   supportsUpdate: true,

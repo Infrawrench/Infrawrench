@@ -7,6 +7,7 @@ import {
   listAllPages,
   registryHost,
   subnetRef,
+  templateImages,
   userAssignedIdentityNames,
   type ListerContext,
 } from "./shared.js";
@@ -87,6 +88,10 @@ export async function listContainerApps(
         latestRevisionName: String(props?.["latestRevisionName"] ?? ""),
         workloadProfileName: String(props?.["workloadProfileName"] ?? ""),
         containerCount: containers.length,
+        images: templateImages([
+          ...containers,
+          ...((template?.["initContainers"] as Bag[] | undefined) ?? []),
+        ]),
         containerRegistry: registriesOf(template, configuration),
         managedIdentities: joinRefs(userAssignedIdentityNames(app)),
       },
@@ -201,6 +206,10 @@ export async function listContainerAppJobs(
         replicaTimeout: Number(configuration?.["replicaTimeout"] ?? 0),
         replicaRetryLimit: Number(configuration?.["replicaRetryLimit"] ?? 0),
         workloadProfileName: String(props?.["workloadProfileName"] ?? ""),
+        images: templateImages([
+          ...((template?.["containers"] as Bag[] | undefined) ?? []),
+          ...((template?.["initContainers"] as Bag[] | undefined) ?? []),
+        ]),
         containerRegistry: registriesOf(template, configuration),
         managedIdentities: joinRefs(userAssignedIdentityNames(job)),
       },

@@ -121,6 +121,19 @@ const manifest: PluginManifest = {
   // to hold Reader (or Reservations Reader / Savings plan Reader) on them:
   // surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
+  // Container image findings from Microsoft Defender for Cloud: individual
+  // `SoftwareUpdate` recommendations on `.containerimage` resources, read
+  // through Azure Resource Graph (the grouped sub-assessment model retired
+  // on 2026-07-31). Reader on the subscription is enough to read them, but
+  // the scanner only runs under the paid Defender for Containers or Defender
+  // CSPM plan with registry access on, hence `requiresElevatedCredential`.
+  // `partial` because the walk stops at 20 pages of 1000 recommendations.
+  vulnerabilities: {
+    label: "Microsoft Defender for Cloud",
+    consoleUrl: "https://portal.azure.com/#blade/Microsoft_Azure_Security/SecurityMenuBlade/0",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   statusFeed,
   priceCatalog,
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
