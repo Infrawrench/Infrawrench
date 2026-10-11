@@ -43,6 +43,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SlosRouteImport } from './routes/slos'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as StatusPagesRouteImport } from './routes/status-pages'
+import { Route as VulnerabilitiesRouteImport } from './routes/vulnerabilities'
 import { Route as WallboardRouteImport } from './routes/wallboard'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
@@ -219,6 +220,11 @@ const StatusPagesRoute = StatusPagesRouteImport.update({
   path: '/status-pages',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VulnerabilitiesRoute = VulnerabilitiesRouteImport.update({
+  id: '/vulnerabilities',
+  path: '/vulnerabilities',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WallboardRoute = WallboardRouteImport.update({
   id: '/wallboard',
   path: '/wallboard',
@@ -281,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -322,6 +329,7 @@ export interface FileRoutesByTo {
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -364,6 +372,7 @@ export interface FileRoutesById {
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -407,6 +416,7 @@ export interface FileRouteTypes {
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -448,6 +458,7 @@ export interface FileRouteTypes {
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -489,6 +500,7 @@ export interface FileRouteTypes {
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -531,6 +543,7 @@ export interface RootRouteChildren {
   SlosRoute: typeof SlosRoute
   SshFanoutRoute: typeof SshFanoutRoute
   StatusPagesRoute: typeof StatusPagesRoute
+  VulnerabilitiesRoute: typeof VulnerabilitiesRoute
   WallboardRoute: typeof WallboardRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
@@ -778,6 +791,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusPagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vulnerabilities': {
+      id: '/vulnerabilities'
+      path: '/vulnerabilities'
+      fullPath: '/vulnerabilities'
+      preLoaderRoute: typeof VulnerabilitiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/wallboard': {
       id: '/wallboard'
       path: '/wallboard'
@@ -851,6 +871,7 @@ const rootRouteChildren: RootRouteChildren = {
   SlosRoute: SlosRoute,
   SshFanoutRoute: SshFanoutRoute,
   StatusPagesRoute: StatusPagesRoute,
+  VulnerabilitiesRoute: VulnerabilitiesRoute,
   WallboardRoute: WallboardRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,

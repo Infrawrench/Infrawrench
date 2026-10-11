@@ -201,6 +201,7 @@ const TabTarget = strict({
     "changes",
     "expiring",
     "posture",
+    "vulnerabilities",
     "access-review",
     "jit-access",
     "backups",

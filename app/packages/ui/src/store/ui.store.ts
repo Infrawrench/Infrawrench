@@ -15,6 +15,8 @@ export type WorkspaceTabTarget =
   | { kind: "changes" }
   | { kind: "expiring" }
   | { kind: "posture" }
+  /** Scanner-reported vulnerabilities, joined to what is running. Single-instance. */
+  | { kind: "vulnerabilities" }
   | { kind: "access-review" }
   /** Just-in-time access: time-boxed provider roles, requested and approved. */
   | { kind: "jit-access" }
@@ -159,6 +161,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "expiring";
     case "posture":
       return "posture";
+    case "vulnerabilities":
+      return "vulnerabilities";
     case "access-review":
       return "access-review";
     case "jit-access":
@@ -259,6 +263,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Expiring";
     case "posture":
       return "Posture";
+    case "vulnerabilities":
+      return "Vulnerabilities";
     case "access-review":
       return "Access review";
     case "jit-access":
@@ -333,6 +339,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "changes":
     case "expiring":
     case "posture":
+    case "vulnerabilities":
     case "access-review":
     case "jit-access":
     case "backups":

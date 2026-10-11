@@ -364,6 +364,7 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,

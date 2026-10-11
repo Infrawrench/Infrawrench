@@ -823,6 +823,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "changes" ||
       target.kind === "expiring" ||
       target.kind === "posture" ||
+      target.kind === "vulnerabilities" ||
       target.kind === "access-review" ||
       target.kind === "jit-access" ||
       target.kind === "backups" ||

@@ -425,6 +425,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns vulnerabilities route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({
+      to: "/org/$orgId/vulnerabilities",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns access review route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({
       to: "/org/$orgId/access-review",
@@ -521,6 +528,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped posture path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the org-scoped vulnerabilities path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/vulnerabilities")).toEqual({ kind: "vulnerabilities" });
   });
 
   it("parses the org-scoped access review path", () => {

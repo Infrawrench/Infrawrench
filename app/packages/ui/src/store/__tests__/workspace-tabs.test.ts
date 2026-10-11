@@ -107,6 +107,10 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "posture" })).toBe("posture");
   });
 
+  it("returns the singleton id for the vulnerabilities target", () => {
+    expect(getWorkspaceTabId({ kind: "vulnerabilities" })).toBe("vulnerabilities");
+  });
+
   it("returns the singleton id for the access review target", () => {
     expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
     expect(getWorkspaceTabId({ kind: "jit-access" })).toBe("jit-access");
@@ -339,6 +343,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "posture" })).toBe("Posture");
   });
 
+  it("returns 'Vulnerabilities' for the vulnerabilities target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "vulnerabilities" })).toBe("Vulnerabilities");
+  });
+
   it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "access-review" })).toBe("Access review");
     expect(getWorkspaceTabFallbackTitle({ kind: "jit-access" })).toBe("Just-in-time access");
@@ -461,6 +469,13 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two posture targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "posture" }, { kind: "posture" })).toBe(true);
+  });
+
+  it("treats two vulnerabilities targets as equal and never as posture", () => {
+    expect(
+      workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "vulnerabilities" }),
+    ).toBe(true);
+    expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "posture" })).toBe(false);
   });
 
   it("treats two access review targets as equal (singleton tab)", () => {

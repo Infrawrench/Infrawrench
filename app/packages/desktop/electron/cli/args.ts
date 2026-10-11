@@ -330,6 +330,27 @@ export interface UnitCostFlags {
   listUsageUnits: boolean;
 }
 
+/**
+ * `vulns` filters. Severities stay a raw comma-separated string so the command
+ * validates them and can name the valid values in the error.
+ */
+export interface VulnsFlags {
+  /** `--severity critical,high`. */
+  severity?: string | undefined;
+  /** `--running` / `--not-running`: true, false, or undefined for both. */
+  running?: boolean | undefined;
+  /** `--fix-available`: only findings the scanner says have a fix. */
+  fixAvailable: boolean;
+  /** `--kev`: only findings in the CISA KEV catalog. */
+  kev: boolean;
+  /** `--plugin <id>`: only findings this plugin reported. */
+  plugin?: string | undefined;
+  /** `--search <text>`: substring over advisory, aliases, package, artifact, title. */
+  search?: string | undefined;
+  /** `--include-dismissed`: also list (and, with --json, keep) the dismissed rows. */
+  includeDismissed: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
@@ -344,6 +365,7 @@ export interface ParsedCli {
   apps: AppsFlags;
   diff: DiffFlags;
   config: ConfigFlags;
+  vulns: VulnsFlags;
   /** `savings log`: the monthly amount (validated by the command) and a note. */
   savings: { amount: string | undefined; note: string | undefined };
   positionals: string[];
@@ -534,6 +556,14 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         status: { type: "string" },
         mine: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
+        // `vulns` filters. `--plugin`, `--limit` and `-a/--account` are shared.
+        severity: { type: "string" },
+        running: { type: "boolean", default: false },
+        "not-running": { type: "boolean", default: false },
+        "fix-available": { type: "boolean", default: false },
+        kev: { type: "boolean", default: false },
+        search: { type: "string" },
+        "include-dismissed": { type: "boolean", default: false },
         // `pr-check`: a pull request by number, or a local diff against a base.
         repo: { type: "string" },
         pr: { type: "string" },
@@ -600,6 +630,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     }
     return value;
   };
+
+  if (values.running && values["not-running"]) {
+    throw new CliError("--running and --not-running are mutually exclusive", 2);
+  }
 
   return {
     exports: {
@@ -729,6 +763,15 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       maxPrice: str("max-price"),
       sort: str("sort"),
       desc: values.desc === true,
+    },
+    vulns: {
+      severity: str("severity"),
+      running: values.running === true ? true : values["not-running"] === true ? false : undefined,
+      fixAvailable: values["fix-available"] === true,
+      kev: values.kev === true,
+      plugin: str("plugin"),
+      search: str("search"),
+      includeDismissed: values["include-dismissed"] === true,
     },
     savings: { amount: str("amount"), note: str("note") },
     jit: {

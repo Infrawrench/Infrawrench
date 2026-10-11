@@ -6,6 +6,7 @@ import {
   costCanvasesTabTarget,
   invoicesTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -65,6 +66,10 @@ describe("tab target factories", () => {
 
   it("postureTabTarget", () => {
     expect(postureTabTarget()).toEqual({ kind: "posture" });
+  });
+
+  it("vulnerabilitiesTabTarget", () => {
+    expect(vulnerabilitiesTabTarget()).toEqual({ kind: "vulnerabilities" });
   });
 
   it("accessReviewTabTarget", () => {

@@ -13,6 +13,7 @@ import {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -199,6 +200,12 @@ export function getWorkspaceNavigateArgs(
     case "posture":
       return {
         to: "/org/$orgId/posture",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "vulnerabilities":
+      return {
+        to: "/org/$orgId/vulnerabilities",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -561,6 +568,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "posture") {
     return postureTabTarget();
+  }
+  if (s[0] === "vulnerabilities") {
+    return vulnerabilitiesTabTarget();
   }
   if (s[0] === "access-review") {
     return accessReviewTabTarget();

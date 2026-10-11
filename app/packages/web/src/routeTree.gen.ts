@@ -51,6 +51,7 @@ import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settin
 import { Route as OrgOrgIdSlosRouteImport } from './routes/org.$orgId.slos'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdStatusPagesRouteImport } from './routes/org.$orgId.status-pages'
+import { Route as OrgOrgIdVulnerabilitiesRouteImport } from './routes/org.$orgId.vulnerabilities'
 import { Route as OrgOrgIdWallboardRouteImport } from './routes/org.$orgId.wallboard'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
@@ -306,6 +307,11 @@ const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
 const OrgOrgIdStatusPagesRoute = OrgOrgIdStatusPagesRouteImport.update({
   id: '/status-pages',
   path: '/status-pages',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdVulnerabilitiesRoute = OrgOrgIdVulnerabilitiesRouteImport.update({
+  id: '/vulnerabilities',
+  path: '/vulnerabilities',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdWallboardRoute = OrgOrgIdWallboardRouteImport.update({
@@ -609,6 +615,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -696,6 +703,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId': typeof OrgOrgIdIndexRoute
@@ -787,6 +795,7 @@ export interface FileRoutesById {
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
@@ -879,6 +888,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -966,6 +976,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
@@ -1056,6 +1067,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
@@ -1410,6 +1422,13 @@ declare module '@tanstack/react-router' {
       path: '/status-pages'
       fullPath: '/org/$orgId/status-pages'
       preLoaderRoute: typeof OrgOrgIdStatusPagesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/vulnerabilities': {
+      id: '/org/$orgId/vulnerabilities'
+      path: '/vulnerabilities'
+      fullPath: '/org/$orgId/vulnerabilities'
+      preLoaderRoute: typeof OrgOrgIdVulnerabilitiesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/wallboard': {
@@ -1930,6 +1949,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdSlosRoute: typeof OrgOrgIdSlosRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdStatusPagesRoute: typeof OrgOrgIdStatusPagesRoute
+  OrgOrgIdVulnerabilitiesRoute: typeof OrgOrgIdVulnerabilitiesRoute
   OrgOrgIdWallboardRoute: typeof OrgOrgIdWallboardRoute
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRouteWithChildren
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
@@ -1972,6 +1992,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdSlosRoute: OrgOrgIdSlosRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdStatusPagesRoute: OrgOrgIdStatusPagesRoute,
+  OrgOrgIdVulnerabilitiesRoute: OrgOrgIdVulnerabilitiesRoute,
   OrgOrgIdWallboardRoute: OrgOrgIdWallboardRoute,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRouteWithChildren,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
