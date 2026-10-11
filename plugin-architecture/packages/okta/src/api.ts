@@ -411,6 +411,26 @@ export class OktaApi {
       console.warn(`Okta plugin: ${path} truncated at ${maxPages} pages (${out.length} items)`);
     return out;
   }
+
+  /**
+   * Like {@link paginate}, but every page or nothing: a failed page throws, and
+   * so does running past `maxPages`, because a reader that stores the result
+   * as the complete set (the seat inventory) must never see a truncated list.
+   */
+  async paginateAll<T>(path: string, query: Query = {}, maxPages = 1000): Promise<T[]> {
+    const out: T[] = [];
+    let next: string | null = `${this.creds.orgUrl}${path}${buildQuery(query)}`;
+    for (let page = 0; next; page++) {
+      if (page >= maxPages)
+        throw new Error(
+          `Okta plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
+        );
+      const res: OktaResponse<T[]> = await this.call<T[]>(next);
+      out.push(...(res.data ?? []));
+      next = nextLink(res.headers["link"]);
+    }
+    return out;
+  }
 }
 
 function safeJson(text: string): unknown {

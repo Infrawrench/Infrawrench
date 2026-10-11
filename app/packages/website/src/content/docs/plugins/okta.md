@@ -51,6 +51,18 @@ DPoP, which Okta turns on by default for new service apps, is handled automatica
 
 <insert [Okta user detail view for a locked-out user showing the Unlock, Reset password and Sign out everywhere actions and the Groups table] here>
 
+## Seats
+
+Okta accounts report every licensed user to the **Seats** page, which flags users nobody signs in as and people holding more than one identity provider seat, and adds up what removing them would save.
+
+- **What is read**: every user (`GET /api/v1/users`, all pages; a page that fails fails the whole read rather than reporting users as removed). Okta does not publish which statuses its contracts bill, so a user counts as a seat when it has been activated and not deactivated: active, password reset, password expired, locked out, suspended (suspending keeps the app assignments, so it does not free the licence), and pending user action (activated, never finished setting up). Staged users (never activated) and deactivated users are left out.
+- **Activity**: Okta's **last sign-in** for the user. A user who has never signed in is called idle once their account is older than your threshold, measured from when it was activated (or created, if it never was).
+- **Price**: the **Seat price** you set under **Advanced options** on the account, for your contract's per-user monthly price. Okta's API reports no pricing, so without it each user is estimated at Okta's lowest published Workforce Identity price, $6 per user per month for Starter (billed annually; okta.com/pricing, October 2026), and labelled as an estimate.
+- **Remove** deactivates the user. This is destructive: Okta deprovisions every app assignment, which can delete the user's data in those apps, and reactivating them later does not restore the assignments. The licence is free at once, but Okta contracts are annual, so the saving shows at your next true-up or renewal.
+- **Cheaper tier**: never suggested; the API does not say which suite you are on.
+- **Scopes**: `okta.users.read` to read seats, `okta.users.manage` to remove them (an API token from an admin who may manage users works for both).
+- [Remediation commands](../features/remediation-commands.md) for a flagged user are `curl` calls with an API token (`$OKTA_API_TOKEN`): show the user, then deactivate them.
+
 ## Tips & limits
 
 - Creating applications and policies is left to the Admin Console: both need sign-on-mode or policy-type specific settings. Existing ones can be renamed, toggled, reassigned and deleted here.

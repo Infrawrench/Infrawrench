@@ -11,6 +11,10 @@ import type {
   PluginClient,
   PolicyOption,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SidebarItemSchema,
   SshInstallContext,
 } from "@infrawrench/plugin-base";
@@ -47,6 +51,7 @@ import {
 } from "./mappers.js";
 import { flowSeries, flowWindow, formatFlowLogs } from "./network-flows.js";
 import { renderDetail, sidebarStatus } from "./render.js";
+import { mapTailscaleSeats, tailscaleSeatPrice } from "./seats.js";
 import { INVITE_ROLES, POSTURE_PROVIDERS, WEBHOOK_EVENTS } from "./resource-types.js";
 
 const API = "https://api.tailscale.com/api/v2";
@@ -1015,6 +1020,52 @@ export class TailscaleClient implements PluginClient {
           : {}),
       },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Seats
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The tailnet's members that occupy a seat, from `GET /tailnet/{tailnet}/users?type=member`
+   * (one unpaginated response; `lastSeen`, `status`, `created`, `role`, `type`).
+   * https://api.tailscale.com/api/v2?outputOpenapiSchema=true, operation listUsers (scope users:read).
+   */
+  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
+    const response = await this.request<{ users?: User[] }>(this.tailnetPath("/users?type=member"));
+    if (!response || !Array.isArray(response.users))
+      throw new Error("Tailscale API returned no user list");
+    return mapTailscaleSeats(
+      response.users,
+      this.tailnetId,
+      tailscaleSeatPrice(this.credentials.seatPriceMonthly),
+    );
+  }
+
+  /**
+   * Suspend the user (`POST /users/{userId}/suspend`), which frees the seat
+   * and is undone with Restore; deleting would also remove their devices for
+   * good. https://api.tailscale.com/api/v2?outputOpenapiSchema=true, operation
+   * suspendUser (scope users); effects per
+   * https://tailscale.com/docs/features/sharing/how-to/remove-team-members.
+   * The user must belong to this credential's tailnet: the route itself is
+   * not tailnet-scoped.
+   */
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const user = (await this.users()).find((u) => u.id === seat.memberId);
+    if (!user) throw new Error("That user is not a member of this tailnet.");
+    if ((user.role ?? "").toLowerCase() === "owner")
+      throw new Error(
+        "Tailscale will not suspend the tailnet owner; transfer ownership to another user first.",
+      );
+    if ((user.status ?? "").toLowerCase() === "suspended")
+      return { effective: "end-of-cycle", message: "The user was already suspended." };
+    await this.request(`/users/${encodeURIComponent(user.id)}/suspend`, "POST");
+    return {
+      effective: "end-of-cycle",
+      message:
+        "Suspended; the seat is free and Restore undoes it. Tailscale bills the seat count set at the start of each month, so reduce the seat count in billing to stop paying for it from next month.",
+    };
   }
 
   // ---------------------------------------------------------------------------
