@@ -14,6 +14,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { herokuRemediationCommands } from "./remediation.js";
 import { herokuTerraformExport } from "./terraform.js";
 import type { HkTeam } from "./types.js";
+import { herokuDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "heroku",
@@ -86,6 +87,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: herokuDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HerokuClient(credentials, RESOURCE_TYPES, services),

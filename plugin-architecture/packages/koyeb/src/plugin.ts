@@ -6,6 +6,7 @@ import { koyebRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { koyebTerraformExport } from "./terraform.js";
+import { koyebDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "koyeb",
@@ -43,6 +44,7 @@ const manifest: PluginManifest = {
 };
 
 export const plugin: Plugin = {
+  deployEvents: koyebDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new KoyebClient(credentials, RESOURCE_TYPES, services),

@@ -141,6 +141,7 @@ export function mapDeploy(
       trigger: d.trigger ?? "",
       commitId: d.commit?.id ?? "",
       commitMessage: message,
+      commitCreatedAt: d.commit?.createdAt ?? "",
       imageRef: d.image?.ref ?? "",
       serviceId: service.id,
       serviceName: service.name ?? "",

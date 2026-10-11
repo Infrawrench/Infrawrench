@@ -346,6 +346,19 @@ export {
   terraformRemediationHint,
 } from "./remediation.js";
 export type {
+  DeployEventFacts,
+  DeployEventResource,
+  DeployEventStatus,
+  DeployEventsCapability,
+} from "./deploy-events.js";
+export {
+  deployField,
+  deployOutput,
+  deployStatusFrom,
+  deployTime,
+  resolveDeployEvent,
+} from "./deploy-events.js";
+export type {
   OrphanCostAnnotation,
   OrphanCostBasis,
   ResourceOwnerAnnotation,

@@ -19,6 +19,7 @@ import { tfeRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { tfeTerraformExport } from "./terraform.js";
+import { hcpTerraformDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "hcp-terraform",
@@ -128,6 +129,7 @@ function validateServerCredentials(credentials: Record<string, string>): string 
 }
 
 export const plugin: Plugin = {
+  deployEvents: hcpTerraformDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HcpTerraformClient(credentials, services),

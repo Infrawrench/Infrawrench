@@ -12,6 +12,7 @@ import { bitbucketRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { BbWorkspaceAccess } from "./types.js";
+import { bitbucketDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "bitbucket",
@@ -102,6 +103,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: bitbucketDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BitbucketClient(credentials, services),
