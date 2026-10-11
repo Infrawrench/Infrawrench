@@ -187,6 +187,17 @@ AWS is the one provider that can feed [network costs](../features/network-costs.
 
 Cross-AZ transfer is priced at $0.01/GB **in each direction**, which is why both directions are stored and priced separately: AWS captures the flow at both network interfaces and bills both ends, so the two records at $0.01 each reproduce the real charge exactly.
 
+## Vulnerability findings
+
+AWS accounts report the open CVEs **Amazon Inspector** has found, read with Inspector's `ListFindings` API in every enabled region.
+
+- Needs `inspector2:ListFindings`, plus Inspector activated (with ECR, Lambda standard or EC2 scanning) in the regions you use. Inspector is a paid AWS service billed by AWS per scanned resource; reading findings costs nothing extra.
+- Only **active package vulnerability** findings are read. Suppressed and closed findings are left out, as are network reachability findings (open ports, not advisories) and Lambda code scanning findings (static-analysis results with no package or advisory id).
+- **ECR images** are reported by their pull reference (`<account>.dkr.ecr.<region>.amazonaws.com/<repository>`) and digest, so a finding joins every running workload that pulls that image, on any connected provider (Kubernetes pods, Cloud Run, Container Apps).
+- **Lambda functions** and **EC2 instances** join their synced Lambda and EC2 rows directly, by function name and instance id.
+- A region that refuses the read (Inspector not activated there, or a service control policy that denies the region) is skipped. If every region refuses, the account shows a permission or setup prompt instead of an empty list.
+- The walk is bounded per region, most severe first, so a very large estate can show a subset of its lowest-severity findings.
+
 ## AI spend by caller
 
 Bedrock lines on the bill carry the `ai:provider` tag (and `ai:model` for Marketplace editions such as "Claude 3.5 Sonnet (Amazon Bedrock Edition)"). Three [AI attribution](../features/ai-attribution.md) sources read per-request logs through this account:

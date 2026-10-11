@@ -26,6 +26,7 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
   QuotaUsage,
+  VulnerabilityFinding,
   PriceCatalogRequest,
   PriceCatalogResult,
   BusinessMetricSourceOption,
@@ -164,6 +165,10 @@ import {
   type AwsGetDefaultServiceQuotaResponse,
   type AwsListServiceQuotasResponse,
 } from "./quotas.js";
+import {
+  fetchAwsVulnerabilityFindings,
+  type InspectorListFindingsResponse,
+} from "./vulnerabilities.js";
 import { AWS_NETWORK_FLOW_CAPABILITY, fetchAwsNetworkFlows } from "./network-flows.js";
 import { listCloudWatchSourceOptions, runCloudWatchSource } from "./business-metric-source.js";
 import { callGetMetricStatistics } from "./metrics/cw-helpers.js";
@@ -757,6 +762,34 @@ export class AWSClient implements PluginClient {
 
   checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
     return checkAwsJitAccess(this.jit, spec);
+  }
+
+  /**
+   * Active Amazon Inspector package findings across every enabled region.
+   * Inspector is REST-JSON (`POST /findings/list`) and the plugin carries no
+   * Inspector SDK client, so the request is signed directly; see
+   * `vulnerabilities.ts` for the region and error handling.
+   */
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    const regions = await this.getEnabledRegions();
+    return fetchAwsVulnerabilityFindings({
+      regions,
+      listFindings: async (region, body) => {
+        const host = region.startsWith("cn-")
+          ? `inspector2.${region}.amazonaws.com.cn`
+          : `inspector2.${region}.amazonaws.com`;
+        const res = await fetchSigned({
+          method: "POST",
+          url: `https://${host}/findings/list`,
+          headers: { Host: host, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          service: "inspector2",
+          credentials: this.credsFor(region),
+        });
+        const text = await res.text();
+        return (text ? JSON.parse(text) : {}) as InspectorListFindingsResponse;
+      },
+    });
   }
 
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {

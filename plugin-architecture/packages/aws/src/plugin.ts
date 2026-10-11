@@ -162,6 +162,18 @@ const manifest: PluginManifest = {
     partial: true,
     requiresElevatedCredential: true,
   },
+  // Active Amazon Inspector package findings (ECR images, Lambda functions,
+  // EC2 instances) in every enabled region. Needs inspector2:ListFindings and
+  // Inspector activated in the regions used: surfaced in the plugin docs.
+  //
+  // `partial` because the per-region walk is bounded (most severe first); see
+  // `MAX_PAGES_PER_REGION` in `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "Amazon Inspector",
+    consoleUrl: "https://console.aws.amazon.com/inspector/v2/home",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   // Priced VPC Flow Log attribution. Needs ec2:DescribeFlowLogs,
   // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults:
   // surfaced in the plugin docs.

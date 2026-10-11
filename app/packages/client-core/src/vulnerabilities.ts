@@ -458,7 +458,15 @@ function matchRunning(f: StoredVulnerabilityFinding, index: RunningIndex): Vulne
       if (!out.has(ref.resourceId)) out.set(ref.resourceId, { ...ref, matchedBy: by });
     }
   };
-  if (f.artifactResourceId) add(index.byResource.get(f.artifactResourceId), "resource");
+  // A scanner names resources in its own account, and some providers' native
+  // ids are bare names (a Lambda function's), so a resource join never crosses
+  // accounts: two accounts each with a function called `api` are two functions.
+  if (f.artifactResourceId) {
+    const named = index.byResource.get(f.artifactResourceId)?.filter(
+      (r) => r.accountId === f.accountId,
+    );
+    add(named, "resource");
+  }
   if (f.artifactKind === "image") {
     if (f.artifactDigest) add(index.byDigest.get(f.artifactDigest.toLowerCase()), "digest");
     const parsed = parseImageRef(f.artifactName);
