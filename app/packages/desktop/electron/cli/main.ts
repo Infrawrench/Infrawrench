@@ -66,6 +66,7 @@ import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
 import { cmdPrCheck } from "./commands/pr-check";
 import { cmdExtendedSupport } from "./commands/extended-support";
+import { cmdSeats } from "./commands/seats";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
@@ -271,6 +272,11 @@ COMMANDS
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
+  seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a
+                      dearer tier, with remediation commands (cloud only)
+  seats all           every seat, its last activity and how that was determined
+  seats remove <id>   remove a flagged seat through its provider   [-y]
+  seats refresh       re-collect seats now
   carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
   k8s-network [cluster]
@@ -909,6 +915,9 @@ export async function runCli(): Promise<void> {
         break;
       case "extended-support":
         await cmdExtendedSupport(ctx);
+        break;
+      case "seats":
+        await cmdSeats(ctx, rest, parsed.bulk.yes);
         break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);
