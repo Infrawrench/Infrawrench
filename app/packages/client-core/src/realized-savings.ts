@@ -42,6 +42,7 @@ export const SAVINGS_EVENT_KINDS = [
   "orphan_deletion",
   "sleep_schedule",
   "commitment",
+  "saas_seat",
   "manual",
 ] as const;
 export type SavingsEventKind = (typeof SAVINGS_EVENT_KINDS)[number];
@@ -51,6 +52,7 @@ export const SAVINGS_EVENT_KIND_LABELS: Record<SavingsEventKind, string> = {
   orphan_deletion: "Orphan cleanup",
   sleep_schedule: "Sleep schedule",
   commitment: "Commitments",
+  saas_seat: "SaaS seats",
   manual: "Logged manually",
 };
 

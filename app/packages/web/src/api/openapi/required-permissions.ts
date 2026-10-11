@@ -130,6 +130,13 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /extended-support": "resources:read",
   "GET /extended-support/settings": "org:settings:write",
   "PUT /extended-support/settings": "org:settings:write",
+  // SaaS seats: prices and savings are cost data; removing one changes a
+  // provider account, so it rides the resource write permission.
+  "GET /seats": "costs:read",
+  "POST /seats/refresh": "costs:read",
+  "GET /seats/settings": "costs:read",
+  "PUT /seats/settings": "costs:write",
+  "POST /seats/{seatId}/remove": "resources:write",
   "GET /posture": "resources:read",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",

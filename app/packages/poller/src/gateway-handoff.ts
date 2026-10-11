@@ -4,13 +4,14 @@ import { accounts } from "@infrawrench/server-core/db/schema";
 import { markAccountRequiresGateway } from "@infrawrench/server-core/runtime/account-runtime";
 import type { PollAccountRow } from "./poll-account";
 
-export type PollKind = "resources" | "costs" | "credits" | "commitments" | "quotas";
+export type PollKind = "resources" | "costs" | "credits" | "commitments" | "quotas" | "seats";
 
 /** The lease table for the passes whose schedule lives off `accounts`. */
 const LEASE_TABLES = {
   credits: "account_credit_polls",
   commitments: "account_commitment_polls",
   quotas: "account_quota_polls",
+  seats: "account_seat_polls",
 } as const;
 
 /**

@@ -26,6 +26,7 @@ const KIND_LABELS: Record<string, string> = {
   orphan_deletion: "orphan cleanup",
   sleep_schedule: "sleep schedule",
   commitment: "commitments",
+  saas_seat: "SaaS seats",
   manual: "manual",
 };
 

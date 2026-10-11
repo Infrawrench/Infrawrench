@@ -72,12 +72,14 @@ import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
 import { pollAccountCommitments } from "./commitment-poll";
 import { pollAccountQuotas } from "./quota-poll";
+import { pollAccountSeats } from "./seat-poll";
 import {
   claimDueAccounts,
   claimDueCommitmentAccounts,
   claimDueCostAccounts,
   claimDueCreditAccounts,
   claimDueQuotaAccounts,
+  claimDueSeatAccounts,
   claimDueWorkflows,
   ACCOUNT_LEASE_MS,
   COST_LEASE_MS,
@@ -130,7 +132,7 @@ export interface PeriodicPass {
 
 export type Pass = AccountPass | PeriodicPass;
 
-type Capability = "costs" | "credits" | "commitments" | "quotas";
+type Capability = "costs" | "credits" | "commitments" | "quotas" | "seats";
 const capablePluginIds = new Map<Capability, Promise<string[]>>();
 
 /** Plugin ids whose manifest declares `capability`; resolved once per process. */
@@ -351,6 +353,19 @@ export const PASSES: readonly Pass[] = [
     claimFailureLabel: "[quotas] quota tick failed:",
     claim: async (scope) => claimDueQuotaAccounts(COST_LIMIT, await pluginsWith("quotas"), scope),
     run: (row) => pollAccountQuotas(row),
+  },
+
+  // Paid SaaS seats (daily cadence per account). Its own pass for the reason
+  // commitments have theirs: a seat list comes from the provider's admin API,
+  // not its billing one, and the inventory is what the Seats findings, the
+  // digest line and detected realized savings are computed from.
+  {
+    kind: "accounts",
+    name: "seats",
+    leaseMs: COST_LEASE_MS,
+    claimFailureLabel: "[seats] seat tick failed:",
+    claim: async (scope) => claimDueSeatAccounts(COST_LIMIT, await pluginsWith("seats"), scope),
+    run: (row) => pollAccountSeats(row),
   },
 
   // Network flow attribution (daily cadence per account, opt-in per org).

@@ -30,6 +30,7 @@ import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerExtendedSupportPaths } from "./paths/extended-support";
+import { registerSeatPaths } from "./paths/seats";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
@@ -185,6 +186,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerExtendedSupportPaths(ctx);
+  registerSeatPaths(ctx);
   registerBudgetPaths(ctx);
   registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
@@ -410,6 +412,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Orphans",
         description:
           "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
+      },
+      {
+        name: "Seats",
+        description:
+          "Paid SaaS seats (Copilot, Cursor, GitLab, Okta...) with inactive, duplicate and downgrade findings.",
       },
       {
         name: "DNS",
