@@ -84,6 +84,7 @@ import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
 import { registerSloPaths } from "./paths/slos";
+import { registerDoraPaths } from "./paths/dora";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -240,6 +241,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);
   registerSloPaths(ctx);
+  registerDoraPaths(ctx);
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
