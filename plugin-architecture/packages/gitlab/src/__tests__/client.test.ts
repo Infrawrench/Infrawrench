@@ -42,9 +42,9 @@ describe("base URL", () => {
 });
 
 describe("transport", () => {
-  it("sends a Bearer token and follows X-Next-Page", async () => {
+  it("sends PRIVATE-TOKEN and follows X-Next-Page", async () => {
     const { http, calls } = makeHttp((call) => {
-      expect(call.headers["Authorization"]).toBe("Bearer tok");
+      expect(call.headers["PRIVATE-TOKEN"]).toBe("tok");
       const page = call.url.searchParams.get("page");
       expect(call.url.searchParams.get("per_page")).toBe("100");
       return page === "1"

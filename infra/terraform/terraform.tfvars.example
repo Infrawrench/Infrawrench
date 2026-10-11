@@ -197,18 +197,10 @@ app_env = {
   # 100 teams).
   # PROVIDER_OAUTH_CONVEX_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_CONVEX_CLIENT_SECRET = "..."
-  # DigitalOcean: an OAuth application under DigitalOcean control panel -> API
-  # -> OAuth Applications.
-  # PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_ID     = "..."
-  # PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_SECRET = "..."
   # GitHub: a GitHub App's OAuth credentials (separate from GITHUB_APP_* below)
   # with expiring user tokens on.
   # PROVIDER_OAUTH_GITHUB_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_GITHUB_CLIENT_SECRET = "..."
-  # GitLab: an application under gitlab.com user, group or instance settings ->
-  # Applications (gitlab.com only).
-  # PROVIDER_OAUTH_GITLAB_CLIENT_ID     = "..."
-  # PROVIDER_OAUTH_GITLAB_CLIENT_SECRET = "..."
   # Heroku: an API client under Heroku dashboard -> Account settings ->
   # Applications.
   # PROVIDER_OAUTH_HEROKU_CLIENT_ID     = "..."
@@ -216,10 +208,6 @@ app_env = {
   # Hugging Face: a connected app at huggingface.co/settings/applications/new.
   # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_SECRET = "..."
-  # Linode: an OAuth app in Akamai Cloud Manager -> OAuth Apps (private, not
-  # public).
-  # PROVIDER_OAUTH_LINODE_CLIENT_ID     = "..."
-  # PROVIDER_OAUTH_LINODE_CLIENT_SECRET = "..."
   # Netlify: an OAuth application under Netlify user settings -> Applications.
   # PROVIDER_OAUTH_NETLIFY_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_NETLIFY_CLIENT_SECRET = "..."

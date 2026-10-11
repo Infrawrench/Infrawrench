@@ -80,38 +80,35 @@ Editing other fields of a connected account (a team picker, a region) keeps the 
 
 The **Web** column covers the web app and the desktop app in cloud mode. **Desktop (local)** covers accounts stored only on your computer. **Access** is what the granted token can do: **read and write** means the permissions Infrawrench's features for that provider need, and **full** means the provider offers nothing narrower.
 
-| Provider                                      | Web | Desktop (local) | Access         |
-| --------------------------------------------- | --- | --------------- | -------------- |
-| [Bitbucket](../plugins/bitbucket.md)          | Yes | No              | Read and write |
-| [CircleCI](../plugins/circleci.md)            | No  | Yes             | Read and write |
-| [Cloudflare](../plugins/cloudflare.md)        | Yes | Yes             | Read and write |
-| [Cloudinary](../plugins/cloudinary.md)        | Yes | Yes             | Full           |
-| [Convex](../plugins/convex.md)                | Yes | No              | Full           |
-| [DigitalOcean](../plugins/digitalocean.md)    | Yes | Yes             | Read and write |
-| [GitHub](../plugins/github.md)                | Yes | No              | Read and write |
-| [GitLab](../plugins/gitlab.md)                | Yes | Yes             | Read and write |
-| [Heroku](../plugins/heroku.md)                | Yes | No              | Full           |
-| [Hugging Face](../plugins/huggingface.md)     | Yes | Yes             | Read and write |
-| [Linode (Akamai Cloud)](../plugins/linode.md) | Yes | No              | Read and write |
-| [Netlify](../plugins/netlify.md)              | Yes | No              | Full           |
-| [OpenRouter](../plugins/openrouter.md)        | Yes | Yes             | Full           |
-| [PagerDuty](../plugins/pagerduty.md)          | Yes | Yes             | Read and write |
-| [PlanetScale](../plugins/planetscale.md)      | Yes | No              | Read and write |
-| [PostHog](../plugins/posthog.md)              | Yes | Yes             | Read and write |
-| [Railway](../plugins/railway.md)              | Yes | Yes             | Read and write |
-| [Resend](../plugins/resend.md)                | Yes | Yes             | Full           |
-| [Sentry](../plugins/sentry.md)                | Yes | Yes             | Read and write |
-| [Stripe](../plugins/stripe.md)                | Yes | No              | Read and write |
-| [Supabase](../plugins/supabase.md)            | Yes | No              | Read and write |
-| [Vercel](../plugins/vercel.md)                | Yes | No              | Read and write |
+| Provider                                  | Web | Desktop (local) | Access         |
+| ----------------------------------------- | --- | --------------- | -------------- |
+| [Bitbucket](../plugins/bitbucket.md)      | Yes | No              | Read and write |
+| [CircleCI](../plugins/circleci.md)        | No  | Yes             | Read and write |
+| [Cloudflare](../plugins/cloudflare.md)    | Yes | Yes             | Read and write |
+| [Cloudinary](../plugins/cloudinary.md)    | Yes | Yes             | Full           |
+| [Convex](../plugins/convex.md)            | Yes | No              | Full           |
+| [GitHub](../plugins/github.md)            | Yes | No              | Read and write |
+| [Heroku](../plugins/heroku.md)            | Yes | No              | Full           |
+| [Hugging Face](../plugins/huggingface.md) | Yes | Yes             | Read and write |
+| [Netlify](../plugins/netlify.md)          | Yes | No              | Full           |
+| [OpenRouter](../plugins/openrouter.md)    | Yes | Yes             | Full           |
+| [PagerDuty](../plugins/pagerduty.md)      | Yes | Yes             | Read and write |
+| [PlanetScale](../plugins/planetscale.md)  | Yes | No              | Read and write |
+| [PostHog](../plugins/posthog.md)          | Yes | Yes             | Read and write |
+| [Railway](../plugins/railway.md)          | Yes | Yes             | Read and write |
+| [Resend](../plugins/resend.md)            | Yes | Yes             | Full           |
+| [Sentry](../plugins/sentry.md)            | Yes | Yes             | Read and write |
+| [Stripe](../plugins/stripe.md)            | Yes | No              | Read and write |
+| [Supabase](../plugins/supabase.md)        | Yes | No              | Read and write |
+| [Vercel](../plugins/vercel.md)            | Yes | No              | Read and write |
 
-Some providers' connections cover less than a token can: a few endpoints only accept a token created in the provider's console, and self-hosted editions (GitLab self-managed, Sentry self-hosted, PostHog self-hosted, GitHub Enterprise Server) keep the token form. The provider pages list these gaps.
+Some providers' connections cover less than a token can: a few endpoints only accept a token created in the provider's console, and self-hosted editions (Sentry self-hosted, PostHog self-hosted, GitHub Enterprise Server) keep the token form. The provider pages list these gaps.
 
 ## Self-hosting
 
 On a self-hosted deployment, each provider's **Connect** button appears once you register an OAuth app (or client, or integration, depending on the provider's term) with that provider and give the server its credentials. Until then the provider simply offers the token form; nothing else changes.
 
-1. Register an app in the provider's developer settings. Use this redirect (callback) URL, where `<your-app>` is the public origin you set as `APP_URL`, and `<id>` is the plugin id from the provider page's URL (for example `digitalocean`):
+1. Register an app in the provider's developer settings. Use this redirect (callback) URL, where `<your-app>` is the public origin you set as `APP_URL`, and `<id>` is the plugin id from the provider page's URL (for example `github`):
 
    ```
    https://<your-app>/api/provider-oauth/<id>/callback
@@ -125,7 +122,7 @@ On a self-hosted deployment, each provider's **Connect** button appears once you
    PROVIDER_OAUTH_<ID>_CLIENT_SECRET=...
    ```
 
-   For example `PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_ID` and `PROVIDER_OAUTH_DIGITALOCEAN_CLIENT_SECRET`.
+   For example `PROVIDER_OAUTH_GITHUB_CLIENT_ID` and `PROVIDER_OAUTH_GITHUB_CLIENT_SECRET`.
 
 A few providers need less. [OpenRouter](../plugins/openrouter.md) has no app registration at all, so its button is always available. Providers that only accept public clients (no secret) need only the client id. [Stripe](../plugins/stripe.md) connects through a public Stripe App rather than a plain OAuth client: its client id is the app's `ca_` id, and its client secret is the secret API key of the Stripe account that owns the app.
 

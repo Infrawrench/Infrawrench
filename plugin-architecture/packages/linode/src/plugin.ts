@@ -2,7 +2,6 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { LinodeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import { completeLinodeOAuth, linodeOAuth } from "./oauth.js";
 import { LINODE_PREFLIGHT, linodePolicyTemplate } from "./preflight.js";
 import {
   ImageResourceType,
@@ -78,9 +77,6 @@ const manifest: PluginManifest = {
   priceCatalog: linodePriceCatalog,
   // Linode rate-limits per token and per endpoint; listers fan out at most 8 wide.
   rateLimit: { capacity: 40, refillPerSecond: 10 },
-  // "Connect with Linode" (web and cloud mode only: Linode has no public
-  // client with refresh tokens). Personal access tokens keep working.
-  oauth: linodeOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -111,5 +107,4 @@ export const plugin: Plugin = {
   parseStatusFeed,
   policyTemplate: linodePolicyTemplate,
   fetchPriceCatalog: fetchLinodePriceCatalog,
-  completeOAuthConnection: completeLinodeOAuth,
 };

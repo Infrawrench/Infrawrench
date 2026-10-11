@@ -14,7 +14,6 @@ import { gitlabRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
-import { GITLAB_OAUTH, completeGitLabOAuth, validateOAuthInstance } from "./oauth.js";
 import type { GlGroup, GlUser } from "./types.js";
 
 const SCOPES_LINK = {
@@ -99,7 +98,6 @@ const manifest: PluginManifest = {
   statusFeed,
   // GitLab.com allows 2,000 authenticated API requests a minute per user.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-  oauth: GITLAB_OAUTH,
 };
 
 function contextFrom(credentials: Record<string, string>, services?: HostServices): GitLabContext {
@@ -156,14 +154,13 @@ export const plugin: Plugin = {
   listCredentialOptions,
   terraformExport: gitlabTerraformExport,
   remediationCommands: gitlabRemediationCommands,
-  completeOAuthConnection: completeGitLabOAuth,
   validateServerCredentials: (credentials) => {
     try {
       const url = resolveBaseUrl(credentials["url"]);
       if (!url.startsWith("https://")) {
         return "GitLab plugin: the instance URL must use https:// on Infrawrench cloud.";
       }
-      return validateOAuthInstance(credentials);
+      return null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
     }
