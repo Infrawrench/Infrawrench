@@ -60,7 +60,7 @@ function SecretReveal({ secret, onDone }: { secret: string; onDone: () => void }
         <summary className="cursor-pointer">{gt("How to verify a request")}</summary>
         <p className="mt-2">
           {gt(
-            "Each request carries {header}: t=<unix seconds>,v1=<hex>. Recompute HMAC-SHA256 of <t>.<raw body> with this secret and compare. During the 24 hours after a reroll there are two v1 values; accept either.",
+            "Each request carries a {header} header with a Unix timestamp t and one or more v1 signatures. Recompute HMAC-SHA256 of the timestamp, a dot and the raw body with this secret, and compare it with each v1. During the 24 hours after a reroll there are two v1 values; accept either.",
             { header: EVENT_SIGNATURE_HEADER },
           )}
         </p>
