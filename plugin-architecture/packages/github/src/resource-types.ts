@@ -53,7 +53,7 @@ export const CopilotSeatResourceType = rt({
   name: "Copilot Seat",
   id: "copilot-seat",
   description:
-    "A Copilot Business or Enterprise seat assigned to a user, with last use and editor. Seats idle for 30 days are flagged. Remove a seat to stop paying for it from the next billing cycle, or assign one to a member.",
+    "A Copilot Business or Enterprise seat assigned to a user, with last use and editor. Idle seats are reported under Seats, against the organization's own inactivity threshold. Remove a seat to stop paying for it from the next billing cycle, or assign one to a member.",
   fields: [
     f("login", "User", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
@@ -76,14 +76,6 @@ export const CopilotSeatResourceType = rt({
   outputs: [o("login", "Login")],
   supportsCreate: true,
   supportsDelete: true,
-  orphanRule: {
-    conditions: [
-      { fieldKey: "idle", when: "equals", value: "true" },
-      { fieldKey: "pendingCancellationDate", when: "empty" },
-    ],
-    reason:
-      "Copilot seat with no activity in the last 30 days. It is billed every month whether it is used or not.",
-  },
   iconKey: "user",
 });
 

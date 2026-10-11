@@ -62,12 +62,8 @@ describe("Copilot seats", () => {
     expect(byLogin["busy"]!.fields["idle"]).toBe(false);
     expect(byLogin["fresh"]!.fields["idle"]).toBe(false);
     expect(byLogin["idle"]!.fields["monthlyPrice"]).toBe(19);
-    expect(evaluateOrphanRule(CopilotSeatResourceType.orphanRule, byLogin["idle"]!.fields)).toMatch(
-      /no activity/,
-    );
-    expect(
-      evaluateOrphanRule(CopilotSeatResourceType.orphanRule, byLogin["busy"]!.fields),
-    ).toBeNull();
+    // Idle seats are the seat finder's job now; an orphan rule would list them twice.
+    expect(CopilotSeatResourceType.orphanRule).toBeUndefined();
   });
 
   it("removes a seat with the selected_users DELETE and explains a team seat", async () => {
@@ -81,6 +77,302 @@ describe("Copilot seats", () => {
     await expect(
       team.c.invokeAction("copilot-seat", "acc:copilot-seat:t", "remove-seat", "acc"),
     ).rejects.toThrow(/team/);
+  });
+});
+
+describe("fetchSeats", () => {
+  const seatsRoute =
+    (seats: unknown[], summary: unknown[] = []) =>
+    (url: URL) => {
+      if (url.pathname.endsWith("/copilot/billing/seats")) {
+        return { body: { total_seats: seats.length, seats } };
+      }
+      if (url.pathname.endsWith("/usage/summary")) return { body: { usageItems: summary } };
+      return { status: 404, body: {} };
+    };
+
+  it("maps org seats with activity, price, removability and context", async () => {
+    const { c, calls } = client(
+      seatsRoute(
+        [
+          {
+            assignee: { id: 1, login: "busy", name: "Busy Bee", email: "Busy@Example.com" },
+            last_activity_at: "2026-10-01T10:00:00Z",
+            last_activity_editor: "vscode/1.95.0/copilot-chat/0.22.0",
+            last_authenticated_at: "2026-10-01T09:00:00Z",
+            created_at: "2026-01-02T00:00:00Z",
+            plan_type: "business",
+          },
+          {
+            assignee: { id: 2, login: "quiet", email: null },
+            last_activity_at: null,
+            last_authenticated_at: "2026-06-01T00:00:00Z",
+            created_at: "2026-01-02T00:00:00Z",
+            plan_type: "enterprise",
+          },
+          {
+            assignee: { id: 3, login: "never" },
+            last_activity_at: null,
+            last_authenticated_at: null,
+            created_at: "2026-02-03T00:00:00Z",
+            assigning_team: { slug: "platform", name: "Platform" },
+            pending_cancellation_date: null,
+            plan_type: "business",
+          },
+          {
+            assignee: { id: 4, login: "leaving" },
+            last_activity_at: "2026-05-01T00:00:00Z",
+            created_at: "2026-01-02T00:00:00Z",
+            pending_cancellation_date: "2026-11-01",
+            plan_type: "unknown",
+          },
+        ],
+        [{ product: "copilot", sku: "copilot_for_business", pricePerUnit: 19, netAmount: 57 }],
+      ),
+    );
+    const seats = await c.fetchSeats("acc", { lookbackDays: 30 });
+    expect(
+      calls
+        .find((x) => x.url.pathname === "/orgs/octo-org/copilot/billing/seats")!
+        .url.searchParams.get("per_page"),
+    ).toBe("100");
+    expect(seats).toMatchInlineSnapshot(`
+      [
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": "2026-10-01T10:00:00Z",
+            "source": "Copilot last activity (vscode)",
+          },
+          "assignedAt": "2026-01-02T00:00:00Z",
+          "category": "ai-coding",
+          "context": {
+            "organization": "octo-org",
+            "owner": "octo-org",
+            "ownerKind": "org",
+          },
+          "downgrade": null,
+          "email": "busy@example.com",
+          "login": "busy",
+          "memberId": "1",
+          "name": "Busy Bee",
+          "pendingRemovalOn": null,
+          "price": {
+            "currency": "USD",
+            "monthly": 19,
+            "source": "billing",
+          },
+          "product": "GitHub Copilot",
+          "removable": true,
+          "removalNote": "Billed until the end of the billing cycle.",
+          "resource": {
+            "externalId": "busy",
+            "resourceTypeId": "copilot-seat",
+          },
+          "seatType": "Copilot Business",
+        },
+        {
+          "activity": {
+            "basis": "last-login",
+            "lastActiveAt": "2026-06-01T00:00:00Z",
+            "source": "Copilot last authentication",
+          },
+          "assignedAt": "2026-01-02T00:00:00Z",
+          "category": "ai-coding",
+          "context": {
+            "organization": "octo-org",
+            "owner": "octo-org",
+            "ownerKind": "org",
+          },
+          "downgrade": null,
+          "email": null,
+          "login": "quiet",
+          "memberId": "2",
+          "name": null,
+          "pendingRemovalOn": null,
+          "price": {
+            "currency": "USD",
+            "monthly": 39,
+            "note": "docs.github.com/en/copilot/concepts/billing/organizations-and-enterprises, 2026-10",
+            "source": "list-price",
+          },
+          "product": "GitHub Copilot",
+          "removable": true,
+          "removalNote": "Billed until the end of the billing cycle.",
+          "resource": {
+            "externalId": "quiet",
+            "resourceTypeId": "copilot-seat",
+          },
+          "seatType": "Copilot Enterprise",
+        },
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": null,
+            "source": "Copilot last activity",
+          },
+          "assignedAt": "2026-02-03T00:00:00Z",
+          "category": "ai-coding",
+          "context": {
+            "organization": "octo-org",
+            "owner": "octo-org",
+            "ownerKind": "org",
+            "team": "platform",
+          },
+          "downgrade": null,
+          "email": null,
+          "login": "never",
+          "memberId": "3",
+          "name": null,
+          "pendingRemovalOn": null,
+          "price": {
+            "currency": "USD",
+            "monthly": 19,
+            "source": "billing",
+          },
+          "product": "GitHub Copilot",
+          "removable": false,
+          "removalNote": "Granted through the platform team; remove the user from the team, or the team from Copilot, in GitHub.",
+          "resource": {
+            "externalId": "never",
+            "resourceTypeId": "copilot-seat",
+          },
+          "seatType": "Copilot Business",
+        },
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": "2026-05-01T00:00:00Z",
+            "source": "Copilot last activity",
+          },
+          "assignedAt": "2026-01-02T00:00:00Z",
+          "category": "ai-coding",
+          "context": {
+            "organization": "octo-org",
+            "owner": "octo-org",
+            "ownerKind": "org",
+          },
+          "downgrade": null,
+          "email": null,
+          "login": "leaving",
+          "memberId": "4",
+          "name": null,
+          "pendingRemovalOn": "2026-11-01",
+          "price": null,
+          "product": "GitHub Copilot",
+          "removable": true,
+          "removalNote": "Billed until the end of the billing cycle.",
+          "resource": {
+            "externalId": "leaving",
+            "resourceTypeId": "copilot-seat",
+          },
+          "seatType": "Copilot",
+        },
+      ]
+    `);
+  });
+
+  it("folds an enterprise user's grants into one seat and only lets direct ones be removed", async () => {
+    const { c } = client(
+      seatsRoute([
+        {
+          assignee: { id: 9, login: "mona" },
+          organization: { login: "octo-a" },
+          last_activity_at: "2026-09-01T00:00:00Z",
+          created_at: "2026-03-01T00:00:00Z",
+          plan_type: "business",
+        },
+        {
+          assignee: { id: 9, login: "mona" },
+          organization: { login: "octo-b" },
+          last_activity_at: "2026-09-20T00:00:00Z",
+          last_activity_editor: "JetBrains-IC/242",
+          created_at: "2026-02-01T00:00:00Z",
+          plan_type: "enterprise",
+        },
+        {
+          assignee: { id: 10, login: "direct" },
+          organization: null,
+          last_activity_at: null,
+          created_at: "2026-02-01T00:00:00Z",
+          plan_type: "enterprise",
+        },
+      ]),
+      "enterprise:big",
+    );
+    const seats = await c.fetchSeats("acc", { lookbackDays: 30 });
+    expect(seats).toHaveLength(2);
+    const mona = seats.find((s) => s.login === "mona")!;
+    expect(mona.seatType).toBe("Copilot Enterprise");
+    expect(mona.price).toMatchObject({ monthly: 39, source: "list-price" });
+    expect(mona.activity).toEqual({
+      basis: "last-activity",
+      lastActiveAt: "2026-09-20T00:00:00Z",
+      source: "Copilot last activity (JetBrains-IC)",
+    });
+    expect(mona.assignedAt).toBe("2026-02-01T00:00:00Z");
+    expect(mona.removable).toBe(false);
+    expect(mona.removalNote).toMatch(/octo-a, octo-b organization/);
+    const direct = seats.find((s) => s.login === "direct")!;
+    expect(direct.removable).toBe(true);
+    expect(direct.context).toEqual({ ownerKind: "enterprise", owner: "big" });
+  });
+
+  it("reads no subscription as no seats but throws on a refused page", async () => {
+    const none = client(() => ({ status: 404, body: { message: "Not Found" } }));
+    expect(await none.c.fetchSeats("acc", { lookbackDays: 30 })).toEqual([]);
+
+    const full = Array.from({ length: 100 }, (_, i) => ({
+      assignee: { id: i, login: `u${i}` },
+      created_at: "2026-01-01T00:00:00Z",
+      plan_type: "business",
+    }));
+    const broken = client((url) => {
+      if (url.pathname.endsWith("/copilot/billing/seats")) {
+        return url.searchParams.get("page") === "1"
+          ? { body: { seats: full } }
+          : { status: 500, body: { message: "boom" } };
+      }
+      return { status: 404, body: {} };
+    });
+    await expect(broken.c.fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(/500/);
+
+    const forbidden = client(() => ({ status: 403, body: { message: "Forbidden" } }));
+    await expect(forbidden.c.fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(/403/);
+  });
+});
+
+describe("removeSeat", () => {
+  it("cancels a direct seat, effective at the end of the cycle", async () => {
+    const { c, calls } = client(() => ({ body: { seats_cancelled: 1 } }));
+    const result = await c.removeSeat("acc", { memberId: "1", login: "idle" });
+    expect(result.effective).toBe("end-of-cycle");
+    expect(calls[0]!.method).toBe("DELETE");
+    expect(calls[0]!.url.pathname).toBe("/orgs/octo-org/copilot/billing/selected_users");
+    expect(calls[0]!.body).toEqual({ selected_usernames: ["idle"] });
+  });
+
+  it("refuses team and organization-granted seats, and explains a 422", async () => {
+    const team = client(() => ({ body: { seats_cancelled: 1 } }));
+    await expect(
+      team.c.removeSeat("acc", { memberId: "3", login: "never", context: { team: "platform" } }),
+    ).rejects.toThrow(/platform team/);
+    expect(team.calls).toHaveLength(0);
+
+    const ent = client(() => ({ body: { seats_cancelled: 1 } }), "enterprise:big");
+    await expect(
+      ent.c.removeSeat("acc", {
+        memberId: "9",
+        login: "mona",
+        context: { organization: "octo-a" },
+      }),
+    ).rejects.toThrow(/octo-a organization/);
+    expect(ent.calls).toHaveLength(0);
+
+    const refused = client(() => ({ status: 422, body: { message: "Unprocessable" } }));
+    await expect(refused.c.removeSeat("acc", { memberId: "1", login: "x" })).rejects.toThrow(
+      /refused to cancel/,
+    );
   });
 });
 

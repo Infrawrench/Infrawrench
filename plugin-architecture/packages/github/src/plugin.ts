@@ -7,7 +7,8 @@ import { listOwnerOptions } from "./owners.js";
 import { GITHUB_PREFLIGHT, githubPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import { githubRemediationCommands } from "./remediation.js";
+import { githubRemediationCommands, githubSeatRemediationCommands } from "./remediation.js";
+import { COPILOT_PRODUCT } from "./seats.js";
 
 const manifest: PluginManifest = {
   id: "github",
@@ -61,6 +62,9 @@ const manifest: PluginManifest = {
     restatementDays: 4,
     chargeTypes: true,
   },
+  // Copilot seats only: organization member seats have no per-member
+  // activity in any GitHub API, so they could not be judged idle.
+  seats: { products: [COPILOT_PRODUCT], removal: true },
   preflight: GITHUB_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
@@ -85,4 +89,5 @@ export const plugin: Plugin = {
     }
   },
   remediationCommands: githubRemediationCommands,
+  seatRemediationCommands: githubSeatRemediationCommands,
 };

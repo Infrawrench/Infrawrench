@@ -18,7 +18,13 @@ export const CODESPACE_STALE_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface GhCopilotSeat {
-  assignee?: { login?: string; name?: string | null; email?: string | null; type?: string } | null;
+  assignee?: {
+    id?: number;
+    login?: string;
+    name?: string | null;
+    email?: string | null;
+    type?: string;
+  } | null;
   organization?: { login?: string } | null;
   assigning_team?: { slug?: string; name?: string } | null;
   pending_cancellation_date?: string | null;

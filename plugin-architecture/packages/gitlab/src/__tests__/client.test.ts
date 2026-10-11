@@ -450,3 +450,192 @@ describe("terraform", () => {
     expect(out.variables![0]!.sensitive).toBe(true);
   });
 });
+
+describe("seats", () => {
+  const COM = { url: "https://gitlab.com" };
+  const member = (over: Record<string, unknown>) => ({
+    id: 1,
+    username: "mona",
+    name: "Mona",
+    state: "active",
+    last_activity_on: "2026-09-30",
+    last_login_at: "2026-09-30T08:00:00Z",
+    membership_type: "group_member",
+    removable: true,
+    created_at: "2026-01-05T00:00:00Z",
+    ...over,
+  });
+
+  it("reads billable members of paid top-level groups the user owns", async () => {
+    const { c, calls } = client((call) => {
+      const p = call.url.pathname;
+      if (p === "/api/v4/groups") {
+        expect(call.url.searchParams.get("top_level_only")).toBe("true");
+        expect(call.url.searchParams.get("min_access_level")).toBe("50");
+        return [
+          { id: 10, name: "Acme", full_path: "acme", parent_id: null },
+          { id: 20, name: "Hobby", full_path: "hobby", parent_id: null },
+          { id: 30, name: "Trial", full_path: "trial", parent_id: null },
+          { id: 40, name: "Big", full_path: "big", parent_id: null },
+        ];
+      }
+      if (p === "/api/v4/namespaces/10") return { id: 10, plan: "premium", trial: false };
+      if (p === "/api/v4/namespaces/20") return { id: 20, plan: "free", trial: false };
+      if (p === "/api/v4/namespaces/30") return { id: 30, plan: "ultimate_trial", trial: true };
+      if (p === "/api/v4/namespaces/40") return { id: 40, plan: "ultimate", trial: false };
+      if (p === "/api/v4/groups/10/billable_members") {
+        return [
+          member({ email: "Mona@Example.com" }),
+          member({
+            id: 2,
+            username: "ghost",
+            name: "Ghost",
+            last_activity_on: null,
+            last_login_at: null,
+            membership_type: "group_invite",
+            removable: false,
+          }),
+          member({ id: 3, username: "waiting", state: "awaiting" }),
+        ];
+      }
+      if (p === "/api/v4/groups/40/billable_members") return [member({ id: 1 })];
+      return { status: 404, body: { message: "404 Not Found" } };
+    }, COM);
+    const seats = await c.fetchSeats(ACC, { lookbackDays: 30 });
+    expect(calls.some((x) => x.url.pathname.includes("/groups/20/billable_members"))).toBe(false);
+    expect(calls.some((x) => x.url.pathname.includes("/groups/30/billable_members"))).toBe(false);
+    expect(seats).toMatchInlineSnapshot(`
+      [
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": "2026-09-30",
+            "source": "GitLab last activity",
+          },
+          "assignedAt": "2026-01-05T00:00:00Z",
+          "category": "source-control",
+          "context": {
+            "groupId": "10",
+            "groupPath": "acme",
+          },
+          "downgrade": null,
+          "email": "mona@example.com",
+          "login": "mona",
+          "memberId": "1",
+          "name": "Mona",
+          "price": {
+            "currency": "USD",
+            "monthly": 29,
+            "note": "about.gitlab.com/pricing, 2026-10 (billed annually)",
+            "source": "list-price",
+          },
+          "product": "GitLab",
+          "removable": true,
+          "removalNote": "Removed from the group, its subgroups and projects. The subscription's seat count stays billed until renewal.",
+          "seatKey": "10",
+          "seatType": "Premium",
+        },
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": null,
+            "source": "GitLab last activity",
+          },
+          "assignedAt": "2026-01-05T00:00:00Z",
+          "category": "source-control",
+          "context": {
+            "groupId": "10",
+            "groupPath": "acme",
+          },
+          "downgrade": null,
+          "email": null,
+          "login": "ghost",
+          "memberId": "2",
+          "name": "Ghost",
+          "price": {
+            "currency": "USD",
+            "monthly": 29,
+            "note": "about.gitlab.com/pricing, 2026-10 (billed annually)",
+            "source": "list-price",
+          },
+          "product": "GitLab",
+          "removable": false,
+          "removalNote": "Billed only through a group or project shared with another group; remove that share, or the user from the invited group, in GitLab.",
+          "seatKey": "10",
+          "seatType": "Premium",
+        },
+        {
+          "activity": {
+            "basis": "last-activity",
+            "lastActiveAt": "2026-09-30",
+            "source": "GitLab last activity",
+          },
+          "assignedAt": "2026-01-05T00:00:00Z",
+          "category": "source-control",
+          "context": {
+            "groupId": "40",
+            "groupPath": "big",
+          },
+          "downgrade": null,
+          "email": null,
+          "login": "mona",
+          "memberId": "1",
+          "name": "Mona",
+          "price": null,
+          "product": "GitLab",
+          "removable": true,
+          "removalNote": "Removed from the group, its subgroups and projects. The subscription's seat count stays billed until renewal.",
+          "seatKey": "40",
+          "seatType": "Ultimate",
+        },
+      ]
+    `);
+  });
+
+  it("uses the configured group's root and throws when a page fails", async () => {
+    const { c, calls } = client(
+      (call) => {
+        const p = call.url.pathname;
+        if (p === "/api/v4/groups/acme%2Fplatform" || p === "/api/v4/groups/acme/platform") {
+          return { id: 11, name: "Platform", full_path: "acme/platform", parent_id: 10 };
+        }
+        if (p === "/api/v4/groups/acme") return { id: 10, name: "Acme", full_path: "acme" };
+        if (p === "/api/v4/namespaces/10") return { id: 10, plan: "premium" };
+        if (p === "/api/v4/groups/10/billable_members") {
+          return call.url.searchParams.get("page") === "1"
+            ? { body: [member({})], headers: { "X-Next-Page": "2" } }
+            : { status: 500, body: { message: "boom" } };
+        }
+        return { status: 404, body: {} };
+      },
+      { ...COM, group: "acme/platform" },
+    );
+    await expect(c.fetchSeats(ACC, { lookbackDays: 30 })).rejects.toThrow(/500/);
+    expect(calls.some((x) => x.url.pathname === "/api/v4/groups/acme")).toBe(true);
+  });
+
+  it("reports nothing for a self-managed instance", async () => {
+    const { c, calls } = client(() => ({ status: 500, body: {} }));
+    expect(await c.fetchSeats(ACC, { lookbackDays: 30 })).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("removes a billable member, billed until renewal, and explains a refusal", async () => {
+    const { c, calls } = client(() => ({ status: 204, body: "" }), COM);
+    const result = await c.removeSeat(ACC, {
+      memberId: "1",
+      seatKey: "10",
+      login: "mona",
+      context: { groupId: "10" },
+    });
+    expect(result.effective).toBe("end-of-cycle");
+    expect(calls[0]!.method).toBe("DELETE");
+    expect(calls[0]!.url.pathname).toBe("/api/v4/groups/10/billable_members/1");
+
+    const refused = client(() => ({ status: 403, body: { message: "403 Forbidden" } }), COM);
+    await expect(
+      refused.c.removeSeat(ACC, { memberId: "1", login: "mona", context: { groupId: "10" } }),
+    ).rejects.toThrow(/Owner role/);
+    await expect(c.removeSeat(ACC, { memberId: "1", context: {} })).rejects.toThrow(/no group/);
+  });
+});

@@ -10,6 +10,10 @@ import type {
   PluginClient,
   PreflightResult,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
@@ -25,6 +29,7 @@ import {
   statusOf,
 } from "./api.js";
 import { fetchGitHubCostData } from "./cost-data.js";
+import { fetchCopilotSeatObjects, mapCopilotSeatRecords } from "./seats.js";
 import type {
   GhActionsCache,
   GhBudget,
@@ -253,23 +258,67 @@ export class GitHubClient implements PluginClient {
   }
 
   private async listSeats(accountId: string): Promise<ResourceInstance[]> {
-    const [seats, summary] = await Promise.all([
+    const [seats, price] = await Promise.all([
       ghPaged<GhCopilotSeat, { seats?: GhCopilotSeat[] }>(
         this.ctx,
         `${ownerBase(this.ctx.owner)}/copilot/billing/seats`,
         (r) => r.seats,
       ),
-      this.monthSummary().catch(() => [] as SummaryItem[]),
+      this.seatPrices(),
     ]);
-    const price = (plan: string | undefined): number | undefined => {
+    return seats
+      .filter((s) => s.assignee?.login)
+      .map((s) => mapCopilotSeat(accountId, s, price(s.plan_type)));
+  }
+
+  /** This month's unit price per Copilot plan, from the bill; undefined when it has none. */
+  private async seatPrices(): Promise<(plan: string | undefined) => number | undefined> {
+    const summary = await this.monthSummary().catch(() => [] as SummaryItem[]);
+    return (plan) => {
       const sku = SEAT_SKU[(plan ?? "").toLowerCase()];
       if (!sku) return undefined;
       const item = summary.find((i) => normalizeId(i.sku) === sku && i.pricePerUnit);
       return item?.pricePerUnit;
     };
-    return seats
-      .filter((s) => s.assignee?.login)
-      .map((s) => mapCopilotSeat(accountId, s, price(s.plan_type)));
+  }
+
+  // -------------------------------------------------------------------------
+  // Seats
+  // -------------------------------------------------------------------------
+
+  /**
+   * Copilot seats with their last activity. GitHub reports exact last-use
+   * dates, so `options.lookbackDays` needs no wider read.
+   */
+  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
+    const [objects, price] = await Promise.all([
+      fetchCopilotSeatObjects(this.ctx),
+      this.seatPrices(),
+    ]);
+    return mapCopilotSeatRecords(objects, this.ctx.owner, price);
+  }
+
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const login = (seat.login ?? "").trim();
+    if (!login) throw new Error("GitHub plugin: this seat has no GitHub login to cancel.");
+    const team = seat.context?.["team"];
+    if (team) {
+      throw new Error(
+        `The Copilot seat for ${login} comes from the ${team} team. Remove ${login} from that team, or the team from Copilot, in GitHub.`,
+      );
+    }
+    const org = seat.context?.["organization"];
+    if (this.ctx.owner.kind === "enterprise" && org) {
+      throw new Error(
+        `The Copilot seat for ${login} is granted by the ${org} organization; cancel it in that organization's Copilot settings.`,
+      );
+    }
+    this.invalidate();
+    await this.cancelCopilotSeat(login);
+    return {
+      effective: "end-of-cycle",
+      message: `The seat for ${login} is pending cancellation: they keep Copilot, and it stays billed, until the end of the billing cycle.`,
+    };
   }
 
   private async skuSpend(): Promise<Map<string, { net: number; pricePerUnit?: number }>> {
@@ -1047,7 +1096,7 @@ export class GitHubClient implements PluginClient {
     this.invalidate();
     switch (typeId) {
       case "copilot-seat":
-        return this.removeSeat(id);
+        return this.cancelCopilotSeat(id);
       case "hosted-runner":
         await ghFetch<unknown>(
           this.ctx,
@@ -1098,12 +1147,26 @@ export class GitHubClient implements PluginClient {
    * for seats assigned directly; a seat that comes from a team needs the team
    * changed instead, which GitHub reports as zero seats cancelled.
    */
-  private async removeSeat(login: string): Promise<void> {
-    const res = await ghFetch<{ seats_cancelled?: number }>(
-      this.ctx,
-      `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
-      { method: "DELETE", body: { selected_usernames: [login] } },
-    );
+  // https://docs.github.com/en/rest/copilot/copilot-user-management#remove-users-from-the-copilot-subscription-for-an-organization
+  // https://docs.github.com/en/enterprise-cloud@latest/rest/copilot/copilot-user-management#remove-users-from-the-copilot-subscription-for-an-enterprise
+  private async cancelCopilotSeat(login: string): Promise<void> {
+    let res: { seats_cancelled?: number } | undefined;
+    try {
+      res = await ghFetch<{ seats_cancelled?: number }>(
+        this.ctx,
+        `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
+        { method: "DELETE", body: { selected_usernames: [login] } },
+      );
+    } catch (err) {
+      // 422: the seat comes from a team, or Copilot is assigned to everyone
+      // (seat management "assign_all"), so individual seats cannot be cancelled.
+      if (statusOf(err) === 422) {
+        throw new Error(
+          `GitHub refused to cancel the seat for ${login}: it comes from a team, or Copilot is enabled for every member. Remove ${login} from the team, or change who gets Copilot, in GitHub.`,
+        );
+      }
+      throw err;
+    }
     if (res && res.seats_cancelled === 0) {
       throw new Error(
         `GitHub cancelled no seat for ${login}. The seat probably comes from a team: remove ${login} from that team, or the team from Copilot, in GitHub.`,
@@ -1123,7 +1186,7 @@ export class GitHubClient implements PluginClient {
   ): Promise<void> {
     const id = externalIdOf(resourceId);
     this.invalidate();
-    if (typeId === "copilot-seat" && actionId === "remove-seat") return this.removeSeat(id);
+    if (typeId === "copilot-seat" && actionId === "remove-seat") return this.cancelCopilotSeat(id);
     if (typeId === "actions-cache") {
       const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
       if (actionId.startsWith("delete-cache:")) {

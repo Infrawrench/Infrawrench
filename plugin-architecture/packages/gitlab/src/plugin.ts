@@ -10,7 +10,8 @@ import type { GitLabContext } from "./api.js";
 import { glFetch, glPaged, isPermissionError, resolveBaseUrl } from "./api.js";
 import { GitLabClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import { gitlabRemediationCommands } from "./remediation.js";
+import { gitlabRemediationCommands, gitlabSeatRemediationCommands } from "./remediation.js";
+import { GITLAB_PRODUCT } from "./seats.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
@@ -42,6 +43,16 @@ const preflight: PreflightDeclaration = {
       label: "Create runners",
       description: "Register a new runner from Infrawrench.",
       requiredPermissions: [{ id: "create_runner", label: "Create runners" }],
+    },
+    {
+      id: "seats",
+      label: "Subscription seats",
+      description:
+        "List the billable members of paid GitLab.com top-level groups and when each was last active, and remove them. Removing needs the api scope.",
+      requiredPermissions: [
+        { id: "read_api", label: "Read the API (api also works)" },
+        { id: "owner", label: "Owner role on the top-level group" },
+      ],
     },
   ],
 };
@@ -94,6 +105,8 @@ const manifest: PluginManifest = {
     increaseUrl: "https://customers.gitlab.com/",
     partial: true,
   },
+  // GitLab.com subscription seats (billable members of paid top-level groups).
+  seats: { products: [GITLAB_PRODUCT], removal: true },
   preflight,
   statusFeed,
   // GitLab.com allows 2,000 authenticated API requests a minute per user.
@@ -154,6 +167,7 @@ export const plugin: Plugin = {
   listCredentialOptions,
   terraformExport: gitlabTerraformExport,
   remediationCommands: gitlabRemediationCommands,
+  seatRemediationCommands: gitlabSeatRemediationCommands,
   validateServerCredentials: (credentials) => {
     try {
       const url = resolveBaseUrl(credentials["url"]);
