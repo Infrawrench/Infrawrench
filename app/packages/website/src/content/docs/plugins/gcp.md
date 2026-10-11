@@ -183,3 +183,17 @@ Two things are specific to GCP here:
 
 - A committed-use discount is denominated in **resource units** — vCPUs, GB of memory, local SSD — and Google's API reports **no money for it at all**. The row shows the committed units and "price not reported"; a substituted dollar figure would be an invention.
 - Because the commitment is in units rather than dollars, its utilization cannot be derived from cost rows. It reads "not measurable from spend" rather than a percentage — deliberately, since 0% and "unknown" must not look alike.
+
+## Vulnerability findings
+
+GCP accounts feed vulnerability findings from **Artifact Analysis**: the CVEs Google's scanner has found in the project's Artifact Registry images (and language packages, when package scanning is on for a repository). Infrawrench reads the project's vulnerability occurrences with the Container Analysis API (`projects.occurrences.list`, filtered to `kind="VULNERABILITY"`) and records, per affected package, the CVE (the note's id), the scanner's effective severity and CVSS score, the installed and fixed versions, whether a fix exists, and whether the CVE is on CISA's Known Exploited Vulnerabilities list. Occurrences with a VEX assessment of _not affected_ or _fixed_ are left out.
+
+What it needs:
+
+- The **Container Scanning API** (`containerscanning.googleapis.com`) enabled on the project. Without it nothing is scanned; when the list comes back empty Infrawrench checks the API's state and says so rather than reporting a clean project (that check uses `serviceusage.services.get`, which the Viewer role includes).
+- The **Container Analysis API** (`containeranalysis.googleapis.com`) enabled.
+- `containeranalysis.occurrences.list` on the project, in the **Container Analysis Occurrences Viewer** role (`roles/containeranalysis.occurrences.viewer`). The least-privilege role the generator above emits does not include it, so add the permission or grant the role alongside it.
+
+Each image finding is keyed by the image's repository (`us-docker.pkg.dev/project/repo/image`) and manifest digest, which is how it joins running workloads: **Cloud Run services and jobs** declare their container images (every container in the template, sidecars included), and Kubernetes workloads on GKE join through the Kubernetes plugin. A Cloud Run service deployed by tag matches on repository and tag; one deployed by digest matches exactly.
+
+Limits: the read stops at 20,000 occurrences per project, so the list is marked partial. Artifact Analysis only keeps rescanning an image that was pulled in the last 30 days; older images keep their last results, which can be stale.

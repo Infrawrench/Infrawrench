@@ -282,6 +282,8 @@ export function pushDataToPath(data: MobilePushData): string {
     // A posture alert summarises the whole feed, so it opens the feed.
     case "posture_alert":
       return `/org/${data.orgId}/posture`;
+    case "vulnerability_alert":
+      return `/org/${data.orgId}/vulnerabilities`;
     // A savings finding is listed in the Costs screen's savings sections.
     case "savings_finding":
     // Extended-support findings are a section of the Costs screen.
@@ -558,6 +560,10 @@ export function parsePushData(raw: unknown): MobilePushData | null {
     }
     case "posture_alert":
       return { type: "posture_alert", orgId };
+    case "vulnerability_alert": {
+      const count = data["count"];
+      return { type: "vulnerability_alert", orgId, count: typeof count === "number" ? count : 0 };
+    }
     case "savings_finding": {
       const kind = data["kind"];
       const resourceId = data["resourceId"];

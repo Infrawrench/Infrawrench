@@ -1,6 +1,18 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { type ListerContext } from "./shared.js";
 
+/**
+ * Every container image in a Cloud Run template (main container and sidecars),
+ * newline separated: what the vulnerability join reads. Free: the list
+ * response already carries the template.
+ */
+export function cloudRunContainerImages(containers: Array<Record<string, unknown>>): string {
+  return containers
+    .map((c) => String(c["image"] ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function listCloudRunServices(
   ctx: ListerContext,
   accountId: string,
@@ -56,6 +68,7 @@ export async function listCloudRunServices(
         ingress: String(svc["ingress"] ?? ""),
         lastModifier: String(svc["lastModifier"] ?? ""),
         image,
+        containerImages: cloudRunContainerImages(containers),
         deployClient: String(svc["client"] ?? ""),
         deployClientVersion: String(svc["clientVersion"] ?? ""),
         sourceLocation,
@@ -118,6 +131,7 @@ export function cloudRunJobToResource(
       name,
       region,
       image: String(containers[0]?.["image"] ?? ""),
+      containerImages: cloudRunContainerImages(containers),
       taskCount: Number(execTemplate["taskCount"] ?? 1),
       parallelism: Number(execTemplate["parallelism"] ?? 0),
       // The API omits maxRetries when it is the default of 3.

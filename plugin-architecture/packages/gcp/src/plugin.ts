@@ -141,6 +141,17 @@ const manifest: PluginManifest = {
     label: "Quotas",
     increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
   },
+  // Artifact Analysis vulnerability occurrences via
+  // containeranalysis.projects.occurrences.list (kind="VULNERABILITY"). Needs
+  // containeranalysis.occurrences.list (roles/containeranalysis.occurrences.viewer;
+  // none of the per-service viewer roles carry it) and the Container Scanning
+  // API enabled. `partial` because the walk stops at 20 pages of 1000.
+  vulnerabilities: {
+    label: "Artifact Analysis",
+    consoleUrl: "https://console.cloud.google.com/artifacts",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   // Scheduled BigQuery SQL importer for business metrics (unit-cost
   // denominators). Needs BigQuery Job User on the picked project and Data
   // Viewer on the data the query reads.

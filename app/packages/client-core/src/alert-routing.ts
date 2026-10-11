@@ -242,6 +242,17 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // New findings only: a CVE is alerted once, when it first becomes
+    // alertable (first seen, or first seen running), never again daily.
+    // `critical` because the default threshold is "critical and running".
+    id: "vulnerabilityAlerts",
+    label: "Vulnerabilities",
+    description: "A critical vulnerability was found in an image that is running.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     id: "probeAlerts",
     label: "Probes",
     description: "A synthetic probe went down or recovered.",
