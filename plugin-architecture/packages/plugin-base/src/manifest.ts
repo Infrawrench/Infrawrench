@@ -196,6 +196,13 @@ export interface PluginManifest {
    */
   credits?: CreditsCapabilityDeclaration;
   /**
+   * If present, this plugin can list the paid per-person seats on an account
+   * (with the evidence of when each was last used) via `fetchSeats`, and the
+   * host schedules a daily collection pass that feeds the Seats findings
+   * (inactive, duplicated across tools, a cheaper tier). See `seats.ts`.
+   */
+  seats?: SeatsCapabilityDeclaration;
+  /**
    * If present, this plugin can report how close the account is to the limits
    * its provider enforces, via `fetchQuotas`, and the host schedules a
    * low-frequency collection pass that turns the resulting series into a
@@ -575,6 +582,23 @@ export interface PluginClient {
    * that is a different situation from a failure and the host says so.
    */
   fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
+  /**
+   * List every paid seat on the account. Only called when the manifest
+   * declares `seats`, from a daily background pass that stores the result.
+   *
+   * Must **throw rather than return a partial list**: the host replaces its
+   * stored inventory with what this returns, and a seat that disappears is
+   * read as removed (and, if it was idle, credited as a realized saving).
+   * Free members (unpaid admins, guests) are left out, not returned at $0.
+   * See `seats.ts` for the activity-evidence rules.
+   */
+  fetchSeats?(accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]>;
+  /**
+   * Remove (or unassign) one seat. Only offered when the manifest declares
+   * `seats.removal` and the seat's `removable` is true. Throw a user-facing
+   * error when the provider refuses (a seat granted through a team, say).
+   */
+  removeSeat?(accountId: string, seat: SeatRef): Promise<SeatRemovalResult>;
   /**
    * Read how close this account is to the limits the provider enforces. Only
    * called when the manifest declares `quotas`. Called on a low-frequency
@@ -1285,6 +1309,14 @@ export interface Plugin {
    */
   remediationCommands?(finding: RemediationFinding): RemediationCommand[];
   /**
+   * Ready-to-run commands for a seat finding (inactive, duplicate, downgrade):
+   * the provider CLI or `curl` against its admin API, filled from the stored
+   * seat and its `context`, tokens as placeholders. Same rules and the same
+   * defensive caller (`resolveSeatRemediationCommands`) as
+   * `remediationCommands`.
+   */
+  seatRemediationCommands?(finding: SeatRemediationFinding): RemediationCommand[];
+  /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
    * Plugin (not the client) because it needs no credentials: the feed is
@@ -1349,7 +1381,11 @@ export interface Plugin {
 }
 
 // Forward declarations: defined in their own modules but used here
-import type { RemediationCommand, RemediationFinding } from "./remediation.js";
+import type {
+  RemediationCommand,
+  RemediationFinding,
+  SeatRemediationFinding,
+} from "./remediation.js";
 import type {
   BusinessMetricSourceDeclaration,
   BusinessMetricSourceDryRun,
@@ -1395,6 +1431,13 @@ import type {
   PriceCatalogResult,
 } from "./price-catalog.js";
 import type { ExtendedSupportCharge } from "./extended-support.js";
+import type {
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
+  SeatsCapabilityDeclaration,
+} from "./seats.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

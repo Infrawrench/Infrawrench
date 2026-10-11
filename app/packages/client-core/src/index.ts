@@ -891,6 +891,7 @@ export * from "./carbon-factors";
 export * from "./carbon";
 export * from "./expiry";
 export * from "./extended-support";
+export * from "./seats";
 export * from "./leases";
 // One time axis over every dated thing above: freezes, sleep windows,
 // deadlines, commitment terms, scheduled runs and incidents.

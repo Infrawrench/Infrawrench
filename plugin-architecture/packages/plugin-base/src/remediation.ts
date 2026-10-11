@@ -100,6 +100,33 @@ export interface RemediationCommitment {
 }
 
 /**
+ * A paid SaaS seat finding (see `seats.ts`). Separate from
+ * {@link RemediationFinding} on purpose: seat findings are about people, not
+ * resources, and a plugin answers them through its own
+ * `Plugin.seatRemediationCommands`, so the resource generators never have to
+ * learn a kind they cannot address.
+ */
+export interface SeatRemediationFinding {
+  reason: "inactive" | "duplicate" | "downgrade";
+  seat: RemediationSeat;
+}
+
+/** The seat a seat finding is about: the stored record's identity and context. */
+export interface RemediationSeat {
+  memberId: string;
+  /** Empty when the provider has one seat per member. */
+  seatKey: string;
+  email: string | null;
+  login: string | null;
+  name: string | null;
+  seatType: string;
+  /** The cheaper tier, for a downgrade finding. */
+  targetSeatType: string | null;
+  /** The plugin's own `SeatRecord.context` (org login, group id, domain). */
+  context: Record<string, string>;
+}
+
+/**
  * Every finding type the savings surfaces render. A plugin answers the kinds
  * it can and returns `[]` for the rest.
  */
@@ -172,6 +199,11 @@ export interface RemediationSource {
   remediationCommands?: ((finding: RemediationFinding) => RemediationCommand[]) | undefined;
 }
 
+/** The part of a plugin {@link resolveSeatRemediationCommands} reads. */
+export interface SeatRemediationSource {
+  seatRemediationCommands?: ((finding: SeatRemediationFinding) => RemediationCommand[]) | undefined;
+}
+
 /** Cap per finding: anything longer is a script, not a command list. */
 export const MAX_REMEDIATION_COMMANDS = 12;
 
@@ -217,8 +249,23 @@ export function resolveRemediationCommands(
   source: RemediationSource | undefined,
   finding: RemediationFinding,
 ): FindingRemediation {
+  return sanitizeGenerated(source, source?.remediationCommands, finding);
+}
+
+/** {@link resolveRemediationCommands} for a seat finding: same defences, same cap. */
+export function resolveSeatRemediationCommands(
+  source: SeatRemediationSource | undefined,
+  finding: SeatRemediationFinding,
+): FindingRemediation {
+  return sanitizeGenerated(source, source?.seatRemediationCommands, finding);
+}
+
+function sanitizeGenerated<F>(
+  source: unknown,
+  fn: ((finding: F) => RemediationCommand[]) | undefined,
+  finding: F,
+): FindingRemediation {
   const empty: FindingRemediation = { commands: [], placeholders: [], iac: null };
-  const fn = source?.remediationCommands;
   if (typeof fn !== "function") return empty;
   let raw: unknown;
   try {
