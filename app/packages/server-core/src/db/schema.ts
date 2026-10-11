@@ -4815,6 +4815,15 @@ export const reportNotifications = pgTable(
       onDelete: "cascade",
     }),
     /**
+     * The compliance framework (`soc2`, `iso27001`) whose evidence pack a
+     * pack schedule delivers; null otherwise. A registry id, not a foreign
+     * key (frameworks live in code). Claimed by the web delivery loop beside
+     * dashboards and canvases, because building a pack needs the same web
+     * process. Its `cadence` may be `quarterly`, which only pack schedules
+     * use; the period delivered is the previous calendar month or quarter.
+     */
+    complianceFrameworkId: text("compliance_framework_id"),
+    /**
      * Attach the rendered PDF (email attachment, Slack file upload). Only read
      * for dashboard schedules; report schedules send their text summary.
      */
@@ -4889,9 +4898,14 @@ export const reportNotifications = pgTable(
     dashboardIdx: index("report_notifications_dashboard_idx").on(t.dashboardId),
     /** A canvas's delivery section lists one canvas's schedules. */
     canvasIdx: index("report_notifications_canvas_idx").on(t.costCanvasId),
+    /** The compliance tab lists one org's pack schedules. */
+    complianceIdx: index("report_notifications_compliance_idx").on(
+      t.organizationId,
+      t.complianceFrameworkId,
+    ),
     oneTarget: check(
       "report_notifications_one_target",
-      sql`num_nonnulls(${t.costReportId}, ${t.dashboardId}, ${t.costCanvasId}) = 1`,
+      sql`num_nonnulls(${t.costReportId}, ${t.dashboardId}, ${t.costCanvasId}, ${t.complianceFrameworkId}) = 1`,
     ),
     /** The poller's due scan. */
     dueIdx: index("report_notifications_due_idx").on(t.nextSendAt),
@@ -5300,3 +5314,4 @@ export * from "./github-issues-schema.js";
 export * from "./pr-check-schema.js";
 export * from "./paging-provider-schema.js";
 export * from "./jit-access-schema.js";
+export * from "./compliance-schema.js";
