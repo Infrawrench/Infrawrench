@@ -498,6 +498,24 @@ describe("formatting", () => {
     expect(body).toContain("2 actions short of projection");
   });
 
+  it("reports seat findings with the monthly saving", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({ seats: { findings: 4, inactive: 3, currency: "USD", monthly: 157 } }),
+      ),
+    );
+    expect(body).toContain("*Seats*: 4 paid seats to review, 3 inactive, $157.00/mo to save");
+  });
+
+  it("omits the seats line when there is nothing to act on", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({ seats: { findings: 0, inactive: 0, currency: null, monthly: null } }),
+      ),
+    );
+    expect(body).not.toContain("Seats");
+  });
+
   it("omits the realized savings line when nothing was realized", () => {
     expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Realized savings");
   });
