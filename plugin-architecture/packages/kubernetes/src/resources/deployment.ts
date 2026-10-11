@@ -12,6 +12,10 @@ export const DeploymentResourceType = rt({
       required: false,
       description: "The ServiceAccount the pod template runs as, when it names one",
     }),
+    f("images", "Images", {
+      required: false,
+      description: "Every container image the pod template runs, init containers and sidecars included",
+    }),
   ],
   outputs: [o("readyReplicas", "Ready Replicas"), o("image", "Container Image")],
   dependsOn: [
@@ -27,4 +31,5 @@ export const DeploymentResourceType = rt({
   supportsCreate: true,
   iconKey: "deployment",
   supportsMetrics: true,
+  runningImages: { imageKeys: ["images", "image"] },
 });

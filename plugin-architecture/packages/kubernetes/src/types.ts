@@ -119,11 +119,18 @@ export interface K8sPod {
     containerStatuses?: Array<{
       ready: boolean;
       restartCount: number;
+      /**
+       * The image the runtime actually pulled, by digest
+       * (`docker-pullable://repo@sha256:…` or `repo@sha256:…`). The strongest
+       * join key for vulnerability findings: a tag can move, a digest cannot.
+       */
+      imageID?: string;
       state: {
         waiting?: { reason?: string; message?: string };
         [key: string]: unknown;
       };
     }>;
+    initContainerStatuses?: Array<{ imageID?: string }>;
   };
 }
 

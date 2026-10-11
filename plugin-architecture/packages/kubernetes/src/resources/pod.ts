@@ -34,6 +34,14 @@ export const PodResourceType = rt({
       description:
         "namespace/name of every Secret this pod mounts, reads env from, or pulls images with",
     }),
+    f("images", "Images", {
+      required: false,
+      description: "Every container image the pod template runs, init containers and sidecars included",
+    }),
+    f("imageDigests", "Image Digests", {
+      required: false,
+      description: "The digest the runtime actually pulled for each container",
+    }),
   ],
   outputs: [],
   dependsOn: [
@@ -65,4 +73,10 @@ export const PodResourceType = rt({
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
   supportsMetrics: true,
+  runningImages: {
+    imageKeys: ["images", "image"],
+    digestKeys: ["imageDigests"],
+    runningKey: "status",
+    runningValues: ["Running", "Pending"],
+  },
 });
