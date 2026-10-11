@@ -531,7 +531,9 @@ describe("syncWorkspaceRouteFromPath", () => {
   });
 
   it("parses the org-scoped vulnerabilities path", () => {
-    expect(syncWorkspaceRouteFromPath("/org/test-org/vulnerabilities")).toEqual({ kind: "vulnerabilities" });
+    expect(syncWorkspaceRouteFromPath("/org/test-org/vulnerabilities")).toEqual({
+      kind: "vulnerabilities",
+    });
   });
 
   it("parses the org-scoped access review path", () => {

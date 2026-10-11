@@ -267,7 +267,9 @@ describe("getWorkspaceNavigateArgs", () => {
   });
 
   it("returns vulnerabilities route args", () => {
-    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({ to: "/vulnerabilities" });
+    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({
+      to: "/vulnerabilities",
+    });
   });
 
   it("returns access review route args", () => {
