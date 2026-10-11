@@ -55,7 +55,7 @@ function bandClass(band: DoraBand | null): string {
     case "elite":
       return "bg-success/15 text-success";
     case "high":
-      return "bg-blue-500/15 text-blue-500";
+      return "bg-accent-muted text-accent-on-muted";
     case "medium":
       return "bg-warning/15 text-warning";
     case "low":
@@ -302,7 +302,7 @@ function BreakdownTable({
                 <button
                   type="button"
                   onClick={() => onPick(row.key)}
-                  className="text-left text-blue-500 hover:underline"
+                  className="text-left text-accent hover:underline"
                 >
                   {row.key === null ? gt("Not known") : row.label}
                 </button>
@@ -344,14 +344,14 @@ function ExternalLink({
       <button
         type="button"
         onClick={() => onOpenUrl(url)}
-        className="text-blue-500 hover:underline"
+        className="text-accent hover:underline"
       >
         {label}
       </button>
     );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+    <a href={url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
       {label}
     </a>
   );
