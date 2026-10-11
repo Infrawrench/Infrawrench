@@ -14,6 +14,12 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.17"
     }
+    # The Lambda gateway (lambda.tf). 6.x for `invoked_via_function_url` on
+    # aws_lambda_permission, which public function URLs need since October 2025.
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.20"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"

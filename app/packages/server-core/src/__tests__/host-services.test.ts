@@ -428,6 +428,20 @@ describe("http.request — bastion routing", () => {
     ).rejects.toThrow(/disconnected bx/);
   });
 
+  it("hands bastion traffic on, recorded, inside a session-handoff scope", async () => {
+    const { runInRequestScope, gatewayOnlyHitInScope } = await import("../runtime/request-scope");
+    getDispatcherFor.mockReturnValue({ id: "disp" });
+    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const hit = await runInRequestScope({ sessionHandoff: true, gatewayOnly: {} }, async () => {
+      await expect(
+        out!.http!.request({ url: "https://x", method: "GET", headers: {} }),
+      ).rejects.toThrow(/\[gateway-only\] Routing through a bastion agent/);
+      return gatewayOnlyHitInScope();
+    });
+    expect(hit).toBe("Routing through a bastion agent");
+    expect(undiciFetch).not.toHaveBeenCalled();
+  });
+
   it("routes through undici when a dispatcher is connected", async () => {
     getDispatcherFor.mockReturnValue({ id: "disp" });
     undiciFetch.mockResolvedValueOnce({

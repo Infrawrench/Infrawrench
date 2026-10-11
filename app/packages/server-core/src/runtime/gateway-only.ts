@@ -30,10 +30,7 @@ export const GATEWAY_ONLY_HEADER = "x-iw-gateway-only";
 export class GatewayOnlyError extends Error {
   readonly code = GATEWAY_ONLY_CODE;
   constructor(what: string, options?: { cause?: unknown }) {
-    super(
-      `${GATEWAY_ONLY_MARKER} ${what} needs the Node gateway and cannot run on the edge`,
-      options,
-    );
+    super(`${GATEWAY_ONLY_MARKER} ${what} needs the Node gateway and cannot run here`, options);
     this.name = "GatewayOnlyError";
     noteGatewayOnlyHit(what);
   }

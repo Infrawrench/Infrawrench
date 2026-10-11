@@ -29,6 +29,15 @@ name: web-deploy
 #                                    after the cluster rollout. Needs the
 #                                    CLOUDFLARE_API_TOKEN secret and real ids in
 #                                    both edge/wrangler.jsonc files.
+# Optional repo variables (AWS Lambda gateway; see "Lambda gateway" in
+# infra/README.md):
+#   LAMBDA_DEPLOY_ENABLED          - "true" to build the Lambda image, push it
+#                                    to ECR and point both functions at it.
+#   LAMBDA_ECR_REPOSITORY          - terraform output lambda_ecr_repository
+#   AWS_LAMBDA_CI_ROLE_ARN         - terraform output lambda_ci_role_arn
+#   AWS_REGION                     - defaults to us-east-2
+#   LAMBDA_FUNCTION_PREFIX         - defaults to infrawrench-prod-lambda
+#                                    (terraform's "<cluster_name>-lambda")
 # Optional repo variables:
 #   GKE_DNS_ENDPOINT               - "true" to reach the control plane through
 #                                    its IAM-gated DNS endpoint instead of the
@@ -189,16 +198,97 @@ jobs:
           kubectl -n infrawrench rollout status deployment/poller --timeout=300s
           kubectl -n infrawrench rollout status deployment/github-watcher --timeout=300s
 
+  # The AWS Lambda gateway: the web gateway and the poller, one image with
+  # two handlers (infra/docker/lambda.Dockerfile). After `migrate` for the
+  # schema, and before `deploy-edge`, so the Worker never forwards to a
+  # function older than itself. Configuration is not deployed here: terraform
+  # writes app_env to the Secrets Manager secret the functions read, and owns
+  # every setting but the image.
+  deploy-lambda:
+    if: github.ref == 'refs/heads/main' && vars.LAMBDA_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [migrate]
+    environment: production
+    # id-token lets the job assume the CI role through GitHub's OIDC provider
+    # (infra/terraform/lambda.tf); there is no AWS key in repo secrets.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
+      ECR_REPOSITORY: ${{ vars.LAMBDA_ECR_REPOSITORY }}
+      FUNCTION_PREFIX: ${{ vars.LAMBDA_FUNCTION_PREFIX || 'infrawrench-prod-lambda' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      # Tags are immutable in ECR, so a re-run of the same commit reuses the
+      # image it already pushed.
+      - name: Check for an existing image
+        id: existing
+        run: |
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY#*/}" \
+              --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: steps.existing.outputs.found != 'true'
+
+      # provenance off: buildx otherwise pushes an image index with an
+      # attestation manifest, and Lambda accepts only a single-platform image.
+      - name: Build and push lambda:${{ github.sha }}
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: infra/docker/lambda.Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha,scope=lambda
+          cache-to: type=gha,scope=lambda,mode=max
+
+      # The functions exist only once terraform has been given a first image
+      # tag (lambda_initial_image_tag), so on the bootstrap run this pushes
+      # the image and says so instead of failing.
+      - name: Point the functions at ${{ github.sha }}
+        run: |
+          for fn in web poller; do
+            name="${FUNCTION_PREFIX}-${fn}"
+            if ! aws lambda get-function --function-name "$name" >/dev/null 2>&1; then
+              echo "::notice::$name does not exist yet; set lambda_initial_image_tag = \"$GITHUB_SHA\" in terraform.tfvars and apply."
+              continue
+            fi
+            aws lambda update-function-code --function-name "$name" \
+              --image-uri "${ECR_REPOSITORY}:${GITHUB_SHA}" >/dev/null
+            aws lambda wait function-updated-v2 --function-name "$name"
+            echo "$name now runs ${GITHUB_SHA}"
+          done
+
   # The Cloudflare edge: the web front door and the edge poller, both built
   # from this same commit. After `deploy` so the gateway (the pods above) is
-  # already serving what the edge forwards to it, and after `migrate` so the
-  # schema the Workers read is in place. Secrets are the cluster's own
-  # `infrawrench-env` (terraform's app_env), read here rather than duplicated
-  # in GitHub, so the two runtimes can never disagree about a value.
+  # already serving what the edge forwards to it, after `deploy-lambda` for
+  # the same reason, and after `migrate` so the schema the Workers read is in
+  # place. Secrets are the cluster's own `infrawrench-env` (terraform's
+  # app_env, plus the Lambda's URL and shared secret), read here rather than
+  # duplicated in GitHub, so the runtimes can never disagree about a value.
   deploy-edge:
-    if: github.ref == 'refs/heads/main' && vars.EDGE_DEPLOY_ENABLED == 'true'
+    # `!failure() && !cancelled()` rather than the implicit success(): a
+    # skipped deploy-lambda (the Lambda gateway not adopted) must not skip
+    # this job too.
+    if: >-
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && vars.EDGE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    needs: [migrate, deploy]
+    needs: [migrate, deploy, deploy-lambda]
     environment: production
     permissions:
       contents: read

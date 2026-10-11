@@ -16,6 +16,7 @@
     "./runtime/gateway-only": "./src/runtime/gateway-only.ts",
     "./runtime/account-runtime": "./src/runtime/account-runtime.ts",
     "./runtime/edge-invocation": "./src/runtime/edge-invocation.ts",
+    "./runtime/lambda": "./src/runtime/lambda.ts",
     "./plugin-registry": "./src/plugin-registry.ts",
     "./edge/gateway-only-stub.cjs": "./edge/gateway-only-stub.cjs",
     "./edge/gateway-only-modules.json": "./edge/gateway-only-modules.json",
@@ -298,6 +299,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "@aws-sdk/client-secrets-manager": "^3.1106.0",
     "@clickhouse/client": "^1.23.1",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-anthropic": "workspace:*",

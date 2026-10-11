@@ -28,6 +28,15 @@ export interface RequestScope {
    * nothing, since a replay would otherwise do the writes twice.
    */
   dbWrites?: { count: number };
+  /**
+   * Set by the web Lambda (`web/lambda/handler.ts`), which is a real Node
+   * process but not a long-lived one: process-local state such as bastion
+   * agent connections never lives there. Reaching it inside this scope is
+   * recorded as a gateway-only hit, so the request is handed on to the
+   * session gateway, which holds that state, instead of failing. The Lambda
+   * poller leaves it unset and behaves exactly like the Node poller.
+   */
+  sessionHandoff?: boolean;
 }
 
 /**
@@ -92,6 +101,11 @@ export async function trackGatewayOnlyHits<T>(
   } catch (error) {
     return tracker.hit ? { ok: false, error, hit: tracker.hit } : { ok: false, error };
   }
+}
+
+/** Whether this scope hands work that needs process-local state to the session gateway. */
+export function sessionHandoffInScope(): boolean {
+  return storage.getStore()?.sessionHandoff === true;
 }
 
 /** Count a database write against the current scope (called by the `db` proxy). */

@@ -26,6 +26,7 @@ import { resourceIdBelongsToAccount } from "./resource-ids";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
 import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
+import { sessionHandoffInScope } from "./runtime/request-scope";
 import {
   guardDriverConnection,
   pinnedLookup,
@@ -197,7 +198,9 @@ function buildHttpHostServices(
       // process the agent dialled) nor a way to trust a per-request CA, so
       // both hand the call to the gateway. Plain requests need no guard
       // there: Workers egress cannot reach private or loopback addresses.
-      if (isEdgeRuntime() && bastionId) {
+      // The web Lambda is Node but holds no agent connections either, so it
+      // hands bastion traffic on the same way (to the session gateway).
+      if (bastionId && (isEdgeRuntime() || sessionHandoffInScope())) {
         throw new GatewayOnlyError("Routing through a bastion agent");
       }
       if (isEdgeRuntime() && req.caCert) {

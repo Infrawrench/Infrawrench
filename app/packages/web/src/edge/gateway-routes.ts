@@ -1,52 +1,49 @@
 /**
- * Which requests the edge Worker (`edge/worker.ts`) hands straight to the Node
- * gateway instead of running the Hono API itself.
+ * Which requests the edge Worker (`edge/worker.ts`) hands straight to Node
+ * instead of running the Hono API itself, and which of the two Node tiers
+ * gets them.
  *
  * The edge can run every route; the question is only whether it is worth
  * trying. These lists are the routes where trying would be wasted or wrong:
  *
- * - **Always the gateway**: anything that holds state in a Node process (the
- *   bastion agent registry, shared consoles, Linux app sessions, SSH tunnels),
- *   streams over SSE or WebSocket, or exists only to drive a socket driver,
- *   SSH or kubectl.
- * - **Mutations on the gateway**: routes whose writes commonly reach a
- *   Node-only path (saving a workflow compiles it; adding an account tests
- *   its connection). Their reads are ordinary and stay on the edge.
+ * - **Always the session gateway** (`tier: "session"`): anything that needs a
+ *   long-lived process. WebSockets, the in-process registries (bastion agents,
+ *   shared consoles, Linux app sessions, agent VMs, the cross-replica relay),
+ *   SSE streams that outlive a request budget, and uploads past what a Lambda
+ *   request can carry.
+ * - **Always Node** (`tier: "node"`): routes that exist to drive a socket
+ *   driver, SSH or plugin code, but finish within the request. These go to the
+ *   Lambda gateway when one is configured and to the session gateway when not.
+ * - **Mutations on Node**: routes whose writes commonly reach a Node-only path
+ *   (saving a workflow compiles it; adding an account tests its connection).
+ *   Their reads are ordinary and stay on the edge.
  *
  * Everything else runs on the edge, and the edge still falls back: a GET that
- * reaches a gateway-only path is replayed on the gateway, and an account whose
- * work does gets flagged so later requests about it skip the edge entirely
- * (`runtime/account-runtime.ts`). Missing a route here costs latency, not
- * correctness, for reads; for writes it costs the user a retry, and the edge
- * logs the path so it can be added.
+ * reaches a gateway-only path is replayed on Node, and an account whose work
+ * does gets flagged so later requests about it skip the edge entirely
+ * (`runtime/account-runtime.ts`). The Lambda gateway falls back the same way
+ * one tier further up, for the process-local state it lacks. Missing a route
+ * here costs latency, not correctness, for reads; for writes it costs the user
+ * a retry, and the edge logs the path so it can be added.
  */
 
 const ORG = String.raw`^/api/org/[^/]+`;
 
-const ALWAYS_GATEWAY: readonly RegExp[] = [
+const SESSION_ROUTES: readonly RegExp[] = [
   // The WebSocket endpoints `server.ts` upgrades itself, matched by path as
   // well as by the Upgrade header so a request that loses the header on the
   // way still reaches the only process that can answer it.
   /^\/api\/(ws|apps)$/,
   /^\/api\/bastions\/agent$/,
-  // Node HTTP handler, not part of the Hono app.
+  // Node HTTP handler, not part of the Hono app; its app tools reach Linux
+  // app sessions through the cross-replica relay, which needs a pod address.
   /^\/api\/mcp(\/|$)/,
-  // Paging-provider webhooks: the signature check is plugin code, which the
-  // web Worker does not carry, and a provider retries a failed delivery
-  // rather than replaying it somewhere else.
-  /^\/api\/paging-webhooks\//,
-  // Slack slash commands and button actions answer Slack at once and do the
-  // work afterwards, often through plugin code; a gateway-only miss there
-  // happens after the response and cannot be replayed.
-  /^\/api\/slack\/(commands|interactions)$/,
-  // Provider OAuth: both halves may run plugin hooks the web Worker does not
-  // carry (authorize: `registerOAuthClient`, `buildOAuthAuthorizeUrl`;
-  // callback: `exchangeOAuthCode`, `completeOAuthConnection`).
-  /^\/api\/provider-oauth\/[^/]+\/callback$/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
   /^\/api\/internal(\/|$)/,
-  // SSE, and tools that drive drivers and SSH mid-stream.
+  // SSE whose turns can outlast a Lambda invocation, with tools that drive
+  // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in
+  // with the session gateway's GKE Workload Identity.
   new RegExp(`${ORG}/chat(/|$)`),
   new RegExp(
     `${ORG}/(` +
@@ -56,10 +53,39 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
         "shared-consoles",
         "apps",
         "agents",
-        "ssh-fanout",
         "ssh-tunnels",
-        "connect",
+        // Deploys stream over the WebSocket and hosted builds run for up to
+        // 20 minutes, past Lambda's 15.
         "deployments",
+        // Object storage and SFTP: uploads larger than a Lambda request
+        // carries, staged on local disk.
+        "storage",
+        "v1/storage",
+        "v1/sftp",
+      ].join("|") +
+      ")(/|$)",
+  ),
+];
+
+const NODE_ROUTES: readonly RegExp[] = [
+  // Paging-provider webhooks: the signature check is plugin code, which the
+  // web Worker does not carry, and a provider retries a failed delivery
+  // rather than replaying it somewhere else.
+  /^\/api\/paging-webhooks\//,
+  // Slack slash commands and button actions answer Slack at once and do the
+  // work afterwards (through `keepAlive`), often through plugin code; a
+  // gateway-only miss there happens after the response and cannot be replayed.
+  /^\/api\/slack\/(commands|interactions)$/,
+  // Provider OAuth: both halves may run plugin hooks the web Worker does not
+  // carry (authorize: `registerOAuthClient`, `buildOAuthAuthorizeUrl`;
+  // callback: `exchangeOAuthCode`, `completeOAuthConnection`).
+  /^\/api\/provider-oauth\/[^/]+\/callback$/,
+  new RegExp(
+    `${ORG}/(` +
+      [
+        // SSH that finishes within the request.
+        "ssh-fanout",
+        "connect",
         "session-recordings",
         "ssh-host-keys",
         // Provider OAuth authorize: plugin client registration and URL hooks.
@@ -69,9 +95,6 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
         "kv",
         "kv-browser",
         "docker",
-        "storage",
-        "v1/storage",
-        "v1/sftp",
       ].join("|") +
       ")(/|$)",
   ),
@@ -119,22 +142,47 @@ export function isSafeMethod(method: string): boolean {
   return method === "GET" || method === "HEAD" || method === "OPTIONS";
 }
 
+/**
+ * The two Node runtimes behind the edge. `session` is the long-lived gateway
+ * (the Node server, `server.ts`); `node` is any Node runtime, which means the
+ * Lambda gateway when one is configured.
+ */
+export type GatewayTier = "session" | "node";
+
+/**
+ * `accountId` is set when the path names one, so the Worker can look it up:
+ * on the edge to skip accounts that need Node, and for `node` routes to send
+ * a bastion-bound account to the session gateway, which holds its agent.
+ */
 export type EdgeRoute =
-  { target: "gateway"; reason: string } | { target: "edge"; accountId?: string };
+  | { target: "gateway"; tier: GatewayTier; reason: string; accountId?: string }
+  | { target: "edge"; accountId?: string };
+
+function accountInPath(pathname: string): string | undefined {
+  const account = ACCOUNT_IN_PATH.exec(pathname)?.[1];
+  return account && !NOT_ACCOUNT_IDS.has(account) ? decodeURIComponent(account) : undefined;
+}
 
 export function routeRequest(method: string, pathname: string, upgrade: string | null): EdgeRoute {
-  if (upgrade?.toLowerCase() === "websocket") return { target: "gateway", reason: "websocket" };
-  for (const pattern of ALWAYS_GATEWAY) {
-    if (pattern.test(pathname)) return { target: "gateway", reason: "route" };
+  if (upgrade?.toLowerCase() === "websocket") {
+    return { target: "gateway", tier: "session", reason: "websocket" };
+  }
+  for (const pattern of SESSION_ROUTES) {
+    if (pattern.test(pathname)) return { target: "gateway", tier: "session", reason: "route" };
+  }
+  const accountId = accountInPath(pathname);
+  const withAccount = accountId ? { accountId } : {};
+  for (const pattern of NODE_ROUTES) {
+    if (pattern.test(pathname)) {
+      return { target: "gateway", tier: "node", reason: "route", ...withAccount };
+    }
   }
   if (!isSafeMethod(method)) {
     for (const pattern of MUTATIONS_ON_GATEWAY) {
-      if (pattern.test(pathname)) return { target: "gateway", reason: "mutation" };
+      if (pattern.test(pathname)) {
+        return { target: "gateway", tier: "node", reason: "mutation", ...withAccount };
+      }
     }
   }
-  const account = ACCOUNT_IN_PATH.exec(pathname)?.[1];
-  if (account && !NOT_ACCOUNT_IDS.has(account)) {
-    return { target: "edge", accountId: decodeURIComponent(account) };
-  }
-  return { target: "edge" };
+  return { target: "edge", ...withAccount };
 }

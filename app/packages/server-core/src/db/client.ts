@@ -26,6 +26,18 @@ export function createDb(
 }
 
 let processDb: Db | null = null;
+let processDbOptions: Options<Record<string, PostgresType>> = { max: 10 };
+
+/**
+ * Override the process pool's options before its first use. The Lambda entry
+ * points (`runtime/lambda.ts`) call this: an execution environment serves one
+ * request at a time and is frozen between them, so it wants a pool of one or
+ * two that drops idle sockets quickly, not ten long-lived ones per instance.
+ */
+export function setProcessDbOptions(options: Options<Record<string, PostgresType>>): void {
+  if (processDb) throw new Error("setProcessDbOptions must run before the first query");
+  processDbOptions = options;
+}
 
 function getProcessDb(): Db {
   if (processDb) return processDb;
@@ -33,7 +45,7 @@ function getProcessDb(): Db {
   if (!connectionString) {
     throw new Error("DATABASE_URL environment variable is required");
   }
-  processDb = createDb(connectionString, { max: 10 }).db;
+  processDb = createDb(connectionString, processDbOptions).db;
   return processDb;
 }
 

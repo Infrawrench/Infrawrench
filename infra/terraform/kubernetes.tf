@@ -25,11 +25,17 @@ resource "kubernetes_secret" "app_env" {
   # than hand-maintained in tfvars — they're addresses, not credentials (the
   # credential is the Workload Identity binding in vertex.tf). tfvars still
   # wins if someone sets them explicitly.
+  #
+  # With the Lambda gateway on (lambda.tf), the edge Worker also needs the
+  # function URL and the secret it presents there. deploy-edge uploads this
+  # secret as the Worker's environment, so they ride along here rather than
+  # being copied into tfvars by hand.
   data = merge(
     {
       GOOGLE_CLOUD_PROJECT  = var.project_id
       GOOGLE_CLOUD_LOCATION = var.vertex_location
     },
     var.app_env,
+    local.lambda_worker_env,
   )
 }

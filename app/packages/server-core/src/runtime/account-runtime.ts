@@ -60,7 +60,12 @@ export function accountScopeCondition(scope: PollScope, alias: "accounts" | "a" 
  * next tick instead of after the lease runs out.
  */
 export async function markAccountRequiresGateway(accountId: string, reason: string): Promise<void> {
-  needsGatewayCache.set(accountId, { value: true, at: Date.now() });
+  const cached = runtimeCache.get(accountId);
+  runtimeCache.set(accountId, {
+    needsGateway: true,
+    needsSession: cached?.needsSession ?? false,
+    at: Date.now(),
+  });
   await db
     .update(accounts)
     .set({ requiresGateway: true, gatewayReason: reason.slice(0, 500), nextPollAt: null })
@@ -69,30 +74,59 @@ export async function markAccountRequiresGateway(accountId: string, reason: stri
 
 const CACHE_TTL_MS = 30_000;
 const CACHE_MAX = 5_000;
-const needsGatewayCache = new Map<string, { value: boolean; at: number }>();
+interface AccountRuntime {
+  needsGateway: boolean;
+  needsSession: boolean;
+  at: number;
+}
+const runtimeCache = new Map<string, AccountRuntime>();
 
 /**
- * Whether requests about this account should be served by the gateway. Read
- * by the edge router on every account-scoped request, so answers are cached
- * per isolate for {@link CACHE_TTL_MS}; a bastion bound a moment ago is picked
- * up within that window, and until then the request still works (it reaches
- * the gateway through the edge's gateway-only fallback). Unknown ids answer
- * `false`: the route's own lookup will 404 them.
+ * Where an account's requests belong, cached per isolate or process for
+ * {@link CACHE_TTL_MS}; a bastion bound a moment ago is picked up within that
+ * window, and until then the request still works (it is handed on through the
+ * gateway-only fallback). Unknown ids answer `false` to both: the route's own
+ * lookup will 404 them.
  */
-export async function accountNeedsGateway(accountId: string): Promise<boolean> {
-  const cached = needsGatewayCache.get(accountId);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
+async function accountRuntime(accountId: string): Promise<AccountRuntime> {
+  const cached = runtimeCache.get(accountId);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached;
   const rows = await db.execute(
-    sql`SELECT ${needsGateway("accounts")} AS needs FROM accounts WHERE accounts.id = ${accountId} LIMIT 1`,
+    sql`SELECT ${needsGateway("accounts")} AS needs, accounts.bastion_id IS NOT NULL AS session
+        FROM accounts WHERE accounts.id = ${accountId} LIMIT 1`,
   );
   const first = Array.from(rows as Iterable<Record<string, unknown>>)[0];
-  const value = first?.["needs"] === true;
-  if (needsGatewayCache.size >= CACHE_MAX) needsGatewayCache.clear();
-  needsGatewayCache.set(accountId, { value, at: Date.now() });
+  const value: AccountRuntime = {
+    needsGateway: first?.["needs"] === true,
+    needsSession: first?.["session"] === true,
+    at: Date.now(),
+  };
+  if (runtimeCache.size >= CACHE_MAX) runtimeCache.clear();
+  runtimeCache.set(accountId, value);
   return value;
+}
+
+/**
+ * Whether requests about this account should be served by Node rather than
+ * the edge. Read by the edge router on every account-scoped request.
+ */
+export async function accountNeedsGateway(accountId: string): Promise<boolean> {
+  return (await accountRuntime(accountId)).needsGateway;
+}
+
+/**
+ * Whether requests about this account need the long-lived session gateway
+ * specifically, rather than any Node runtime: true when it is bound to a
+ * bastion, whose agent connection lives in one session gateway process. SSH
+ * tunnels do not count; any Node process can open one for the duration of a
+ * request, as the poller always has. Read by the edge router to choose
+ * between the Lambda gateway and the session gateway.
+ */
+export async function accountNeedsSession(accountId: string): Promise<boolean> {
+  return (await accountRuntime(accountId)).needsSession;
 }
 
 /** Test-only. */
 export function resetAccountRuntimeCacheForTests(): void {
-  needsGatewayCache.clear();
+  runtimeCache.clear();
 }

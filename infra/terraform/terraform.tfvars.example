@@ -425,7 +425,35 @@ app_env = {
   # while the Worker is not running stops polling for every other account, so
   # set it after the Worker, and unset it to roll back.
   # POLLER_SCOPE = "gateway"
+
+  # AWS Lambda gateway (lambda.tf, infra/README.md "Lambda gateway"). Nothing
+  # to set here: LAMBDA_GATEWAY_SECRET (generated) and LAMBDA_GATEWAY_URL (the
+  # function URL) are merged into infrawrench-env by terraform for the edge
+  # Worker, and INFRAWRENCH_APP_ENV_SECRET_ARN is set on the functions
+  # themselves. CLICKHOUSE_METRICS_HTTP_HEADERS (OPTIONAL, a JSON object of
+  # headers sent with every ClickHouse request) belongs in lambda_app_env
+  # below, not here.
 }
+
+# AWS Lambda gateway (lambda.tf). OPTIONAL: false creates nothing in AWS and
+# needs no AWS credentials. Bootstrap order: apply with lambda_enabled = true,
+# set the LAMBDA_* repo variables from the outputs and let CI push an image,
+# then set lambda_initial_image_tag to that commit SHA and apply again.
+# lambda_enabled           = true
+# aws_region               = "us-east-2"
+# lambda_initial_image_tag = "<commit sha the deploy-lambda job pushed>"
+#
+# Values that must differ on Lambda, merged over app_env for the functions
+# only (sensitive). Without the first two the Lambda has no metrics store
+# (ClickHouse is in-cluster; this reaches it through a Cloudflare Tunnel
+# public hostname behind a Cloudflare Access service token), and dashboards
+# it serves lose sparklines. Without DATABASE_URL it uses app_env's direct
+# Neon endpoint, which works but spends a connection per warm environment.
+# lambda_app_env = {
+#   CLICKHOUSE_METRICS_URL          = "https://clickhouse-gw.infrawrench.com"
+#   CLICKHOUSE_METRICS_HTTP_HEADERS = "{\"CF-Access-Client-Id\":\"...access\",\"CF-Access-Client-Secret\":\"...\"}"
+#   DATABASE_URL                    = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
+# }
 
 # The Cloudflare Tunnel connector the edge Workers reach ClickHouse through
 # (edge.tf). OPTIONAL: empty runs no connector. The token is the `eyJ...`
