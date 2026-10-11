@@ -201,10 +201,6 @@ app_env = {
   # with expiring user tokens on.
   # PROVIDER_OAUTH_GITHUB_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_GITHUB_CLIENT_SECRET = "..."
-  # Heroku: an API client under Heroku dashboard -> Account settings ->
-  # Applications.
-  # PROVIDER_OAUTH_HEROKU_CLIENT_ID     = "..."
-  # PROVIDER_OAUTH_HEROKU_CLIENT_SECRET = "..."
   # Hugging Face: a connected app at huggingface.co/settings/applications/new.
   # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_HUGGINGFACE_CLIENT_SECRET = "..."
@@ -232,10 +228,6 @@ app_env = {
   # Applications.
   # PROVIDER_OAUTH_SENTRY_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_SENTRY_CLIENT_SECRET = "..."
-  # Stripe: the public Stripe App's `ca_` client id, and as the secret the
-  # platform's live secret key (the token call authenticates with it).
-  # PROVIDER_OAUTH_STRIPE_CLIENT_ID     = "..."
-  # PROVIDER_OAUTH_STRIPE_CLIENT_SECRET = "..."
   # Supabase: an OAuth app under Supabase organization settings -> OAuth Apps.
   # PROVIDER_OAUTH_SUPABASE_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_SUPABASE_CLIENT_SECRET = "..."

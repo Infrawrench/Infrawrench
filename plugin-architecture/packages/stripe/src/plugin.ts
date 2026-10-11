@@ -2,12 +2,6 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { StripeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import {
-  buildStripeAuthorizeUrl,
-  completeStripeOAuth,
-  exchangeStripeCode,
-  stripeOAuth,
-} from "./oauth.js";
 import { policyTemplate, preflight } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -27,7 +21,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A restricted key (rk_…) is recommended: Developers, API keys, Create restricted key in the Stripe Dashboard. Give it Write on Webhook Endpoints, Event Destinations, Products, Prices, Billing Meters and Payouts, and Read on Account, Balance, Balance Transaction Sources, Events, Subscriptions, Connect Accounts, Report Runs, Files and Sigma; the account's preflight check lists anything missing. A secret key (sk_…) also works. Use a test-mode key to manage the sandbox. Not needed when you connect with Stripe.",
+        "A restricted key (rk_…) is recommended: Developers, API keys, Create restricted key in the Stripe Dashboard. Give it Write on Webhook Endpoints, Event Destinations, Products, Prices, Billing Meters and Payouts, and Read on Account, Balance, Balance Transaction Sources, Events, Subscriptions, Connect Accounts, Report Runs, Files and Sigma; the account's preflight check lists anything missing. A secret key (sk_…) also works. Use a test-mode key to manage the sandbox.",
       sensitive: true,
       placeholder: "rk_live_…",
       helpLink: { label: "Create a restricted key", url: "https://dashboard.stripe.com/apikeys" },
@@ -47,9 +41,6 @@ const manifest: PluginManifest = {
   preflight,
   // Stripe allows 100 read requests a second in live mode and 25 in test mode.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-  // "Connect with Stripe" through the Infrawrench Stripe App (server only).
-  // Pasted keys keep working; see oauth.ts.
-  oauth: stripeOAuth,
 };
 
 export const plugin: Plugin = {
@@ -59,7 +50,4 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: stripeTerraformExport,
   policyTemplate,
-  buildOAuthAuthorizeUrl: buildStripeAuthorizeUrl,
-  exchangeOAuthCode: exchangeStripeCode,
-  completeOAuthConnection: completeStripeOAuth,
 };

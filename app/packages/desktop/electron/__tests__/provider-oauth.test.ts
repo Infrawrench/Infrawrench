@@ -596,14 +596,14 @@ describe("local client availability", () => {
     expect(localClientSource(p, allEnv)).toEqual({ clientId: "build-client-id" });
   });
 
-  it("matches the real manifests: Heroku server-only, OpenRouter and CircleCI without env", async () => {
-    const [heroku, openrouter, circleci, posthog] = await Promise.all([
-      import("@infrawrench/plugin-heroku"),
+  it("matches the real manifests: Netlify server-only, OpenRouter and CircleCI without env", async () => {
+    const [netlify, openrouter, circleci, posthog] = await Promise.all([
+      import("@infrawrench/plugin-netlify"),
       import("@infrawrench/plugin-openrouter"),
       import("@infrawrench/plugin-circleci"),
       import("@infrawrench/plugin-posthog"),
     ]);
-    const plugins = [heroku.plugin, openrouter.plugin, circleci.plugin, posthog.plugin];
+    const plugins = [netlify.plugin, openrouter.plugin, circleci.plugin, posthog.plugin];
     expect(localClientPluginIds(plugins, noEnv)).toEqual(["openrouter", "circleci"]);
     expect(localClientPluginIds(plugins, (id) => (id === "posthog" ? "ph" : undefined))).toEqual([
       "openrouter",

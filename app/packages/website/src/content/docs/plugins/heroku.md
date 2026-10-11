@@ -19,19 +19,9 @@ sidebar_order: 21
 - **Private Spaces**: create (team, region, Shield), rename, delete.
 - **Teams**: rename, set your default team, and see members with their role and two-factor status.
 
-## Connect with Heroku
-
-**Connect with Heroku** on the add-account form signs you in to Heroku instead of copying an API key. Heroku asks you to grant Infrawrench **global** access, the same access an API key has. Narrower Heroku scopes cannot read invoices and credits or change config vars, which this plugin does; Infrawrench still only changes something when you act. The account is named after your Heroku login, and the **Team** picker works as below.
-
-The connection refreshes itself: Heroku's access tokens last 8 hours and are renewed automatically. If you revoke Infrawrench under **Account settings**, **Applications**, **Authorized Applications** in Heroku, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again. A team admin can also turn off third-party OAuth access to a team's resources in the team's settings, which hides that team's apps from a connected account.
-
-Connect with Heroku works in the web app and in the desktop app's cloud mode. Heroku OAuth clients always need a client secret, so accounts stored locally on the desktop use an API key.
-
-<insert [Heroku add-account form showing the Connect with Heroku button above the API Key field] here>
-
 ## Credentials
 
-To use an API key instead, open the Heroku dashboard, then the avatar menu → **Account settings → API Key → Reveal**, or create a long-lived token with `heroku authorizations:create`. Keys start with `HRKU-` and act with your account's access to every personal and team app.
+Heroku dashboard → avatar menu → **Account settings → API Key → Reveal**, or create a long-lived token with `heroku authorizations:create`. Keys start with `HRKU-` and act with your account's access to every personal and team app.
 
 After pasting the key, the **Team** picker lists your teams. Pick one to limit the account to that team's apps, or leave **Personal and all teams**.
 

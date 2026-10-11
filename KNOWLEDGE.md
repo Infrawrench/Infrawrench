@@ -5887,7 +5887,6 @@ Where the app is registered, and what is unusual. Callback and loopback URIs are
 - **Cloudinary** (OAuth apps in Beta): Console, Settings, Developers, OAuth Apps; two apps (post / none), scopes on the app. Token in the `apiSecret` field, 5-minute access tokens.
 - **Convex** (server only): team settings, OAuth Applications. Unverified apps cap at 100 teams until verification is requested. Team token, `full`.
 - **GitHub** (server only): a GitHub App (not an OAuth App), public, with "Expire user authorization tokens" on; permissions live on the app, and the user's token only reaches orgs where the app is installed. github.com only.
-- **Heroku** (server only): Dashboard, API clients, ideally owned by a shared admin account. Scope `global` (`full`) because billing has no narrower scope.
 - **Hugging Face**: two apps at settings/applications (one without a secret). No OAuth scope covers billing usage, so Costs still needs an access token.
 - **Netlify** (server only): user settings, OAuth applications. No scopes (`full`), no expiry; a password reset invalidates tokens.
 - **OpenRouter**: no registration (`none`). Mints an inference key, not a management key.
@@ -5897,7 +5896,6 @@ Where the app is registered, and what is unusual. Callback and loopback URIs are
 - **Railway**: workspace settings, Developer, two apps (Web / Native); `offline_access` plus `prompt=consent` are both needed for refresh tokens.
 - **Resend**: no console yet; register each client once with `POST https://api.resend.com/oauth/register`, JSON `{ client_name, redirect_uris: [<uri>], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "client_secret_post" (server) | "none" (desktop), scope: "full_access" }`; the secret is shown once. 15-minute access tokens; replaying a rotated refresh token revokes the grant.
 - **Sentry**: user settings, API applications (Confidential / Public), ideally from a shared admin user. sentry.io only.
-- **Stripe** (server only): a public Stripe App (`stripe_api_access_type: "oauth"`, `allowed_redirect_uris` = the callback, permissions with install-time purposes) uploaded with `stripe apps upload`; until it passes App Review only its External test links work. `_CLIENT_ID` is the app's `ca_` id and `_CLIENT_SECRET` is the owning account's live secret key (a key carries one mode). Stripe sends no `expires_in`, hence `defaultExpiresIn: 3600`. Sigma has no app permission.
 - **Supabase** (server only): org settings, OAuth Apps; scopes on the app, and changing them forces users to reconnect.
 - **Vercel** (server only): an integration in the Integrations Console with URL slug `infrawrench` (must match `VERCEL_INTEGRATION_SLUG`); one redirect URL only, hence no desktop client.
 

@@ -30,7 +30,7 @@ Each provider's page describes exactly what Infrawrench asks for, why, and what 
 
 ### Full-access providers
 
-Some providers have no narrower permission to ask for: the only token they issue can do everything you can. For those, the form says so before you click (for example, "Heroku only offers full-access tokens. Infrawrench only reads unless you act."). Infrawrench still only changes something when you take an action, but if you would rather hand over a token with narrower permissions, use the manual form with a token you created yourself, where the provider offers one.
+Some providers have no narrower permission to ask for: the only token they issue can do everything you can. For those, the form says so before you click (for example, "Netlify only offers full-access tokens. Infrawrench only reads unless you act."). Infrawrench still only changes something when you take an action, but if you would rather hand over a token with narrower permissions, use the manual form with a token you created yourself, where the provider offers one.
 
 ## Web and desktop
 
@@ -88,7 +88,6 @@ The **Web** column covers the web app and the desktop app in cloud mode. **Deskt
 | [Cloudinary](../plugins/cloudinary.md)    | Yes | Yes             | Full           |
 | [Convex](../plugins/convex.md)            | Yes | No              | Full           |
 | [GitHub](../plugins/github.md)            | Yes | No              | Read and write |
-| [Heroku](../plugins/heroku.md)            | Yes | No              | Full           |
 | [Hugging Face](../plugins/huggingface.md) | Yes | Yes             | Read and write |
 | [Netlify](../plugins/netlify.md)          | Yes | No              | Full           |
 | [OpenRouter](../plugins/openrouter.md)    | Yes | Yes             | Full           |
@@ -98,7 +97,6 @@ The **Web** column covers the web app and the desktop app in cloud mode. **Deskt
 | [Railway](../plugins/railway.md)          | Yes | Yes             | Read and write |
 | [Resend](../plugins/resend.md)            | Yes | Yes             | Full           |
 | [Sentry](../plugins/sentry.md)            | Yes | Yes             | Read and write |
-| [Stripe](../plugins/stripe.md)            | Yes | No              | Read and write |
 | [Supabase](../plugins/supabase.md)        | Yes | No              | Read and write |
 | [Vercel](../plugins/vercel.md)            | Yes | No              | Read and write |
 
@@ -124,6 +122,6 @@ On a self-hosted deployment, each provider's **Connect** button appears once you
 
    For example `PROVIDER_OAUTH_GITHUB_CLIENT_ID` and `PROVIDER_OAUTH_GITHUB_CLIENT_SECRET`.
 
-A few providers need less. [OpenRouter](../plugins/openrouter.md) has no app registration at all, so its button is always available. Providers that only accept public clients (no secret) need only the client id. [Stripe](../plugins/stripe.md) connects through a public Stripe App rather than a plain OAuth client: its client id is the app's `ca_` id, and its client secret is the secret API key of the Stripe account that owns the app.
+A few providers need less. [OpenRouter](../plugins/openrouter.md) has no app registration at all, so its button is always available. Providers that only accept public clients (no secret) need only the client id.
 
 The desktop app's local sign-in uses a separate client per provider, compiled into the desktop build (`MAIN_VITE_PROVIDER_OAUTH_<ID>_CLIENT_ID` when building the app, with the redirect `http://127.0.0.1:43118/oauth/callback`). A desktop build without one for a provider does not offer local sign-in for it; CircleCI and OpenRouter need none.
