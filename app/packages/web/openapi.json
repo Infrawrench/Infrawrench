@@ -137,6 +137,10 @@
       "description": "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost."
     },
     {
+      "name": "Seats",
+      "description": "Paid SaaS seats (Copilot, Cursor, GitLab, Okta...) with inactive, duplicate and downgrade findings."
+    },
+    {
       "name": "DNS",
       "description": "Cross-provider DNS inventory; every synced zone and record, with dangling targets flagged as subdomain-takeover candidates."
     },
@@ -12320,6 +12324,559 @@
         },
         "additionalProperties": false
       },
+      "SeatPrice": {
+        "type": "object",
+        "properties": {
+          "monthly": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "billing",
+              "catalog",
+              "configured",
+              "list-price"
+            ],
+            "description": "`billing`/`catalog`: read from the provider. `configured`: the price set on the account. `list-price`: the provider's published list price, an estimate."
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "monthly",
+          "currency",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "Seat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Infrawrench seat id; the handle for removal.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "GitHub"
+          },
+          "memberId": {
+            "type": "string",
+            "description": "Provider-native member id."
+          },
+          "seatKey": {
+            "type": "string",
+            "description": "Empty unless one member holds several seats on the account."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product": {
+            "type": "string",
+            "example": "GitHub Copilot"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ai-coding",
+              "ai-assistant",
+              "source-control",
+              "identity",
+              "other"
+            ],
+            "description": "What the seat is for. Two seats one person holds in the same category on different products are a duplicate finding; `other` never is."
+          },
+          "seatType": {
+            "type": "string",
+            "example": "Copilot Business"
+          },
+          "monthlyPrice": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Per month; null when unpriced."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priceSource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "billing",
+              "catalog",
+              "configured",
+              "list-price"
+            ],
+            "description": "`billing`/`catalog`: read from the provider. `configured`: the price set on the account. `list-price`: the provider's published list price, an estimate."
+          },
+          "priceNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activityBasis": {
+            "type": "string",
+            "enum": [
+              "last-activity",
+              "last-login",
+              "usage-window",
+              "none"
+            ],
+            "description": "How the provider evidences use: `last-activity` (last use of the product), `last-login` (last sign-in), `usage-window` (per-day usage over `activityWindowDays`), or `none` (no evidence; never flagged inactive)."
+          },
+          "lastActiveAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activityWindowDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "activitySource": {
+            "type": "string",
+            "description": "Plain-English description of the evidence."
+          },
+          "assignedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "pendingRemovalOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Whether the in-app Remove can remove it."
+          },
+          "removalNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "downgrade": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "seatType": {
+                "type": "string"
+              },
+              "price": {
+                "$ref": "#/components/schemas/SeatPrice"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seatType",
+              "price",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "resource": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "externalId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "resourceTypeId",
+              "externalId"
+            ],
+            "additionalProperties": false
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "new",
+              "unknown",
+              "pending-removal"
+            ],
+            "description": "`inactive`: the evidence covers the threshold and shows no use. `new`: assigned inside the threshold and not used yet. `unknown`: the evidence cannot cover the threshold. `pending-removal`: already being removed at the provider."
+          },
+          "daysInactive": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "neverActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "memberId",
+          "seatKey",
+          "name",
+          "email",
+          "login",
+          "product",
+          "category",
+          "seatType",
+          "monthlyPrice",
+          "currency",
+          "priceSource",
+          "priceNote",
+          "activityBasis",
+          "lastActiveAt",
+          "activityWindowDays",
+          "activitySource",
+          "assignedAt",
+          "pendingRemovalOn",
+          "removable",
+          "removalNote",
+          "downgrade",
+          "context",
+          "resource",
+          "lastSeenAt",
+          "status",
+          "daysInactive",
+          "neverActive"
+        ],
+        "additionalProperties": false
+      },
+      "SeatFinding": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "inactive",
+              "duplicate",
+              "downgrade"
+            ]
+          },
+          "seatId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "monthlySaving": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duplicate": {
+            "type": "object",
+            "properties": {
+              "keptSeatId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "keptProduct": {
+                "type": "string"
+              },
+              "keptAccountName": {
+                "type": "string"
+              },
+              "keptLastActiveAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "keptSeatId",
+              "keptProduct",
+              "keptAccountName",
+              "keptLastActiveAt"
+            ],
+            "additionalProperties": false,
+            "description": "For a duplicate: the seat kept (the one used most recently)."
+          },
+          "targetSeatType": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "remediation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FindingRemediation"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "seatId",
+          "monthlySaving",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "SeatTotal": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "monthly": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "monthly"
+        ],
+        "additionalProperties": false
+      },
+      "SeatListResponse": {
+        "type": "object",
+        "properties": {
+          "inactiveDays": {
+            "type": "integer"
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Seat"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatFinding"
+            },
+            "description": "Largest saving first; at most one per seat."
+          },
+          "savingsMonthly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatTotal"
+            }
+          },
+          "spendMonthly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatTotal"
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "seats": {
+                "type": "integer"
+              },
+              "inactive": {
+                "type": "integer"
+              },
+              "duplicate": {
+                "type": "integer"
+              },
+              "downgrade": {
+                "type": "integer"
+              },
+              "unknownActivity": {
+                "type": "integer"
+              },
+              "unpriced": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "seats",
+              "inactive",
+              "duplicate",
+              "downgrade",
+              "unknownActivity",
+              "unpriced"
+            ],
+            "additionalProperties": false
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "accountName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "pluginName": {
+                  "type": "string"
+                },
+                "seatCount": {
+                  "type": "integer"
+                },
+                "lastPolledAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "lastError": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "accountId",
+                "accountName",
+                "pluginId",
+                "pluginName",
+                "seatCount",
+                "lastPolledAt",
+                "lastError"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "inactiveDays",
+          "seats",
+          "findings",
+          "savingsMonthly",
+          "spendMonthly",
+          "counts",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "SeatSettings": {
+        "type": "object",
+        "properties": {
+          "inactiveDays": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 365,
+            "description": "Days without use before a seat is flagged. Default 30."
+          }
+        },
+        "required": [
+          "inactiveDays"
+        ],
+        "additionalProperties": false
+      },
+      "SeatRemovalResponse": {
+        "type": "object",
+        "properties": {
+          "effective": {
+            "type": "string",
+            "enum": [
+              "immediate",
+              "end-of-cycle"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "effective",
+          "message"
+        ],
+        "additionalProperties": false
+      },
       "BudgetCostFilter": {
         "type": "object",
         "properties": {
@@ -18878,6 +19435,7 @@
           "dashboards",
           "metricAlerts",
           "probes",
+          "slos",
           "costCentres",
           "tagPolicy",
           "alertSettings"
@@ -34257,6 +34815,7 @@
           "orphan_deletion",
           "sleep_schedule",
           "commitment",
+          "saas_seat",
           "manual"
         ],
         "description": "`rightsizing`: a resize to a smaller size; `orphan_deletion`: a resource the orphan finder flags was deleted; `sleep_schedule`: a stretch of a sleep/wake schedule in force; `commitment`: reservation and savings-plan discounts, derived from billing; `manual`: logged by a person."
@@ -43868,6 +44427,7 @@
           "logMatchAlerts",
           "postureAlerts",
           "probeAlerts",
+          "sloAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
@@ -58639,6 +59199,252 @@
         "x-required-permission": "org:settings:write"
       }
     },
+    "/api/org/{orgId}/seats": {
+      "get": {
+        "tags": [
+          "Seats"
+        ],
+        "summary": "List paid SaaS seats and seat savings findings",
+        "description": "Every paid seat the organization's connected accounts report (Copilot, Cursor, GitLab, Okta and others), collected daily, with three findings: inactive for the organization's threshold, the same person (by email) paying for two tools in one category, and a cheaper tier the member's usage fits. Each finding carries remediation commands.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Seats and findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSeats",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/seats/refresh": {
+      "post": {
+        "tags": [
+          "Seats"
+        ],
+        "summary": "Re-collect seats now",
+        "description": "Makes every seat-capable account due; the poller collects within minutes.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "queued": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "queued"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSeatsRefresh",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/seats/settings": {
+      "get": {
+        "tags": [
+          "Seats"
+        ],
+        "summary": "Get the seat settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Seat settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSeatsSettings",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Seats"
+        ],
+        "summary": "Update the seat settings",
+        "description": "`inactiveDays` must be a whole number from 7 to 365; it is rejected, not clamped.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSeatsSettings",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/seats/{seatId}/remove": {
+      "post": {
+        "tags": [
+          "Seats"
+        ],
+        "summary": "Remove a flagged seat",
+        "description": "Removes a seat currently flagged inactive or duplicated through the provider's API and records the realized saving. Refused (409) for a seat that is not a finding. Blocked by an active change freeze (423).\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "seatId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRemovalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSeatsSeatIdRemove",
+        "x-required-permission": "resources:write"
+      }
+    },
     "/api/org/{orgId}/budgets": {
       "get": {
         "tags": [
@@ -64091,7 +64897,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, costCentres, tagPolicy, alertSettings.",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings.",
               "example": "budgets,workflows"
             },
             "required": false,
