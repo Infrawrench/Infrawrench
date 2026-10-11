@@ -185,6 +185,10 @@
       "description": "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero."
     },
     {
+      "name": "Vulnerabilities",
+      "description": "CVE findings read from each connected provider's own scanner and joined to what is actually running: a finding in an image names the pods, tasks and functions running that digest. Marked against the CISA Known Exploited Vulnerabilities catalog. A provider with no scanner contributes nothing rather than a clean result."
+    },
+    {
       "name": "Incidents",
       "description": "Incidents the organization declares itself (not the provider status incidents under Resources). Declaring records the incident and can open a change freeze, pin the moment, announce through alert routing and post a status-page update; each side effect is recorded as an artefact, and a failure is stored rather than thrown. The timeline is assembled on read, and the postmortem export pre-fills everything except the judgement."
     },
@@ -18878,6 +18882,7 @@
           "dashboards",
           "metricAlerts",
           "probes",
+          "slos",
           "costCentres",
           "tagPolicy",
           "alertSettings"
@@ -23857,6 +23862,840 @@
         "type": "object",
         "properties": {
           "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VulnerabilityKevEntry": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "dateAdded": {
+            "type": "string",
+            "description": "Date CISA added it (YYYY-MM-DD)."
+          },
+          "dueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Federal remediation due date, when set."
+          },
+          "knownRansomware": {
+            "type": "boolean",
+            "description": "CISA lists known ransomware campaign use."
+          }
+        },
+        "required": [
+          "dateAdded",
+          "dueDate",
+          "knownRansomware"
+        ],
+        "additionalProperties": false,
+        "description": "CISA Known Exploited Vulnerabilities entry, when listed."
+      },
+      "VulnerabilityRunningRef": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "Pod"
+          },
+          "resourceTypePluralName": {
+            "type": "string",
+            "example": "Pods"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "matchedBy": {
+            "type": "string",
+            "enum": [
+              "digest",
+              "resource",
+              "tag"
+            ],
+            "description": "How the resource was tied to the finding: it runs the scanned image digest, the scanner named it directly, or it runs a tag the scanned image carries with no digest to confirm it."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "resourceTypeName",
+          "resourceTypePluralName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "matchedBy"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilityFinding": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Unique within the organization (account id and finding id)."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "scanner": {
+            "type": "string",
+            "example": "Amazon Inspector"
+          },
+          "findingId": {
+            "type": "string",
+            "description": "The provider's own finding id."
+          },
+          "advisoryId": {
+            "type": "string",
+            "example": "CVE-2024-3094"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other ids for the same advisory."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ],
+            "description": "Normalised scanner severity. `unknown` means the scanner has not scored the advisory; it is never folded into `low`."
+          },
+          "cvssScore": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cvssVector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packageName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packageEcosystem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "installedVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixedVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Null when the scanner does not say."
+          },
+          "exploitAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Null when the scanner does not say."
+          },
+          "kev": {
+            "$ref": "#/components/schemas/VulnerabilityKevEntry"
+          },
+          "artifact": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "function",
+                  "host",
+                  "repository",
+                  "package"
+                ],
+                "description": "What the finding is about: a container image, a serverless function, a VM or node, a source repository, or a stored package. Only images, functions and hosts can be running."
+              },
+              "name": {
+                "type": "string",
+                "description": "Image repository without tag or digest, or the artifact name."
+              },
+              "digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "resourceExternalId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "description": "What a dismissal is keyed on."
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "digest",
+              "tags",
+              "resourceExternalId",
+              "url",
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "running": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VulnerabilityRunningRef"
+            },
+            "description": "Synced resources running the artifact now; empty when it runs nowhere we see."
+          }
+        },
+        "required": [
+          "key",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "scanner",
+          "findingId",
+          "advisoryId",
+          "aliases",
+          "title",
+          "severity",
+          "cvssScore",
+          "cvssVector",
+          "packageName",
+          "packageEcosystem",
+          "installedVersion",
+          "fixedVersion",
+          "fixAvailable",
+          "exploitAvailable",
+          "kev",
+          "artifact",
+          "firstSeenAt",
+          "lastSeenAt",
+          "url",
+          "collectedAt",
+          "running"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilitySeverityCounts": {
+        "type": "object",
+        "properties": {
+          "critical": {
+            "type": "integer"
+          },
+          "high": {
+            "type": "integer"
+          },
+          "medium": {
+            "type": "integer"
+          },
+          "low": {
+            "type": "integer"
+          },
+          "unknown": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "unknown"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilityDismissal": {
+        "type": "object",
+        "properties": {
+          "advisoryId": {
+            "type": "string"
+          },
+          "artifactKey": {
+            "type": "string",
+            "description": "An artifact key from a finding, or `*` for every artifact."
+          },
+          "dismissedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dismissedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "advisoryId",
+          "artifactKey",
+          "dismissedAt",
+          "dismissedBy",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "DismissedVulnerabilityFinding": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Unique within the organization (account id and finding id)."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "scanner": {
+            "type": "string",
+            "example": "Amazon Inspector"
+          },
+          "findingId": {
+            "type": "string",
+            "description": "The provider's own finding id."
+          },
+          "advisoryId": {
+            "type": "string",
+            "example": "CVE-2024-3094"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other ids for the same advisory."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ],
+            "description": "Normalised scanner severity. `unknown` means the scanner has not scored the advisory; it is never folded into `low`."
+          },
+          "cvssScore": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cvssVector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packageName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packageEcosystem": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "installedVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixedVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Null when the scanner does not say."
+          },
+          "exploitAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Null when the scanner does not say."
+          },
+          "kev": {
+            "$ref": "#/components/schemas/VulnerabilityKevEntry"
+          },
+          "artifact": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "function",
+                  "host",
+                  "repository",
+                  "package"
+                ],
+                "description": "What the finding is about: a container image, a serverless function, a VM or node, a source repository, or a stored package. Only images, functions and hosts can be running."
+              },
+              "name": {
+                "type": "string",
+                "description": "Image repository without tag or digest, or the artifact name."
+              },
+              "digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "resourceExternalId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "description": "What a dismissal is keyed on."
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "digest",
+              "tags",
+              "resourceExternalId",
+              "url",
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "running": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VulnerabilityRunningRef"
+            },
+            "description": "Synced resources running the artifact now; empty when it runs nowhere we see."
+          },
+          "dismissal": {
+            "$ref": "#/components/schemas/VulnerabilityDismissal"
+          }
+        },
+        "required": [
+          "key",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "scanner",
+          "findingId",
+          "advisoryId",
+          "aliases",
+          "title",
+          "severity",
+          "cvssScore",
+          "cvssVector",
+          "packageName",
+          "packageEcosystem",
+          "installedVersion",
+          "fixedVersion",
+          "fixAvailable",
+          "exploitAvailable",
+          "kev",
+          "artifact",
+          "firstSeenAt",
+          "lastSeenAt",
+          "url",
+          "collectedAt",
+          "running",
+          "dismissal"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilitySource": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "scanner": {
+            "type": "string"
+          },
+          "consoleUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "The plugin reports a bounded subset of the scanner's findings."
+          },
+          "lastCollectedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last read failed, when it did."
+          },
+          "helpLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "helpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findingCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "scanner",
+          "consoleUrl",
+          "partial",
+          "lastCollectedAt",
+          "error",
+          "helpLabel",
+          "helpUrl",
+          "findingCount"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilityListResponse": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VulnerabilityFinding"
+            },
+            "description": "Live findings: worst first, running before not running, then KEV, then CVSS."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/VulnerabilitySeverityCounts"
+          },
+          "runningCounts": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VulnerabilitySeverityCounts"
+              },
+              {
+                "description": "Live findings whose artifact is running, per severity."
+              }
+            ]
+          },
+          "dismissed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DismissedVulnerabilityFinding"
+            }
+          },
+          "dismissedCount": {
+            "type": "integer"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VulnerabilitySource"
+            },
+            "description": "Every account whose plugin can report findings."
+          },
+          "kevUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "findings",
+          "totalCount",
+          "counts",
+          "runningCounts",
+          "dismissed",
+          "dismissedCount",
+          "sources",
+          "kevUpdatedAt",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilityDismissalCreate": {
+        "type": "object",
+        "properties": {
+          "advisoryId": {
+            "type": "string"
+          },
+          "artifactKey": {
+            "type": "string",
+            "description": "A finding's `artifact.key`, or `*` for every artifact."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "advisoryId",
+          "artifactKey"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilitySettings": {
+        "type": "object",
+        "properties": {
+          "alertsEnabled": {
+            "type": "boolean"
+          },
+          "minSeverity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high"
+            ],
+            "description": "Lowest severity that alerts. CISA KEV-listed findings alert regardless."
+          },
+          "runningOnly": {
+            "type": "boolean",
+            "description": "Only alert on findings whose artifact is running somewhere."
+          },
+          "lastNotifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the alert scan last ran. Owned by the poller; not writable."
+          }
+        },
+        "required": [
+          "alertsEnabled",
+          "minSeverity",
+          "runningOnly",
+          "lastNotifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "VulnerabilitySettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "alertsEnabled": {
+            "type": "boolean"
+          },
+          "minSeverity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high"
+            ]
+          },
+          "runningOnly": {
             "type": "boolean"
           }
         },
@@ -43867,7 +44706,9 @@
           "expiryAlerts",
           "logMatchAlerts",
           "postureAlerts",
+          "vulnerabilityAlerts",
           "probeAlerts",
+          "sloAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
@@ -64091,7 +64932,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, costCentres, tagPolicy, alertSettings.",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings.",
               "example": "budgets,workflows"
             },
             "required": false,
@@ -69712,6 +70553,244 @@
         },
         "operationId": "putOrgOrgIdPostureSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/vulnerabilities": {
+      "get": {
+        "tags": [
+          "Vulnerabilities"
+        ],
+        "summary": "List vulnerability findings joined to running resources",
+        "description": "Open findings from each connected provider's own scanner (Amazon Inspector, Artifact Analysis, Defender for Cloud, Dependabot, GitLab, JFrog Xray), joined to the synced resources that run the affected image or are the affected resource, and marked when the advisory is in the CISA Known Exploited Vulnerabilities catalog. Read from what the poller last collected; no provider calls are made. Dismissed findings are reported under `dismissed` and excluded from `findings`, the counts and the alerts.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The vulnerability feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VulnerabilityListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdVulnerabilities"
+      }
+    },
+    "/api/org/{orgId}/vulnerabilities/dismissals": {
+      "post": {
+        "tags": [
+          "Vulnerabilities"
+        ],
+        "summary": "Dismiss a vulnerability",
+        "description": "Accept an advisory as a known risk for one artifact (keyed on the image repository, so it survives rebuilds) or, with `artifactKey: \"*\"`, everywhere. Idempotent.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VulnerabilityDismissalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded dismissal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VulnerabilityDismissal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdVulnerabilitiesDismissals"
+      },
+      "delete": {
+        "tags": [
+          "Vulnerabilities"
+        ],
+        "summary": "Restore a dismissed vulnerability",
+        "description": "The key is in the query string because artifact keys contain slashes.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "advisoryId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "artifactKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The dismissal was removed"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdVulnerabilitiesDismissals"
+      }
+    },
+    "/api/org/{orgId}/vulnerabilities/settings": {
+      "get": {
+        "tags": [
+          "Vulnerabilities"
+        ],
+        "summary": "Get the vulnerability alert settings",
+        "description": "Defaults when never saved: alerts on, critical only, running only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vulnerability alert settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VulnerabilitySettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdVulnerabilitiesSettings"
+      },
+      "put": {
+        "tags": [
+          "Vulnerabilities"
+        ],
+        "summary": "Update the vulnerability alert settings",
+        "description": "Saving never resets the alert cooldown.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VulnerabilitySettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VulnerabilitySettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdVulnerabilitiesSettings"
       }
     },
     "/api/org/{orgId}/access-review": {

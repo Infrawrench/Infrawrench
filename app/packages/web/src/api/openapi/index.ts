@@ -56,6 +56,7 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
+import { registerVulnerabilityPaths } from "./paths/vulnerabilities";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
@@ -211,6 +212,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
+  registerVulnerabilityPaths(ctx);
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
@@ -470,6 +472,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Quota radar",
         description:
           "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero.",
+      },
+      {
+        name: "Vulnerabilities",
+        description:
+          "CVE findings read from each connected provider's own scanner and joined to what is actually running: a finding in an image names the pods, tasks and functions running that digest. Marked against the CISA Known Exploited Vulnerabilities catalog. A provider with no scanner contributes nothing rather than a clean result.",
       },
       {
         name: "Incidents",
