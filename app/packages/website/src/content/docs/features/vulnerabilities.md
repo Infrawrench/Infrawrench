@@ -83,6 +83,10 @@ infrawrench vulns restore CVE-2024-3094 'image:ghcr.io/acme/api'
 
 The CLI reads the cloud organization; there is no local mode, because findings are collected by the cloud poller.
 
+## MCP
+
+The MCP server exposes `list_vulnerabilities` (filters for severity, running, fix available, known exploited, provider, account and text; it always reports the whole-feed counts and how many findings are dismissed, so a quiet answer is distinguishable from a silenced one), `dismiss_vulnerability` and `restore_vulnerability`, with the same permissions as the screen.
+
 ## API
 
 `GET /api/org/{orgId}/vulnerabilities` returns the joined feed, `POST` and `DELETE /vulnerabilities/dismissals` manage dismissals, and `GET`/`PUT /vulnerabilities/settings` the alert settings. See the [API reference](../team-and-billing/openapi.md).
