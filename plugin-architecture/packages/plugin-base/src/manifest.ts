@@ -208,6 +208,14 @@ export interface PluginManifest {
    */
   quotas?: QuotaCapabilityDeclaration;
   /**
+   * If present, this plugin can read the provider's own vulnerability scan
+   * results (CVEs in images, functions, hosts or repositories) via
+   * `listVulnerabilityFindings`, and the host schedules a low-frequency
+   * collection pass and joins the findings to synced resources that run the
+   * affected images. See `vulnerabilities.ts`.
+   */
+  vulnerabilities?: VulnerabilityCapabilityDeclaration;
+  /**
    * If present, this plugin can return *aggregated* network flows (priced
    * source→destination pairs) for an account via `fetchNetworkFlows`, and the
    * host schedules a forward-only daily pass for its accounts.
@@ -606,6 +614,23 @@ export interface PluginClient {
    * can stop retrying on a tight loop and show the fix.
    */
   fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
+  /**
+   * Read the provider scanner's current open vulnerability findings for this
+   * account. Only called when the manifest declares `vulnerabilities`, on a
+   * low-frequency background pass (a few times a day).
+   *
+   * The host *replaces* the account's stored findings with what this returns,
+   * so throw rather than return a short list when part of the read failed: a
+   * partial answer reads as CVEs having been fixed. Return only open (active)
+   * findings; closed or suppressed-at-the-provider ones are not returned.
+   * Bound the walk (pages, repositories, images) and declare
+   * `vulnerabilities.partial` when the bound can bite.
+   *
+   * Throw {@link VulnerabilityAccessError} when scanning is not enabled or the
+   * credential lacks the permission, so the host can show the fix instead of
+   * an empty, clean-looking list.
+   */
+  listVulnerabilityFindings?(accountId: string): Promise<VulnerabilityFinding[]>;
   /**
    * Options for one target field of `manifest.warehouseSink`, given the values
    * chosen so far. Read-only metadata calls; must not resume compute where the
@@ -1383,6 +1408,10 @@ import type {
 } from "./ai-requests.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+import type {
+  VulnerabilityCapabilityDeclaration,
+  VulnerabilityFinding,
+} from "./vulnerabilities.js";
 import type {
   WarehouseLoadRequest,
   WarehouseLoadResult,

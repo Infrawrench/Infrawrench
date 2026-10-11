@@ -204,6 +204,21 @@ export const pluginManifestSchema = z.object({
       requiresElevatedCredential: z.boolean().optional(),
     })
     .optional(),
+  vulnerabilities: z
+    .object({
+      label: z.string().min(1),
+      // Rendered as a link the host opens; pinned to https like `increaseUrl`.
+      consoleUrl: z
+        .string()
+        .url()
+        .refine((u) => u.startsWith("https://"), {
+          message: "consoleUrl must be an https:// URL",
+        })
+        .optional(),
+      requiresElevatedCredential: z.boolean().optional(),
+      partial: z.boolean().optional(),
+    })
+    .optional(),
   warehouseSink: z
     .object({
       label: z.string().min(1),

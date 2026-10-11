@@ -112,6 +112,20 @@ export type {
   ExtendedSupportUnit,
 } from "./extended-support.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
+export type {
+  RunningImageDeclaration,
+  VulnerabilityArtifact,
+  VulnerabilityArtifactKind,
+  VulnerabilityCapabilityDeclaration,
+  VulnerabilityFinding,
+  VulnerabilitySeverity,
+} from "./vulnerabilities.js";
+export {
+  normalizeVulnerabilityFindings,
+  normalizeVulnerabilitySeverity,
+  VULNERABILITY_SEVERITIES,
+  VulnerabilityAccessError,
+} from "./vulnerabilities.js";
 
 export type {
   PriceCatalogArea,
