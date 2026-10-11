@@ -14,6 +14,7 @@ import "./expiring";
 import "./quotas";
 import "./price-catalog";
 import "./posture";
+import "./vulnerabilities";
 import "./access-review";
 import "./backups";
 import "./wallboard";

@@ -758,6 +758,42 @@ export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
 
 /**
+ * Vulnerabilities: scanner-reported findings joined to what is running. The
+ * contract and the join live in `@infrawrench/client-core` (mobile and the
+ * CLI share them); re-exported here because web and desktop import from `ui`.
+ */
+export {
+  dismissVulnerability,
+  fetchVulnerabilities,
+  filterVulnerabilityFindings,
+  getVulnerabilitySettings,
+  groupRunningByType,
+  restoreVulnerability,
+  updateVulnerabilitySettings,
+  vulnerabilityDismissalKey,
+  VULNERABILITY_SEVERITY_LABELS,
+  VULNERABILITY_SEVERITY_ORDER,
+} from "@infrawrench/client-core";
+export type {
+  DismissedVulnerabilityFinding,
+  VulnerabilityDismissal,
+  VulnerabilityDismissInput,
+  VulnerabilityFilter,
+  VulnerabilityFindingRow,
+  VulnerabilityListResponse,
+  VulnerabilityRunningRef,
+  VulnerabilitySettings,
+  VulnerabilitySettingsPatch,
+  VulnerabilitySeverity,
+  VulnerabilitySource,
+} from "@infrawrench/client-core";
+export { VulnerabilitiesSection } from "./vulnerabilities/VulnerabilitiesSection.js";
+export type {
+  VulnerabilitiesSectionProps,
+  VulnerabilityDismissalTarget,
+} from "./vulnerabilities/VulnerabilitiesSection.js";
+
+/**
  * Cross-cloud access review: the principals inside the *customer's* clouds,
  * not Infrawrench's own team roles and not the credentials Infrawrench holds.
  * The pure contract lives in `@infrawrench/client-core`; re-exported here
@@ -804,6 +840,7 @@ export type {
 export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
 export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
+export { VulnerabilitiesIcon } from "./components/icons/VulnerabilitiesIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
 

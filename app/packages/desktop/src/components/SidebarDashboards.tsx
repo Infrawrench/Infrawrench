@@ -19,6 +19,7 @@ import {
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
+  VulnerabilitiesIcon,
   AccessReviewIcon,
   JitAccessIcon,
   BackupsIcon,
@@ -57,6 +58,7 @@ import {
   dashboardTabTarget,
   deploymentsTabTarget,
   backupsTabTarget,
+  vulnerabilitiesTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
@@ -422,6 +424,18 @@ export function SidebarDashboards() {
       label: gt("Posture"),
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
+    },
+    // Vulnerabilities is cloud only (the poller collects scanner findings)
+    // but shows in both modes like Backups, so local mode gets the panel's
+    // explanation rather than a missing tile. A workspace-tab kind.
+    {
+      key: "vulnerabilities",
+      label: gt("Vulnerabilities"),
+      icon: <VulnerabilitiesIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, vulnerabilitiesTabTarget(), {
+          label: gt("Vulnerabilities"),
+        }),
     },
     // Backups is cloud only: the coverage could be computed locally, but the
     // recovery objectives it is judged against are org state with nowhere to

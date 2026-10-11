@@ -472,9 +472,9 @@ describe("workspaceTabTargetsEqual", () => {
   });
 
   it("treats two vulnerabilities targets as equal and never as posture", () => {
-    expect(
-      workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "vulnerabilities" }),
-    ).toBe(true);
+    expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "vulnerabilities" })).toBe(
+      true,
+    );
     expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "posture" })).toBe(false);
   });
 

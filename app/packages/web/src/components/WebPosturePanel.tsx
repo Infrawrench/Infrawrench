@@ -11,6 +11,7 @@ import { apiDelete, apiGet, apiPost } from "@/lib/api";
 interface WebPosturePanelProps {
   orgId: string;
   openResource: (finding: PostureFinding) => void;
+  openVulnerabilities?: (() => void) | undefined;
 }
 
 /**
@@ -19,7 +20,11 @@ interface WebPosturePanelProps {
  * failed *refresh* must not blank findings that are already drawn, so the
  * last loaded data stays on screen under the section's banner.
  */
-export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
+export function WebPosturePanel({
+  orgId,
+  openResource,
+  openVulnerabilities,
+}: WebPosturePanelProps) {
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -96,6 +101,7 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
       error={error}
       onRetry={retry}
       onOpenResource={openResource}
+      onOpenVulnerabilities={openVulnerabilities}
       // Members can read the screen but not silence it; without the
       // permission the section renders without the buttons rather than
       // offering an action that would 403.
