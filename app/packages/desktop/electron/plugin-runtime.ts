@@ -27,6 +27,7 @@ import type {
   ResourceTypeDefinition,
   SecretHostServices,
 } from "@infrawrench/plugin-base";
+import { readOAuthGrantState } from "@infrawrench/plugin-base";
 import { getPlugin } from "../src/plugins/loader";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { getSqlite, normalizeSql, persist } from "./db";
@@ -37,6 +38,14 @@ import {
   getEncryptionKey,
   UserFacingError,
 } from "./main-utils";
+import {
+  LocalAccountNotFoundError,
+  loadLocalAccountCredentials,
+} from "./provider-oauth/local-accounts";
+import {
+  OAuthReconnectRequiredError,
+  OAuthRefreshUnavailableError,
+} from "./provider-oauth/credentials";
 
 function buildSqlHostServices(
   driverId: string,
@@ -268,23 +277,41 @@ interface LocalAccountRow {
   displayName: string;
 }
 
-/** Decrypt one local account's credentials. Same AAD as `account_get_credentials`. */
+/**
+ * Decrypt one local account's credentials. Same AAD as `account_get_credentials`,
+ * and the same provider OAuth refresh (see provider-oauth/local-accounts.ts).
+ */
 export async function getAccountCredentials(accountId: string): Promise<Record<string, string>> {
-  const db = await getSqlite();
-  const stmt = db.prepare(
-    "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = ? LIMIT 1",
-  );
-  stmt.bind([accountId]);
-  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-  stmt.free();
-  if (!row) throw new UserFacingError(`Account ${accountId} not found in the local workspace.`);
-  const plaintext = decryptValue(
-    String(row["encrypted_credentials"] ?? ""),
-    String(row["credentials_iv"] ?? ""),
-    getEncryptionKey(),
-    buildAad("account", accountId, "credentials"),
-  );
-  return JSON.parse(plaintext) as Record<string, string>;
+  try {
+    return await loadLocalAccountCredentials(accountId);
+  } catch (err) {
+    if (err instanceof LocalAccountNotFoundError) throw new UserFacingError(err.message);
+    if (err instanceof OAuthReconnectRequiredError || err instanceof OAuthRefreshUnavailableError) {
+      throw new UserFacingError(err.message);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Add `HostServices.oauth` for an OAuth-connected account, so a plugin with
+ * very short-lived tokens can ask for a fresh one mid-operation. It re-runs
+ * the same decrypt-and-refresh path.
+ */
+export function withOAuthHostService(
+  services: HostServices,
+  manifest: PluginManifest,
+  accountId: string,
+  credentials: Record<string, string>,
+): HostServices {
+  const tokenField = manifest.oauth?.tokenField;
+  if (!tokenField || !readOAuthGrantState(credentials)) return services;
+  return {
+    ...services,
+    oauth: {
+      getAccessToken: async () => (await getAccountCredentials(accountId))[tokenField] ?? "",
+    },
+  };
 }
 
 /** Load the plugin + decrypted credentials for a local account. */
@@ -294,7 +321,12 @@ async function createAccountPluginClient(
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) throw new UserFacingError(`Plugin "${account.pluginId}" is not available.`);
   const credentials = await getAccountCredentials(account.id);
-  const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
+  const services = withOAuthHostService(
+    buildPluginHostServices(loaded.plugin.manifest, credentials),
+    loaded.plugin.manifest,
+    account.id,
+    credentials,
+  );
   return { plugin: loaded.plugin, client: loaded.plugin.createClient(credentials, services) };
 }
 

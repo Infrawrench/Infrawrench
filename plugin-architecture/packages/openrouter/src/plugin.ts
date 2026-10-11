@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OpenRouterClient } from "./client.js";
+import { OPENROUTER_OAUTH, buildOpenRouterAuthorizeUrl, exchangeOpenRouterCode } from "./oauth.js";
 import { ModelResourceType } from "./resources/model.js";
 import { ModelEndpointResourceType } from "./resources/model-endpoint.js";
 import { ProviderResourceType } from "./resources/provider.js";
@@ -31,8 +32,9 @@ const manifest: PluginManifest = {
       key: "managementKey",
       label: "Management Key",
       description:
-        "OpenRouter's privileged credential (formerly called a provisioning key), created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 on most of the console API, so this is the key used to list resources.",
+        "OpenRouter's privileged credential (formerly called a provisioning key), created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 on most of the console API, so API keys, guardrails, workspaces, BYOK credentials, credits and spend all need this key. Without it (for example after Connect with OpenRouter) only the model catalogue, providers and Speech work.",
       sensitive: true,
+      optional: true,
       placeholder: "sk-or-v1-…",
       helpLink: {
         label: "Create a management key",
@@ -41,9 +43,9 @@ const manifest: PluginManifest = {
     },
     {
       key: "apiKey",
-      label: "Inference API Key (optional)",
+      label: "Inference API Key",
       description:
-        "A normal inference key from openrouter.ai/settings/keys. Management keys are rejected by the completion endpoints, so the Speech tab (text-to-speech and transcription) needs one of these. Everything else works without it.",
+        "A normal inference key from openrouter.ai/settings/keys, or the one Connect with OpenRouter creates. Management keys are rejected by the completion endpoints, so the Speech tab (text-to-speech and transcription) needs one of these. Enter at least one of the two keys.",
       sensitive: true,
       optional: true,
       placeholder: "sk-or-v1-…",
@@ -68,6 +70,7 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   rateLimit: { capacity: 20, refillPerSecond: 4 },
+  oauth: OPENROUTER_OAUTH,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -84,4 +87,6 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OpenRouterClient(credentials, services),
+  buildOAuthAuthorizeUrl: buildOpenRouterAuthorizeUrl,
+  exchangeOAuthCode: exchangeOpenRouterCode,
 };

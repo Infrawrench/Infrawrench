@@ -116,6 +116,7 @@ import { registerPushPaths } from "./paths/push";
 import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerAlertEmailPaths } from "./paths/alert-email";
 import { registerSlackPaths } from "./paths/slack";
+import { registerProviderOAuthPaths } from "./paths/provider-oauth";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
 import { registerLinearPaths } from "./paths/linear";
@@ -168,6 +169,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrgPaths(ctx);
   registerInvitationPaths(ctx);
   registerAccountPaths(ctx);
+  registerProviderOAuthPaths(ctx);
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerCostAnomalyFeedbackPaths(ctx);

@@ -18,6 +18,11 @@ export function setDatabaseReadOnly(readOnly: boolean): void {
   _readOnly = readOnly;
 }
 
+/** True when this process must not write (the CLI beside a running GUI). */
+export function isDatabaseReadOnly(): boolean {
+  return _readOnly;
+}
+
 export async function getSqlite(): Promise<SqlJsDb> {
   if (_sqlite) return _sqlite;
 

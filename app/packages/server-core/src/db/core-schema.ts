@@ -164,6 +164,14 @@ export const accounts = pgTable(
     requiresGateway: boolean("requires_gateway").notNull().default(false),
     /** What tripped `requiresGateway`, for support (the gateway-only error's message). */
     gatewayReason: text("gateway_reason"),
+    /**
+     * Provider OAuth ("Connect with X") state. NULL for pasted credentials;
+     * `connected` once a grant is saved; `reconnect_required` when a refresh
+     * fails with `invalid_grant` (revoked or expired). The grant itself lives
+     * in the encrypted credentials under `__oauth`; this column only lets the
+     * UI show a Reconnect prompt without decrypting.
+     */
+    oauthStatus: text("oauth_status"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

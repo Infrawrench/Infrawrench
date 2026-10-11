@@ -58,7 +58,7 @@ afterEach(() => {
 
 describe("credentials", () => {
   it("requires a management key", () => {
-    expect(() => new OpenRouterClient({})).toThrow(/missing managementKey/);
+    expect(() => new OpenRouterClient({})).toThrow(/management key or an inference API key/);
   });
 
   it("works with only a management key", () => {

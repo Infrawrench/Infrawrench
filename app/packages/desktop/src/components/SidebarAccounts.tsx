@@ -11,6 +11,9 @@ import {
   type DraggableResource,
   formatErrorMessage,
   toast,
+  useDataString,
+  dispatchResourcesChanged,
+  isProviderOAuthCancelled,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
@@ -26,6 +29,7 @@ import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
 import { MetricPingModal } from "./MetricPingModal";
 import { accountTabTarget, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
+import { reconnectProviderAccount, resolveOAuthInfo } from "../lib/provider-oauth";
 import { SidebarResourceItem } from "./SidebarAccounts/SidebarResourceItem";
 import { AccountDraggableRow } from "./SidebarAccounts/AccountDraggableRow";
 import type { Account, PluginGroup } from "./SidebarAccounts/types";
@@ -45,6 +49,8 @@ interface AccountResourcesState {
 
 export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const gt = useGT();
+  const gtData = useDataString();
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -129,6 +135,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           encrypted_credentials: string;
           credentials_iv: string;
           cloudManaged: boolean;
+          oauth_status: "connected" | "reconnect_required" | null;
         }> = [];
         if (activeCloudOrgId) {
           const cloud = await listCloudAccounts(activeCloudOrgId);
@@ -140,6 +147,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               encrypted_credentials: "",
               credentials_iv: "",
               cloudManaged: true,
+              oauth_status: a.oauthStatus ?? null,
             });
           }
         } else {
@@ -151,9 +159,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               display_name: string;
               encrypted_credentials: string;
               credentials_iv: string;
+              oauth_status: "connected" | "reconnect_required" | null;
             }[]
           >(
-            "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts ORDER BY display_name",
+            "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv, oauth_status FROM accounts ORDER BY display_name",
           );
           for (const row of local) rows.push({ ...row, cloudManaged: false });
         }
@@ -198,6 +207,15 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           setTunnelSshSourceTypeIds(tunnelSshTypes);
         }
 
+        // Only worth asking (a server round-trip in cloud mode) when some
+        // account actually needs reconnecting.
+        const oauthInfo = rows.some((r) => r.oauth_status === "reconnect_required")
+          ? await resolveOAuthInfo(
+              activeCloudOrgId ?? null,
+              plugins.map((p) => p.plugin.manifest),
+            )
+          : new Map();
+
         const groupMap = new Map<string, PluginGroup>();
         for (const row of rows) {
           if (!groupMap.has(row.plugin_id)) {
@@ -206,6 +224,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               displayName: pluginMeta[row.plugin_id]?.displayName ?? row.plugin_id,
               logoSvg: pluginMeta[row.plugin_id]?.logoSvg ?? "",
               accounts: [],
+              oauthAvailable: oauthInfo.has(row.plugin_id),
             });
           }
           groupMap.get(row.plugin_id)!.accounts.push({
@@ -215,6 +234,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             encrypted_credentials: row.encrypted_credentials,
             credentials_iv: row.credentials_iv,
             cloudManaged: row.cloudManaged,
+            oauthStatus: row.oauth_status ?? null,
           });
         }
 
@@ -365,6 +385,21 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     if (!isNowExpanded) return;
     if (accountResources[id]) return;
     void loadAccountResources(account);
+  }
+
+  function reconnectAccount(account: Account, providerName: string) {
+    setReconnectingId(account.id);
+    reconnectProviderAccount(activeCloudOrgId ?? null, account.id, account.pluginId)
+      .then(() => {
+        toast.success(gt("Reconnected {provider}", { provider: gtData(providerName) }));
+        bumpAccounts();
+        dispatchResourcesChanged({ accountId: account.id });
+      })
+      .catch((e: unknown) => {
+        if (isProviderOAuthCancelled(e)) return;
+        toast.error(gt("Couldn't reconnect: {message}", { message: formatErrorMessage(e) }));
+      })
+      .finally(() => setReconnectingId((cur) => (cur === account.id ? null : cur)));
   }
 
   async function handleDeleteAccount(account: Account) {
@@ -634,6 +669,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                       })
                     }
                     onDelete={account.cloudManaged ? undefined : () => setDeleteTarget(account)}
+                    onReconnect={
+                      group.oauthAvailable
+                        ? () => reconnectAccount(account, group.displayName)
+                        : undefined
+                    }
+                    reconnecting={reconnectingId === account.id}
                   />
 
                   {isExpanded && (

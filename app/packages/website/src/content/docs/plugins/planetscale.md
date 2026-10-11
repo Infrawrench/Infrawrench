@@ -15,9 +15,23 @@ sidebar_order: 13
 - Database webhooks
 - Connection strings (generated per branch: a password on Vitess, a role on Postgres)
 
+## Connect with PlanetScale
+
+**Connect with PlanetScale** on the add-account form signs you in to PlanetScale instead of creating a service token. On the consent screen PlanetScale lists the access Infrawrench asks for and the organizations (or individual databases) to grant it on; you can deny any item you do not want. Infrawrench asks to read your user and organizations, invoices, databases, branches, deploy requests and backups, and to create, change and delete databases, branches, passwords, roles, backups, webhooks and deploy requests for the actions above. Write access is only used for the actions you take, and anything you deny shows up as a missing permission.
+
+After you approve, the **Organization** is filled in for you (the first one you granted, if you picked several; change it if needed) and the account is named after it. **Service Token ID** stays empty: a connected account has no ID.
+
+The connection refreshes itself: PlanetScale's access tokens last 30 days and are renewed automatically. If you revoke Infrawrench in your PlanetScale account settings, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+PlanetScale does not let OAuth connections change a branch's safe migrations; **Enable/Disable Safe Migrations** needs a service token.
+
+Connect with PlanetScale works in the web app and in the desktop app's cloud mode. PlanetScale OAuth applications always need a client secret, so accounts stored locally on the desktop use a service token.
+
+<insert [PlanetScale add-account form showing the Connect with PlanetScale button above the service token fields] here>
+
 ## Credentials
 
-PlanetScale dashboard → **Settings → Service tokens → New service token**. Grant the roles needed for your databases, then paste:
+To use a service token instead, open the PlanetScale dashboard and go to **Settings → Service tokens → New service token**. Grant the roles needed for your databases, then paste:
 
 - **Service Token ID** — the public ID (shown next to the token in the dashboard).
 - **Service Token Secret** — the secret value (shown once at creation).

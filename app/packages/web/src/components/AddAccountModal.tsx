@@ -11,6 +11,7 @@ import type { PolicyTemplate, PreflightReport } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
 import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
+import { cancelProviderOAuth, connectProviderOAuth } from "@/lib/provider-oauth";
 import type { AccountListItem, Bastion } from "@/lib/api-types";
 
 interface Props {
@@ -136,6 +137,11 @@ export function AddAccountModal({
     [orgId],
   );
 
+  const connectOAuth = useCallback(
+    (pluginId: string, opts: { accountId?: string }) => connectProviderOAuth(orgId, pluginId, opts),
+    [orgId],
+  );
+
   return (
     <SharedAddAccountModal
       onClose={onClose}
@@ -145,6 +151,8 @@ export function AddAccountModal({
       runPreflight={runPreflight}
       fetchPolicyTemplate={fetchPolicyTemplate}
       loadCredentialOptions={loadCredentialOptions}
+      connectOAuth={connectOAuth}
+      cancelOAuth={cancelProviderOAuth}
       bastions={bastions}
       accounts={accounts}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}

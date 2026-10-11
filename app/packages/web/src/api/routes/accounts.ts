@@ -15,6 +15,20 @@ import { exportStoredResourcesToTerraform } from "../../services/terraform-expor
 import { requirePermission } from "../../auth/permissions";
 import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
 import { logAudit } from "../../services/audit";
+import {
+  OAuthCredentialError,
+  OAuthReconnectRequiredError,
+  acceptSubmittedCredentials,
+  pluginOAuthSummary,
+  postgresCredentialStore,
+  redactOAuthGrantState,
+  resolveOAuthCredentials,
+  resolveCredentialUpdate,
+  type AcceptedCredentials,
+  type OAuthStatus,
+} from "@infrawrench/server-core/provider-oauth";
+import { stripOAuthGrantState } from "@infrawrench/plugin-base";
+import type { Context } from "hono";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -37,6 +51,31 @@ async function serverCredentialError(
 ): Promise<string | null> {
   const loaded = await getPlugin(pluginId);
   return loaded?.plugin.validateServerCredentials?.(credentials) ?? null;
+}
+
+/**
+ * Open submitted credentials that may carry a sealed provider OAuth grant
+ * (`__oauth`, from the Connect flow) into what the server stores and hands
+ * to the plugin. Returns a 400 response when the grant is unusable: expired,
+ * minted for another org, user or plugin, or not a sealed grant at all.
+ */
+async function openSubmittedCredentials(
+  c: Context,
+  pluginId: string,
+  credentials: Record<string, string>,
+): Promise<AcceptedCredentials | Response> {
+  const loaded = await getPlugin(pluginId);
+  if (!loaded) return { credentials, oauthStatus: null };
+  try {
+    return await acceptSubmittedCredentials(credentials, {
+      manifest: loaded.plugin.manifest,
+      organizationId: c.get("organizationId"),
+      userId: c.get("session")?.userId,
+    });
+  } catch (e) {
+    if (e instanceof OAuthCredentialError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 }
 
 /** GET /api/plugins: list available plugins */
@@ -64,6 +103,11 @@ app.get("/plugins", async (c) => {
         helpLink: f.helpLink,
       })),
       preflight: p.plugin.manifest.preflight ?? null,
+      // Present only when this server can run the plugin's OAuth flow.
+      ...(() => {
+        const oauth = pluginOAuthSummary(p.plugin.manifest);
+        return oauth ? { oauth } : {};
+      })(),
     })),
   );
 });
@@ -101,7 +145,11 @@ app.get("/plugins/:pluginId/policy-template", async (c) => {
  */
 app.post("/preflight", async (c) => {
   requirePermission(c, "accounts:write");
-  const { pluginId, credentials, bastionId } = await c.req.json<{
+  const {
+    pluginId,
+    credentials: submitted,
+    bastionId,
+  } = await c.req.json<{
     pluginId: string;
     credentials: Record<string, string>;
     bastionId?: string | null;
@@ -109,6 +157,9 @@ app.post("/preflight", async (c) => {
   const organizationId = c.get("organizationId");
   const loaded = await getPlugin(pluginId);
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+  const opened = await openSubmittedCredentials(c, pluginId, submitted);
+  if (opened instanceof Response) return opened;
+  const credentials = opened.credentials;
   const credentialError = await serverCredentialError(pluginId, credentials);
   if (credentialError) return c.json({ error: credentialError }, 400);
 
@@ -150,7 +201,13 @@ app.post("/preflight", async (c) => {
  */
 app.post("/credential-options", async (c) => {
   requirePermission(c, "accounts:write");
-  const { pluginId, fieldKey, credentials, bastionId, accountId } = await c.req.json<{
+  const {
+    pluginId,
+    fieldKey,
+    credentials: submitted,
+    bastionId,
+    accountId,
+  } = await c.req.json<{
     pluginId: string;
     fieldKey: string;
     credentials: Record<string, string>;
@@ -164,6 +221,9 @@ app.post("/credential-options", async (c) => {
   if (!field?.providerOptions || !loaded.plugin.listCredentialOptions) {
     return c.json({ error: "This field has no provider options" }, 400);
   }
+  const opened = await openSubmittedCredentials(c, pluginId, submitted);
+  if (opened instanceof Response) return opened;
+  const credentials = opened.credentials;
   const credentialError = await serverCredentialError(pluginId, credentials);
   if (credentialError) return c.json({ error: credentialError }, 400);
 
@@ -230,6 +290,7 @@ app.get("/", async (c) => {
       pluginId: accounts.pluginId,
       displayName: accounts.displayName,
       bastionId: accounts.bastionId,
+      oauthStatus: accounts.oauthStatus,
       createdAt: accounts.createdAt,
     })
     .from(accounts)
@@ -241,12 +302,23 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
-  const { pluginId, displayName, credentials, bastionId } = await c.req.json<{
+  const {
+    pluginId,
+    displayName,
+    credentials: submitted,
+    bastionId,
+  } = await c.req.json<{
     pluginId: string;
     displayName: string;
     credentials: Record<string, string>;
     bastionId?: string | null;
   }>();
+
+  // A sealed OAuth grant from the Connect flow becomes the real grant state
+  // here; anything else in `__oauth` is refused.
+  const opened = await openSubmittedCredentials(c, pluginId, submitted ?? {});
+  if (opened instanceof Response) return opened;
+  const { credentials, oauthStatus } = opened;
 
   const credentialError = await serverCredentialError(pluginId, credentials);
   if (credentialError) return c.json({ error: credentialError }, 400);
@@ -294,6 +366,7 @@ app.post("/", async (c) => {
     encryptedCredentials: ciphertext,
     credentialsIv: iv,
     bastionId: validatedBastionId,
+    oauthStatus,
   });
 
   // If the new account is bound to a bastion that's currently connected, push
@@ -409,17 +482,43 @@ app.get("/:id/credentials", async (c) => {
   const accountId = c.req.param("id");
   const [row] = await db
     .select({
+      id: accounts.id,
+      organizationId: accounts.organizationId,
+      pluginId: accounts.pluginId,
+      oauthStatus: accounts.oauthStatus,
       encryptedCredentials: accounts.encryptedCredentials,
       credentialsIv: accounts.credentialsIv,
     })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!row) return c.json({ error: "Account not found" }, 404);
-  const plaintext = await decrypt(
-    row.encryptedCredentials,
-    row.credentialsIv,
-    buildAad("account", accountId, "credentials"),
-  );
+  // Refresh an expiring OAuth token first, so a caller (the desktop in cloud
+  // mode) always receives one that works, then redact the grant state: the
+  // refresh token never leaves the server, but plugins that branch on the
+  // grant still find it. A dead grant (`reconnect_required`) is not an error
+  // here; the stored credentials come back so the reconnect flow can run.
+  const stored = JSON.parse(
+    await decrypt(
+      row.encryptedCredentials,
+      row.credentialsIv,
+      buildAad("account", accountId, "credentials"),
+    ),
+  ) as Record<string, string>;
+  let current = stored;
+  const loaded = await getPlugin(row.pluginId);
+  if (loaded && row.oauthStatus !== "reconnect_required") {
+    try {
+      current = await resolveOAuthCredentials({
+        accountId,
+        organizationId,
+        manifest: loaded.plugin.manifest,
+        credentials: stored,
+      });
+    } catch (e) {
+      if (!(e instanceof OAuthReconnectRequiredError)) throw e;
+    }
+  }
+  const credentials = redactOAuthGrantState(current);
   // This is the only route that hands a provider credential back in the clear,
   // and it is the supported way for a client to obtain one. Every other
   // secret-reading path audits (`export_credential`, `access_secret_version`,
@@ -431,7 +530,7 @@ app.get("/:id/credentials", async (c) => {
     entityType: "account",
     entityId: accountId,
   });
-  return c.json(JSON.parse(plaintext));
+  return c.json(credentials);
 });
 
 /**
@@ -450,22 +549,51 @@ app.put("/:id/credentials", async (c) => {
     return c.json({ error: "credentials object is required" }, 400);
   }
   const [existing] = await db
-    .select({ id: accounts.id, pluginId: accounts.pluginId })
+    .select({
+      id: accounts.id,
+      pluginId: accounts.pluginId,
+      oauthStatus: accounts.oauthStatus,
+    })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
     .limit(1);
   if (!existing) return c.json({ error: "Account not found" }, 404);
   const credentialError = await serverCredentialError(existing.pluginId, credentials);
   if (credentialError) return c.json({ error: credentialError }, 400);
-  const { ciphertext, iv } = await encrypt(
-    JSON.stringify(credentials),
-    buildAad("account", accountId, "credentials"),
-  );
+  const loaded = await getPlugin(existing.pluginId);
+
+  // Merge against the stored credentials under the row lock, so the write
+  // cannot race a token refresh and put back a rotated-away refresh token.
+  // A sealed grant in the body (re)connects; no grant keeps the stored one
+  // unless the token itself changed (see `resolveCredentialUpdate`).
+  let saved: AcceptedCredentials | null;
+  try {
+    saved = await postgresCredentialStore.withLockedCredentials(
+      accountId,
+      organizationId,
+      async (stored) => {
+        const next = loaded
+          ? await resolveCredentialUpdate(credentials, stored, {
+              manifest: loaded.plugin.manifest,
+              organizationId,
+              userId: c.get("session")?.userId,
+              currentStatus: (existing.oauthStatus as OAuthStatus | null) ?? null,
+            })
+          : { credentials: stripOAuthGrantState(credentials), oauthStatus: null };
+        return {
+          result: next,
+          write: { credentials: next.credentials, oauthStatus: next.oauthStatus },
+        };
+      },
+    );
+  } catch (e) {
+    if (e instanceof OAuthCredentialError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+  if (!saved) return c.json({ error: "Account not found" }, 404);
   await db
     .update(accounts)
     .set({
-      encryptedCredentials: ciphertext,
-      credentialsIv: iv,
       updatedAt: new Date(),
       // A credential edit is usually the fix for whatever the last poll
       // complained about: a blank billing-export table, a rotated key, a
@@ -643,6 +771,7 @@ app.get("/:id/detail", async (c) => {
       id: account.id,
       pluginId: account.pluginId,
       displayName: account.displayName,
+      oauthStatus: account.oauthStatus ?? null,
     },
     resourceTypes,
     pluginDisplayName: plugin?.plugin.manifest.displayName ?? "",

@@ -17,7 +17,21 @@ sidebar_order: 51
 - **Cron monitors**: schedule, margins and the status of each environment. **Pause** or **Resume**, **Mute** or **Unmute**, **Edit** the name, schedule (a crontab such as `0 * * * *`, or an interval such as `10 minute`), timezone, check-in margin and maximum runtime, or delete. The Metrics tab charts run durations and failed check-ins.
 - **Uptime monitors**: URL, method, interval, timeout and whether the URL is up. **Pause** or **Resume**, **Edit** the name, URL, interval and timeout, or delete. The Metrics tab charts successful and failed checks.
 
+## Connect with Sentry
+
+On sentry.io, **Connect with Sentry** on the add-account form signs you in to Sentry instead of creating a token. On the consent screen you pick the organization to connect, and Sentry lists the permissions Infrawrench asks for: read and write on the organization's projects, teams, issues and events, and alerts, plus releases. Write access is only used for the actions you take (resolving an issue, editing an alert, creating a client key); you still only get what your Sentry role allows.
+
+After you approve, the **Organization** and its **Region** (US or DE) are filled in for you, and the account is named after the organization. The pricing fields below still apply.
+
+The connection refreshes itself: Sentry's access tokens last 30 days and are renewed automatically. If you revoke Infrawrench under **User Settings**, **Authorized Applications** in Sentry, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with Sentry works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). A self-hosted Sentry uses a token, as below.
+
+<insert [Sentry add-account form showing the Connect with Sentry button above the Region and Auth Token fields] here>
+
 ## Credentials
+
+To use a token instead:
 
 1. In Sentry, open **Settings**, then **Developer Settings**, and create a **New Internal Integration**. Give it **Read** on Organization, Project, Team, Issue & Event, Release and Alerts for a read-only connection, or **Read & Write** to use the actions above. Save it and copy its token (it starts with `sntryi_`). A personal token (**User Settings**, **Personal Tokens**, starting `sntryu_`) with the same scopes also works, limited to what your own role allows. Organization tokens (`sntrys_`) only cover CI uploads and are refused.
 2. In Infrawrench, pick the **Region** your organization stores its data in: **US** or **DE** on sentry.io (Organization Settings shows the data storage location), or **Self-hosted**, in which case also enter the **Self-hosted URL** you open Sentry at.

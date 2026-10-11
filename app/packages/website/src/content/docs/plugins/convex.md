@@ -20,9 +20,21 @@ Connect a Convex team to manage its projects and deployments from Infrawrench.
 
 <insert [Convex deployment detail page showing the Usage table and the Pause and Unpause actions] here>
 
+## Connect with Convex
+
+**Connect with Convex** on the add-account form signs you in to Convex instead of creating a token. On the consent screen you pick the team to connect; Convex then gives Infrawrench a team token that can create projects and deployments and read and write data and functions on every project of the team, limited to your own role. Convex offers no narrower or read-only token, so the form says so before you continue; Infrawrench still only changes something when you act. The account is named after the team.
+
+The token does not expire, so there is nothing to refresh. If you revoke Infrawrench's access in the Convex dashboard, the account stops working; **Reconnect** in its credentials signs you in again.
+
+Convex's API documents its member, invitation and custom role calls as unavailable to tokens from OAuth applications. To manage those, use a team access token as below.
+
+Connect with Convex works in the web app and in the desktop app's cloud mode. Convex OAuth applications always need a client secret, so accounts stored locally on the desktop use a token.
+
+<insert [Convex add-account form showing the Connect with Convex button above the Team Access Token field] here>
+
 ## Credentials
 
-Use a **team access token**. In the Convex dashboard, open **Team Settings → Access Tokens** (`dashboard.convex.dev/team/settings/access-tokens`) and create one. The token acts with your role on the team, so use an admin's token to manage members, roles and production deployments. Convex recommends a separate service-account member for tokens, because dev deployments created with a token belong to its owner and are deleted if that member leaves the team.
+To use a token instead, use a **team access token**. In the Convex dashboard, open **Team Settings → Access Tokens** (`dashboard.convex.dev/team/settings/access-tokens`) and create one. The token acts with your role on the team, so use an admin's token to manage members, roles and production deployments. Convex recommends a separate service-account member for tokens, because dev deployments created with a token belong to its owner and are deleted if that member leaves the team.
 
 Deploy keys and project tokens are rejected: they cannot see the team.
 

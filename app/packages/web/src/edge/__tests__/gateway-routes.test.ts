@@ -29,6 +29,8 @@ describe("routeRequest", () => {
       "/api/org/org_1/v1/sftp/list",
       "/api/slack/commands",
       "/api/slack/interactions",
+      "/api/provider-oauth/github/callback",
+      "/api/org/org_1/provider-oauth/github/authorize",
     ]) {
       expect(routeRequest("GET", path, null).target, path).toBe("gateway");
       expect(routeRequest("POST", path, null).target, path).toBe("gateway");

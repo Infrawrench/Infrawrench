@@ -19,6 +19,9 @@ import {
   formatErrorMessage,
   toast,
   useDataString,
+  ProviderOAuthReconnectBanner,
+  isProviderOAuthCancelled,
+  type AccountOAuthStatus,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
@@ -36,6 +39,12 @@ import {
   listCloudDashboards,
   createCloudDashboard,
 } from "../lib/cloud-api";
+import {
+  cancelProviderOAuth,
+  connectProviderOAuth,
+  reconnectProviderAccount,
+  resolveOAuthInfo,
+} from "../lib/provider-oauth";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import { SecretExportModal } from "../components/SecretExportModal";
 import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
@@ -108,6 +117,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const backgroundLoadRef = useRef(false);
+  // Provider OAuth state (null for a pasted credential), and whether this
+  // mode can run the plugin's flow, which decides if Reconnect shows.
+  const [oauthStatus, setOauthStatus] = useState<AccountOAuthStatus | null>(null);
+  const [oauthAvailable, setOauthAvailable] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [pluginDisplayName, setPluginDisplayName] = useState<string | null>(null);
+  const oauthStatusRef = useRef(oauthStatus);
+  oauthStatusRef.current = oauthStatus;
+  const accountsVersion = useUIStore((s) => s.accountsVersion);
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   // Read inside the load loop without retriggering it: changing the active
@@ -363,6 +381,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           };
           if (!cancelled) {
             setAccount(accountLike);
+            setOauthStatus(detail.account.oauthStatus ?? null);
             if (tabId)
               useUIStore.getState().setWorkspaceTabTitle(tabId, detail.account.displayName);
           }
@@ -370,6 +389,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           // Local plugin gives us the full ResourceTypeDefinitions; the cloud
           // detail only returns ids and labels.
           const loaded = await getPlugin(detail.account.pluginId);
+          if (!cancelled) setPluginDisplayName(loaded?.plugin.manifest.displayName ?? null);
           const allTypes: ResourceTypeDefinition[] = loaded?.plugin.resourceTypes ?? [];
           if (!cancelled) setPreflightSupported(Boolean(loaded?.plugin.manifest.preflight));
 
@@ -442,14 +462,22 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         }
 
         const db = await getDb();
-        const rows = await db.select<AccountRow[]>(
-          "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
+        const rows = await db.select<
+          Array<AccountRow & { oauth_status: AccountOAuthStatus | null }>
+        >(
+          "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv, oauth_status FROM accounts WHERE id = $1",
           [accountId],
         );
         const row = rows[0];
         if (!row) throw new Error(gt("Account not found"));
         if (!cancelled) {
           setAccount(row);
+          // Before the credentials load, which fails for a revoked grant: the
+          // banner must still show.
+          setOauthStatus(row.oauth_status ?? null);
+          setPluginDisplayName(
+            (await getPlugin(row.plugin_id))?.plugin.manifest.displayName ?? null,
+          );
           if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, row.display_name);
         }
 
@@ -677,6 +705,66 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
   }
 
+  // Re-read the local status when the main process reports a change (a
+  // rejected refresh, a reconnect): `provider_oauth_status` bumps accounts.
+  useEffect(() => {
+    if (activeCloudOrgId || accountsVersion === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const db = await getDb();
+      const rows = await db.select<Array<{ oauth_status: AccountOAuthStatus | null }>>(
+        "SELECT oauth_status FROM accounts WHERE id = $1",
+        [accountId],
+      );
+      if (cancelled || !rows[0]) return;
+      const next = rows[0].oauth_status ?? null;
+      if (oauthStatusRef.current === "reconnect_required" && next !== "reconnect_required") {
+        // Reconnected elsewhere (the sidebar badge): load the resources again.
+        backgroundLoadRef.current = true;
+        setLoadVersion((v) => v + 1);
+      }
+      setOauthStatus(next);
+    })().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [accountsVersion, activeCloudOrgId, accountId]);
+
+  useEffect(() => {
+    if (!account || oauthStatus !== "reconnect_required") return;
+    let cancelled = false;
+    void (async () => {
+      const loaded = await getPlugin(account.plugin_id);
+      if (!loaded) return;
+      const info = await resolveOAuthInfo(activeCloudOrgId ?? null, [loaded.plugin.manifest]);
+      if (!cancelled) setOauthAvailable(info.has(account.plugin_id));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, oauthStatus, activeCloudOrgId]);
+
+  function reconnect() {
+    if (!account) return;
+    setReconnecting(true);
+    const providerName = pluginDisplayName ?? account.plugin_id;
+    reconnectProviderAccount(activeCloudOrgId ?? null, accountId, account.plugin_id)
+      .then(() => {
+        toast.success(gt("Reconnected {provider}", { provider: gtData(providerName) }));
+        setOauthStatus("connected");
+        backgroundLoadRef.current = true;
+        setLoadVersion((v) => v + 1);
+        useUIStore.getState().bumpAccounts();
+        dispatchRefreshResource();
+        dispatchResourcesChanged({ accountId });
+      })
+      .catch((e: unknown) => {
+        if (isProviderOAuthCancelled(e)) return;
+        toast.error(gt("Couldn't reconnect: {message}", { message: formatErrorMessage(e) }));
+      })
+      .finally(() => setReconnecting(false));
+  }
+
   async function openEditCredentials() {
     if (!account) return;
     try {
@@ -684,15 +772,24 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       if (!loaded)
         throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.plugin_id }));
       const manifest = loaded.plugin.manifest;
+      // No refresh for the editor: it must open even when the grant was
+      // revoked and a refresh could only fail.
       const current = activeCloudOrgId
         ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
             orgId: activeCloudOrgId,
             accountId,
           })
-        : await invoke<Record<string, string>>("account_get_credentials", { accountId });
+        : await invoke<Record<string, string>>("account_get_credentials", {
+            accountId,
+            refresh: false,
+          });
+      const oauthInfo = (await resolveOAuthInfo(activeCloudOrgId ?? null, [manifest])).get(
+        manifest.id,
+      );
       setEditCredsState({
         plugin: {
           id: manifest.id,
+          ...(oauthInfo ? { oauth: oauthInfo } : {}),
           displayName: manifest.displayName,
           logoSvg: manifest.logoSvg,
           credentialFields: manifest.credentialFields.map((f) => ({
@@ -787,6 +884,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     toast.success(gt("Credentials updated"));
     backgroundLoadRef.current = true;
     setLoadVersion((v) => v + 1);
+    // The save may have connected, reconnected or dropped an OAuth grant.
+    useUIStore.getState().bumpAccounts();
     // Resource detail tabs and the sidebar bind credentials at mount-time, so
     // a save here doesn't auto-propagate. Force open tabs to re-fetch and
     // rebuild their plugin clients with the new credentials, otherwise the
@@ -821,6 +920,25 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     });
   }
 
+  const editCredsModal =
+    editCredsState && account ? (
+      <EditCredentialsModal
+        plugin={editCredsState.plugin}
+        accountDisplayName={account.display_name}
+        currentCredentials={editCredsState.current}
+        onSave={saveCredentials}
+        onClose={() => setEditCredsState(null)}
+        onOpenExternal={(url) => void invoke("open_external_url", { url })}
+        loadCredentialOptions={loadCredentialOptionsForAccount}
+        accountId={accountId}
+        oauthStatus={oauthStatus}
+        connectOAuth={(pluginId, opts) =>
+          connectProviderOAuth(activeCloudOrgId ?? null, pluginId, opts)
+        }
+        cancelOAuth={cancelProviderOAuth}
+      />
+    ) : null;
+
   if (initialLoading || awaitingAccountRoot) {
     // While awaiting a root we already know ResourcePanel is what renders
     // next, so borrow its exact loading treatment, otherwise the handoff
@@ -838,8 +956,25 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       </div>
     );
   }
+  const reconnectBanner =
+    oauthStatus === "reconnect_required" && account ? (
+      <ProviderOAuthReconnectBanner
+        providerName={pluginDisplayName ?? account.plugin_id}
+        onReconnect={oauthAvailable ? reconnect : undefined}
+        reconnecting={reconnecting}
+        onUpdateCredentials={() => void openEditCredentials()}
+        className="mb-4"
+      />
+    ) : null;
+
   if (error) {
-    return <div className="p-6 text-danger text-sm">{error}</div>;
+    return (
+      <div className="p-6">
+        {reconnectBanner}
+        <div className="text-danger text-sm">{error}</div>
+        {editCredsModal}
+      </div>
+    );
   }
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
@@ -867,6 +1002,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
 
   return (
     <div className="p-6 h-full overflow-auto">
+      {reconnectBanner}
       <div className="mb-6 flex items-start justify-between gap-2">
         <div>
           {isEditing ? (
@@ -1181,17 +1317,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         />
       )}
 
-      {editCredsState && account && (
-        <EditCredentialsModal
-          plugin={editCredsState.plugin}
-          accountDisplayName={account.display_name}
-          currentCredentials={editCredsState.current}
-          onSave={saveCredentials}
-          onClose={() => setEditCredsState(null)}
-          onOpenExternal={(url) => void invoke("open_external_url", { url })}
-          loadCredentialOptions={loadCredentialOptionsForAccount}
-        />
-      )}
+      {editCredsModal}
     </div>
   );
 }

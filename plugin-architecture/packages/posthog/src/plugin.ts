@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { resolveHost } from "./api.js";
 import { PostHogClient, listOrganizations } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { POSTHOG_OAUTH, completePostHogOAuth, validateOAuthHost } from "./oauth.js";
 import { POSTHOG_PREFLIGHT, posthogPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -74,6 +75,7 @@ const manifest: PluginManifest = {
   // CRUD endpoints allow 480 requests a minute and 4,800 an hour per key
   // (1.33/s sustained); analytics endpoints 240/min and 1,200/h.
   rateLimit: { capacity: 10, refillPerSecond: 1 },
+  oauth: POSTHOG_OAUTH,
 };
 
 export const plugin: Plugin = {
@@ -83,6 +85,8 @@ export const plugin: Plugin = {
   parseStatusFeed,
   policyTemplate: posthogPolicyTemplate,
   terraformExport: posthogTerraformExport,
+  completeOAuthConnection: completePostHogOAuth,
+  validateServerCredentials: validateOAuthHost,
   async listCredentialOptions(fieldKey, credentials, services) {
     if (fieldKey !== "organizationId") return [];
     const apiKey = (credentials["apiKey"] ?? "").trim();

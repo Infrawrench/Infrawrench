@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { SupabaseClient } from "./client.js";
 import { SUPABASE_LOGO } from "./logo.js";
+import { SUPABASE_OAUTH, completeSupabaseOAuth } from "./oauth.js";
 import { SUPABASE_PREFLIGHT } from "./preflight.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -22,7 +23,7 @@ const manifest: PluginManifest = {
       key: "accessToken",
       label: "Access Token",
       description:
-        "A Supabase personal access token. Create one in the Supabase dashboard under Account > Access Tokens. A classic token works across every organization you belong to; a scoped token needs at least organizations:read and projects:read, plus secrets, edge_functions, database, storage, auth and analytics read/write scopes for the matching features.",
+        "A Supabase personal access token, or use Connect with Supabase above. Create one in the Supabase dashboard under Account > Access Tokens. A classic token works across every organization you belong to; a scoped token needs at least organizations:read and projects:read, plus secrets, edge_functions, database, storage, auth and analytics read/write scopes for the matching features.",
       sensitive: true,
       placeholder: "sbp_...",
       helpLink: {
@@ -51,6 +52,7 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   preflight: SUPABASE_PREFLIGHT,
+  oauth: SUPABASE_OAUTH,
 };
 
 export const plugin: Plugin = {
@@ -60,4 +62,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: supabaseTerraformExport,
   remediationCommands: supabaseRemediationCommands,
+  completeOAuthConnection: completeSupabaseOAuth,
 };

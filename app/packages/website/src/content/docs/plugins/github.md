@@ -28,9 +28,27 @@ An account is scoped to one **organization** or one **enterprise**, and opens st
 
 <insert [GitHub billing account page showing this month's net, gross and discount totals, the product and SKU table, and the premium requests by model table] here>
 
+## Connect with GitHub
+
+On github.com, **Connect with GitHub** on the add-account form signs you in to GitHub instead of pasting a token. It uses a dedicated Infrawrench GitHub App for billing, separate from the workflow App, and asks for:
+
+- Organization: Administration (read and write), GitHub Copilot Business (read and write), Organization Copilot metrics (read), Self-hosted runners (read and write), Organization codespaces (read and write)
+- Repository: Actions (read and write), for Actions caches
+- Enterprise: Enterprise billing (read and write), for enterprise accounts
+
+GitHub only gives the connection what both the App and you are allowed: you still need to be an organization owner or billing manager, and the App must be installed on the organization or enterprise whose bill you want to read. After you approve, the host is set to `github.com` and the **Organization or enterprise** picker lists the installations you can see (it is filled in for you when there is just one). The write permissions are only used when you act: deleting a cache, removing a seat, editing a budget.
+
+For an enterprise, a connection covers billing, budgets and cost centres. GitHub does not accept App tokens on the enterprise Copilot seat and larger runner endpoints, so those lists stay empty on a connected enterprise account; use a classic token if you need them there.
+
+The connection refreshes itself. GitHub's tokens last eight hours and are renewed automatically; if the connection is revoked, or unused for six months, the account is marked **Reconnect required** and **Reconnect** in its credentials signs you in again.
+
+Connect with GitHub is offered on the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop, GHE.com data residency hosts and GitHub Enterprise Server use a token, as described below.
+
+<insert [GitHub add-account form showing the Connect with GitHub button above the manual credential fields] here>
+
 ## Credentials
 
-Three fields:
+To paste a token instead, fill in three fields:
 
 - **Personal access token**: see the next section for which kind.
 - **GitHub host**: `github.com`, or for GitHub Enterprise Cloud with data residency the address you sign in at, such as `octocorp.ghe.com`. Requests then go to `api.octocorp.ghe.com`.
@@ -61,11 +79,11 @@ Either way, the token's owner must be an organization owner or billing manager (
 
 ### Why a token and not the GitHub App
 
-Infrawrench already has a GitHub App for git-triggered workflows and agents. This plugin deliberately does not reuse it:
+Infrawrench already has a GitHub App for git-triggered workflows and agents. This plugin deliberately does not reuse it (Connect with GitHub uses a separate App of its own):
 
 - The App asks for repository contents and metadata. Billing, budgets, Copilot seats and codespaces need organization administration permissions, and adding those to the App would make every organization that installed it for workflows re-approve a far broader grant.
 - Enterprise billing and cost centres cannot be read by a GitHub App installed on an organization at all.
-- The App installation belongs to the web app's server, so the desktop app (and local mode) could not use it. A token works the same everywhere.
+- The App installation belongs to the web app's server, so the desktop app (and local mode) could not use it. A token works the same everywhere, which is also why the token form stays available next to Connect with GitHub.
 
 ## Cost graphs
 

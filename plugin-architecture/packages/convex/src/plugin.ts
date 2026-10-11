@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ConvexClient } from "./client.js";
 import { CONVEX_LOGO } from "./logo.js";
+import { CONVEX_OAUTH, completeConvexOAuth } from "./oauth.js";
 import { CONVEX_PREFLIGHT } from "./preflight.js";
 import { convexRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resource-types.js";
@@ -39,6 +40,7 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   preflight: CONVEX_PREFLIGHT,
+  oauth: CONVEX_OAUTH,
 };
 
 export const plugin: Plugin = {
@@ -47,4 +49,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new ConvexClient(credentials, services),
   parseStatusFeed,
   remediationCommands: convexRemediationCommands,
+  completeOAuthConnection: completeConvexOAuth,
 };

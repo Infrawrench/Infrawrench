@@ -4,7 +4,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { accounts, associations, resources } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
-import { encrypt, decrypt, buildAad } from "../../../services/encryption";
 import {
   setLiteralSecretState,
   setOutputRefSecretState,
@@ -30,6 +29,7 @@ import { checkChangeFreeze } from "../../../services/change-freezes";
 import { logAudit } from "../../../services/audit";
 import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { updateAccountCredentials } from "@infrawrench/server-core/provider-oauth";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
@@ -166,23 +166,12 @@ export function registerLifecycleRoutes(app: Hono): void {
     // keys manually.
     if (credentialUpdates && Object.keys(credentialUpdates).length > 0) {
       try {
-        const [acct] = await db
-          .select()
-          .from(accounts)
-          .where(
-            and(eq(accounts.id, input.accountId), eq(accounts.organizationId, organizationId)),
-          );
-        if (acct) {
-          const aad = buildAad("account", acct.id, "credentials");
-          const plaintext = await decrypt(acct.encryptedCredentials, acct.credentialsIv, aad);
-          const existing = JSON.parse(plaintext) as Record<string, string>;
-          const merged = { ...existing, ...credentialUpdates };
-          const { ciphertext, iv } = await encrypt(JSON.stringify(merged), aad);
-          await db
-            .update(accounts)
-            .set({ encryptedCredentials: ciphertext, credentialsIv: iv, updatedAt: new Date() })
-            .where(eq(accounts.id, acct.id));
-        }
+        // Under the account's row lock, so the merge cannot race an OAuth
+        // token refresh and write back a rotated-away refresh token.
+        await updateAccountCredentials(input.accountId, organizationId, (existing) => ({
+          ...existing,
+          ...credentialUpdates,
+        }));
       } catch (err) {
         console.error("[resource-detail] Failed to persist auto-minted credentials:", err);
         warnings.push({

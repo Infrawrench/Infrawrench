@@ -8,6 +8,16 @@ import type { CredentialFieldInfo, PluginInfo } from "./AddAccountModal.js";
 import { AdvancedFieldsDisclosure } from "./AdvancedFieldsDisclosure.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 import { ProviderOptionsField, type CredentialFieldOption } from "./ProviderOptionsField.js";
+import { stripOAuthGrantState } from "@infrawrench/plugin-base";
+import type { AccountOAuthStatus } from "@infrawrench/client-core";
+import {
+  ProviderOAuthConnectPanel,
+  ProviderOAuthConnectedChip,
+  ProviderOAuthDivider,
+  oauthTokenFieldKey,
+  useProviderOAuthConnect,
+  type ConnectProviderOAuth,
+} from "./ProviderOAuth.js";
 
 interface EditCredentialsModalProps {
   /** Plugin manifest fragment: same shape used by AddAccountModal. */
@@ -34,6 +44,23 @@ interface EditCredentialsModalProps {
     fieldKey: string,
     credentials: Record<string, string>,
   ) => Promise<CredentialFieldOption[]>;
+  /** The account being edited; passed to `connectOAuth` on Reconnect. */
+  accountId?: string;
+  /**
+   * The account's provider OAuth state (`Account.oauthStatus`). Non-null
+   * renders the token field as "Connected via OAuth" with Reconnect and "Use a
+   * token instead" rather than a password input.
+   */
+  oauthStatus?: AccountOAuthStatus | null;
+  /**
+   * Runs the provider OAuth flow (see `AddAccountModal`). With it, and a
+   * plugin whose `oauth` is set, the modal offers Reconnect on OAuth accounts
+   * and "Connect with {provider}" on pasted ones; the result is merged into
+   * what `onSave` receives, `__oauth` grant included.
+   */
+  connectOAuth?: ConnectProviderOAuth;
+  /** Abandons an in-flight `connectOAuth`. */
+  cancelOAuth?: () => void;
 }
 
 /**
@@ -53,12 +80,24 @@ export function EditCredentialsModal({
   onClose,
   onOpenExternal,
   loadCredentialOptions,
+  accountId,
+  oauthStatus,
+  connectOAuth,
+  cancelOAuth,
 }: EditCredentialsModalProps) {
   const gt = useGT();
   const gtData = useDataString();
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Credentials from a Reconnect (or a first Connect) in this session.
+  const [reconnected, setReconnected] = useState<Record<string, string> | null>(null);
+  // The user chose "Use a token instead" on an OAuth account.
+  const [tokenMode, setTokenMode] = useState(false);
+  const oauth = useProviderOAuthConnect(connectOAuth, cancelOAuth);
+  const tokenKey = oauthTokenFieldKey(plugin);
+  const canConnect = !!(plugin.oauth && connectOAuth);
+  const oauthMode = !tokenMode && (!!oauthStatus || !!reconnected) && !!tokenKey;
 
   useEffect(() => {
     setFieldValues(
@@ -74,17 +113,51 @@ export function EditCredentialsModal({
   // Sensitive fields left blank keep their current value; non-sensitive
   // fields submit whatever's in the input (including blank, so the user
   // can clear an optional field).
+  //
+  // On an OAuth account the token field is not an input: it keeps the current
+  // token (the server keeps the stored grant when the token is unchanged) or
+  // takes the reconnected one, whose `__oauth` grant rides along. After "Use a
+  // token instead" a blank token is an error rather than "keep current",
+  // because keeping it would quietly keep the OAuth connection.
   function mergedCredentials(): Record<string, string> {
     const next: Record<string, string> = {};
     for (const f of plugin.credentialFields) {
       const entered = fieldValues[f.key] ?? "";
-      if (f.sensitive && !entered) {
+      if (oauthMode && f.key === tokenKey) {
+        next[f.key] = reconnected?.[f.key] ?? currentCredentials[f.key] ?? "";
+      } else if (f.sensitive && !entered && !(tokenMode && f.key === tokenKey)) {
         next[f.key] = currentCredentials[f.key] ?? "";
       } else {
         next[f.key] = entered;
       }
     }
-    return next;
+    return oauthMode && reconnected ? { ...reconnected, ...next } : next;
+  }
+
+  function startConnect() {
+    const opts = accountId ? { accountId } : {};
+    void oauth.connect(plugin.id, opts).then((result) => {
+      if (!result) return;
+      setReconnected(result.credentials);
+      setTokenMode(false);
+      // Identity fields the plugin re-discovered replace what was there;
+      // sensitive inputs stay blank (their value now comes from the result).
+      setFieldValues((cur) => {
+        const nextValues = { ...cur };
+        for (const f of plugin.credentialFields) {
+          const v = result.credentials[f.key];
+          if (v !== undefined && !f.sensitive) nextValues[f.key] = v;
+        }
+        return nextValues;
+      });
+    });
+  }
+
+  function switchToToken() {
+    if (oauth.pending) oauth.cancel();
+    setTokenMode(true);
+    setReconnected(null);
+    if (tokenKey) setFieldValues((cur) => ({ ...cur, [tokenKey]: "" }));
   }
 
   async function save() {
@@ -111,6 +184,39 @@ export function EditCredentialsModal({
 
   const renderField = (f: CredentialFieldInfo) => {
     const fieldId = `edit-account-field-${f.key}`;
+    if (oauthMode && f.key === tokenKey) {
+      return (
+        <div key={f.key}>
+          <span className="block text-xs text-on-surface-tertiary mb-1">{gtData(f.label)}</span>
+          <ProviderOAuthConnectedChip
+            providerName={plugin.displayName}
+            fieldLabel={gtData(f.label)}
+            status={reconnected ? "pending-save" : (oauthStatus ?? "connected")}
+            onUseToken={switchToToken}
+            onReconnect={canConnect ? startConnect : undefined}
+            reconnecting={oauth.pending}
+          />
+          {oauthStatus === "reconnect_required" && !reconnected && (
+            <p className="text-xs text-warning mt-1.5">
+              {canConnect
+                ? gt("The connection was revoked or expired. Reconnect, or paste a token instead.")
+                : gt("The connection was revoked or expired. Paste a token instead.")}
+            </p>
+          )}
+          {reconnected && (
+            <p className="text-xs text-on-surface-faint mt-1.5">
+              {gt("Save to apply the new connection.")}
+            </p>
+          )}
+          {oauth.error && (
+            <p className="text-xs text-danger mt-1.5" role="alert">
+              {oauth.error}
+            </p>
+          )}
+        </div>
+      );
+    }
+    const blankKeepsCurrent = f.sensitive && !(tokenMode && f.key === tokenKey);
     return (
       <div key={f.key}>
         <label htmlFor={fieldId} className="block text-xs text-on-surface-tertiary mb-1">
@@ -157,7 +263,7 @@ export function EditCredentialsModal({
                 }
                 load={
                   loadCredentialOptions && depsReady
-                    ? () => loadCredentialOptions(f.key, mergedCredentials())
+                    ? () => loadCredentialOptions(f.key, stripOAuthGrantState(mergedCredentials()))
                     : undefined
                 }
                 reloadKey={JSON.stringify(deps.map((k) => merged[k] ?? ""))}
@@ -177,7 +283,7 @@ export function EditCredentialsModal({
             value={fieldValues[f.key] ?? ""}
             onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
             placeholder={
-              f.sensitive
+              blankKeepsCurrent
                 ? gt("Leave blank to keep current value")
                 : f.placeholder
                   ? gtData(f.placeholder)
@@ -194,7 +300,7 @@ export function EditCredentialsModal({
             value={fieldValues[f.key] ?? ""}
             onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
             placeholder={
-              f.sensitive
+              blankKeepsCurrent
                 ? gt("Leave blank to keep current value")
                 : f.placeholder
                   ? gtData(f.placeholder)
@@ -243,6 +349,20 @@ export function EditCredentialsModal({
               current value.
             </p>
           </T>
+
+          {canConnect && !oauthMode && (
+            <>
+              <ProviderOAuthConnectPanel
+                plugin={{ ...plugin, oauth: plugin.oauth! }}
+                pending={oauth.pending}
+                error={oauth.error}
+                onConnect={startConnect}
+                onCancel={oauth.cancel}
+                onOpenExternal={onOpenExternal}
+              />
+              <ProviderOAuthDivider />
+            </>
+          )}
 
           {plugin.credentialFields.filter((f) => !f.advanced).map(renderField)}
           {plugin.credentialFields.some((f) => f.advanced) && (

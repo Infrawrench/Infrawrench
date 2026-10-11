@@ -20,7 +20,21 @@ Connect a PagerDuty account to manage your incident response setup from Infrawre
 
 <insert [PagerDuty service detail page showing On call now, the Last 30 days summary with MTTA and MTTR, and the Open incidents table] here>
 
+## Connect with PagerDuty
+
+**Connect with PagerDuty** on the add-account form signs you in to PagerDuty instead of pasting an API key. PagerDuty asks you to approve **write** access: read and write access to everything your PagerDuty role can see, which the account needs to acknowledge and resolve incidents, add overrides, schedule maintenance and subscribe the incident webhook. Nothing changes unless you act in Infrawrench, and what Infrawrench can do never goes beyond your own PagerDuty role.
+
+After you approve, the **Service Region** is set to match your account (US or EU) and you become the **Default Acting User**, so incident actions work straight away; pick someone else if you prefer. The account is named after your PagerDuty subdomain.
+
+The connection refreshes itself: PagerDuty access tokens last 30 days and are renewed automatically. If the authorization is revoked in PagerDuty, or Infrawrench is not used for 210 days, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with PagerDuty works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
+
+<insert [PagerDuty add-account form showing the Connect with PagerDuty button above the REST API Key field] here>
+
 ## Credentials
+
+To use an API key instead:
 
 - **REST API Key**: in PagerDuty, open **Integrations → API Access Keys** and create a key (account admins and owners can). Use a **full-access** key. A read-only key lists everything but cannot acknowledge incidents, add overrides, subscribe the incident webhook, or add the Events API integration Infrawrench sends alerts through.
 - **Service Region**: **European Union** if your account signs in at a `.eu.pagerduty.com` address; otherwise leave it on United States.

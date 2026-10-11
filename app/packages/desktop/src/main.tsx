@@ -2,7 +2,7 @@ import { StrictMode, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter, createHashHistory } from "@tanstack/react-router";
 import { t } from "gt-react";
-import { Toaster, toast } from "@infrawrench/ui";
+import { Toaster, toast, useUIStore } from "@infrawrench/ui";
 import { routeTree } from "./routeTree.gen";
 import "./globals.css";
 
@@ -18,6 +18,13 @@ window.electronAPI.on("cloud_auth_error", (...args: unknown[]) => {
   toast.error(t("Sign-in failed"), {
     description: payload?.message ?? t("Cloud authentication error"),
   });
+});
+
+// A local account's OAuth connection changed state in the main process (a
+// refresh was rejected, or a reconnect succeeded): the sidebar and account
+// pages re-read `oauth_status`.
+window.electronAPI.on("provider_oauth_status", () => {
+  useUIStore.getState().bumpAccounts();
 });
 
 const router = createRouter({ routeTree, history: createHashHistory() });

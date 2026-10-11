@@ -393,3 +393,15 @@ ALTER TABLE agent_settings ADD COLUMN t3_access TEXT NOT NULL DEFAULT 't3-connec
 `;
 
 MIGRATIONS.push(AGENT_SERVICE_ACCOUNTS_MIGRATION);
+
+// Provider OAuth ("Connect with X") state of a local account: NULL for a
+// pasted credential, 'connected', or 'reconnect_required' once a refresh was
+// rejected (revoked or expired grant). The grant itself lives in the
+// encrypted credentials under `__oauth`; this column only exists so the
+// sidebar and account page can show the state without decrypting. Mirrors the
+// cloud's `accounts.oauth_status`.
+const ACCOUNT_OAUTH_STATUS_MIGRATION = `
+ALTER TABLE accounts ADD COLUMN oauth_status TEXT;
+`;
+
+MIGRATIONS.push(ACCOUNT_OAUTH_STATUS_MIGRATION);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, TextInput } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -133,6 +133,19 @@ export default function AccountResources() {
 
   return (
     <Screen onRefresh={() => void resources.refetch()} refreshing={resources.isRefetching}>
+      {detail.data?.account.oauthStatus === "reconnect_required" && (
+        // Read-only: the consent flow needs a browser popup or the desktop app,
+        // and mobile adds no credential surfaces of its own.
+        <View style={styles.reconnect} accessibilityRole="alert">
+          <Text style={styles.reconnectHeading}>
+            Reconnect {detail.data.pluginDisplayName || detail.data.account.pluginId}
+          </Text>
+          <Text style={styles.reconnectMessage}>
+            The connection was revoked or expired, so this account can't sync. Reconnect it from the
+            web or desktop app.
+          </Text>
+        </View>
+      )}
       <Button
         label={sync.isPending ? "Syncing…" : "Sync from provider"}
         variant="secondary"
@@ -184,6 +197,16 @@ export default function AccountResources() {
 }
 
 const styles = StyleSheet.create({
+  reconnect: {
+    backgroundColor: "rgba(251, 191, 36, 0.1)",
+    borderColor: "rgba(251, 191, 36, 0.4)",
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  reconnectHeading: { color: colors.warning, fontSize: 14, fontWeight: "600" },
+  reconnectMessage: { color: colors.textSecondary, fontSize: 13 },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

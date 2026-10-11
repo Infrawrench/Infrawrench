@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "./db/client";
 import { accounts } from "./db/schema";
-import { decrypt, buildAad } from "./encryption";
+import { decryptAccountCredentials } from "./provider-oauth";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
@@ -17,6 +17,7 @@ export async function getOrgAccountClient(accountId: string, organizationId: str
   const [account] = await db
     .select({
       id: accounts.id,
+      organizationId: accounts.organizationId,
       pluginId: accounts.pluginId,
       encryptedCredentials: accounts.encryptedCredentials,
       credentialsIv: accounts.credentialsIv,
@@ -27,17 +28,14 @@ export async function getOrgAccountClient(accountId: string, organizationId: str
     .limit(1);
   if (!account) return null;
 
-  const plaintext = await decrypt(
-    account.encryptedCredentials,
-    account.credentialsIv,
-    buildAad("account", account.id, "credentials"),
-  );
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
-
-  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
-
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) return null;
+
+  // Refreshes an expiring OAuth access token (and persists the rotation)
+  // before anything reads the credentials.
+  const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
+
+  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,

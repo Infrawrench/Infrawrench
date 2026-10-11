@@ -158,6 +158,7 @@ import { appsRoutes } from "./routes/apps";
 import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
 import { slackRoutes, slackOauthRoute } from "./routes/slack";
+import { providerOAuthRoutes, providerOAuthCallbackRoute } from "./routes/provider-oauth";
 import { slackInboundRoutes } from "./routes/slack-inbound";
 import { anomalyFeedbackLinkRoutes } from "./routes/anomaly-feedback-link";
 import { msteamsRoutes } from "./routes/msteams";
@@ -218,6 +219,9 @@ api.route("/api", workflowGitWebhook);
 api.route("/api", githubSetupRoute);
 // Public Slack OAuth callback (no session; signed `state` binds the org).
 api.route("/api", slackOauthRoute);
+// Provider OAuth callback ("Connect with X"): unauthenticated, the sealed
+// state is the proof. See routes/provider-oauth.ts.
+api.route("/api", providerOAuthCallbackRoute);
 // Inbound Slack: slash commands + interactivity (signature-verified), and the
 // session-authed account-link landing (it bounces through sign-in itself).
 api.route("/api", slackInboundRoutes);
@@ -462,6 +466,7 @@ orgScoped.route("/deployments", deploymentRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
 orgScoped.route("/accounts", accountRoutes);
+orgScoped.route("/provider-oauth", providerOAuthRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
 orgScoped.route("/agent-registrations", agentRegistrationRoutes);
 orgScoped.route("/team", teamRoutes);

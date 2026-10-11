@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { stripOAuthGrantState } from "@infrawrench/plugin-base";
 import { getAccessToken } from "./cloud-auth";
 import { getDb, getEncryptionKey, decryptValue, buildAad } from "./main-utils";
 import { CLOUD_URL } from "../env";
@@ -58,7 +59,11 @@ async function pushChanges(token: string): Promise<void> {
         encKey,
         buildAad("account", a.id, "credentials"),
       );
-      credentials = JSON.parse(plain) as Record<string, string>;
+      // A desktop-issued OAuth grant (refresh token under `__oauth`) stays on
+      // this device: the cloud refreshes only grants its own client issued,
+      // and a rotating refresh token used from two places locks the account
+      // out. The cloud gets the access token like a pasted one.
+      credentials = stripOAuthGrantState(JSON.parse(plain) as Record<string, string>);
     } catch {
       /* skip if can't decrypt */
     }

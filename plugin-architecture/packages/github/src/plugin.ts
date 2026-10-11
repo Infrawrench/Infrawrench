@@ -8,6 +8,7 @@ import { GITHUB_PREFLIGHT, githubPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { githubRemediationCommands } from "./remediation.js";
+import { GITHUB_OAUTH, completeGitHubOAuth, validateOAuthHost } from "./oauth.js";
 
 const manifest: PluginManifest = {
   id: "github",
@@ -64,6 +65,7 @@ const manifest: PluginManifest = {
   preflight: GITHUB_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
+  oauth: GITHUB_OAUTH,
 };
 
 export const plugin: Plugin = {
@@ -79,10 +81,11 @@ export const plugin: Plugin = {
   validateServerCredentials: (credentials) => {
     try {
       resolveHost(credentials["host"]);
-      return null;
+      return validateOAuthHost(credentials);
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
     }
   },
   remediationCommands: githubRemediationCommands,
+  completeOAuthConnection: completeGitHubOAuth,
 };

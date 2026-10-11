@@ -33,8 +33,38 @@ function focusMainWindow(): void {
   win.focus();
 }
 
+/**
+ * Other features that receive `infrawrench://<host>…` links register here by
+ * host (e.g. `provider-oauth`). Everything else is the sign-in callback
+ * (`infrawrench://callback`), handled below as before.
+ */
+const protocolRoutes = new Map<string, (url: string) => void | Promise<void>>();
+
+export function registerProtocolRoute(
+  host: string,
+  handler: (url: string) => void | Promise<void>,
+): void {
+  protocolRoutes.set(host, handler);
+}
+
+function protocolHost(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function dispatchProtocolUrl(url: string): void {
   if (!url.startsWith(`${PROTOCOL}://`)) return;
+  const route = protocolRoutes.get(protocolHost(url) ?? "");
+  if (route) {
+    void Promise.resolve()
+      .then(() => route(url))
+      .catch((e: unknown) => console.error("[cloud-auth] protocol route failed:", e))
+      .finally(focusMainWindow);
+    return;
+  }
   void handleOAuthCallback(url).finally(focusMainWindow);
 }
 

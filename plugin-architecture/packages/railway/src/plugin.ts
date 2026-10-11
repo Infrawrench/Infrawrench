@@ -9,11 +9,15 @@ import { RailwayApi } from "./api.js";
 import { RailwayClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
-import { Q_TOKEN_WORKSPACES } from "./queries.js";
+import {
+  completeRailwayOAuth,
+  credentialWorkspaces,
+  isRailwayOAuth,
+  railwayOAuth,
+} from "./oauth.js";
 import { railwayRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import type { RwWorkspaceRef } from "./types.js";
 
 const manifest: PluginManifest = {
   id: "railway",
@@ -64,6 +68,8 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   statusFeed,
+  // "Connect with Railway". Pasted account and workspace tokens keep working.
+  oauth: railwayOAuth,
 };
 
 async function listCredentialOptions(
@@ -76,8 +82,8 @@ async function listCredentialOptions(
   if (!token) throw new Error("Enter a Railway token first.");
   const api = new RailwayApi(token, credentials["caCert"] ?? "", services);
   try {
-    const res = await api.gql<{ apiToken: { workspaces: RwWorkspaceRef[] } }>(Q_TOKEN_WORKSPACES);
-    return (res.apiToken?.workspaces ?? []).map((w) => ({
+    const workspaces = await credentialWorkspaces(api, isRailwayOAuth(credentials));
+    return workspaces.map((w) => ({
       id: w.id,
       label: w.name,
       description: w.id,
@@ -98,5 +104,6 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new RailwayClient(credentials, RESOURCE_TYPES, services),
   parseStatusFeed,
   listCredentialOptions,
+  completeOAuthConnection: completeRailwayOAuth,
   remediationCommands: railwayRemediationCommands,
 };

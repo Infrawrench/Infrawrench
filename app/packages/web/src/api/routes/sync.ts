@@ -12,6 +12,7 @@ import { accounts, resources, dashboards, dashboardPins, associations } from "..
 import { authenticateApiRequest, requireScope } from "../../auth/api-auth";
 import { encrypt, buildAad } from "../../services/encryption";
 import { logAudit } from "../../services/audit";
+import { stripOAuthGrantState } from "@infrawrench/plugin-base";
 
 const app = new Hono();
 
@@ -238,8 +239,11 @@ app.post("/push", async (c) => {
 
   if (payload.accounts) {
     for (const acct of payload.accounts) {
+      // A pushed account is a pasted credential set as far as the cloud is
+      // concerned: provider OAuth grant state is never accepted through sync
+      // (a desktop-issued refresh token must not be refreshed from two places).
       const { ciphertext, iv } = await encrypt(
-        JSON.stringify(acct.credentials),
+        JSON.stringify(stripOAuthGrantState(acct.credentials)),
         buildAad("account", acct.id, "credentials"),
       );
       await db
@@ -251,6 +255,7 @@ app.post("/push", async (c) => {
           displayName: acct.displayName,
           encryptedCredentials: ciphertext,
           credentialsIv: iv,
+          oauthStatus: null,
           deletedAt: acct.deletedAt ? new Date(acct.deletedAt) : null,
           syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM accounts WHERE organization_id = ${orgId}), 0) + 1`,
           updatedAt: new Date(acct.updatedAt),
@@ -261,6 +266,7 @@ app.post("/push", async (c) => {
             displayName: acct.displayName,
             encryptedCredentials: ciphertext,
             credentialsIv: iv,
+            oauthStatus: null,
             deletedAt: acct.deletedAt ? new Date(acct.deletedAt) : null,
             syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM accounts WHERE organization_id = ${orgId}), 0) + 1`,
             updatedAt: new Date(acct.updatedAt),

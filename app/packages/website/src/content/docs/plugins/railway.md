@@ -16,9 +16,18 @@ sidebar_order: 21
 - **Domains**: generate a `*.up.railway.app` domain or add a custom one, change the target port, see the DNS records to add and the certificate state, and retry the certificate.
 - **TCP proxies**: expose a port inside a service on a public host and port.
 
+## Connect with Railway
+
+Pick Railway in the add-account form and click **Connect with Railway**. Railway asks you to sign in, choose which workspaces to share, and approve the request. When you share a single workspace, the **Workspace** picker and the account name are filled in for you; with several, the account covers all of them unless you narrow it.
+
+- **What the consent grants:** your name and email, offline access (so the connection outlives the one-hour access token), and admin-level access to the workspaces you pick. Railway caps that at your own role: in a workspace where you are a member, Infrawrench gets member access, and usage limits and credits stay hidden as they would with a member's token. Infrawrench asks for admin because it can read and set usage limits; everything else it does (deploys, restarts, rollbacks, variables, volumes, domains) works at member level.
+- **Refresh:** Railway access tokens expire after an hour. Infrawrench refreshes them in the background and stores the rotated refresh token each time.
+- **Revoking:** revoke Infrawrench from your Railway account settings; Infrawrench then marks the account **Reconnect required**.
+- Works from the web app, the desktop app in cloud mode and desktop-local accounts.
+
 ## Credentials
 
-Railway dashboard → avatar menu → **Account Settings → Tokens → Create**. Leave the workspace on **No workspace** for an account token that sees every workspace you belong to, or choose a workspace for a token limited to it. Project tokens are not supported.
+To paste a token instead of connecting: Railway dashboard → avatar menu → **Account Settings → Tokens → Create**. Leave the workspace on **No workspace** for an account token that sees every workspace you belong to, or choose a workspace for a token limited to it. Project tokens are not supported.
 
 After pasting the token, the **Workspace** picker lists the workspaces it can reach; pick one to narrow the account, or leave **All workspaces**. Billing data (usage, credits and usage limits) is only visible to workspace admins.
 

@@ -14,11 +14,15 @@ An **account** is one set of credentials for one provider. Examples:
 - An AWS access key pair for your employer’s staging account.
 - A kubeconfig for a cluster a teammate shared with you.
 
+Many providers also let you create an account by signing in to the provider instead of pasting a token; that account is still an ordinary set of credentials, refreshed for you. See [Connect with OAuth](../features/connect-with-oauth.md).
+
 You can have many accounts per provider (for example, two DigitalOcean accounts: personal and work). Each account lives under the same plugin but is isolated — its resources only show up grouped under that account.
 
 ### Rotating an account's credentials
 
 When you regenerate a token upstream (rotation schedule, scope upgrade, leaked secret), open the account detail page and click **Update credentials**. The form prefills non-sensitive fields and leaves sensitive ones blank with a "leave blank to keep current value" placeholder so you only have to retype the bits you're changing. Synced resources, pins, dashboards, and SSH-tunnel bindings stay intact.
+
+For an account added with **Connect with &lt;Provider&gt;**, the same form shows **Reconnect** and **Use a token instead** in place of the token input. See [Connect with OAuth](../features/connect-with-oauth.md#switching-between-a-connection-and-a-token).
 
 ![Account detail page header showing the Rename / Update credentials / Remove buttons](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/account-header-actions.png)
 

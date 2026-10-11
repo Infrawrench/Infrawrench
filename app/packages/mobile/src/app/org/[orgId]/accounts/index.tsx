@@ -84,7 +84,11 @@ export default function AccountsScreen() {
             <Row
               key={a.id}
               title={a.displayName}
-              subtitle={a.pluginId}
+              subtitle={
+                a.oauthStatus === "reconnect_required"
+                  ? `Reconnect needed · ${a.pluginId}`
+                  : a.pluginId
+              }
               onPress={() => router.push(`/org/${orgId}/accounts/${a.id}`)}
             />
           ))}

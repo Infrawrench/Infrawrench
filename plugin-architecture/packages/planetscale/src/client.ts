@@ -18,6 +18,7 @@ import { decodePromptArgs, joinSubtitle, jsonRestFetch } from "@infrawrench/plug
 import { fetchPlanetScaleCostData } from "./cost-data.js";
 import { fetchBranchMetrics, PS_METRICS_CAPABILITY } from "./metrics.js";
 import { fetchInsightsLog } from "./insights-log.js";
+import { PLANETSCALE_API, planetscaleAuthorization } from "./oauth.js";
 
 type Engine = "mysql" | "postgresql" | "neki";
 
@@ -238,21 +239,15 @@ const DATABASE_STRING_SETTINGS: Array<[string, keyof PsDatabase, string]> = [
 ];
 
 export class PlanetScaleClient implements PluginClient {
-  private readonly tokenId: string;
-  private readonly tokenSecret: string;
+  /** Service token `<id>:<secret>`, or `Bearer <token>` for Connect with PlanetScale. */
+  private readonly authorization: string;
   private readonly orgName: string;
-  private readonly baseUrl = "https://api.planetscale.com/v1";
+  private readonly baseUrl = PLANETSCALE_API;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
-    const id = credentials["serviceTokenId"];
-    if (!id) throw new Error("PlanetScale plugin: missing serviceTokenId credential");
-    this.tokenId = id;
-
-    const secret = credentials["serviceTokenSecret"];
-    if (!secret) throw new Error("PlanetScale plugin: missing serviceTokenSecret credential");
-    this.tokenSecret = secret;
+    this.authorization = planetscaleAuthorization(credentials);
 
     const org = credentials["organizationName"];
     if (!org) throw new Error("PlanetScale plugin: missing organizationName credential");
@@ -268,7 +263,7 @@ export class PlanetScaleClient implements PluginClient {
       url: `${this.baseUrl}${path}`,
       errorPath: path,
       headers: {
-        Authorization: `${this.tokenId}:${this.tokenSecret}`,
+        Authorization: this.authorization,
         Accept: "application/json",
       },
       ...(options ? { init: options } : {}),

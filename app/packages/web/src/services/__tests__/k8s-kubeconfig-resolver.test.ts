@@ -3,10 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSelect = vi.fn();
 vi.mock("@/db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
 
-vi.mock("@/services/encryption", () => ({
+const encryptionMock = vi.hoisted(() => ({
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret" })),
   buildAad: vi.fn().mockReturnValue("aad"),
 }));
+vi.mock("@/services/encryption", () => encryptionMock);
+// provider-oauth's `decryptAccountCredentials` decrypts through server-core.
+vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);
 
 const mockGetPlugin = vi.fn();
 vi.mock("@/plugins/loader", () => ({ getPlugin: (...a: unknown[]) => mockGetPlugin(...a) }));

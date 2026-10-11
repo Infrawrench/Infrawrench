@@ -24,6 +24,7 @@ import { RailwayApi, nodes } from "./api.js";
 import { fetchEstimatedBill, fetchRailwayCostData, type NameMaps } from "./cost-data.js";
 import { cached, externalOf, isStatus, mapLimit, parseFormArg, str, type Cached } from "./kit.js";
 import { fetchRailwayLogs } from "./logs.js";
+import { credentialWorkspaces, isRailwayOAuth } from "./oauth.js";
 import {
   mapDeployment,
   mapDomain,
@@ -46,7 +47,6 @@ import {
   Q_PROJECT_TREE,
   Q_REGIONS,
   Q_TCP_PROXIES,
-  Q_TOKEN_WORKSPACES,
   Q_VARIABLES,
   Q_VOLUME_BACKUPS,
   Q_WORKSPACE,
@@ -102,6 +102,8 @@ function notFound(what: string): Error {
 export class RailwayClient implements PluginClient {
   readonly api: RailwayApi;
   private readonly workspaceId: string;
+  /** Connected with "Connect with Railway": workspaces come from the grant. */
+  private readonly oauth: boolean;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private treeCache: Cached<Tree> | undefined;
 
@@ -113,6 +115,7 @@ export class RailwayClient implements PluginClient {
     const token = str(credentials["apiToken"]);
     if (!token) throw new Error("Railway plugin: missing apiToken credential");
     this.workspaceId = str(credentials["workspaceId"]);
+    this.oauth = isRailwayOAuth(credentials);
     this.api = new RailwayApi(token, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
@@ -120,10 +123,7 @@ export class RailwayClient implements PluginClient {
   // ── Discovery ────────────────────────────────────────────────────────
 
   async workspaces(): Promise<RwWorkspaceRef[]> {
-    const res = await this.api.gql<{ apiToken: { workspaces: RwWorkspaceRef[] } }>(
-      Q_TOKEN_WORKSPACES,
-    );
-    const all = res.apiToken?.workspaces ?? [];
+    const all = await credentialWorkspaces(this.api, this.oauth);
     if (!this.workspaceId) return all;
     return all.filter((w) => w.id === this.workspaceId).length
       ? all.filter((w) => w.id === this.workspaceId)

@@ -285,4 +285,9 @@
 // 1.79.0: pull request checks. `GET /pr-checks`, `GET|POST
 // /pr-checks/repositories`, `GET|PUT|DELETE /pr-checks/repositories/{id}`,
 // `GET /pr-checks/runs` and `POST /pr-checks/preview`. Additive.
-export const API_VERSION = "1.79.0";
+// 1.80.0: provider OAuth ("Connect with X"). `POST /provider-oauth/{pluginId}/authorize`,
+// an optional `oauth` summary on plugin listings, `oauthStatus` on accounts and
+// account detail, sealed `__oauth` grants accepted on account create and
+// credential update, and a 409 `oauth_reconnect_required` from
+// `GET /accounts/{id}/credentials`. Additive.
+export const API_VERSION = "1.80.0";

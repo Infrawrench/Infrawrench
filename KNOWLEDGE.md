@@ -5803,6 +5803,106 @@ manifest's create-token helpLink).
 
 **Confluent Cloud** (`confluent-cloud/src/preflight.ts`): `GET /org/v2/organizations` for the identity (a 401 there means a wrong or cluster-scoped key and marks every row unknown), then one minimal read per capability, including a telemetry query filtered to a nonexistent cluster for MetricsViewer. Template: Confluent CLI `role-binding create` lines for the selected roles.
 
+## Provider OAuth ("Connect with X")
+
+Adding an account by signing in to the provider instead of pasting a token. User docs: `website/src/content/docs/features/connect-with-oauth.md` (the supported-provider table lives there) plus a "Connect with X" section on each plugin page. The contract is `plugin-architecture/packages/plugin-base/src/oauth.ts`; read its header before changing anything here.
+
+**An OAuth account is a normal credential set.** The access token lands in the plugin's existing token field (`manifest.oauth.tokenField`, e.g. `apiToken`), so the plugin's client reads it exactly like a pasted one. Grant state sits beside it under the reserved key `__oauth` (`OAUTH_CREDENTIAL_KEY`) as a JSON `OAuthGrantState` `{ v: 1, client: "server" | "desktop", refreshToken?, expiresAt?, scope?, connectedAt, clientId? }`. No `__oauth` means pasted, and the hosts never touch it, so every OAuth-capable plugin keeps its manual form and pre-existing accounts needed no migration. A plugin that must behave differently for an OAuth token (Bearer instead of a custom header, a different identity call) branches on `readOAuthGrantState(credentials)` _and_ a token-shape fallback, because desktop cloud mode and cloud-synced copies can arrive with the grant stripped or redacted (PlanetScale `pscale_oauth_`, PagerDuty `pdus+_`, Cloudinary "API key empty").
+
+### The contract
+
+- **`manifest.oauth: OAuthDeclaration`** is pure data (so the web edge Worker, which carries manifests but no plugin code, reads it from `plugin-registry-edge.gen.json`): `authorizeUrl`, `tokenUrl`, `scopes` (empty where the provider configures scopes on the app), `scopeSeparator`, `authorizeParams`, `tokenField`, `clients: { server?: { auth?, pkce? }, desktop?: { loopbackHost? } }`, `access: "read-only" | "read-write" | "full"` (`full` = the provider has nothing narrower; the UI says so before consent), `refresh: "rotating" | "reusable" | "none"`, `docsUrl`, `clientRegistration`, `defaultExpiresIn` (assumed lifetime when the token response omits `expires_in`; without an expiry the host never refreshes).
+- **Hooks on `Plugin`** (`OAuthPluginHooks`, all optional): `completeOAuthConnection(tokens, ctx)` discovers identity and returns `{ credentials?, accountName? }` to pre-fill non-token fields (team, org slug, region) so the user never has to know them; `exchangeOAuthCode` for non-standard token calls (Vercel's four-field form, OpenRouter's key-minting JSON, Stripe's secret-key Basic auth); `buildOAuthAuthorizeUrl` for non-standard consent URLs (OpenRouter `callback_url`, Vercel's integration install URL, Stripe's Marketplace install URL); `registerOAuthClient` for `clientRegistration: "dynamic"`.
+- **`HostServices.oauth.getAccessToken()`** is present only for OAuth accounts and re-runs the host's resolver. Most plugins never need it (the host refreshes before building the client); providers with very short tokens call it per request (Resend 15 min, Cloudinary 5 min), because a client can outlive its token.
+- **Helpers** (`fetch` + WebCrypto only, so they run in Node, Electron main and a Worker): `buildOAuthAuthorizeUrl`, `createPkcePair`, `exchangeOAuthCode`, `refreshOAuthToken`, `applyOAuthTokens`, `readOAuthGrantState`, `oauthNeedsRefresh` (5-minute margin), `stripOAuthGrantState`, `oauthEnvPrefix`, `desktopOAuthRedirectUri`. `OAuthTokenError.invalidGrant` is true for `invalid_grant`, `invalid_token`, `unauthorized_client` and GitHub's HTTP-200 `bad_refresh_token`; that flag, and nothing else, means "reconnect".
+
+### Refresh happens where the account is stored, never in two places
+
+A rotating refresh token used twice locks the account out (Resend even revokes the whole grant on replay), so each grant has exactly one refresher, chosen by `OAuthGrantState.client`:
+
+- **Cloud accounts (Postgres)**: `server-core/src/provider-oauth/refresh.ts` `resolveOAuthCredentials`, reached through `decryptAccountCredentials` (`provider-oauth/index.ts`) at every server decrypt site that builds a client or returns credentials. An in-process single-flight map plus a `SELECT ... FOR UPDATE` row lock: inside the lock it decrypts again and re-checks, so a caller that queued behind another process's refresh finds the new token and does nothing. The rotated token is written in the same transaction. Only grants with `client: "server"` are refreshed here. Edge-safe (per-invocation `db`, no module-level state beyond the single-flight map).
+- **Local desktop accounts (SQLite)**: `desktop/electron/provider-oauth/local-accounts.ts` (`loadLocalAccountCredentials`, the one path for the `account_get_credentials` IPC, `plugin-runtime.ts` and the CLI's `infrafile/plugin-host.ts`) over `credentials.ts` `createLocalOAuthRefresher`, single-flight per account with re-read inside the flight. Only `client: "desktop"` grants. No GUI side effects (the CLI imports it); the GUI learns status changes through `setOAuthStatusListener`. When the CLI opened the database read-only beside a running app it cannot persist a rotation, so a `rotating` grant throws `OAuthRefreshUnavailableError` instead of refreshing.
+- **Cloud sync strips `__oauth`** (`cloud-sync.ts` push) so the cloud never holds a desktop-issued refresh token. The cloud copy is a pasted-token account carrying the current access token, which is why the user docs say to connect in cloud mode for providers with short-lived tokens.
+- **An expired grant with no refresh token** (CircleCI's 90-day token, any `refresh: "none"` provider that sent an expiry) is marked `reconnect_required` by both hosts rather than handed to the plugin to fail on obscurely.
+
+### Sealed state and grants (server flow)
+
+`server-core/src/provider-oauth/seal.ts`: AES-256-GCM under the master key with purpose AADs `provider-oauth:state` and `provider-oauth:grant`, so neither can be replayed as the other. The **state** carries `{ orgId, userId, pluginId, returnTo, accountId?, codeVerifier?, registeredClient?, nonce, exp }` (15 minutes); the PKCE verifier rides inside it, so no cookie or session is needed, which is what lets the desktop open the system browser with no web session. The callback returns a **sealed grant** (30 minutes, bound to org + user + plugin, `client: "server"`) in `__oauth` instead of the real grant state, so the refresh token never reaches a browser in plaintext.
+
+`credentials.ts` turns what a client submits into what is stored:
+
+- `acceptSubmittedCredentials` (account create, preflight probes): the only `__oauth` accepted is a valid sealed grant for this org, user and plugin; it is unsealed into real grant state and the access token. Anything else is `OAuthCredentialError` (HTTP 400), so a client cannot plant a refresh token the server would then use.
+- `resolveCredentialUpdate` (`PUT .../credentials`): a sealed grant is a (re)connect. Otherwise, if the stored set has a grant and the submitted token field is absent or unchanged, the stored token and grant are kept (editing a picker must not disconnect); a different token is a switch to a pasted one and drops the grant. The desktop mirrors this in `mergeIncomingCredentials`, which also treats any access token it handed out recently (`issuedTokens`) as "unchanged", since the renderer's copy may predate a refresh.
+- **Redacted grant on reads.** `GET .../accounts/:id/credentials` refreshes first and returns the grant state minus `refreshToken` and any registered `clientSecret` (`redactOAuthGrantState`), because plugins branch on `readOAuthGrantState` and desktop cloud mode builds clients from these credentials. A redacted copy coming back on a save counts as no grant at all (the preservation rule keeps the stored one). For an account already in `reconnect_required` that GET returns the stored credentials without throwing, or the reconnect flow that repairs it could never load. The desktop renderer gets the same treatment (`redactGrantForRenderer`).
+
+### Routes and the two return paths
+
+Org routes are `/api/org/:orgId/...` (singular).
+
+- `GET /api/org/:orgId/accounts/plugins` items carry `oauth?: { access, refresh, docsUrl?, tokenField, clients }` only when this server can run the flow (`pluginOAuthSummary`); its presence is what shows the button.
+- `POST /api/org/:orgId/provider-oauth/:pluginId/authorize` (session or Bearer, `accounts:write`), body `{ returnTo: "web" | "desktop", accountId? }` (`accountId` = reconnect, must be this org's account of the same plugin) → `{ url }`.
+- `GET /api/provider-oauth/:pluginId/callback` is unauthenticated (the sealed state is the proof), runs plugin hooks, and is therefore in `web/src/edge/gateway-routes.ts`. Its payload is `{ type: "infrawrench:provider-oauth", ok, pluginId, accountId?, credentials, accountName? }` or `{ ok: false, error }`. `returnTo: "web"`: a small HTML page `postMessage`s it to the opener at the `APP_URL` origin, falling back to a same-origin `BroadcastChannel("infrawrench:provider-oauth")` when a provider's strict COOP severed the opener; the web listener checks origin, `type` and `pluginId`, and treats a popup closed for 1.5 s without a message as a cancel. `returnTo: "desktop"`: 302 to `infrawrench://provider-oauth?payload=<base64url JSON>`, routed by host in `electron/cloud-auth.ts` (`registerProtocolRoute`) without disturbing the sign-in callback.
+- The redirect URI to register is `<APP_URL>/api/provider-oauth/<pluginId>/callback` (`providerOAuthRedirectUri`; both the authorize and the exchange derive it there).
+- `accounts.oauth_status` (migration `0150_provider_oauth_status`): null = pasted, `connected`, `reconnect_required`. Exposed as `oauthStatus` on account list and detail (API `1.80.0`, wire types in `client-core`). The Terraform provider deliberately ignores it in `wire_spec_test.go`: it is server-managed connection state and Terraform cannot run a browser consent.
+
+### Desktop local flow
+
+`electron/provider-oauth/`: `ipc.ts` (`provider_oauth_local_clients`, `provider_oauth_connect({ pluginId, target: "local" | "cloud", orgId?, accountId? })`, `provider_oauth_cancel`; one flow at a time), `loopback.ts` (RFC 8252 one-shot listener), `deep-link.ts` (cloud payload parsing), `build-env.ts`, `credentials.ts`, `local-accounts.ts`.
+
+- The loopback redirect is fixed: `http://127.0.0.1:43118/oauth/callback` (`DESKTOP_OAUTH_LOOPBACK_PORT`; the CLI's own sign-in uses 43117), or `localhost` where `clients.desktop.loopbackHost` says the provider only accepts that (OpenRouter). A fixed port is what makes the URI registrable. State check, PKCE, a 5-minute timeout, and a small result page.
+- `target: "cloud"` (desktop in cloud mode) calls the server's authorize with `returnTo: "desktop"`, opens the browser and waits for the deep link; its `__oauth` is a sealed grant the server unseals on save. Cloud mode therefore offers exactly what the web offers.
+- Local flows return plain grant state with `client: "desktop"`. **Server-only providers show no button for local accounts**: the renderer passes `PluginInfo.oauth` only for ids in `provider_oauth_local_clients`.
+
+### Client registration modes
+
+`clientRegistration` decides where the client id comes from:
+
+- `static` (default): server env `PROVIDER_OAUTH_<ID>_CLIENT_ID` / `_CLIENT_SECRET` (`oauthEnvPrefix`: plugin id upper-cased, non-alphanumerics as `_`), read only in `server-core/src/provider-oauth/config.ts`; desktop build env `MAIN_VITE_PROVIDER_OAUTH_<ID>_CLIENT_ID`, baked in by electron-vite (`build-env.ts`). Unset means no button, nothing else breaks. Both are documented generically in `web/.env.example` and `terraform.tfvars.example` (one commented pair, not one per provider).
+- `none`: the provider needs no registered client (OpenRouter identifies the flow by its callback URL); available with zero configuration on both hosts.
+- `dynamic`: the plugin's `registerOAuthClient` registers a client per flow (RFC 7591) before the authorize URL is built (CircleCI). The client id (and a server-side secret, if issued) is kept in the grant state for refreshes, and never shown to clients.
+
+**Public server clients**: `clients.server.auth: "none"` is a secretless web client (PKCE); the server then needs only `_CLIENT_ID` and must send no secret, since some providers reject a request that carries one. PostHog uses this: its client ids are Client ID Metadata Document URLs served from `website/public/oauth/posthog-{server,desktop}.json`, whose `redirect_uris` must list the deployment's callback exactly (a staging `APP_URL` needs its own document or an extra entry).
+
+### Reconnect required
+
+Set on the account when a refresh fails with `invalidGrant`, or when a non-refreshable token has expired; the operation then fails with "Reconnect <Provider>: the connection was revoked or expired." (`OAuthReconnectRequiredError`, one class per host). Surfaces: a sidebar badge and an account-page banner on web and desktop (`ProviderOAuthReconnectBadge` / `ProviderOAuthReconnectBanner` in `@infrawrench/ui`), read-only on mobile. Reconnect = `connectOAuth` with the account id, GET current credentials, PUT `{ ...current, ...result.credentials }`; a successful save puts the status back to `connected`. Not everything dead is an `invalid_grant`: a Vercel integration disabled because its installer left the team 403s with `integration_configuration_disabled` and is left to the plugin's error.
+
+### Adding OAuth to a plugin
+
+1. Verify the provider's OAuth docs online (they move; several of the current set changed in 2026). Decide `clients`: `server` when it supports confidential web apps; `desktop` only when it supports public clients (no secret, PKCE) with a loopback redirect. Least privilege: request only what the plugin's features need, and say `full` honestly when the provider has nothing narrower.
+2. Put the declaration in `src/oauth.ts` and set `manifest.oauth`; implement `completeOAuthConnection` to pre-fill every required non-token field it can discover. Add `exchangeOAuthCode` / `buildOAuthAuthorizeUrl` / `registerOAuthClient` only for non-standard providers. If the token's transport differs from a pasted one, handle it in the plugin (grant state or token-shape check).
+3. If an OAuth-only account must be savable, make the fields it cannot fill `optional` in the manifest (OpenRouter's management key, PlanetScale's service token id, Cloudinary's API key).
+4. Unit tests for the hooks with mocked `fetch`.
+5. A "Connect with <Provider>" section on `website/src/content/docs/plugins/<id>.md` above the manual-token instructions (what the consent grants, refresh behaviour, server-only or desktop-only note), and a row in the table on `features/connect-with-oauth.md`.
+6. Register the app(s) with the provider: server redirect `https://<app>/api/provider-oauth/<id>/callback`, desktop redirect `http://127.0.0.1:43118/oauth/callback`. Set `PROVIDER_OAUTH_<ID>_*` in production `app_env` and `MAIN_VITE_PROVIDER_OAUTH_<ID>_CLIENT_ID` in the desktop release build env. The env example files carry the generic pattern only, so a new provider does not need its own lines there unless it deviates from it.
+7. Regenerate `pnpm --filter @infrawrench/server-core generate:edge-plugins` (the manifest changed; a server-core test fails while stale) and, if any field labels or descriptions changed, `pnpm --filter @infrawrench/web generate:plugin-strings`.
+
+### Per-provider registration notes
+
+Where the app is registered, and what is unusual. Callback and loopback URIs are always the two above.
+
+- **Bitbucket** (server only): workspace settings > Apps and features > OAuth clients (formerly "OAuth consumers"), grant types Authorization code + Refresh token; leave Client credentials off. Scopes live on the client. Client secret as HTTP Basic.
+- **CircleCI** (desktop local only): no registration, `dynamic` against `app.circleci.com/oauth/register`; CircleCI only accepts loopback redirects. Token is a 90-day personal token with no refresh.
+- **Cloudflare**: dashboard, Manage Account, OAuth clients; two clients (token auth method is per client). New clients are private to our account until promoted to public (irreversible), which needs a `logo_uri`, DNS TXT verification of the `client_uri` host, then a PATCH to `visibility: public`; both of ours are public, and the `cloudflare_oauth_client_publisher=` TXT records on infrawrench.com must stay. No billing OAuth scope exists, so cost graphs still need a pasted API token.
+- **Cloudinary** (OAuth apps in Beta): Console, Settings, Developers, OAuth Apps; two apps (post / none), scopes on the app. Token in the `apiSecret` field, 5-minute access tokens.
+- **Convex** (server only): team settings, OAuth Applications. Unverified apps cap at 100 teams until verification is requested. Team token, `full`.
+- **GitHub** (server only): a GitHub App (not an OAuth App), public, with "Expire user authorization tokens" on; permissions live on the app, and the user's token only reaches orgs where the app is installed. github.com only.
+- **Hugging Face**: two apps at settings/applications (one without a secret). No OAuth scope covers billing usage, so Costs still needs an access token.
+- **Netlify** (server only): user settings, OAuth applications. No scopes (`full`), no expiry; a password reset invalidates tokens.
+- **OpenRouter**: no registration (`none`). Mints an inference key, not a management key.
+- **PagerDuty**: App Registration with **Classic User OAuth** (Scoped OAuth needs the target account up front); two apps, scope Read/Write. An unregistered scope silently yields an openid-only token.
+- **PlanetScale** (server only): org settings, OAuth applications; scopes chosen on the app.
+- **PostHog**: no registration, Client ID Metadata Documents (see above); public server client.
+- **Railway**: workspace settings, Developer, two apps (Web / Native); `offline_access` plus `prompt=consent` are both needed for refresh tokens.
+- **Resend**: no console yet; register each client once with `POST https://api.resend.com/oauth/register`, JSON `{ client_name, redirect_uris: [<uri>], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "client_secret_post" (server) | "none" (desktop), scope: "full_access" }`; the secret is shown once. 15-minute access tokens; replaying a rotated refresh token revokes the grant.
+- **Sentry**: user settings, API applications (Confidential / Public), ideally from a shared admin user. sentry.io only.
+- **Supabase** (server only): org settings, OAuth Apps; scopes on the app, and changing them forces users to reconnect.
+- **Vercel** (server only): an integration in the Integrations Console with URL slug `infrawrench` (must match `VERCEL_INTEGRATION_SLUG`); one redirect URL only, hence no desktop client.
+
+### Not yet: partner-gated providers
+
+Providers with OAuth that need a partner agreement, an app review or a conversation before a button can ship (Neon, Datadog, Upstash, Vultr, Aiven, Xata, Civo) are tracked in GitHub issue #268. Each should plug into the generic declaration above, not a bespoke flow.
+
 ## UI translations (General Translation / gt-react)
 
 The web and desktop UIs are internationalized with [gt-react](https://generaltranslation.com/docs/react) (General Translation). English is the source language; the shipped locales are es, fr, de, ja and zh. Adoption is incremental: converted so far are the shared shell components in `ui` (GlobalTabBar, SpotlightSearch, ConfirmDeleteModal, OrgSwitcher, ErrorNotice), the Settings → General header/organization card plus the new LanguageCard, and both apps' global error toasts. Everything else renders its English source text until it is converted — an untranslated string is never an error, just English.

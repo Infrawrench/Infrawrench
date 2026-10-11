@@ -2,6 +2,7 @@ import { cloudflareAiRequestLogCapability } from "./ai-request-logs.js";
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { CLOUDFLARE_FOCUS } from "./focus-services.js";
 import { CloudflareClient } from "./client.js";
+import { cloudflareOAuth, completeCloudflareOAuth } from "./oauth.js";
 import { cloudflareTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import {
@@ -102,6 +103,8 @@ const manifest: PluginManifest = {
   aiRequestLogs: cloudflareAiRequestLogCapability,
   statusFeed,
   preflight: cloudflarePreflight,
+  // "Connect with Cloudflare". Pasted API tokens keep working; see oauth.ts.
+  oauth: cloudflareOAuth,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -155,4 +158,5 @@ export const plugin: Plugin = {
   terraformExport: cloudflareTerraformExport,
   parseStatusFeed,
   policyTemplate: buildCloudflarePolicyTemplate,
+  completeOAuthConnection: completeCloudflareOAuth,
 };

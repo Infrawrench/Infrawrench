@@ -21,6 +21,7 @@ import type {
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { PagerDutyRegion, PagerDutyTransport, QueryValue } from "./api.js";
 import { PagerDutyApiError, pdFetch, pdList, statusOf } from "./api.js";
+import { isPagerDutyOAuth } from "./oauth.js";
 import type {
   PdBusinessService,
   PdEscalationPolicy,
@@ -162,6 +163,7 @@ export class PagerDutyClient implements PluginClient {
     this.fromEmail = (credentials["fromEmail"] ?? "").trim();
     this.transport = {
       apiKey,
+      ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
       region,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),

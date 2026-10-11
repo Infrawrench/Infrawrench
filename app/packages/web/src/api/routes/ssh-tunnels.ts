@@ -10,13 +10,19 @@ import { db } from "../../db/client";
 import { accounts, sshKeys, sshTunnelConfigs } from "../../db/schema";
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { openTunnel, closeTunnel, getActiveTunnels } from "../../services/ssh-tunnel";
-import type { SshTunnelConfig } from "@infrawrench/plugin-base";
+import { OAUTH_CREDENTIAL_KEY, type SshTunnelConfig } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
 import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
 import { resolveSafeHost } from "../../services/host-validation";
 import { logAudit } from "../../services/audit";
+import { getPlugin } from "../../plugins/loader";
+import {
+  OAuthCredentialError,
+  acceptSubmittedCredentials,
+  type AcceptedCredentials,
+} from "@infrawrench/server-core/provider-oauth";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -100,6 +106,25 @@ app.post("/create-account", async (c) => {
     remotePort: input.remotePort,
   };
 
+  // Same `__oauth` handling as a plain account create: a sealed grant from
+  // the Connect flow becomes real grant state, anything else is refused.
+  let opened: AcceptedCredentials = { credentials: input.credentials ?? {}, oauthStatus: null };
+  const loadedPlugin = input.credentials?.[OAUTH_CREDENTIAL_KEY]
+    ? await getPlugin(input.pluginId)
+    : undefined;
+  if (loadedPlugin) {
+    try {
+      opened = await acceptSubmittedCredentials(input.credentials ?? {}, {
+        manifest: loadedPlugin.plugin.manifest,
+        organizationId,
+        userId: session?.userId,
+      });
+    } catch (e) {
+      if (e instanceof OAuthCredentialError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  }
+
   const newAccountId = uuid();
 
   try {
@@ -114,7 +139,7 @@ app.post("/create-account", async (c) => {
 
   const tunnelConfigId = uuid();
   const { ciphertext: credCiphertext, iv: credIv } = await encrypt(
-    JSON.stringify(input.credentials),
+    JSON.stringify(opened.credentials),
     buildAad("account", newAccountId, "credentials"),
   );
   const { ciphertext: keyCiphertext, iv: keyIv } = await encrypt(
@@ -129,6 +154,7 @@ app.post("/create-account", async (c) => {
     displayName: input.displayName,
     encryptedCredentials: credCiphertext,
     credentialsIv: credIv,
+    oauthStatus: opened.oauthStatus,
   });
 
   await db.insert(sshTunnelConfigs).values({

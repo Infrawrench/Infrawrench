@@ -7,6 +7,7 @@ import type {
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HuggingFaceClient } from "./client.js";
 import { HUB_BASE, hfJson, statusOf } from "./http.js";
+import { HUGGINGFACE_OAUTH, completeHuggingFaceOAuth } from "./oauth.js";
 import { huggingfaceRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -81,6 +82,7 @@ const manifest: PluginManifest = {
     partial: true,
   },
   statusFeed,
+  oauth: HUGGINGFACE_OAUTH,
 };
 
 /**
@@ -135,4 +137,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   listCredentialOptions,
   remediationCommands: huggingfaceRemediationCommands,
+  completeOAuthConnection: completeHuggingFaceOAuth,
 };

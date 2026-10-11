@@ -604,3 +604,39 @@ export { isInertSvg, findUnsafeSvgConstructs } from "./svg-safety.js";
 
 export { base64ToBytes, bytesToBase64, utf8ToBase64, base64ToUtf8 } from "./base64.js";
 export * from "./ssh-install.js";
+export {
+  OAUTH_CREDENTIAL_KEY,
+  OAUTH_REFRESH_MARGIN_MS,
+  DESKTOP_OAUTH_LOOPBACK_PORT,
+  DESKTOP_OAUTH_LOOPBACK_PATH,
+  OAuthTokenError,
+  applyOAuthTokens,
+  buildOAuthAuthorizeUrl,
+  createPkcePair,
+  desktopOAuthRedirectUri,
+  exchangeOAuthCode,
+  grantStateFromTokens,
+  oauthEnvPrefix,
+  oauthNeedsRefresh,
+  parseOAuthTokenResponse,
+  randomOAuthToken,
+  readOAuthGrantState,
+  refreshOAuthToken,
+  stripOAuthGrantState,
+} from "./oauth.js";
+export type {
+  OAuthAuthorizeUrlParams,
+  OAuthClientAuthMethod,
+  OAuthClientCredentials,
+  OAuthClientKind,
+  OAuthCompletionContext,
+  OAuthCompletionResult,
+  OAuthDeclaration,
+  OAuthDesktopClientDeclaration,
+  OAuthExchangeRequest,
+  OAuthGrantState,
+  OAuthHostServices,
+  OAuthPluginHooks,
+  OAuthServerClientDeclaration,
+  OAuthTokenSet,
+} from "./oauth.js";

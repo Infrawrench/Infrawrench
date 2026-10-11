@@ -5,6 +5,7 @@ import { PagerDutyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import type { PdUser } from "./mappers.js";
 import { verifyWebhook } from "./paging.js";
+import { PAGERDUTY_OAUTH, completePagerDutyOAuth, isPagerDutyOAuth } from "./oauth.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { pagerdutyTerraformExport } from "./terraform.js";
 
@@ -63,6 +64,7 @@ const manifest: PluginManifest = {
     incidents: { label: "Incidents", canAcknowledge: true, canResolve: true },
     webhook: { mode: "managed" },
   },
+  oauth: PAGERDUTY_OAUTH,
 };
 
 export const plugin: Plugin = {
@@ -71,6 +73,7 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new PagerDutyClient(credentials, services),
   terraformExport: pagerdutyTerraformExport,
   verifyPagingWebhook: verifyWebhook,
+  completeOAuthConnection: completePagerDutyOAuth,
   async listCredentialOptions(fieldKey, credentials, services): Promise<CredentialFieldOption[]> {
     if (fieldKey !== "fromEmail") return [];
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -78,6 +81,7 @@ export const plugin: Plugin = {
     const users = await pdList<PdUser>(
       {
         apiKey,
+        ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
         region: (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us",
         ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
         ...(services?.http ? { http: services.http } : {}),

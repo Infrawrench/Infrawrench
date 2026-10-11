@@ -12,6 +12,16 @@ import { ProviderOptionsField, type LoadCredentialOptions } from "./ProviderOpti
 import { formatErrorMessage } from "../utils.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 import { AdvancedFieldsDisclosure } from "./AdvancedFieldsDisclosure.js";
+import { stripOAuthGrantState } from "@infrawrench/plugin-base";
+import {
+  ProviderOAuthConnectPanel,
+  ProviderOAuthConnectedChip,
+  ProviderOAuthDivider,
+  oauthTokenFieldKey,
+  useProviderOAuthConnect,
+  type ConnectProviderOAuth,
+  type ProviderOAuthInfo,
+} from "./ProviderOAuth.js";
 
 export interface PluginInfo {
   id: string;
@@ -36,6 +46,11 @@ export interface PluginInfo {
   }>;
   /** Declared when the plugin supports credential preflight; absent otherwise. */
   preflight?: PreflightDeclaration | null;
+  /**
+   * Present only when this host can run the plugin's provider OAuth flow
+   * ("Connect with X"); absent hides the button and leaves the manual form.
+   */
+  oauth?: ProviderOAuthInfo | null;
 }
 
 export type CredentialFieldInfo = PluginInfo["credentialFields"][number];
@@ -117,6 +132,16 @@ interface AddAccountModalProps {
    * render those fields as plain text inputs.
    */
   loadCredentialOptions?: LoadCredentialOptions;
+  /**
+   * Runs the provider OAuth consent flow for plugins whose `PluginInfo.oauth`
+   * is set. When given, those plugins get a "Connect with {provider}" button
+   * above the manual form; the returned credentials (token field plus the
+   * host-owned `__oauth` grant) are saved through `saveAccount` as usual.
+   * Called synchronously from the click, so a web host can open its popup.
+   */
+  connectOAuth?: ConnectProviderOAuth;
+  /** Abandons an in-flight `connectOAuth` (closes the popup, stops the listener). */
+  cancelOAuth?: () => void;
 }
 
 type Step = "pick-plugin" | "enter-credentials";
@@ -135,6 +160,8 @@ export function AddAccountModal({
   runPreflight,
   fetchPolicyTemplate,
   loadCredentialOptions,
+  connectOAuth,
+  cancelOAuth,
 }: AddAccountModalProps) {
   const gt = useGT();
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
@@ -146,6 +173,10 @@ export function AddAccountModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Credentials from a completed OAuth connection, kept whole so the grant and
+  // any identity fields the plugin returned outside the form survive to save.
+  const [oauthCredentials, setOauthCredentials] = useState<Record<string, string> | null>(null);
+  const oauth = useProviderOAuthConnect(connectOAuth, cancelOAuth);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -178,6 +209,9 @@ export function AddAccountModal({
   }, [prefilledPluginId, plugins, selected, prefilledCredentials]);
 
   function pickPlugin(p: PluginInfo) {
+    if (oauth.pending) oauth.cancel();
+    oauth.setError(null);
+    setOauthCredentials(null);
     setSelected(p);
     setAccountName("");
     setFieldValues(
@@ -209,12 +243,15 @@ export function AddAccountModal({
     setSaving(true);
     setError(null);
     try {
-      const credentials = Object.fromEntries(
-        selected.credentialFields.map((f) => [
-          f.key,
-          fieldValues[f.key]?.trim() || f.defaultValue || "",
-        ]),
-      );
+      const credentials = {
+        ...(oauthCredentials ?? {}),
+        ...Object.fromEntries(
+          selected.credentialFields.map((f) => [
+            f.key,
+            fieldValues[f.key]?.trim() || f.defaultValue || "",
+          ]),
+        ),
+      };
       await saveAccount(selected.id, accountName.trim(), credentials, bastionId || null);
       onAdded();
       onClose();
@@ -299,15 +336,60 @@ export function AddAccountModal({
                 (f) => f.optional || !!fieldValues[f.key]?.trim() || !!f.defaultValue,
               );
               const isValid = accountName.trim().length > 0 && credsReady;
+              // What preflight and provider pickers see: the form plus any
+              // OAuth identity fields, never the grant (the access token
+              // alone authenticates, and the grant is only for saving).
               const buildCredentials = () =>
-                Object.fromEntries(
-                  selected.credentialFields.map((f) => [
-                    f.key,
-                    fieldValues[f.key]?.trim() || f.defaultValue || "",
-                  ]),
-                );
+                stripOAuthGrantState({
+                  ...(oauthCredentials ?? {}),
+                  ...Object.fromEntries(
+                    selected.credentialFields.map((f) => [
+                      f.key,
+                      fieldValues[f.key]?.trim() || f.defaultValue || "",
+                    ]),
+                  ),
+                });
+              const oauthInfo = connectOAuth ? selected.oauth : null;
+              const tokenKey = oauthInfo ? oauthTokenFieldKey(selected) : undefined;
+              const oauthConnected = !!oauthInfo && !!oauthCredentials;
+              const startConnect = () => {
+                const plugin = selected;
+                void oauth.connect(plugin.id).then((result) => {
+                  if (!result) return;
+                  setOauthCredentials(result.credentials);
+                  setFieldValues((cur) => {
+                    const next = { ...cur };
+                    for (const f of plugin.credentialFields) {
+                      const v = result.credentials[f.key];
+                      if (v !== undefined) next[f.key] = v;
+                    }
+                    return next;
+                  });
+                  if (result.accountName) {
+                    const suggested = result.accountName;
+                    setAccountName((cur) => (cur.trim() ? cur : suggested));
+                  }
+                });
+              };
+              const switchToToken = () => {
+                setOauthCredentials(null);
+                if (tokenKey) setFieldValues((cur) => ({ ...cur, [tokenKey]: "" }));
+              };
               const renderField = (f: CredentialFieldInfo) => {
                 const fieldId = `add-account-field-${f.key}`;
+                if (oauthConnected && f.key === tokenKey) {
+                  return (
+                    <div key={f.key}>
+                      <span className="block text-xs text-on-surface-tertiary mb-1">{f.label}</span>
+                      <ProviderOAuthConnectedChip
+                        providerName={selected.displayName}
+                        fieldLabel={f.label}
+                        status="pending-save"
+                        onUseToken={switchToToken}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div key={f.key}>
                     <label
@@ -448,6 +530,20 @@ export function AddAccountModal({
                     />
                   </div>
 
+                  {oauthInfo && !oauthConnected && (
+                    <>
+                      <ProviderOAuthConnectPanel
+                        plugin={{ ...selected, oauth: oauthInfo }}
+                        pending={oauth.pending}
+                        error={oauth.error}
+                        onConnect={startConnect}
+                        onCancel={oauth.cancel}
+                        onOpenExternal={onOpenExternal}
+                      />
+                      <ProviderOAuthDivider />
+                    </>
+                  )}
+
                   {selected.credentialFields.filter((f) => !f.advanced).map(renderField)}
                   {selected.credentialFields.some((f) => f.advanced) && (
                     <AdvancedFieldsDisclosure
@@ -511,7 +607,10 @@ export function AddAccountModal({
                   <div className="flex gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => setStep("pick-plugin")}
+                      onClick={() => {
+                        if (oauth.pending) oauth.cancel();
+                        setStep("pick-plugin");
+                      }}
                       className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
                     >
                       {gt("Back")}

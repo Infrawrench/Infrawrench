@@ -24,9 +24,21 @@ Connect a Supabase account to manage every project you can reach through the Sup
 
 <insert [Supabase project detail page showing the Overview, Security, Backups and Disk sections with the Pause and Reset database password actions] here>
 
+## Connect with Supabase
+
+**Connect with Supabase** on the add-account form signs you in to Supabase instead of creating a token. On the consent screen you pick the organization to connect, and Supabase lists what Infrawrench may do there: read and write projects, branches, Edge Functions, secrets and API keys, database settings and SQL, Storage, Auth and custom domains, and read organizations and logs. Write access is only used for the actions you take, and you still only get what your Supabase role allows. The account is named after the organization.
+
+The connection covers that one organization. To manage another organization, connect it as a second account (or use a classic token, below).
+
+The connection refreshes itself. If you revoke Infrawrench's access in your Supabase organization settings, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+
+Connect with Supabase works in the web app and in the desktop app's cloud mode. Supabase OAuth apps always need a client secret, so accounts stored locally on the desktop use a token.
+
+<insert [Supabase add-account form showing the Connect with Supabase button above the Access Token field] here>
+
 ## Credentials
 
-Create a **personal access token** in the Supabase dashboard under **Account → Access Tokens** (`supabase.com/dashboard/account/tokens`). Tokens start with `sbp_`.
+To use a token instead, create a **personal access token** in the Supabase dashboard under **Account → Access Tokens** (`supabase.com/dashboard/account/tokens`). Tokens start with `sbp_`.
 
 - A **classic** token works with every organization you belong to and can do anything your role allows.
 - A **scoped** token is safer. Give it `organizations:read` and `projects:read` at minimum, and add the read/write scopes for what you want to manage here: `environment` (branches), `secrets` (API keys, signing keys, and Storage), `edge_functions`, `database` (SQL and database settings), `storage`, `auth`, `domains` and `analytics` (logs and metrics).

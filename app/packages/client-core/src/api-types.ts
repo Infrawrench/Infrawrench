@@ -29,13 +29,23 @@ export interface Account {
   displayName: string;
   bastionId?: string | null;
   createdAt: string;
+  /**
+   * Provider OAuth connection state. `null` (or absent, from an older server)
+   * means the credentials were pasted; `connected` means "Connect with X"
+   * issued them and the host refreshes the token; `reconnect_required` means
+   * the provider revoked or expired the grant and the user must reconnect.
+   */
+  oauthStatus?: AccountOAuthStatus | null;
 }
+
+/** See {@link Account.oauthStatus}. */
+export type AccountOAuthStatus = "connected" | "reconnect_required";
 
 /**
  * Minimal account entry used by pickers (Add Account modal, Connect Through
  * Jumpbox, etc.) that only need to render a name + plugin badge.
  */
-export type AccountListItem = Pick<Account, "id" | "pluginId" | "displayName">;
+export type AccountListItem = Pick<Account, "id" | "pluginId" | "displayName" | "oauthStatus">;
 
 /**
  * A dashboard entry as returned by `GET /api/org/:orgId/dashboards` and
@@ -198,7 +208,13 @@ export interface ResourceTypeSummary {
  * of resource types this plugin exposes. Used to render the per-account page.
  */
 export interface AccountDetail {
-  account: { id: string; pluginId: string; displayName: string };
+  account: {
+    id: string;
+    pluginId: string;
+    displayName: string;
+    /** See {@link Account.oauthStatus}. */
+    oauthStatus?: AccountOAuthStatus | null;
+  };
   resourceTypes: ResourceTypeSummary[];
   pluginDisplayName: string;
   pluginLogoSvg: string;

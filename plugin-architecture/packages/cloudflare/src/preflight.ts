@@ -227,33 +227,40 @@ function unknownChecks(message: string): PreflightCapabilityCheck[] {
   }));
 }
 
-export async function runCloudflarePreflight(token: string): Promise<PreflightResult> {
-  let identity: string | undefined;
+export async function runCloudflarePreflight(
+  token: string,
+  options: { oauth?: boolean } = {},
+): Promise<PreflightResult> {
+  let identity: string | undefined = options.oauth ? "OAuth connection" : undefined;
 
   // 1. Token validity. Account-owned tokens are rejected here (code 1000)
-  //    without being invalid: skip ahead and let the probes decide.
-  try {
-    const verify = await cfGet<{ id?: string; status?: string; expires_on?: string }>(
-      token,
-      "/user/tokens/verify",
-    );
-    const status = verify.body?.result?.status;
-    if (verify.body?.success && status) {
-      if (status !== "active") {
-        return {
-          checks: cloudflarePreflight.capabilities.map((c) => ({
-            capabilityId: c.id,
-            status: "missing" as const,
-            missingPermissions: [],
-            message: `The API token is ${status}. Create a fresh token and update the account credentials.`,
-            helpLink: TOKENS_HELP_LINK,
-          })),
-        };
+  //    without being invalid: skip ahead and let the probes decide. An OAuth
+  //    access token is not an API token, so the verify endpoint has nothing
+  //    to say about it; the probes below decide.
+  if (!options.oauth) {
+    try {
+      const verify = await cfGet<{ id?: string; status?: string; expires_on?: string }>(
+        token,
+        "/user/tokens/verify",
+      );
+      const status = verify.body?.result?.status;
+      if (verify.body?.success && status) {
+        if (status !== "active") {
+          return {
+            checks: cloudflarePreflight.capabilities.map((c) => ({
+              capabilityId: c.id,
+              status: "missing" as const,
+              missingPermissions: [],
+              message: `The API token is ${status}. Create a fresh token and update the account credentials.`,
+              helpLink: TOKENS_HELP_LINK,
+            })),
+          };
+        }
+        identity = verify.body.result?.id ? `API token ${verify.body.result.id}` : undefined;
       }
-      identity = verify.body.result?.id ? `API token ${verify.body.result.id}` : undefined;
+    } catch (e) {
+      return { checks: unknownChecks(shortMessage(e)) };
     }
-  } catch (e) {
-    return { checks: unknownChecks(shortMessage(e)) };
   }
 
   const checks: PreflightCapabilityCheck[] = [];
@@ -365,6 +372,12 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
           capabilityId: "costs",
           status: "missing",
           missingPermissions: COSTS_PERMISSIONS,
+          ...(options.oauth
+            ? {
+                message:
+                  "Cloudflare does not grant Billing Read to OAuth connections. Use an API token with Billing Read for cost graphs.",
+              }
+            : {}),
           helpLink: TOKENS_HELP_LINK,
         });
       } else {

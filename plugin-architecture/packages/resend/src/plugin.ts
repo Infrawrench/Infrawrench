@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ResendClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
+import { completeResendOAuth, resendOAuth } from "./oauth.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -19,7 +20,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A Full access API key (starts with re_), created under API Keys in the Resend dashboard. Sending access keys can only send email, so they cannot list or manage anything here.",
+        "A Full access API key (starts with re_), created under API Keys in the Resend dashboard. Sending access keys can only send email, so they cannot list or manage anything here. Not needed when you connect with Resend.",
       sensitive: true,
       placeholder: "re_...",
       helpLink: { label: "Create an API key", url: "https://resend.com/api-keys" },
@@ -30,6 +31,8 @@ const manifest: PluginManifest = {
   statusFeed,
   // Resend allows 10 requests a second per team, shared by every key.
   rateLimit: { capacity: 5, refillPerSecond: 5 },
+  // "Connect with Resend". Pasted API keys keep working; see oauth.ts.
+  oauth: resendOAuth,
 };
 
 export const plugin: Plugin = {
@@ -37,4 +40,5 @@ export const plugin: Plugin = {
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ResendClient(credentials, services),
   parseStatusFeed,
+  completeOAuthConnection: completeResendOAuth,
 };

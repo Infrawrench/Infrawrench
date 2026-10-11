@@ -23,6 +23,8 @@ This walkthrough uses DigitalOcean because it has the simplest credential: a sin
 
 ![Add-account modal with provider picker and DigitalOcean form](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/add-first-account/add-account-modal-digitalocean.png)
 
+Many providers also offer a **Connect with &lt;Provider&gt;** button at the top of the form: sign in to the provider and approve access, and the token is filled in (and kept fresh) for you. See [Connect with OAuth](../features/connect-with-oauth.md).
+
 For some providers (AWS, Google Cloud, Cloudflare) the form also offers a **Check credentials** button that verifies, per capability, what the pasted credential can actually do — and a generator for the exact least-privilege policy to grant. See [Credential preflight](../core-concepts/credential-preflight.md).
 
 Rarely needed settings, such as a custom CA certificate for a self-hosted endpoint or a TLS-intercepting proxy, sit under a collapsed **Advanced options** section at the bottom of the form. It opens by itself when one of them already has a value.

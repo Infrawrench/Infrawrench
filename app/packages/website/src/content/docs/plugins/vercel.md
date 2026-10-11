@@ -14,9 +14,18 @@ sidebar_order: 22
 - Webhooks
 - Teams
 
+## Connect with Vercel
+
+Pick Vercel in the add-account form and click **Connect with Vercel**. Vercel opens the Infrawrench integration's install page, where you choose the personal account or team to install it on and which projects it can reach (all, or a selection). The Team ID is filled in for you and the account is named after the team.
+
+- **What the consent grants:** the integration's API scopes: Read/Write on projects, deployments, domains, environment variables, drains, Global Config and the integration's own configuration, and Read on team, user and billing (billing only on Pro and Enterprise teams). Vercel shows the list before you install. Effective access is also limited by your team role.
+- **Refresh:** none needed. The integration's token does not expire; it stays valid until the integration is removed (Vercel → **Settings → Integrations → Manage → Uninstall**), which disconnects the account.
+- **If the installer leaves the team,** Vercel disables the integration and every call fails with `integration_configuration_disabled` until a team owner transfers it (Vercel deletes it after 30 days). Reconnect the account from another member to fix it.
+- Works from the web app and the desktop app in cloud mode. Desktop-local accounts use a pasted token, because Vercel integrations only redirect to the hosted Infrawrench server.
+
 ## Credentials
 
-Vercel → **Account Settings → Tokens → Create**.
+To paste a token instead of connecting: Vercel → **Account Settings → Tokens → Create**.
 
 ![Vercel Add-account form with token and optional team-ID field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vercel/add-account.png)
 

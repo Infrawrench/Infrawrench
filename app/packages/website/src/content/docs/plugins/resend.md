@@ -24,9 +24,18 @@ Connect a Resend team to manage what your application sends mail with, see wheth
 
 <insert [Resend domain detail page showing the DNS Records table with one verified and one failed record, and the Verify header action] here>
 
+## Connect with Resend
+
+Pick Resend in the add-account form and click **Connect with Resend**, then sign in to Resend, choose the team and approve. The account is named after the team's first verified domain.
+
+- **What the consent grants:** Resend offers two OAuth scopes, send-only and full access. Listing and managing domains, keys and webhooks needs full access, so that is what Infrawrench asks for; it only reads unless you act.
+- **Refresh:** Resend access tokens last 15 minutes. Infrawrench refreshes them in the background (and before each request when one is about to lapse) and saves the new refresh token Resend issues each time. A connection unused for 60 days expires and needs reconnecting.
+- **Revoking:** revoke the Infrawrench grant from the account's **OAuth Grant** list (or from the Resend dashboard). The account then shows **Reconnect required**.
+- Works from the web app, the desktop app in cloud mode and desktop-local accounts.
+
 ## Credentials
 
-In the Resend dashboard open **API Keys → Create API Key**, choose **Full access** and copy the `re_…` key; it is only shown once. A **Sending access** key can only send email, so it cannot list or manage anything and the account will not connect.
+To paste an API key instead of connecting: in the Resend dashboard open **API Keys → Create API Key**, choose **Full access** and copy the `re_…` key; it is only shown once. A **Sending access** key can only send email, so it cannot list or manage anything and the account will not connect.
 
 <insert [Resend Add-account form with the API Key field filled in] here>
 

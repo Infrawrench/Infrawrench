@@ -177,8 +177,10 @@ export class ResendClient implements PluginClient {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Resend plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
+    const oauth = services?.oauth;
     this.ctx = {
       apiKey,
+      ...(oauth ? { getToken: () => oauth.getAccessToken() } : {}),
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };

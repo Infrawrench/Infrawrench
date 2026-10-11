@@ -39,6 +39,7 @@
     "./twilio-pager": "./src/twilio-pager.ts",
     "./source-name": "./src/source-name.ts",
     "./slack": "./src/slack.ts",
+    "./provider-oauth": "./src/provider-oauth/index.ts",
     "./slack-approvals": "./src/slack-approvals.ts",
     "./msteams": "./src/msteams.ts",
     "./alerts/route": "./src/alerts/route.ts",

@@ -25,7 +25,19 @@ import { killAllK9sSessions } from "./k9s";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
 import { approveAccountCredentials } from "./local-exec-consent";
-import { getAccountCredentials } from "./plugin-runtime";
+import { OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
+import {
+  LocalAccountNotFoundError,
+  getOAuthProvider,
+  issuedAccessTokens,
+  loadLocalAccountCredentials,
+  readStoredAccount,
+} from "./provider-oauth/local-accounts";
+import {
+  mergeIncomingCredentials,
+  oauthStatusFor,
+  redactGrantForRenderer,
+} from "./provider-oauth/credentials";
 import { createHostResolver, registerCredentialEndpoints, shouldRelaxCors } from "./cors-policy";
 import { isInternalRendererUrl } from "./renderer-navigation";
 import { getActiveTunnels } from "./ssh-tunnel";
@@ -75,6 +87,7 @@ import "./cloud-sync";
 import "./cloud-ssh-keys";
 import "./workflow-host";
 import "./workflow-secrets";
+import "./provider-oauth/ipc";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
 import { reportTelemetry } from "./telemetry";
 
@@ -468,6 +481,7 @@ const MAX_PLAINTEXT_BYTES = 64 * 1024; // fits PEM keys + credential JSON
 const MAX_CIPHERTEXT_BYTES = 96 * 1024;
 
 const AccountIdArgs = z.object({ accountId: z.string().min(1).max(128) });
+const AccountGetCredentialsArgs = AccountIdArgs.extend({ refresh: z.boolean().optional() });
 const AccountSaveArgs = z.object({
   accountId: z.string().min(1).max(128),
   credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
@@ -506,47 +520,62 @@ const SecretFieldEncryptArgs = z.object({
 });
 
 ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
-  const { accountId } = AccountIdArgs.parse(raw);
-  const db = await getSqlite();
-  const stmt = db.prepare(
-    "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = ? LIMIT 1",
-  );
-  stmt.bind([accountId]);
-  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-  stmt.free();
-  if (!row) throw new Error("Account not found");
-  const ciphertext = String(row["encrypted_credentials"] ?? "");
-  const iv = String(row["credentials_iv"] ?? "");
-  const aad = buildAad("account", accountId, "credentials");
-  const plaintext = decryptValue(ciphertext, iv, getEncryptionKey(), aad);
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  const { accountId, refresh } = AccountGetCredentialsArgs.parse(raw);
+  // Decrypts, and refreshes an OAuth-connected account's access token when it
+  // is about to expire (provider-oauth/local-accounts.ts). Every plugin the
+  // renderer runs gets its credentials here, so this covers all of them.
+  // `refresh: false` is for the credentials editor, which must open even when
+  // the grant was revoked and a refresh can only fail.
+  let credentials: Record<string, string>;
+  try {
+    credentials =
+      refresh === false
+        ? (await readStoredAccount(accountId)).credentials
+        : await loadLocalAccountCredentials(accountId);
+  } catch (err) {
+    if (err instanceof LocalAccountNotFoundError) throw new Error("Account not found");
+    throw err;
+  }
   // The renderer always loads an account's credentials through here before
   // talking to its cluster, so decrypt-time registration keeps the SSRF
   // allowlist populated across app restarts.
   await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
   registerCredentialEndpoints(credentials);
-  return credentials;
+  // The refresh token stays in main; the renderer gets the grant without it.
+  return redactGrantForRenderer(credentials);
 });
 
 ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
-  const { accountId, credentials } = AccountSaveArgs.parse(raw);
+  const { accountId, credentials: incoming } = AccountSaveArgs.parse(raw);
+  // A kubeconfig that runs a program, or a Docker host, is local code
+  // execution: a new or changed one needs consent in a native dialog before
+  // it becomes a stored value the connect-time gate trusts (local-exec-guard.ts).
+  const stored = await readStoredAccount(accountId).catch(() => undefined);
+  const previous = stored?.credentials;
+  // Provider OAuth: keep the stored grant across picker edits, take a fresh
+  // one from a reconnect, drop it when the user pastes a token instead.
+  const tokenField =
+    stored && (OAUTH_CREDENTIAL_KEY in incoming || (previous && OAUTH_CREDENTIAL_KEY in previous))
+      ? (await getOAuthProvider(stored.pluginId))?.declaration.tokenField
+      : undefined;
+  const credentials = mergeIncomingCredentials(
+    incoming,
+    previous,
+    tokenField,
+    issuedAccessTokens(accountId),
+  );
   const plaintext = JSON.stringify(credentials);
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
     throw new Error("account_save_credentials: credentials too large");
   }
-  // A kubeconfig that runs a program, or a Docker host, is local code
-  // execution: a new or changed one needs consent in a native dialog before
-  // it becomes a stored value the connect-time gate trusts (local-exec-guard.ts).
-  const previous = await getAccountCredentials(accountId).catch(() => undefined);
   await approveAccountCredentials(credentials, previous);
   const aad = buildAad("account", accountId, "credentials");
   const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
   const db = await getSqlite();
-  db.run("UPDATE accounts SET encrypted_credentials = ?, credentials_iv = ? WHERE id = ?", [
-    ciphertext,
-    iv,
-    accountId,
-  ]);
+  db.run(
+    "UPDATE accounts SET encrypted_credentials = ?, credentials_iv = ?, oauth_status = ? WHERE id = ?",
+    [ciphertext, iv, oauthStatusFor(credentials), accountId],
+  );
   if (db.getRowsModified() === 0) {
     throw new Error("Account not found");
   }
@@ -556,7 +585,9 @@ ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
 });
 
 ipcMain.handle("account_create", async (_e, raw: unknown) => {
-  const { accountId, pluginId, displayName, credentials } = AccountCreateArgs.parse(raw);
+  const { accountId, pluginId, displayName, credentials: incoming } = AccountCreateArgs.parse(raw);
+  // Drops a malformed `__oauth`; keeps a grant from provider_oauth_connect.
+  const credentials = mergeIncomingCredentials(incoming, undefined, undefined);
   const plaintext = JSON.stringify(credentials);
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
     throw new Error("account_create: credentials too large");
@@ -566,9 +597,9 @@ ipcMain.handle("account_create", async (_e, raw: unknown) => {
   const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
   const db = await getSqlite();
   db.run(
-    `INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv)
-     VALUES (?, ?, ?, ?, ?)`,
-    [accountId, pluginId, displayName, ciphertext, iv],
+    `INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv, oauth_status)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [accountId, pluginId, displayName, ciphertext, iv, oauthStatusFor(credentials)],
   );
   persist();
   await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);

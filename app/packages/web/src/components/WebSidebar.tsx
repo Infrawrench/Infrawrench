@@ -6,6 +6,7 @@ import {
   DroppableDashboardItem,
   DraggableSidebarResource,
   RESOURCES_CHANGED_EVENT,
+  dispatchResourcesChanged,
   OrgSwitcher,
   SidebarToolsButton,
   toast,
@@ -17,6 +18,9 @@ import {
   CloseIcon,
   PanelLeftCloseIcon,
   IssueIndicator,
+  ProviderOAuthReconnectBadge,
+  isProviderOAuthCancelled,
+  formatErrorMessage,
   PanelLeftOpenIcon,
   SettingsIcon,
 } from "@infrawrench/ui";
@@ -56,6 +60,7 @@ import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@inf
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 import { AddAccountModal } from "./AddAccountModal";
+import { reconnectProviderAccount } from "@/lib/provider-oauth";
 
 interface ResourceSummary {
   id: string;
@@ -83,6 +88,8 @@ interface PluginGroup {
   pluginId: string;
   displayName: string;
   logoSvg: string;
+  /** The server can run this plugin's OAuth flow, so Reconnect can show. */
+  oauthAvailable: boolean;
   accounts: Account[];
 }
 
@@ -132,6 +139,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     Record<string, Record<string, ResourceTypeMeta>>
   >({});
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 
   // Dashboard state
   const [dashboardList, setDashboardList] = useState<Dashboard[]>([]);
@@ -235,14 +243,17 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       try {
         const [accts, pluginList] = await Promise.all([
           apiGet<Account[]>(`${apiBase}/accounts`),
-          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>(
+          apiGet<Array<{ id: string; displayName: string; logoSvg: string; oauth?: unknown }>>(
             `${apiBase}/accounts/plugins`,
           ),
         ]);
         if (cancelled) return;
 
         const pluginMeta = Object.fromEntries(
-          pluginList.map((p) => [p.id, { displayName: p.displayName, logoSvg: p.logoSvg }]),
+          pluginList.map((p) => [
+            p.id,
+            { displayName: p.displayName, logoSvg: p.logoSvg, oauthAvailable: !!p.oauth },
+          ]),
         );
 
         const groupMap = new Map<string, PluginGroup>();
@@ -252,6 +263,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               pluginId: acct.pluginId,
               displayName: pluginMeta[acct.pluginId]?.displayName ?? acct.pluginId,
               logoSvg: pluginMeta[acct.pluginId]?.logoSvg ?? "",
+              oauthAvailable: pluginMeta[acct.pluginId]?.oauthAvailable ?? false,
               accounts: [],
             });
           }
@@ -434,6 +446,22 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         };
       });
     }
+  }
+
+  function reconnectAccount(account: Account, providerName: string) {
+    if (!orgId) return;
+    setReconnectingId(account.id);
+    reconnectProviderAccount(orgId, account.id, account.pluginId)
+      .then(() => {
+        toast.success(gt("Reconnected {provider}", { provider: gtData(providerName) }));
+        useUIStore.getState().bumpAccounts();
+        dispatchResourcesChanged({ accountId: account.id });
+      })
+      .catch((e: unknown) => {
+        if (isProviderOAuthCancelled(e)) return;
+        toast.error(gt("Couldn't reconnect: {message}", { message: formatErrorMessage(e) }));
+      })
+      .finally(() => setReconnectingId((cur) => (cur === account.id ? null : cur)));
   }
 
   async function toggleExpand(accountId: string) {
@@ -944,6 +972,17 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         <span className="truncate">{account.displayName}</span>
                         {issue && <IssueIndicator reason={issue} />}
                       </button>
+                      {account.oauthStatus === "reconnect_required" && (
+                        <ProviderOAuthReconnectBadge
+                          accountName={account.displayName}
+                          onReconnect={
+                            group.oauthAvailable
+                              ? () => reconnectAccount(account, group.displayName)
+                              : undefined
+                          }
+                          reconnecting={reconnectingId === account.id}
+                        />
+                      )}
                     </div>
 
                     {/* Expanded resources */}
