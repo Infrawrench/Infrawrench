@@ -74,6 +74,11 @@ vi.mock("../extended-support", () => ({
     { name: "es1", title: "ES1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../seats", () => ({
+  seatTools: () => [
+    { name: "st1", title: "ST1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../carbon", () => ({
   carbonTools: () => [
     { name: "cb1", title: "CB1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -168,6 +173,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("iv1");
     expect(names).toContain("m1");
     expect(names).toContain("cb1");
+    expect(names).toContain("st1");
     expect(names).toContain("pc1");
     expect(names).toContain("gh1");
     expect(names).toContain("sv1");
