@@ -128,13 +128,13 @@ export function DesktopVulnerabilitiesPanel({
     return (
       <div className="flex-1 overflow-auto p-6">
         <h1 className="text-xl font-semibold mb-1">{gt("Vulnerabilities")}</h1>
-        <T>
-          <p className="text-sm text-on-surface-muted">
+        <p className="text-sm text-on-surface-muted">
+          <T>
             Vulnerability findings are a cloud feature: the cloud poller collects them from each
             provider&apos;s scanner, and a local workspace has no poller. Sign in to an organization
             to see what is running with a known vulnerability.
-          </p>
-        </T>
+          </T>
+        </p>
       </div>
     );
   }
