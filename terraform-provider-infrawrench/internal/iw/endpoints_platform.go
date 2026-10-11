@@ -903,6 +903,22 @@ func (c *Client) PutDriftAlertSettings(ctx context.Context, in DriftAlertSetting
 	return &out, nil
 }
 
+func (c *Client) GetDoraSettings(ctx context.Context) (*DoraSettings, error) {
+	var out DoraSettings
+	if err := c.Get(ctx, "/dora/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutDoraSettings(ctx context.Context, in DoraSettingsUpdate) (*DoraSettings, error) {
+	var out DoraSettings
+	if err := c.Put(ctx, "/dora/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetExpiryAlertSettings(ctx context.Context) (*ExpiryAlertSettings, error) {
 	var out ExpiryAlertSettings
 	if err := c.Get(ctx, "/expiring/settings", &out); err != nil {

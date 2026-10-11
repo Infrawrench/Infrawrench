@@ -207,6 +207,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewScheduleResource,
 		NewChangeFreezeResource,
 		NewDriftAlertSettingsResource,
+		NewDoraSettingsResource,
 		NewExpiryAlertSettingsResource,
 		NewExtendedSupportSettingsResource,
 		NewPostureAlertSettingsResource,

@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 68 resources and 7 data sources, each with its own
+control, and alert delivery. 69 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -590,7 +590,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
-`drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
+`drift_alert_settings`, `dora_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
 `session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
@@ -689,14 +689,15 @@ secret store that consumes it rather than into an output.
 
 ### Monitoring
 
-| Resource                   | Import | Notes                                                 |
-| -------------------------- | ------ | ----------------------------------------------------- |
-| `infrawrench_probe`        | by id  | Numeric fields are clamped server-side                |
-| `infrawrench_slo`          | by id  | Out-of-range target or threshold is rejected          |
-| `infrawrench_status_page`  | by id  | `slug` is minted with entropy; rotation is not a plan |
-| `infrawrench_metric_alert` | by id  | Selects resources by query, so it covers future ones  |
-| `infrawrench_log_query`    | by id  | One to eight streams; alerting is opt-in              |
-| `infrawrench_custom_graph` | by id  | `source` is TypeScript — use `file()`                 |
+| Resource                    | Import    | Notes                                                 |
+| --------------------------- | --------- | ----------------------------------------------------- |
+| `infrawrench_probe`         | by id     | Numeric fields are clamped server-side                |
+| `infrawrench_slo`           | by id     | Out-of-range target or threshold is rejected          |
+| `infrawrench_dora_settings` | by org id | Org singleton; destroy is a no-op                     |
+| `infrawrench_status_page`   | by id     | `slug` is minted with entropy; rotation is not a plan |
+| `infrawrench_metric_alert`  | by id     | Selects resources by query, so it covers future ones  |
+| `infrawrench_log_query`     | by id     | One to eight streams; alerting is opt-in              |
+| `infrawrench_custom_graph`  | by id     | `source` is TypeScript — use `file()`                 |
 
 ### Lifecycle governance
 

@@ -1111,6 +1111,30 @@ type DriftAlertSettings struct {
 	LastNotifiedAt  *string  `json:"lastNotifiedAt"`
 }
 
+// DoraSettingsUpdate is the PUT body for the DORA metrics settings. The
+// pipeline list is a pointer so `[]` (count no pipelines) is sent rather than
+// omitted.
+type DoraSettingsUpdate struct {
+	FailureWindowHours     *int64    `json:"failureWindowHours,omitempty"`
+	ProductionEnvironments []string  `json:"productionEnvironments,omitempty"`
+	PipelinePatterns       *[]string `json:"pipelinePatterns,omitempty"`
+	CountFailedDeploys     *bool     `json:"countFailedDeploys,omitempty"`
+	IncludeResourceChanges *bool     `json:"includeResourceChanges,omitempty"`
+	DigestEnabled          *bool     `json:"digestEnabled,omitempty"`
+}
+
+// DoraSettings is the org singleton deciding what DORA metrics count as
+// production and as a failed change. UpdatedAt is null until first saved.
+type DoraSettings struct {
+	FailureWindowHours     int64    `json:"failureWindowHours"`
+	ProductionEnvironments []string `json:"productionEnvironments"`
+	PipelinePatterns       []string `json:"pipelinePatterns"`
+	CountFailedDeploys     bool     `json:"countFailedDeploys"`
+	IncludeResourceChanges bool     `json:"includeResourceChanges"`
+	DigestEnabled          bool     `json:"digestEnabled"`
+	UpdatedAt              *string  `json:"updatedAt"`
+}
+
 // ExpiryAlertSettingsUpdate is the PUT body for the expiry radar.
 type ExpiryAlertSettingsUpdate struct {
 	Enabled  *bool  `json:"enabled,omitempty"`
