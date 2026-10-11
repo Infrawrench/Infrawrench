@@ -94,6 +94,15 @@ const manifest: PluginManifest = {
     increaseUrl: "https://customers.gitlab.com/",
     partial: true,
   },
+  // Open dependency- and container-scanning findings from the vulnerability
+  // report (GraphQL). Ultimate only, and the user needs Developer or above;
+  // bounded per group or per project. See `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "GitLab Vulnerability Report",
+    consoleUrl: "https://docs.gitlab.com/user/application_security/vulnerability_report/",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   preflight,
   statusFeed,
   // GitLab.com allows 2,000 authenticated API requests a minute per user.

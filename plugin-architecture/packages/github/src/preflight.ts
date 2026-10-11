@@ -165,6 +165,21 @@ const PROBES: CapabilityProbe[] = [
   },
   {
     capability: {
+      id: "vulnerabilities",
+      label: "Dependabot alerts",
+      description:
+        "Open Dependabot alerts (CVEs and GHSA advisories in dependencies) across the repositories. The user must be an owner or security manager.",
+      requiredPermissions: [
+        perm("vulnerability_alerts:read", "Repository: Dependabot alerts (read)"),
+        perm("security_events", "Enterprise (classic token): security_events or repo"),
+      ],
+    },
+    org: (ctx) => `${ownerBase(ctx.owner)}/dependabot/alerts`,
+    enterprise: (ctx) => `${ownerBase(ctx.owner)}/dependabot/alerts`,
+    query: { state: "open", per_page: 1 },
+  },
+  {
+    capability: {
       id: "cost-centers",
       label: "Cost centres",
       description: "List, create, edit and delete enterprise cost centres. Enterprises only.",

@@ -11,6 +11,7 @@ import type {
   PreflightResult,
   ResourceInstance,
   SidebarItemSchema,
+  VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { GitHubContext } from "./api.js";
@@ -47,6 +48,7 @@ import {
 } from "./mappers.js";
 import { METRICS_WINDOW_MS, billingAccountSeries, rangeOrDefault } from "./metrics.js";
 import { verifyGitHubCredentials } from "./preflight.js";
+import { fetchDependabotFindings } from "./vulnerabilities.js";
 import {
   PRODUCTS,
   budgetProductOptions,
@@ -525,6 +527,10 @@ export class GitHubClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchGitHubCostData(this.ctx, range);
+  }
+
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    return fetchDependabotFindings(this.ctx);
   }
 
   async verifyCredentials(): Promise<PreflightResult> {

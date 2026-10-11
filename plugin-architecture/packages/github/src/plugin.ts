@@ -61,6 +61,17 @@ const manifest: PluginManifest = {
     restatementDays: 4,
     chargeTypes: true,
   },
+  // Open Dependabot alerts across the owner's repositories, one owner-wide
+  // listing. Needs owner or security manager plus the Dependabot alerts
+  // permission, which the billing-focused token does not carry by default;
+  // bounded at 5,000 alerts. See `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "Dependabot",
+    consoleUrl:
+      "https://docs.github.com/en/code-security/dependabot/dependabot-alerts/configuring-dependabot-alerts",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   preflight: GITHUB_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
