@@ -20,6 +20,8 @@
  *   before it, whichever provider ran it (`detectRollbacks`).
  */
 
+import type { CloudFetch } from "./fetch";
+
 /* --------------------------------- settings -------------------------------- */
 
 export interface DoraSettings {
@@ -963,3 +965,37 @@ export function doraRangeForDays(
 }
 
 export const DORA_RANGE_DAYS: readonly number[] = [7, 30, 90, 180, 365];
+
+/* ------------------------------- fetch helpers ------------------------------ */
+
+/** `GET /api/org/:orgId/dora` (`deployments:read`). */
+export async function fetchDoraReport(
+  api: CloudFetch,
+  orgId: string,
+  query: DoraQuery,
+): Promise<DoraReport | null> {
+  return api.org<DoraReport>(orgId, `/dora?${doraQueryString(query)}`);
+}
+
+/** `GET /api/org/:orgId/dora/changes` (`deployments:read`). */
+export async function fetchDoraChanges(
+  api: CloudFetch,
+  orgId: string,
+  query: DoraQuery,
+): Promise<DoraChangesResponse> {
+  const res = await api.org<DoraChangesResponse>(orgId, `/dora/changes?${doraQueryString(query)}`);
+  return res ?? { changes: [], truncated: false };
+}
+
+/** `GET /api/org/:orgId/dora/restores` (`deployments:read`). */
+export async function fetchDoraRestores(
+  api: CloudFetch,
+  orgId: string,
+  query: DoraQuery,
+): Promise<DoraRestoresResponse> {
+  const res = await api.org<DoraRestoresResponse>(
+    orgId,
+    `/dora/restores?${doraQueryString(query)}`,
+  );
+  return res ?? { restores: [] };
+}
