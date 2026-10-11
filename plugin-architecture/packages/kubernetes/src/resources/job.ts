@@ -17,7 +17,8 @@ export const JobResourceType = rt({
     }),
     f("images", "Images", {
       required: false,
-      description: "Every container image the pod template runs, init containers and sidecars included",
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
     }),
   ],
   outputs: [],
@@ -41,5 +42,9 @@ export const JobResourceType = rt({
   ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
-  runningImages: { imageKeys: ["images", "image"], runningKey: "status", runningValues: ["Running"] },
+  runningImages: {
+    imageKeys: ["images", "image"],
+    runningKey: "status",
+    runningValues: ["Running"],
+  },
 });

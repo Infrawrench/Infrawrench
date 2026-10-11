@@ -13,7 +13,8 @@ export const DaemonSetResourceType = rt({
     f("image", "Image", { required: false }),
     f("images", "Images", {
       required: false,
-      description: "Every container image the pod template runs, init containers and sidecars included",
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
     }),
   ],
   outputs: [],

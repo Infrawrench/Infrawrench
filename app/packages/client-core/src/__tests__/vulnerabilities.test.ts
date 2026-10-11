@@ -215,11 +215,19 @@ describe("computeVulnerabilityFeed", () => {
     const feed = computeVulnerabilityFeed(
       input({
         findings: [
-          stored({ findingId: "a", advisoryId: "GHSA-1", aliases: ["CVE-2021-44228"], artifactName: "x/y", artifactDigest: null }),
+          stored({
+            findingId: "a",
+            advisoryId: "GHSA-1",
+            aliases: ["CVE-2021-44228"],
+            artifactName: "x/y",
+            artifactDigest: null,
+          }),
           stored({ findingId: "b" }),
           stored({ findingId: "c", artifactName: "x/z", artifactDigest: null, cvssScore: 10 }),
         ],
-        kev: new Map([["CVE-2021-44228", { dateAdded: "2021-12-10", dueDate: null, knownRansomware: true }]]),
+        kev: new Map([
+          ["CVE-2021-44228", { dateAdded: "2021-12-10", dueDate: null, knownRansomware: true }],
+        ]),
       }),
     );
     expect(feed.findings.map((f) => f.findingId)).toEqual(["b", "a", "c"]);
@@ -230,7 +238,9 @@ describe("computeVulnerabilityFeed", () => {
 
   it("summarises open findings per resource and picks alertable ones", () => {
     const feed = computeVulnerabilityFeed(
-      input({ findings: [stored(), stored({ findingId: "lo", severity: "low", advisoryId: "CVE-1" })] }),
+      input({
+        findings: [stored(), stored({ findingId: "lo", severity: "low", advisoryId: "CVE-1" })],
+      }),
     );
     const byResource = openVulnerabilitiesByResource(feed);
     expect(byResource.get("p1")).toMatchObject({ critical: 1, advisories: ["CVE-2024-0001"] });

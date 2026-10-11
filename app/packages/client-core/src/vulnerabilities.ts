@@ -297,8 +297,7 @@ export interface VulnerabilityScanPlugin {
   displayName: string;
   /** `manifest.vulnerabilities`, when declared. */
   vulnerabilities?:
-    | { label: string; consoleUrl?: string | undefined; partial?: boolean | undefined }
-    | undefined;
+    { label: string; consoleUrl?: string | undefined; partial?: boolean | undefined } | undefined;
   resourceTypes: readonly VulnerabilityScanResourceType[];
 }
 
@@ -451,7 +450,10 @@ function buildRunningIndex(input: VulnerabilityFeedInput): RunningIndex {
   return index;
 }
 
-function matchRunning(f: StoredVulnerabilityFinding, index: RunningIndex): VulnerabilityRunningRef[] {
+function matchRunning(
+  f: StoredVulnerabilityFinding,
+  index: RunningIndex,
+): VulnerabilityRunningRef[] {
   const out = new Map<string, VulnerabilityRunningRef>();
   const add = (refs: Array<RunningRef> | undefined, by: VulnerabilityMatchKind) => {
     for (const ref of refs ?? []) {
@@ -461,10 +463,13 @@ function matchRunning(f: StoredVulnerabilityFinding, index: RunningIndex): Vulne
   // A scanner names resources in its own account, and some providers' native
   // ids are bare names (a Lambda function's), so a resource join never crosses
   // accounts: two accounts each with a function called `api` are two functions.
-  if (f.artifactResourceId) {
-    const named = index.byResource.get(f.artifactResourceId)?.filter(
-      (r) => r.accountId === f.accountId,
-    );
+  // Source repositories and stored packages are never "running" by
+  // themselves (the contract says so); the resource id they carry is a link,
+  // not a deployment.
+  if (f.artifactResourceId && f.artifactKind !== "repository" && f.artifactKind !== "package") {
+    const named = index.byResource
+      .get(f.artifactResourceId)
+      ?.filter((r) => r.accountId === f.accountId);
     add(named, "resource");
   }
   if (f.artifactKind === "image") {
@@ -573,8 +578,7 @@ export function computeVulnerabilityFeed(input: VulnerabilityFeedInput): Vulnera
 
   findings.sort(compareRows);
   dismissed.sort(
-    (a, b) =>
-      b.dismissal.dismissedAt.localeCompare(a.dismissal.dismissedAt) || compareRows(a, b),
+    (a, b) => b.dismissal.dismissedAt.localeCompare(a.dismissal.dismissedAt) || compareRows(a, b),
   );
 
   return {
@@ -612,7 +616,11 @@ export function filterVulnerabilityFindings<T extends VulnerabilityFindingRow>(
 ): T[] {
   const q = filter.search?.trim().toLowerCase();
   return rows.filter((r) => {
-    if (filter.severities && filter.severities.length > 0 && !filter.severities.includes(r.severity))
+    if (
+      filter.severities &&
+      filter.severities.length > 0 &&
+      !filter.severities.includes(r.severity)
+    )
       return false;
     if (filter.running !== undefined && r.running.length > 0 !== filter.running) return false;
     if (filter.fixAvailable && r.fixAvailable !== true) return false;
@@ -620,13 +628,7 @@ export function filterVulnerabilityFindings<T extends VulnerabilityFindingRow>(
     if (filter.pluginId && r.pluginId !== filter.pluginId) return false;
     if (filter.accountId && r.accountId !== filter.accountId) return false;
     if (q) {
-      const hay = [
-        r.advisoryId,
-        ...r.aliases,
-        r.packageName ?? "",
-        r.artifact.name,
-        r.title ?? "",
-      ]
+      const hay = [r.advisoryId, ...r.aliases, r.packageName ?? "", r.artifact.name, r.title ?? ""]
         .join("\n")
         .toLowerCase();
       if (!hay.includes(q)) return false;
@@ -829,6 +831,9 @@ export async function restoreVulnerability(
   orgId: string,
   input: { advisoryId: string; artifactKey: string },
 ): Promise<void> {
-  const query = new URLSearchParams({ advisoryId: input.advisoryId, artifactKey: input.artifactKey });
+  const query = new URLSearchParams({
+    advisoryId: input.advisoryId,
+    artifactKey: input.artifactKey,
+  });
   await api.org(orgId, `/vulnerabilities/dismissals?${query.toString()}`, { method: "DELETE" });
 }

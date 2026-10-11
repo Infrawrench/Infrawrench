@@ -36,7 +36,8 @@ export const PodResourceType = rt({
     }),
     f("images", "Images", {
       required: false,
-      description: "Every container image the pod template runs, init containers and sidecars included",
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
     }),
     f("imageDigests", "Image Digests", {
       required: false,

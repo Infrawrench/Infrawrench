@@ -14,7 +14,8 @@ export const DeploymentResourceType = rt({
     }),
     f("images", "Images", {
       required: false,
-      description: "Every container image the pod template runs, init containers and sidecars included",
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
     }),
   ],
   outputs: [o("readyReplicas", "Ready Replicas"), o("image", "Container Image")],

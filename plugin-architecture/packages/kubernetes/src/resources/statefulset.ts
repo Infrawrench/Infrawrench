@@ -16,7 +16,8 @@ export const StatefulSetResourceType = rt({
     }),
     f("images", "Images", {
       required: false,
-      description: "Every container image the pod template runs, init containers and sidecars included",
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
     }),
   ],
   outputs: [],

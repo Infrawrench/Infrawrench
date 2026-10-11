@@ -31,6 +31,11 @@ import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
+import { runVulnerabilityAlerts } from "@infrawrench/server-core/vulnerabilities/alerts";
+import {
+  KEV_REFRESH_INTERVAL_MS,
+  runKevFeedPass,
+} from "@infrawrench/server-core/vulnerabilities/kev";
 import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
 import { runExtendedSupportAlerts } from "@infrawrench/server-core/extended-support/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
@@ -72,12 +77,14 @@ import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
 import { pollAccountCommitments } from "./commitment-poll";
 import { pollAccountQuotas } from "./quota-poll";
+import { pollAccountVulnerabilities } from "./vulnerability-poll";
 import {
   claimDueAccounts,
   claimDueCommitmentAccounts,
   claimDueCostAccounts,
   claimDueCreditAccounts,
   claimDueQuotaAccounts,
+  claimDueVulnerabilityAccounts,
   claimDueWorkflows,
   ACCOUNT_LEASE_MS,
   COST_LEASE_MS,
@@ -130,7 +137,7 @@ export interface PeriodicPass {
 
 export type Pass = AccountPass | PeriodicPass;
 
-type Capability = "costs" | "credits" | "commitments" | "quotas";
+type Capability = "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities";
 const capablePluginIds = new Map<Capability, Promise<string[]>>();
 
 /** Plugin ids whose manifest declares `capability`; resolved once per process. */
@@ -353,6 +360,21 @@ export const PASSES: readonly Pass[] = [
     run: (row) => pollAccountQuotas(row),
   },
 
+  // Vulnerability findings from the provider's own scanner (six-hourly per
+  // account). Its own pass for the quota reason: a scanner is neither a
+  // billing nor a resource API, and an account whose scanner is switched off
+  // must not slow resource polling down. Account passes run on both runtimes;
+  // a plugin whose client cannot run on the edge hands off to the gateway.
+  {
+    kind: "accounts",
+    name: "vulnerabilities",
+    leaseMs: COST_LEASE_MS,
+    claimFailureLabel: "[vulnerabilities] vulnerability tick failed:",
+    claim: async (scope) =>
+      claimDueVulnerabilityAccounts(COST_LIMIT, await pluginsWith("vulnerabilities"), scope),
+    run: (row) => pollAccountVulnerabilities(row),
+  },
+
   // Network flow attribution (daily cadence per account, opt-in per org).
   // Its own pass rather than part of the cost pass for two reasons that both
   // matter: the data comes from the provider's *log* store rather than its
@@ -435,6 +457,29 @@ export const PASSES: readonly Pass[] = [
     name: "posture-alerts",
     runtime: "edge",
     run: guarded("[poller] posture alert tick failed:", () => runPostureAlerts({ limit: 4 })),
+  },
+
+  // Vulnerability alerts: new critical (per settings) findings in running
+  // artifacts, claimed hourly per org on
+  // `org_vulnerability_settings.last_notified_at`. Edge: Postgres and the
+  // metadata-only plugin registry, no plugin code.
+  {
+    kind: "periodic",
+    name: "vulnerability-alerts",
+    runtime: "edge",
+    run: guarded("[vulnerabilities] alert tick failed:", () =>
+      runVulnerabilityAlerts({ limit: 4 }),
+    ),
+  },
+
+  // CISA Known Exploited Vulnerabilities catalog, twice a day. Edge: one fixed
+  // HTTPS fetch and an idempotent upsert, so replicas racing it is harmless.
+  {
+    kind: "periodic",
+    name: "kev-feed",
+    runtime: "edge",
+    minIntervalMs: KEV_REFRESH_INTERVAL_MS,
+    run: guarded("[vulnerabilities] KEV feed tick failed:", () => runKevFeedPass()),
   },
 
   // Savings scan: new orphaned/oversized findings raise `savingsFindings`
