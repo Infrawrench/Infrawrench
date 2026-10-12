@@ -5,9 +5,12 @@ metadata:
   labels:
     app: poller
 spec:
+  # Scaled to 0 on 2026-10-13: the edge Worker poller polls accounts and the
+  # Lambda poller (POLLER_SCOPE=gateway) runs gateway work. Kept as the
+  # fallback: set replicas back to 2 and unset POLLER_SCOPE in app_env.
   # Safe to scale horizontally: the poller claims work atomically
   # (FOR UPDATE SKIP LOCKED leases), so replicas never double-poll.
-  replicas: 2
+  replicas: 0
   selector:
     matchLabels:
       app: poller

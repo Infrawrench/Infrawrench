@@ -87,6 +87,12 @@
   // Watchdog: re-arms the scheduler alarm if it is ever missing.
   "triggers": { "crons": ["* * * * *"] },
 
+  // Paused 2026-10-13: the scheduler Durable Object exceeds its memory limit
+  // mid-tick and leaves claimed accounts unsynced until their leases expire.
+  // The Lambda poller (POLLER_SCOPE unset) does all polling meanwhile. Set to
+  // "false" (and POLLER_SCOPE = "gateway" in app_env) once that is fixed.
+  "vars": { "POLLER_EDGE_PAUSED": "true" },
+
   // Secrets are the app_env map (infra/terraform), synced on deploy by
   // .github/workflows/web-deploy.yml with `wrangler deploy --secrets-file`.
 }

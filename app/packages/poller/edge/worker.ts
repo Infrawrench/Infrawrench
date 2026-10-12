@@ -67,6 +67,17 @@ export interface Env extends EdgeBindings {
   SCHEDULER: DurableObjectNamespace;
   POLLER_TICK_MS?: string;
   POLLER_CONCURRENCY?: string;
+  /**
+   * "true" stops the scheduler: no claims, no messages, and the alarm is not
+   * re-armed. For when the Node poller (`POLLER_SCOPE` unset) does all the
+   * work, so an edge scheduler that claims and then fails cannot hold
+   * accounts' leases away from it. Messages already queued still run.
+   */
+  POLLER_EDGE_PAUSED?: string;
+}
+
+function isPaused(env: Env): boolean {
+  return env.POLLER_EDGE_PAUSED === "true";
 }
 
 /** One unit of work: a periodic pass, or one account for an account pass. */
@@ -114,6 +125,10 @@ export class PollerScheduler {
   ) {}
 
   async fetch(): Promise<Response> {
+    if (isPaused(this.env)) {
+      await this.state.storage.deleteAlarm();
+      return new Response("paused");
+    }
     if ((await this.state.storage.getAlarm()) === null) {
       await this.state.storage.setAlarm(Date.now());
     }
@@ -121,6 +136,8 @@ export class PollerScheduler {
   }
 
   async alarm(): Promise<void> {
+    // Paused: let the clock stop. The cron watchdog re-arms it once unpaused.
+    if (isPaused(this.env)) return;
     // Re-arm first: a tick that throws must not stop the clock.
     const tickMs = envInt(this.env.POLLER_TICK_MS, DEFAULT_TICK_MS);
     await this.state.storage.setAlarm(Date.now() + tickMs);

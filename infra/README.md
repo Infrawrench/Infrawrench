@@ -455,6 +455,14 @@ Each step is independently reversible.
 2. Once the poller function has run clean for a while, set `replicas: 0` in
    `infra/k8s/poller-deployment.yaml`. `POLLER_SCOPE` is shared through
    `app_env`, so the function claims exactly what the Node poller did.
+   **Done 2026-10-13**, with `POLLER_SCOPE` unset: the function polls every
+   account and runs every pass, and the poller Worker is paused
+   (`POLLER_EDGE_PAUSED = "true"` in `app/packages/poller/edge/wrangler.jsonc`).
+   Its scheduler Durable Object was exceeding its memory limit mid-tick, so
+   accounts it claimed went unsynced until their leases expired; the GKE
+   poller had been quietly finishing them. To return to the split once that is
+   fixed: set the var to `"false"`, deploy, confirm accounts sync, then set
+   `POLLER_SCOPE = "gateway"` in `app_env`.
 3. Drop `web` to the replica count the remaining session work needs.
 
 **Rollback**: restore the poller's replicas first, then set
