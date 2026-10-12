@@ -176,6 +176,33 @@ func specChecks() []specCheck {
 			"buckets", "activeFreeze",
 		}},
 
+		{
+			schema: "Service",
+			value:  Service{},
+			// Each scorecard's current score and level on the service: the
+			// hourly evaluation's output, which changes without the service
+			// changing. Read per scorecard from the app, not from Terraform.
+			ignored: []string{"scores"},
+		},
+		{schema: "ServiceCreate", value: ServiceInput{}},
+		{schema: "ServiceUpdate", value: ServiceInput{}},
+		{schema: "ServiceLink", value: ServiceLink{}},
+		{schema: "ServiceMembershipRule", value: ServiceMembershipRule{}},
+		{schema: "ServiceDetail", value: ServiceDetail{}, ignored: []string{
+			// The resolved membership: rule matches against the current
+			// inventory plus hand-picked members, and the exclusions. It moves
+			// with every sync, and explicit membership is managed in the app,
+			// so neither the resource nor the data source keeps it; the data
+			// source reads Service.memberCount instead.
+			"members", "excluded",
+		}},
+
+		{schema: "Scorecard", value: Scorecard{}},
+		{schema: "ScorecardCreate", value: ScorecardInput{}},
+		{schema: "ScorecardUpdate", value: ScorecardInput{}},
+		{schema: "ScorecardCheck", value: ScorecardCheck{}},
+		{schema: "ScorecardLevel", value: ScorecardLevel{}},
+
 		{schema: "MetricAlertRule", value: MetricAlertRule{}},
 		{schema: "MetricAlertRuleInput", value: MetricAlertRuleInput{}},
 		{schema: "MetricAlertRuleWithStatus", value: MetricAlertRule{}},

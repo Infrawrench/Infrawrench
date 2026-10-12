@@ -14,9 +14,10 @@
 > paths and do not exist in the mirror.
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
-reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 68 resources and 7 data sources, each with its own
-plan, its own drift detection and a real `terraform import`.
+reporting, monitoring, the service catalog, lifecycle governance, connected
+accounts and access control, and alert delivery. 70 resources and 8 data
+sources, each with its own plan, its own drift detection and a real
+`terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
 provider, and getting them out of Infrawrench as HCL is what eject-to-Terraform
@@ -698,6 +699,13 @@ secret store that consumes it rather than into an output.
 | `infrawrench_log_query`    | by id  | One to eight streams; alerting is opt-in              |
 | `infrawrench_custom_graph` | by id  | `source` is TypeScript — use `file()`                 |
 
+### Service catalog
+
+| Resource                | Import        | Notes                                                      |
+| ----------------------- | ------------- | ---------------------------------------------------------- |
+| `infrawrench_service`   | by id or slug | Membership by rules; hand-picked members stay in the app   |
+| `infrawrench_scorecard` | by id         | Levels lowest first; check params are typed per check type |
+
 ### Lifecycle governance
 
 | Resource                                  | Import        | Notes                                                        |
@@ -756,6 +764,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_permissions`         | The catalogue roles and API keys grant from          |
 | `infrawrench_slack_installations` | Resolve the workspace a channel belongs to           |
 | `infrawrench_members`             | Resolve member ids for alert email recipients        |
+| `infrawrench_service`             | One service by id or slug, with its member count     |
 
 ## Testing
 

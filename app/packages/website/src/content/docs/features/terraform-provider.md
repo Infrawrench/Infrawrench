@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 68 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 70 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -457,6 +457,13 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_log_query`    | [Log workspace](./log-workspace.md) saved queries and match alerts |
 | `infrawrench_custom_graph` | [Custom graphs](./custom-graphs.md), source and all                |
 
+### Service catalog
+
+| Resource                | Manages                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `infrawrench_service`   | [Services](./services.md): owners, tier, links, budget and the rules that pick members     |
+| `infrawrench_scorecard` | [Scorecards](./services.md#scorecards): weighted checks and the levels services are graded |
+
 ### Lifecycle governance
 
 | Resource                                  | Manages                                                                                       |
@@ -515,6 +522,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_permissions`         | The permission catalogue roles and keys grant from          |
 | `infrawrench_slack_installations` | Connected Slack workspaces                                  |
 | `infrawrench_members`             | Current members and their login addresses, for alert email  |
+| `infrawrench_service`             | One service by id or slug, with its current member count    |
 
 ## Things worth knowing
 

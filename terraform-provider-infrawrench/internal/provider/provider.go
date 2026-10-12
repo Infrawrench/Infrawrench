@@ -201,6 +201,10 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewLogQueryResource,
 		NewCustomGraphResource,
 
+		// Service catalog.
+		NewServiceResource,
+		NewScorecardResource,
+
 		// Lifecycle governance.
 		NewOnCallScheduleResource,
 		NewJitAccessPolicyResource,
@@ -250,6 +254,7 @@ func (p *infrawrenchProvider) DataSources(_ context.Context) []func() datasource
 		NewPermissionsDataSource,
 		NewSlackInstallationsDataSource,
 		NewMembersDataSource,
+		NewServiceDataSource,
 	}
 }
 
