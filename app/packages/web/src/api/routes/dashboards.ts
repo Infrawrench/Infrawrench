@@ -824,6 +824,8 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "expiring" ||
       target.kind === "posture" ||
       target.kind === "vulnerabilities" ||
+      // `framework` only remembers which framework the tab was on.
+      target.kind === "compliance" ||
       target.kind === "access-review" ||
       target.kind === "jit-access" ||
       target.kind === "backups" ||

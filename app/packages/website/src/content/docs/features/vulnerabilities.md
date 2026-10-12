@@ -70,6 +70,10 @@ New findings that matter are sent through [alert routing](./alert-routing.md) un
 
 The settings on the screen (organization admins) change the threshold to high, include findings that are not running, or turn the alerts off. They are also the [`infrawrench_vulnerability_alert_settings`](./terraform-provider.md) Terraform resource.
 
+## Compliance evidence
+
+The [Compliance](./compliance.md) tab uses these findings as the vulnerability-management evidence for SOC 2 and ISO 27001 controls: open findings by severity, running versus not running, age against fix targets, and the findings fixed during a period with their time to fix. Infrawrench records when a finding leaves your scanner's results so that time to fix can be measured.
+
 ## The CLI
 
 ```sh

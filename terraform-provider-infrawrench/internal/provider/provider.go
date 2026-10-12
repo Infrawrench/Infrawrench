@@ -215,6 +215,8 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewExtendedSupportSettingsResource,
 		NewPostureAlertSettingsResource,
 		NewVulnerabilityAlertSettingsResource,
+		NewComplianceControlResource,
+		NewCompliancePackScheduleResource,
 		NewSessionRecordingSettingsResource,
 		NewNetworkFlowSettingsResource,
 		NewKubernetesNetworkSettingsResource,

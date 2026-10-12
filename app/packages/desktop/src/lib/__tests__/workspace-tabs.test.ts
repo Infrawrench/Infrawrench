@@ -287,6 +287,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns compliance route args, always passing search", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "compliance" })).toEqual({
+      to: "/compliance",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "compliance", framework: "iso27001" })).toEqual({
+      to: "/compliance",
+      search: { framework: "iso27001" },
+    });
+  });
+
   it("returns access review route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({ to: "/access-review" });
   });
@@ -418,6 +429,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the vulnerabilities path", () => {
     expect(syncWorkspaceRouteFromPath("/vulnerabilities")).toEqual({ kind: "vulnerabilities" });
+  });
+
+  it("parses the compliance path and its framework", () => {
+    expect(syncWorkspaceRouteFromPath("/compliance")).toEqual({ kind: "compliance" });
+    expect(syncWorkspaceRouteFromPath("/compliance", undefined, "?framework=soc2")).toEqual({
+      kind: "compliance",
+      framework: "soc2",
+    });
   });
 
   it("parses the access review path", () => {

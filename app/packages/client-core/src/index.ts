@@ -915,6 +915,7 @@ export * from "./wallboard";
 export * from "./help-links";
 export * from "./quotas";
 export * from "./vulnerabilities";
+export * from "./compliance";
 export * from "./incidents";
 // The checklist somebody wrote at 03:00, made runnable.
 export * from "./runbooks";

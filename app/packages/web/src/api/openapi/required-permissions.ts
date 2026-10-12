@@ -167,6 +167,24 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Environment diff: pure read over two accounts' already-synced inventories.
   "GET /environment-diff": "resources:read",
   "GET /posture/settings": "org:settings:write",
+  // compliance: reads (status, decisions, schedules, the pack) are audit:read,
+  // and each evidence source re-checks its own permission inside the read;
+  // control decisions and pack schedules are org:settings:write, the
+  // dashboard-schedule rule.
+  "GET /compliance": "audit:read",
+  "GET /compliance/frameworks": "audit:read",
+  "GET /compliance/pack": "audit:read",
+  "GET /compliance/controls": "audit:read",
+  "GET /compliance/controls/{frameworkId}/{controlId}": "audit:read",
+  "PUT /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
+  "DELETE /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
+  "GET /compliance/schedules": "audit:read",
+  "GET /compliance/schedules/targets": "org:settings:write",
+  "POST /compliance/schedules": "org:settings:write",
+  "GET /compliance/schedules/{id}": "audit:read",
+  "PUT /compliance/schedules/{id}": "org:settings:write",
+  "DELETE /compliance/schedules/{id}": "org:settings:write",
+  "POST /compliance/schedules/{id}/send": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules: reads ride the resource read scope (the list is
   // derived from the org's resource set, like orphans); mutations are a

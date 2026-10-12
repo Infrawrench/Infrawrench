@@ -16,6 +16,7 @@
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { runDashboardDeliveryPass } from "@infrawrench/server-core/report-delivery/dashboard";
 import { runCanvasDeliveryPass } from "@infrawrench/server-core/report-delivery/canvas";
+import { runCompliancePackDeliveryPass } from "@infrawrench/server-core/compliance/schedules";
 import { renderDashboardForDelivery } from "./dashboard-pdf";
 import { renderCanvasForDelivery } from "./cost-canvas-pdf";
 
@@ -32,6 +33,9 @@ class DashboardDeliveryLoop extends TickLoop {
     // Canvas schedules share the table and the loop: a canvas renders
     // through the same web services a dashboard does.
     await runCanvasDeliveryPass(renderCanvasForDelivery);
+    // Compliance evidence-pack schedules: same table, same claim protocol,
+    // built from the evidence feeds this process serves.
+    await runCompliancePackDeliveryPass();
   }
 }
 

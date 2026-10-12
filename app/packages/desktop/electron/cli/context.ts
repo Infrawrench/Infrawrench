@@ -147,6 +147,18 @@ export async function orgFetchBytes(
   path: string,
   init: RequestInit = {},
 ): Promise<Uint8Array> {
+  return (await orgFetchDownload(orgId, path, init)).bytes;
+}
+
+/**
+ * {@link orgFetchBytes} plus the response's `Content-Disposition`, for a
+ * download whose file name the server picks (the compliance evidence pack).
+ */
+export async function orgFetchDownload(
+  orgId: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<{ bytes: Uint8Array; contentDisposition: string | null }> {
   let token = await getAccessToken();
   if (!token) throw notSignedInError();
   const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
@@ -175,7 +187,7 @@ export async function orgFetchBytes(
         `running a version without this endpoint.`,
     );
   }
-  return bytes;
+  return { bytes, contentDisposition: res.headers.get("content-disposition") };
 }
 
 /** True for a response body that is a web page rather than data. */

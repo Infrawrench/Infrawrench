@@ -16,6 +16,7 @@ import "./price-catalog";
 import "./posture";
 import "./leaked-secrets";
 import "./vulnerabilities";
+import "./compliance";
 import "./access-review";
 import "./backups";
 import "./wallboard";

@@ -42,11 +42,18 @@ export type ReportDeliveryStatus = "pending" | "succeeded" | "partial" | "failed
 // delivery at the hour the user chose, and the spring-forward gap lands an
 // hour later rather than being skipped.
 
+/**
+ * `quarterly` is used only by compliance pack schedules (the previous quarter's
+ * pack, fired in January, April, July and October); report, dashboard and
+ * canvas schedules never accept it, so it is not in the shared cadence list.
+ */
+export type ReportScheduleCadence = ReportNotificationCadence | "quarterly";
+
 export interface ReportSchedule {
-  cadence: ReportNotificationCadence;
+  cadence: ReportScheduleCadence;
   /** ISO day of week (1 = Monday … 7 = Sunday); read only for `weekly`. */
   sendDay: number;
-  /** Day of month (1–31); read only for `monthly`. Clamped to month end. */
+  /** Day of month (1–31); read only for `monthly` and `quarterly`. Clamped to month end. */
   sendDayOfMonth: number;
   /** Local hour, 0–23. */
   hour: number;
@@ -76,7 +83,12 @@ function firesOn(schedule: ReportSchedule, isoDate: string): boolean {
       return true;
     case "weekly":
       return isoDowOf(isoDate) === Math.min(7, Math.max(1, Math.trunc(schedule.sendDay) || 1));
+    case "quarterly":
     case "monthly": {
+      if (schedule.cadence === "quarterly") {
+        const month = Number.parseInt(isoDate.slice(5, 7), 10);
+        if ((month - 1) % 3 !== 0) return false;
+      }
       // "The 31st" clamps to the month's last day rather than skipping the
       // month: someone who scheduled day 31 asked for month end, and a
       // schedule that silently fires 7 times a year is worse than one that
@@ -92,8 +104,8 @@ function firesOn(schedule: ReportSchedule, isoDate: string): boolean {
  * When this schedule next fires, strictly after `from`.
  *
  * Walks local days forward (like `nextCostExportRunAt`) and takes the first
- * firing day whose local `hour` is still ahead. 62 iterations covers the
- * longest possible gap (a monthly schedule checked the day after it fired)
+ * firing day whose local `hour` is still ahead. 124 iterations covers the
+ * longest possible gap (a quarterly schedule checked the day after it fired)
  * with slack; the fallback is a day, never a throw, because the poller calls
  * this.
  */
@@ -101,7 +113,7 @@ export function nextReportSendAt(schedule: ReportSchedule, from: Date): Date {
   const tz = isValidTimeZone(schedule.timezone) ? schedule.timezone : "UTC";
   const hour = Math.min(23, Math.max(0, Math.trunc(schedule.hour) || 0));
   const start = civilMoment(from, tz).date;
-  for (let i = 0; i <= 62; i++) {
+  for (let i = 0; i <= 124; i++) {
     const date = addDays(start, i);
     if (!firesOn(schedule, date)) continue;
     const instant = zonedInstant(date, hour, tz);
