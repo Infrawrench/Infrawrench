@@ -11,6 +11,11 @@ overrides:
   "miniflare>sharp": ">=0.35.4"
   "miniflare>undici": ">=7.29.1 <8"
   "@smithy/middleware-compression>fflate": ">=0.8.3"
+  # @raycast/api depends on an exact @types/react. A third copy can become the
+  # hoisted one, and libraries that import React types without declaring them
+  # (react-native-svg, @dnd-kit) then resolve it and clash with the app's own
+  # (TS2322 on ReactNode in mobile and ui). Keep it on the workspace version.
+  "@raycast/api>@types/react": "^19.2.18"
 
 # @generaltranslation/compiler's typings import `vite` but the package declares
 # no dependency on it, so TypeScript found whichever vite pnpm hoisted. Adding

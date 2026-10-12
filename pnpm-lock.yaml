@@ -10,6 +10,7 @@ overrides:
   miniflare>sharp: '>=0.35.4'
   miniflare>undici: '>=7.29.1 <8'
   '@smithy/middleware-compression>fflate': '>=0.8.3'
+  '@raycast/api>@types/react': ^19.2.18
 
 packageExtensionsChecksum: sha256-ei3jLnUxokONz+I93eRBuhBqNFJfDTawJfQ/7MmPYu4=
 
@@ -940,17 +941,17 @@ importers:
         version: link:../client-core
       '@raycast/api':
         specifier: ^2.7.3
-        version: 2.7.3(@types/node@22.19.17)(@types/react@19.0.10)(supports-color@8.1.1)
+        version: 2.7.3(@types/node@22.19.17)(@types/react@19.2.18)(supports-color@8.1.1)
       '@raycast/utils':
         specifier: ^2.3.2
-        version: 2.3.2(@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.0.10)(supports-color@8.1.1))(react@19.0.0)
+        version: 2.3.2(@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.2.18)(supports-color@8.1.1))(react@19.0.0)
     devDependencies:
       '@types/node':
         specifier: 22.19.17
         version: 22.19.17
       '@types/react':
-        specifier: 19.0.10
-        version: 19.0.10
+        specifier: ^19.2.18
+        version: 19.2.18
       react:
         specifier: 19.0.0
         version: 19.0.0
@@ -8650,7 +8651,7 @@ packages:
     hasBin: true
     peerDependencies:
       '@types/node': 22.19.17
-      '@types/react': 19.0.10
+      '@types/react': ^19.2.18
       react-devtools: 6.1.1
     peerDependenciesMeta:
       '@types/node':
@@ -9806,9 +9807,6 @@ packages:
     resolution: {integrity: sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==}
     peerDependencies:
       '@types/react': ^19.2.0
-
-  '@types/react@19.0.10':
-    resolution: {integrity: sha512-JuRQ9KXLEjaUNjTWpzuR231Z2WpIwczOkBEIvbHNCzQefFIT0L8IqE6NV6ULLyC1SI/i234JnDoMkfg+RjQj2g==}
 
   '@types/react@19.1.17':
     resolution: {integrity: sha512-Qec1E3mhALmaspIrhWt9jkQMNdw6bReVu64mjvhbhq2NFPftLPVr+l1SZgmw/66WwBNpDh7ao5AT6gF5v41PFA==}
@@ -21202,7 +21200,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.17
 
-  '@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.0.10)(supports-color@8.1.1)':
+  '@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.2.18)(supports-color@8.1.1)':
     dependencies:
       '@oclif/core': 4.14.0
       '@oclif/plugin-autocomplete': 3.3.0(supports-color@8.1.1)
@@ -21212,13 +21210,13 @@ snapshots:
       react: 19.0.0
     optionalDependencies:
       '@types/node': 22.19.17
-      '@types/react': 19.0.10
+      '@types/react': 19.2.18
     transitivePeerDependencies:
       - supports-color
 
-  '@raycast/utils@2.3.2(@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.0.10)(supports-color@8.1.1))(react@19.0.0)':
+  '@raycast/utils@2.3.2(@raycast/api@2.7.3(@types/node@22.19.17)(@types/react@19.2.18)(supports-color@8.1.1))(react@19.0.0)':
     dependencies:
-      '@raycast/api': 2.7.3(@types/node@22.19.17)(@types/react@19.0.10)(supports-color@8.1.1)
+      '@raycast/api': 2.7.3(@types/node@22.19.17)(@types/react@19.2.18)(supports-color@8.1.1)
       dequal: 2.0.3
     optionalDependencies:
       react: 19.0.0
@@ -22507,10 +22505,6 @@ snapshots:
   '@types/react-dom@19.2.4(@types/react@19.2.18)':
     dependencies:
       '@types/react': 19.2.18
-
-  '@types/react@19.0.10':
-    dependencies:
-      csstype: 3.2.3
 
   '@types/react@19.1.17':
     dependencies:
