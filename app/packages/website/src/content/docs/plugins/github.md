@@ -42,16 +42,17 @@ Three fields:
 
 **For an organization**, use a fine-grained personal access token with the organization as its resource owner, access to all repositories, and these permissions (read only is enough for everything except the actions in brackets):
 
-| Capability             | Permission                                                                 |
-| ---------------------- | -------------------------------------------------------------------------- |
-| Billing usage and cost | Organization: Administration (read)                                        |
-| Budgets                | Organization: Administration (write to create, edit and delete)            |
-| Copilot seats          | Organization: GitHub Copilot Business (write to assign and remove)         |
-| Copilot usage metrics  | Organization: Organization Copilot metrics (read)                          |
-| Larger runners         | Organization: Administration (write to create, edit and delete)            |
-| Self-hosted runners    | Organization: Self-hosted runners (write to remove)                        |
-| Actions caches         | Organization: Administration (read); Repository: Actions (write to delete) |
-| Codespaces             | Organization: Organization codespaces (write to stop and delete)           |
+| Capability             | Permission                                                                  |
+| ---------------------- | --------------------------------------------------------------------------- |
+| Billing usage and cost | Organization: Administration (read)                                         |
+| Budgets                | Organization: Administration (write to create, edit and delete)             |
+| Copilot seats          | Organization: GitHub Copilot Business (write to assign and remove)          |
+| Copilot usage metrics  | Organization: Organization Copilot metrics (read)                           |
+| Larger runners         | Organization: Administration (write to create, edit and delete)             |
+| Self-hosted runners    | Organization: Self-hosted runners (write to remove)                         |
+| Actions caches         | Organization: Administration (read); Repository: Actions (write to delete)  |
+| Codespaces             | Organization: Organization codespaces (write to stop and delete)            |
+| Secret scanning alerts | Repository: Secret scanning alerts (write to close alerts after a rotation) |
 
 A classic token works too, with `admin:org`, `manage_billing:copilot`, `repo` and `codespace`.
 
@@ -77,6 +78,15 @@ GitHub accounts feed [cost graphs & budgets](../features/cloud-costs.md) from th
 - Amounts are in US dollars, the currency GitHub bills in.
 
 <insert [Cost graph grouped by service for a GitHub account, showing Actions, Copilot and Codespaces stacked by day] here>
+
+## Secret scanning
+
+An organization account also reads the organization's [secret scanning](https://docs.github.com/en/code-security/secret-scanning) alerts, every 30 minutes, into [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Each leaked token is matched to the account or stored secret it belongs to, so the row can offer **Rotate** or a link to the issuing provider's key page.
+
+- **Permissions.** A fine-grained token needs the repository permission **Secret scanning alerts**: read to list alerts, read and write to close them as revoked after a rotation (or with your dismissal reason). A classic token needs `repo` or `security_events`. The token's owner must be an organization owner or a security manager, and closing an alert also needs admin on its repository.
+- **Exact matches.** GitHub returns the secret with each alert. Infrawrench fingerprints it in memory with a key specific to your organization and discards it, so a match means the stored value is byte for byte the leaked one. The secret itself is never stored.
+- **Enterprise accounts** have no organization-wide alert list in GitHub's API, so they scan nothing. Connect each organization as its own account.
+- GitHub's own tokens are declared too: a leaked personal access token is attributed to the GitHub account that signs in with it.
 
 ## Tips & limits
 

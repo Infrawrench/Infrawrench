@@ -4,7 +4,7 @@ description: Send Infrawrench's own events as versioned JSON to a signed HTTPS w
 sidebar_order: 15
 ---
 
-[Alert routing](./alert-routing.md) decides which **people** hear about something. Event subscriptions decide which **systems** get a copy: every cost anomaly, budget threshold, critical posture finding, drift window, declared incident, just-in-time access change, SLO burn, metric alert and failing sync, as JSON with a versioned schema, delivered to your own receiver.
+[Alert routing](./alert-routing.md) decides which **people** hear about something. Event subscriptions decide which **systems** get a copy: every cost anomaly, budget threshold, critical posture finding, leaked credential found or rotated, drift window, declared incident, just-in-time access change, SLO burn, metric alert and failing sync, as JSON with a versioned schema, delivered to your own receiver.
 
 Use them to feed a SIEM, open tickets in a tool Infrawrench does not integrate with, trigger automation on an event bus, or keep an audit trail outside Infrawrench.
 
@@ -41,26 +41,30 @@ Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`) carry spend, s
 
 ## The event catalog
 
-| Event type                 | When                                                                          | Default severity                     |
-| -------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
-| `cost.anomaly.detected`    | A [cost anomaly](./cost-anomaly-alerts.md) or a new source of spend is found  | warning                              |
-| `budget.threshold.crossed` | A budget's actual or forecast crosses a threshold                             | warning; critical at 100% or more    |
-| `posture.finding.detected` | A critical or high [posture finding](./posture-checks.md) appears (once each) | critical for critical, else warning  |
-| `drift.detected`           | A [drift window](./change-timeline.md) has changes                            | info                                 |
-| `incident.declared`        | Someone [declares an incident](./incident-mode.md)                            | critical for sev1/sev2, else warning |
-| `incident.mitigated`       | A declared incident is marked mitigated                                       | as declared                          |
-| `incident.resolved`        | A declared incident is resolved                                               | info                                 |
-| `jit_access.requested`     | A member asks for [just-in-time access](./just-in-time-access.md)             | info                                 |
-| `jit_access.approved`      | An approver approves a request                                                | warning                              |
-| `jit_access.denied`        | An approver denies a request                                                  | info                                 |
-| `jit_access.expired`       | A granted role reaches the end of its window and is removed                   | info                                 |
-| `slo.burn_alert`           | An [SLO](./slos.md) starts or stops burning, or exhausts its budget           | critical for fast burn and exhausted |
-| `metric_alert.fired`       | A [metric alert](./metric-alerts.md) starts firing                            | warning                              |
-| `metric_alert.resolved`    | A firing metric alert recovers                                                | info                                 |
-| `account.sync.failing`     | An account's sync keeps failing past your paging threshold                    | warning                              |
-| `account.sync.recovered`   | A failing sync that was announced succeeds again                              | info                                 |
+| Event type                 | When                                                                              | Default severity                                                      |
+| -------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `cost.anomaly.detected`    | A [cost anomaly](./cost-anomaly-alerts.md) or a new source of spend is found      | warning                                                               |
+| `budget.threshold.crossed` | A budget's actual or forecast crosses a threshold                                 | warning; critical at 100% or more                                     |
+| `posture.finding.detected` | A critical or high [posture finding](./posture-checks.md) appears (once each)     | critical for critical, else warning                                   |
+| `secret.leaked`            | A secret scanner finds a [leaked credential](./leaked-credentials.md) (once each) | critical; warning when the token is reported dead and matches nothing |
+| `secret.rotated`           | A leaked credential is rotated, or its stored value is seen to change             | info                                                                  |
+| `drift.detected`           | A [drift window](./change-timeline.md) has changes                                | info                                                                  |
+| `incident.declared`        | Someone [declares an incident](./incident-mode.md)                                | critical for sev1/sev2, else warning                                  |
+| `incident.mitigated`       | A declared incident is marked mitigated                                           | as declared                                                           |
+| `incident.resolved`        | A declared incident is resolved                                                   | info                                                                  |
+| `jit_access.requested`     | A member asks for [just-in-time access](./just-in-time-access.md)                 | info                                                                  |
+| `jit_access.approved`      | An approver approves a request                                                    | warning                                                               |
+| `jit_access.denied`        | An approver denies a request                                                      | info                                                                  |
+| `jit_access.expired`       | A granted role reaches the end of its window and is removed                       | info                                                                  |
+| `slo.burn_alert`           | An [SLO](./slos.md) starts or stops burning, or exhausts its budget               | critical for fast burn and exhausted                                  |
+| `metric_alert.fired`       | A [metric alert](./metric-alerts.md) starts firing                                | warning                                                               |
+| `metric_alert.resolved`    | A firing metric alert recovers                                                    | info                                                                  |
+| `account.sync.failing`     | An account's sync keeps failing past your paging threshold                        | warning                                                               |
+| `account.sync.recovered`   | A failing sync that was announced succeeds again                                  | info                                                                  |
 
 Posture findings ride the daily posture scan, so they need posture alerts turned on under **Notifications → Alerts & digest**; sync failures follow the paging threshold set under **SMS & voice**.
+
+Leak events come from the 30-minute secret scan and are raised whether or not any routing rule took the alert. Both carry the leak id, the token type and its owning plugin, and what it matched (`matchKind`, `matchedAccountId`, `matchedResourceId`); `secret.leaked` adds the scanner, the match confidence, the repository, file and finding URL, the scanner's validity check and whether it was also found in public, and `secret.rotated` adds how it was rotated (`reissued`, `replaced`, `detected` or `manual`), who did it, and whether the finding was closed on the scanner. Neither ever includes the secret or its masked hint.
 
 The full schema of every event's `data` is in the [API reference](../team-and-billing/openapi.md) under **Webhooks**, and the live catalog with JSON Schemas is at `GET /api/org/{orgId}/event-subscriptions/catalog`.
 
