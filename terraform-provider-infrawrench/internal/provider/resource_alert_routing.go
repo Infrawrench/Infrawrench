@@ -153,7 +153,7 @@ var (
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
 		"commitmentIdleAlerts", "unitCostRegressionAlerts", "savingsFindings", "metricAlerts", "resourceDrift", "workflowPages",
 		"providerIncidents", "expiryAlerts", "logMatchAlerts", "postureAlerts", "probeAlerts", "quotaAlerts",
-		"extendedSupportAlerts", "incidentAlerts", "weeklyDigest",
+		"extendedSupportAlerts", "incidentAlerts", "leakedSecretAlerts", "weeklyDigest",
 	}
 )
 
