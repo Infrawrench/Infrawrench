@@ -656,12 +656,41 @@ function ackButton(organizationId: string, deliveryId: string): SlackMessageButt
  * the poller, the budget evaluator, or the workflow that raised the alert;
  * the same contract every `sendXToOrg` had, kept because the callers rely on it.
  */
+/**
+ * Append a "Service: …" line to an alert about a resource that belongs to a
+ * service. Never throws and never delays an alert about a resource in no
+ * service by more than the lookup: annotation decorates an alert, it must
+ * not cost one.
+ */
+async function withServiceContext(event: AlertEvent): Promise<AlertEvent> {
+  const resourceId = event.facts?.resourceId;
+  if (!resourceId) return event;
+  try {
+    const { getServicesForResource, serviceContextLine } =
+      await import("../service-catalog/lookup");
+    // A minute-old index is fine for a body line, and a burst of alerts
+    // across one org's resources must not rebuild it per alert.
+    const refs = await getServicesForResource(event.organizationId, resourceId, {
+      cacheMs: 60_000,
+    });
+    const line = serviceContextLine(refs);
+    if (!line || event.body.includes(line)) return event;
+    return { ...event, body: `${event.body}\n${line}` };
+  } catch (err) {
+    console.error("[alerts] service annotation failed:", err);
+    return event;
+  }
+}
+
 export async function routeAlert(
   event: AlertEvent,
   options: RouteAlertOptions = {},
 ): Promise<AlertRouteResult> {
   const now = options.now ?? new Date();
   try {
+    // Name the service the resource belongs to, so "metric alert on db-7"
+    // also says "Service: Checkout API". A replay already carries it.
+    if (!options.pinnedLegs) event = await withServiceContext(event);
     const severity = event.severity ?? alertTriggerDef(event.trigger).defaultSeverity;
     // The condition moved on: tell every upstream alert it opened, before (and
     // regardless of) where the rules send this message. A replay of a held

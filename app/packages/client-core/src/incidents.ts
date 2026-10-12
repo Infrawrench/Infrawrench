@@ -25,6 +25,7 @@
  */
 
 import type { CloudFetch } from "./fetch";
+import type { ServiceRef } from "./services";
 import type { MomentEvent, MomentSeverity } from "./moment";
 
 /* ------------------------------------------------------------------ *
@@ -230,6 +231,12 @@ export interface IncidentListResponse {
 export interface IncidentDetailResponse {
   incident: Incident;
   notes: IncidentNote[];
+  /**
+   * Services the affected resources belong to, resolved on read (membership
+   * is rules plus explicit members, so it is never stored on the incident).
+   * Absent from hosts that predate services.
+   */
+  affectedServices?: ServiceRef[];
 }
 
 /** Bounds shared by the editors and the API boundary, so they cannot disagree. */
@@ -820,6 +827,8 @@ export interface PostmortemResource {
   displayName?: string | null;
   pluginId?: string | null;
   resourceTypeId?: string | null;
+  /** Names of the services the resource belongs to, when the caller resolved them. */
+  services?: string[];
 }
 
 export interface PostmortemInput {
@@ -903,7 +912,11 @@ export function renderPostmortemMarkdown(input: PostmortemInput): string {
       const suffix = resource.pluginId
         ? ` (${resource.pluginId}${resource.resourceTypeId ? `/${resource.resourceTypeId}` : ""})`
         : "";
-      lines.push(`- ${name}${suffix}`);
+      const services =
+        resource.services && resource.services.length > 0
+          ? ` · service: ${resource.services.join(", ")}`
+          : "";
+      lines.push(`- ${name}${suffix}${services}`);
     }
   }
   lines.push("");

@@ -30,6 +30,20 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/ai-attribution/dimensions/d1")).toBe(true);
   });
 
+  it("allows the event subscriptions tab of Notifications", () => {
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/event-subscriptions")).toBe(true);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/event-subscriptions/catalog")).toBe(true);
+    expect(
+      isAllowedSettingsRequest(
+        "GET",
+        "/api/org/o1/event-subscriptions/deliveries?subscriptionId=s1",
+      ),
+    ).toBe(true);
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/event-subscriptions/s1/test")).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/event-subscriptions/s1")).toBe(true);
+    expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/event-subscriptions/s1")).toBe(true);
+  });
+
   it("allows just-in-time access: the policies section and the workspace tab", () => {
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/jit-access/policies")).toBe(true);
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/jit-access/policies/p1")).toBe(true);

@@ -84,6 +84,19 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "access-key",
+      label: "AWS access key",
+      scannerTypes: ["aws_access_key_id", "aws_secret_access_key", "AWS", "AWSSecretAccessKey"],
+      prefixes: ["AKIA"],
+      credentialFields: ["accessKeyId", "secretAccessKey"],
+      manageUrl: "https://console.aws.amazon.com/iam/home#/security_credentials",
+    },
+  ],
   credentialFields: [
     {
       key: "accessKeyId",
@@ -161,6 +174,18 @@ const manifest: PluginManifest = {
     increaseUrl: "https://console.aws.amazon.com/servicequotas/home",
     partial: true,
     requiresElevatedCredential: true,
+  },
+  // Active Amazon Inspector package findings (ECR images, Lambda functions,
+  // EC2 instances) in every enabled region. Needs inspector2:ListFindings and
+  // Inspector activated in the regions used: surfaced in the plugin docs.
+  //
+  // `partial` because the per-region walk is bounded (most severe first); see
+  // `MAX_PAGES_PER_REGION` in `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "Amazon Inspector",
+    consoleUrl: "https://console.aws.amazon.com/inspector/v2/home",
+    requiresElevatedCredential: true,
+    partial: true,
   },
   // Priced VPC Flow Log attribution. Needs ec2:DescribeFlowLogs,
   // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults:

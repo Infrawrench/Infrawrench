@@ -27,6 +27,10 @@ Anthropic splits its API across two credentials that share a prefix but nothing 
 
 The Admin API does not exist on individual (non-organization) accounts, so there is nothing to add on a personal plan.
 
+For a **Claude Enterprise** organization, put an Admin API key created in claude.ai (**Organization settings → API**) in the same field, with the `read:members` scope (and `write:members` to remove members). Enterprise keys only reach members and invites; the Console-only sections stay empty.
+
+**Claude Enterprise Analytics API Key** (optional, under advanced settings): claude.ai → **Organization settings → API**, created by the primary owner, with the `read:analytics` scope. It supplies each member's last activity for [Seats](#seats). Admin keys cannot call the Analytics API and an Analytics key cannot call the Admin API, so this is a separate field.
+
 ![Anthropic Add-account form showing the required API Key field and the optional Admin API Key field with its admin-only description](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anthropic/add-account.png)
 
 ## Costs
@@ -34,6 +38,16 @@ The Admin API does not exist on individual (non-organization) accounts, so there
 With an admin key attached, spend is collected from `GET /v1/organizations/cost_report`. That endpoint is **daily-granularity only** — there is no hourly cost — and can be grouped by description and by workspace, so cost views attribute Claude spend per service and per workspace. Up to a year of history is available, with the last three days re-fetched each sync because Anthropic restates them.
 
 ![Cost view filtered to an Anthropic account, showing daily spend broken down by workspace](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anthropic/cost-graph.png)
+
+## Seats
+
+Members of a **Claude Enterprise** organization appear on the **Seats** page as paid Claude seats, where idle seats and people paying for Claude and another AI assistant are found against your organization's inactivity threshold.
+
+- **What is read**: every organization member, with their join date, from `GET /v1/organizations/users`. Anthropic does not say which kind of organization a key belongs to, so the plugin reads it from the roles: Enterprise members carry roles such as `primary_owner`, `owner`, `membership_admin` and `managed`, Console members `admin`, `developer`, `billing` and `claude_code_user`. **Console organizations report no seats**, because they are pay-as-you-go with no per-seat charge. An organization whose members are all plain `user` cannot be told apart and also reports none. The **Claude Team** plan has no Admin API, so Team seats are not available.
+- **Activity**: with the Analytics API key, each member's last activity day across chat, Claude Code, Cowork and the other Claude products, read over your inactivity threshold (up to 366 days, and never before 1 January 2026, when the data starts). Anthropic's data runs about two days behind, so those days are read but not counted. Without the key, or while Anthropic has last-activity reporting turned off for your organization, activity is unknown and Claude seats are never called idle.
+- **Price**: the published Enterprise list price of $20 per seat per month, billed annually, labelled as an estimate. Usage is billed separately at API rates and is not part of the seat price; negotiated and seat-based Enterprise contracts differ.
+- **Remove** deletes the member (`DELETE /v1/organizations/users/{id}`) and returns their seat to the organization's pool. You keep paying for the seat until you lower the seat count in claude.ai billing. Owners, membership admins and the primary owner cannot be removed through the API, and members provisioned by SCIM are removed in your identity provider.
+- **Scopes**: `read:members` on the Admin key to list seats, `write:members` to remove them, and `read:analytics` on the Analytics key for activity.
 
 ## Tips & limits
 

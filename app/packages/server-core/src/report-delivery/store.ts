@@ -26,7 +26,7 @@ import { isValidTimeZone } from "../digest/compose";
 import { isEmailConfigured, normalizeEmailAddress } from "../email";
 import { resolveSlackChannels, isSlackConfigured } from "../slack";
 import { listMsTeamsWebhooks } from "../msteams";
-import { nextReportSendAt, type ReportSchedule } from "./compose";
+import { nextReportSendAt, type ReportSchedule, type ReportScheduleCadence } from "./compose";
 
 export type ReportNotificationRecord = typeof reportNotifications.$inferSelect;
 
@@ -83,7 +83,7 @@ export function scheduleOf(row: {
   timezone: string;
 }): ReportSchedule {
   return {
-    cadence: row.cadence as ReportNotificationCadence,
+    cadence: row.cadence as ReportScheduleCadence,
     sendDay: row.sendDay,
     sendDayOfMonth: row.sendDayOfMonth,
     hour: row.hour,

@@ -46,9 +46,13 @@ import {
   type IncidentProbeTransition,
   type IncidentTimelineResponse,
   type PostmortemResource,
+  type ServiceRef,
 } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { routeAlert } from "@infrawrench/server-core/alerts/route";
+import { getServicesForResources } from "@infrawrench/server-core/service-catalog/lookup";
+import { publishEvent } from "@infrawrench/server-core/events/publish";
+import { INCIDENT_DECLARED, INCIDENT_MITIGATED, INCIDENT_RESOLVED } from "@infrawrench/client-core";
 import {
   createStatusPageNotice,
   resolveStatusPageNotice,
@@ -265,11 +269,50 @@ async function announce(
   if (incident.summary) bodyLines.push(incident.summary);
   if (incident.affectedResourceIds.length > 0) {
     bodyLines.push(`Affected resources: ${incident.affectedResourceIds.length}`);
+    const services = await affectedServices(organizationId, incident.affectedResourceIds);
+    if (services.length > 0) {
+      bodyLines.push(`Affected services: ${services.map((s) => s.name).join(", ")}`);
+    }
   }
   if (phase !== "declared") {
     bodyLines.push(`Started ${incident.startedAt}.`);
   }
   if (bodyLines.length === 0) bodyLines.push("No summary was given.");
+
+  // Event subscriptions get the incident as data. Keyed per phase, so a
+  // retried announcement (`retryIncidentArtifacts`) does not repeat it.
+  await publishEvent(
+    phase === "declared"
+      ? INCIDENT_DECLARED
+      : phase === "mitigated"
+        ? INCIDENT_MITIGATED
+        : INCIDENT_RESOLVED,
+    organizationId,
+    {
+      incidentId: incident.id,
+      title: incident.title,
+      incidentSeverity: incident.severity,
+      status: incident.status,
+      summary: incident.summary,
+      startedAt: incident.startedAt,
+      resolvedAt: incident.resolvedAt,
+      declaredByName: incident.declaredByName,
+      affectedResourceIds: incident.affectedResourceIds,
+    },
+    {
+      title,
+      severity:
+        phase === "resolved"
+          ? "info"
+          : incident.severity === "sev1" || incident.severity === "sev2"
+            ? "critical"
+            : "warning",
+      accountId:
+        incident.affectedAccountIds.length === 1 ? (incident.affectedAccountIds[0] ?? null) : null,
+      url,
+      idempotencyKey: `incident:${incident.id}:${phase}`,
+    },
+  );
 
   try {
     const result = await routeAlert(
@@ -823,15 +866,34 @@ async function lookupResources(
       ),
     );
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const services = await getServicesForResources(organizationId, resourceIds);
   return resourceIds.map((resourceId) => {
     const row = byId.get(resourceId);
+    const names = (services.get(resourceId) ?? []).map((s) => s.name);
     return {
       resourceId,
       displayName: row?.displayName ?? null,
       pluginId: row?.pluginId ?? null,
       resourceTypeId: row?.resourceTypeId ?? null,
+      ...(names.length > 0 ? { services: names } : {}),
     };
   });
+}
+
+/**
+ * The distinct services an incident's affected resources belong to, by name.
+ * Resolved on read: membership is rules plus explicit members and moves with
+ * the inventory, so it is never copied onto the incident. Never throws.
+ */
+export async function affectedServices(
+  organizationId: string,
+  resourceIds: readonly string[],
+): Promise<ServiceRef[]> {
+  if (resourceIds.length === 0) return [];
+  const byResource = await getServicesForResources(organizationId, resourceIds);
+  const out = new Map<string, ServiceRef>();
+  for (const refs of byResource.values()) for (const ref of refs) out.set(ref.id, ref);
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Re-exported so routes have one import for the read path. */

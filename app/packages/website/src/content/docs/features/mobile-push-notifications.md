@@ -34,13 +34,14 @@ These are **mutes**, and they sit on top of the organization's [alert routing ru
 
 The triggers:
 
-| Trigger            | When it fires                                                                                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sync incidents** | An account's background sync keeps failing and crosses the org's paging threshold                                                                                                        |
-| **Budget alerts**  | A [budget threshold](./cloud-costs.md) is crossed                                                                                                                                        |
-| **Cost anomalies** | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                                                             |
-| **Resource drift** | Resources appeared or disappeared between polls. Batched into one digest per organization per cooldown window — see [Change timeline](./change-timeline.md). **Off by default.**         |
-| **Pages**          | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md) |
+| Trigger                | When it fires                                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sync incidents**     | An account's background sync keeps failing and crosses the org's paging threshold                                                                                                        |
+| **Budget alerts**      | A [budget threshold](./cloud-costs.md) is crossed                                                                                                                                        |
+| **Cost anomalies**     | A [cost anomaly](./cost-anomaly-alerts.md) is detected — a provider's or service's spend spikes far above its usual baseline                                                             |
+| **Resource drift**     | Resources appeared or disappeared between polls. Batched into one digest per organization per cooldown window — see [Change timeline](./change-timeline.md). **Off by default.**         |
+| **Leaked credentials** | A code scanner found a credential committed to a repository; one push per scan, critical. See [Leaked credentials](./leaked-credentials.md)                                              |
+| **Pages**              | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
 ![Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button](https://agent-assets.infrawrench.com/docs-screenshots/features/mobile-push-notifications/push-settings-web.png)
 

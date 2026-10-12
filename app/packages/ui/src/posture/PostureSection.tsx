@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useGT } from "gt-react";
 import {
   POSTURE_CATEGORY_LABELS,
@@ -41,6 +41,17 @@ export interface PostureSectionProps {
   onDismiss?: ((finding: PostureFinding, reason: string) => Promise<void>) | undefined;
   /** Undo a dismissal. Omitted, dismissed findings are listed but not undoable. */
   onRestore?: ((finding: PostureFinding) => Promise<void>) | undefined;
+  /**
+   * The "Leaked credentials" category, rendered above the rule findings. Cloud
+   * hosts pass a `LeakedCredentialsSection`; local mode passes nothing, since
+   * scanning runs in the cloud poller.
+   */
+  leakedCredentials?: ReactNode;
+  /**
+   * Jump to the Vulnerabilities tab: scanner findings in what runs, the other
+   * half of "is this exposed". Omitted, the link is not shown.
+   */
+  onOpenVulnerabilities?: (() => void) | undefined;
 }
 
 type GroupBy = "severity" | "category" | "account";
@@ -377,6 +388,8 @@ export function PostureSection({
   onOpenResource,
   onDismiss,
   onRestore,
+  leakedCredentials,
+  onOpenVulnerabilities,
 }: PostureSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -416,12 +429,25 @@ export function PostureSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">{gt("Posture")}</h1>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-3">
+        <h1 className="text-xl font-semibold">{gt("Posture")}</h1>
+        {onOpenVulnerabilities && (
+          <button
+            type="button"
+            onClick={onOpenVulnerabilities}
+            className="text-xs text-on-surface-tertiary underline hover:text-on-surface-secondary"
+          >
+            {gt("Scanner findings are in Vulnerabilities")}
+          </button>
+        )}
+      </div>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
           "Security checks across every provider (public buckets, open firewall rules, unencrypted disks, stale credentials), from the last sync.",
         )}
       </p>
+
+      {leakedCredentials}
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">

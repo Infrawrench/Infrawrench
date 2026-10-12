@@ -21,6 +21,8 @@
  * window on it would make a broken feed indistinguishable from a quiet day for
  * 24 hours. Never throws: every error is logged with the `[posture]` prefix.
  */
+import { POSTURE_FINDING_DETECTED } from "@infrawrench/client-core";
+import { publishEvent, resourceEnvironments } from "../events/publish";
 import { alertableAccessFindings, alertablePostureFindings } from "@infrawrench/client-core";
 import { orgPostureSettings } from "../db/schema";
 import { routeAlert } from "../alerts/route";
@@ -149,6 +151,42 @@ async function deliverWindow(
   // The message goes out on the posture findings, but it must say that half of
   // the review is missing rather than reading as a complete picture.
   const accessUnavailable = review.ok ? "" : ACCESS_REVIEW_UNAVAILABLE_NOTE;
+
+  // Event subscriptions get each critical/high finding on its own, once: the
+  // key is the finding's identity (resource + rule), so a re-scan of the same
+  // finding tomorrow is a no-op per subscription.
+  if (alertable.length > 0) {
+    const envs = await resourceEnvironments(
+      organizationId,
+      alertable.map((f) => f.resourceId),
+    );
+    for (const f of alertable) {
+      await publishEvent(
+        POSTURE_FINDING_DETECTED,
+        organizationId,
+        {
+          resourceId: f.resourceId,
+          resourceName: f.displayName,
+          resourceTypeId: f.resourceTypeId,
+          pluginId: f.pluginId,
+          externalId: f.externalId,
+          ruleId: f.ruleId,
+          title: f.title,
+          findingSeverity: f.severity === "critical" ? "critical" : "high",
+          category: f.category,
+          reason: f.reason,
+        },
+        {
+          title: `${f.title}: ${f.displayName}`,
+          severity: f.severity === "critical" ? "critical" : "warning",
+          accountId: f.accountId,
+          environment: envs.get(f.resourceId) ?? null,
+          url,
+          idempotencyKey: `posture:${f.resourceId}:${f.ruleId}`,
+        },
+      );
+    }
+  }
 
   const routed = await routeAlert({
     organizationId,

@@ -78,6 +78,18 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "service-account-key",
+      label: "Google Cloud service account key",
+      scannerTypes: ["google_cloud_service_account_credentials", "Google (GCP) Service-account"],
+      credentialFields: ["serviceAccountJson"],
+      manageUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
+    },
+  ],
   credentialFields: [
     {
       key: "serviceAccountJson",
@@ -140,6 +152,17 @@ const manifest: PluginManifest = {
   quotas: {
     label: "Quotas",
     increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
+  },
+  // Artifact Analysis vulnerability occurrences via
+  // containeranalysis.projects.occurrences.list (kind="VULNERABILITY"). Needs
+  // containeranalysis.occurrences.list (roles/containeranalysis.occurrences.viewer;
+  // none of the per-service viewer roles carry it) and the Container Scanning
+  // API enabled. `partial` because the walk stops at 20 pages of 1000.
+  vulnerabilities: {
+    label: "Artifact Analysis",
+    consoleUrl: "https://console.cloud.google.com/artifacts",
+    requiresElevatedCredential: true,
+    partial: true,
   },
   // Scheduled BigQuery SQL importer for business metrics (unit-cost
   // denominators). Needs BigQuery Job User on the picked project and Data

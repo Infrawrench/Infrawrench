@@ -16,9 +16,11 @@ import { Route as BackupsRouteImport } from './routes/backups'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as ComplianceRouteImport } from './routes/compliance'
 import { Route as CostCanvasesRouteImport } from './routes/cost-canvases'
 import { Route as CostReportsRouteImport } from './routes/cost-reports'
 import { Route as CostsRouteImport } from './routes/costs'
+import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
@@ -39,10 +41,12 @@ import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
 import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as ServicesRouteImport } from './routes/services'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SlosRouteImport } from './routes/slos'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as StatusPagesRouteImport } from './routes/status-pages'
+import { Route as VulnerabilitiesRouteImport } from './routes/vulnerabilities'
 import { Route as WallboardRouteImport } from './routes/wallboard'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
@@ -84,6 +88,11 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ComplianceRoute = ComplianceRouteImport.update({
+  id: '/compliance',
+  path: '/compliance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CostCanvasesRoute = CostCanvasesRouteImport.update({
   id: '/cost-canvases',
   path: '/cost-canvases',
@@ -97,6 +106,11 @@ const CostReportsRoute = CostReportsRouteImport.update({
 const CostsRoute = CostsRouteImport.update({
   id: '/costs',
   path: '/costs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -199,6 +213,11 @@ const SavingsRoute = SavingsRouteImport.update({
   path: '/savings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -217,6 +236,11 @@ const SshFanoutRoute = SshFanoutRouteImport.update({
 const StatusPagesRoute = StatusPagesRouteImport.update({
   id: '/status-pages',
   path: '/status-pages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VulnerabilitiesRoute = VulnerabilitiesRouteImport.update({
+  id: '/vulnerabilities',
+  path: '/vulnerabilities',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WallboardRoute = WallboardRouteImport.update({
@@ -254,9 +278,11 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -277,10 +303,12 @@ export interface FileRoutesByFullPath {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -295,9 +323,11 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -318,10 +348,12 @@ export interface FileRoutesByTo {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -337,9 +369,11 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
+  '/compliance': typeof ComplianceRoute
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -360,10 +394,12 @@ export interface FileRoutesById {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
+  '/vulnerabilities': typeof VulnerabilitiesRoute
   '/wallboard': typeof WallboardRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
@@ -380,9 +416,11 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -403,10 +441,12 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -421,9 +461,11 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -444,10 +486,12 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -462,9 +506,11 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/changes'
     | '/chat'
+    | '/compliance'
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -485,10 +531,12 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
     | '/status-pages'
+    | '/vulnerabilities'
     | '/wallboard'
     | '/workflows'
     | '/accounts/$accountId'
@@ -504,9 +552,11 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
+  ComplianceRoute: typeof ComplianceRoute
   CostCanvasesRoute: typeof CostCanvasesRoute
   CostReportsRoute: typeof CostReportsRoute
   CostsRoute: typeof CostsRoute
+  DeliveryRoute: typeof DeliveryRoute
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
@@ -527,10 +577,12 @@ export interface RootRouteChildren {
   QuotasRoute: typeof QuotasRoute
   RunbooksRoute: typeof RunbooksRoute
   SavingsRoute: typeof SavingsRoute
+  ServicesRoute: typeof ServicesRoute
   SettingsRoute: typeof SettingsRoute
   SlosRoute: typeof SlosRoute
   SshFanoutRoute: typeof SshFanoutRoute
   StatusPagesRoute: typeof StatusPagesRoute
+  VulnerabilitiesRoute: typeof VulnerabilitiesRoute
   WallboardRoute: typeof WallboardRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
@@ -589,6 +641,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compliance': {
+      id: '/compliance'
+      path: '/compliance'
+      fullPath: '/compliance'
+      preLoaderRoute: typeof ComplianceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cost-canvases': {
       id: '/cost-canvases'
       path: '/cost-canvases'
@@ -608,6 +667,13 @@ declare module '@tanstack/react-router' {
       path: '/costs'
       fullPath: '/costs'
       preLoaderRoute: typeof CostsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delivery': {
+      id: '/delivery'
+      path: '/delivery'
+      fullPath: '/delivery'
+      preLoaderRoute: typeof DeliveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -750,6 +816,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SavingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -776,6 +849,13 @@ declare module '@tanstack/react-router' {
       path: '/status-pages'
       fullPath: '/status-pages'
       preLoaderRoute: typeof StatusPagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vulnerabilities': {
+      id: '/vulnerabilities'
+      path: '/vulnerabilities'
+      fullPath: '/vulnerabilities'
+      preLoaderRoute: typeof VulnerabilitiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/wallboard': {
@@ -824,9 +904,11 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
+  ComplianceRoute: ComplianceRoute,
   CostCanvasesRoute: CostCanvasesRoute,
   CostReportsRoute: CostReportsRoute,
   CostsRoute: CostsRoute,
+  DeliveryRoute: DeliveryRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
@@ -847,10 +929,12 @@ const rootRouteChildren: RootRouteChildren = {
   QuotasRoute: QuotasRoute,
   RunbooksRoute: RunbooksRoute,
   SavingsRoute: SavingsRoute,
+  ServicesRoute: ServicesRoute,
   SettingsRoute: SettingsRoute,
   SlosRoute: SlosRoute,
   SshFanoutRoute: SshFanoutRoute,
   StatusPagesRoute: StatusPagesRoute,
+  VulnerabilitiesRoute: VulnerabilitiesRoute,
   WallboardRoute: WallboardRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,

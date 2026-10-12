@@ -7,6 +7,7 @@ import {
   incidentStatusLabel,
   type Incident,
   type IncidentNote,
+  type ServiceRef,
   type IncidentStatus,
   type IncidentTimelineResponse,
 } from "@infrawrench/client-core";
@@ -101,6 +102,7 @@ export function IncidentsPanel({
 
   const [selected, setSelected] = useState<Incident | null>(null);
   const [notes, setNotes] = useState<IncidentNote[]>([]);
+  const [services, setServices] = useState<ServiceRef[]>([]);
   const [timeline, setTimeline] = useState<IncidentTimelineResponse | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -130,6 +132,7 @@ export function IncidentsPanel({
         .then((detail) => {
           setSelected(detail.incident);
           setNotes(detail.notes);
+          setServices(detail.affectedServices ?? []);
         })
         .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the incident"));
       client
@@ -258,6 +261,13 @@ export function IncidentsPanel({
               ` · ${gt("declared by {name}", { name: selected.declaredByName })}`}
           </p>
           {selected.summary && <p className="text-sm text-on-surface">{selected.summary}</p>}
+          {services.length > 0 && (
+            <p className="text-xs text-on-surface-secondary">
+              {gt("Affected services: {names}", {
+                names: services.map((service) => service.name).join(", "),
+              })}
+            </p>
+          )}
         </header>
 
         {/* Artefacts, failures first and loudest. */}

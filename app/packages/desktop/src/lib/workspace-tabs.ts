@@ -13,6 +13,8 @@ import {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -32,6 +34,8 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
+  deliveryTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -59,6 +63,8 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -78,6 +84,8 @@ export {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
+  deliveryTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -169,6 +177,16 @@ export function getWorkspaceNavigateArgs(
       return { to: "/expiring", ...(replace ? { replace: true } : {}) };
     case "posture":
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
+    case "vulnerabilities":
+      return { to: "/vulnerabilities", ...(replace ? { replace: true } : {}) };
+    // `?framework=` is which framework the tab is on. Search passed
+    // explicitly, the settings rule: going back to the default CLEARS it.
+    case "compliance":
+      return {
+        to: "/compliance",
+        search: target.framework ? { framework: target.framework } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "access-review":
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
     case "jit-access":
@@ -183,6 +201,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/runbooks", ...(replace ? { replace: true } : {}) };
     case "query-monitors":
       return { to: "/query-monitors", ...(replace ? { replace: true } : {}) };
+    case "delivery":
+      return { to: "/delivery", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
     case "iac":
@@ -229,6 +249,18 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/slos",
         search: target.sloId ? { slo: target.sloId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    case "services":
+      // The SLOs rule: search passed explicitly so going back to the list
+      // CLEARS ?service= / ?view= instead of resolving back into them.
+      return {
+        to: "/services",
+        search: target.serviceId
+          ? { service: target.serviceId }
+          : target.view
+            ? { view: target.view }
+            : {},
         ...(replace ? { replace: true } : {}),
       };
     case "settings":
@@ -386,6 +418,13 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "posture") {
     return postureTabTarget();
   }
+  if (segments[0] === "vulnerabilities") {
+    return vulnerabilitiesTabTarget();
+  }
+  if (segments[0] === "compliance") {
+    const params = new URLSearchParams(search ?? "");
+    return complianceTabTarget(params.get("framework") ?? undefined);
+  }
   if (segments[0] === "access-review") {
     return accessReviewTabTarget();
   }
@@ -406,6 +445,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "query-monitors") {
     return queryMonitorsTabTarget();
+  }
+  if (segments[0] === "delivery") {
+    return deliveryTabTarget();
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();
@@ -445,6 +487,13 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "slos") {
     const params = new URLSearchParams(search ?? "");
     return slosTabTarget(params.get("slo") ?? undefined);
+  }
+  if (segments[0] === "services") {
+    const params = new URLSearchParams(search ?? "");
+    return servicesTabTarget(
+      params.get("service") ?? undefined,
+      params.get("view") === "scorecards" ? "scorecards" : undefined,
+    );
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

@@ -46,6 +46,7 @@ import type {
   MetricSeries,
   PublishMessagePayload,
   PublishMessageResult,
+  VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import {
@@ -83,6 +84,7 @@ import { fetchAzureLogs } from "./logs.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
 import { fetchAzureCostData } from "./cost-data.js";
 import { fetchAzureCommitments } from "./commitments.js";
+import { fetchAzureVulnerabilityFindings } from "./vulnerabilities.js";
 import { deleteAzureResource } from "./delete-handlers.js";
 import { invokeAzureAction, supportsAzureAction } from "./actions.js";
 import { updateContainerApp } from "./container-app-create-handlers.js";
@@ -512,6 +514,28 @@ export class AzureClient implements PluginClient {
     // `get` is itself host-routed now, so commitments no longer need their own
     // copy of the host-HTTP shim.
     return fetchAzureCommitments({ getJson: <T>(url: string) => this.get<T>(url) });
+  }
+
+  /**
+   * Open container image findings from Defender for Cloud's individual
+   * recommendations, read through Azure Resource Graph. See
+   * `vulnerabilities.ts` for the data model, bounds and access errors.
+   */
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    return fetchAzureVulnerabilityFindings({
+      subscriptionId: this.creds.subscriptionId,
+      request: async (method, url, body) => {
+        const tok = await this.token();
+        return azureRequest(this.http, url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${tok}`,
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+      },
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

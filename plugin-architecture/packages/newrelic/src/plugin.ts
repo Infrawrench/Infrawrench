@@ -44,6 +44,19 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "user-key",
+      label: "New Relic user key",
+      scannerTypes: ["new_relic_personal_api_key", "New Relic user API Key"],
+      prefixes: ["NRAK-"],
+      credentialFields: ["apiKey"],
+      manageUrl: "https://one.newrelic.com/api-keys",
+    },
+  ],
   credentialFields: [
     {
       key: "region",

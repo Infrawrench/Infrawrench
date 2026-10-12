@@ -16,6 +16,10 @@ import type {
   CostRow,
   LogsFetchParams,
   LogsFetchResult,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
 } from "@infrawrench/plugin-base";
 import {
   aiCostTags,
@@ -25,6 +29,8 @@ import {
   externalIdOf,
 } from "@infrawrench/plugin-base";
 import { anthropicTokenType } from "./ai-rates.js";
+import type { AnalyticsUserRow, AnthropicOrgUser } from "./seats.js";
+import { analyticsEvidence, analyticsWindow, buildClaudeSeats } from "./seats.js";
 
 const BASE_URL = "https://api.anthropic.com";
 
@@ -40,6 +46,10 @@ const PAGE_SIZE = 100;
 
 /** Hard stop so a runaway cursor can't loop forever. */
 const MAX_LIST_PAGES = 20;
+
+/** Seat reads page at the API maximum and fail rather than truncate past this many pages. */
+const SEAT_PAGE_SIZE = 1000;
+const MAX_SEAT_PAGES = 100;
 
 /** Where the user goes to fix a missing Admin key. */
 const ADMIN_KEY_DOCS = "https://platform.claude.com/docs/en/manage-claude/admin-api-keys";
@@ -434,6 +444,7 @@ function addDays(isoDate: string, days: number): string {
 export class AnthropicClient implements PluginClient {
   private readonly apiKey: string;
   private readonly adminApiKey: string;
+  private readonly analyticsApiKey: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
@@ -442,6 +453,7 @@ export class AnthropicClient implements PluginClient {
     if (!apiKey) throw new Error("Anthropic plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.adminApiKey = credentials["adminApiKey"] ?? "";
+    this.analyticsApiKey = (credentials["analyticsApiKey"] ?? "").trim();
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
   }
@@ -454,13 +466,17 @@ export class AnthropicClient implements PluginClient {
   private async fetch<T>(
     path: string,
     init?: RequestInit,
-    opts: { admin?: boolean; beta?: string } = {},
+    opts: { admin?: boolean; analytics?: boolean; beta?: string } = {},
   ): Promise<T> {
     if (opts.admin && !this.hasAdminKey) {
       throw new Error(`Anthropic plugin: ${path} requires an Admin API key. ${ADMIN_KEY_HINT}`);
     }
     const headers: Record<string, string> = {
-      "x-api-key": opts.admin ? this.adminApiKey : this.apiKey,
+      "x-api-key": opts.analytics
+        ? this.analyticsApiKey
+        : opts.admin
+          ? this.adminApiKey
+          : this.apiKey,
       "anthropic-version": ANTHROPIC_VERSION,
       Accept: "application/json",
     };
@@ -536,6 +552,119 @@ export class AnthropicClient implements PluginClient {
     }
 
     return out;
+  }
+
+  // ---- Seats ---------------------------------------------------------------
+
+  /**
+   * Claude Enterprise seats (see `seats.ts`): every member of an Enterprise
+   * organization, with last activity from the Analytics API when its key is
+   * set. Console organizations have no per-seat charge and report none. Reads
+   * every page or throws; a partial member list would drop seats silently.
+   */
+  async fetchSeats(_accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]> {
+    if (!this.hasAdminKey) return [];
+    // GET /v1/organizations/users (limit up to 1000, after_id / has_more / last_id):
+    // https://platform.claude.com/docs/en/api/organization/users/list
+    const users = await this.listEvery<AnthropicOrgUser>(
+      "/v1/organizations/users",
+      {},
+      SEAT_PAGE_SIZE,
+    );
+    const seats = buildClaudeSeats(users, null, this.analyticsApiKey.length > 0);
+    if (seats.length === 0 || !this.analyticsApiKey) return seats;
+    const window = analyticsWindow(options.lookbackDays, Date.now());
+    const rows = await this.fetchAnalyticsUsers(window.startingDate, window.endingDate);
+    return buildClaudeSeats(users, analyticsEvidence(rows, window.windowDays), true);
+  }
+
+  /**
+   * GET /v1/organizations/analytics/users in date-range rollup mode, every
+   * page (`page` / `next_page`, limit up to 1000). Analytics API key only.
+   * https://platform.claude.com/docs/en/api/beta/organization/analytics/users/list
+   */
+  private async fetchAnalyticsUsers(
+    startingDate: string,
+    endingDate: string,
+  ): Promise<AnalyticsUserRow[]> {
+    const out: AnalyticsUserRow[] = [];
+    let page: string | undefined;
+    for (let i = 0; i < MAX_SEAT_PAGES; i++) {
+      const query = new URLSearchParams({
+        starting_date: startingDate,
+        ending_date: endingDate,
+        limit: String(SEAT_PAGE_SIZE),
+      });
+      if (page) query.set("page", page);
+      const body = await this.fetch<AnthropicCursorPage<AnalyticsUserRow>>(
+        `/v1/organizations/analytics/users?${query.toString()}`,
+        undefined,
+        { analytics: true },
+      );
+      out.push(...(body?.data ?? []));
+      if (!body?.next_page) return out;
+      page = body.next_page;
+    }
+    throw new Error(
+      `Anthropic plugin: Claude Enterprise analytics returned more than ${MAX_SEAT_PAGES * SEAT_PAGE_SIZE} users; refusing a partial read.`,
+    );
+  }
+
+  /** The `after_id` cursor walk, to the end or a thrown error; never a silent cap. */
+  private async listEvery<T>(
+    path: string,
+    params: Record<string, string>,
+    limit: number,
+  ): Promise<T[]> {
+    const out: T[] = [];
+    let afterId: string | undefined;
+    for (let i = 0; i < MAX_SEAT_PAGES; i++) {
+      const query = new URLSearchParams(params);
+      query.set("limit", String(limit));
+      if (afterId) query.set("after_id", afterId);
+      const body = await this.fetch<AnthropicPage<T>>(`${path}?${query.toString()}`, undefined, {
+        admin: true,
+      });
+      out.push(...(body?.data ?? []));
+      if (!body?.has_more || !body.last_id) return out;
+      afterId = body.last_id;
+    }
+    throw new Error(
+      `Anthropic plugin: ${path} returned more than ${MAX_SEAT_PAGES * limit} entries; refusing a partial read.`,
+    );
+  }
+
+  /**
+   * DELETE /v1/organizations/users/{user_id}: returns the seat to the pool.
+   * Administrative roles and SCIM-managed members return 400.
+   * https://platform.claude.com/docs/en/manage-claude/user-management#remove-a-member
+   */
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    try {
+      await this.fetch<unknown>(
+        `/v1/organizations/users/${encodeURIComponent(seat.memberId)}`,
+        { method: "DELETE" },
+        { admin: true },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/API error 400\b/.test(message)) {
+        throw new Error(
+          "Anthropic refused to remove this member. Owners and admins are removed in claude.ai organization settings, and members provisioned by SCIM are removed in your identity provider.",
+        );
+      }
+      if (/API error (401|403)\b/.test(message)) {
+        throw new Error(
+          "Anthropic refused the request. Removing members needs an Admin API key with the write:members scope.",
+        );
+      }
+      throw err;
+    }
+    return {
+      effective: "end-of-cycle",
+      message:
+        "Removed. The seat is back in your organization's pool; lower the seat count in claude.ai billing to stop paying for it.",
+    };
   }
 
   // ---- Listing -------------------------------------------------------------

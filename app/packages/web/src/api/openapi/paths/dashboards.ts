@@ -201,6 +201,8 @@ const TabTarget = strict({
     "changes",
     "expiring",
     "posture",
+    "vulnerabilities",
+    "compliance",
     "access-review",
     "jit-access",
     "backups",
@@ -220,6 +222,8 @@ const TabTarget = strict({
     "price-catalog",
     "incidents",
     "slos",
+    "services",
+    "delivery",
     "workflows",
     "deployments",
     "settings",
@@ -256,6 +260,22 @@ const TabTarget = strict({
    * to invalidate the tab: a deleted SLO just lands on the list.
    */
   sloId: Uuid.optional(),
+  /**
+   * Which service the Services tab was last on. Omitted for the list and the
+   * scorecards view. Never used to invalidate the tab: a deleted service just
+   * lands on the list.
+   */
+  serviceId: Uuid.optional(),
+  /**
+   * The sub-view a tab was on: `scorecards` for the Services tab's scorecard
+   * matrix, or a resource tab's `details` / `ssh` / `sftp` / `apps`.
+   */
+  view: z.enum(["details", "ssh", "sftp", "apps", "scorecards"]).optional(),
+  /**
+   * Which framework the Compliance tab was last on (`soc2`, `iso27001`).
+   * Never used to invalidate the tab: an unknown framework lands on the first.
+   */
+  framework: z.string().max(64).optional(),
   /** Which app-server session a `linux-app` tab belonged to. */
   sessionId: z.string().max(128).optional(),
   /** Which window of that session. */

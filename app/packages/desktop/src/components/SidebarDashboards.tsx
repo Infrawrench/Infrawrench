@@ -16,9 +16,13 @@ import {
   PriceCatalogIcon,
   IncidentsIcon,
   SlosIcon,
+  ServicesIcon,
+  DeliveryIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
+  VulnerabilitiesIcon,
+  ComplianceIcon,
   AccessReviewIcon,
   JitAccessIcon,
   BackupsIcon,
@@ -57,6 +61,8 @@ import {
   dashboardTabTarget,
   deploymentsTabTarget,
   backupsTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
@@ -353,6 +359,21 @@ export function SidebarDashboards() {
             icon: <SlosIcon />,
             onClick: () => void navigate({ to: "/slos" }),
           },
+          // Cloud-only: membership and scores are resolved in the cloud, the
+          // SLOs stance.
+          {
+            key: "services",
+            label: gt("Services"),
+            icon: <ServicesIcon />,
+            onClick: () => void navigate({ to: "/services" }),
+          },
+          // Cloud-only: deploy events and incidents live in the cloud.
+          {
+            key: "delivery",
+            label: gt("Delivery"),
+            icon: <DeliveryIcon />,
+            onClick: () => void navigate({ to: "/delivery" }),
+          },
           {
             key: "status-pages",
             label: gt("Status pages"),
@@ -422,6 +443,34 @@ export function SidebarDashboards() {
       label: gt("Posture"),
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
+    },
+    // Vulnerabilities is cloud only (the poller collects scanner findings)
+    // but shows in both modes like Backups, so local mode gets the panel's
+    // explanation rather than a missing tile. A workspace-tab kind.
+    {
+      key: "vulnerabilities",
+      label: gt("Vulnerabilities"),
+      icon: <VulnerabilitiesIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, vulnerabilitiesTabTarget(), {
+          label: gt("Vulnerabilities"),
+        }),
+    },
+    // Compliance is cloud only (its evidence is org state: the audit log,
+    // access decisions, scanner findings) but shows in both modes like
+    // Vulnerabilities. A workspace-tab kind that remembers its framework, so
+    // the tile returns to the open tab's framework rather than resetting it.
+    {
+      key: "compliance",
+      label: gt("Compliance"),
+      icon: <ComplianceIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(
+          navigate,
+          useUIStore.getState().workspaceTabs.find((tab) => tab.target.kind === "compliance")
+            ?.target ?? complianceTabTarget(),
+          { label: gt("Compliance") },
+        ),
     },
     // Backups is cloud only: the coverage could be computed locally, but the
     // recovery objectives it is judged against are org state with nowhere to

@@ -189,6 +189,34 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns services list route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services" })).toEqual({
+      to: "/org/$orgId/services",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns service detail route args when the tab remembers one", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services", serviceId: "svc-1" })).toEqual({
+      to: "/org/$orgId/services/$serviceId",
+      params: { orgId: "test-org", serviceId: "svc-1" },
+    });
+  });
+
+  it("returns the scorecards view route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services", view: "scorecards" })).toEqual({
+      to: "/org/$orgId/services/scorecards",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns delivery route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({
+      to: "/org/$orgId/delivery",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns workflows list route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "workflows" });
     expect(args).toEqual({
@@ -425,6 +453,24 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns vulnerabilities route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({
+      to: "/org/$orgId/vulnerabilities",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns compliance route args, with the framework as a path segment", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "compliance" })).toEqual({
+      to: "/org/$orgId/compliance",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "compliance", framework: "iso27001" })).toEqual({
+      to: "/org/$orgId/compliance/$framework",
+      params: { orgId: "test-org", framework: "iso27001" },
+    });
+  });
+
   it("returns access review route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({
       to: "/org/$orgId/access-review",
@@ -523,6 +569,20 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/posture")).toEqual({ kind: "posture" });
   });
 
+  it("parses the org-scoped vulnerabilities path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/vulnerabilities")).toEqual({
+      kind: "vulnerabilities",
+    });
+  });
+
+  it("parses the org-scoped compliance paths", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/compliance")).toEqual({ kind: "compliance" });
+    expect(syncWorkspaceRouteFromPath("/org/test-org/compliance/soc2")).toEqual({
+      kind: "compliance",
+      framework: "soc2",
+    });
+  });
+
   it("parses the org-scoped access review path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/access-review")).toEqual({
       kind: "access-review",
@@ -597,6 +657,10 @@ describe("syncWorkspaceRouteFromPath", () => {
     });
   });
 
+  it("parses the delivery path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/delivery")).toEqual({ kind: "delivery" });
+  });
+
   it("parses the slos list path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/slos")).toEqual({ kind: "slos" });
   });
@@ -605,6 +669,24 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/slos/slo-1")).toEqual({
       kind: "slos",
       sloId: "slo-1",
+    });
+  });
+
+  it("parses the services list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services")).toEqual({ kind: "services" });
+  });
+
+  it("parses a service detail path back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services/svc-1")).toEqual({
+      kind: "services",
+      serviceId: "svc-1",
+    });
+  });
+
+  it("parses the scorecards view path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services/scorecards")).toEqual({
+      kind: "services",
+      view: "scorecards",
     });
   });
 

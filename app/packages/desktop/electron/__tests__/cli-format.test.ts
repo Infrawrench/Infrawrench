@@ -31,6 +31,23 @@ import {
   matchVirtualTag,
   parseGroupByFlag,
   shareOfTotal,
+  formatCheckStatus,
+  formatScoreCell,
+  formatScorecardParams,
+  formatServiceCostLine,
+  formatServiceOwners,
+  formatServiceTier,
+  matchService,
+  orderScoreRows,
+  formatLeakCounts,
+  formatLeakLocation,
+  formatLeakScanner,
+  formatLeakSeverity,
+  formatLeakStatus,
+  formatLeakTarget,
+  leakRotateRefusal,
+  parseLeakDismissReason,
+  parseLeakStatusFlag,
 } from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
@@ -698,5 +715,238 @@ describe("pr-check helpers", () => {
       { status: "D", path: "gone.tf", previousPath: null },
       { status: "A", path: "Infrafile", previousPath: null },
     ]);
+  });
+});
+
+describe("services and scorecards helpers", () => {
+  const services = [
+    { id: "svc-1", slug: "checkout-api", name: "Checkout API" },
+    { id: "svc-2", slug: "checkout-web", name: "Checkout Web" },
+    { id: "svc-3", slug: "search", name: "Search" },
+  ];
+
+  it("matchService resolves id, slug, then case-insensitive name", () => {
+    expect(matchService(services, "svc-3").match?.slug).toBe("search");
+    expect(matchService(services, "checkout-web").match?.id).toBe("svc-2");
+    expect(matchService(services, "checkout api").match?.id).toBe("svc-1");
+    expect(matchService(services, "SEARCH").match?.id).toBe("svc-3");
+  });
+
+  it("matchService takes a unique fragment and reports an ambiguous one", () => {
+    expect(matchService(services, "web").match?.id).toBe("svc-2");
+    const ambiguous = matchService(services, "checkout");
+    expect(ambiguous.match).toBeNull();
+    expect(ambiguous.match === null && ambiguous.candidates.map((s) => s.id)).toEqual([
+      "svc-1",
+      "svc-2",
+    ]);
+    const none = matchService(services, "billing");
+    expect(none.match === null && none.candidates).toEqual([]);
+  });
+
+  it("formatServiceCostLine never renders an unreadable warehouse as zero", () => {
+    const money = (amount: number, currency: string) => `${currency} ${amount}`;
+    expect(formatServiceCostLine({ available: false, totals: [] }, money)).toBe("unavailable");
+    expect(
+      formatServiceCostLine({ available: false, totals: [{ currency: "USD", amount: 0 }] }, money),
+    ).toBe("unavailable");
+    expect(formatServiceCostLine({ available: true, totals: [] }, money)).toBe(
+      "no per-resource cost recorded",
+    );
+    expect(
+      formatServiceCostLine(
+        {
+          available: true,
+          totals: [
+            { currency: "USD", amount: 120 },
+            { currency: "EUR", amount: 30 },
+          ],
+        },
+        money,
+      ),
+    ).toBe("USD 120 + EUR 30");
+  });
+
+  it("formatServiceOwners joins the team and the members", () => {
+    expect(
+      formatServiceOwners({
+        ownerTeam: "payments",
+        owners: [
+          { userId: "u1", name: "Ana", email: null },
+          { userId: "u2", name: null, email: "bo@example.com" },
+        ],
+      }),
+    ).toBe("payments · Ana, bo@example.com");
+    expect(formatServiceOwners({ ownerTeam: null, owners: [] })).toBe("no owner");
+    expect(formatServiceTier(1)).toBe("T1");
+    expect(formatServiceTier(null)).toBe("-");
+  });
+
+  it("formatScoreCell prints not scored rather than 0%", () => {
+    expect(formatScoreCell(null, -1, 0)).toBe("n/a");
+    expect(formatScoreCell({ score: null, levelName: null }, -1, 3)).toBe("not scored");
+    expect(formatScoreCell({ score: 82.4, levelName: "Silver" }, 1, 3)).toBe("82% Silver");
+    expect(formatScoreCell({ score: 12, levelName: null }, -1, 3)).toBe("12%");
+  });
+
+  it("formatCheckStatus and formatScorecardParams", () => {
+    expect(formatCheckStatus("fail")).toBe("✗ fail");
+    expect(formatCheckStatus("not_applicable")).toBe("- n/a");
+    expect(formatScorecardParams({})).toBe("");
+    expect(
+      formatScorecardParams(
+        { severities: ["critical", "high"], drillWithinDays: 90, tags: [] },
+        (k) => (k === "drillWithinDays" ? "drill days" : k),
+      ),
+    ).toBe("severities=critical,high · drill days=90 · tags=(org policy)");
+  });
+
+  it("orderScoreRows sorts best first with unscored last", () => {
+    const rows = orderScoreRows([
+      { name: "b", score: null },
+      { name: "c", score: 40 },
+      { name: "a", score: 90 },
+      { name: "d", score: 40 },
+    ]);
+    expect(rows.map((r) => r.name)).toEqual(["a", "c", "d", "b"]);
+  });
+});
+
+describe("leaked credentials helpers", () => {
+  const target = {
+    matchKind: "none" as const,
+    matchConfidence: "none" as const,
+    matchedAccountId: null,
+    matchedAccountName: null,
+    matchedResourceId: null,
+    matchedResourceName: null,
+    candidateAccountIds: [] as string[],
+    ownerPluginName: null as string | null,
+  };
+
+  it("rates a leak critical unless it is dead and matched nothing", () => {
+    expect(formatLeakSeverity({ validity: "active", matchKind: "none" })).toBe("critical");
+    expect(formatLeakSeverity({ validity: "inactive", matchKind: "account" })).toBe("critical");
+    expect(formatLeakSeverity({ validity: "inactive", matchKind: "none" })).toBe("high");
+    expect(formatLeakSeverity({ validity: null, matchKind: "none" })).toBe("critical");
+  });
+
+  it("prints as much of the location as is known", () => {
+    expect(formatLeakLocation({ repository: "acme/api", path: "src/a.ts", line: 12 })).toBe(
+      "acme/api: src/a.ts:12",
+    );
+    expect(formatLeakLocation({ repository: "acme/api", path: null, line: null })).toBe("acme/api");
+    expect(formatLeakLocation({ repository: null, path: ".env", line: null })).toBe(".env");
+    expect(formatLeakLocation({ repository: null, path: null, line: 3 })).toBe("");
+  });
+
+  it("names what the leak matched", () => {
+    expect(
+      formatLeakTarget({
+        ...target,
+        matchKind: "account",
+        matchConfidence: "fingerprint",
+        matchedAccountName: "Prod AWS",
+      }),
+    ).toBe("account Prod AWS");
+    expect(
+      formatLeakTarget({
+        ...target,
+        matchKind: "account",
+        matchConfidence: "token-type",
+        matchedAccountName: "Prod AWS",
+      }),
+    ).toBe("probably account Prod AWS (by token type)");
+    expect(
+      formatLeakTarget({ ...target, matchKind: "secret-field", matchedResourceName: "api-env" }),
+    ).toBe("stored on api-env");
+    expect(
+      formatLeakTarget({ ...target, candidateAccountIds: ["a", "b"], ownerPluginName: "Stripe" }),
+    ).toBe("one of 2 Stripe accounts (by token type)");
+    expect(formatLeakTarget(target)).toBe("nothing Infrawrench holds");
+  });
+
+  it("explains how a leak reached its status", () => {
+    const base = {
+      rotationMethod: null,
+      dismissedReason: null,
+      upstreamResolution: null,
+      rotatedBy: null,
+    };
+    expect(formatLeakStatus({ ...base, status: "open" })).toBe("Open");
+    expect(
+      formatLeakStatus({
+        ...base,
+        status: "rotated",
+        rotationMethod: "reissued",
+        rotatedBy: "ana@example.com",
+      }),
+    ).toBe("Rotated: Reissued in Infrawrench by ana@example.com");
+    expect(
+      formatLeakStatus({ ...base, status: "dismissed", dismissedReason: "used-in-tests" }),
+    ).toBe("Dismissed: Used in tests");
+    expect(formatLeakStatus({ ...base, status: "resolved", upstreamResolution: "revoked" })).toBe(
+      "Resolved upstream (revoked)",
+    );
+  });
+
+  it("summarizes scanners and counts", () => {
+    const scanner = {
+      accountName: "acme",
+      label: "Secret scanning",
+      lastScannedAt: "2026-10-01T09:30:00Z",
+      lastError: null,
+      lastCount: 3,
+      returnsSecretValue: true,
+    };
+    expect(formatLeakScanner(scanner)).toBe(
+      "acme (Secret scanning): scanned 2026-10-01 09:30, 3 findings",
+    );
+    expect(formatLeakScanner({ ...scanner, returnsSecretValue: false, lastCount: 1 })).toBe(
+      "acme (Secret scanning): scanned 2026-10-01 09:30, 1 finding; matches by token type only",
+    );
+    expect(formatLeakScanner({ ...scanner, lastScannedAt: null })).toBe(
+      "acme (Secret scanning): first scan pending",
+    );
+    expect(formatLeakScanner({ ...scanner, lastError: "403 Forbidden" })).toBe(
+      "acme (Secret scanning): last scan failed: 403 Forbidden",
+    );
+    expect(formatLeakCounts({ open: 2, rotated: 5, dismissed: 0, resolved: 1 })).toBe(
+      "2 open · 5 rotated · 1 resolved upstream",
+    );
+    expect(formatLeakCounts({ open: 0, rotated: 0, dismissed: 0, resolved: 0 })).toBe("none");
+  });
+
+  it("parses --status and --reason", () => {
+    expect(parseLeakStatusFlag(undefined)).toBe("open");
+    expect(parseLeakStatusFlag("all")).toBeNull();
+    expect(parseLeakStatusFlag("Dismissed")).toBe("dismissed");
+    expect(() => parseLeakStatusFlag("closed")).toThrow(/--status must be one of/);
+    expect(parseLeakDismissReason("wont-fix")).toBe("wont-fix");
+    expect(() => parseLeakDismissReason(null)).toThrow(/needs --reason/);
+    expect(() => parseLeakDismissReason("meh")).toThrow(/--reason must be one of/);
+  });
+
+  it("refuses to rotate what only the provider can rotate", () => {
+    const leak = {
+      id: "0123456789abcdef",
+      status: "open" as const,
+      ownerPluginName: "GitHub",
+      rotation: { mode: "reissue" as const, manageUrl: null },
+    };
+    expect(leakRotateRefusal(leak)).toBeNull();
+    expect(
+      leakRotateRefusal({ ...leak, rotation: { mode: "replace", manageUrl: null } }),
+    ).toBeNull();
+    const account = leakRotateRefusal({
+      ...leak,
+      rotation: { mode: "account", manageUrl: "https://github.com/settings/tokens" },
+    });
+    expect(account).toContain("Rotate it at GitHub: https://github.com/settings/tokens");
+    expect(account).toContain("leaks mark-rotated 01234567");
+    expect(leakRotateRefusal({ ...leak, rotation: { mode: "manual", manageUrl: null } })).toContain(
+      "not one Infrawrench holds",
+    );
+    expect(leakRotateRefusal({ ...leak, status: "dismissed" })).toContain("leaks reopen 01234567");
   });
 });

@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 68 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 76 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -381,7 +381,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, the [vulnerability](./vulnerabilities.md) alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -397,6 +397,7 @@ Several resources hold write-only material that no route returns. Importing them
 | `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
 | `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
 | `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
+| `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
 | `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
@@ -440,6 +441,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_anomaly_suppression`       | Expected-spend windows that keep known patterns from raising anomaly alerts                    |
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds              |
 | `infrawrench_realized_savings_settings` | How [realized savings](./realized-savings.md) are measured                                     |
+| `infrawrench_seat_settings`             | How long a [SaaS seat](./saas-seats.md) may go unused before it is flagged                     |
 | `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                                  |
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by                    |
 | `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend               |
@@ -448,28 +450,39 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Monitoring
 
-| Resource                   | Manages                                                            |
-| -------------------------- | ------------------------------------------------------------------ |
-| `infrawrench_probe`        | [Synthetic probes](./synthetic-probes.md)                          |
-| `infrawrench_slo`          | [SLOs and error budgets](./slos.md)                                |
-| `infrawrench_status_page`  | [Public status pages](./status-pages.md) and their components      |
-| `infrawrench_metric_alert` | [Metric threshold alerts](./metric-alerts.md)                      |
-| `infrawrench_log_query`    | [Log workspace](./log-workspace.md) saved queries and match alerts |
-| `infrawrench_custom_graph` | [Custom graphs](./custom-graphs.md), source and all                |
+| Resource                    | Manages                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------- |
+| `infrawrench_probe`         | [Synthetic probes](./synthetic-probes.md)                                               |
+| `infrawrench_slo`           | [SLOs and error budgets](./slos.md)                                                     |
+| `infrawrench_status_page`   | [Public status pages](./status-pages.md) and their components                           |
+| `infrawrench_metric_alert`  | [Metric threshold alerts](./metric-alerts.md)                                           |
+| `infrawrench_log_query`     | [Log workspace](./log-workspace.md) saved queries and match alerts                      |
+| `infrawrench_custom_graph`  | [Custom graphs](./custom-graphs.md), source and all                                     |
+| `infrawrench_dora_settings` | What [Delivery (DORA metrics)](./dora-metrics.md) counts as production and as a failure |
+
+### Service catalog
+
+| Resource                | Manages                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `infrawrench_service`   | [Services](./services.md): owners, tier, links, budget and the rules that pick members     |
+| `infrawrench_scorecard` | [Scorecards](./services.md#scorecards): weighted checks and the levels services are graded |
 
 ### Lifecycle governance
 
-| Resource                                  | Manages                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `infrawrench_schedule`                    | [Sleep schedules](./sleep-schedules.md)                                                       |
-| `infrawrench_change_freeze`               | [Change freezes](../team-and-billing/change-freeze.md)                                        |
-| `infrawrench_drift_alert_settings`        | What the [change timeline](./change-timeline.md) notifies about                               |
-| `infrawrench_expiry_alert_settings`       | [Expiry radar](./expiry-radar.md) lead time                                                   |
-| `infrawrench_extended_support_settings`   | [Extended support](./extended-support.md) alert and look-ahead                                |
-| `infrawrench_posture_alert_settings`      | Whether [posture findings](./posture-checks.md) notify                                        |
-| `infrawrench_session_recording_settings`  | [Session recording](./session-recording.md) and retention                                     |
-| `infrawrench_network_flow_settings`       | Whether [network flow costs](./network-costs.md) are collected                                |
-| `infrawrench_kubernetes_network_settings` | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
+| Resource                                   | Manages                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `infrawrench_schedule`                     | [Sleep schedules](./sleep-schedules.md)                                                       |
+| `infrawrench_change_freeze`                | [Change freezes](../team-and-billing/change-freeze.md)                                        |
+| `infrawrench_drift_alert_settings`         | What the [change timeline](./change-timeline.md) notifies about                               |
+| `infrawrench_expiry_alert_settings`        | [Expiry radar](./expiry-radar.md) lead time                                                   |
+| `infrawrench_extended_support_settings`    | [Extended support](./extended-support.md) alert and look-ahead                                |
+| `infrawrench_posture_alert_settings`       | Whether [posture findings](./posture-checks.md) notify                                        |
+| `infrawrench_vulnerability_alert_settings` | Which [vulnerability findings](./vulnerabilities.md) notify, and from what severity           |
+| `infrawrench_compliance_control`           | A [compliance](./compliance.md) control's applicability, justification, owner and notes       |
+| `infrawrench_compliance_pack_schedule`     | Scheduled [evidence pack](./compliance.md) delivery to email, Slack or Teams                  |
+| `infrawrench_session_recording_settings`   | [Session recording](./session-recording.md) and retention                                     |
+| `infrawrench_network_flow_settings`        | Whether [network flow costs](./network-costs.md) are collected                                |
+| `infrawrench_kubernetes_network_settings`  | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
 
 ### Accounts and access
 
@@ -495,6 +508,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                                                 |
 | `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                                          |
 | `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                                          |
+| `infrawrench_event_subscription`       | [Event subscriptions](./event-subscriptions.md): org events to a signed webhook, an EventBridge bus or a Pub/Sub topic                                       |
 | `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                                             |
 | `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                                         |
 | `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                                          |
@@ -515,6 +529,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_permissions`         | The permission catalogue roles and keys grant from          |
 | `infrawrench_slack_installations` | Connected Slack workspaces                                  |
 | `infrawrench_members`             | Current members and their login addresses, for alert email  |
+| `infrawrench_service`             | One service by id or slug, with its current member count    |
 
 ## Things worth knowing
 
@@ -527,7 +542,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 - The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
 - Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
-- The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.
+- The drift, expiry, posture and vulnerability alert settings are **left alone**: they have no documented shipped values to restore to.
 - The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains. Of the two ways to be wrong, the one that sends mail to fewer outside mailboxes is the safer.
 - [Network flow collection](./network-costs.md) is **turned off**, and it's the singleton where destroy most deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
 

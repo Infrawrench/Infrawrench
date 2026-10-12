@@ -17,6 +17,19 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /sharing/{objectType}/{objectId}": null,
   "PUT /sharing/{objectType}/{objectId}": null,
   "DELETE /sharing/{objectType}/{objectId}": null,
+  // event subscriptions; subscribing to cost events also needs costs:read,
+  // checked in the store because it depends on the body.
+  "GET /event-subscriptions/catalog": null,
+  "GET /event-subscriptions/options": "org:settings:write",
+  "GET /event-subscriptions/deliveries": "org:settings:write",
+  "POST /event-subscriptions/deliveries/{id}/redeliver": "org:settings:write",
+  "GET /event-subscriptions": "org:settings:write",
+  "POST /event-subscriptions": "org:settings:write",
+  "GET /event-subscriptions/{id}": "org:settings:write",
+  "PUT /event-subscriptions/{id}": "org:settings:write",
+  "DELETE /event-subscriptions/{id}": "org:settings:write",
+  "POST /event-subscriptions/{id}/reroll-secret": "org:settings:write",
+  "POST /event-subscriptions/{id}/test": "org:settings:write",
   // accounts
   "GET /accounts/plugins": "accounts:read",
   "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
@@ -130,7 +143,22 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /extended-support": "resources:read",
   "GET /extended-support/settings": "org:settings:write",
   "PUT /extended-support/settings": "org:settings:write",
+  // SaaS seats: prices and savings are cost data; removing one changes a
+  // provider account, so it rides the resource write permission.
+  "GET /seats": "costs:read",
+  "POST /seats/refresh": "costs:read",
+  "GET /seats/settings": "costs:read",
+  "PUT /seats/settings": "costs:write",
+  "POST /seats/{seatId}/remove": "resources:write",
   "GET /posture": "resources:read",
+  // leaked credentials; reading is the posture stance, acting on one rotates
+  // or accepts a secret, so it needs secrets:write.
+  "GET /leaked-secrets": "resources:read",
+  "POST /leaked-secrets/scan": "secrets:write",
+  "POST /leaked-secrets/{id}/rotate": "secrets:write",
+  "POST /leaked-secrets/{id}/mark-rotated": "secrets:write",
+  "POST /leaked-secrets/{id}/dismiss": "secrets:write",
+  "POST /leaked-secrets/{id}/reopen": "secrets:write",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
   // cross-cloud access review; the posture stance exactly: the review and its
@@ -146,6 +174,24 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Environment diff: pure read over two accounts' already-synced inventories.
   "GET /environment-diff": "resources:read",
   "GET /posture/settings": "org:settings:write",
+  // compliance: reads (status, decisions, schedules, the pack) are audit:read,
+  // and each evidence source re-checks its own permission inside the read;
+  // control decisions and pack schedules are org:settings:write, the
+  // dashboard-schedule rule.
+  "GET /compliance": "audit:read",
+  "GET /compliance/frameworks": "audit:read",
+  "GET /compliance/pack": "audit:read",
+  "GET /compliance/controls": "audit:read",
+  "GET /compliance/controls/{frameworkId}/{controlId}": "audit:read",
+  "PUT /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
+  "DELETE /compliance/controls/{frameworkId}/{controlId}": "org:settings:write",
+  "GET /compliance/schedules": "audit:read",
+  "GET /compliance/schedules/targets": "org:settings:write",
+  "POST /compliance/schedules": "org:settings:write",
+  "GET /compliance/schedules/{id}": "audit:read",
+  "PUT /compliance/schedules/{id}": "org:settings:write",
+  "DELETE /compliance/schedules/{id}": "org:settings:write",
+  "POST /compliance/schedules/{id}/send": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
   // sleep/wake schedules: reads ride the resource read scope (the list is
   // derived from the org's resource set, like orphans); mutations are a
@@ -294,6 +340,34 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /slos/{sloId}": "resources:write",
   "DELETE /slos/{sloId}": "resources:write",
   "POST /slos/{sloId}/freeze": "freezes:write",
+  // services: the resource ownership stance. Grouping resources into a
+  // service is the same kind of statement as "this VM is mine".
+  "GET /services": "resources:read",
+  "GET /services/for-resources": "resources:read",
+  "GET /services/{serviceId}": "resources:read",
+  "GET /services/{serviceId}/summary": "resources:read",
+  "GET /services/{serviceId}/scorecards": "resources:read",
+  "POST /services": "resources:write",
+  "PATCH /services/{serviceId}": "resources:write",
+  "DELETE /services/{serviceId}": "resources:write",
+  "POST /services/{serviceId}/members": "resources:write",
+  "DELETE /services/{serviceId}/members/{resourceId}": "resources:write",
+  // scorecards: the SLO stance
+  "GET /scorecards": "resources:read",
+  "GET /scorecards/overview": "resources:read",
+  "GET /scorecards/{scorecardId}": "resources:read",
+  "POST /scorecards": "resources:write",
+  "PATCH /scorecards/{scorecardId}": "resources:write",
+  "DELETE /scorecards/{scorecardId}": "resources:write",
+  "POST /scorecards/{scorecardId}/evaluate": "resources:write",
+  // DORA metrics: a view over the deployment record, so the deployments
+  // permissions. The settings decide what counts as production for everyone.
+  "GET /dora": "deployments:read",
+  "GET /dora/changes": "deployments:read",
+  "GET /dora/restores": "deployments:read",
+  "GET /dora/settings": "deployments:read",
+  "PUT /dora/settings": "org:settings:write",
+  "POST /dora/deployments": "deployments:write",
   // incident mode: the declared kind. `incidents:write` is held by members
   // as well as admins on purpose (see the permission catalog); what a
   // declaration may *do* keeps its own gates, so requesting a change freeze

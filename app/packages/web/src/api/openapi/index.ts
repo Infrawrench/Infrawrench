@@ -30,6 +30,7 @@ import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerExtendedSupportPaths } from "./paths/extended-support";
+import { registerSeatPaths } from "./paths/seats";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
@@ -56,6 +57,9 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
+import { registerLeakedSecretPaths } from "./paths/leaked-secrets";
+import { registerVulnerabilityPaths } from "./paths/vulnerabilities";
+import { registerCompliancePaths } from "./paths/compliance";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
@@ -84,6 +88,8 @@ import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
 import { registerSloPaths } from "./paths/slos";
+import { registerServicePaths } from "./paths/services";
+import { registerDoraPaths } from "./paths/dora";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -118,6 +124,7 @@ import { registerAlertEmailPaths } from "./paths/alert-email";
 import { registerSlackPaths } from "./paths/slack";
 import { registerProviderOAuthPaths } from "./paths/provider-oauth";
 import { registerMsTeamsPaths } from "./paths/msteams";
+import { registerEventSubscriptionPaths } from "./paths/event-subscriptions";
 import { registerJiraPaths } from "./paths/jira";
 import { registerLinearPaths } from "./paths/linear";
 import { registerGithubIssuesPaths } from "./paths/github-issues";
@@ -187,6 +194,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
   registerExtendedSupportPaths(ctx);
+  registerSeatPaths(ctx);
   registerBudgetPaths(ctx);
   registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
@@ -213,6 +221,9 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
+  registerLeakedSecretPaths(ctx);
+  registerVulnerabilityPaths(ctx);
+  registerCompliancePaths(ctx);
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
@@ -242,6 +253,8 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);
   registerSloPaths(ctx);
+  registerServicePaths(ctx);
+  registerDoraPaths(ctx);
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
@@ -275,6 +288,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAlertEmailPaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
+  registerEventSubscriptionPaths(ctx);
   registerJiraPaths(ctx);
   registerLinearPaths(ctx);
   registerGithubIssuesPaths(ctx);
@@ -414,6 +428,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
       },
       {
+        name: "Seats",
+        description:
+          "Paid SaaS seats (Copilot, Cursor, GitLab, Okta...) with inactive, duplicate and downgrade findings.",
+      },
+      {
         name: "DNS",
         description:
           "Cross-provider DNS inventory; every synced zone and record, with dangling targets flagged as subdomain-takeover candidates.",
@@ -472,6 +491,16 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Quota radar",
         description:
           "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero.",
+      },
+      {
+        name: "Compliance",
+        description:
+          "Evidence Infrawrench already collects (access review, just-in-time access, the audit log, posture, vulnerabilities, backups and restore drills, the change timeline and freezes, session recordings, incidents) mapped to SOC 2 and ISO/IEC 27001:2022 Annex A controls, with a status and an owner per control, and downloadable or scheduled evidence packs.",
+      },
+      {
+        name: "Vulnerabilities",
+        description:
+          "CVE findings read from each connected provider's own scanner and joined to what is actually running: a finding in an image names the pods, tasks and functions running that digest. Marked against the CISA Known Exploited Vulnerabilities catalog. A provider with no scanner contributes nothing rather than a clean result.",
       },
       {
         name: "Incidents",
@@ -605,6 +634,16 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Microsoft Teams",
         description:
           "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
+      },
+      {
+        name: "Leaked credentials",
+        description:
+          "Secrets a scanner account (GitHub secret scanning, GitLab secret detection) found committed to code, matched by keyed fingerprint to the account or stored secret they belong to, and rotated from here.",
+      },
+      {
+        name: "Event subscriptions",
+        description:
+          "Outbound delivery of Infrawrench's own events (cost anomalies, budget thresholds, posture findings, drift, incidents, just-in-time access, SLO and metric alerts, sync failures) to a signed HTTPS webhook, an AWS EventBridge bus or a GCP Pub/Sub topic. The payload of every event type is described under `webhooks`.",
       },
       {
         name: "Jira",

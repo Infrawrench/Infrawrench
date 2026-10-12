@@ -10,11 +10,24 @@ import type {
   PluginClient,
   QuotaUsage,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { decodePromptArgs, externalIdOf, utf8ToBase64 } from "@infrawrench/plugin-base";
 import type { HubContext } from "./api.js";
-import { HubApiError, hubFetch, hubPaged, rawRequest, secretKind, statusOf } from "./api.js";
+import {
+  HubApiError,
+  hubFetch,
+  hubPaged,
+  hubPagedAll,
+  rawRequest,
+  secretKind,
+  statusOf,
+} from "./api.js";
+import { dockerSeatPrice, mapDockerSeats } from "./seats.js";
 import type {
   HubAuditLog,
   HubInvite,
@@ -152,6 +165,7 @@ export class DockerHubClient implements PluginClient {
   private readonly ctx: HubContext;
   private readonly services: HostServices | undefined;
   private readonly configured: string[];
+  private readonly seatPriceMonthly: string | undefined;
   private namespacesCache:
     Promise<Array<{ name: string; kind: "user" | "organization" }>> | undefined;
 
@@ -164,6 +178,7 @@ export class DockerHubClient implements PluginClient {
     this.ctx = { identifier, secret, ...(services?.http ? { http: services.http } : {}) };
     this.services = services;
     this.configured = list(credentials["namespaces"]);
+    this.seatPriceMonthly = credentials["seatPriceMonthly"];
   }
 
   private get isOat(): boolean {
@@ -224,6 +239,63 @@ export class DockerHubClient implements PluginClient {
       }
     }
     return out;
+  }
+
+  // -------------------------------------------------------------------------
+  // Seats
+  // -------------------------------------------------------------------------
+
+  /**
+   * Every member of every managed organization, from `GET /v2/orgs/{org}/members`
+   * (https://docs.docker.com/reference/api/hub/latest/, operation getV2OrgsByOrgNameMembers;
+   * fields per https://docs.docker.com/reference/api/hub/latest/schemas/org_member.md).
+   * Personal namespaces have no seats. Every page of every organization or
+   * nothing: unlike the resource listers, an organization the token cannot
+   * read fails the pass rather than being skipped, because a skipped
+   * organization would read as every one of its seats removed.
+   */
+  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
+    const price = dockerSeatPrice(this.seatPriceMonthly);
+    const seats: SeatRecord[] = [];
+    for (const org of await this.orgs()) {
+      let members: HubMember[];
+      try {
+        members = await hubPagedAll<HubMember>(this.ctx, `/v2/orgs/${enc(org)}/members`);
+      } catch (err) {
+        if (statusOf(err) === 403 || statusOf(err) === 404) {
+          throw new HubApiError(
+            statusOf(err),
+            `Docker Hub plugin: cannot list the members of ${org} (${statusOf(err)}). Use an owner's token, or leave ${org} out of the account's Namespaces.`,
+          );
+        }
+        throw err;
+      }
+      seats.push(...mapDockerSeats(org, members, price));
+    }
+    return seats;
+  }
+
+  /**
+   * Remove the member from the organization (and all its teams) with
+   * `DELETE /v2/orgs/{org}/members/{username}`; Docker refuses the last owner.
+   * https://docs.docker.com/reference/api/hub/latest/, operation deleteV2OrgsByOrgNameMembersByUsername.
+   * The seat is freed, but Docker bills for purchased seats until the seat
+   * count is reduced, which applies at the next billing cycle
+   * (https://docs.docker.com/accounts/organization/manage/manage-seats/).
+   */
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const fromId = seat.memberId.includes("/") ? splitScoped(seat.memberId) : null;
+    const org = seat.context?.["org"] || fromId?.ns || "";
+    const username = seat.login || fromId?.rest || "";
+    if (!org || !username)
+      throw new Error("Docker Hub plugin: the seat does not name an organization and username");
+    await hubFetch(this.ctx, `/v2/orgs/${enc(org)}/members/${enc(username)}`, {
+      method: "DELETE",
+    });
+    return {
+      effective: "end-of-cycle",
+      message: `Removed ${username} from ${org}. Docker keeps billing for purchased seats: reduce the seat count in Billing to stop paying for it from the next billing cycle.`,
+    };
   }
 
   // -------------------------------------------------------------------------

@@ -24,9 +24,11 @@ import { Route as OrgOrgIdBackupsRouteImport } from './routes/org.$orgId.backups
 import { Route as OrgOrgIdCalendarRouteImport } from './routes/org.$orgId.calendar'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
+import { Route as OrgOrgIdComplianceRouteImport } from './routes/org.$orgId.compliance'
 import { Route as OrgOrgIdCostCanvasesRouteImport } from './routes/org.$orgId.cost-canvases'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
+import { Route as OrgOrgIdDeliveryRouteImport } from './routes/org.$orgId.delivery'
 import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
@@ -47,20 +49,25 @@ import { Route as OrgOrgIdQueryMonitorsRouteImport } from './routes/org.$orgId.q
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
 import { Route as OrgOrgIdRunbooksRouteImport } from './routes/org.$orgId.runbooks'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdServicesRouteImport } from './routes/org.$orgId.services'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSlosRouteImport } from './routes/org.$orgId.slos'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdStatusPagesRouteImport } from './routes/org.$orgId.status-pages'
+import { Route as OrgOrgIdVulnerabilitiesRouteImport } from './routes/org.$orgId.vulnerabilities'
 import { Route as OrgOrgIdWallboardRouteImport } from './routes/org.$orgId.wallboard'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
 import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
+import { Route as OrgOrgIdComplianceFrameworkRouteImport } from './routes/org.$orgId.compliance.$framework'
 import { Route as OrgOrgIdCostCanvasesCanvasIdRouteImport } from './routes/org.$orgId.cost-canvases.$canvasId'
 import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
+import { Route as OrgOrgIdServicesServiceIdRouteImport } from './routes/org.$orgId.services.$serviceId'
+import { Route as OrgOrgIdServicesScorecardsRouteImport } from './routes/org.$orgId.services.scorecards'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.settings.agents'
@@ -173,6 +180,11 @@ const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdComplianceRoute = OrgOrgIdComplianceRouteImport.update({
+  id: '/compliance',
+  path: '/compliance',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdCostCanvasesRoute = OrgOrgIdCostCanvasesRouteImport.update({
   id: '/cost-canvases',
   path: '/cost-canvases',
@@ -186,6 +198,11 @@ const OrgOrgIdCostReportsRoute = OrgOrgIdCostReportsRouteImport.update({
 const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
   id: '/costs',
   path: '/costs',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdDeliveryRoute = OrgOrgIdDeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
@@ -288,6 +305,11 @@ const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
   path: '/savings',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdServicesRoute = OrgOrgIdServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -306,6 +328,11 @@ const OrgOrgIdSshFanoutRoute = OrgOrgIdSshFanoutRouteImport.update({
 const OrgOrgIdStatusPagesRoute = OrgOrgIdStatusPagesRouteImport.update({
   id: '/status-pages',
   path: '/status-pages',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdVulnerabilitiesRoute = OrgOrgIdVulnerabilitiesRouteImport.update({
+  id: '/vulnerabilities',
+  path: '/vulnerabilities',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdWallboardRoute = OrgOrgIdWallboardRouteImport.update({
@@ -334,6 +361,12 @@ const OrgOrgIdChatConversationIdRoute =
     id: '/$conversationId',
     path: '/$conversationId',
     getParentRoute: () => OrgOrgIdChatRoute,
+  } as any)
+const OrgOrgIdComplianceFrameworkRoute =
+  OrgOrgIdComplianceFrameworkRouteImport.update({
+    id: '/$framework',
+    path: '/$framework',
+    getParentRoute: () => OrgOrgIdComplianceRoute,
   } as any)
 const OrgOrgIdCostCanvasesCanvasIdRoute =
   OrgOrgIdCostCanvasesCanvasIdRouteImport.update({
@@ -364,6 +397,18 @@ const OrgOrgIdInvoicesInvoiceIdRoute =
     id: '/$invoiceId',
     path: '/$invoiceId',
     getParentRoute: () => OrgOrgIdInvoicesRoute,
+  } as any)
+const OrgOrgIdServicesServiceIdRoute =
+  OrgOrgIdServicesServiceIdRouteImport.update({
+    id: '/$serviceId',
+    path: '/$serviceId',
+    getParentRoute: () => OrgOrgIdServicesRoute,
+  } as any)
+const OrgOrgIdServicesScorecardsRoute =
+  OrgOrgIdServicesScorecardsRouteImport.update({
+    id: '/scorecards',
+    path: '/scorecards',
+    getParentRoute: () => OrgOrgIdServicesRoute,
   } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
@@ -582,9 +627,11 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -605,20 +652,25 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -670,9 +722,11 @@ export interface FileRoutesByTo {
   '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -693,19 +747,24 @@ export interface FileRoutesByTo {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -760,9 +819,11 @@ export interface FileRoutesById {
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
+  '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
@@ -783,20 +844,25 @@ export interface FileRoutesById {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
+  '/org/$orgId/vulnerabilities': typeof OrgOrgIdVulnerabilitiesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -852,9 +918,11 @@ export interface FileRouteTypes {
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -875,20 +943,25 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/settings'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -940,9 +1013,11 @@ export interface FileRouteTypes {
     | '/org/$orgId/backups'
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -963,19 +1038,24 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -1029,9 +1109,11 @@ export interface FileRouteTypes {
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
+    | '/org/$orgId/delivery'
     | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
@@ -1052,20 +1134,25 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/settings'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
+    | '/org/$orgId/vulnerabilities'
     | '/org/$orgId/wallboard'
     | '/org/$orgId/workflows'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -1223,6 +1310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdChatRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/compliance': {
+      id: '/org/$orgId/compliance'
+      path: '/compliance'
+      fullPath: '/org/$orgId/compliance'
+      preLoaderRoute: typeof OrgOrgIdComplianceRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/cost-canvases': {
       id: '/org/$orgId/cost-canvases'
       path: '/cost-canvases'
@@ -1242,6 +1336,13 @@ declare module '@tanstack/react-router' {
       path: '/costs'
       fullPath: '/org/$orgId/costs'
       preLoaderRoute: typeof OrgOrgIdCostsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/delivery': {
+      id: '/org/$orgId/delivery'
+      path: '/delivery'
+      fullPath: '/org/$orgId/delivery'
+      preLoaderRoute: typeof OrgOrgIdDeliveryRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/deployments': {
@@ -1384,6 +1485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/services': {
+      id: '/org/$orgId/services'
+      path: '/services'
+      fullPath: '/org/$orgId/services'
+      preLoaderRoute: typeof OrgOrgIdServicesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/settings': {
       id: '/org/$orgId/settings'
       path: '/settings'
@@ -1410,6 +1518,13 @@ declare module '@tanstack/react-router' {
       path: '/status-pages'
       fullPath: '/org/$orgId/status-pages'
       preLoaderRoute: typeof OrgOrgIdStatusPagesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/vulnerabilities': {
+      id: '/org/$orgId/vulnerabilities'
+      path: '/vulnerabilities'
+      fullPath: '/org/$orgId/vulnerabilities'
+      preLoaderRoute: typeof OrgOrgIdVulnerabilitiesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/wallboard': {
@@ -1447,6 +1562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
       parentRoute: typeof OrgOrgIdChatRoute
     }
+    '/org/$orgId/compliance/$framework': {
+      id: '/org/$orgId/compliance/$framework'
+      path: '/$framework'
+      fullPath: '/org/$orgId/compliance/$framework'
+      preLoaderRoute: typeof OrgOrgIdComplianceFrameworkRouteImport
+      parentRoute: typeof OrgOrgIdComplianceRoute
+    }
     '/org/$orgId/cost-canvases/$canvasId': {
       id: '/org/$orgId/cost-canvases/$canvasId'
       path: '/$canvasId'
@@ -1481,6 +1603,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/invoices/$invoiceId'
       preLoaderRoute: typeof OrgOrgIdInvoicesInvoiceIdRouteImport
       parentRoute: typeof OrgOrgIdInvoicesRoute
+    }
+    '/org/$orgId/services/$serviceId': {
+      id: '/org/$orgId/services/$serviceId'
+      path: '/$serviceId'
+      fullPath: '/org/$orgId/services/$serviceId'
+      preLoaderRoute: typeof OrgOrgIdServicesServiceIdRouteImport
+      parentRoute: typeof OrgOrgIdServicesRoute
+    }
+    '/org/$orgId/services/scorecards': {
+      id: '/org/$orgId/services/scorecards'
+      path: '/scorecards'
+      fullPath: '/org/$orgId/services/scorecards'
+      preLoaderRoute: typeof OrgOrgIdServicesScorecardsRouteImport
+      parentRoute: typeof OrgOrgIdServicesRoute
     }
     '/org/$orgId/settings/': {
       id: '/org/$orgId/settings/'
@@ -1751,6 +1887,17 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
   OrgOrgIdChatRouteChildren,
 )
 
+interface OrgOrgIdComplianceRouteChildren {
+  OrgOrgIdComplianceFrameworkRoute: typeof OrgOrgIdComplianceFrameworkRoute
+}
+
+const OrgOrgIdComplianceRouteChildren: OrgOrgIdComplianceRouteChildren = {
+  OrgOrgIdComplianceFrameworkRoute: OrgOrgIdComplianceFrameworkRoute,
+}
+
+const OrgOrgIdComplianceRouteWithChildren =
+  OrgOrgIdComplianceRoute._addFileChildren(OrgOrgIdComplianceRouteChildren)
+
 interface OrgOrgIdCostCanvasesRouteChildren {
   OrgOrgIdCostCanvasesCanvasIdRoute: typeof OrgOrgIdCostCanvasesCanvasIdRoute
 }
@@ -1794,6 +1941,19 @@ const OrgOrgIdInvoicesRouteChildren: OrgOrgIdInvoicesRouteChildren = {
 
 const OrgOrgIdInvoicesRouteWithChildren =
   OrgOrgIdInvoicesRoute._addFileChildren(OrgOrgIdInvoicesRouteChildren)
+
+interface OrgOrgIdServicesRouteChildren {
+  OrgOrgIdServicesServiceIdRoute: typeof OrgOrgIdServicesServiceIdRoute
+  OrgOrgIdServicesScorecardsRoute: typeof OrgOrgIdServicesScorecardsRoute
+}
+
+const OrgOrgIdServicesRouteChildren: OrgOrgIdServicesRouteChildren = {
+  OrgOrgIdServicesServiceIdRoute: OrgOrgIdServicesServiceIdRoute,
+  OrgOrgIdServicesScorecardsRoute: OrgOrgIdServicesScorecardsRoute,
+}
+
+const OrgOrgIdServicesRouteWithChildren =
+  OrgOrgIdServicesRoute._addFileChildren(OrgOrgIdServicesRouteChildren)
 
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
@@ -1903,9 +2063,11 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdCalendarRoute: typeof OrgOrgIdCalendarRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
+  OrgOrgIdComplianceRoute: typeof OrgOrgIdComplianceRouteWithChildren
   OrgOrgIdCostCanvasesRoute: typeof OrgOrgIdCostCanvasesRouteWithChildren
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
+  OrgOrgIdDeliveryRoute: typeof OrgOrgIdDeliveryRoute
   OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
@@ -1926,10 +2088,12 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
   OrgOrgIdRunbooksRoute: typeof OrgOrgIdRunbooksRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
+  OrgOrgIdServicesRoute: typeof OrgOrgIdServicesRouteWithChildren
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSlosRoute: typeof OrgOrgIdSlosRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdStatusPagesRoute: typeof OrgOrgIdStatusPagesRoute
+  OrgOrgIdVulnerabilitiesRoute: typeof OrgOrgIdVulnerabilitiesRoute
   OrgOrgIdWallboardRoute: typeof OrgOrgIdWallboardRoute
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRouteWithChildren
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
@@ -1945,9 +2109,11 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdCalendarRoute: OrgOrgIdCalendarRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
+  OrgOrgIdComplianceRoute: OrgOrgIdComplianceRouteWithChildren,
   OrgOrgIdCostCanvasesRoute: OrgOrgIdCostCanvasesRouteWithChildren,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
+  OrgOrgIdDeliveryRoute: OrgOrgIdDeliveryRoute,
   OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
@@ -1968,10 +2134,12 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,
   OrgOrgIdRunbooksRoute: OrgOrgIdRunbooksRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
+  OrgOrgIdServicesRoute: OrgOrgIdServicesRouteWithChildren,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSlosRoute: OrgOrgIdSlosRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdStatusPagesRoute: OrgOrgIdStatusPagesRoute,
+  OrgOrgIdVulnerabilitiesRoute: OrgOrgIdVulnerabilitiesRoute,
   OrgOrgIdWallboardRoute: OrgOrgIdWallboardRoute,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRouteWithChildren,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,

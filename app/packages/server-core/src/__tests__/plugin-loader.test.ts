@@ -712,6 +712,41 @@ describe("remediation commands", () => {
  * when the principal was last used, which the review reports as `unknown` and
  * never as stale. So only explicit keys are checked.
  */
+describe("runningImages declarations", () => {
+  // The vulnerability join reads these keys off stored `fields`; a typo means
+  // a workload silently never counts as running a vulnerable image.
+  it("name fields (or outputs) the type actually declares", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const d = type.runningImages;
+        if (!d) continue;
+        const known = new Set([
+          ...type.fields.map((f) => f.key),
+          ...type.outputs.map((o) => o.key),
+        ]);
+        for (const key of [...d.imageKeys, ...(d.digestKeys ?? []), d.runningKey]) {
+          if (key !== undefined && !known.has(key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("are declared by at least the workload runtimes", async () => {
+    const loaded = await loader.loadPlugins();
+    const declaring = loaded.flatMap(({ plugin }) =>
+      plugin.resourceTypes
+        .filter((t) => t.runningImages)
+        .map((t) => `${plugin.manifest.id}/${t.id}`),
+    );
+    expect(declaring).toContain("kubernetes/k8s-pod");
+  });
+});
+
 describe("principalRole declarations", () => {
   it("name fields the type actually declares", async () => {
     const loaded = await loader.loadPlugins();

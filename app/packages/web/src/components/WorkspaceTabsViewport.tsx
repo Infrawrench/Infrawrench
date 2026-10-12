@@ -40,29 +40,39 @@ import {
   costCanvasesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
 } from "@/lib/workspace-tabs";
 import {
+  accountTabTarget,
   costsTabTarget,
   environmentDiffTabTarget,
+  postureTabTarget,
   expiringTabTarget,
   resourceTabTarget,
   settingsTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   type OrphansClient,
   type RightsizingClient,
   type ExtendedSupportClient,
+  type SeatsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebExtendedSupportClient } from "@/lib/extended-support-client";
+import { createWebSeatsClient } from "@/lib/seats-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
+import { WebAccountLeakBanner } from "./WebAccountLeakBanner";
+import { WebVulnerabilitiesPanel } from "./WebVulnerabilitiesPanel";
+import { WebCompliancePanel } from "./WebCompliancePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebJitAccessPanel } from "./WebJitAccessPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
@@ -80,6 +90,8 @@ import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebSlosPanel } from "./WebSlosPanel";
+import { WebServicesPanel } from "./WebServicesPanel";
+import { WebDeliveryPanel } from "./WebDeliveryPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
@@ -248,6 +260,16 @@ function getExtendedSupportClient(orgId: string): ExtendedSupportClient {
   return client;
 }
 
+const seatsClients = new Map<string, SeatsClient>();
+function getSeatsClient(orgId: string): SeatsClient {
+  let client = seatsClients.get(orgId);
+  if (!client) {
+    client = createWebSeatsClient(orgId);
+    seatsClients.set(orgId, client);
+  }
+  return client;
+}
+
 const schedulesClients = new Map<string, SchedulesClient>();
 function getSchedulesClient(orgId: string): SchedulesClient {
   let client = schedulesClients.get(orgId);
@@ -274,7 +296,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "dashboard":
       return <DashboardPanel orgId={orgId} dashboardId={t.dashboardId} />;
     case "account":
-      return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <WebAccountLeakBanner
+            orgId={orgId}
+            accountId={t.accountId}
+            onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          />
+          <div className="min-h-0 flex-1">
+            <AccountPanel orgId={orgId} accountId={t.accountId} />
+          </div>
+        </div>
+      );
     case "agents":
       return (
         <WebAgentsPanel
@@ -357,6 +390,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             )
           }
+          seats={getSeatsClient(orgId)}
           schedules={getSchedulesClient(orgId)}
           onOpenScheduledResource={(s) =>
             void navigate(
@@ -484,6 +518,12 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // showing the previous org's findings.
           key={orgId}
           orgId={orgId}
+          openAccount={(accountId) =>
+            void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
+          }
+          openVulnerabilities={() =>
+            void navigate(getWorkspaceNavigateArgs(vulnerabilitiesTabTarget()))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(
@@ -495,6 +535,43 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                 ),
               ),
             )
+          }
+        />
+      );
+    case "vulnerabilities":
+      return (
+        <WebVulnerabilitiesPanel
+          // Keyed by org so switching org remounts and refetches.
+          key={orgId}
+          orgId={orgId}
+          openPosture={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          openResource={(resource) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  resource.accountId,
+                  resource.resourceId,
+                  resource.pluginId,
+                  resource.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openService={(serviceId) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(serviceId)))
+          }
+        />
+      );
+    case "compliance":
+      return (
+        <WebCompliancePanel
+          // Keyed by org so switching org remounts and refetches.
+          key={orgId}
+          orgId={orgId}
+          framework={t.framework}
+          // The URL owns which framework is open, the SLOs rule.
+          onFrameworkChange={(framework) =>
+            void navigate(getWorkspaceNavigateArgs(complianceTabTarget(framework)))
           }
         />
       );
@@ -732,6 +809,28 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
         />
       );
+    case "services":
+      return (
+        <WebServicesPanel
+          key={orgId}
+          orgId={orgId}
+          serviceId={t.serviceId}
+          view={t.view}
+          // The URL owns where the panel is, the SLOs rule.
+          onNavigate={(next) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(next.serviceId, next.view)))
+          }
+          onOpenResource={(ref) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+              ),
+            )
+          }
+        />
+      );
+    case "delivery":
+      return <WebDeliveryPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":
@@ -754,7 +853,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
         // Without pluginId/resourceTypeId we can't construct the detail URL.
         // Fall through to the account panel for the resource's account so
         // the user lands somewhere sensible.
-        return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+        return (
+          <div className="flex h-full min-h-0 flex-col">
+            <WebAccountLeakBanner
+              orgId={orgId}
+              accountId={t.accountId}
+              onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+            />
+            <div className="min-h-0 flex-1">
+              <AccountPanel orgId={orgId} accountId={t.accountId} />
+            </div>
+          </div>
+        );
       }
       return (
         <ResourcePanel

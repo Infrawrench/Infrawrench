@@ -17,6 +17,7 @@ import {
   type DigestCostGroup,
   type DigestInput,
   type DigestSchedule,
+  deliverySegments,
 } from "../digest/compose";
 
 /**
@@ -459,6 +460,26 @@ describe("formatting", () => {
     );
   });
 
+  it("names the service the cost mover belongs to", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          costMover: {
+            displayName: "api-prod",
+            changeKind: "updated",
+            currency: "USD",
+            deltaPerDay: 42.5,
+            costBasis: "cash basis",
+            windowDays: 7,
+            contested: false,
+            serviceNames: ["Checkout API"],
+          },
+        }),
+      ),
+    );
+    expect(body).toContain("*Biggest cost move*: api-prod in Checkout API (updated): +$42.50/day");
+  });
+
   it("says so when other changes overlapped, rather than blaming the one it names", () => {
     const body = formatDigestSlackBody(
       composeWeeklyDigest(
@@ -496,6 +517,24 @@ describe("formatting", () => {
       "*Realized savings*: $120.00 last week, $4,200 this year, vs $5,000 projected",
     );
     expect(body).toContain("2 actions short of projection");
+  });
+
+  it("reports seat findings with the monthly saving", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({ seats: { findings: 4, inactive: 3, currency: "USD", monthly: 157 } }),
+      ),
+    );
+    expect(body).toContain("*Seats*: 4 paid seats to review, 3 inactive, $157.00/mo to save");
+  });
+
+  it("omits the seats line when there is nothing to act on", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({ seats: { findings: 0, inactive: 0, currency: null, monthly: null } }),
+      ),
+    );
+    expect(body).not.toContain("Seats");
   });
 
   it("omits the realized savings line when nothing was realized", () => {
@@ -695,5 +734,33 @@ describe("a narrative that contains markup", () => {
     expect(strip(formatDigestSlackBody(digest(), HOSTILE))).toBe(
       strip(formatDigestSlackBody(digest(), "Nothing unusual happened.")),
     );
+  });
+});
+
+describe("deliverySegments", () => {
+  it("names the week's DORA numbers and leaves out what was not measured", () => {
+    const line = deliverySegments({
+      deploys: 12,
+      previousDeploys: 8,
+      leadTimeHours: 6.5,
+      changeFailureRate: 0.083,
+      restoreHours: null,
+    });
+    expect(line?.map((s) => s.text).join("")).toBe(
+      "Delivery: 12 production deploys (8 the week before), lead time 6.5h, change failure rate 8.3%",
+    );
+  });
+
+  it("is silent for an org that does not deploy", () => {
+    expect(
+      deliverySegments({
+        deploys: 0,
+        previousDeploys: 0,
+        leadTimeHours: null,
+        changeFailureRate: null,
+        restoreHours: null,
+      }),
+    ).toBeNull();
+    expect(deliverySegments(null)).toBeNull();
   });
 });

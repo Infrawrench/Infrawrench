@@ -330,6 +330,37 @@ export interface UnitCostFlags {
   listUsageUnits: boolean;
 }
 
+/**
+ * `vulns` filters. Severities stay a raw comma-separated string so the command
+ * validates them and can name the valid values in the error.
+ */
+export interface VulnsFlags {
+  /** `--severity critical,high`. */
+  severity?: string | undefined;
+  /** `--running` / `--not-running`: true, false, or undefined for both. */
+  running?: boolean | undefined;
+  /** `--fix-available`: only findings the scanner says have a fix. */
+  fixAvailable: boolean;
+  /** `--kev`: only findings in the CISA KEV catalog. */
+  kev: boolean;
+  /** `--plugin <id>`: only findings this plugin reported. */
+  plugin?: string | undefined;
+  /** `--search <text>`: substring over advisory, aliases, package, artifact, title. */
+  search?: string | undefined;
+  /** `--include-dismissed`: also list (and, with --json, keep) the dismissed rows. */
+  includeDismissed: boolean;
+  /** `--service <id|slug|name>`: only findings running on a resource of this service. */
+  service?: string | undefined;
+}
+
+/** `compliance` flags. `--from`/`--to` are the shared range flags. */
+export interface ComplianceFlags {
+  /** `--framework soc2|iso27001`; the command defaults and validates it. */
+  framework?: string | undefined;
+  /** `--gaps`: only controls without evidence, with their reasons. */
+  gaps: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
@@ -344,6 +375,8 @@ export interface ParsedCli {
   apps: AppsFlags;
   diff: DiffFlags;
   config: ConfigFlags;
+  vulns: VulnsFlags;
+  compliance: ComplianceFlags;
   /** `savings log`: the monthly amount (validated by the command) and a note. */
   savings: { amount: string | undefined; note: string | undefined };
   positionals: string[];
@@ -364,6 +397,23 @@ export interface ParsedCli {
   unitCost: UnitCostFlags;
   /** `jit` flags: raw strings, validated by the command. */
   jit: JitFlags;
+  /** `services --tier 1`: only services of this criticality tier (1-4). */
+  tier: number | undefined;
+  /** `leaks` flags. `--reason`, `--account` and `--status` are the shared ones. */
+  leaks: LeakFlags;
+  /** `dora`: `--scope <dimension>[=<value>]` and `--failed` (drill-down to failed changes). */
+  dora: { scope: string | undefined; failed: boolean; restores: boolean };
+}
+
+export interface LeakFlags {
+  /** `--status open|rotated|dismissed|resolved|all`, validated by the command. */
+  status: string | undefined;
+  /** `leaks dismiss --comment`: a note kept with the dismissal. */
+  comment: string | undefined;
+  /** `leaks rotate --value-stdin`: read the replacement value from stdin, never argv. */
+  valueStdin: boolean;
+  /** `--keep-upstream-open`: leave the finding open on the scanner. */
+  keepUpstreamOpen: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -533,11 +583,34 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         ticket: { type: "string" },
         status: { type: "string" },
         mine: { type: "boolean", default: false },
+        // `dora`: list only failed changes / list recoveries.
+        failed: { type: "boolean", default: false },
+        restores: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
+        // `leaks`: a dismissal's note, the replacement value's source (stdin
+        // only: a secret on argv lands in shell history), and whether to
+        // leave the finding open on the scanner.
+        comment: { type: "string" },
+        "value-stdin": { type: "boolean", default: false },
+        "keep-upstream-open": { type: "boolean", default: false },
+        // `vulns` filters. `--plugin`, `--limit` and `-a/--account` are shared.
+        severity: { type: "string" },
+        running: { type: "boolean", default: false },
+        "not-running": { type: "boolean", default: false },
+        "fix-available": { type: "boolean", default: false },
+        kev: { type: "boolean", default: false },
+        search: { type: "string" },
+        "include-dismissed": { type: "boolean", default: false },
+        service: { type: "string" },
+        // `compliance`: which framework, and only the controls with gaps.
+        framework: { type: "string" },
+        gaps: { type: "boolean", default: false },
         // `pr-check`: a pull request by number, or a local diff against a base.
         repo: { type: "string" },
         pr: { type: "string" },
         base: { type: "string" },
+        // `services --tier <1-4>`.
+        tier: { type: "string" },
       },
     });
   } catch (e) {
@@ -600,6 +673,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     }
     return value;
   };
+
+  if (values.running && values["not-running"]) {
+    throw new CliError("--running and --not-running are mutually exclusive", 2);
+  }
 
   return {
     exports: {
@@ -730,7 +807,26 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       sort: str("sort"),
       desc: values.desc === true,
     },
+    vulns: {
+      severity: str("severity"),
+      running: values.running === true ? true : values["not-running"] === true ? false : undefined,
+      fixAvailable: values["fix-available"] === true,
+      kev: values.kev === true,
+      plugin: str("plugin"),
+      search: str("search"),
+      includeDismissed: values["include-dismissed"] === true,
+      service: str("service"),
+    },
+    compliance: {
+      framework: str("framework"),
+      gaps: values.gaps === true,
+    },
     savings: { amount: str("amount"), note: str("note") },
+    dora: {
+      scope: str("scope"),
+      failed: values.failed === true,
+      restores: values.restores === true,
+    },
     jit: {
       policy: str("policy"),
       role: str("role"),
@@ -742,6 +838,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       status: str("status"),
       mine: values.mine === true,
       holding: values.holding === true,
+    },
+    leaks: {
+      status: str("status"),
+      comment: str("comment"),
+      valueStdin: values["value-stdin"] === true,
+      keepUpstreamOpen: values["keep-upstream-open"] === true,
     },
     positionals: parsed.positionals,
     version: values.version === true,
@@ -758,6 +860,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     },
     alerts: values.alerts === true,
     margin: values.margin === true,
+    tier: boundedInt("tier", 1, 4),
     unitCost: {
       mode: str("mode"),
       scale: str("scale"),

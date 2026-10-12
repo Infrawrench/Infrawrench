@@ -5,13 +5,18 @@ import { useRouterState } from "@tanstack/react-router";
 import { hasPermission } from "@infrawrench/client-core";
 import {
   WorkspaceTabsViewport as BaseViewport,
+  accountTabTarget,
   dashboardTabTarget,
   environmentDiffTabTarget,
+  postureTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
+  servicesTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
   useUIStore,
@@ -37,6 +42,7 @@ import {
   type ExtendedSupportClient,
   type OrphansClient,
   type RightsizingClient,
+  type SeatsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
@@ -47,6 +53,7 @@ import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
+import { createDesktopSeatsClient } from "@/lib/seats-client";
 import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
@@ -58,6 +65,9 @@ import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
+import { DesktopAccountLeakBanner } from "@/components/DesktopAccountLeakBanner";
+import { DesktopVulnerabilitiesPanel } from "@/components/DesktopVulnerabilitiesPanel";
+import { DesktopCompliancePanel } from "@/components/DesktopCompliancePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
@@ -75,6 +85,8 @@ import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopPriceCatalogPanel } from "@/components/DesktopPriceCatalogPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopSlosPanel } from "@/components/DesktopSlosPanel";
+import { DesktopServicesPanel } from "@/components/DesktopServicesPanel";
+import { DesktopDeliveryPanel } from "@/components/DesktopDeliveryPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { AppWindowPanel } from "./AppsPanels";
@@ -133,6 +145,12 @@ let extendedSupportClient: ExtendedSupportClient | null = null;
 function getExtendedSupportClient(): ExtendedSupportClient {
   if (!extendedSupportClient) extendedSupportClient = createDesktopExtendedSupportClient();
   return extendedSupportClient;
+}
+
+let seatsClient: SeatsClient | null = null;
+function getSeatsClient(): SeatsClient {
+  if (!seatsClient) seatsClient = createDesktopSeatsClient();
+  return seatsClient;
 }
 
 let rightsizingClient: RightsizingClient | null = null;
@@ -277,7 +295,17 @@ function renderPanel(
     case "dashboard":
       return <DashboardPanel dashboardId={t.dashboardId} />;
     case "account":
-      return <AccountPanel accountId={t.accountId} />;
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <DesktopAccountLeakBanner
+            accountId={t.accountId}
+            onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          />
+          <div className="min-h-0 flex-1">
+            <AccountPanel accountId={t.accountId} />
+          </div>
+        </div>
+      );
     case "agents":
       return <DesktopAgentsPanel navigate={(args) => void navigate(args)} />;
     case "workflows":
@@ -325,6 +353,7 @@ function renderPanel(
           }
           // Cloud-only: the rows live server-side and the cloud poller runs
           // the transitions, so local mode omits the section entirely.
+          seats={activeCloudOrgId ? getSeatsClient() : undefined}
           schedules={activeCloudOrgId ? getSchedulesClient() : undefined}
           onOpenScheduledResource={(s) =>
             void navigate(
@@ -473,6 +502,12 @@ function renderPanel(
           // Keyed by mode so switching org (or dropping to local) remounts
           // and refetches rather than showing the previous mode's findings.
           key={activeCloudOrgId ?? "local"}
+          openAccount={(accountId) =>
+            void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
+          }
+          openVulnerabilities={() =>
+            void navigate(getWorkspaceNavigateArgs(vulnerabilitiesTabTarget()))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(
@@ -484,6 +519,41 @@ function renderPanel(
                 ),
               ),
             )
+          }
+        />
+      );
+    case "vulnerabilities":
+      return (
+        <DesktopVulnerabilitiesPanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+          openPosture={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          openResource={(resource) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  resource.accountId,
+                  resource.resourceId,
+                  resource.pluginId,
+                  resource.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openService={(serviceId) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(serviceId)))
+          }
+        />
+      );
+    case "compliance":
+      return (
+        <DesktopCompliancePanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+          framework={t.framework}
+          // The URL owns which framework is open, the SLOs rule.
+          onFrameworkChange={(framework) =>
+            void navigate(getWorkspaceNavigateArgs(complianceTabTarget(framework)))
           }
         />
       );
@@ -662,6 +732,10 @@ function renderPanel(
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":
       return <DesktopSlosPanel sloId={t.sloId} />;
+    case "services":
+      return <DesktopServicesPanel serviceId={t.serviceId} view={t.view} />;
+    case "delivery":
+      return <DesktopDeliveryPanel />;
     case "settings":
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":

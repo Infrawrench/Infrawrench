@@ -282,6 +282,14 @@ export function pushDataToPath(data: MobilePushData): string {
     // A posture alert summarises the whole feed, so it opens the feed.
     case "posture_alert":
       return `/org/${data.orgId}/posture`;
+    // Leaked credentials are the top section of the posture screen; a push
+    // about exactly one carries its id so the screen can point at it.
+    case "leaked_secret":
+      return data.leakId
+        ? `/org/${data.orgId}/posture?leakId=${encodeURIComponent(data.leakId)}`
+        : `/org/${data.orgId}/posture`;
+    case "vulnerability_alert":
+      return `/org/${data.orgId}/vulnerabilities`;
     // A savings finding is listed in the Costs screen's savings sections.
     case "savings_finding":
     // Extended-support findings are a section of the Costs screen.
@@ -299,6 +307,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // rates that say how bad and whether it is still burning.
     case "slo_alert":
       return `/org/${data.orgId}/slos/${data.sloId}`;
+    // A scorecard level drop names one service; its screen lists each
+    // scorecard's failing checks, which is what dropped it.
+    case "scorecard_level_drop":
+      return `/org/${data.orgId}/services/${data.serviceId}`;
     // A declared incident names exactly one thing to look at, and its screen
     // carries the timeline and the note box, which is the whole reason to open
     // a phone at 03:14.
@@ -558,6 +570,17 @@ export function parsePushData(raw: unknown): MobilePushData | null {
     }
     case "posture_alert":
       return { type: "posture_alert", orgId };
+    case "leaked_secret": {
+      // Optional: set only when the scan found exactly one new leak.
+      const leakId = data["leakId"];
+      return typeof leakId === "string" && leakId
+        ? { type: "leaked_secret", orgId, leakId }
+        : { type: "leaked_secret", orgId };
+    }
+    case "vulnerability_alert": {
+      const count = data["count"];
+      return { type: "vulnerability_alert", orgId, count: typeof count === "number" ? count : 0 };
+    }
     case "savings_finding": {
       const kind = data["kind"];
       const resourceId = data["resourceId"];
@@ -587,6 +610,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "slo_alert", orgId, sloId, status };
+    }
+    case "scorecard_level_drop": {
+      const serviceId = data["serviceId"];
+      const scorecardId = data["scorecardId"];
+      if (typeof serviceId !== "string" || typeof scorecardId !== "string") return null;
+      return { type: "scorecard_level_drop", orgId, serviceId, scorecardId };
     }
     case "incident": {
       const incidentId = data["incidentId"];

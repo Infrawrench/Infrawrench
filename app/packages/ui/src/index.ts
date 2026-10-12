@@ -379,6 +379,8 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -387,6 +389,8 @@ export {
   runbooksTabTarget,
   queryMonitorsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
+  deliveryTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -771,6 +775,82 @@ export type {
 } from "@infrawrench/client-core";
 export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
+export {
+  AccountLeakBanner,
+  LeakedCredentialsSection,
+} from "./leaked-secrets/LeakedCredentialsSection.js";
+export type {
+  LeakedCredentialsClient,
+  LeakedCredentialsSectionProps,
+} from "./leaked-secrets/LeakedCredentialsSection.js";
+
+/**
+ * Vulnerabilities: scanner-reported findings joined to what is running. The
+ * contract and the join live in `@infrawrench/client-core` (mobile and the
+ * CLI share them); re-exported here because web and desktop import from `ui`.
+ */
+export {
+  dismissVulnerability,
+  fetchVulnerabilities,
+  filterVulnerabilityFindings,
+  getVulnerabilitySettings,
+  groupRunningByType,
+  restoreVulnerability,
+  updateVulnerabilitySettings,
+  vulnerabilityDismissalKey,
+  VULNERABILITY_SEVERITY_LABELS,
+  VULNERABILITY_SEVERITY_ORDER,
+} from "@infrawrench/client-core";
+export type {
+  DismissedVulnerabilityFinding,
+  VulnerabilityDismissal,
+  VulnerabilityDismissInput,
+  VulnerabilityFilter,
+  VulnerabilityFindingRow,
+  VulnerabilityListResponse,
+  VulnerabilityRunningRef,
+  VulnerabilitySettings,
+  VulnerabilitySettingsPatch,
+  VulnerabilitySeverity,
+  VulnerabilitySource,
+} from "@infrawrench/client-core";
+export { VulnerabilitiesSection } from "./vulnerabilities/VulnerabilitiesSection.js";
+export type {
+  VulnerabilitiesSectionProps,
+  VulnerabilityDismissalTarget,
+} from "./vulnerabilities/VulnerabilitiesSection.js";
+
+/**
+ * Compliance: evidence mapped to framework controls, per-control decisions,
+ * evidence packs and their schedules. The contract and the status rule live
+ * in `@infrawrench/client-core`; re-exported here because web and desktop
+ * import from `ui`.
+ */
+export {
+  COMPLIANCE_CONTROL_STATUS_LABELS,
+  COMPLIANCE_PACK_CADENCES,
+  EVIDENCE_STATUS_LABELS,
+  complianceQuery,
+  evidencePackFileName,
+  validateComplianceControlSetting,
+} from "@infrawrench/client-core";
+export type {
+  ComplianceControlRow,
+  ComplianceControlSetting,
+  ComplianceControlSettingInput,
+  ComplianceControlStatus,
+  ComplianceFrameworkSummary,
+  CompliancePackCadence,
+  CompliancePackSchedule,
+  CompliancePackScheduleInput,
+  CompliancePeriod,
+  ComplianceStatusResponse,
+  EvidenceSourceResult,
+  EvidenceStatus,
+} from "@infrawrench/client-core";
+export { ComplianceSection } from "./compliance/ComplianceSection.js";
+export type { ComplianceSectionProps } from "./compliance/ComplianceSection.js";
+export type { ComplianceClient } from "./compliance/types.js";
 
 /**
  * Cross-cloud access review: the principals inside the *customer's* clouds,
@@ -819,6 +899,8 @@ export type {
 export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
 export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
+export { VulnerabilitiesIcon } from "./components/icons/VulnerabilitiesIcon.js";
+export { ComplianceIcon } from "./components/icons/ComplianceIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
 
@@ -1071,6 +1153,8 @@ export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { SlosIcon } from "./components/icons/SlosIcon.js";
+export { ServicesIcon } from "./components/icons/ServicesIcon.js";
+export { DeliveryIcon } from "./components/icons/DeliveryIcon.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 
@@ -1144,6 +1228,8 @@ export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./incidents/index.js";
 export * from "./slos/index.js";
+export * from "./services/index.js";
+export * from "./dora/index.js";
 export * from "./environments/index.js";
 export * from "./savings/index.js";
 // Issue filing (Jira and Linear): the tracker-aware provider a host mounts

@@ -1058,6 +1058,62 @@
       "when": 1791493975614,
       "tag": "0150_provider_oauth_status",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1791798210038,
+      "tag": "0151_services_scorecards",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1791798438115,
+      "tag": "0152_event_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1791798554813,
+      "tag": "0153_leaked_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1791798672739,
+      "tag": "0154_vulnerabilities",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1791798808415,
+      "tag": "0155_compliance",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1791798882797,
+      "tag": "0156_dora",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1791799042257,
+      "tag": "0157_saas_seats",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1791799289082,
+      "tag": "0158_org_scorecard_snapshots",
+      "breakpoints": true
     }
   ]
 }

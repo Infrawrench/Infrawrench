@@ -10,11 +10,13 @@ import type { GitLabContext } from "./api.js";
 import { glFetch, glPaged, isPermissionError, resolveBaseUrl } from "./api.js";
 import { GitLabClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import { gitlabRemediationCommands } from "./remediation.js";
+import { gitlabRemediationCommands, gitlabSeatRemediationCommands } from "./remediation.js";
+import { GITLAB_PRODUCT } from "./seats.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
 import type { GlGroup, GlUser } from "./types.js";
+import { gitlabDeployEvents } from "./deploy-events.js";
 
 const SCOPES_LINK = {
   label: "Create a personal access token",
@@ -42,6 +44,23 @@ const preflight: PreflightDeclaration = {
       label: "Create runners",
       description: "Register a new runner from Infrawrench.",
       requiredPermissions: [{ id: "create_runner", label: "Create runners" }],
+    },
+    {
+      id: "secret-detection",
+      label: "Secret detection findings",
+      description:
+        "Read secret detection vulnerabilities so leaked credentials are matched to what Infrawrench holds (read_api, Developer role), and resolve or dismiss them after a rotation (api, Maintainer role). The vulnerability report needs GitLab Ultimate.",
+      requiredPermissions: [{ id: "api", label: "Read and write the API (read_api to only read)" }],
+    },
+    {
+      id: "seats",
+      label: "Subscription seats",
+      description:
+        "List the billable members of paid GitLab.com top-level groups and when each was last active, and remove them. Removing needs the api scope.",
+      requiredPermissions: [
+        { id: "read_api", label: "Read the API (api also works)" },
+        { id: "owner", label: "Owner role on the top-level group" },
+      ],
     },
   ],
 };
@@ -94,8 +113,41 @@ const manifest: PluginManifest = {
     increaseUrl: "https://customers.gitlab.com/",
     partial: true,
   },
+  // Open dependency- and container-scanning findings from the vulnerability
+  // report (GraphQL). Ultimate only, and the user needs Developer or above;
+  // bounded per group or per project. See `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "GitLab Vulnerability Report",
+    consoleUrl: "https://docs.gitlab.com/user/application_security/vulnerability_report/",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
+  // GitLab.com subscription seats (billable members of paid top-level groups).
+  seats: { products: [GITLAB_PRODUCT], removal: true },
   preflight,
   statusFeed,
+  secretScanning: {
+    label: "Secret detection",
+    description:
+      "Reads secret detection findings from the vulnerability report (GitLab Ultimate) of the account's 100 most recently active projects every 30 minutes. GitLab never returns the secret itself, so findings are matched by token type.",
+    canResolve: true,
+    returnsSecretValue: false,
+  },
+  tokenFormats: [
+    {
+      id: "access-token",
+      label: "GitLab access token",
+      scannerTypes: [
+        "gitlab_personal_access_token",
+        "gitlab_personal_access_token_routable",
+        "gitlab_personal_access_token_routable_versioned",
+        "gitlab_access_token",
+      ],
+      prefixes: ["glpat-"],
+      credentialFields: ["token"],
+      manageUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
+    },
+  ],
   // GitLab.com allows 2,000 authenticated API requests a minute per user.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
 };
@@ -147,6 +199,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: gitlabDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new GitLabClient(credentials, services),
@@ -154,6 +207,7 @@ export const plugin: Plugin = {
   listCredentialOptions,
   terraformExport: gitlabTerraformExport,
   remediationCommands: gitlabRemediationCommands,
+  seatRemediationCommands: gitlabSeatRemediationCommands,
   validateServerCredentials: (credentials) => {
     try {
       const url = resolveBaseUrl(credentials["url"]);

@@ -30,6 +30,7 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
+import { getServicesForResource } from "../service-catalog/lookup";
 import {
   digestEmailRecipients,
   orgDigestSettings,
@@ -74,6 +75,8 @@ import {
   type DigestCostMover,
   type DigestProjection,
   type DigestRealizedSavings,
+  type DigestDelivery,
+  type DigestSeats,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -81,6 +84,9 @@ import {
 } from "./compose";
 import { orgAppUrl } from "../app-url";
 import { getRealizedSavingsReport } from "../savings/realized";
+import { getDoraReport } from "../dora/load";
+import { getDoraSettings } from "../dora/settings";
+import { listSeats } from "../seats/feed";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -313,7 +319,61 @@ export async function buildWeeklyDigest(
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
     costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
     realizedSavings: await buildRealizedSavings(organizationId, window),
+    delivery: await buildDelivery(organizationId, window),
+    seats: await buildSeats(organizationId),
   });
+}
+
+/**
+ * The delivery line: the reported week's DORA summary for production, from
+ * the same engine as the Delivery page. Dropped when the org turned the
+ * section off. Never the reason a digest fails to send: any error drops it.
+ */
+async function buildDelivery(
+  organizationId: string,
+  window: DigestWindow,
+): Promise<DigestDelivery | null> {
+  try {
+    const settings = await getDoraSettings(organizationId);
+    if (!settings.digestEnabled) return null;
+    // Window dates are local civil dates; UTC day bounds are the same
+    // approximation the spend half makes.
+    const from = new Date(`${window.weekStart}T00:00:00Z`);
+    const to = new Date(Date.parse(`${window.weekEnd}T00:00:00Z`) + 86_400_000);
+    const report = await getDoraReport(organizationId, { from, to, bucket: "day" });
+    return {
+      deploys: report.summary.deploymentFrequency.deploys,
+      previousDeploys: report.previous.deploymentFrequency.deploys,
+      leadTimeHours: report.summary.leadTime.value,
+      changeFailureRate: report.summary.changeFailureRate.value,
+      restoreHours: report.summary.timeToRestore.value,
+    };
+  } catch (err) {
+    console.error(`[digest] delivery metrics for org ${organizationId} failed:`, err);
+    return null;
+  }
+}
+
+/**
+ * The seats line: findings over the stored inventory, org-wide (the digest
+ * goes to admin-configured channels, like every other line here). Never the
+ * reason a digest fails to send.
+ */
+async function buildSeats(organizationId: string): Promise<DigestSeats | null> {
+  try {
+    const list = await listSeats(organizationId, { unscoped: true, withoutRemediation: true });
+    if (list.findings.length === 0) return null;
+    const primary = list.savingsMonthly[0] ?? null;
+    return {
+      findings: list.findings.length,
+      inactive: list.counts.inactive,
+      currency: primary?.currency ?? null,
+      monthly: primary?.monthly ?? null,
+    };
+  } catch (err) {
+    console.error(`[digest] seats for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 /**
@@ -382,6 +442,7 @@ async function buildCostMover(
     const rows = await db
       .select({
         id: resourceChanges.id,
+        resourceId: resourceChanges.resourceId,
         displayName: resourceChanges.displayName,
         changeKind: resourceChanges.changeKind,
       })
@@ -399,6 +460,7 @@ async function buildCostMover(
 
     const byId = new Map(rows.map((r) => [r.id, r]));
     let best: DigestCostMover | null = null;
+    let bestResourceId: string | null = null;
     let bestMagnitude = 0;
 
     // Batched in the size the API caps a request at, so one org's busy week
@@ -414,6 +476,7 @@ async function buildCostMover(
           const magnitude = Math.abs(series.deltaPerDay);
           if (magnitude <= bestMagnitude) continue;
           bestMagnitude = magnitude;
+          bestResourceId = row.resourceId;
           best = {
             displayName: row.displayName,
             changeKind: row.changeKind,
@@ -428,7 +491,14 @@ async function buildCostMover(
     }
     // A movement of nothing is not a mover: zero deltas would otherwise win
     // the line on a week where every measurable resource was flat.
-    return bestMagnitude > 0 ? best : null;
+    if (!best || bestMagnitude <= 0) return null;
+    // Name the service it belongs to: "db-7 in Checkout API" is what a reader
+    // acts on. Best-effort; the lookup never throws.
+    if (bestResourceId) {
+      const services = await getServicesForResource(organizationId, bestResourceId);
+      if (services.length > 0) best.serviceNames = services.map((s) => s.name);
+    }
+    return best;
   } catch (err) {
     console.error(`[digest] cost mover for org ${organizationId} failed:`, err);
     return null;

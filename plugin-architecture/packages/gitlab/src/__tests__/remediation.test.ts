@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RemediationFinding } from "@infrawrench/plugin-base";
-import { gitlabRemediationCommands } from "../remediation.js";
+import { gitlabRemediationCommands, gitlabSeatRemediationCommands } from "../remediation.js";
 import { plugin } from "../plugin.js";
 
 const orphan = (resourceTypeId: string, externalId: string | null): RemediationFinding => ({
@@ -63,6 +63,54 @@ describe("gitlabRemediationCommands", () => {
         kind: "sleep-schedule",
         resource: { resourceTypeId: "runner", displayName: "r", externalId: "555", fields: {} },
       }),
+    ).toEqual([]);
+  });
+});
+
+describe("gitlabSeatRemediationCommands", () => {
+  const seat = (context: Record<string, string>, memberId = "42") => ({
+    memberId,
+    seatKey: "10",
+    email: null,
+    login: "mona",
+    name: null,
+    seatType: "Premium",
+    targetSeatType: null,
+    context,
+  });
+
+  it("is wired on the plugin", () => {
+    expect(plugin.seatRemediationCommands).toBe(gitlabSeatRemediationCommands);
+  });
+
+  it("lists memberships, then removes the billable member", () => {
+    const commands = gitlabSeatRemediationCommands({
+      reason: "inactive",
+      seat: seat({ groupId: "10", groupPath: "acme" }),
+    });
+    expect(commands.map((c) => `${c.destructive ? "!" : "-"} ${c.command}`)).toMatchInlineSnapshot(`
+        [
+          "- glab api --hostname gitlab.com groups/10/billable_members/42/memberships",
+          "! glab api -X DELETE --hostname gitlab.com groups/10/billable_members/42",
+        ]
+      `);
+    expect(commands.every((c) => !c.placeholders)).toBe(true);
+  });
+
+  it("answers duplicates the same way and refuses bad ids and downgrades", () => {
+    expect(
+      gitlabSeatRemediationCommands({ reason: "duplicate", seat: seat({}) }).map((c) => c.command),
+    ).toMatchInlineSnapshot(`
+      [
+        "glab api --hostname gitlab.com groups/10/billable_members/42/memberships",
+        "glab api -X DELETE --hostname gitlab.com groups/10/billable_members/42",
+      ]
+    `);
+    expect(
+      gitlabSeatRemediationCommands({ reason: "inactive", seat: seat({ groupId: "x;y" }) }),
+    ).toEqual([]);
+    expect(
+      gitlabSeatRemediationCommands({ reason: "downgrade", seat: seat({ groupId: "10" }) }),
     ).toEqual([]);
   });
 });

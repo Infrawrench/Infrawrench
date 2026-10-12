@@ -903,6 +903,22 @@ func (c *Client) PutDriftAlertSettings(ctx context.Context, in DriftAlertSetting
 	return &out, nil
 }
 
+func (c *Client) GetDoraSettings(ctx context.Context) (*DoraSettings, error) {
+	var out DoraSettings
+	if err := c.Get(ctx, "/dora/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutDoraSettings(ctx context.Context, in DoraSettingsUpdate) (*DoraSettings, error) {
+	var out DoraSettings
+	if err := c.Put(ctx, "/dora/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetExpiryAlertSettings(ctx context.Context) (*ExpiryAlertSettings, error) {
 	var out ExpiryAlertSettings
 	if err := c.Get(ctx, "/expiring/settings", &out); err != nil {
@@ -946,6 +962,24 @@ func (c *Client) GetPostureAlertSettings(ctx context.Context) (*PostureAlertSett
 func (c *Client) PutPostureAlertSettings(ctx context.Context, in PostureAlertSettingsUpdate) (*PostureAlertSettings, error) {
 	var out PostureAlertSettings
 	if err := c.Put(ctx, "/posture/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetVulnerabilityAlertSettings reads the org's vulnerability alert settings.
+func (c *Client) GetVulnerabilityAlertSettings(ctx context.Context) (*VulnerabilityAlertSettings, error) {
+	var out VulnerabilityAlertSettings
+	if err := c.Get(ctx, "/vulnerabilities/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutVulnerabilityAlertSettings writes the org's vulnerability alert settings.
+func (c *Client) PutVulnerabilityAlertSettings(ctx context.Context, in VulnerabilityAlertSettingsUpdate) (*VulnerabilityAlertSettings, error) {
+	var out VulnerabilityAlertSettings
+	if err := c.Put(ctx, "/vulnerabilities/settings", in, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -1354,6 +1388,24 @@ func (c *Client) PutRealizedSavingsSettings(ctx context.Context, in RealizedSavi
 	return &out, nil
 }
 
+/* --------------------------------- seats ---------------------------------- */
+
+func (c *Client) GetSeatSettings(ctx context.Context) (*SeatSettings, error) {
+	var out SeatSettings
+	if err := c.Get(ctx, "/seats/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutSeatSettings(ctx context.Context, in SeatSettings) (*SeatSettings, error) {
+	var out SeatSettings
+	if err := c.Put(ctx, "/seats/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ---------------------------- paging providers ---------------------------- */
 
 // ListPagingProviders unwraps the {"accounts": […]} envelope.
@@ -1456,4 +1508,174 @@ func (c *Client) UpdatePrCheckRepository(ctx context.Context, id string, in PrCh
 
 func (c *Client) DeletePrCheckRepository(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/pr-checks/repositories/"+seg(id))
+}
+
+/* -------------------------------- services -------------------------------- */
+
+// GetService reads one service. The route accepts the id or the slug, which
+// is what lets `terraform import` and the data source take either.
+func (c *Client) GetService(ctx context.Context, idOrSlug string) (*Service, error) {
+	var out ServiceDetail
+	if err := c.Get(ctx, "/services/"+seg(idOrSlug), &out); err != nil {
+		return nil, err
+	}
+	return &out.Service, nil
+}
+
+func (c *Client) CreateService(ctx context.Context, in ServiceInput) (*Service, error) {
+	var out Service
+	if err := c.Post(ctx, "/services", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateService is a PATCH: lists that are present replace the stored ones.
+// Explicit members are not part of the body, so they survive any update.
+func (c *Client) UpdateService(ctx context.Context, id string, in ServiceInput) (*Service, error) {
+	var out Service
+	if err := c.Patch(ctx, "/services/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteService deletes the service. Its member resources are untouched.
+func (c *Client) DeleteService(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/services/"+seg(id))
+}
+
+/* ------------------------------- scorecards ------------------------------- */
+
+func (c *Client) GetScorecard(ctx context.Context, id string) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Get(ctx, "/scorecards/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateScorecard(ctx context.Context, in ScorecardInput) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Post(ctx, "/scorecards", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateScorecard is a PATCH carrying every key, so it replaces the whole
+// scorecard.
+func (c *Client) UpdateScorecard(ctx context.Context, id string, in ScorecardInput) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Patch(ctx, "/scorecards/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteScorecard deletes the scorecard. Services are untouched.
+func (c *Client) DeleteScorecard(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/scorecards/"+seg(id))
+}
+
+/* --------------------------- event subscriptions --------------------------- */
+
+func (c *Client) GetEventSubscription(ctx context.Context, id string) (*EventSubscription, error) {
+	var out EventSubscription
+	if err := c.Get(ctx, "/event-subscriptions/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateEventSubscription(ctx context.Context, in EventSubscriptionInput) (*EventSubscriptionWithSecret, error) {
+	var out EventSubscriptionWithSecret
+	if err := c.Post(ctx, "/event-subscriptions", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateEventSubscription(ctx context.Context, id string, in EventSubscriptionInput) (*EventSubscription, error) {
+	var out EventSubscription
+	if err := c.Put(ctx, "/event-subscriptions/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RerollEventSubscriptionSecret mints a new signing secret; the old one keeps
+// signing for 24 hours.
+func (c *Client) RerollEventSubscriptionSecret(ctx context.Context, id string) (*EventSubscriptionWithSecret, error) {
+	var out EventSubscriptionWithSecret
+	if err := c.Post(ctx, "/event-subscriptions/"+seg(id)+"/reroll-secret", struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteEventSubscription(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/event-subscriptions/"+seg(id))
+}
+
+/* -------------------------------- compliance ------------------------------- */
+
+// complianceControlPath builds the per-control route. Control ids carry dots
+// ("CC6.1", "8.8"), and escaping them keeps any future id with a slash or a
+// space addressable too.
+func complianceControlPath(frameworkID, controlID string) string {
+	return "/compliance/controls/" + seg(frameworkID) + "/" + seg(controlID)
+}
+
+// GetComplianceControlSetting reads the stored decision about one control. A
+// control nobody decided about 404s, as does an unknown framework or control.
+func (c *Client) GetComplianceControlSetting(ctx context.Context, frameworkID, controlID string) (*ComplianceControlSetting, error) {
+	var out ComplianceControlSetting
+	if err := c.Get(ctx, complianceControlPath(frameworkID, controlID), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutComplianceControlSetting upserts the decision: a full replace.
+func (c *Client) PutComplianceControlSetting(ctx context.Context, frameworkID, controlID string, in ComplianceControlSettingInput) (*ComplianceControlSetting, error) {
+	var out ComplianceControlSetting
+	if err := c.Put(ctx, complianceControlPath(frameworkID, controlID), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteComplianceControlSetting resets the control to the default
+// (applicable, unowned). 404 when nothing was stored.
+func (c *Client) DeleteComplianceControlSetting(ctx context.Context, frameworkID, controlID string) error {
+	return c.Delete(ctx, complianceControlPath(frameworkID, controlID))
+}
+
+func (c *Client) GetCompliancePackSchedule(ctx context.Context, id string) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Get(ctx, "/compliance/schedules/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCompliancePackSchedule(ctx context.Context, in CompliancePackScheduleInput) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Post(ctx, "/compliance/schedules", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCompliancePackSchedule(ctx context.Context, id string, in CompliancePackScheduleInput) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Put(ctx, "/compliance/schedules/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCompliancePackSchedule(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/compliance/schedules/"+seg(id))
 }

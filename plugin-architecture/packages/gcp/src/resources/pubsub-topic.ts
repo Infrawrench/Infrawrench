@@ -15,4 +15,6 @@ export const PubSubTopicResourceType = rt({
   dependsOn: [{ fieldKey: "kmsKeyName", targetTypeId: "kms-key", label: "encrypted by" }],
   supportsCreate: true,
   supportsMetrics: true,
+  // Event subscriptions publish to the topic with event attributes.
+  eventSink: true,
 });

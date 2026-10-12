@@ -10,6 +10,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
   StorageObject,
+  VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 import { base64ToUtf8, externalIdOf } from "@infrawrench/plugin-base";
 import type { JfrogContext } from "./api.js";
@@ -58,6 +59,7 @@ import {
 import { platformSeries, repositorySeries } from "./metrics.js";
 import { verifyJfrogCredentials } from "./preflight.js";
 import { reindexPath } from "./reindex.js";
+import { fetchJfrogVulnerabilityFindings } from "./vulnerabilities.js";
 import {
   BUILD_MODULES_KEY,
   PERMISSION_KEY,
@@ -628,6 +630,26 @@ export class JfrogClient implements PluginClient {
 
   verifyCredentials(): Promise<PreflightResult> {
     return verifyJfrogCredentials(this.ctx);
+  }
+
+  /**
+   * Xray's findings for the artifacts of every repository with Xray indexing
+   * on, bounded; see `vulnerabilities.ts`. The repository list comes from the
+   * same reads the repository lister uses.
+   */
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    const summaries = await this.repoSummaries();
+    const configs = await this.repoConfigs(summaries);
+    const repos = summaries.map((s) => {
+      const config = configs.get(s.key);
+      return {
+        key: s.key,
+        rclass: repoClass(config?.rclass ?? s.type),
+        packageType: (config?.packageType ?? s.packageType ?? "").toLowerCase(),
+        xrayIndex: config?.xrayIndex === true,
+      };
+    });
+    return fetchJfrogVulnerabilityFindings(this.ctx, repos);
   }
 
   // -------------------------------------------------------------------------

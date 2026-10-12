@@ -14,6 +14,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { renderTerraformExport } from "./terraform.js";
 import type { RenderOwner } from "./types.js";
+import { renderDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "render",
@@ -76,6 +77,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: renderDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RenderClient(credentials, RESOURCE_TYPES, services),

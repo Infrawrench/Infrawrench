@@ -40,6 +40,43 @@ Your GitLab role decides what you see: CI/CD variables, webhooks, deploy keys an
 
 For a self-managed instance with its own certificate authority, paste the CA certificate under **Advanced options**.
 
+## Secret detection
+
+With GitLab **Ultimate**, the account reads the secret detection findings from the vulnerability report of its 100 most recently active projects, every 30 minutes, into [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Projects on other tiers are skipped.
+
+- **Permissions.** Reading findings needs `read_api` and the Developer role on the project. Resolving a finding after a rotation, or dismissing it with your reason, needs `api` and the Maintainer role (or Security Manager).
+- **Matched by token type.** GitLab never returns the secret itself, only which rule found it (`gitlab_personal_access_token`, `AWS` and so on). Infrawrench matches the finding to your accounts on the provider that issues that kind of token; with exactly one such account it is shown as probably that account, with several they are listed as candidates. Either way it may be another key from the same provider.
+- On rotation the finding is resolved in GitLab; a dismissal maps **False positive** and **Used in tests** to GitLab's reasons of the same name and **Won't fix** to Acceptable risk.
+
+## Vulnerability findings
+
+GitLab accounts report the open entries of the **vulnerability report** that come from **dependency scanning** and **container scanning** (including container scanning for the registry): known CVEs in packages and images. Findings in the Detected or Confirmed state are read; dismissed and resolved ones, and those GitLab marks as resolved on the default branch, are left out. SAST, DAST, secret detection and fuzzing findings are not included, as they are about code rather than known advisories.
+
+Each finding carries the advisory (the CVE when there is one, else the GHSA id), GitLab's severity, the CVSS score and vector, the package and installed version, whether GitLab has a remediation, whether the CVE is in the CISA known-exploited list, and a link to the vulnerability.
+
+What it needs:
+
+- **GitLab Ultimate** on the group or project (GitLab.com, Self-Managed or Dedicated). The vulnerability report does not exist on Free or Premium, or on Community Edition.
+- The token's user (or the group access token's role) must be **Developer** or above, or **Security Manager**, on the group or projects.
+- The **read_api** or **api** scope, which the account already has.
+
+When none of the account's projects can show the report, the account says so as a tier or role gap rather than reporting zero vulnerabilities. A project in a namespace without Ultimate is skipped when others are readable.
+
+**What it joins to.** A container-scanning finding names the scanned image (for example `registry.gitlab.com/acme/web/app`, with its digest when the scan recorded one), so it matches every running pod, task or service from any provider that runs that image. A dependency-scanning finding is about the **project** and attaches to the project in your inventory.
+
+**Bounds.** A group-scoped account reads the group's report (subgroups included) up to 5,000 findings. Without a group, the report of each of the 100 most recently active projects is read, up to 1,000 findings each. The list is marked partial because these bounds can bite on a large instance.
+
+## Seats
+
+GitLab.com accounts report their subscription seats to Seats, which flags members nobody uses, people paying for GitLab and another source control tool, and adds up what removing them would save.
+
+- **What is read.** The billable members of every paid top-level group in scope: the top-level group above the account's **Group**, or, with no group picked, every top-level group the token's user owns. Groups on the Free plan, a trial, or a free program (open source and similar) have no paid seats and are skipped. Members waiting for approval do not take a seat and are left out. Email addresses appear when the member made theirs public or is an enterprise user of the group.
+- **Activity.** GitLab's **last activity** date for the user, which counts any activity on GitLab.com, not only in your group. A member who has never been active is treated as idle once their account is older than your threshold (GitLab gives no date for when they joined the group).
+- **Price.** GitLab's published Premium price, $29 per user per month billed annually (about.gitlab.com/pricing, October 2026), labelled as an estimate. Ultimate is priced per contract, so Ultimate seats are counted but have no price.
+- **Remove.** Removes the user from the top-level group and all its subgroups and projects; GitLab finishes it in the background within a few minutes. The seat frees up for someone else, but seats already bought stay billed until the subscription renews. A member billed only because a group or project was shared with another group cannot be removed this way and is shown as not removable.
+- **Permissions.** The **Owner** role on the top-level group, and a token with **read_api** to list or **api** to remove. **Check credentials** tests this with a one-member read.
+- **Self-managed and Dedicated instances are not reported.** They are licensed per instance rather than per group subscription, so there is no group seat or plan price to read.
+
 ## Tips & limits
 
 - Children (pipelines, variables, environments and so on) are listed for the 100 most recently active, non-archived projects, to keep a sync on a large instance to a bounded number of requests. Up to 500 projects are listed in total.

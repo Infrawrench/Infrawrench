@@ -51,6 +51,16 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/posture`)}
         />
         <Row
+          title="Vulnerabilities"
+          subtitle="Scanner findings, joined to what is running"
+          onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
+        />
+        <Row
+          title="Compliance"
+          subtitle="SOC 2 and ISO 27001 controls, with the evidence behind them"
+          onPress={() => router.push(`/org/${orgId}/compliance`)}
+        />
+        <Row
           title="Domains"
           subtitle="Every DNS zone and record, with dangling targets flagged"
           onPress={() => router.push(`/org/${orgId}/dns`)}
@@ -69,6 +79,16 @@ export default function AccountsScreen() {
           title="SLOs"
           subtitle="Error budgets and burn rates for your objectives"
           onPress={() => router.push(`/org/${orgId}/slos`)}
+        />
+        <Row
+          title="Services"
+          subtitle="Resources grouped by service, with owners and scorecards"
+          onPress={() => router.push(`/org/${orgId}/services`)}
+        />
+        <Row
+          title="Delivery"
+          subtitle="Deploy frequency, lead time, failure rate and time to restore"
+          onPress={() => router.push(`/org/${orgId}/delivery`)}
         />
         <Row
           title="Log workspace"

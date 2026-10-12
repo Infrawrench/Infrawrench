@@ -14,9 +14,10 @@
 > paths and do not exist in the mirror.
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
-reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 68 resources and 7 data sources, each with its own
-plan, its own drift detection and a real `terraform import`.
+reporting, monitoring, the service catalog, lifecycle governance, connected
+accounts and access control, and alert delivery. 76 resources and 8 data
+sources, each with its own plan, its own drift detection and a real
+`terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
 provider, and getting them out of Infrawrench as HCL is what eject-to-Terraform
@@ -589,9 +590,9 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 ```
 
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
-`anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
-`drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
-`session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
+`anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`, `seat_settings`,
+`drift_alert_settings`, `dora_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
+`vulnerability_alert_settings`, `session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
 **Report notifications** hang off a report, so the notification's own id cannot
@@ -634,6 +635,7 @@ stored one", leave it out.
 | `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
 | `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
 | `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
+| `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
 | `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
@@ -686,31 +688,43 @@ secret store that consumes it rather than into an output.
 | `infrawrench_ai_request_source`         | by id     | LiteLLM `api_key` is write-only; lookback is clamped |
 | `infrawrench_ai_attribution_dimension`  | by id     | No single-GET route; becomes tag key `caller:<key>`  |
 | `infrawrench_realized_savings_settings` | by org id | Org singleton; destroy restores the defaults         |
+| `infrawrench_seat_settings`             | by org id | Org singleton; destroy restores the defaults         |
 
 ### Monitoring
 
-| Resource                   | Import | Notes                                                 |
-| -------------------------- | ------ | ----------------------------------------------------- |
-| `infrawrench_probe`        | by id  | Numeric fields are clamped server-side                |
-| `infrawrench_slo`          | by id  | Out-of-range target or threshold is rejected          |
-| `infrawrench_status_page`  | by id  | `slug` is minted with entropy; rotation is not a plan |
-| `infrawrench_metric_alert` | by id  | Selects resources by query, so it covers future ones  |
-| `infrawrench_log_query`    | by id  | One to eight streams; alerting is opt-in              |
-| `infrawrench_custom_graph` | by id  | `source` is TypeScript — use `file()`                 |
+| Resource                    | Import    | Notes                                                 |
+| --------------------------- | --------- | ----------------------------------------------------- |
+| `infrawrench_probe`         | by id     | Numeric fields are clamped server-side                |
+| `infrawrench_slo`           | by id     | Out-of-range target or threshold is rejected          |
+| `infrawrench_dora_settings` | by org id | Org singleton; destroy is a no-op                     |
+| `infrawrench_status_page`   | by id     | `slug` is minted with entropy; rotation is not a plan |
+| `infrawrench_metric_alert`  | by id     | Selects resources by query, so it covers future ones  |
+| `infrawrench_log_query`     | by id     | One to eight streams; alerting is opt-in              |
+| `infrawrench_custom_graph`  | by id     | `source` is TypeScript — use `file()`                 |
+
+### Service catalog
+
+| Resource                | Import        | Notes                                                      |
+| ----------------------- | ------------- | ---------------------------------------------------------- |
+| `infrawrench_service`   | by id or slug | Membership by rules; hand-picked members stay in the app   |
+| `infrawrench_scorecard` | by id         | Levels lowest first; check params are typed per check type |
 
 ### Lifecycle governance
 
-| Resource                                  | Import        | Notes                                                        |
-| ----------------------------------------- | ------------- | ------------------------------------------------------------ |
-| `infrawrench_schedule`                    | by id         | Resource and account are create-only                         |
-| `infrawrench_change_freeze`               | by id         | `starts_at` is Optional and Computed; ending is an action    |
-| `infrawrench_drift_alert_settings`        | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_expiry_alert_settings`       | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_extended_support_settings`   | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_posture_alert_settings`      | by org id     | Org singleton; destroy is a no-op                            |
-| `infrawrench_session_recording_settings`  | by org id     | Org singleton; destroy deliberately leaves it running        |
-| `infrawrench_network_flow_settings`       | by org id     | Org singleton; destroy turns collection **off**              |
-| `infrawrench_kubernetes_network_settings` | by account id | One per Kubernetes account; destroy clears the billed source |
+| Resource                                   | Import                        | Notes                                                        |
+| ------------------------------------------ | ----------------------------- | ------------------------------------------------------------ |
+| `infrawrench_schedule`                     | by id                         | Resource and account are create-only                         |
+| `infrawrench_change_freeze`                | by id                         | `starts_at` is Optional and Computed; ending is an action    |
+| `infrawrench_drift_alert_settings`         | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_expiry_alert_settings`        | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_extended_support_settings`    | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_posture_alert_settings`       | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_vulnerability_alert_settings` | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_compliance_control`           | `<framework_id>/<control_id>` | Destroy resets the control to applicable and unowned         |
+| `infrawrench_compliance_pack_schedule`     | by id                         | Scheduled evidence pack; at least one destination            |
+| `infrawrench_session_recording_settings`   | by org id                     | Org singleton; destroy deliberately leaves it running        |
+| `infrawrench_network_flow_settings`        | by org id                     | Org singleton; destroy turns collection **off**              |
+| `infrawrench_kubernetes_network_settings`  | by account id                 | One per Kubernetes account; destroy clears the billed source |
 
 ### Accounts and access
 
@@ -730,20 +744,21 @@ secret store that consumes it rather than into an output.
 
 ### Alert delivery
 
-| Resource                               | Import        | Notes                                                       |
-| -------------------------------------- | ------------- | ----------------------------------------------------------- |
-| `infrawrench_alert_routing`            | by org id     | The whole ordered table; destroy restores the defaults      |
-| `infrawrench_on_call_schedule`         | by id         | Rotation order is the list order; covers stay in the app    |
-| `infrawrench_slack_channel`            | by id         | The workspace connection is an OAuth flow, read not written |
-| `infrawrench_msteams_webhook`          | by id         | URL is write-only and Microsoft-host-restricted             |
-| `infrawrench_alert_email_settings`     | by org id     | Org singleton; destroy restores `member-domains`            |
-| `infrawrench_digest_settings`          | by org id     | Org singleton; destinations come from the routing table     |
-| `infrawrench_digest_recipient`         | by id         | Address is normalized server-side                           |
-| `infrawrench_paging_provider_settings` | by account id | Inbound mirroring; the webhook secret is write-only         |
-| `infrawrench_jira_integration`         | by org id     | Org singleton; omitting the token keeps the stored one      |
-| `infrawrench_linear_integration`       | by org id     | Org singleton; omitting the key keeps the stored one        |
-| `infrawrench_github_issue_settings`    | by org id     | Org singleton; destroy restores the defaults (filing off)   |
-| `infrawrench_pr_check_repository`      | by id         | One per repository; destroy turns its checks off            |
+| Resource                               | Import        | Notes                                                           |
+| -------------------------------------- | ------------- | --------------------------------------------------------------- |
+| `infrawrench_alert_routing`            | by org id     | The whole ordered table; destroy restores the defaults          |
+| `infrawrench_on_call_schedule`         | by id         | Rotation order is the list order; covers stay in the app        |
+| `infrawrench_slack_channel`            | by id         | The workspace connection is an OAuth flow, read not written     |
+| `infrawrench_msteams_webhook`          | by id         | URL is write-only and Microsoft-host-restricted                 |
+| `infrawrench_event_subscription`       | by id         | Signed webhook or EventBridge/Pub/Sub; `secret_version` rerolls |
+| `infrawrench_alert_email_settings`     | by org id     | Org singleton; destroy restores `member-domains`                |
+| `infrawrench_digest_settings`          | by org id     | Org singleton; destinations come from the routing table         |
+| `infrawrench_digest_recipient`         | by id         | Address is normalized server-side                               |
+| `infrawrench_paging_provider_settings` | by account id | Inbound mirroring; the webhook secret is write-only             |
+| `infrawrench_jira_integration`         | by org id     | Org singleton; omitting the token keeps the stored one          |
+| `infrawrench_linear_integration`       | by org id     | Org singleton; omitting the key keeps the stored one            |
+| `infrawrench_github_issue_settings`    | by org id     | Org singleton; destroy restores the defaults (filing off)       |
+| `infrawrench_pr_check_repository`      | by id         | One per repository; destroy turns its checks off                |
 
 ### Data sources
 
@@ -756,6 +771,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_permissions`         | The catalogue roles and API keys grant from          |
 | `infrawrench_slack_installations` | Resolve the workspace a channel belongs to           |
 | `infrawrench_members`             | Resolve member ids for alert email recipients        |
+| `infrawrench_service`             | One service by id or slug, with its member count     |
 
 ## Testing
 

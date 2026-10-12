@@ -45,6 +45,10 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in
   // with the session gateway's GKE Workload Identity.
   new RegExp(`${ORG}/chat(/|$)`),
+  // The org grade reads the posture and backup feeds, which bind plugin
+  // functions the edge registry only stubs: every attempt there would replay.
+  // Its history (`/scorecards/org/history`) is Postgres only and stays.
+  new RegExp(`${ORG}/scorecards/org$`),
   new RegExp(
     `${ORG}/(` +
       [
@@ -104,6 +108,8 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Git push webhook: runs the workflow.
   /^\/api\/workflows\/git\//,
   new RegExp(`${ORG}/(workflows|accounts|ssh-keys|resources)(/|$)`),
+  // Removing a seat calls the plugin's removeSeat.
+  new RegExp(`${ORG}/seats/[^/]+/remove$`),
   // Registering a provider webhook and acknowledging a provider incident both
   // call plugin code, the first after it has already written a settings row.
   new RegExp(`${ORG}/(paging-providers|paging-incidents)(/|$)`),
@@ -111,10 +117,20 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // grant, both plugin code; a request resolves the requester's principal
   // through the plugin too. Policy writes do not, but share the prefix.
   new RegExp(`${ORG}/jit-access(/|$)`),
+  // Event subscriptions: saving vets the webhook host through the Node egress
+  // guard, and Send test event delivers inline, through plugin code for a
+  // publish destination. Reads (the list, the delivery log) stay on the edge.
+  new RegExp(`${ORG}/event-subscriptions(/|$)`),
+  // Leaked credentials: scanning, rotating and closing a finding upstream all
+  // call plugin code (the scanner, the issuer's reroll). Reads stay on the edge.
+  new RegExp(`${ORG}/leaked-secrets/(scan|[^/]+/(rotate|mark-rotated|dismiss|reopen))$`),
   // A pull request check preview prices Terraform through plugin estimators
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.
   new RegExp(`${ORG}/pr-checks/preview$`),
+  // Evaluating a scorecard runs the org-wide posture, orphan and backup scans,
+  // which bind plugin remediation functions the edge registry only stubs.
+  new RegExp(`${ORG}/scorecards/[^/]+/evaluate$`),
 ];
 
 const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);

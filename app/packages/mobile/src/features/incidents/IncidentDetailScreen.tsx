@@ -47,6 +47,7 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
   }
 
   const { incident } = detail.data;
+  const services = detail.data.affectedServices ?? [];
   const failed = incident.artifacts.filter((a) => isIncidentArtifactFailure(a.status));
 
   return (
@@ -65,6 +66,11 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
           {incident.declaredByName ? ` · ${incident.declaredByName}` : ""}
         </Text>
         {incident.summary ? <Text style={styles.body}>{incident.summary}</Text> : null}
+        {services.length > 0 ? (
+          <Text style={styles.subtitle}>
+            Affected services: {services.map((service) => service.name).join(", ")}
+          </Text>
+        ) : null}
       </View>
 
       {failed.length > 0 && (

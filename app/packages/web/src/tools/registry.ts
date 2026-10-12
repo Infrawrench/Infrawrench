@@ -22,6 +22,7 @@ import { rightsizingTools } from "./rightsizing";
 import { githubIssueTools } from "./github-issues";
 import { savingsTools } from "./savings";
 import { extendedSupportTools } from "./extended-support";
+import { seatTools } from "./seats";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
 import { aiAttributionTools } from "./ai-attribution";
@@ -33,6 +34,7 @@ import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
+import { vulnerabilityTools } from "./vulnerabilities";
 import type { ToolDefinition } from "./types";
 
 let cached: ToolDefinition[] | null = null;
@@ -55,6 +57,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...githubIssueTools(),
     ...savingsTools(),
     ...extendedSupportTools(),
+    ...seatTools(),
     ...carbonTools(),
     ...priceCatalogTools(),
     ...aiAttributionTools(),
@@ -66,6 +69,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...linuxAppTools(),
+    ...vulnerabilityTools(),
     ...(await perPluginCreateTools()),
   ];
   cached = tools;

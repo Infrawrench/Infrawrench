@@ -20,6 +20,10 @@ export const ContainerAppJobResourceType = rt({
     f("replicaTimeout", "Replica Timeout (s)", { kind: "number", required: false }),
     f("replicaRetryLimit", "Retry Limit", { kind: "number", required: false }),
     f("workloadProfileName", "Workload Profile", { required: false }),
+    f("images", "Images", {
+      required: false,
+      description: "Every image the job's template runs, init containers included",
+    }),
     f("containerRegistry", "Container Registry", { required: false }),
     f("managedIdentities", "Managed Identities", { required: false }),
   ],
@@ -46,5 +50,7 @@ export const ContainerAppJobResourceType = rt({
     },
   ],
   iconKey: "batch",
+  // A job's executions come and go; its template images are what it deploys.
+  runningImages: { imageKeys: ["images"] },
   supportsMetrics: true,
 });

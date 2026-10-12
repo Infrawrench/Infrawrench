@@ -202,6 +202,13 @@ export interface PluginManifest {
    */
   credits?: CreditsCapabilityDeclaration;
   /**
+   * If present, this plugin can list the paid per-person seats on an account
+   * (with the evidence of when each was last used) via `fetchSeats`, and the
+   * host schedules a daily collection pass that feeds the Seats findings
+   * (inactive, duplicated across tools, a cheaper tier). See `seats.ts`.
+   */
+  seats?: SeatsCapabilityDeclaration;
+  /**
    * If present, this plugin can report how close the account is to the limits
    * its provider enforces, via `fetchQuotas`, and the host schedules a
    * low-frequency collection pass that turns the resulting series into a
@@ -213,6 +220,14 @@ export interface PluginManifest {
    * absence must render as *nothing* rather than as zero.
    */
   quotas?: QuotaCapabilityDeclaration;
+  /**
+   * If present, this plugin can read the provider's own vulnerability scan
+   * results (CVEs in images, functions, hosts or repositories) via
+   * `listVulnerabilityFindings`, and the host schedules a low-frequency
+   * collection pass and joins the findings to synced resources that run the
+   * affected images. See `vulnerabilities.ts`.
+   */
+  vulnerabilities?: VulnerabilityCapabilityDeclaration;
   /**
    * If present, this plugin can return *aggregated* network flows (priced
    * source→destination pairs) for an account via `fetchNetworkFlows`, and the
@@ -306,6 +321,18 @@ export interface PluginManifest {
    * the host owns approvals and expiry, the plugin owns the provider calls.
    */
   jitAccess?: JitAccessDeclaration;
+  /**
+   * If present, this plugin finds secrets committed to code (GitHub secret
+   * scanning, GitLab secret detection) and the host ingests its findings into
+   * the org's leaked credentials list. See `leaked-secrets.ts`.
+   */
+  secretScanning?: SecretScanningDeclaration;
+  /**
+   * The tokens this plugin issues, so the host can attribute a leaked secret
+   * found by any scanner to this plugin's accounts and stored secrets. See
+   * `leaked-secrets.ts`; the host never sends a stored secret anywhere.
+   */
+  tokenFormats?: TokenFormatDeclaration[];
 }
 
 export interface RateLimitDeclaration {
@@ -587,6 +614,23 @@ export interface PluginClient {
    */
   fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
   /**
+   * List every paid seat on the account. Only called when the manifest
+   * declares `seats`, from a daily background pass that stores the result.
+   *
+   * Must **throw rather than return a partial list**: the host replaces its
+   * stored inventory with what this returns, and a seat that disappears is
+   * read as removed (and, if it was idle, credited as a realized saving).
+   * Free members (unpaid admins, guests) are left out, not returned at $0.
+   * See `seats.ts` for the activity-evidence rules.
+   */
+  fetchSeats?(accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]>;
+  /**
+   * Remove (or unassign) one seat. Only offered when the manifest declares
+   * `seats.removal` and the seat's `removable` is true. Throw a user-facing
+   * error when the provider refuses (a seat granted through a team, say).
+   */
+  removeSeat?(accountId: string, seat: SeatRef): Promise<SeatRemovalResult>;
+  /**
    * Read how close this account is to the limits the provider enforces. Only
    * called when the manifest declares `quotas`. Called on a low-frequency
    * background pass (a few times a day), so it should be a bounded, named set
@@ -617,6 +661,23 @@ export interface PluginClient {
    * can stop retrying on a tight loop and show the fix.
    */
   fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
+  /**
+   * Read the provider scanner's current open vulnerability findings for this
+   * account. Only called when the manifest declares `vulnerabilities`, on a
+   * low-frequency background pass (a few times a day).
+   *
+   * The host *replaces* the account's stored findings with what this returns,
+   * so throw rather than return a short list when part of the read failed: a
+   * partial answer reads as CVEs having been fixed. Return only open (active)
+   * findings; closed or suppressed-at-the-provider ones are not returned.
+   * Bound the walk (pages, repositories, images) and declare
+   * `vulnerabilities.partial` when the bound can bite.
+   *
+   * Throw {@link VulnerabilityAccessError} when scanning is not enabled or the
+   * credential lacks the permission, so the host can show the fix instead of
+   * an empty, clean-looking list.
+   */
+  listVulnerabilityFindings?(accountId: string): Promise<VulnerabilityFinding[]>;
   /**
    * Options for one target field of `manifest.warehouseSink`, given the values
    * chosen so far. Read-only metadata calls; must not resume compute where the
@@ -896,6 +957,17 @@ export interface PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<void>;
+  /**
+   * Secrets this scanner account found committed to code. Required when the
+   * manifest declares `secretScanning`. See `leaked-secrets.ts`.
+   */
+  listLeakedSecrets?(query: LeakedSecretQuery): Promise<LeakedSecretPage>;
+  /**
+   * Close one finding upstream (`ref` from `listLeakedSecrets`). Required when
+   * `secretScanning.canResolve` is set. Resolving an already resolved finding
+   * must succeed.
+   */
+  resolveLeakedSecret?(ref: string, resolution: LeakedSecretResolution): Promise<void>;
   /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
@@ -1296,6 +1368,21 @@ export interface Plugin extends OAuthPluginHooks {
    */
   remediationCommands?(finding: RemediationFinding): RemediationCommand[];
   /**
+   * Turn synced deploy/run rows into deploy events for the host's DORA
+   * metrics. Pure work over stored fields (no credentials, no API calls), so
+   * it lives on the Plugin. Hosts call it through `resolveDeployEvent`, which
+   * catches and validates. See `deploy-events.ts`.
+   */
+  deployEvents?: DeployEventsCapability;
+  /**
+   * Ready-to-run commands for a seat finding (inactive, duplicate, downgrade):
+   * the provider CLI or `curl` against its admin API, filled from the stored
+   * seat and its `context`, tokens as placeholders. Same rules and the same
+   * defensive caller (`resolveSeatRemediationCommands`) as
+   * `remediationCommands`.
+   */
+  seatRemediationCommands?(finding: SeatRemediationFinding): RemediationCommand[];
+  /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
    * Plugin (not the client) because it needs no credentials: the feed is
@@ -1360,8 +1447,20 @@ export interface Plugin extends OAuthPluginHooks {
 }
 
 // Forward declarations: defined in their own modules but used here
+import type {
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
+  SecretScanningDeclaration,
+  TokenFormatDeclaration,
+} from "./leaked-secrets.js";
 import type { OAuthDeclaration, OAuthHostServices, OAuthPluginHooks } from "./oauth.js";
-import type { RemediationCommand, RemediationFinding } from "./remediation.js";
+import type {
+  RemediationCommand,
+  RemediationFinding,
+  SeatRemediationFinding,
+} from "./remediation.js";
+import type { DeployEventsCapability } from "./deploy-events.js";
 import type {
   BusinessMetricSourceDeclaration,
   BusinessMetricSourceDryRun,
@@ -1396,6 +1495,10 @@ import type {
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
 import type {
+  VulnerabilityCapabilityDeclaration,
+  VulnerabilityFinding,
+} from "./vulnerabilities.js";
+import type {
   WarehouseLoadRequest,
   WarehouseLoadResult,
   WarehouseSetupGuide,
@@ -1407,6 +1510,13 @@ import type {
   PriceCatalogResult,
 } from "./price-catalog.js";
 import type { ExtendedSupportCharge } from "./extended-support.js";
+import type {
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
+  SeatsCapabilityDeclaration,
+} from "./seats.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

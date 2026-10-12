@@ -8,6 +8,8 @@ Every alert Infrawrench raises — a sync failure, a budget crossing, a cost ano
 
 > **Cloud-managed.** Rules live with your organization in the cloud, and the cloud's background poller applies them as alerts are raised. You can edit them from the web app or from the desktop app's Settings tab while signed in to your organization — the desktop app edits the same cloud configuration, it does not keep a local copy. There is no rules editor on mobile; the mobile app carries your personal push mutes instead.
 
+Routing is about people. To send the same events to your own systems as versioned JSON (a SIEM, an event bus, a ticketing tool), use [event subscriptions](./event-subscriptions.md) instead; they are independent of these rules.
+
 ## The shape of a rule
 
 A rule has four parts:
@@ -32,6 +34,8 @@ A rule can also be a **tee** rather than a branch: untick _Stop here_ and evalua
 
 The **GitHub issues** destination files the alert's finding as an issue in the repository your [GitHub issue settings](./github-issues.md) route it to, one issue per finding. Only alerts that carry a finding (savings findings, anomalies, idle commitments) are filed; for other triggers it is skipped. The **Savings findings** trigger, one alert per new orphaned or oversized resource, is left out of the default rule and muted on phones, so it only goes where a rule sends it.
 
+The **Leaked credentials** trigger fires when a secret scanner finds a credential committed to code (see [Leaked credentials](./leaked-credentials.md)). It is **critical** by default, is part of the default rule, and is not muted on phones, so a new leak pages like any critical alert. A scan sends one alert covering everything new it found, and carries the matched account and the token's provider when there is exactly one, so **Account** and **Provider** conditions can route it to the team that owns the key.
+
 ### PagerDuty and incident.io
 
 With a [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md) account connected, the **Send to** list gains a picker for each: choose a PagerDuty service or an incident.io HTTP alert source by name, and matching alerts open an alert there. You never paste a routing key; Infrawrench looks it up through the account.
@@ -51,16 +55,16 @@ A send that fails (the provider is down, rate limited) is retried in the backgro
 
 ## Conditions
 
-| Condition         | Matches on                                                                                                         |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Trigger**       | Which kind of alert it is — sync failures, budgets, anomalies, drift, pages, probes, declared incidents, and so on |
-| **Severity**      | `info`, `warning` or `critical`, ordered, so "at least warning" is a floor rather than an equality                 |
-| **Account**       | The account the alert is about                                                                                     |
-| **Provider**      | The plugin — route AWS incidents to the team that runs on AWS                                                      |
-| **Resource type** | The kind of thing, for alerts scoped to one                                                                        |
-| **Amount**        | Money at stake, for budgets and cost anomalies                                                                     |
-| **Name**          | The alert's natural key — an anomaly's service, a probe's name, a metric rule's name                               |
-| **Message text**  | A substring of the alert's title or body, for anything the fields above do not cover                               |
+| Condition         | Matches on                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Trigger**       | Which kind of alert it is — sync failures, budgets, anomalies, drift, pages, probes, declared incidents, leaked credentials, and so on |
+| **Severity**      | `info`, `warning` or `critical`, ordered, so "at least warning" is a floor rather than an equality                                     |
+| **Account**       | The account the alert is about                                                                                                         |
+| **Provider**      | The plugin — route AWS incidents to the team that runs on AWS                                                                          |
+| **Resource type** | The kind of thing, for alerts scoped to one                                                                                            |
+| **Amount**        | Money at stake, for budgets and cost anomalies                                                                                         |
+| **Name**          | The alert's natural key — an anomaly's service, a probe's name, a metric rule's name                                                   |
+| **Message text**  | A substring of the alert's title or body, for anything the fields above do not cover                                                   |
 
 One rule worth knowing: **a condition about a fact the alert does not carry never matches**, in either direction. An account condition does not match an alert that is not about an account — not with `is one of`, and not with `is not one of` either. A provider status incident spans your whole organization, so it will not be caught by a rule that is plainly about one account. Rules that want the organization-wide alerts simply leave the account condition off.
 

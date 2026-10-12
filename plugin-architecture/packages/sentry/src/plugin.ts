@@ -47,6 +47,23 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "auth-token",
+      label: "Sentry auth token",
+      scannerTypes: [
+        "sentry_personal_token",
+        "sentry_organization_token",
+        "sentry_user_app_auth_token",
+      ],
+      prefixes: ["sntrys_", "sntryu_"],
+      credentialFields: ["authToken"],
+      manageUrl: "https://sentry.io/settings/account/api/auth-tokens/",
+    },
+  ],
   credentialFields: [
     {
       key: "region",

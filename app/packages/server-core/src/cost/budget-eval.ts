@@ -65,6 +65,8 @@ import {
 } from "../workflows/budget-triggers";
 import { isoDay, addDays } from "./dates";
 import { orgAppUrl } from "../app-url";
+import { publishEvent } from "../events/publish";
+import { BUDGET_THRESHOLD_CROSSED } from "@infrawrench/client-core";
 
 type BudgetRow = typeof budgets.$inferSelect;
 
@@ -926,6 +928,33 @@ export async function evaluateBudgetsForOrg(
         // Routing is independent of the org's Twilio settings: dedupe already
         // happened via the budget_alert_events insert above.
         const url = orgAppUrl(organizationId, `budgets/${budget.id}`);
+        // Once per (budget, period, threshold): the `budget_alert_events`
+        // insert above already won that race, and the key holds it per
+        // subscription too.
+        await publishEvent(
+          BUDGET_THRESHOLD_CROSSED,
+          organizationId,
+          {
+            budgetId: budget.id,
+            budgetName: budget.name,
+            periodKey: status.periodKey,
+            periodStart: status.periodStart,
+            periodEnd: status.periodEnd,
+            thresholdType: threshold.type === "forecast" ? "forecast" : "actual",
+            thresholdPercent: threshold.percent,
+            measure: usage ? "usage" : "spend",
+            observed,
+            limit,
+            currency: usage ? null : budget.currency,
+          },
+          {
+            title: `Budget "${budget.name}" at ${threshold.percent}%`,
+            severity: threshold.percent >= 100 ? "critical" : "warning",
+            url,
+            idempotencyKey: `budget:${inserted.id}`,
+            privateCostObject: Boolean(budget.visibilityUserId),
+          },
+        );
         const routed = await routeAlert(
           {
             costVisibilityUserId: budget.visibilityUserId ?? null,

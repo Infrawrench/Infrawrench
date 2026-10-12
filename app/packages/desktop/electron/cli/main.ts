@@ -66,12 +66,15 @@ import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
 import { cmdPrCheck } from "./commands/pr-check";
 import { cmdExtendedSupport } from "./commands/extended-support";
+import { cmdSeats } from "./commands/seats";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
+import { cmdVulns, cmdVulnsDismiss, cmdVulnsRestore, cmdVulnsSources } from "./commands/vulns";
+import { cmdCompliance, cmdComplianceExport, cmdComplianceFrameworks } from "./commands/compliance";
 import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
 import { cmdDiff } from "./commands/diff";
@@ -90,8 +93,13 @@ import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
+import { cmdServices } from "./commands/services";
+import { cmdScorecards } from "./commands/scorecards";
+import { cmdDora } from "./commands/dora";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
+import { cmdWebhooks } from "./commands/webhooks";
+import { cmdLeaks } from "./commands/leaks";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
@@ -271,6 +279,11 @@ COMMANDS
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
+  seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a
+                      dearer tier, with remediation commands (cloud only)
+  seats all           every seat, its last activity and how that was determined
+  seats remove <id>   remove a flagged seat through its provider   [-y]
+  seats refresh       re-collect seats now
   carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
   k8s-network [cluster]
@@ -289,6 +302,33 @@ COMMANDS
   posture dismiss     accept a finding as a known risk; it leaves the list and the daily alerts
                       <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
   posture restore     put a dismissed finding back   <resourceId> <ruleId>
+  leaks               leaked credentials: secrets GitHub/GitLab secret scanning found in code,
+                      what each matched (an account, a stored secret) and the scanners' state
+                      [--status open|rotated|dismissed|resolved|all] [--account <id|name>]
+  leaks scan          scan every scanner account now
+  leaks rotate <id>   reissue the matched secret, or store a replacement read from stdin
+                      [--value-stdin] (account/manual leaks: prints where to rotate instead)
+  leaks mark-rotated <id>
+                      record a rotation done at the provider
+  leaks dismiss <id>  accept it   --reason false-positive|wont-fix|used-in-tests [--comment <c>]
+  leaks reopen <id>   undo a dismissal or a manual rotation
+                      (rotate, mark-rotated and dismiss also close the finding on the scanner;
+                      --keep-upstream-open leaves it open; cloud only)
+  vulns [list]        known vulnerabilities (CVEs) from your providers' scanners, joined to what
+                      runs them, worst first   [--severity critical,high] [--running|--not-running]
+                      [--fix-available] [--kev] [--plugin <id>] [-a <account>] [--search <text>]
+                      [--service <slug>] [--resource <id>] [--include-dismissed] [--limit 50]
+                      (cloud only; a service column names the owning services)
+  vulns dismiss       accept an advisory as a known risk, for one artifact or everywhere ("*")
+                      <advisoryId> <artifactKey|"*"> [--reason <text>]   (keys from vulns --json)
+  vulns restore       put a dismissed vulnerability back   <advisoryId> <artifactKey|"*">
+  vulns sources       scanner accounts, when each last collected, errors and help links
+  compliance [status] controls of a compliance framework with evidence, gaps & owners, plus the
+                      evidence sources behind them   [--framework soc2|iso27001] [--gaps]
+                      [--from YYYY-MM-DD] [--to YYYY-MM-DD]  (default: last 90 days; cloud only)
+  compliance export   save the auditor's evidence pack as a ZIP   [--framework ...] [--from] [--to]
+                      [--out <path>]  (default file: <framework>-evidence-<from>-to-<to>.zip)
+  compliance frameworks   the frameworks Infrawrench can report on
   dns                 every DNS zone & record across your providers, with dangling targets
                       (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
@@ -331,6 +371,19 @@ COMMANDS
                       live status, 24h uptime & last latency (give an id/name for its chart)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
                       share and as time) & burn rate (give an id/name for its burn rates & charts)
+  services [list]     services (resources grouped across providers): tier, owners, member count
+                      & level per scorecard   [--tier 1-4]
+  services show <id|slug|name>
+                      one service: owners, links, on-call now & next, 30-day cost, SLOs,
+                      runbooks, findings, members, recent changes & why each scorecard check
+                      failed (--json: { service, members, excluded, summary, scorecards, history })
+  scorecards [id|name]  the org grade (seven pillars, 90-day trend) above every service ×
+                      scorecard, score % and level per cell (give an id/name for its checks,
+                      weights, levels & each service's score with a 90-day trend)
+  dora [changes|restores|settings]
+                      DORA metrics for production: deploy frequency, lead time, change failure
+                      rate & time to restore, with bands, the previous period & a trend
+                      [--last 30d] [--scope <dim>=<value>] [--group-by <dim>] [--failed]
   status-pages [name] public status pages built from your probes: what each publishes and the
                       URL it is live at (give a name/id for its components)
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
@@ -339,6 +392,9 @@ COMMANDS
   paging [--all]      incidents mirrored from PagerDuty / incident.io (open ones; --all adds
                       resolved). paging ack|resolve <ref> writes back upstream as you;
                       paging events lists the alerts Infrawrench opened upstream
+  webhooks            event subscriptions (signed webhooks, EventBridge, Pub/Sub) and their
+       [list|test|    health; webhooks test <id|name> sends a test event now; webhooks
+        deliveries]   deliveries [id|name] is the delivery log
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -381,13 +437,27 @@ FLAGS
   --kind <k>          changes filter: created | updated | deleted
   -b, --against <x>   diff: the second account (-a supplies the first)
   --all               diff: compare ids, addresses & timestamps too; paging: include resolved
-  --resource <id>     focus one resource (graph) / filter to it (changes)
+  --resource <id>     focus one resource (graph) / filter to it (changes, vulns)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
+  --severity <list>   vulns: comma-separated critical, high, medium, low, unscored
+  --running / --not-running   vulns: only findings whose artifact is (or is not) running
+  --fix-available     vulns: only findings the scanner names a fixed version for
+  --kev               vulns: only advisories in the CISA Known Exploited Vulnerabilities catalog
+  --search <text>     vulns: substring over advisory, aliases, package, artifact & title
+  --include-dismissed vulns: also list the findings dismissed as accepted risks
+  --service <x>       vulns: only findings running on a resource of this service (id, slug or name)
+  --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
+  --gaps              compliance: only controls without evidence, with the reasons why
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
                       costs push: json (default), csv or focus
-  --reason <text>     posture dismiss: why the finding is an accepted risk; costs --anomalies
-                      feedback: the reason category (planned_launch, migration, …)
+  --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
+                      feedback: the reason category (planned_launch, migration, …); leaks
+                      dismiss: false-positive, wont-fix or used-in-tests
+  --status <s>        leaks: open (default), rotated, dismissed, resolved or all; jit: queue filter
+  --comment <text>    leaks dismiss: a note kept with the dismissal
+  --value-stdin       leaks rotate: read the replacement value from stdin (hidden at a terminal)
+  --keep-upstream-open  leaks rotate|mark-rotated|dismiss: leave the finding open on the scanner
   --expected / --unexpected / --clear   costs --anomalies feedback: the verdict, or withdraw it
   --note <text>       costs --anomalies feedback: context for the verdict (max 500 chars)
   --explain           costs --anomalies feedback: also publish --note as the explanation
@@ -425,7 +495,8 @@ FLAGS
   --replace/--append  costs push into a custom source: what to do when the dates overlap an
                       earlier upload (required then)
   --out <path>        config export / export --format focus: write here instead of stdout;
-                      reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here)
+                      reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here);
+                      compliance export: the ZIP's path
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
@@ -910,6 +981,9 @@ export async function runCli(): Promise<void> {
       case "extended-support":
         await cmdExtendedSupport(ctx);
         break;
+      case "seats":
+        await cmdSeats(ctx, rest, parsed.bulk.yes);
+        break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);
         break;
@@ -941,6 +1015,37 @@ export async function runCli(): Promise<void> {
         if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
         else if (rest[0] === "restore") await cmdPostureRestore(ctx, rest.slice(1));
         else await cmdPosture(ctx);
+        break;
+      case "leaks":
+        // Leaked credentials: the Posture tab's "Leaked credentials" category.
+        await cmdLeaks(ctx, rest, parsed.leaks);
+        break;
+      case "vulns":
+      case "vulnerabilities":
+        if (rest[0] === "dismiss") await cmdVulnsDismiss(ctx, rest.slice(1));
+        else if (rest[0] === "restore") await cmdVulnsRestore(ctx, rest.slice(1));
+        else if (rest[0] === "sources") await cmdVulnsSources(ctx);
+        else if (rest[0] === undefined || rest[0] === "list") {
+          await cmdVulns(ctx, parsed.vulns, parsed.range);
+        } else {
+          throw new CliError(
+            `Unknown "${rest[0]}". \`vulns\` takes list, dismiss, restore or sources.`,
+            2,
+          );
+        }
+        break;
+      case "compliance":
+        if (rest[0] === "export") {
+          await cmdComplianceExport(ctx, parsed.compliance, parsed.range, parsed.config);
+        } else if (rest[0] === "frameworks") await cmdComplianceFrameworks(ctx);
+        else if (rest[0] === undefined || rest[0] === "status") {
+          await cmdCompliance(ctx, parsed.compliance, parsed.range);
+        } else {
+          throw new CliError(
+            `Unknown "${rest[0]}". \`compliance\` takes status, export or frameworks.`,
+            2,
+          );
+        }
         break;
       case "dns":
         await cmdDns(ctx);
@@ -1014,9 +1119,25 @@ export async function runCli(): Promise<void> {
         // `infrawrench slos <id|name>` shows one SLO's burn rates and charts.
         await cmdSlos(ctx, rest[0]);
         break;
+      case "services":
+        // `services [list] [--tier n]`, `services show <id|slug|name>`.
+        await cmdServices(ctx, rest, parsed.tier);
+        break;
+      case "scorecards":
+        // `infrawrench scorecards <id|name>` shows one scorecard's checks and results.
+        await cmdScorecards(ctx, rest.join(" ") || undefined);
+        break;
+      case "dora":
+        // `infrawrench dora [changes|restores|settings]`: delivery metrics.
+        await cmdDora(ctx, rest[0], parsed.range, parsed.dora);
+        break;
       case "paging":
         // Incidents mirrored from paging providers: the third "incident".
         await cmdPaging(ctx, rest, parsed.diff.all);
+        break;
+      case "webhooks":
+        // Event subscriptions: where the org's events are delivered, and how that is going.
+        await cmdWebhooks(ctx, rest);
         break;
       case "declared-incidents":
         // Incidents *we* declared (incident mode), as opposed to `incidents`

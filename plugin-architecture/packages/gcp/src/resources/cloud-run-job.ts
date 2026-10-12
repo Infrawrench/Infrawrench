@@ -11,6 +11,11 @@ export const CloudRunJobResourceType = rt({
     f("image", "Container Image", {
       description: "Container image every task runs, e.g. us-docker.pkg.dev/project/repo/image:tag",
     }),
+    f("containerImages", "Container Images", {
+      required: false,
+      editable: false,
+      description: "Every container image in the task template, sidecars included",
+    }),
     f("taskCount", "Tasks", {
       kind: "number",
       required: false,
@@ -46,6 +51,9 @@ export const CloudRunJobResourceType = rt({
   dependsOn: [
     { fieldKey: "serviceAccount", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
+  // A job's instances are short-lived executions; the job itself is what keeps
+  // pulling the image, so every synced job counts as running it.
+  runningImages: { imageKeys: ["containerImages", "image"] },
   supportsCreate: true,
   // Edit = image, task count, parallelism, retries and timeout; jobs.patch
   // replaces the whole job, so the handler reads it first and changes only these.

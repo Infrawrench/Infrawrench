@@ -178,6 +178,12 @@ export const pluginManifestSchema = z.object({
       kinds: z.array(z.enum(["reservation", "savings_plan", "committed_use"])).min(1),
     })
     .optional(),
+  seats: z
+    .object({
+      products: z.array(z.string().min(1)).min(1),
+      removal: z.boolean().optional(),
+    })
+    .optional(),
   credits: z
     .object({
       label: z.string().optional(),
@@ -202,6 +208,21 @@ export const pluginManifestSchema = z.object({
       /** The reported set is representative, not every quota the provider enforces. */
       partial: z.boolean().optional(),
       requiresElevatedCredential: z.boolean().optional(),
+    })
+    .optional(),
+  vulnerabilities: z
+    .object({
+      label: z.string().min(1),
+      // Rendered as a link the host opens; pinned to https like `increaseUrl`.
+      consoleUrl: z
+        .string()
+        .url()
+        .refine((u) => u.startsWith("https://"), {
+          message: "consoleUrl must be an https:// URL",
+        })
+        .optional(),
+      requiresElevatedCredential: z.boolean().optional(),
+      partial: z.boolean().optional(),
     })
     .optional(),
   warehouseSink: z
@@ -308,6 +329,26 @@ export const pluginManifestSchema = z.object({
       providerEnforcedExpiry: z.boolean(),
       principalPicker: z.boolean(),
     })
+    .optional(),
+  secretScanning: z
+    .object({
+      label: z.string().min(1),
+      description: z.string().optional(),
+      canResolve: z.boolean(),
+      returnsSecretValue: z.boolean(),
+    })
+    .optional(),
+  tokenFormats: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        scannerTypes: z.array(z.string().min(1)),
+        prefixes: z.array(z.string().min(4)).optional(),
+        credentialFields: z.array(z.string().min(1)).optional(),
+        manageUrl: z.string().url().optional(),
+      }),
+    )
     .optional(),
   statusFeed: z
     .object({

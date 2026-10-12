@@ -1,6 +1,9 @@
 export {
   TokenManager,
   jwtExpMillis,
+  staticAccessToken,
+  isApiKeyToken,
+  type AccessTokenSource,
   type TokenPair,
   type TokenStorage,
   type TokenManagerOptions,
@@ -891,6 +894,7 @@ export * from "./carbon-factors";
 export * from "./carbon";
 export * from "./expiry";
 export * from "./extended-support";
+export * from "./seats";
 export * from "./leases";
 // One time axis over every dated thing above: freezes, sleep windows,
 // deadlines, commitment terms, scheduled runs and incidents.
@@ -911,6 +915,8 @@ export * from "./probes";
 export * from "./wallboard";
 export * from "./help-links";
 export * from "./quotas";
+export * from "./vulnerabilities";
+export * from "./compliance";
 export * from "./incidents";
 // The checklist somebody wrote at 03:00, made runnable.
 export * from "./runbooks";
@@ -920,6 +926,8 @@ export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./log-tail-options";
 export * from "./alert-routing";
+export * from "./event-catalog";
+export * from "./leaked-secrets";
 // Email as an alert transport: recipients, the external-address policy.
 export * from "./alert-email";
 // Who to wake, rather than which channel to shout into.
@@ -930,6 +938,13 @@ export * from "./metric-alerts";
 // A SQL query on a schedule: what the data says, which no metric reports.
 export * from "./query-monitors";
 export * from "./slos";
+// A logical service across providers, and how ready each one is.
+export * from "./services";
+export * from "./scorecards";
+// One graded reading over the radars above, shown above the scorecard matrix.
+// Pure arithmetic only; the pillars are assembled server-side.
+export * from "./org-scorecard";
+export * from "./dora";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./remediation";
@@ -991,3 +1006,6 @@ export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./custom-costs";
 export * from "./costs-panel-tabs";
+export * from "./deep-links";
+export * from "./search";
+export * from "./resource-insight";

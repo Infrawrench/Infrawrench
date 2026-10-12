@@ -7,7 +7,8 @@ import { listOwnerOptions } from "./owners.js";
 import { GITHUB_PREFLIGHT, githubPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import { githubRemediationCommands } from "./remediation.js";
+import { githubRemediationCommands, githubSeatRemediationCommands } from "./remediation.js";
+import { COPILOT_PRODUCT } from "./seats.js";
 import { GITHUB_OAUTH, completeGitHubOAuth, validateOAuthHost } from "./oauth.js";
 
 const manifest: PluginManifest = {
@@ -62,7 +63,44 @@ const manifest: PluginManifest = {
     restatementDays: 4,
     chargeTypes: true,
   },
+  // Open Dependabot alerts across the owner's repositories, one owner-wide
+  // listing. Needs owner or security manager plus the Dependabot alerts
+  // permission, which the billing-focused token does not carry by default;
+  // bounded at 5,000 alerts. See `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "Dependabot",
+    consoleUrl:
+      "https://docs.github.com/en/code-security/dependabot/dependabot-alerts/configuring-dependabot-alerts",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
+  // Copilot seats only: organization member seats have no per-member
+  // activity in any GitHub API, so they could not be judged idle.
+  seats: { products: [COPILOT_PRODUCT], removal: true },
   preflight: GITHUB_PREFLIGHT,
+  secretScanning: {
+    label: "Secret scanning",
+    description:
+      "Reads the organization's secret scanning alerts every 30 minutes. The token needs Secret scanning alerts (read, or read and write to close alerts after a rotation) and an organization owner or security manager. Enterprise accounts have no organization-wide alert list.",
+    canResolve: true,
+    returnsSecretValue: true,
+  },
+  tokenFormats: [
+    {
+      id: "personal-access-token",
+      label: "GitHub personal access token",
+      scannerTypes: [
+        "github_personal_access_token",
+        "github_oauth_access_token",
+        "Github Personal Access Token",
+        "GithubFineGrainedPersonalAccessToken",
+        "Github OAuth Access Token",
+      ],
+      prefixes: ["github_pat_", "ghp_", "gho_"],
+      credentialFields: ["token"],
+      manageUrl: "https://github.com/settings/personal-access-tokens",
+    },
+  ],
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
   oauth: GITHUB_OAUTH,
@@ -87,5 +125,6 @@ export const plugin: Plugin = {
     }
   },
   remediationCommands: githubRemediationCommands,
+  seatRemediationCommands: githubSeatRemediationCommands,
   completeOAuthConnection: completeGitHubOAuth,
 };

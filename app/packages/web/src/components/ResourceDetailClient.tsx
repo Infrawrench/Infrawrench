@@ -36,6 +36,7 @@ import {
   ResourceOwnershipPanel,
   CloseIcon,
 } from "@infrawrench/ui";
+import { ServiceAnnotation } from "@infrawrench/ui/services";
 import type {
   ArtifactEntry,
   ChatMessage,
@@ -78,6 +79,7 @@ import {
   resourceSftpTabTarget,
   resourceAppsTabTarget,
   resourceTabTarget,
+  servicesTabTarget,
 } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
@@ -90,6 +92,7 @@ import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLeasesClient } from "@/lib/leases-client";
 import { createWebOwnershipClient } from "@/lib/ownership-client";
+import { fetchWebServicesForResource } from "@/lib/services-client";
 import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
@@ -1559,11 +1562,22 @@ export function ResourceDetailClient({
                 />
               )}
               renderOwnershipTab={() => (
-                <ResourceOwnershipPanel
-                  client={ownershipClient}
-                  resourceId={resourceId}
-                  resourceName={resourceDisplayName}
-                />
+                <>
+                  <ServiceAnnotation
+                    load={() => fetchWebServicesForResource(orgId, resourceId)}
+                    onOpenService={(serviceId) =>
+                      void navigateToWorkspaceTarget(navigate, servicesTabTarget(serviceId), {
+                        label: gt("Services"),
+                        mode: "pin",
+                      })
+                    }
+                  />
+                  <ResourceOwnershipPanel
+                    client={ownershipClient}
+                    resourceId={resourceId}
+                    resourceName={resourceDisplayName}
+                  />
+                </>
               )}
               renderBlastRadiusTab={() => (
                 <BlastRadiusPanel

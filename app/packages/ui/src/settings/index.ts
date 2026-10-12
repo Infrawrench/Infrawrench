@@ -43,3 +43,4 @@ export { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 export { BillingSection } from "./BillingSection.js";
 export { AuditLogSection } from "./AuditLogSection.js";
 export { SettingsSectionBody } from "./SettingsSectionBody.js";
+export { EventSubscriptionsSection } from "./event-subscriptions/EventSubscriptionsSection.js";

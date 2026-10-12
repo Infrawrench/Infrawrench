@@ -18,7 +18,7 @@ An account is scoped to one **organization** or one **enterprise**, and opens st
   - premium requests and AI credits
   - Codespaces compute hours
   - net spend
-- **Copilot seats**: every Business or Enterprise seat with when its user last used Copilot, in which editor, and what the seat costs. A seat with no activity for 30 days is marked **Idle** and appears in the [orphan finder](../features/orphan-finder.md). **Remove seat** sets it to cancel at the end of the billing cycle (the user keeps Copilot until then, and the seat is not billed after). **+ Create** assigns a seat to an organization member picked from a list of members who do not have one yet.
+- **Copilot seats**: every Business or Enterprise seat with when its user last used Copilot, in which editor, and what the seat costs. Idle seats are reported under **Seats** (below), against your organization's own inactivity threshold. **Remove seat** sets it to cancel at the end of the billing cycle (the user keeps Copilot until then, and the seat is not billed after). **+ Create** assigns a seat to an organization member picked from a list of members who do not have one yet.
 - **Larger runners**: GitHub-hosted larger runners with platform, machine size, image, runner group, concurrency limit and this month's spend on their SKU. Create one by picking an image, a machine size and a runner group from GitHub's own lists; change its name, maximum concurrent jobs or static IP; delete it.
 - **Self-hosted runners**: registered runners with OS, labels, status and version. An offline runner is flagged in the orphan finder; deleting one removes its registration.
 - **Actions caches**: one entry per repository with its cache count and size, and its largest caches listed. Delete a single cache from the list, or **Delete all caches** to clear the repository.
@@ -60,18 +60,20 @@ To paste a token instead, fill in three fields:
 
 **For an organization**, use a fine-grained personal access token with the organization as its resource owner, access to all repositories, and these permissions (read only is enough for everything except the actions in brackets):
 
-| Capability             | Permission                                                                 |
-| ---------------------- | -------------------------------------------------------------------------- |
-| Billing usage and cost | Organization: Administration (read)                                        |
-| Budgets                | Organization: Administration (write to create, edit and delete)            |
-| Copilot seats          | Organization: GitHub Copilot Business (write to assign and remove)         |
-| Copilot usage metrics  | Organization: Organization Copilot metrics (read)                          |
-| Larger runners         | Organization: Administration (write to create, edit and delete)            |
-| Self-hosted runners    | Organization: Self-hosted runners (write to remove)                        |
-| Actions caches         | Organization: Administration (read); Repository: Actions (write to delete) |
-| Codespaces             | Organization: Organization codespaces (write to stop and delete)           |
+| Capability             | Permission                                                                  |
+| ---------------------- | --------------------------------------------------------------------------- |
+| Billing usage and cost | Organization: Administration (read)                                         |
+| Budgets                | Organization: Administration (write to create, edit and delete)             |
+| Copilot seats          | Organization: GitHub Copilot Business (write to assign and remove)          |
+| Copilot usage metrics  | Organization: Organization Copilot metrics (read)                           |
+| Larger runners         | Organization: Administration (write to create, edit and delete)             |
+| Self-hosted runners    | Organization: Self-hosted runners (write to remove)                         |
+| Actions caches         | Organization: Administration (read); Repository: Actions (write to delete)  |
+| Codespaces             | Organization: Organization codespaces (write to stop and delete)            |
+| Secret scanning alerts | Repository: Secret scanning alerts (write to close alerts after a rotation) |
+| Dependabot alerts      | Repository: Dependabot alerts (read)                                        |
 
-A classic token works too, with `admin:org`, `manage_billing:copilot`, `repo` and `codespace`.
+A classic token works too, with `admin:org`, `manage_billing:copilot`, `repo` and `codespace` (plus `security_events` for Dependabot alerts).
 
 **For an enterprise**, use a classic token: fine-grained tokens cannot reach enterprise endpoints. It needs `manage_billing:enterprise` (billing, budgets, cost centres), `manage_billing:copilot` or `read:enterprise` (Copilot seats and metrics), and `manage_runners:enterprise` (larger runners).
 
@@ -85,6 +87,18 @@ Infrawrench already has a GitHub App for git-triggered workflows and agents. Thi
 - Enterprise billing and cost centres cannot be read by a GitHub App installed on an organization at all.
 - The App installation belongs to the web app's server, so the desktop app (and local mode) could not use it. A token works the same everywhere, which is also why the token form stays available next to Connect with GitHub.
 
+## Seats
+
+GitHub accounts report their **Copilot** seats to Seats, which flags seats nobody uses, people paying for Copilot and another AI coding tool, and adds up what removing them would save.
+
+- **What is read.** Every Copilot Business and Enterprise seat on the organization (or, for an enterprise account, across the enterprise), with the user's login, name and email where GitHub shows it. An enterprise lists one entry per organization or team that grants a user Copilot; GitHub bills the user once, so Infrawrench folds those into one seat.
+- **Activity.** GitHub's **last activity** date for Copilot, with the editor it came from. GitHub only records editor activity when the user has IDE telemetry turned on, so for a user with no activity date the last time they **authenticated** with Copilot is used instead. A seat with neither date is treated as never used once it has been held for longer than your threshold.
+- **Price.** This month's unit price for the plan's SKU from your bill when it has one; otherwise GitHub's published price, labelled as an estimate: $19 per user per month for Copilot Business and $39 for Copilot Enterprise (GitHub Docs, October 2026). A seat whose plan GitHub reports as unknown has no price.
+- **Remove.** Sets the seat to pending cancellation: the user keeps Copilot, and the seat stays billed, until the end of the billing cycle. Seats granted through a team cannot be cancelled on their own (change the team instead), and on an enterprise account seats granted by a child organization have to be cancelled in that organization; both are shown as not removable, with the reason.
+- **Permissions.** The same as Copilot seats above: Organization **GitHub Copilot Business** (read to list, write to remove) on a fine-grained token, or `manage_billing:copilot` on a classic one.
+- **GitHub organization seats are not reported.** No GitHub API gives the last activity of an organization member, so an idle member could only be guessed at.
+- Copilot is never suggested as a downgrade from Enterprise to Business: nothing GitHub reports shows which users would do without the Enterprise features.
+
 ## Cost graphs
 
 GitHub accounts feed [cost graphs & budgets](../features/cloud-costs.md) from the usage report:
@@ -96,11 +110,34 @@ GitHub accounts feed [cost graphs & budgets](../features/cloud-costs.md) from th
 
 <insert [Cost graph grouped by service for a GitHub account, showing Actions, Copilot and Codespaces stacked by day] here>
 
+## Secret scanning
+
+An organization account also reads the organization's [secret scanning](https://docs.github.com/en/code-security/secret-scanning) alerts, every 30 minutes, into [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Each leaked token is matched to the account or stored secret it belongs to, so the row can offer **Rotate** or a link to the issuing provider's key page.
+
+- **Permissions.** A fine-grained token needs the repository permission **Secret scanning alerts**: read to list alerts, read and write to close them as revoked after a rotation (or with your dismissal reason). A classic token needs `repo` or `security_events`. The token's owner must be an organization owner or a security manager, and closing an alert also needs admin on its repository.
+- **Exact matches.** GitHub returns the secret with each alert. Infrawrench fingerprints it in memory with a key specific to your organization and discards it, so a match means the stored value is byte for byte the leaked one. The secret itself is never stored.
+- **Enterprise accounts** have no organization-wide alert list in GitHub's API, so they scan nothing. Connect each organization as its own account.
+- GitHub's own tokens are declared too: a leaked personal access token is attributed to the GitHub account that signs in with it.
+
+## Vulnerability findings
+
+GitHub accounts report **open Dependabot alerts**: known advisories in the dependencies of every repository the owner has, read from one owner-wide list (`/orgs/{org}/dependabot/alerts`, or `/enterprises/{enterprise}/dependabot/alerts` for an enterprise). Each finding carries the advisory (the CVE when GitHub has one, otherwise the GHSA id, with the other as an alias), GitHub's severity and CVSS score and vector, the package and its ecosystem, the first patched version, and a link to the alert. Dismissed, fixed and auto-dismissed alerts, and withdrawn advisories, are left out.
+
+What it needs, on top of the billing permissions:
+
+- The token's user must be an **organization owner or security manager**. For an enterprise, alerts come only from the organizations where the user is one of those.
+- A fine-grained token needs the repository permission **Dependabot alerts (read)** on all repositories. A classic token needs `security_events` (for an enterprise, `security_events` or `repo`).
+- Dependabot alerts must be turned on for the repositories (organization **Settings**, **Advanced Security**). Repositories without them simply have no alerts.
+
+If the token is refused, the account shows that as a permission gap with the steps above rather than as zero vulnerabilities.
+
+Findings are about a **repository** (`owner/name`), not a running workload, so they appear in the vulnerability inventory without joining to pods or functions. GitHub does not report which version is installed, only the vulnerable range, so that column stays empty. Up to 5,000 open alerts are read per account.
+
 ## Tips & limits
 
 - **The enhanced billing platform is required.** The usage API only exists there. If your organization is still on the legacy billing pages, the account says so instead of graphing nothing.
 - **Enterprise accounts cover the bill, organization accounts cover the things.** Self-hosted runners, Actions caches and codespaces are organization-level in GitHub's API, so add each organization you want to manage as its own account. Spend is not double counted as long as cost graphs are read from either the enterprise or its organizations, not both.
-- **Seats from teams.** Removing a seat only works for seats assigned directly. A seat a user gets through a team needs the team changed in GitHub; the seat page says when that is the case.
+- **Seats from teams.** Removing a seat (here or from Seats) only works for seats assigned directly. A seat a user gets through a team needs the team changed in GitHub; the seat page says when that is the case.
 - **Larger runner cost is per SKU.** GitHub reports spend by SKU, not by runner, so runners of the same size and platform share the figure shown.
 - **Copilot metrics need the reports to exist.** GitHub publishes the Copilot usage reports once a day; a new organization has nothing to chart for a day or two.
 - **Provider status** follows GitHub's status page; an Actions incident lines up with Actions spend.

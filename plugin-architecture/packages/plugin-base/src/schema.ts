@@ -838,6 +838,27 @@ export interface PublishPanelCapability {
 export interface PublishMessagePayload {
   body: string;
   extras: Record<string, string | Record<string, string>>;
+  /**
+   * Set when the host is delivering one of the organization's own events to
+   * an `eventSink` resource rather than sending a message a person typed.
+   * Plugins use it as the fallback for extras the form would otherwise
+   * require (EventBridge `source`/`detailType`, Pub/Sub attributes), so an
+   * event subscription never asks the user for them. `extras` stays
+   * authoritative when both are given.
+   */
+  event?: PublishEventHint;
+}
+
+/** What the host knows about an event it is publishing; see `PublishMessagePayload.event`. */
+export interface PublishEventHint {
+  /** Dotted event type, e.g. `cost.anomaly.detected`. */
+  type: string;
+  /** Payload schema version of `type`. */
+  version: number;
+  /** Unique per event; stable across redeliveries, so usable for dedupe. */
+  id: string;
+  /** Who emitted it, always `infrawrench`. */
+  source: string;
 }
 
 /** Result of a successful publish: surfaced under the form. */

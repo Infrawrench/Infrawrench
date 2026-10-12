@@ -1111,6 +1111,30 @@ type DriftAlertSettings struct {
 	LastNotifiedAt  *string  `json:"lastNotifiedAt"`
 }
 
+// DoraSettingsUpdate is the PUT body for the DORA metrics settings. The
+// pipeline list is a pointer so `[]` (count no pipelines) is sent rather than
+// omitted.
+type DoraSettingsUpdate struct {
+	FailureWindowHours     *int64    `json:"failureWindowHours,omitempty"`
+	ProductionEnvironments []string  `json:"productionEnvironments,omitempty"`
+	PipelinePatterns       *[]string `json:"pipelinePatterns,omitempty"`
+	CountFailedDeploys     *bool     `json:"countFailedDeploys,omitempty"`
+	IncludeResourceChanges *bool     `json:"includeResourceChanges,omitempty"`
+	DigestEnabled          *bool     `json:"digestEnabled,omitempty"`
+}
+
+// DoraSettings is the org singleton deciding what DORA metrics count as
+// production and as a failed change. UpdatedAt is null until first saved.
+type DoraSettings struct {
+	FailureWindowHours     int64    `json:"failureWindowHours"`
+	ProductionEnvironments []string `json:"productionEnvironments"`
+	PipelinePatterns       []string `json:"pipelinePatterns"`
+	CountFailedDeploys     bool     `json:"countFailedDeploys"`
+	IncludeResourceChanges bool     `json:"includeResourceChanges"`
+	DigestEnabled          bool     `json:"digestEnabled"`
+	UpdatedAt              *string  `json:"updatedAt"`
+}
+
 // ExpiryAlertSettingsUpdate is the PUT body for the expiry radar.
 type ExpiryAlertSettingsUpdate struct {
 	Enabled  *bool  `json:"enabled,omitempty"`
@@ -1149,6 +1173,21 @@ type PostureAlertSettingsUpdate struct {
 // PostureAlertSettings is the org singleton for posture-check notifications.
 type PostureAlertSettings struct {
 	Enabled        bool    `json:"enabled"`
+	LastNotifiedAt *string `json:"lastNotifiedAt"`
+}
+
+// VulnerabilityAlertSettingsUpdate is the PUT body for vulnerability alerts.
+type VulnerabilityAlertSettingsUpdate struct {
+	AlertsEnabled *bool   `json:"alertsEnabled,omitempty"`
+	MinSeverity   *string `json:"minSeverity,omitempty"`
+	RunningOnly   *bool   `json:"runningOnly,omitempty"`
+}
+
+// VulnerabilityAlertSettings is the org singleton for vulnerability alerts.
+type VulnerabilityAlertSettings struct {
+	AlertsEnabled  bool    `json:"alertsEnabled"`
+	MinSeverity    string  `json:"minSeverity"`
+	RunningOnly    bool    `json:"runningOnly"`
 	LastNotifiedAt *string `json:"lastNotifiedAt"`
 }
 
@@ -1630,6 +1669,13 @@ type RealizedSavingsSettings struct {
 	BaselineWindowDays        int64 `json:"baselineWindowDays"`
 }
 
+// SeatSettings is the org singleton that sets how long a paid SaaS seat may
+// go unused before the Seats findings flag it. The same shape is read and
+// written.
+type SeatSettings struct {
+	InactiveDays int64 `json:"inactiveDays"`
+}
+
 // deref reads an optional string, empty when absent. Used by the tagged-union
 // marshallers so a missing id serialises as "" and the server's validation
 // names the missing field, rather than the key vanishing from the body.
@@ -1767,4 +1813,269 @@ type PrCheckRepository struct {
 	Directories         []string `json:"directories"`
 	CreatedAt           string   `json:"createdAt"`
 	UpdatedAt           string   `json:"updatedAt"`
+}
+
+/* -------------------------------- services -------------------------------- */
+
+// ServiceLink is one dashboard, repository or document a service points at.
+type ServiceLink struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+// ServiceMembershipRule is one rule that pulls resources into a service. Every
+// field but Kind marshals nil as an explicit null, which is the stored shape:
+// the server normalises a rule to all six keys either way.
+type ServiceMembershipRule struct {
+	Kind      string  `json:"kind"`
+	Key       *string `json:"key"`
+	Value     *string `json:"value"`
+	NameMatch *string `json:"nameMatch"`
+	PluginID  *string `json:"pluginId"`
+	AccountID *string `json:"accountId"`
+}
+
+// ServiceInput is the POST and PATCH body. The PATCH leaves an omitted key
+// alone and replaces a list that is present, so the provider always sends the
+// whole object: every list goes as `[]` rather than being omitted, and the
+// nullable scalars marshal nil as an explicit null ("clear it").
+//
+// Slug is the one exception: omitted on create, the server derives it from the
+// name, which is why it carries omitempty.
+type ServiceInput struct {
+	Name             string                  `json:"name"`
+	Slug             *string                 `json:"slug,omitempty"`
+	Description      *string                 `json:"description"`
+	Tier             *int64                  `json:"tier"`
+	OwnerTeam        *string                 `json:"ownerTeam"`
+	OwnerUserIDs     []string                `json:"ownerUserIds"`
+	Links            []ServiceLink           `json:"links"`
+	OnCallScheduleID *string                 `json:"onCallScheduleId"`
+	SloIDs           []string                `json:"sloIds"`
+	RunbookIDs       []string                `json:"runbookIds"`
+	Rules            []ServiceMembershipRule `json:"rules"`
+	MonthlyBudget    *float64                `json:"monthlyBudget"`
+	BudgetCurrency   *string                 `json:"budgetCurrency"`
+}
+
+// ServiceOwner is an owning member with the name and address the server
+// resolved for them.
+type ServiceOwner struct {
+	UserID string  `json:"userId"`
+	Name   *string `json:"name"`
+	Email  *string `json:"email"`
+}
+
+// Service is a logical grouping of resources across providers. MemberCount
+// is resolved from rules against the current inventory, so it changes without
+// the service changing; the resource leaves it out of state and only the data
+// source exposes it.
+type Service struct {
+	ID                 string                  `json:"id"`
+	Name               string                  `json:"name"`
+	Slug               string                  `json:"slug"`
+	Description        *string                 `json:"description"`
+	Tier               *int64                  `json:"tier"`
+	OwnerTeam          *string                 `json:"ownerTeam"`
+	OwnerUserIDs       []string                `json:"ownerUserIds"`
+	Links              []ServiceLink           `json:"links"`
+	OnCallScheduleID   *string                 `json:"onCallScheduleId"`
+	SloIDs             []string                `json:"sloIds"`
+	RunbookIDs         []string                `json:"runbookIds"`
+	Rules              []ServiceMembershipRule `json:"rules"`
+	MonthlyBudget      *float64                `json:"monthlyBudget"`
+	BudgetCurrency     *string                 `json:"budgetCurrency"`
+	Owners             []ServiceOwner          `json:"owners"`
+	OnCallScheduleName *string                 `json:"onCallScheduleName"`
+	MemberCount        int64                   `json:"memberCount"`
+	CreatedAt          string                  `json:"createdAt"`
+	UpdatedAt          string                  `json:"updatedAt"`
+}
+
+// ServiceDetail is the single-GET envelope. Members and exclusions are the
+// resolved membership, which neither the resource nor the data source keeps.
+type ServiceDetail struct {
+	Service Service `json:"service"`
+}
+
+/* ------------------------------- scorecards ------------------------------- */
+
+// ScorecardCheckParams is the type-specific parameter object, typed rather
+// than an open map so each parameter can be its own Terraform attribute. On
+// the wire it is `Record<string, number | string[]>`; every key is omitted
+// when nil, and the server fills an omitted key with the check type's
+// default. The two lists are pointers so an explicit `[]` still goes out:
+// for `severities` an empty list and the default are different things.
+type ScorecardCheckParams struct {
+	MinBudgetRemainingPercent *float64  `json:"minBudgetRemainingPercent,omitempty"`
+	DrillWithinDays           *float64  `json:"drillWithinDays,omitempty"`
+	Severities                *[]string `json:"severities,omitempty"`
+	Tags                      *[]string `json:"tags,omitempty"`
+	MaxFailureRatePercent     *float64  `json:"maxFailureRatePercent,omitempty"`
+	WindowDays                *float64  `json:"windowDays,omitempty"`
+}
+
+// ScorecardCheck is one weighted check.
+type ScorecardCheck struct {
+	ID     string               `json:"id"`
+	Type   string               `json:"type"`
+	Name   *string              `json:"name"`
+	Weight int64                `json:"weight"`
+	Params ScorecardCheckParams `json:"params"`
+}
+
+// ScorecardLevel is one rung of the ladder. The server stores levels sorted
+// by MinScore, lowest first.
+type ScorecardLevel struct {
+	Key      string  `json:"key"`
+	Name     string  `json:"name"`
+	MinScore float64 `json:"minScore"`
+	Color    *string `json:"color"`
+}
+
+// ScorecardInput is the POST and PATCH body; the provider sends every key on
+// both, so the PATCH's "omitted means unchanged" never applies.
+type ScorecardInput struct {
+	Name             string           `json:"name"`
+	Description      *string          `json:"description"`
+	Checks           []ScorecardCheck `json:"checks"`
+	Levels           []ScorecardLevel `json:"levels"`
+	ApplicableTiers  []int64          `json:"applicableTiers"`
+	AlertOnLevelDrop bool             `json:"alertOnLevelDrop"`
+	Enabled          bool             `json:"enabled"`
+}
+
+// Scorecard is a weighted list of checks plus a ladder of levels that every
+// applicable service is scored against. LastEvaluatedAt moves every hourly
+// pass and is decoded for completeness only.
+type Scorecard struct {
+	ID               string           `json:"id"`
+	Name             string           `json:"name"`
+	Description      *string          `json:"description"`
+	Checks           []ScorecardCheck `json:"checks"`
+	Levels           []ScorecardLevel `json:"levels"`
+	ApplicableTiers  []int64          `json:"applicableTiers"`
+	AlertOnLevelDrop bool             `json:"alertOnLevelDrop"`
+	Enabled          bool             `json:"enabled"`
+	IsDefault        bool             `json:"isDefault"`
+	LastEvaluatedAt  *string          `json:"lastEvaluatedAt"`
+	CreatedAt        string           `json:"createdAt"`
+	UpdatedAt        string           `json:"updatedAt"`
+}
+
+/* --------------------------- event subscriptions --------------------------- */
+
+// EventDestination is the tagged union the API calls EventDestination: kind
+// "webhook" carries URL, kind "publish" the three picker ids.
+type EventDestination struct {
+	Kind           string `json:"kind"`
+	URL            string `json:"url,omitempty"`
+	AccountID      string `json:"accountId,omitempty"`
+	ResourceTypeID string `json:"resourceTypeId,omitempty"`
+	ResourceID     string `json:"resourceId,omitempty"`
+}
+
+// EventSubscriptionInput is the POST and PUT body (PUT is whole-object).
+type EventSubscriptionInput struct {
+	Name         string           `json:"name"`
+	Enabled      bool             `json:"enabled"`
+	Destination  EventDestination `json:"destination"`
+	EventTypes   []string         `json:"eventTypes"`
+	MinSeverity  *string          `json:"minSeverity"`
+	AccountIDs   []string         `json:"accountIds"`
+	Environments []string         `json:"environments"`
+}
+
+// EventSubscription is the read shape. The signing secret is never in it.
+type EventSubscription struct {
+	ID                      string           `json:"id"`
+	Name                    string           `json:"name"`
+	Enabled                 bool             `json:"enabled"`
+	Destination             EventDestination `json:"destination"`
+	DestinationLabel        string           `json:"destinationLabel"`
+	EventTypes              []string         `json:"eventTypes"`
+	MinSeverity             *string          `json:"minSeverity"`
+	AccountIDs              []string         `json:"accountIds"`
+	Environments            []string         `json:"environments"`
+	SecretHint              *string          `json:"secretHint"`
+	PreviousSecretExpiresAt *string          `json:"previousSecretExpiresAt"`
+	DisabledReason          *string          `json:"disabledReason"`
+	DisabledAt              *string          `json:"disabledAt"`
+	ConsecutiveFailures     int64            `json:"consecutiveFailures"`
+	FailingSince            *string          `json:"failingSince"`
+	LastSuccessAt           *string          `json:"lastSuccessAt"`
+	LastFailureAt           *string          `json:"lastFailureAt"`
+	CreatedAt               string           `json:"createdAt"`
+	UpdatedAt               string           `json:"updatedAt"`
+}
+
+// EventSubscriptionWithSecret is what create and reroll return: the only two
+// responses that carry the secret.
+type EventSubscriptionWithSecret struct {
+	Subscription EventSubscription `json:"subscription"`
+	Secret       *string           `json:"secret"`
+}
+
+/* -------------------------------- compliance ------------------------------- */
+
+// ComplianceControlSettingInput is the PUT body for the organization's
+// decision about one framework control. A PUT replaces every field, so the
+// optional strings carry no omitempty: an explicit null is how a cleared
+// justification, owner or note is said.
+type ComplianceControlSettingInput struct {
+	Applicable    bool    `json:"applicable"`
+	Justification *string `json:"justification"`
+	OwnerUserID   *string `json:"ownerUserId"`
+	OwnerLabel    *string `json:"ownerLabel"`
+	Notes         *string `json:"notes"`
+}
+
+// ComplianceControlSetting is the stored decision about one control. The
+// server trims every string and stores an empty one as null.
+type ComplianceControlSetting struct {
+	FrameworkID     string  `json:"frameworkId"`
+	ControlID       string  `json:"controlId"`
+	Applicable      bool    `json:"applicable"`
+	Justification   *string `json:"justification"`
+	OwnerUserID     *string `json:"ownerUserId"`
+	OwnerLabel      *string `json:"ownerLabel"`
+	Notes           *string `json:"notes"`
+	UpdatedByUserID *string `json:"updatedByUserId"`
+	UpdatedAt       string  `json:"updatedAt"`
+}
+
+// CompliancePackScheduleInput is the POST/PUT body for a scheduled evidence
+// pack. A PUT is a full replace, and may move the schedule to another
+// framework.
+type CompliancePackScheduleInput struct {
+	FrameworkID     string   `json:"frameworkId"`
+	Cadence         string   `json:"cadence"`
+	SendDayOfMonth  *int64   `json:"sendDayOfMonth,omitempty"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	EmailRecipients []string `json:"emailRecipients"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	Enabled         bool     `json:"enabled"`
+}
+
+// CompliancePackSchedule is a stored evidence-pack delivery schedule.
+type CompliancePackSchedule struct {
+	ID              string   `json:"id"`
+	FrameworkID     string   `json:"frameworkId"`
+	Cadence         string   `json:"cadence"`
+	SendDayOfMonth  int64    `json:"sendDayOfMonth"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	NextSendAt      *string  `json:"nextSendAt"`
+	LastSentAt      *string  `json:"lastSentAt"`
+	LastStatus      *string  `json:"lastStatus"`
+	LastError       *string  `json:"lastError"`
+	CreatedByUserID *string  `json:"createdByUserId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
 }

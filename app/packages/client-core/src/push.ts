@@ -281,6 +281,32 @@ export type PushNotificationData =
     }
   | {
       /**
+       * New leaked credentials found by a secret scanner (see server-core
+       * `leaked-secrets/alerts.ts`). One notification per scan that found
+       * something new; `leakId` is set when there is exactly one.
+       *
+       * Target route: the posture screen's leaked credentials list,
+       * `/org/{orgId}/posture`.
+       */
+      type: "leaked_secret";
+      orgId: string;
+      leakId?: string;
+    }
+  | {
+      /**
+       * New critical (or, per settings, high / KEV-listed) vulnerabilities in
+       * images that are running (see server-core `vulnerabilities/alerts.ts`).
+       * One batched notification per scan, never one per finding.
+       *
+       * Target route: the vulnerabilities screen, `/org/{orgId}/vulnerabilities`.
+       */
+      type: "vulnerability_alert";
+      orgId: string;
+      /** How many findings the message names. */
+      count: number;
+    }
+  | {
+      /**
        * A new orphaned or oversized resource found by the savings scan (see
        * server-core `github-issues/savings-scan.ts`). One per new finding;
        * the trigger is push-muted by default.
@@ -349,6 +375,21 @@ export type PushNotificationData =
       sloId: string;
       /** What the notification announces. */
       status: "fast_burn" | "slow_burn" | "exhausted" | "recovered";
+    }
+  | {
+      /**
+       * A service dropped a level on a scorecard (see server-core
+       * `scorecards/eval.ts`). One notification per drop, never per
+       * evaluation.
+       *
+       * Target route: the service, `/org/{orgId}/services/{serviceId}`.
+       */
+      type: "scorecard_level_drop";
+      orgId: string;
+      /** Service row id (`services.id`). */
+      serviceId: string;
+      /** Scorecard row id (`scorecards.id`). */
+      scorecardId: string;
     }
   | {
       /**

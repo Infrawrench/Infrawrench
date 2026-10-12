@@ -1,8 +1,17 @@
 // Pure presentation helpers shared by the newer read commands. Kept out of the
 // command modules (those reach the network through `./context`, which drags in
 // Electron and every plugin) so the tree walk and the number formatting can be
-// unit-tested on their own. Imports nothing but `./output`.
+// unit-tested on their own. Imports nothing at runtime but `./output`; wire
+// types come type-only from client-core.
 import { c, safe } from "./output";
+import type {
+  LeakDismissReason,
+  LeakRotationMethod,
+  LeakedSecret,
+  LeakedSecretCounts,
+  LeakedSecretScanner,
+  LeakedSecretStatus,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
 
 /* ------------------------------------------------------------------ *
  * ASCII trees (`infrawrench graph`)
@@ -907,4 +916,446 @@ export function parseNameStatusZ(output: string): NameStatusEntry[] {
     });
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Services and scorecards (`infrawrench services`, `infrawrench scorecards`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resolve the argument to `services show`: an exact id, then a slug, then a
+ * case-insensitive name, then a unique case-insensitive name fragment. More
+ * than one fragment match returns the candidates instead of picking one.
+ */
+export function matchService<T extends { id: string; slug: string; name: string }>(
+  services: readonly T[],
+  query: string,
+): { match: T } | { match: null; candidates: T[] } {
+  const q = query.trim();
+  const needle = q.toLowerCase();
+  const exact =
+    services.find((s) => s.id === q) ??
+    services.find((s) => s.slug === needle) ??
+    services.find((s) => s.name.toLowerCase() === needle);
+  if (exact) return { match: exact };
+  const partial = needle ? services.filter((s) => s.name.toLowerCase().includes(needle)) : [];
+  if (partial.length === 1) return { match: partial[0]! };
+  return { match: null, candidates: partial };
+}
+
+/** `"T1"` for a tiered service, a dimmed dash otherwise. */
+export function formatServiceTier(tier: number | null): string {
+  return tier === null ? c.dim("-") : `T${tier}`;
+}
+
+/** The owning team and/or owning members, in one cell: `"payments · ana, bo"`. */
+export function formatServiceOwners(service: {
+  ownerTeam: string | null;
+  owners: ReadonlyArray<{ name: string | null; email: string | null; userId: string }>;
+}): string {
+  const people = service.owners.map((o) => safe(o.name ?? o.email ?? o.userId));
+  const parts = [service.ownerTeam ? safe(service.ownerTeam) : null, people.join(", ") || null];
+  const text = parts.filter((p): p is string => p !== null).join(" · ");
+  return text || c.dim("no owner");
+}
+
+/**
+ * A service's 30-day cost, one figure per currency. A cost warehouse that
+ * could not be read prints "unavailable", never a zero that reads as "free".
+ */
+export function formatServiceCostLine(
+  cost: { available: boolean; totals: ReadonlyArray<{ currency: string; amount: number }> },
+  formatMoney: (amount: number, currency: string) => string,
+): string {
+  if (!cost.available) return c.yellow("unavailable");
+  if (cost.totals.length === 0) return c.dim("no per-resource cost recorded");
+  return cost.totals.map((t) => formatMoney(t.amount, t.currency)).join(" + ");
+}
+
+/**
+ * One scorecard result as a cell: `"82% Silver"`, green at the top of the
+ * ladder, red below the bottom rung, yellow between. Null score (no check
+ * applied) is "not scored", never 0%.
+ */
+export function formatScoreCell(
+  result: { score: number | null; levelName: string | null } | null,
+  levelRank: number,
+  levelCount: number,
+): string {
+  if (result === null) return c.dim("n/a");
+  if (result.score === null) return c.dim("not scored");
+  const text = `${Math.round(result.score)}%${result.levelName ? ` ${safe(result.levelName)}` : ""}`;
+  if (levelRank < 0) return c.red(text);
+  if (levelRank >= levelCount - 1) return c.green(text);
+  return c.yellow(text);
+}
+
+/** A check outcome as a short coloured mark plus word. */
+export function formatCheckStatus(status: "pass" | "fail" | "not_applicable" | "error"): string {
+  switch (status) {
+    case "pass":
+      return c.green("✓ pass");
+    case "fail":
+      return c.red("✗ fail");
+    case "error":
+      return c.yellow("! error");
+    case "not_applicable":
+      return c.dim("- n/a");
+  }
+}
+
+/** A check's parameters, `key=value` joined: `"severities=critical,high"`. Empty for none. */
+export function formatScorecardParams(
+  params: Readonly<Record<string, number | string[]>>,
+  labelFor: (key: string) => string = (key) => key,
+): string {
+  return Object.entries(params)
+    .map(([key, value]) => {
+      const shown = Array.isArray(value)
+        ? value.length === 0
+          ? "(org policy)"
+          : value.map((v) => safe(String(v))).join(",")
+        : String(value);
+      return `${labelFor(key)}=${shown}`;
+    })
+    .join(" · ");
+}
+
+/** Sort results best first; "not scored" sinks to the bottom, ties by name. */
+export function orderScoreRows<T extends { score: number | null; name: string }>(
+  rows: readonly T[],
+): T[] {
+  return [...rows].sort((a, b) => {
+    if (a.score === null && b.score !== null) return 1;
+    if (b.score === null && a.score !== null) return -1;
+    if (a.score !== null && b.score !== null && a.score !== b.score) return b.score - a.score;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Leaked credentials (`infrawrench leaks`)
+ * ------------------------------------------------------------------ */
+
+/*
+ * Labels and the two derivations below are restated from client-core's
+ * `leaked-secrets.ts` (`LEAKED_SECRET_STATUS_LABELS`, `leakSeverity`,
+ * `leakLocationLabel`, ...) because the CLI's client-core imports are
+ * type-only. Each map is typed against the wire union, so a value added or
+ * removed upstream fails this file's typecheck rather than printing blank.
+ */
+export const LEAK_STATUS_LABELS: Record<LeakedSecretStatus, string> = {
+  open: "Open",
+  rotated: "Rotated",
+  dismissed: "Dismissed",
+  resolved: "Resolved upstream",
+};
+
+export const LEAK_ROTATION_LABELS: Record<LeakRotationMethod, string> = {
+  reissued: "Reissued in Infrawrench",
+  replaced: "New value stored",
+  detected: "Stored value changed",
+  manual: "Marked rotated",
+};
+
+export const LEAK_DISMISS_LABELS: Record<LeakDismissReason, string> = {
+  "false-positive": "False positive",
+  "used-in-tests": "Used in tests",
+  "wont-fix": "Won't fix",
+};
+
+const LEAK_STATUSES = Object.keys(LEAK_STATUS_LABELS) as LeakedSecretStatus[];
+const LEAK_DISMISS_REASONS = Object.keys(LEAK_DISMISS_LABELS) as LeakDismissReason[];
+
+/** Critical unless the scanner says the token is dead and it matched nothing. */
+export function formatLeakSeverity(
+  leak: Pick<LeakedSecret, "validity" | "matchKind">,
+): "critical" | "high" {
+  if (leak.validity === "inactive" && leak.matchKind === "none") return "high";
+  return "critical";
+}
+
+/** `owner/repo: path/to/file.ts:12`, or as much of it as is known. */
+export function formatLeakLocation(
+  leak: Pick<LeakedSecret, "repository" | "path" | "line">,
+): string {
+  const file = leak.path ? `${leak.path}${leak.line != null ? `:${leak.line}` : ""}` : "";
+  if (leak.repository && file) return `${leak.repository}: ${file}`;
+  return leak.repository ?? file;
+}
+
+/** What the leak was attributed to, in the words the Posture tab uses. */
+export function formatLeakTarget(
+  leak: Pick<
+    LeakedSecret,
+    | "matchKind"
+    | "matchConfidence"
+    | "matchedAccountId"
+    | "matchedAccountName"
+    | "matchedResourceId"
+    | "matchedResourceName"
+    | "candidateAccountIds"
+    | "ownerPluginName"
+  >,
+): string {
+  if (leak.matchKind === "account") {
+    const name = safe(leak.matchedAccountName ?? leak.matchedAccountId ?? "");
+    return leak.matchConfidence === "token-type"
+      ? `probably account ${name} (by token type)`
+      : `account ${name}`;
+  }
+  if (leak.matchKind === "output" || leak.matchKind === "secret-field") {
+    return `stored on ${safe(leak.matchedResourceName ?? leak.matchedResourceId ?? "")}`;
+  }
+  const n = leak.candidateAccountIds.length;
+  if (n > 0) {
+    const provider = leak.ownerPluginName ? `${safe(leak.ownerPluginName)} ` : "";
+    return `one of ${n} ${provider}account${n === 1 ? "" : "s"} (by token type)`;
+  }
+  return "nothing Infrawrench holds";
+}
+
+/** The status cell: the label plus how it got there, e.g. "Dismissed: Used in tests". */
+export function formatLeakStatus(
+  leak: Pick<
+    LeakedSecret,
+    "status" | "rotationMethod" | "dismissedReason" | "upstreamResolution" | "rotatedBy"
+  >,
+): string {
+  const label = LEAK_STATUS_LABELS[leak.status] ?? safe(leak.status);
+  if (leak.status === "rotated" && leak.rotationMethod) {
+    const how = LEAK_ROTATION_LABELS[leak.rotationMethod] ?? safe(leak.rotationMethod);
+    return `${label}: ${how}${leak.rotatedBy ? ` by ${safe(leak.rotatedBy)}` : ""}`;
+  }
+  if (leak.status === "dismissed" && leak.dismissedReason) {
+    return `${label}: ${LEAK_DISMISS_LABELS[leak.dismissedReason] ?? safe(leak.dismissedReason)}`;
+  }
+  if (leak.status === "resolved" && leak.upstreamResolution) {
+    return `${label} (${safe(leak.upstreamResolution)})`;
+  }
+  return label;
+}
+
+/** One line per scanner account: when it last scanned, or why it failed. */
+export function formatLeakScanner(
+  scanner: Pick<
+    LeakedSecretScanner,
+    "accountName" | "label" | "lastScannedAt" | "lastError" | "lastCount" | "returnsSecretValue"
+  >,
+): string {
+  const who = `${safe(scanner.accountName)} (${safe(scanner.label)})`;
+  if (scanner.lastError) return `${who}: last scan failed: ${safe(scanner.lastError)}`;
+  if (!scanner.lastScannedAt) return `${who}: first scan pending`;
+  const count =
+    scanner.lastCount != null
+      ? `, ${scanner.lastCount} finding${scanner.lastCount === 1 ? "" : "s"}`
+      : "";
+  const byType = scanner.returnsSecretValue ? "" : "; matches by token type only";
+  return `${who}: scanned ${formatChangeTime(scanner.lastScannedAt)}${count}${byType}`;
+}
+
+/** "2 open · 5 rotated · 1 dismissed", zero buckets left out. */
+export function formatLeakCounts(counts: Partial<LeakedSecretCounts>): string {
+  const parts = LEAK_STATUSES.filter((s) => (counts[s] ?? 0) > 0).map(
+    (s) => `${counts[s]} ${s === "resolved" ? "resolved upstream" : s}`,
+  );
+  return parts.length > 0 ? parts.join(" · ") : "none";
+}
+
+/**
+ * `--status`: a status, `all`, or (absent) the open default. Returns null
+ * for all, so the request carries no filter.
+ */
+export function parseLeakStatusFlag(raw: string | undefined): LeakedSecretStatus | null {
+  if (raw === undefined) return "open";
+  const value = raw.trim().toLowerCase();
+  if (value === "all") return null;
+  const status = LEAK_STATUSES.find((s) => s === value);
+  if (!status) {
+    throw new Error(
+      `--status must be one of ${[...LEAK_STATUSES, "all"].join(", ")} (got "${raw}").`,
+    );
+  }
+  return status;
+}
+
+/** `--reason` for `leaks dismiss`: required, one of the three server reasons. */
+export function parseLeakDismissReason(raw: string | null | undefined): LeakDismissReason {
+  const reason = LEAK_DISMISS_REASONS.find((r) => r === raw?.trim().toLowerCase());
+  if (!reason) {
+    throw new Error(
+      raw
+        ? `--reason must be one of ${LEAK_DISMISS_REASONS.join(", ")} (got "${raw}").`
+        : `Dismissing needs --reason ${LEAK_DISMISS_REASONS.join("|")}.`,
+    );
+  }
+  return reason;
+}
+
+/**
+ * Why `leaks rotate` cannot act on this leak from a terminal, or null when it
+ * can. `account` and `manual` leaks are rotated at the provider; the CLI says
+ * where, and what records it afterwards.
+ */
+export function leakRotateRefusal(
+  leak: Pick<LeakedSecret, "id" | "status" | "rotation" | "ownerPluginName">,
+): string | null {
+  if (leak.status !== "open") {
+    return `This leak is ${LEAK_STATUS_LABELS[leak.status]?.toLowerCase() ?? safe(leak.status)}, not open. Reopen it first with \`infrawrench leaks reopen ${shortId(leak.id)}\`.`;
+  }
+  const { mode, manageUrl } = leak.rotation;
+  if (mode === "reissue" || mode === "replace") return null;
+  const where = manageUrl
+    ? `Rotate it at ${leak.ownerPluginName ? safe(leak.ownerPluginName) : "the provider"}: ${safe(manageUrl)}`
+    : `Rotate it at ${leak.ownerPluginName ? safe(leak.ownerPluginName) : "the provider"}.`;
+  if (mode === "account") {
+    return [
+      "This is an account credential; Infrawrench cannot mint a new one for you.",
+      where,
+      "Then update the account's credentials in Infrawrench; the change is detected and the leak is recorded as rotated.",
+      `Or record it yourself: \`infrawrench leaks mark-rotated ${shortId(leak.id)}\`.`,
+    ].join("\n");
+  }
+  return [
+    "This credential is not one Infrawrench holds, so it can only be rotated at the provider.",
+    where,
+    `Then record it: \`infrawrench leaks mark-rotated ${shortId(leak.id)}\`.`,
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ *
+ * Vulnerabilities (`infrawrench vulns`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Severities `--severity` accepts, strongest first. A local twin of
+ * client-core's `VULNERABILITY_SEVERITY_ORDER` (the CLI's static imports from
+ * there are type-only).
+ */
+export const VULN_SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
+
+/**
+ * `--severity critical,high` split and checked. `invalid` lists what was not a
+ * severity so the command can name it; `unscored` is accepted as the label the
+ * UI shows for `unknown`.
+ */
+export function parseVulnSeverityFlag(raw: string): { severities: string[]; invalid: string[] } {
+  const severities: string[] = [];
+  const invalid: string[] = [];
+  for (const part of raw.split(",")) {
+    const value = part.trim().toLowerCase();
+    if (!value) continue;
+    const normalized = value === "unscored" ? "unknown" : value;
+    if ((VULN_SEVERITIES as readonly string[]).includes(normalized)) {
+      if (!severities.includes(normalized)) severities.push(normalized);
+    } else {
+      invalid.push(part.trim());
+    }
+  }
+  return { severities, invalid };
+}
+
+/** `openssl 3.0.1 -> 3.0.2`, or `openssl 3.0.1 (no fix)` when the scanner names none. */
+export function formatVulnPackage(row: {
+  packageName: string | null;
+  installedVersion: string | null;
+  fixedVersion: string | null;
+  fixAvailable: boolean | null;
+}): string {
+  const name = safe(row.packageName) || "(unknown package)";
+  const installed = row.installedVersion ? ` ${safe(row.installedVersion)}` : "";
+  if (row.fixedVersion) return `${name}${installed} -> ${c.green(safe(row.fixedVersion))}`;
+  if (row.fixAvailable === true) return `${name}${installed} -> ${c.green("fix available")}`;
+  if (row.fixAvailable === false) return `${name}${installed} ${c.dim("(no fix)")}`;
+  return `${name}${installed}`;
+}
+
+/** `CVE-2024-3094 KEV`: the advisory, with a red marker when it is actively exploited. */
+export function formatVulnAdvisory(row: {
+  advisoryId: string;
+  kev: { knownRansomware: boolean } | null;
+}): string {
+  const id = safe(row.advisoryId);
+  if (!row.kev) return id;
+  return `${id} ${c.red(row.kev.knownRansomware ? "KEV ransomware" : "KEV")}`;
+}
+
+/** CVSS to one decimal, or a dim dash when the scanner gave no score. */
+export function formatVulnCvss(score: number | null): string {
+  return score === null || !Number.isFinite(score) ? c.dim("-") : score.toFixed(1);
+}
+
+/** The artifact name plus its first tag (or a short digest), e.g. `ghcr.io/acme/api:1.4`. */
+export function formatVulnArtifact(artifact: {
+  name: string;
+  tags: readonly string[];
+  digest: string | null;
+}): string {
+  const name = safe(artifact.name);
+  const tag = artifact.tags[0];
+  if (tag) return `${name}:${safe(tag)}`;
+  if (artifact.digest)
+    return `${name}@${safe(artifact.digest)
+      .replace(/^sha256:/, "")
+      .slice(0, 12)}`;
+  return name;
+}
+
+/**
+ * The services a finding's running resources belong to: `checkout (T1), api`,
+ * the first two and a `+N` for the rest, or a dimmed dash for none (or a
+ * server too old to say).
+ */
+export function formatVulnServices(
+  services: readonly { slug: string; tier: number | null }[] | undefined,
+): string {
+  if (!services || services.length === 0) return c.dim("-");
+  const named = services
+    .slice(0, 2)
+    .map((s) => `${safe(s.slug)}${s.tier === null ? "" : c.dim(` (T${s.tier})`)}`);
+  const more = services.length > 2 ? c.dim(` +${services.length - 2}`) : "";
+  return `${named.join(", ")}${more}`;
+}
+
+/**
+ * Resolve `--account` against the accounts that report vulnerabilities: an
+ * exact id, else a case-insensitive name (exact, then a unique prefix). Null
+ * when nothing matches, so the command can say so rather than print an empty
+ * table that looks like a clean bill of health.
+ */
+export function matchVulnAccount(
+  sources: readonly { accountId: string; accountName: string }[],
+  wanted: string,
+): string | null {
+  const byId = sources.find((s) => s.accountId === wanted);
+  if (byId) return byId.accountId;
+  const lower = wanted.toLowerCase();
+  const exact = sources.filter((s) => s.accountName.toLowerCase() === lower);
+  if (exact.length >= 1) return exact[0]!.accountId;
+  const prefix = sources.filter((s) => s.accountName.toLowerCase().startsWith(lower));
+  return prefix.length === 1 ? prefix[0]!.accountId : null;
+}
+
+/** How long ago an ISO time was, coarsely: `just now`, `5m ago`, `3h ago`, `2d ago`. */
+export function formatAgo(iso: string, now: number = Date.now()): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const minutes = Math.max(0, Math.floor((now - ms) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * The CISA KEV catalog's freshness for the header. The poller mirrors it
+ * daily, so older than three days means the mirror has stopped and the KEV
+ * markers may be missing recent additions.
+ */
+export function formatKevFreshness(kevUpdatedAt: string | null, now: number = Date.now()): string {
+  if (!kevUpdatedAt) return c.yellow("CISA KEV catalog not fetched yet; no KEV markers");
+  const ms = Date.parse(kevUpdatedAt);
+  const text = `CISA KEV catalog updated ${formatAgo(kevUpdatedAt, now)}`;
+  return !Number.isNaN(ms) && now - ms > 3 * 86_400_000 ? c.yellow(`${text} (stale)`) : c.dim(text);
 }

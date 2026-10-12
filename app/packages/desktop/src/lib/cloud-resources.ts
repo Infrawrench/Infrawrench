@@ -1,5 +1,16 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
-import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
+import type {
+  ComplianceControlSetting,
+  ComplianceControlSettingInput,
+  ComplianceFrameworkSummary,
+  CompliancePackSchedule,
+  CompliancePackScheduleInput,
+  CompliancePeriod,
+  ComplianceStatusResponse,
+  ReportDeliveryTargets,
+  ReportNotificationSendResult,
+  ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 // From client-core, where it is defined, rather than through the `@infrawrench/ui`
 // barrel that re-exports it: this is the only *value* the cloud API modules take
 // from `ui`, and importing it from there pulls the whole component library into
@@ -22,6 +33,10 @@ import type {
   EnvironmentDiffResponse,
   ExpiryListResponse,
   PostureListResponse,
+  LeakedCredentialsClient,
+  VulnerabilityListResponse,
+  VulnerabilitySettings,
+  VulnerabilitySettingsPatch,
   Runbook,
   RunbookInput,
   RunbookRun,
@@ -33,6 +48,7 @@ import type {
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
+import type { LeakedSecret, LeakedSecretListResponse } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 
 /**
@@ -95,6 +111,44 @@ export async function dismissCloudPostureFinding(
   await invoke("cloud_posture_dismiss", { orgId, resourceId, ruleId, reason });
 }
 
+/**
+ * The leaked-credentials client for the Posture tab and the account banner.
+ * Cloud only: scanning runs in the cloud poller. Without `canWrite` it gets
+ * only the list, which renders the section read-only (the server enforces
+ * `secrets:write` either way).
+ */
+export function cloudLeakedCredentialsClient(
+  orgId: string,
+  canWrite: boolean,
+): LeakedCredentialsClient {
+  const act = async (id: string, action: string, body: unknown): Promise<LeakedSecret> =>
+    (
+      (await invoke("cloud_leaked_secret_action", { orgId, id, action, body })) as {
+        leak: LeakedSecret;
+      }
+    ).leak;
+  return {
+    list: () => invoke("cloud_leaked_secrets", { orgId }),
+    ...(canWrite
+      ? {
+          rotate: (id, input) => act(id, "rotate", input),
+          markRotated: (id, input) => act(id, "mark-rotated", input),
+          dismiss: (id, input) => act(id, "dismiss", input),
+          reopen: (id) => act(id, "reopen", {}),
+          scan: () => invoke("cloud_leaked_secrets_scan", { orgId }),
+        }
+      : {}),
+  };
+}
+
+/** Open leaks for one account, for the account page banner. */
+export async function fetchCloudAccountLeaks(
+  orgId: string,
+  accountId: string,
+): Promise<LeakedSecretListResponse> {
+  return invoke("cloud_leaked_secrets", { orgId, status: "open", accountId });
+}
+
 /** Undo a dismissal, putting the finding back on the list and in the alerts. */
 export async function restoreCloudPostureFinding(
   orgId: string,
@@ -102,6 +156,136 @@ export async function restoreCloudPostureFinding(
   ruleId: string,
 ): Promise<void> {
   await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
+/**
+ * The org's vulnerability feed: scanner findings joined server-side to the
+ * resources running them. Cloud only; collection needs the poller.
+ */
+export async function fetchCloudVulnerabilities(orgId: string): Promise<VulnerabilityListResponse> {
+  return invoke("cloud_vulnerabilities", { orgId });
+}
+
+/** Accept an advisory for one artifact (`artifactKey`) or everywhere (`"*"`). */
+export async function dismissCloudVulnerability(
+  orgId: string,
+  advisoryId: string,
+  artifactKey: string,
+  reason: string,
+): Promise<void> {
+  await invoke("cloud_vulnerabilities_dismiss", { orgId, advisoryId, artifactKey, reason });
+}
+
+/** Undo a vulnerability dismissal. */
+export async function restoreCloudVulnerability(
+  orgId: string,
+  advisoryId: string,
+  artifactKey: string,
+): Promise<void> {
+  await invoke("cloud_vulnerabilities_restore", { orgId, advisoryId, artifactKey });
+}
+
+/** The org's vulnerability alert settings (server requires `org:settings:write`). */
+export async function fetchCloudVulnerabilitySettings(
+  orgId: string,
+): Promise<VulnerabilitySettings> {
+  return invoke("cloud_vulnerability_settings_get", { orgId });
+}
+
+export async function updateCloudVulnerabilitySettings(
+  orgId: string,
+  patch: VulnerabilitySettingsPatch,
+): Promise<VulnerabilitySettings> {
+  return invoke("cloud_vulnerability_settings_update", { orgId, patch });
+}
+
+/* Compliance: cloud only, like Vulnerabilities. Reads are `audit:read`;
+ * control decisions and pack schedules `org:settings:write` server-side. */
+
+export async function fetchCloudComplianceFrameworks(
+  orgId: string,
+): Promise<ComplianceFrameworkSummary[]> {
+  const res = await invoke<{ frameworks: ComplianceFrameworkSummary[] }>(
+    "cloud_compliance_frameworks",
+    { orgId },
+  );
+  return res.frameworks;
+}
+
+export async function fetchCloudComplianceStatus(
+  orgId: string,
+  framework: string,
+  period: CompliancePeriod,
+): Promise<ComplianceStatusResponse> {
+  return invoke("cloud_compliance_status", { orgId, framework, period });
+}
+
+/** The evidence pack ZIP as bytes; the caller saves it. */
+export async function loadCloudCompliancePack(
+  orgId: string,
+  framework: string,
+  period: CompliancePeriod,
+): Promise<Uint8Array> {
+  return invoke("cloud_compliance_pack", { orgId, framework, period });
+}
+
+export async function putCloudComplianceControl(
+  orgId: string,
+  frameworkId: string,
+  controlId: string,
+  input: ComplianceControlSettingInput,
+): Promise<ComplianceControlSetting> {
+  return invoke("cloud_compliance_control_put", { orgId, frameworkId, controlId, input });
+}
+
+export async function deleteCloudComplianceControl(
+  orgId: string,
+  frameworkId: string,
+  controlId: string,
+): Promise<void> {
+  await invoke("cloud_compliance_control_delete", { orgId, frameworkId, controlId });
+}
+
+export async function listCloudCompliancePackSchedules(
+  orgId: string,
+  framework: string,
+): Promise<CompliancePackSchedule[]> {
+  return invoke("cloud_compliance_schedules", { orgId, framework });
+}
+
+export async function fetchCloudCompliancePackTargets(
+  orgId: string,
+): Promise<ReportDeliveryTargets> {
+  return invoke("cloud_compliance_schedule_targets", { orgId });
+}
+
+export async function createCloudCompliancePackSchedule(
+  orgId: string,
+  input: CompliancePackScheduleInput,
+): Promise<CompliancePackSchedule> {
+  return invoke("cloud_compliance_schedule_create", { orgId, input });
+}
+
+export async function updateCloudCompliancePackSchedule(
+  orgId: string,
+  scheduleId: string,
+  input: CompliancePackScheduleInput,
+): Promise<CompliancePackSchedule> {
+  return invoke("cloud_compliance_schedule_update", { orgId, scheduleId, input });
+}
+
+export async function deleteCloudCompliancePackSchedule(
+  orgId: string,
+  scheduleId: string,
+): Promise<void> {
+  await invoke("cloud_compliance_schedule_delete", { orgId, scheduleId });
+}
+
+export async function sendCloudCompliancePackScheduleNow(
+  orgId: string,
+  scheduleId: string,
+): Promise<ReportNotificationSendResult> {
+  return invoke("cloud_compliance_schedule_send", { orgId, scheduleId });
 }
 
 /**

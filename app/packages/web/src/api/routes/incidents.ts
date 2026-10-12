@@ -14,6 +14,7 @@ import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import {
   addNote,
+  affectedServices,
   assembleIncidentTimeline,
   buildPostmortem,
   declareIncident,
@@ -117,8 +118,11 @@ app.get("/:incidentId", async (c) => {
   const incidentId = c.req.param("incidentId");
   const incident = await getIncidentRecord(orgId, incidentId);
   if (!incident) return c.json({ error: "Incident not found" }, 404);
-  const notes = await listIncidentNoteRecords(incidentId);
-  return c.json({ incident, notes });
+  const [notes, services] = await Promise.all([
+    listIncidentNoteRecords(incidentId),
+    affectedServices(orgId, incident.affectedResourceIds),
+  ]);
+  return c.json({ incident, notes, affectedServices: services });
 });
 
 app.get("/:incidentId/timeline", async (c) => {

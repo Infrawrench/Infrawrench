@@ -31,6 +31,11 @@ import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
 import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
+import { runVulnerabilityAlerts } from "@infrawrench/server-core/vulnerabilities/alerts";
+import {
+  KEV_REFRESH_INTERVAL_MS,
+  runKevFeedPass,
+} from "@infrawrench/server-core/vulnerabilities/kev";
 import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
 import { runExtendedSupportAlerts } from "@infrawrench/server-core/extended-support/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
@@ -43,12 +48,22 @@ import {
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runSloPass } from "@infrawrench/server-core/slos/pass";
+import { runScorecardPass } from "@infrawrench/server-core/scorecards/pass";
+import {
+  pruneOrgScorecardSnapshots,
+  runOrgScorecardSnapshotPass,
+} from "@infrawrench/server-core/scorecards/org-snapshots";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
+import {
+  pruneEventDeliveries,
+  runEventDeliveryPass,
+} from "@infrawrench/server-core/events/deliver";
 import { runPagingProvidersPass } from "@infrawrench/server-core/paging/providers";
 import { runJitAccessExpiryPass } from "@infrawrench/server-core/jit-access/service";
+import { runLeakedSecretScanPass } from "@infrawrench/server-core/leaked-secrets/scan";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
@@ -67,17 +82,23 @@ import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
+import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
+import { DORA_BAND_INTERVAL_MS, runDoraBandPass } from "@infrawrench/server-core/dora/band-pass";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
 import { pollAccountCommitments } from "./commitment-poll";
 import { pollAccountQuotas } from "./quota-poll";
+import { pollAccountVulnerabilities } from "./vulnerability-poll";
+import { pollAccountSeats } from "./seat-poll";
 import {
   claimDueAccounts,
   claimDueCommitmentAccounts,
   claimDueCostAccounts,
   claimDueCreditAccounts,
   claimDueQuotaAccounts,
+  claimDueVulnerabilityAccounts,
+  claimDueSeatAccounts,
   claimDueWorkflows,
   ACCOUNT_LEASE_MS,
   COST_LEASE_MS,
@@ -88,6 +109,10 @@ import type { TokenBucketRegistry } from "./token-bucket";
 
 const WORKFLOW_LIMIT = 8;
 const COST_LIMIT = 2;
+/** How often the org grade snapshot sweep may run, per process. */
+const ORG_SCORECARD_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
+/** Orgs snapshotted per sweep: seven feed computations each. */
+const ORG_SCORECARD_SNAPSHOTS_PER_RUN = 4;
 
 /** What the passes share across ticks within one process or isolate. */
 export interface PassContext {
@@ -130,7 +155,7 @@ export interface PeriodicPass {
 
 export type Pass = AccountPass | PeriodicPass;
 
-type Capability = "costs" | "credits" | "commitments" | "quotas";
+type Capability = "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats";
 const capablePluginIds = new Map<Capability, Promise<string[]>>();
 
 /** Plugin ids whose manifest declares `capability`; resolved once per process. */
@@ -243,6 +268,14 @@ async function runRetention(): Promise<void> {
   } catch (e) {
     console.error("[poller] credit snapshot retention tick failed:", e);
   }
+  // DORA deploy events keep a little over a year: the Delivery page's longest
+  // range is a year, and its previous-period delta needs the year before
+  // that only for the first few weeks, which is not worth keeping forever.
+  try {
+    await pruneDeployEvents();
+  } catch (e) {
+    console.error("[poller] deploy event retention tick failed:", e);
+  }
   // Quota snapshots keep a year for the same reason credit snapshots do:
   // the rows are tiny, and a longer series is the only way to answer "when
   // did this start climbing" after the fact.
@@ -251,6 +284,13 @@ async function runRetention(): Promise<void> {
   } catch (e) {
     console.error("[poller] quota snapshot retention tick failed:", e);
   }
+  // Org grade readings keep 400 days, a year plus a margin, so "how did we
+  // look this time last year" survives a late prune.
+  try {
+    await pruneOrgScorecardSnapshots();
+  } catch (e) {
+    console.error("[poller] org grade snapshot retention tick failed:", e);
+  }
   // Delivery rows ride the same hourly clock rather than their own: the work
   // is idempotent and tiny, and a second clock would be a second thing to
   // reason about for no benefit.
@@ -258,6 +298,12 @@ async function runRetention(): Promise<void> {
     await pruneAlertDeliveries();
   } catch (e) {
     console.error("[poller] alert delivery retention failed:", e);
+  }
+  // Event subscription deliveries: terminal rows past 30 days.
+  try {
+    await pruneEventDeliveries();
+  } catch (e) {
+    console.error("[poller] event delivery retention failed:", e);
   }
   // Uploaded Terraform state documents, same hourly slot. The newest per
   // org+account scope is always kept: retention here is about superseded
@@ -353,6 +399,34 @@ export const PASSES: readonly Pass[] = [
     run: (row) => pollAccountQuotas(row),
   },
 
+  // Vulnerability findings from the provider's own scanner (six-hourly per
+  // account). Its own pass for the quota reason: a scanner is neither a
+  // billing nor a resource API, and an account whose scanner is switched off
+  // must not slow resource polling down. Account passes run on both runtimes;
+  // a plugin whose client cannot run on the edge hands off to the gateway.
+  {
+    kind: "accounts",
+    name: "vulnerabilities",
+    leaseMs: COST_LEASE_MS,
+    claimFailureLabel: "[vulnerabilities] vulnerability tick failed:",
+    claim: async (scope) =>
+      claimDueVulnerabilityAccounts(COST_LIMIT, await pluginsWith("vulnerabilities"), scope),
+    run: (row) => pollAccountVulnerabilities(row),
+  },
+
+  // Paid SaaS seats (daily cadence per account). Its own pass for the reason
+  // commitments have theirs: a seat list comes from the provider's admin API,
+  // not its billing one, and the inventory is what the Seats findings, the
+  // digest line and detected realized savings are computed from.
+  {
+    kind: "accounts",
+    name: "seats",
+    leaseMs: COST_LEASE_MS,
+    claimFailureLabel: "[seats] seat tick failed:",
+    claim: async (scope) => claimDueSeatAccounts(COST_LIMIT, await pluginsWith("seats"), scope),
+    run: (row) => pollAccountSeats(row),
+  },
+
   // Network flow attribution (daily cadence per account, opt-in per org).
   // Its own pass rather than part of the cost pass for two reasons that both
   // matter: the data comes from the provider's *log* store rather than its
@@ -435,6 +509,29 @@ export const PASSES: readonly Pass[] = [
     name: "posture-alerts",
     runtime: "edge",
     run: guarded("[poller] posture alert tick failed:", () => runPostureAlerts({ limit: 4 })),
+  },
+
+  // Vulnerability alerts: new critical (per settings) findings in running
+  // artifacts, claimed hourly per org on
+  // `org_vulnerability_settings.last_notified_at`. Edge: Postgres and the
+  // metadata-only plugin registry, no plugin code.
+  {
+    kind: "periodic",
+    name: "vulnerability-alerts",
+    runtime: "edge",
+    run: guarded("[vulnerabilities] alert tick failed:", () =>
+      runVulnerabilityAlerts({ limit: 4 }),
+    ),
+  },
+
+  // CISA Known Exploited Vulnerabilities catalog, twice a day. Edge: one fixed
+  // HTTPS fetch and an idempotent upsert, so replicas racing it is harmless.
+  {
+    kind: "periodic",
+    name: "kev-feed",
+    runtime: "edge",
+    minIntervalMs: KEV_REFRESH_INTERVAL_MS,
+    run: guarded("[vulnerabilities] KEV feed tick failed:", () => runKevFeedPass()),
   },
 
   // Savings scan: new orphaned/oversized findings raise `savingsFindings`
@@ -555,6 +652,47 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[slos] tick failed:", () => runSloPass({ limit: 10 })),
   },
 
+  // Scorecards: score every service on every enabled scorecard, hourly per
+  // org, and announce level drops. Gateway: the posture, orphan and backup
+  // feeds evaluate plugin rule declarations, which the edge registry only
+  // carries as metadata.
+  {
+    kind: "periodic",
+    name: "scorecards",
+    runtime: "gateway",
+    run: guarded("[scorecards] tick failed:", () => runScorecardPass({ limit: 5 })),
+  },
+
+  // The org grade's daily reading (the header above the scorecard matrix):
+  // today's snapshot for a bounded batch of orgs with a live account and no
+  // row yet. No lease: the `(organization_id, day)` primary key plus
+  // `onConflictDoNothing` makes the write once per day across replicas, and
+  // `minIntervalMs` keeps seven feed computations per org off the 15s tick.
+  // A steady state costs one indexed NOT EXISTS scan per run. Gateway, like
+  // `scorecards`: the posture and backup feeds bind plugin functions.
+  {
+    kind: "periodic",
+    name: "org-scorecard-snapshots",
+    runtime: "gateway",
+    minIntervalMs: ORG_SCORECARD_SNAPSHOT_INTERVAL_MS,
+    run: guarded("[scorecards] org grade snapshot tick failed:", () =>
+      runOrgScorecardSnapshotPass({ limit: ORG_SCORECARD_SNAPSHOTS_PER_RUN }),
+    ),
+  },
+
+  // DORA band changes: compare each subscribed org's trailing 30 days with
+  // the 30 ending a day earlier and raise `dora.band_changed` per metric that
+  // moved. No row lease: the windows are UTC-day aligned and the events are
+  // keyed per org, metric and day, so replicas and repeats are no-ops, and
+  // `minIntervalMs` keeps it to a few runs a day. Edge: Postgres only.
+  {
+    kind: "periodic",
+    name: "dora-bands",
+    runtime: "edge",
+    minIntervalMs: DORA_BAND_INTERVAL_MS,
+    run: guarded("[dora] band change tick failed:", () => runDoraBandPass()),
+  },
+
   // Query monitors: a small batch of due SQL checks, each opening a
   // connection to somebody else's production database. Gateway-only by
   // construction (socket database drivers).
@@ -600,6 +738,24 @@ export const PASSES: readonly Pass[] = [
     }),
   },
 
+  // Event subscriptions: sends queued deliveries (webhooks, EventBridge,
+  // Pub/Sub) and their retries. Gateway: a publish destination runs plugin
+  // code for an arbitrary account, and webhook sends go through the Node
+  // egress guard. Cheap when idle: one indexed range scan.
+  {
+    kind: "periodic",
+    name: "event-deliveries",
+    runtime: "gateway",
+    run: guarded("[events] delivery tick failed:", async () => {
+      const stats = await runEventDeliveryPass({ limit: 100 });
+      if (stats.claimed > 0) {
+        console.log(
+          `[events] deliveries: ${stats.delivered} delivered, ${stats.failed} failed of ${stats.claimed}`,
+        );
+      }
+    }),
+  },
+
   // Paging providers (PagerDuty, incident.io): sends queued outbound events
   // (triggers raised on the web edge, retries after a provider outage, the
   // acknowledge/resolve that follows) and reconciles mirrored incidents for
@@ -632,6 +788,24 @@ export const PASSES: readonly Pass[] = [
         console.log(
           `[jit-access] sweep: ${stats.revoked} revoked, ${stats.granted} granted, ` +
             `${stats.timedOut} timed out, ${stats.failed} failed`,
+        );
+      }
+    }),
+  },
+
+  // Leaked credentials: reads each secret-scanning account's findings every
+  // 30 minutes, attributes them to what the org stores by fingerprint, records
+  // rotations done elsewhere, and alerts on new ones. Gateway: it calls plugin
+  // code for arbitrary accounts, some behind a bastion.
+  {
+    kind: "periodic",
+    name: "leaked-secrets",
+    runtime: "gateway",
+    run: guarded("[leaked-secrets] scan tick failed:", async () => {
+      const stats = await runLeakedSecretScanPass({ limit: 10 });
+      if (stats.scanned || stats.errors) {
+        console.log(
+          `[leaked-secrets] scanned ${stats.scanned} accounts, ${stats.newLeaks} new leaks, ${stats.errors} errors`,
         );
       }
     }),

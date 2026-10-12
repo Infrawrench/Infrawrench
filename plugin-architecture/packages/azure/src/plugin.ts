@@ -58,6 +58,19 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "client-secret",
+      label: "Microsoft Entra client secret",
+      scannerTypes: ["azure_active_directory_application_secret", "AzureEntraClientSecret"],
+      credentialFields: ["clientSecret"],
+      manageUrl:
+        "https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/RegisteredApps",
+    },
+  ],
   credentialFields: [
     {
       key: "tenantId",
@@ -121,6 +134,19 @@ const manifest: PluginManifest = {
   // to hold Reader (or Reservations Reader / Savings plan Reader) on them:
   // surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
+  // Container image findings from Microsoft Defender for Cloud: individual
+  // `SoftwareUpdate` recommendations on `.containerimage` resources, read
+  // through Azure Resource Graph (the grouped sub-assessment model retired
+  // on 2026-07-31). Reader on the subscription is enough to read them, but
+  // the scanner only runs under the paid Defender for Containers or Defender
+  // CSPM plan with registry access on, hence `requiresElevatedCredential`.
+  // `partial` because the walk stops at 20 pages of 1000 recommendations.
+  vulnerabilities: {
+    label: "Microsoft Defender for Cloud",
+    consoleUrl: "https://portal.azure.com/#blade/Microsoft_Azure_Security/SecurityMenuBlade/0",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   statusFeed,
   priceCatalog,
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on

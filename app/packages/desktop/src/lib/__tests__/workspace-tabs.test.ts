@@ -12,6 +12,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -111,6 +112,20 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(slosTabTarget("slo-1"));
     expect(detail.to).toBe("/slos");
     expect(detail.search).toEqual({ slo: "slo-1" });
+  });
+
+  it("returns services route args, clearing the params for the list view", () => {
+    const list = getWorkspaceNavigateArgs(servicesTabTarget());
+    expect(list.to).toBe("/services");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(servicesTabTarget("svc-1"));
+    expect(detail.to).toBe("/services");
+    expect(detail.search).toEqual({ service: "svc-1" });
+
+    const scorecards = getWorkspaceNavigateArgs(servicesTabTarget(undefined, "scorecards"));
+    expect(scorecards.to).toBe("/services");
+    expect(scorecards.search).toEqual({ view: "scorecards" });
   });
 
   it("returns workflows route args, clearing the param for the list view", () => {
@@ -254,6 +269,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "runbooks" })).toEqual({ to: "/runbooks" });
   });
 
+  it("returns delivery route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({ to: "/delivery" });
+  });
+
   it("returns query-monitors route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "query-monitors" })).toEqual({ to: "/query-monitors" });
   });
@@ -264,6 +283,23 @@ describe("getWorkspaceNavigateArgs", () => {
 
   it("returns posture route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({ to: "/posture" });
+  });
+
+  it("returns vulnerabilities route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({
+      to: "/vulnerabilities",
+    });
+  });
+
+  it("returns compliance route args, always passing search", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "compliance" })).toEqual({
+      to: "/compliance",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "compliance", framework: "iso27001" })).toEqual({
+      to: "/compliance",
+      search: { framework: "iso27001" },
+    });
   });
 
   it("returns access review route args", () => {
@@ -383,6 +419,10 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/runbooks")).toEqual({ kind: "runbooks" });
   });
 
+  it("parses the delivery path", () => {
+    expect(syncWorkspaceRouteFromPath("/delivery")).toEqual({ kind: "delivery" });
+  });
+
   it("parses the query-monitors path", () => {
     expect(syncWorkspaceRouteFromPath("/query-monitors")).toEqual({ kind: "query-monitors" });
   });
@@ -393,6 +433,18 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the posture path", () => {
     expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the vulnerabilities path", () => {
+    expect(syncWorkspaceRouteFromPath("/vulnerabilities")).toEqual({ kind: "vulnerabilities" });
+  });
+
+  it("parses the compliance path and its framework", () => {
+    expect(syncWorkspaceRouteFromPath("/compliance")).toEqual({ kind: "compliance" });
+    expect(syncWorkspaceRouteFromPath("/compliance", undefined, "?framework=soc2")).toEqual({
+      kind: "compliance",
+      framework: "soc2",
+    });
   });
 
   it("parses the access review path", () => {
@@ -440,6 +492,18 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/slos", undefined, "?slo=slo-1")).toEqual({
       kind: "slos",
       sloId: "slo-1",
+    });
+  });
+
+  it("parses the services path, with a service, the scorecards view, or neither", () => {
+    expect(syncWorkspaceRouteFromPath("/services")).toEqual({ kind: "services" });
+    expect(syncWorkspaceRouteFromPath("/services", undefined, "?service=svc-1")).toEqual({
+      kind: "services",
+      serviceId: "svc-1",
+    });
+    expect(syncWorkspaceRouteFromPath("/services", undefined, "?view=scorecards")).toEqual({
+      kind: "services",
+      view: "scorecards",
     });
   });
 

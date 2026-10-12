@@ -19,6 +19,7 @@ import { tfeRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { tfeTerraformExport } from "./terraform.js";
+import { hcpTerraformDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "hcp-terraform",
@@ -29,6 +30,18 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-token",
+      label: "HCP Terraform API token",
+      scannerTypes: ["terraform_api_token", "Hashicorp Terraform user/org API token"],
+      credentialFields: ["apiToken"],
+      manageUrl: "https://app.terraform.io/app/settings/tokens",
+    },
+  ],
   credentialFields: [
     {
       key: "apiToken",
@@ -128,6 +141,7 @@ function validateServerCredentials(credentials: Record<string, string>): string 
 }
 
 export const plugin: Plugin = {
+  deployEvents: hcpTerraformDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HcpTerraformClient(credentials, services),

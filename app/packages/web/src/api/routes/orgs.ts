@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
 import { organizations, organizationMembers, dashboards } from "../../db/schema";
 import { ensureSystemRoles, getSystemRole } from "@infrawrench/server-core/permissions";
+import { ensureDefaultScorecard } from "@infrawrench/server-core/scorecards/store";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -48,6 +49,12 @@ app.post("/", async (c) => {
     name: "Home",
     isDefault: true,
   });
+
+  // Seed the default scorecard so the first service is graded against
+  // something. Best-effort: an org without it seeds lazily on first read.
+  await ensureDefaultScorecard(orgId).catch((err: unknown) =>
+    console.error("[orgs] default scorecard seed failed:", err),
+  );
 
   return c.json({ id: orgId, displayName: displayName.trim() });
 });

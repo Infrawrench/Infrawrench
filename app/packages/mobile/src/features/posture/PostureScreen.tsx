@@ -1,17 +1,20 @@
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
+  leakLocationLabel,
+  leakSeverity,
   POSTURE_SEVERITIES,
   POSTURE_SEVERITY_LABELS,
   postureFindingKey,
   type DismissedPostureFinding,
+  type LeakedSecret,
   type PostureFinding,
   type PostureSeverity,
 } from "@infrawrench/client-core";
 import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, radii, spacing } from "@/lib/theme";
-import { usePosture, usePostureDismissal } from "./usePosture";
+import { useLeakedSecrets, usePosture, usePostureDismissal } from "./usePosture";
 
 /**
  * Posture checks; the native counterpart of the web/desktop Posture screens
@@ -27,11 +30,19 @@ import { usePosture, usePostureDismissal } from "./usePosture";
  * note: typing a justification on a phone is a job for the desktop, and a
  * blank reason is better than a thumbed-in one. The dismissed list at the
  * bottom shows the notes left elsewhere and undoes any of them.
+ *
+ * Leaked credentials sit above the findings, read-only: rotating one is the
+ * secret-reroll flow, which stays on web and desktop. They come from their own
+ * request and render their own loading and error states, so either half of the
+ * screen can fail without taking the other with it.
  */
 export function PostureScreen() {
   const router = useRouter();
   const { orgId } = useOrgApi();
   const posture = usePosture();
+  const leaks = useLeakedSecrets();
+  // A `leaked_secret` push about exactly one leak deep-links with its id.
+  const { leakId } = useLocalSearchParams<{ leakId?: string }>();
   const { dismiss, restore } = usePostureDismissal();
 
   const confirmDismiss = (finding: PostureFinding) =>
@@ -60,6 +71,71 @@ export function PostureScreen() {
       onError: (e) => Alert.alert("Couldn't restore", e instanceof Error ? e.message : String(e)),
     });
 
+  const refresh = () => {
+    void posture.refetch();
+    void leaks.refetch();
+  };
+
+  return (
+    <Screen onRefresh={refresh} refreshing={posture.isRefetching || leaks.isRefetching}>
+      <LeakedCredentialsSection
+        loading={leaks.isLoading}
+        error={
+          leaks.isError
+            ? leaks.error instanceof Error
+              ? leaks.error.message
+              : "Couldn't load leaked credentials."
+            : null
+        }
+        onRetry={() => void leaks.refetch()}
+        leaks={leaks.data?.leaks ?? []}
+        scannerCount={leaks.data?.scanners.length ?? 0}
+        focusedId={leakId}
+      />
+      <SectionTitle>Findings</SectionTitle>
+      <PostureFindings
+        posture={posture}
+        onDismiss={confirmDismiss}
+        dismissBusy={dismiss.isPending}
+        onRestore={undoDismiss}
+        restoreBusy={restore.isPending}
+        onOpen={(finding) =>
+          router.push(
+            `/org/${orgId}/resources/${encodeURIComponent(finding.pluginId)}/${encodeURIComponent(
+              finding.resourceTypeId,
+            )}/${encodeURIComponent(finding.resourceId)}?accountId=${encodeURIComponent(
+              finding.accountId,
+            )}`,
+          )
+        }
+      />
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
+        hitSlop={8}
+      >
+        <Text style={styles.link}>Vulnerabilities in running images →</Text>
+      </Pressable>
+    </Screen>
+  );
+}
+
+/** The severity-grouped findings feed, with its own loading, error and empty states. */
+function PostureFindings({
+  posture,
+  onDismiss,
+  dismissBusy,
+  onRestore,
+  restoreBusy,
+  onOpen,
+}: {
+  posture: ReturnType<typeof usePosture>;
+  onDismiss: (finding: PostureFinding) => void;
+  dismissBusy: boolean;
+  onRestore: (finding: PostureFinding) => void;
+  restoreBusy: boolean;
+  onOpen: (finding: PostureFinding) => void;
+}) {
   if (posture.isLoading) return <LoadingView />;
   if (posture.isError) {
     return (
@@ -88,17 +164,8 @@ export function PostureScreen() {
     else groups.set(finding.severity, [finding]);
   }
 
-  const open = (finding: PostureFinding) =>
-    router.push(
-      `/org/${orgId}/resources/${encodeURIComponent(finding.pluginId)}/${encodeURIComponent(
-        finding.resourceTypeId,
-      )}/${encodeURIComponent(finding.resourceId)}?accountId=${encodeURIComponent(
-        finding.accountId,
-      )}`,
-    );
-
   return (
-    <Screen onRefresh={() => void posture.refetch()} refreshing={posture.isRefetching}>
+    <>
       <View style={styles.chips}>
         {POSTURE_SEVERITIES.map(
           (sev) =>
@@ -127,10 +194,10 @@ export function PostureScreen() {
               <PostureRow
                 key={postureFindingKey(finding)}
                 finding={finding}
-                onPress={() => open(finding)}
+                onPress={() => onOpen(finding)}
                 actionLabel="Dismiss"
-                onAction={() => confirmDismiss(finding)}
-                busy={dismiss.isPending}
+                onAction={() => onDismiss(finding)}
+                busy={dismissBusy}
               />
             ))}
           </Card>
@@ -147,10 +214,10 @@ export function PostureScreen() {
                 finding={finding}
                 muted
                 detail={dismissalLine(finding)}
-                onPress={() => open(finding)}
+                onPress={() => onOpen(finding)}
                 actionLabel="Restore"
-                onAction={() => undoDismiss(finding)}
-                busy={restore.isPending}
+                onAction={() => onRestore(finding)}
+                busy={restoreBusy}
               />
             ))}
           </Card>
@@ -161,7 +228,7 @@ export function PostureScreen() {
         Computed from synced fields. Critical and high findings feed the daily posture alerts.
         Dismissed findings stay off the list and out of alerts until restored.
       </Text>
-    </Screen>
+    </>
   );
 }
 
@@ -175,6 +242,160 @@ const SEVERITY_COLORS: Record<PostureSeverity, string> = {
   medium: colors.accent,
   low: colors.textMuted,
 };
+
+/**
+ * Open leaked credentials, worst first, the notification's leak (if any) at
+ * the top. Read-only: each row says what leaked, where, and what it belongs
+ * to, and the footnote says where the fix lives.
+ */
+function LeakedCredentialsSection({
+  loading,
+  error,
+  onRetry,
+  leaks,
+  scannerCount,
+  focusedId,
+}: {
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  leaks: LeakedSecret[];
+  scannerCount: number;
+  focusedId: string | undefined;
+}) {
+  if (loading) {
+    return (
+      <View style={{ gap: spacing.sm }}>
+        <SectionTitle>Leaked credentials</SectionTitle>
+        <Card>
+          <Text style={styles.subtitle}>Loading leaked credentials...</Text>
+        </Card>
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <View style={{ gap: spacing.sm }}>
+        <SectionTitle>Leaked credentials</SectionTitle>
+        <Card>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={8}>
+            <Text style={styles.retry}>Retry</Text>
+          </Pressable>
+        </Card>
+      </View>
+    );
+  }
+  if (scannerCount === 0) {
+    return (
+      <View style={{ gap: spacing.sm }}>
+        <SectionTitle>Leaked credentials</SectionTitle>
+        <Card>
+          <Text style={styles.subtitle}>
+            Connect a GitHub organization or a GitLab account to scan your code for leaked
+            credentials.
+          </Text>
+        </Card>
+      </View>
+    );
+  }
+
+  // Critical before high, newest first within each (the feed's own order),
+  // and the leak a notification pointed at ahead of everything.
+  const ordered = [...leaks].sort((a, b) => {
+    if (a.id === focusedId) return -1;
+    if (b.id === focusedId) return 1;
+    const sev = (l: LeakedSecret) => (leakSeverity(l) === "critical" ? 0 : 1);
+    return sev(a) - sev(b);
+  });
+  const focusedMissing = Boolean(focusedId) && !leaks.some((l) => l.id === focusedId);
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <SectionTitle>
+        {leaks.length > 0 ? `Leaked credentials (${leaks.length})` : "Leaked credentials"}
+      </SectionTitle>
+      {focusedMissing && (
+        <Text style={styles.footnote}>
+          The leak from your notification is no longer open: it was rotated, dismissed or resolved.
+        </Text>
+      )}
+      {ordered.length === 0 ? (
+        <Card>
+          <Text style={styles.subtitle}>
+            No open leaks across {scannerCount === 1 ? "1 scanner" : `${scannerCount} scanners`}.
+          </Text>
+        </Card>
+      ) : (
+        <Card list>
+          {ordered.map((leak) => (
+            <LeakRow key={leak.id} leak={leak} highlighted={leak.id === focusedId} />
+          ))}
+        </Card>
+      )}
+      {ordered.length > 0 && (
+        <Text style={styles.footnote}>
+          Rotate, dismiss or rescan leaked credentials from Infrawrench on web or desktop.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/** What a leak was matched to, in a phrase. */
+function leakMatchLine(leak: LeakedSecret): string {
+  // A token-type match only knows the provider, not the exact credential.
+  const hedge = leak.matchConfidence === "token-type" ? " (likely)" : "";
+  switch (leak.matchKind) {
+    case "account":
+      return `Account ${leak.matchedAccountName ?? "unknown"}${hedge}`;
+    case "secret-field":
+    case "output":
+      return `Resource ${leak.matchedResourceName ?? "unknown"}${hedge}`;
+    case "none":
+      return "Not a credential Infrawrench holds";
+  }
+}
+
+function LeakRow({ leak, highlighted }: { leak: LeakedSecret; highlighted: boolean }) {
+  const severity = leakSeverity(leak);
+  const location = leakLocationLabel(leak);
+  const detected = Number.isNaN(Date.parse(leak.detectedAt))
+    ? leak.detectedAt
+    : new Date(leak.detectedAt).toLocaleDateString();
+  const flags = [
+    leak.validity === "active" ? "Still valid" : null,
+    leak.publiclyLeaked ? "Also found publicly" : null,
+  ].filter((f): f is string => f !== null);
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${leak.tokenTypeLabel}, ${severity}, ${leakMatchLine(leak)}`}
+      style={[styles.row, highlighted && styles.rowHighlighted]}
+    >
+      <View style={styles.rowMain}>
+        {highlighted && <Text style={styles.fromNotification}>From your notification</Text>}
+        <Text style={styles.title} numberOfLines={1}>
+          {leak.tokenTypeLabel}
+          {leak.secretHint ? ` · ${leak.secretHint}` : ""}
+        </Text>
+        <Text style={styles.subtitle} numberOfLines={2}>
+          {leakMatchLine(leak)}
+          {location ? ` · ${location}` : ""}
+        </Text>
+        <Text style={styles.reason} numberOfLines={2}>
+          Detected {detected} by {leak.scannerAccountName}
+          {flags.length > 0 ? ` · ${flags.join(" · ")}` : ""}
+        </Text>
+      </View>
+      <View style={styles.rowEnd}>
+        <Text style={[styles.severity, { color: SEVERITY_COLORS[severity] }]}>
+          {POSTURE_SEVERITY_LABELS[severity]}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 /** "Dismissed 2 Mar 2026 by Ada: known exception, ticket INF-402". */
 function dismissalLine(finding: DismissedPostureFinding): string {
@@ -287,6 +508,15 @@ const styles = StyleSheet.create({
   chipLabel: { color: colors.textMuted, fontSize: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 10 },
   rowPressed: { backgroundColor: colors.surfaceOverlay },
+  rowHighlighted: {
+    backgroundColor: colors.surfaceOverlay,
+    borderLeftColor: colors.warning,
+    borderLeftWidth: 2,
+    paddingLeft: spacing.sm,
+  },
+  fromNotification: { color: colors.warning, fontSize: 11, fontWeight: "600" },
+  error: { color: colors.danger, fontSize: 13 },
+  retry: { color: colors.accent, fontSize: 13, fontWeight: "500", marginTop: spacing.sm },
   rowMain: { flex: 1, gap: 2 },
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },
   subtitle: { color: colors.textMuted, fontSize: 12 },
@@ -296,4 +526,5 @@ const styles = StyleSheet.create({
   action: { color: colors.textMuted, fontSize: 12 },
   actionBusy: { opacity: 0.5 },
   footnote: { color: colors.textFaint, fontSize: 11 },
+  link: { color: colors.accent, fontSize: 12 },
 });

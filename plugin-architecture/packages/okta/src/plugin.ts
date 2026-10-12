@@ -5,6 +5,7 @@ import { OktaClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { oktaSeatRemediationCommands } from "./remediation.js";
 import { oktaTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -80,6 +81,16 @@ const manifest: PluginManifest = {
       advanced: true,
       placeholder: "okta.users.read okta.groups.read okta.logs.read",
     },
+    {
+      key: "seatPriceMonthly",
+      label: "Seat price (USD per user per month)",
+      description:
+        "What one Okta user costs you per month under your contract. Okta's API does not report pricing, so without this the Seats page estimates with the Starter suite's published list price of $6.",
+      sensitive: false,
+      optional: true,
+      advanced: true,
+      placeholder: "6",
+    },
     caCertCredentialField,
   ],
   preflight: {
@@ -94,7 +105,10 @@ const manifest: PluginManifest = {
         id: "users",
         label: "Users",
         requiredPermissions: [
-          { id: "okta.users.read", label: "okta.users.read (okta.users.manage to edit)" },
+          {
+            id: "okta.users.read",
+            label: "okta.users.read (okta.users.manage to edit users or remove seats)",
+          },
         ],
       },
       {
@@ -131,6 +145,7 @@ const manifest: PluginManifest = {
   statusFeed,
   // Okta's org-wide management limits start around 600 requests/minute per endpoint family.
   rateLimit: { capacity: 20, refillPerSecond: 5 },
+  seats: { products: ["Okta"], removal: true },
 };
 
 export const plugin: Plugin = {
@@ -139,4 +154,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new OktaClient(credentials, services),
   parseStatusFeed,
   terraformExport: oktaTerraformExport,
+  seatRemediationCommands: oktaSeatRemediationCommands,
 };

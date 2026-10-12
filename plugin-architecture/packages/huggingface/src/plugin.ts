@@ -40,6 +40,18 @@ const manifest: PluginManifest = {
   logoSvg: LOGO,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "access-token",
+      label: "Hugging Face access token",
+      scannerTypes: ["hf_user_access_token", "hf_org_api_key", "HuggingFaceUserAccessToken"],
+      credentialFields: ["apiToken"],
+      manageUrl: "https://huggingface.co/settings/tokens",
+    },
+  ],
   credentialFields: [
     {
       key: "apiToken",

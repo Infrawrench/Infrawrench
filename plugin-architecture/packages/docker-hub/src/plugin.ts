@@ -8,7 +8,7 @@ import type { HubContext } from "./api.js";
 import { statusOf } from "./api.js";
 import { DockerHubClient, listNamespaces } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import { dockerHubRemediationCommands } from "./remediation.js";
+import { dockerHubRemediationCommands, dockerHubSeatRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dockerHubTerraformExport } from "./terraform.js";
@@ -56,6 +56,16 @@ const manifest: PluginManifest = {
         emptyLabel: "All namespaces",
       },
     },
+    {
+      key: "seatPriceMonthly",
+      label: "Seat price (USD per seat per month)",
+      description:
+        "What one organization seat costs you per month. Docker Hub's API does not report your plan, so without this the Seats page estimates with the Team plan's annual list price of $15 (Team monthly is $16, Business $24).",
+      sensitive: false,
+      optional: true,
+      advanced: true,
+      placeholder: "15",
+    },
   ],
   statusFeed,
   quotas: {
@@ -65,6 +75,7 @@ const manifest: PluginManifest = {
   },
   // Docker Hub's API limit is per minute and per account; stay well inside it.
   rateLimit: { capacity: 10, refillPerSecond: 3 },
+  seats: { products: ["Docker"], removal: true },
 };
 
 async function listCredentialOptions(
@@ -101,5 +112,6 @@ export const plugin: Plugin = {
   parseStatusFeed,
   terraformExport: dockerHubTerraformExport,
   remediationCommands: dockerHubRemediationCommands,
+  seatRemediationCommands: dockerHubSeatRemediationCommands,
   listCredentialOptions,
 };

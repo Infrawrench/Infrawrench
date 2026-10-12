@@ -12,12 +12,17 @@ import type {
   PreflightCapabilityCheck,
   PreflightResult,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { CostSetupError, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
 import type {
   CursorBillingGroup,
   CursorContext,
+  CursorDailyUsage,
   CursorDirectoryGroup,
   CursorEditsRow,
   CursorGroupMember,
@@ -31,6 +36,7 @@ import type {
 import {
   ADMIN_API_DOCS,
   ANALYTICS_API_DOCS,
+  CursorApiError,
   DAY_MS,
   INTERACTIVE_EVENT_PAGES,
   changeBillingGroupMembers,
@@ -70,6 +76,8 @@ import {
   seatMonthlyPrice,
   seatTier,
 } from "./cost-data.js";
+import { buildCursorSeats, configuredSeatPrices, seatWindowDays } from "./seats.js";
+import type { ConfiguredSeatPrices } from "./seats.js";
 import { renderCursorDetail, renderCursorSidebarItem } from "./render.js";
 import { resourceTypes } from "./resource-types.js";
 import type { MemberActivity, ModelUsage } from "./usage.js";
@@ -96,6 +104,10 @@ const LIST_MEMBERS_FOR_GROUPS = 10;
 
 interface TeamSnapshot {
   members: CursorTeamMember[];
+  /** Daily usage rows over the trailing activity window, from `usageStartMs` to `usageEndMs`. */
+  usage: CursorDailyUsage[];
+  usageStartMs: number;
+  usageEndMs: number;
   spendByEmail: Map<string, CursorMemberSpend>;
   cycleStartMs: number | undefined;
   activity: Map<string, MemberActivity>;
@@ -170,6 +182,7 @@ export function parsePatterns(raw: string): string[] {
 export class CursorClient implements PluginClient {
   private readonly ctx: CursorContext;
   private readonly pricing: SeatPricing;
+  private readonly configuredPrices: ConfiguredSeatPrices;
   private readonly cache = new Map<string, { at: number; value: Promise<unknown> }>();
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
@@ -181,6 +194,7 @@ export class CursorClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
     };
     this.pricing = parseSeatPricing(credentials);
+    this.configuredPrices = configuredSeatPrices(credentials);
   }
 
   /** Test seam: skip the 429 backoff. */
@@ -219,6 +233,9 @@ export class CursorClient implements PluginClient {
       const activity = memberActivity(usage);
       return {
         members,
+        usage,
+        usageStartMs: end - ACTIVITY_WINDOW_MS,
+        usageEndMs: end,
         spendByEmail,
         cycleStartMs: spend.cycleStartMs,
         activity,
@@ -264,6 +281,64 @@ export class CursorClient implements PluginClient {
       );
     }
     return emails.map((e) => byEmail.get(e)!);
+  }
+
+  // ---- Seats ---------------------------------------------------------------
+
+  /**
+   * Paid seats with their daily-usage evidence (see `seats.ts`). The trailing
+   * 30 days come from the shared snapshot; a longer org threshold adds the
+   * older 30-day windows, up to 90 days. Any failed page fails the read.
+   */
+  async fetchSeats(_accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]> {
+    const windowDays = seatWindowDays(options.lookbackDays);
+    const [snap, enterprise] = await Promise.all([this.snapshot(), this.analyticsAvailable()]);
+    const startMs = snap.usageEndMs - windowDays * DAY_MS;
+    const older =
+      startMs < snap.usageStartMs
+        ? await this.cached(`seat-usage:${windowDays}`, () =>
+            // https://cursor.com/docs/account/teams/admin-api (POST /teams/daily-usage-data, 30-day windows)
+            getDailyUsageRange(this.ctx, startMs, snap.usageStartMs - 1),
+          )
+        : [];
+    return buildCursorSeats({
+      members: snap.members,
+      usage: [...older, ...snap.usage],
+      windowStartDay: isoDay(startMs),
+      windowDays,
+      pricing: this.pricing,
+      configured: this.configuredPrices,
+      // The Analytics API is Enterprise only, so reaching it identifies the plan.
+      enterprise,
+    });
+  }
+
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const id = seat.memberId.startsWith("user_") ? seat.memberId : (seat.email ?? seat.memberId);
+    this.invalidate();
+    let result: Awaited<ReturnType<typeof removeTeamMember>>;
+    try {
+      // https://cursor.com/docs/account/teams/admin-api (POST /teams/remove-member)
+      result = await removeTeamMember(this.ctx, id);
+    } catch (err) {
+      if (isAccessDenied(err)) {
+        throw new Error(
+          "Cursor refused to remove the member. Removing members through the API needs an Enterprise plan and an Admin API key with the admin scope; otherwise remove them from the Members page of the team dashboard.",
+        );
+      }
+      if (err instanceof CursorApiError) {
+        throw new Error(`Cursor refused to remove the member: ${err.message}`);
+      }
+      throw err;
+    }
+    if (result.success === false) throw new Error("Cursor did not remove the member.");
+    return result.hasBillingCycleUsage
+      ? {
+          effective: "end-of-cycle",
+          message:
+            "Removed from the team. They used credits this cycle, so Cursor keeps the seat billed until the cycle ends.",
+        }
+      : { effective: "immediate", message: "Removed from the team." };
   }
 
   // ---- Listing -------------------------------------------------------------
@@ -796,7 +871,8 @@ export class CursorClient implements PluginClient {
     this.invalidate();
     switch (typeId) {
       case "team-member":
-        return removeTeamMember(this.ctx, externalId);
+        await removeTeamMember(this.ctx, externalId);
+        return;
       case "billing-group":
         return deleteBillingGroup(this.ctx, externalId);
       case "directory-group":

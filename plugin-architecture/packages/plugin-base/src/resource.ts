@@ -2,6 +2,7 @@ import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
 import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
+import type { RunningImageDeclaration } from "./vulnerabilities.js";
 import type { ExtendedSupportDeclaration } from "./extended-support.js";
 
 export type { AssociationSource };
@@ -1007,6 +1008,18 @@ export interface ResourceTypeDefinition {
    * declare `resourceSqlDriver` don't need it; pickers accept either.
    */
   supportsRestQuery?: boolean;
+  /**
+   * Instances of this type can receive the organization's own event
+   * subscriptions (Settings > Notifications > Event subscriptions): the host
+   * delivers each event by calling `publishMessage` with the JSON envelope as
+   * the body and `PublishMessagePayload.event` set, so the plugin can fill its
+   * own required extras (an EventBridge source and detail type, Pub/Sub
+   * attributes) without the user typing them. Purely declarative; it is what
+   * lets the destination picker offer the right resources without
+   * instantiating a client. Only set it on types whose `publishMessage`
+   * succeeds with empty `extras` when `event` is present.
+   */
+  eventSink?: boolean;
   /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
   supportsMetrics?: boolean;
   /**
@@ -1111,6 +1124,14 @@ export interface ResourceTypeDefinition {
    * stores for you.
    */
   principalRole?: PrincipalRoleDeclaration;
+  /**
+   * Marks this type as one whose instances run container images and names the
+   * already-synced fields holding the references, so the host can join
+   * vulnerability findings to what is running; see
+   * {@link RunningImageDeclaration}. Absent = instances never count as running
+   * an image.
+   */
+  runningImages?: RunningImageDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

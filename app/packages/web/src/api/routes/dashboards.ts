@@ -823,6 +823,9 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "changes" ||
       target.kind === "expiring" ||
       target.kind === "posture" ||
+      target.kind === "vulnerabilities" ||
+      // `framework` only remembers which framework the tab was on.
+      target.kind === "compliance" ||
       target.kind === "access-review" ||
       target.kind === "jit-access" ||
       target.kind === "backups" ||
@@ -842,6 +845,8 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "price-catalog" ||
       target.kind === "incidents" ||
       target.kind === "slos" ||
+      target.kind === "services" ||
+      target.kind === "delivery" ||
       target.kind === "workflows" ||
       target.kind === "deployments" ||
       target.kind === "settings"

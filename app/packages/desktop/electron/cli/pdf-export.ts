@@ -1,4 +1,5 @@
-// Shared by `reports --format pdf` and `dashboards --format pdf`: download the
+// Shared by `reports --format pdf` and `dashboards --format pdf` (and, for the
+// file write, `compliance export`): download the
 // server-rendered PDF and write it to disk. The rendering is the server's job
 // (the same document the web download and the scheduled delivery attach), so
 // the CLI only fetches bytes and picks a file name.
@@ -49,6 +50,21 @@ export function wantsPdf(flags: PdfExportFlags, command: string): boolean {
   throw new CliError(`Unknown --format "${flags.format}" for ${command}. The only format is pdf.`);
 }
 
+/**
+ * Write a downloaded file (a PDF, the compliance evidence pack) relative to
+ * the working directory; returns the absolute path. A write failure is a
+ * CliError naming the path, not a stack trace.
+ */
+export async function writeDownloadedFile(path: string, bytes: Uint8Array): Promise<string> {
+  const target = resolve(path);
+  try {
+    await writeFile(target, bytes);
+  } catch (e) {
+    throw new CliError(`Can't write ${target}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return target;
+}
+
 /** Download `path` (an org-scoped PDF route) and write it next to the user. */
 export async function exportPdf(
   ctx: CliContext,
@@ -76,12 +92,10 @@ export async function exportPdf(
       `The server did not return a PDF for ${opts.subject.kind} "${opts.subject.name}".`,
     );
   }
-  const target = resolve(opts.flags.out ?? opts.flags.file ?? pdfFileName(opts.subject.name));
-  try {
-    await writeFile(target, bytes);
-  } catch (e) {
-    throw new CliError(`Can't write ${target}: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  const target = await writeDownloadedFile(
+    opts.flags.out ?? opts.flags.file ?? pdfFileName(opts.subject.name),
+    bytes,
+  );
 
   if (ctx.flags.output === "json") {
     printJson({

@@ -14,6 +14,18 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "Mailgun API key",
+      scannerTypes: ["mailgun_api_key", "Mailgun private API token"],
+      credentialFields: ["apiKey"],
+      manageUrl: "https://app.mailgun.com/settings/api_security",
+    },
+  ],
   credentialFields: [
     {
       key: "apiKey",

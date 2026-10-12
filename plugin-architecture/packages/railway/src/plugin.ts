@@ -18,6 +18,7 @@ import {
 import { railwayRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { railwayDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "railway",
@@ -99,6 +100,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: railwayDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RailwayClient(credentials, RESOURCE_TYPES, services),

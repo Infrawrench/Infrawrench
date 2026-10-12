@@ -242,6 +242,25 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    id: "leakedSecretAlerts",
+    label: "Leaked credentials",
+    description: "A secret scanner found a credential committed to code.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
+    // New findings only: a CVE is alerted once, when it first becomes
+    // alertable (first seen, or first seen running), never again daily.
+    // `critical` because the default threshold is "critical and running".
+    id: "vulnerabilityAlerts",
+    label: "Vulnerabilities",
+    description: "A critical vulnerability was found in an image that is running.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     id: "probeAlerts",
     label: "Probes",
     description: "A synthetic probe went down or recovered.",
@@ -261,6 +280,17 @@ export const ALERT_TRIGGERS = [
     pushDefaultMuted: false,
     channelOnly: false,
     defaultSeverity: "critical",
+  },
+  {
+    // A service dropped a level on a scorecard (gold to silver, or off the
+    // ladder entirely). `warning`: a readiness regression is something to fix
+    // this week, not something to wake for. Rises are not announced.
+    id: "scorecardAlerts",
+    label: "Scorecards",
+    description: "A service dropped a level on one of the org's scorecards.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
   },
   {
     // The deadline family's third member, beside expiry and commitment lapse:

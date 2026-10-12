@@ -39,6 +39,7 @@ import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { PromptHost } from "@infrawrench/ui/workflows";
 import { SpotlightSearch } from "../components/SpotlightSearch";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
+import { DeepLinkHost } from "../components/DeepLinkHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { ProviderIncidentShellBanner } from "../components/ProviderIncidentShellBanner";
@@ -145,7 +146,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   }
 
   // Agents, Costs, Cost reports, Invoices, Graph, Logs, Changes, Expiring,
-  // Posture, Access review, Domains, Env diff, Fan-out, Alerts, Workflows, and
+  // Posture, Vulnerabilities, Compliance, Access review, Domains, Env diff, Fan-out, Alerts, Workflows, and
   // Chat tabs
   // aren't backed by a single
   // resource row; keep them as-is.
@@ -161,6 +162,8 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "changes" ||
     target.kind === "expiring" ||
     target.kind === "posture" ||
+    target.kind === "vulnerabilities" ||
+    target.kind === "compliance" ||
     target.kind === "access-review" ||
     target.kind === "jit-access" ||
     target.kind === "backups" ||
@@ -179,6 +182,8 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "price-catalog" ||
     target.kind === "incidents" ||
     target.kind === "slos" ||
+    target.kind === "services" ||
+    target.kind === "delivery" ||
     target.kind === "workflows" ||
     target.kind === "deployments" ||
     target.kind === "chat" ||
@@ -856,6 +861,8 @@ function RootLayout() {
       <SshHostKeyPromptHost />
       <PromptHost />
       <UpdatePromptHost />
+      {/* After tab restore, so a link opened at launch is not overwritten by it. */}
+      {tabsValidated && <DeepLinkHost />}
       {tunnelAttach && (
         <TunnelSshAttachModal
           tunnelName={tunnelAttach.tunnel.displayName}

@@ -16,6 +16,26 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "secret-key",
+      label: "Stripe secret or restricted key",
+      scannerTypes: [
+        "stripe_api_key",
+        "stripe_live_restricted_key",
+        "stripe_test_restricted_key",
+        "StripeLiveSecretKey",
+        "StripeLiveRestrictedKey",
+        "StripeTestSecretKey",
+      ],
+      prefixes: ["sk_live_", "rk_live_", "sk_test_", "rk_test_"],
+      credentialFields: ["apiKey"],
+      manageUrl: "https://dashboard.stripe.com/apikeys",
+    },
+  ],
   credentialFields: [
     {
       key: "apiKey",

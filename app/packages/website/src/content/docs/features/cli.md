@@ -219,6 +219,33 @@ infrawrench slos checkout         # one SLO: budget, burn rates, burndown sparkl
 infrawrench slos --json
 ```
 
+`services` lists the org's [services](./services.md), the named sets of resources that make up one system across providers: each one's tier, owning team or members, member count and its level on every scorecard that applies. `--tier 1` keeps one criticality tier. `services show` takes a service's id, slug or name (a unique fragment of the name works too) and prints its summary: owners and links, who is on call now and next, the last 30 days of member cost per currency (printed as "unavailable" when the cost warehouse could not be read, never as zero), linked SLOs and runbooks, posture, orphan and backup findings (naming any feed that could not be loaded), members with where each came from, recent changes, and each scorecard's score with the reason every failing check gave. Its `--json` is `{ org, service, members, excluded, summary, scorecards, history }`. Cloud-only, and read-only: services are edited from the Services tab, where the resource and rule pickers live:
+
+```
+infrawrench services
+infrawrench services --tier 1
+infrawrench services show checkout-api   # owners, on-call, cost, SLOs, findings, members, changes
+infrawrench services show "Checkout API" --json
+```
+
+`scorecards` first prints the [org grade](./services.md#org-grade): the overall grade and score, the change since the oldest stored reading, a 90-day sparkline on the full 0 to 100 range, the biggest drag, and one row per pillar with its weight, score (or `n/a` and why) and reading. If the grade cannot be read the matrix still prints. Then it prints the [scorecard](./services.md#scorecards) matrix: one row per service, one column per scorecard, each cell the score and level reached, green at the top level, yellow between, red below the lowest. A service a scorecard does not apply to (by tier) shows `n/a`, and one where no check applied shows "not scored", never 0%. Give it a scorecard's id or name for its definition (checks with their weights and parameters, levels, tiers, whether a level drop alerts) and every service's score on it, best first, with a 90-day trend sparkline and the checks it fails. The matrix `--json` is `{ org, orgGrade, scorecards, services, results }`, with `orgGrade` null when it could not be read:
+
+```
+infrawrench scorecards
+infrawrench scorecards "production readiness"
+infrawrench scorecards --json
+```
+
+`dora` is [Delivery (DORA metrics)](./dora-metrics.md): deployment frequency, lead time for changes, change failure rate and time to restore for production, each with its performance band, the previous period and a sparkline trend, then a breakdown by environment (or `--group-by repository|owner|service`). `--scope <dimension>=<value>` narrows to one environment, repository, owner or service (by service id) (`--scope owner` alone is the deploys with no owner recorded). `dora changes` lists the production changes behind the numbers (`--failed` for the failed ones and what they were blamed on), `dora restores` the recoveries, and `dora settings` what counts as production. Cloud-only; needs `deployments:read`:
+
+```
+infrawrench dora
+infrawrench dora --last 90d --group-by repository
+infrawrench dora --scope environment=production --json
+infrawrench dora changes --failed
+infrawrench dora restores
+```
+
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
 
 ```
@@ -331,6 +358,14 @@ infrawrench prices search --min-vcpus 4 --min-memory 16 --area europe
 infrawrench prices search --gpu required --gpu-model H100 --rate spot
 infrawrench prices compare --vcpus 8 --memory 32
 infrawrench prices compare m7i.xlarge --provider aws --json
+```
+
+`seats` lists [SaaS seat findings](./saas-seats.md): paid seats that are inactive, duplicated across tools, or on a dearer tier, with the monthly saving and remediation commands. `seats all` lists every seat with its last activity and how that was determined, `seats remove <id>` removes a flagged seat through its provider (asks first unless `-y`), and `seats refresh` re-collects now. Cloud only:
+
+```sh
+infrawrench seats
+infrawrench seats all --json
+infrawrench seats remove 7c0e1f52-... -y
 ```
 
 `extended-support` lists [extended support findings](./extended-support.md): clusters and databases on versions billed at extended-support or end-of-life rates, with the monthly surcharge an upgrade removes (billed where the provider's billing names it, list price otherwise). `--local` checks the desktop workspace on your machine, at list price:
@@ -540,11 +575,45 @@ infrawrench routing queue      # held and escalating alerts   [--limit 50]
 infrawrench routing email      # alert email policy and unsubscribed addresses
 ```
 
+Machines get the same events through [event subscriptions](./event-subscriptions.md). `infrawrench webhooks` lists them with their health (on, off, turned off automatically, failing), `webhooks test <id|name>` sends a test event now and exits non-zero when the receiver refuses it, and `webhooks deliveries [id|name]` prints the delivery log. All three take `--json`:
+
+```bash
+infrawrench webhooks                       # subscriptions and their health
+infrawrench webhooks test "Security feed"  # send infrawrench.test now
+infrawrench webhooks deliveries --json     # the last 50 deliveries, every subscription
+```
+
 Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
 
 `infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything: on the local working tree against the merge base with the default branch (`--base <ref>` for another one, uncommitted edits included), or on an open pull request with `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource; `--json` returns the full report. Needs `iac:read`.
 
 All of these are read-only and need the **Organization settings** permission (an address on the unsubscribed list, or outside the [email](./email-alerts.md) domains your organization allows, is skipped at send time); editing rules lives on the web and desktop Notifications page.
+
+## Leaked credentials
+
+`infrawrench leaks` lists the credentials a secret scanner (GitHub secret scanning, GitLab secret detection) found committed to code: the token type with its masked hint, where it was found, what Infrawrench matched it to (an account, a secret stored on a resource, or nothing it holds), when it was detected and where it stands. Above the table are the counts per status and one line per scanner account, with its last scan or the error that stopped it. It is the [Posture](./posture-checks.md) tab's "Leaked credentials" category, from the terminal:
+
+```bash
+infrawrench leaks                          # open leaks, the scanners and the counts
+infrawrench leaks --status all             # also rotated, dismissed and resolved upstream
+infrawrench leaks --account "Prod AWS"     # leaks that matched, or may belong to, one account
+infrawrench leaks scan                     # scan every scanner account now
+infrawrench leaks --json                   # the raw response: full ids, finding URLs, rotation modes
+```
+
+Leaks are addressed by the short id the table prints, or any unique prefix of the full one. The actions:
+
+```bash
+infrawrench leaks rotate 3f9a1c2e                              # the provider reissues the value
+infrawrench leaks rotate 3f9a1c2e --value-stdin < new-key.txt  # store a value you created yourself
+infrawrench leaks mark-rotated 3f9a1c2e                        # you rotated it at the provider
+infrawrench leaks dismiss 3f9a1c2e --reason used-in-tests --comment "fixture key"
+infrawrench leaks reopen 3f9a1c2e
+```
+
+`rotate` does what the Rotate button does. When the owning plugin can mint a new value it does, and every resource that references it follows. When the stored secret is a literal, you supply the replacement, and only on stdin: piped, or typed at the prompt with echo off. It is never accepted as an argument, where it would land in shell history. A leaked account credential, or one Infrawrench does not hold, cannot be rotated from here; the command prints where to rotate it at the provider and exits non-zero, and `mark-rotated` records it afterwards (updating the account's credentials records it on its own).
+
+`--reason` for `dismiss` is `false-positive`, `wont-fix` or `used-in-tests`. `rotate`, `mark-rotated` and `dismiss` also close the finding on the scanner when the scanner allows it; `--keep-upstream-open` leaves it open there. Every subcommand takes `--json`. Reading needs `resources:read`; scanning and every action need `secrets:write`. Cloud only: scanning runs on the server, so `--local` is refused.
 
 ## Config as code
 

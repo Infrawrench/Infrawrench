@@ -25,6 +25,7 @@ import type {
   CostEstimateLineItem,
   CommitmentRecord,
   QuotaUsage,
+  VulnerabilityFinding,
   CostFetchRange,
   CostRow,
   BusinessMetricSourceDryRun,
@@ -142,6 +143,11 @@ import {
 
 import type { GcpClientContext } from "./shared.js";
 import { fetchGcpQuotas, type GcpProject, type GcpRegionList } from "./quotas.js";
+import {
+  fetchGcpVulnerabilityFindings,
+  OCCURRENCE_PAGE_SIZE,
+  type GcpOccurrenceList,
+} from "./vulnerabilities.js";
 import { deleteResource as runDeleteResource } from "./delete-client.js";
 import {
   resolveOutput as runResolveOutput,
@@ -1210,6 +1216,32 @@ export class GcpClient implements PluginClient {
         url.searchParams.set("maxResults", "100");
         if (pageToken) url.searchParams.set("pageToken", pageToken);
         return this.get<GcpRegionList>(url.toString());
+      },
+    });
+  }
+
+  /**
+   * Artifact Analysis vulnerability occurrences for the account's project.
+   * See `vulnerabilities.ts` for the wire shape, bounds and access errors.
+   */
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    const project = encodeURIComponent(this.project);
+    return fetchGcpVulnerabilityFindings({
+      project: this.project,
+      listOccurrences: (pageToken) => {
+        const url = new URL(
+          `https://containeranalysis.googleapis.com/v1/projects/${project}/occurrences`,
+        );
+        url.searchParams.set("filter", 'kind="VULNERABILITY"');
+        url.searchParams.set("pageSize", String(OCCURRENCE_PAGE_SIZE));
+        if (pageToken) url.searchParams.set("pageToken", pageToken);
+        return this.get<GcpOccurrenceList>(url.toString());
+      },
+      getServiceState: async (service) => {
+        const res = await this.get<{ state?: string }>(
+          `https://serviceusage.googleapis.com/v1/projects/${project}/services/${service}`,
+        );
+        return res.state;
       },
     });
   }

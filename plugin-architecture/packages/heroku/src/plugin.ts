@@ -14,6 +14,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { herokuRemediationCommands } from "./remediation.js";
 import { herokuTerraformExport } from "./terraform.js";
 import type { HkTeam } from "./types.js";
+import { herokuDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "heroku",
@@ -24,6 +25,19 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "Heroku API key",
+      scannerTypes: ["heroku_platform_api_oauth2_token", "Heroku API Key"],
+      prefixes: ["HRKU-"],
+      credentialFields: ["apiKey"],
+      manageUrl: "https://dashboard.heroku.com/account/applications",
+    },
+  ],
   credentialFields: [
     {
       key: "apiKey",
@@ -86,6 +100,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: herokuDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HerokuClient(credentials, RESOURCE_TYPES, services),

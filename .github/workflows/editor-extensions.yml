@@ -1,0 +1,75 @@
+name: Editor extensions
+
+# Builds and packages the VS Code extension (.vsix) and the Raycast extension
+# (`ray build` output) and uploads both as artifacts. Nothing is published:
+# Marketplace and Raycast Store submission are manual (KNOWLEDGE.md, "Editor
+# extensions"). Typecheck and unit tests also run in test.yml, which covers
+# every workspace package; this job proves the packages actually package.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/vscode/**"
+      - "app/packages/raycast/**"
+      - "app/packages/client-core/**"
+      - "plugin-architecture/packages/plugin-base/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/editor-extensions.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/packages/vscode/**"
+      - "app/packages/raycast/**"
+      - "app/packages/client-core/**"
+      - "plugin-architecture/packages/plugin-base/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/editor-extensions.yml"
+
+jobs:
+  package:
+    name: Build and package
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      # Workspace dependencies first (client-core and what it imports): both
+      # extensions bundle client-core's dist.
+      - name: Build workspace dependencies
+        run: pnpm --filter "@infrawrench/vscode^..." --filter "@infrawrench/raycast^..." build
+
+      - name: VS Code extension
+        working-directory: app/packages/vscode
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm package
+
+      - name: Raycast extension
+        working-directory: app/packages/raycast
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          tar -czf infrawrench-raycast.tgz -C dist .
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: infrawrench-vscode
+          path: app/packages/vscode/out/*.vsix
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: infrawrench-raycast
+          path: app/packages/raycast/infrawrench-raycast.tgz
+          if-no-files-found: error

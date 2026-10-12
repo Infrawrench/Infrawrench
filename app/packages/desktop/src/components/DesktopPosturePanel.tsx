@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RESOURCES_CHANGED_EVENT,
+  LeakedCredentialsSection,
   PostureSection,
   useUIStore,
   type PostureFinding,
   type PostureListResponse,
 } from "@infrawrench/ui";
+import { invoke } from "@/lib/invoke";
 import {
+  cloudLeakedCredentialsClient,
   dismissCloudPostureFinding,
   fetchCloudPosture,
   restoreCloudPostureFinding,
@@ -19,6 +22,8 @@ import {
 
 interface DesktopPosturePanelProps {
   openResource: (finding: PostureFinding) => void;
+  openAccount: (accountId: string) => void;
+  openVulnerabilities?: (() => void) | undefined;
 }
 
 /**
@@ -28,7 +33,11 @@ interface DesktopPosturePanelProps {
  * declarations. Same wiring as DesktopExpiryPanel: a failed *refresh* must
  * not blank findings that are already drawn.
  */
-export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) {
+export function DesktopPosturePanel({
+  openResource,
+  openAccount,
+  openVulnerabilities,
+}: DesktopPosturePanelProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +47,14 @@ export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) 
   const reload = useRef<() => void>(() => {});
 
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Leaked credentials are cloud only (the scan runs in the cloud poller).
+  // The full client is passed: the server refuses an action without
+  // `secrets:write`, and the section shows that refusal inline.
+  const leakClient = useMemo(
+    () => (activeCloudOrgId ? cloudLeakedCredentialsClient(activeCloudOrgId, true) : null),
+    [activeCloudOrgId],
+  );
 
   const dismiss = useCallback(
     async (finding: PostureFinding, reason: string) => {
@@ -105,11 +122,30 @@ export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) 
       error={error}
       onRetry={retry}
       onOpenResource={openResource}
+      onOpenVulnerabilities={openVulnerabilities}
       // Both modes can dismiss: cloud mode records it for the org through the
       // API (and the server rejects a caller without `resources:write`),
       // local mode writes this workspace's own SQLite table.
       onDismiss={dismiss}
       onRestore={restore}
+      leakedCredentials={
+        leakClient ? (
+          <LeakedCredentialsSection
+            client={leakClient}
+            onOpenAccount={openAccount}
+            openExternal={(url) => void invoke("open_external_url", { url })}
+            onOpenResource={(leak) => {
+              if (!leak.matchedAccountId || !leak.matchedResourceId) return;
+              openResource({
+                accountId: leak.matchedAccountId,
+                resourceId: leak.matchedResourceId,
+                pluginId: leak.matchedPluginId ?? "",
+                resourceTypeId: leak.matchedResourceTypeId ?? "",
+              } as PostureFinding);
+            }}
+          />
+        ) : undefined
+      }
     />
   );
 }

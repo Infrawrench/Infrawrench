@@ -13,6 +13,7 @@ import { pulumiCloudRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { DEFAULT_PLAN, PLANS } from "./usage.js";
+import { pulumiDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "pulumi-cloud",
@@ -126,6 +127,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: pulumiDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PulumiCloudClient(credentials, services),

@@ -92,8 +92,11 @@ export interface HubMember {
   groups?: string[];
   date_joined?: string;
   type?: string;
-  last_logged_in_at?: string;
-  last_seen_at?: string;
+  is_guest?: boolean;
+  /** Only present when the organization has insights visible. */
+  last_logged_in_at?: string | null;
+  /** Only present when the organization has insights visible. */
+  last_seen_at?: string | null;
 }
 
 export interface HubInvite {
@@ -353,8 +356,8 @@ export function mapMember(accountId: string, org: string, m: HubMember): Resourc
       role: (m.role ?? "").toLowerCase() || undefined,
       teams: (m.groups ?? []).join(", ") || undefined,
       dateJoined: m.date_joined,
-      lastLoggedIn: m.last_logged_in_at,
-      lastSeenAt: m.last_seen_at,
+      lastLoggedIn: m.last_logged_in_at ?? undefined,
+      lastSeenAt: m.last_seen_at ?? undefined,
     },
     { parentResourceId: nsParent(accountId, org) },
   );

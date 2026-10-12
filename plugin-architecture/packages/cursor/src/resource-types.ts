@@ -50,7 +50,7 @@ export const TeamMemberResourceType = rt({
   name: "Team Member",
   id: "team-member",
   description:
-    "A member of the Cursor team with their role, seat, last activity, spend this billing cycle and per-user spend limit. Edit to set or clear the spend limit (whole US dollars). Delete removes the member from the team; Cursor keeps the seat billed until the end of the cycle. Members with no activity in 30 days are flagged as idle seats.",
+    "A member of the Cursor team with their role, seat, last activity, spend this billing cycle and per-user spend limit. Edit to set or clear the spend limit (whole US dollars). Delete removes the member from the team; Cursor keeps the seat billed until the end of the cycle. Members with no activity in 30 days show as idle; the Seats page flags them against your organization's inactivity threshold.",
   fields: [
     f("email", "Email", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
@@ -116,10 +116,6 @@ export const TeamMemberResourceType = rt({
     lastUsedKey: "lastActiveAt",
     adminIndicatorKey: "role",
     adminValues: ["owner", "free-owner"],
-  },
-  orphanRule: {
-    conditions: [{ fieldKey: "seatStatus", when: "equals", value: "idle" }],
-    reason: "Paid Cursor seat with no editor, agent or Bugbot activity in the last 30 days",
   },
   supportsCreate: false,
   supportsUpdate: true,

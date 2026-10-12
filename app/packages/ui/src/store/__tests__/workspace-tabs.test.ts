@@ -107,6 +107,15 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "posture" })).toBe("posture");
   });
 
+  it("returns the singleton id for the vulnerabilities target", () => {
+    expect(getWorkspaceTabId({ kind: "vulnerabilities" })).toBe("vulnerabilities");
+  });
+
+  it("returns one id for the compliance target whatever the framework", () => {
+    expect(getWorkspaceTabId({ kind: "compliance" })).toBe("compliance");
+    expect(getWorkspaceTabId({ kind: "compliance", framework: "soc2" })).toBe("compliance");
+  });
+
   it("returns the singleton id for the access review target", () => {
     expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
     expect(getWorkspaceTabId({ kind: "jit-access" })).toBe("jit-access");
@@ -244,6 +253,45 @@ describe("slos tab kind", () => {
   });
 });
 
+describe("services tab kind", () => {
+  it("is a singleton tab id whatever service or view is open", () => {
+    expect(getWorkspaceTabId({ kind: "services" })).toBe("services");
+    expect(getWorkspaceTabId({ kind: "services", serviceId: "svc-1" })).toBe("services");
+    expect(getWorkspaceTabId({ kind: "services", view: "scorecards" })).toBe("services");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "services" })).toBe("Services");
+  });
+
+  it("compares by service and view, so reactivation restores where the tab was", () => {
+    expect(workspaceTabTargetsEqual({ kind: "services" }, { kind: "services" })).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "services", serviceId: "a" },
+        { kind: "services", serviceId: "a" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "services", serviceId: "a" },
+        { kind: "services", serviceId: "b" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual({ kind: "services" }, { kind: "services", view: "scorecards" }),
+    ).toBe(false);
+  });
+});
+
+describe("delivery tab kind", () => {
+  it("is a singleton with the sidebar tile's title", () => {
+    expect(getWorkspaceTabId({ kind: "delivery" })).toBe("delivery");
+    expect(getWorkspaceTabFallbackTitle({ kind: "delivery" })).toBe("Delivery");
+    expect(workspaceTabTargetsEqual({ kind: "delivery" }, { kind: "delivery" })).toBe(true);
+  });
+});
+
 describe("workflows tab kind", () => {
   it("is a singleton tab id regardless of which workflow is open", () => {
     expect(getWorkspaceTabId({ kind: "workflows" })).toBe("workflows");
@@ -337,6 +385,16 @@ describe("getWorkspaceTabFallbackTitle", () => {
 
   it("returns 'Posture' for the posture target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "posture" })).toBe("Posture");
+  });
+
+  it("returns 'Vulnerabilities' for the vulnerabilities target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "vulnerabilities" })).toBe("Vulnerabilities");
+  });
+
+  it("returns 'Compliance' for the compliance target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "compliance", framework: "soc2" })).toBe(
+      "Compliance",
+    );
   });
 
   it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
@@ -461,6 +519,31 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two posture targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "posture" }, { kind: "posture" })).toBe(true);
+  });
+
+  it("treats two vulnerabilities targets as equal and never as posture", () => {
+    expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "vulnerabilities" })).toBe(
+      true,
+    );
+    expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "posture" })).toBe(false);
+  });
+
+  it("compares the compliance framework so the route sync records it", () => {
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "compliance", framework: "soc2" },
+        { kind: "compliance", framework: "soc2" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "compliance", framework: "soc2" },
+        { kind: "compliance", framework: "iso27001" },
+      ),
+    ).toBe(false);
+    expect(workspaceTabTargetsEqual({ kind: "compliance" }, { kind: "vulnerabilities" })).toBe(
+      false,
+    );
   });
 
   it("treats two access review targets as equal (singleton tab)", () => {

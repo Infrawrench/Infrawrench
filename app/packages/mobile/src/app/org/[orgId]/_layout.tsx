@@ -144,11 +144,15 @@ export default function OrgLayout() {
       <Tabs.Screen name="dependencies" options={{ href: null, title: "Dependencies" }} />
       <Tabs.Screen name="expiring" options={{ href: null, title: "Expiring" }} />
       <Tabs.Screen name="posture" options={{ href: null, title: "Posture" }} />
+      <Tabs.Screen name="vulnerabilities" options={{ href: null, title: "Vulnerabilities" }} />
+      <Tabs.Screen name="compliance" options={{ href: null, title: "Compliance" }} />
       <Tabs.Screen name="jit-access" options={{ href: null, title: "Just-in-time access" }} />
       <Tabs.Screen name="dns" options={{ href: null, title: "Domains" }} />
       <Tabs.Screen name="probes" options={{ href: null, title: "Probes" }} />
       <Tabs.Screen name="incidents" options={{ href: null, title: "Incidents" }} />
       <Tabs.Screen name="slos" options={{ href: null, title: "SLOs" }} />
+      <Tabs.Screen name="services" options={{ href: null, title: "Services" }} />
+      <Tabs.Screen name="delivery" options={{ href: null, title: "Delivery" }} />
       <Tabs.Screen name="log-workspaces" options={{ href: null, title: "Log workspace" }} />
       <Tabs.Screen name="cost-reports" options={{ href: null, title: "Cost reports" }} />
       <Tabs.Screen name="cost-canvases" options={{ href: null, title: "Canvases" }} />

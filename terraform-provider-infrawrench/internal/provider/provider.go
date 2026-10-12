@@ -192,6 +192,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAIRequestSourceResource,
 		NewAIAttributionDimensionResource,
 		NewRealizedSavingsSettingsResource,
+		NewSeatSettingsResource,
 
 		// Monitoring.
 		NewProbeResource,
@@ -201,15 +202,23 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewLogQueryResource,
 		NewCustomGraphResource,
 
+		// Service catalog.
+		NewServiceResource,
+		NewScorecardResource,
+
 		// Lifecycle governance.
 		NewOnCallScheduleResource,
 		NewJitAccessPolicyResource,
 		NewScheduleResource,
 		NewChangeFreezeResource,
 		NewDriftAlertSettingsResource,
+		NewDoraSettingsResource,
 		NewExpiryAlertSettingsResource,
 		NewExtendedSupportSettingsResource,
 		NewPostureAlertSettingsResource,
+		NewVulnerabilityAlertSettingsResource,
+		NewComplianceControlResource,
+		NewCompliancePackScheduleResource,
 		NewSessionRecordingSettingsResource,
 		NewNetworkFlowSettingsResource,
 		NewKubernetesNetworkSettingsResource,
@@ -231,6 +240,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAlertEmailSettingsResource,
 		NewSlackChannelResource,
 		NewMSTeamsWebhookResource,
+		NewEventSubscriptionResource,
 		NewDigestSettingsResource,
 		NewDigestRecipientResource,
 		NewPagingProviderSettingsResource,
@@ -250,6 +260,7 @@ func (p *infrawrenchProvider) DataSources(_ context.Context) []func() datasource
 		NewPermissionsDataSource,
 		NewSlackInstallationsDataSource,
 		NewMembersDataSource,
+		NewServiceDataSource,
 	}
 }
 

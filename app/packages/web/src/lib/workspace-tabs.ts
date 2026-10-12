@@ -13,6 +13,8 @@ import {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -32,6 +34,8 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
+  deliveryTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -50,8 +54,11 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
+  complianceTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
+  deliveryTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
@@ -202,6 +209,26 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "vulnerabilities":
+      return {
+        to: "/org/$orgId/vulnerabilities",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "compliance":
+      // The SLOs shape: the framework is a path segment, so a link reads as a
+      // place, /org/{org}/compliance/{framework}.
+      return target.framework
+        ? {
+            to: "/org/$orgId/compliance/$framework",
+            params: { orgId, framework: target.framework },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/compliance",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "access-review":
       return {
         to: "/org/$orgId/access-review",
@@ -241,6 +268,12 @@ export function getWorkspaceNavigateArgs(
     case "query-monitors":
       return {
         to: "/org/$orgId/query-monitors",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "delivery":
+      return {
+        to: "/org/$orgId/delivery",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -340,6 +373,26 @@ export function getWorkspaceNavigateArgs(
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
+    case "services":
+      // The SLOs shape, plus a static `scorecards` child for the matrix view.
+      // Service ids are uuids, so the static segment never shadows a service.
+      return target.serviceId
+        ? {
+            to: "/org/$orgId/services/$serviceId",
+            params: { orgId, serviceId: target.serviceId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : target.view === "scorecards"
+          ? {
+              to: "/org/$orgId/services/scorecards",
+              params: { orgId },
+              ...(replace ? { replace: true } : {}),
+            }
+          : {
+              to: "/org/$orgId/services",
+              params: { orgId },
+              ...(replace ? { replace: true } : {}),
+            };
     // The section is a static child route, not a path param, so the path is
     // built concretely rather than through `params`.
     case "settings":
@@ -562,6 +615,12 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "posture") {
     return postureTabTarget();
   }
+  if (s[0] === "vulnerabilities") {
+    return vulnerabilitiesTabTarget();
+  }
+  if (s[0] === "compliance") {
+    return complianceTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
   if (s[0] === "access-review") {
     return accessReviewTabTarget();
   }
@@ -582,6 +641,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "query-monitors") {
     return queryMonitorsTabTarget();
+  }
+  if (s[0] === "delivery") {
+    return deliveryTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();
@@ -621,6 +683,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "slos") {
     return slosTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "services") {
+    if (s[1] === "scorecards") return servicesTabTarget(undefined, "scorecards");
+    return servicesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "settings") {
     return settingsTabTarget(s.slice(1).join("/") || undefined);

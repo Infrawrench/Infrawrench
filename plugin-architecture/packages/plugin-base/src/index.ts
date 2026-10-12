@@ -112,6 +112,34 @@ export type {
   ExtendedSupportUnit,
 } from "./extended-support.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
+export type {
+  RunningImageDeclaration,
+  VulnerabilityArtifact,
+  VulnerabilityArtifactKind,
+  VulnerabilityCapabilityDeclaration,
+  VulnerabilityFinding,
+  VulnerabilitySeverity,
+} from "./vulnerabilities.js";
+export {
+  normalizeVulnerabilityFindings,
+  normalizeVulnerabilitySeverity,
+  VULNERABILITY_SEVERITIES,
+  VulnerabilityAccessError,
+} from "./vulnerabilities.js";
+export type {
+  SeatActivity,
+  SeatActivityBasis,
+  SeatCategory,
+  SeatDowngrade,
+  SeatFetchOptions,
+  SeatPrice,
+  SeatPriceSource,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
+  SeatsCapabilityDeclaration,
+} from "./seats.js";
+export { normalizeSeatRecords, SEAT_CATEGORIES } from "./seats.js";
 
 export type {
   PriceCatalogArea,
@@ -242,6 +270,17 @@ export type {
 export { jitGrantName } from "./jit-access.js";
 
 export type {
+  LeakedSecretFinding,
+  LeakedSecretLocation,
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
+  LeakedSecretResolutionReason,
+  SecretScanningDeclaration,
+  TokenFormatDeclaration,
+} from "./leaked-secrets.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,
@@ -331,7 +370,10 @@ export type {
   RemediationFindingKind,
   RemediationPlaceholder,
   RemediationResource,
+  RemediationSeat,
   RemediationSource,
+  SeatRemediationFinding,
+  SeatRemediationSource,
   RemediationTool,
   TerraformRemediationInput,
 } from "./remediation.js";
@@ -342,9 +384,23 @@ export {
   remediationField,
   remediationId,
   resolveRemediationCommands,
+  resolveSeatRemediationCommands,
   shellQuote,
   terraformRemediationHint,
 } from "./remediation.js";
+export type {
+  DeployEventFacts,
+  DeployEventResource,
+  DeployEventStatus,
+  DeployEventsCapability,
+} from "./deploy-events.js";
+export {
+  deployField,
+  deployOutput,
+  deployStatusFrom,
+  deployTime,
+  resolveDeployEvent,
+} from "./deploy-events.js";
 export type {
   OrphanCostAnnotation,
   OrphanCostBasis,
@@ -428,6 +484,7 @@ export type {
   ChatStreamEvent,
   PublishPanelCapability,
   PublishPanelField,
+  PublishEventHint,
   PublishMessagePayload,
   PublishMessageResult,
   SpeechPanelCapability,

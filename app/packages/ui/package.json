@@ -84,6 +84,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./services": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./dora": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
     "./environments": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

@@ -290,4 +290,17 @@
 // account detail, sealed `__oauth` grants accepted on account create and
 // credential update, and a 409 `oauth_reconnect_required` from
 // `GET /accounts/{id}/credentials`. Additive.
-export const API_VERSION = "1.80.0";
+// 1.81.0: services and scorecards (`/services`, `/scorecards`, the org grade
+// at `/scorecards/org` and `/scorecards/org/history`, the
+// `scorecardAlerts` trigger, `affectedServices` on incidents), outbound event
+// subscriptions (`/event-subscriptions` plus one OpenAPI `webhooks` entry per
+// event type, including `service.changed`, `scorecard.level_changed`,
+// `vulnerability.found` and `dora.band_changed`), leaked credentials
+// (`/leaked-secrets`, `leakedCredentials` on posture, the
+// `leakedSecretAlerts` trigger), vulnerabilities (`/vulnerabilities` with
+// owning `services` and `serviceId`/`resourceId` filters, settings,
+// dismissals, the `vulnerabilityAlerts` trigger), compliance evidence packs
+// (`/compliance`), DORA delivery metrics (`/dora`), SaaS seats (`/seats`),
+// the `services`, `vulnerabilities`, `compliance` and `delivery` members of
+// the workspace `TabTarget` enum, and the new push payloads. All additive.
+export const API_VERSION = "1.81.0";

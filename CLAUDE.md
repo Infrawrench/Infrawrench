@@ -16,6 +16,14 @@ When you make code for providers remember that the user shouldn't have to know t
 
 TypeScript 7 packages depend on `"typescript": "workspace:@infrawrench/typescript@*"`, never the npm `typescript`; a new package copies that line. The shim (`app/packages/typescript`) runs tsc-rs for both `tsc` and tsdown's declaration emit, falling back to TypeScript 7 on platforms tsc-rs has no binary for. A package on plain `typescript` still builds, silently without tsc-rs. Rationale and bump procedure are in KNOWLEDGE.md ("Type checking").
 
+## Editor extensions
+
+`app/packages/vscode` (VS Code) and `app/packages/raycast` (Raycast) are thin Bearer clients over the existing API; KNOWLEDGE.md ("Editor extensions") has the design and the publishing steps. They add no server surface, and neither may become a dependency of desktop. Shared request and URL logic goes in client-core (`search.ts`, `deep-links.ts`, `iac/terraform-blocks.ts`, `resource-insight.ts`), not in either package.
+
+- A change to a route they call (`/search`, `/iac/*`, `/costs/query`, `/posture`, `/services*`, `/on-call/now`, `/incidents`, `/pr-checks/preview`, `/accounts/:id/resources`) is a change to them too, the same mirroring rule as web, desktop and mobile.
+- A new per-resource finding kind (vulnerabilities, leaked secrets, compliance) shows in the VS Code Terraform hover by appending a `ResourceSection` to `RESOURCE_SECTIONS` in `vscode/src/sections.ts`, and in Raycast's resource detail through `raycast/src/lib/insight.ts`.
+- The desktop's `infrawrench://open/…` links are built and parsed by client-core's `desktopDeepLink`/`parseDesktopDeepLink`; a new link kind changes both, plus `DeepLinkHost`.
+
 ## Workspace tabs
 
 Org-level pages opened from the sidebar are **workspace-tab kinds, never plain routes**; a page outside the tab system leaves a stale active tab and a stale window title. The only exceptions are Moment and `/admin`, which get their titles from `plainRouteDocumentTitle` instead.
@@ -59,7 +67,7 @@ The web and desktop UIs are internationalized with gt-react (General Translation
 
 ## Terraform provider
 
-`terraform-provider-infrawrench/` at the repo root manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery (66 resources, 7 data sources). Its README carries the full design rationale; what follows is what binds changes made elsewhere in the repo.
+`terraform-provider-infrawrench/` at the repo root manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery (71 resources, 7 data sources). Its README carries the full design rationale; what follows is what binds changes made elsewhere in the repo.
 
 Three unrelated features have "Terraform" in the name; **eject to Terraform** (`Plugin.terraformExport`, writes HCL describing _the user's cloud resources_), **org config as code** (`infrawrench config export/plan/apply`, whole-org JSON document), and **this provider** (per-object CRUD against the org-scoped routes). The provider deliberately does not wrap config as code: that document addresses entities by a name-derived `key` with no server id, so import is impossible and a rename becomes destroy-and-recreate. It also carries only a handful of the object types the provider manages.
 

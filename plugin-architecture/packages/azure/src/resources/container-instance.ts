@@ -19,6 +19,10 @@ export const ContainerInstanceResourceType = rt({
       description: "Registry hosts the group's images are pulled from",
     }),
     f("subnetRefs", "Subnets", { required: false }),
+    f("images", "Images", {
+      required: false,
+      description: "Every image the group runs, init containers included",
+    }),
   ],
   outputs: [o("ipAddress", "IP Address"), o("fqdn", "FQDN")],
   dependsOn: [
@@ -38,6 +42,9 @@ export const ContainerInstanceResourceType = rt({
     startActionId: "start",
     stopActionId: "stop",
   },
+  // The subscription list carries no instance view, so every synced group
+  // counts as running.
+  runningImages: { imageKeys: ["images"] },
   supportsCreate: true,
   supportsMetrics: true,
 });

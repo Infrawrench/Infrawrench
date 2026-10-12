@@ -13,6 +13,7 @@ import type { CircleCollaboration } from "./mappers.js";
 import { DEFAULT_PRICE_PER_CREDIT, RATE_KEYS } from "./rates.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
+import { circleciDeployEvents } from "./deploy-events.js";
 
 const PRICING_LINK = { label: "CircleCI pricing", url: "https://circleci.com/pricing/" };
 
@@ -124,6 +125,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: circleciDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CircleCIClient(credentials, services),
