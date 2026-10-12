@@ -11,13 +11,16 @@
  *   - `GET /zones?per_page=1` + `GET /accounts?per_page=1`: resources.
  *   - GraphQL `viewer.budget`: Analytics Read.
  *   - `GET /accounts/{id}/billable-usage/info`: Billing Read (the same
- *     endpoint cost collection reads coverage from).
+ *     endpoint cost collection reads coverage from). An OAuth connection
+ *     probes it through a minted Billing Read token, as cost runs do.
  *
  * The "policy template" is Cloudflare's documented token-template deep link:
  * dash.cloudflare.com/profile/api-tokens with a URL-encoded
  * `permissionGroupKeys` JSON array of `{ key, type }`, plus the
  * human-readable permission-group list for anyone building the token by hand.
  */
+import { BillingTokenError, withBillingToken } from "./billing-token.js";
+import { CloudflareApi } from "./clients/shared.js";
 import type {
   PolicyTemplate,
   PreflightCapabilityCheck,
@@ -362,6 +365,8 @@ export async function runCloudflarePreflight(
       message:
         "Couldn't resolve an account id to probe billing with. Grant Account Settings Read and re-run.",
     });
+  } else if (options.oauth) {
+    checks.push(await probeOAuthCosts(token, accountId));
   } else {
     try {
       const info = await cfGet<unknown>(token, `/accounts/${accountId}/billable-usage/info`);
@@ -372,12 +377,6 @@ export async function runCloudflarePreflight(
           capabilityId: "costs",
           status: "missing",
           missingPermissions: COSTS_PERMISSIONS,
-          ...(options.oauth
-            ? {
-                message:
-                  "Cloudflare does not grant Billing Read to OAuth connections. Use an API token with Billing Read for cost graphs.",
-              }
-            : {}),
           helpLink: TOKENS_HELP_LINK,
         });
       } else {
@@ -397,4 +396,53 @@ export async function runCloudflarePreflight(
   }
 
   return { ...(identity ? { identity } : {}), checks };
+}
+
+const OAUTH_COSTS_PERMISSIONS: PreflightPermission[] = [
+  {
+    id: "Account API Tokens Write",
+    label: "Create a short-lived Billing Read token for each cost run (OAuth has no billing scope)",
+  },
+];
+
+/**
+ * Costs on an OAuth connection go through a minted Billing Read token (see
+ * billing-token.ts), so the probe does exactly what a cost run does: mint,
+ * read coverage, delete.
+ */
+async function probeOAuthCosts(
+  token: string,
+  accountId: string,
+): Promise<PreflightCapabilityCheck> {
+  try {
+    return await withBillingToken(new CloudflareApi(token), accountId, async (billingApi) => {
+      // A just-created token can be refused briefly while it propagates.
+      for (let attempt = 0; ; attempt++) {
+        const info = await cfGet<unknown>(
+          billingApi.apiToken,
+          `/accounts/${accountId}/billable-usage/info`,
+        );
+        if (info.body?.success) return { capabilityId: "costs", status: "ok" as const };
+        if (!isAuthFailure(info.status, info.body) || attempt >= 2) {
+          return {
+            capabilityId: "costs",
+            status: "unknown" as const,
+            message: probeFailureMessage("Billable Usage API", info.status, info.body),
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+      }
+    });
+  } catch (e) {
+    if (e instanceof BillingTokenError) {
+      return {
+        capabilityId: "costs",
+        status: "missing",
+        missingPermissions: e.reason === "scope" ? OAUTH_COSTS_PERMISSIONS : [],
+        message: `Cost collection: ${e.message}.`,
+        helpLink: TOKENS_HELP_LINK,
+      };
+    }
+    return { capabilityId: "costs", status: "unknown", message: shortMessage(e) };
+  }
 }

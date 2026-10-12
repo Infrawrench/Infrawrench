@@ -106,7 +106,7 @@ Needs **Account Analytics: Read**, which the "Create a token with these scopes" 
 Pick Cloudflare in the add-account form and click **Connect with Cloudflare**. Cloudflare asks you to sign in, choose which Cloudflare account(s) Infrawrench may reach, and approve the permissions; the account name is filled in from the Cloudflare account you picked.
 
 - **What the consent grants:** the same permission groups as the token template below (read and edit on zones, DNS, Workers, R2, KV, D1, Queues, Hyperdrive, Tunnels, Access, rules and the rest of what Infrawrench manages; Analytics and Account Analytics read), plus your user details and account memberships so it can find your accounts. Nothing outside the plugin's features.
-- **Cost graphs need an API token.** Cloudflare's OAuth has no Billing Read permission, so a connected account shows **Cost reporting** as missing in the credential check. Paste an API token with **Billing Read** (below) if you want cost graphs for that account.
+- **Cost graphs.** Cloudflare's OAuth has no billing permission, so the consent screen also asks for **Account API Tokens: Edit** (optional; you can untick it). Each cost run uses it to create a token named "Infrawrench cost sync (temporary)" that can only read billing on that one account, reads your billable usage with it, and deletes it straight away. The token is set to expire within the hour in case the delete fails, and Infrawrench never stores it. This works when the Cloudflare member who connects is a Super Administrator, or has billing access and API token provisioning. If you untick the permission or your role lacks it, Cost reporting shows what is missing. Reconnect to fix it, or paste an API token with **Billing Read** (below) instead.
 - **Refresh:** Cloudflare access tokens are short-lived. Infrawrench requests offline access and refreshes them in the background, saving the new refresh token Cloudflare returns each time.
 - **Revoking:** Cloudflare dashboard → **My Profile → Access Management → Authorizations** (Manage OAuth authorizations). Infrawrench then marks the account **Reconnect required**.
 - If an account is missing from Cloudflare's account picker, an administrator of that account may have turned off **Public OAuth App access** (Manage Account → Members → Settings).
@@ -126,7 +126,7 @@ The add-account form (and **Check credentials** on the account page) verifies th
 
 - **Resource inventory** — **Zone Read** (zone listing underpins every zone-scoped resource) and **Account Settings Read** (account-scoped resources: Workers, R2, KV, D1…). Individual resource types may need further per-feature scopes; the resource tab tells you which when one is missing.
 - **Metrics & dashboards** — **Analytics Read** and **Account Analytics Read**.
-- **Cost reporting** — **Billing Read**, checked against the Billable Usage API.
+- **Cost reporting** — **Billing Read**, checked against the Billable Usage API. A connected (OAuth) account is checked the same way a cost run works: by creating, using and deleting the temporary billing token.
 
 An expired or disabled token is flagged across every row. The generator produces a token template scoped to the capabilities you tick: the permission-group list plus a link that opens Cloudflare's token creator with exactly those scopes pre-filled.
 

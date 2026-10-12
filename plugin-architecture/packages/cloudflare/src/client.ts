@@ -1421,7 +1421,7 @@ export class CloudflareClient implements PluginClient {
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchCloudflareCostData(this.api, range);
+    return fetchCloudflareCostData(this.api, range, { oauth: this.oauth });
   }
 
   async listAiRequestLogLocations(

@@ -7,6 +7,12 @@ import {
 import { plugin } from "../plugin.js";
 import { CLOUDFLARE_OAUTH_SCOPES, completeCloudflareOAuth } from "../oauth.js";
 import { runCloudflarePreflight } from "../preflight.js";
+import { BillingTokenError, withBillingToken } from "../billing-token.js";
+
+vi.mock("../billing-token.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../billing-token.js")>();
+  return { ...actual, withBillingToken: vi.fn() };
+});
 
 const TOKENS: OAuthTokenSet = { accessToken: "cf-oauth-access", raw: {} };
 const envelope = (result: unknown) => ({ success: true, result, errors: [] });
@@ -42,6 +48,9 @@ describe("Cloudflare OAuth declaration", () => {
     expect(CLOUDFLARE_OAUTH_SCOPES).toContain("offline_access");
     expect(CLOUDFLARE_OAUTH_SCOPES).toContain("dns.write");
     expect(CLOUDFLARE_OAUTH_SCOPES).toContain("workers-scripts.write");
+    // Costs mint a Billing Read token: OAuth has no billing scope.
+    expect(CLOUDFLARE_OAUTH_SCOPES).toContain("account-api-tokens.write");
+    expect(CLOUDFLARE_OAUTH_SCOPES.some((s) => s.startsWith("billing"))).toBe(false);
     expect(new Set(CLOUDFLARE_OAUTH_SCOPES).size).toBe(CLOUDFLARE_OAUTH_SCOPES.length);
     for (const s of CLOUDFLARE_OAUTH_SCOPES) {
       if (s !== "offline_access") expect(s).toMatch(/^[a-z0-9-]+\.(read|write|purge)$/);
@@ -110,25 +119,44 @@ describe("completeCloudflareOAuth", () => {
 });
 
 describe("runCloudflarePreflight with an OAuth token", () => {
-  it("skips the API-token verify call and explains the missing billing scope", async () => {
+  const baseRoutes = {
+    "/zones?per_page=1": { status: 200, body: envelope([]) },
+    "/accounts?per_page=1": { status: 200, body: envelope([{ id: "acc1" }]) },
+    "/graphql": { status: 200, body: { data: { viewer: { budget: 1 } } } },
+  };
+
+  it("skips the API-token verify call and probes billing through a minted token", async () => {
     const fetchMock = routes({
-      "/zones?per_page=1": { status: 200, body: envelope([]) },
-      "/accounts?per_page=1": { status: 200, body: envelope([{ id: "acc1" }]) },
-      "/graphql": { status: 200, body: { data: { viewer: { budget: 1 } } } },
-      "/billable-usage/info": {
-        status: 403,
-        body: { success: false, errors: [{ code: 9109, message: "Unauthorized" }] },
-      },
+      ...baseRoutes,
+      "/billable-usage/info": { status: 200, body: envelope({ covered: true }) },
     });
     vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(withBillingToken).mockImplementationOnce(async (_api, accountId, fn) => {
+      expect(accountId).toBe("acc1");
+      return fn({ apiToken: "minted" } as Parameters<typeof fn>[0]);
+    });
     const res = await runCloudflarePreflight("cf-oauth-access", { oauth: true });
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/user/tokens/verify"))).toBe(
       false,
     );
     expect(res.identity).toBe("OAuth connection");
+    expect(res.checks.find((c) => c.capabilityId === "costs")?.status).toBe("ok");
+    expect(res.checks.find((c) => c.capabilityId === "resources")?.status).toBe("ok");
+    const infoCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/billable-usage"));
+    const init = (infoCall as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer minted");
+  });
+
+  it("names Account API Tokens Write when the grant cannot mint", async () => {
+    vi.stubGlobal("fetch", routes(baseRoutes));
+    vi.mocked(withBillingToken).mockRejectedValueOnce(
+      new BillingTokenError("this connection was not granted Account API Tokens Write", "scope"),
+    );
+    const res = await runCloudflarePreflight("cf-oauth-access", { oauth: true });
     const costs = res.checks.find((c) => c.capabilityId === "costs")!;
     expect(costs.status).toBe("missing");
-    expect(costs.status === "missing" ? costs.message : "").toContain("OAuth");
-    expect(res.checks.find((c) => c.capabilityId === "resources")?.status).toBe("ok");
+    expect(costs.status === "missing" ? costs.missingPermissions.map((p) => p.id) : []).toEqual([
+      "Account API Tokens Write",
+    ]);
   });
 });

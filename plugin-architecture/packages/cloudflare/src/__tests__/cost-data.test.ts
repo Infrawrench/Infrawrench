@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { fetchCloudflareCostData } from "../cost-data.js";
+import { BillingTokenError, withBillingToken } from "../billing-token.js";
 import { makeApi } from "./_helpers.js";
+
+vi.mock("../billing-token.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../billing-token.js")>();
+  return { ...actual, withBillingToken: vi.fn() };
+});
 
 interface FakeSub {
   id: string;
@@ -212,5 +218,63 @@ describe("fetchCloudflareCostData", () => {
     const api = costApi({ usageError: Object.assign(new Error("boom"), { status: 500 }) });
     const err = await fetchCloudflareCostData(api, range).catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(CostSetupError);
+  });
+
+  describe("on an OAuth connection", () => {
+    const mint = vi.mocked(withBillingToken);
+
+    it("reads billing through the minted token, not the OAuth token", async () => {
+      const billingApi = costApi();
+      mint.mockImplementationOnce(async (_api, _accountId, fn) => fn(billingApi));
+      const oauthApi = costApi();
+      const rows = await fetchCloudflareCostData(oauthApi, range, { oauth: true });
+      expect(rows).toHaveLength(1);
+      expect(mint).toHaveBeenCalledWith(oauthApi, "acct-cf", expect.any(Function));
+      expect(oauthApi.cf.get).not.toHaveBeenCalled();
+      expect(billingApi.cf.get).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries while the new token propagates", async () => {
+      const forbidden = Object.assign(new Error("Forbidden"), { status: 403 });
+      const billingApi = costApi();
+      const get = billingApi.cf.get as ReturnType<typeof vi.fn>;
+      const real = get.getMockImplementation()!;
+      get.mockImplementationOnce(async () => {
+        throw forbidden;
+      });
+      get.mockImplementation(real);
+      mint.mockImplementationOnce(async (_api, _accountId, fn) => fn(billingApi));
+      const rows = await fetchCloudflareCostData(costApi(), range, {
+        oauth: true,
+        retryDelayMs: 0,
+      });
+      expect(rows).toHaveLength(1);
+    });
+
+    it("turns a mint failure into a CostSetupError that says what to grant", async () => {
+      mint.mockRejectedValueOnce(
+        new BillingTokenError("this connection was not granted Account API Tokens Write", "scope"),
+      );
+      const err = await fetchCloudflareCostData(costApi(), range, { oauth: true }).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(CostSetupError);
+      expect((err as Error).message).toContain("Account API Tokens Write");
+      expect((err as CostSetupError).helpLink?.url).toContain("account-owned-tokens");
+    });
+
+    it("does not blame a pasted token when the minted one is refused", async () => {
+      const forbidden = Object.assign(new Error("Forbidden"), { status: 403 });
+      mint.mockImplementationOnce(async (_api, _accountId, fn) =>
+        fn(costApi({ infoError: forbidden })),
+      );
+      const err = await fetchCloudflareCostData(costApi(), range, {
+        oauth: true,
+        retryDelayMs: 0,
+      }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CostSetupError);
+      expect((err as Error).message).toContain("temporary Billing Read token");
+      expect((err as Error).message).not.toContain("re-create the token");
+    });
   });
 });

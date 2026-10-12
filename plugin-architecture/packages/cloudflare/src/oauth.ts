@@ -22,9 +22,12 @@
  *
  * The scope list mirrors the API-token template in `preflight.ts`
  * (`TEMPLATE_SCOPES`): the plugin creates, edits and deletes resources, so
- * most areas need write. Billing has no grantable OAuth scope (Cloudflare's
- * registration lists `billing:read` as registered but not grantable), so cost
- * graphs need a pasted API token.
+ * most areas need write. Billing has no OAuth scope at all (the third-party
+ * catalog has none, and Cloudflare's own registration lists `billing:read` as
+ * registered but not grantable), so cost collection uses
+ * `account-api-tokens.write` to mint a short-lived Billing Read token per run
+ * (see billing-token.ts). That scope is marked optional on both registered
+ * clients, so a user can decline it and lose only cost graphs.
  */
 import type {
   OAuthCompletionContext,
@@ -82,6 +85,9 @@ export const CLOUDFLARE_OAUTH_SCOPES: string[] = [
   // Metrics.
   "analytics.read",
   "account-analytics.read",
+  // Costs: mints the per-run Billing Read token (billing-token.ts). Optional
+  // on the consent screen.
+  "account-api-tokens.write",
   // Refresh tokens.
   "offline_access",
 ];

@@ -32,12 +32,28 @@
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
+import { BillingTokenError, withBillingToken } from "./billing-token.js";
 import { CloudflareApi, formatCloudflareError } from "./clients/shared.js";
 
 const BILLABLE_USAGE_HELP = {
   label: "Cloudflare billable-usage docs",
   url: "https://developers.cloudflare.com/billing/manage/billable-usage/",
 };
+
+const ACCOUNT_TOKENS_HELP = {
+  label: "Cloudflare account API tokens docs",
+  url: "https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/",
+};
+
+export interface CloudflareCostOptions {
+  /**
+   * The client holds an OAuth access token, which can never read billing
+   * (see billing-token.ts): each run mints a short-lived Billing Read token.
+   */
+  oauth?: boolean;
+  /** Wait between retries while a freshly minted token propagates. Tests set 0. */
+  retryDelayMs?: number;
+}
 
 /** Envelope shared by both billable-usage endpoints. */
 interface Envelope<T> {
@@ -83,16 +99,46 @@ interface BillableUsageInfo {
  */
 const infoCache = new WeakMap<CloudflareApi, Promise<BillableUsageInfo>>();
 
-function getBillableUsageInfo(api: CloudflareApi, accountId: string): Promise<BillableUsageInfo> {
-  let cached = infoCache.get(api);
+/**
+ * `cacheKey` is the account's long-lived client; `requester` makes the call,
+ * which for an OAuth connection is a per-run minted-token client.
+ */
+function getBillableUsageInfo(
+  cacheKey: CloudflareApi,
+  requester: CloudflareApi,
+  accountId: string,
+  retryDelayMs: number,
+): Promise<BillableUsageInfo> {
+  let cached = infoCache.get(cacheKey);
   if (!cached) {
-    cached = api.cf
-      .get<undefined, Envelope<BillableUsageInfo>>(`/accounts/${accountId}/billable-usage/info`)
-      .then((env) => env.result);
-    cached.catch(() => infoCache.delete(api));
-    infoCache.set(api, cached);
+    cached = retryWhileUnauthorized(
+      () =>
+        requester.cf.get<undefined, Envelope<BillableUsageInfo>>(
+          `/accounts/${accountId}/billable-usage/info`,
+        ),
+      retryDelayMs,
+    ).then((env) => env.result);
+    cached.catch(() => infoCache.delete(cacheKey));
+    infoCache.set(cacheKey, cached);
   }
   return cached;
+}
+
+/**
+ * A newly created token can be refused for a moment while it propagates.
+ * `retryDelayMs` of -1 (pasted tokens) disables the retry: there a 403 is the
+ * real answer.
+ */
+async function retryWhileUnauthorized<T>(call: () => Promise<T>, retryDelayMs: number): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      const status = (err as { status?: unknown }).status;
+      if (retryDelayMs < 0 || attempt >= 2 || (status !== 401 && status !== 403)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+    }
+  }
 }
 
 function pad2(n: number): string {
@@ -149,12 +195,15 @@ function isSetupStatus(err: unknown): boolean {
   return status === 400 || status === 403 || status === 404;
 }
 
-function setupError(err: unknown): CostSetupError {
+function setupError(err: unknown, oauth: boolean): CostSetupError {
   const status = (err as { status?: unknown }).status;
   const reason =
     status === 403
-      ? "the API token is missing the Billing Read permission; re-create the token " +
-        "with that scope added"
+      ? oauth
+        ? "Cloudflare refused the temporary Billing Read token this connection created; " +
+          "the member who connected it may have lost billing access"
+        : "the API token is missing the Billing Read permission; re-create the token " +
+          "with that scope added"
       : "the Billable Usage API is not available for this account yet; Cloudflare is " +
         "rolling it out to self-serve accounts first";
   return new CostSetupError(
@@ -166,14 +215,36 @@ function setupError(err: unknown): CostSetupError {
 export async function fetchCloudflareCostData(
   api: CloudflareApi,
   range: CostFetchRange,
+  options: CloudflareCostOptions = {},
 ): Promise<CostRow[]> {
   const accountId = await api.getAccountId();
+  if (!options.oauth) return collectCostRows(api, api, accountId, range, -1, false);
 
+  try {
+    return await withBillingToken(api, accountId, (billingApi) =>
+      collectCostRows(api, billingApi, accountId, range, options.retryDelayMs ?? 1500, true),
+    );
+  } catch (err) {
+    if (err instanceof BillingTokenError) {
+      throw new CostSetupError(`Cloudflare plugin: ${err.message}.`, ACCOUNT_TOKENS_HELP);
+    }
+    throw err;
+  }
+}
+
+async function collectCostRows(
+  cacheKey: CloudflareApi,
+  api: CloudflareApi,
+  accountId: string,
+  range: CostFetchRange,
+  retryDelayMs: number,
+  oauth: boolean,
+): Promise<CostRow[]> {
   let info: BillableUsageInfo;
   try {
-    info = await getBillableUsageInfo(api, accountId);
+    info = await getBillableUsageInfo(cacheKey, api, accountId, retryDelayMs);
   } catch (err) {
-    if (isSetupStatus(err)) throw setupError(err);
+    if (isSetupStatus(err)) throw setupError(err, oauth);
     throw new Error(formatCloudflareError(err), { cause: err });
   }
   if (!info.covered) {
@@ -192,7 +263,7 @@ export async function fetchCloudflareCostData(
     );
     records = env.result ?? [];
   } catch (err) {
-    if (isSetupStatus(err)) throw setupError(err);
+    if (isSetupStatus(err)) throw setupError(err, oauth);
     throw new Error(formatCloudflareError(err), { cause: err });
   }
 

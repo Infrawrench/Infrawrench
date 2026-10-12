@@ -5965,7 +5965,7 @@ ListLocations, which has its own `*.locations.list` permission.
 are rejected there with code 1000 — treated as "can't verify", not invalid; non-active status
 flags every row), then per-capability probes: `/zones` + `/accounts` (Zone Read / Account
 Settings Read), GraphQL `viewer.budget` (Analytics Read), `/accounts/{id}/billable-usage/info`
-(Billing Read). Every probe is three-way: ok only on explicit success, missing only on
+(Billing Read; an OAuth connection probes it through a minted token, see `billing-token.ts`). Every probe is three-way: ok only on explicit success, missing only on
 401/403/auth-coded envelope errors, anything else (5xx, malformed body) is `unknown` with the
 provider's message — a server error is not evidence a scope is granted or missing. Template:
 text permission-group list + the documented
@@ -6054,7 +6054,7 @@ Where the app is registered, and what is unusual. Callback and loopback URIs are
 
 - **Bitbucket** (server only): workspace settings > Apps and features > OAuth clients (formerly "OAuth consumers"), grant types Authorization code + Refresh token; leave Client credentials off. Scopes live on the client. Client secret as HTTP Basic.
 - **CircleCI** (desktop local only): no registration, `dynamic` against `app.circleci.com/oauth/register`; CircleCI only accepts loopback redirects. Token is a 90-day personal token with no refresh.
-- **Cloudflare**: dashboard, Manage Account, OAuth clients; two clients (token auth method is per client). New clients are private to our account until promoted to public (irreversible), which needs a `logo_uri`, DNS TXT verification of the `client_uri` host, then a PATCH to `visibility: public`; both of ours are public, and the `cloudflare_oauth_client_publisher=` TXT records on infrawrench.com must stay. No billing OAuth scope exists, so cost graphs still need a pasted API token.
+- **Cloudflare**: dashboard, Manage Account, OAuth clients; two clients (token auth method is per client). New clients are private to our account until promoted to public (irreversible), which needs a `logo_uri`, DNS TXT verification of the `client_uri` host, then a PATCH to `visibility: public`; both of ours are public, and the `cloudflare_oauth_client_publisher=` TXT records on infrawrench.com must stay. No billing OAuth scope exists (the live `GET /oauth/scopes` catalog has none), so both clients also carry `account-api-tokens.write`, marked **optional** on the consent screen, and every cost run on an OAuth connection mints an account-owned Billing Read-only token (1 h expiry), reads billable usage with it and deletes it (`cloudflare/src/billing-token.ts`). Nothing is persisted. It only works when the connecting member's role can delegate billing (Super Administrator, or billing access plus API token provisioning). A scope added to `CLOUDFLARE_OAUTH_SCOPES` must be added to **both** registered clients first: the authorize request fails outright on a scope the client lacks.
 - **Cloudinary** (OAuth apps in Beta): Console, Settings, Developers, OAuth Apps; two apps (post / none), scopes on the app. Token in the `apiSecret` field, 5-minute access tokens.
 - **Convex** (server only): team settings, OAuth Applications. Unverified apps cap at 100 teams until verification is requested. Team token, `full`.
 - **GitHub** (server only): a GitHub App (not an OAuth App), public, with "Expire user authorization tokens" on; permissions live on the app, and the user's token only reaches orgs where the app is installed. github.com only.
