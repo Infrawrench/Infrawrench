@@ -376,7 +376,15 @@ describe("renderPostmortemMarkdown", () => {
     const markdown = renderPostmortemMarkdown({
       incident: incident({ artifacts: [artifact()] }),
       timeline: entries,
-      resources: [{ resourceId: "res-1", displayName: "api-prod-1", pluginId: "aws" }],
+      resources: [
+        { resourceId: "res-1", displayName: "api-prod-1", pluginId: "aws" },
+        {
+          resourceId: "res-2",
+          displayName: "checkout-db",
+          pluginId: "neon",
+          services: ["Checkout API"],
+        },
+      ],
       notes: [
         {
           id: "n-1",
@@ -393,7 +401,8 @@ describe("renderPostmortemMarkdown", () => {
     expect(markdown).toContain("# Checkout is down");
     expect(markdown).toContain("| Duration | 1h |");
     expect(markdown).toContain("| Time to mitigate | 30m |");
-    expect(markdown).toContain("- api-prod-1 (aws)");
+    expect(markdown).toContain("- api-prod-1 (aws)\n");
+    expect(markdown).toContain("- checkout-db (neon) · service: Checkout API");
     expect(markdown).toContain("api-prod-1 changed (size)");
     expect(markdown).toContain("Rolled back");
     expect(markdown).toContain("- Change freeze: created (Incident: checkout down)");

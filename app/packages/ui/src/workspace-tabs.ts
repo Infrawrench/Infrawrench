@@ -180,6 +180,16 @@ export function slosTabTarget(sloId?: string): WorkspaceTabTarget {
   return { kind: "slos", ...(sloId ? { sloId } : {}) };
 }
 
+/**
+ * Services and scorecards. One tab, optionally remembering the open service
+ * or that the scorecards matrix is showing. A service id wins over the view:
+ * the detail is reached from either.
+ */
+export function servicesTabTarget(serviceId?: string, view?: "scorecards"): WorkspaceTabTarget {
+  if (serviceId) return { kind: "services", serviceId };
+  return { kind: "services", ...(view ? { view } : {}) };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

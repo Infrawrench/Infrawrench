@@ -30,6 +30,7 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
+import { getServicesForResource } from "../service-catalog/lookup";
 import {
   digestEmailRecipients,
   orgDigestSettings,
@@ -382,6 +383,7 @@ async function buildCostMover(
     const rows = await db
       .select({
         id: resourceChanges.id,
+        resourceId: resourceChanges.resourceId,
         displayName: resourceChanges.displayName,
         changeKind: resourceChanges.changeKind,
       })
@@ -399,6 +401,7 @@ async function buildCostMover(
 
     const byId = new Map(rows.map((r) => [r.id, r]));
     let best: DigestCostMover | null = null;
+    let bestResourceId: string | null = null;
     let bestMagnitude = 0;
 
     // Batched in the size the API caps a request at, so one org's busy week
@@ -414,6 +417,7 @@ async function buildCostMover(
           const magnitude = Math.abs(series.deltaPerDay);
           if (magnitude <= bestMagnitude) continue;
           bestMagnitude = magnitude;
+          bestResourceId = row.resourceId;
           best = {
             displayName: row.displayName,
             changeKind: row.changeKind,
@@ -428,7 +432,14 @@ async function buildCostMover(
     }
     // A movement of nothing is not a mover: zero deltas would otherwise win
     // the line on a week where every measurable resource was flat.
-    return bestMagnitude > 0 ? best : null;
+    if (!best || bestMagnitude <= 0) return null;
+    // Name the service it belongs to: "db-7 in Checkout API" is what a reader
+    // acts on. Best-effort; the lookup never throws.
+    if (bestResourceId) {
+      const services = await getServicesForResource(organizationId, bestResourceId);
+      if (services.length > 0) best.serviceNames = services.map((s) => s.name);
+    }
+    return best;
   } catch (err) {
     console.error(`[digest] cost mover for org ${organizationId} failed:`, err);
     return null;

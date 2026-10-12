@@ -189,6 +189,27 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns services list route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services" })).toEqual({
+      to: "/org/$orgId/services",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns service detail route args when the tab remembers one", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services", serviceId: "svc-1" })).toEqual({
+      to: "/org/$orgId/services/$serviceId",
+      params: { orgId: "test-org", serviceId: "svc-1" },
+    });
+  });
+
+  it("returns the scorecards view route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "services", view: "scorecards" })).toEqual({
+      to: "/org/$orgId/services/scorecards",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns workflows list route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "workflows" });
     expect(args).toEqual({
@@ -605,6 +626,24 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/slos/slo-1")).toEqual({
       kind: "slos",
       sloId: "slo-1",
+    });
+  });
+
+  it("parses the services list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services")).toEqual({ kind: "services" });
+  });
+
+  it("parses a service detail path back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services/svc-1")).toEqual({
+      kind: "services",
+      serviceId: "svc-1",
+    });
+  });
+
+  it("parses the scorecards view path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/services/scorecards")).toEqual({
+      kind: "services",
+      view: "scorecards",
     });
   });
 

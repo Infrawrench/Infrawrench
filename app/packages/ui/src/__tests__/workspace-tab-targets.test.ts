@@ -19,6 +19,7 @@ import {
   statusPagesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -105,6 +106,20 @@ describe("tab target factories", () => {
   it("slosTabTarget omits sloId for the list view", () => {
     expect(slosTabTarget()).toEqual({ kind: "slos" });
     expect(slosTabTarget("slo-1")).toEqual({ kind: "slos", sloId: "slo-1" });
+  });
+
+  it("servicesTabTarget carries a service or the scorecards view", () => {
+    expect(servicesTabTarget()).toEqual({ kind: "services" });
+    expect(servicesTabTarget("svc-1")).toEqual({ kind: "services", serviceId: "svc-1" });
+    expect(servicesTabTarget(undefined, "scorecards")).toEqual({
+      kind: "services",
+      view: "scorecards",
+    });
+    // A service wins over the view: the detail is reached from either.
+    expect(servicesTabTarget("svc-1", "scorecards")).toEqual({
+      kind: "services",
+      serviceId: "svc-1",
+    });
   });
 
   it("workflowsTabTarget omits workflowId for the list view", () => {

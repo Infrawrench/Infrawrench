@@ -112,6 +112,12 @@ vi.mock("@infrawrench/server-core/slos/pass", () => ({
   runSloPass: (...a: unknown[]) => runSloPass(...a),
 }));
 
+// The scorecard pass runs org-wide posture, orphan and backup scans.
+const runScorecardPass = vi.fn();
+vi.mock("@infrawrench/server-core/scorecards/pass", () => ({
+  runScorecardPass: (...a: unknown[]) => runScorecardPass(...a),
+}));
+
 // Mocked for the same reason as the metric-alert pass: the real module pulls
 // in the whole instantiate chain (plugin loading, org account clients), which
 // this suite has no business importing.
@@ -169,6 +175,7 @@ beforeEach(() => {
   pruneCreditSnapshots.mockResolvedValue(0);
   runMetricAlertPass.mockResolvedValue({ claimed: 0 });
   runSloPass.mockResolvedValue({ claimed: 0 });
+  runScorecardPass.mockResolvedValue({ claimed: 0 });
   runEnvironmentRepairPass.mockResolvedValue({ claimed: 0, repaired: 0, failed: 0 });
   runEnvironmentReconcilePass.mockResolvedValue({ organizations: 0 });
 });
@@ -442,6 +449,29 @@ describe("PollerLoop SLOs", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(pollAccount).toHaveBeenCalledTimes(1);
     expect(errSpy).toHaveBeenCalledWith("[slos] tick failed:", expect.any(Error));
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+});
+
+describe("PollerLoop scorecards", () => {
+  it("runs the scorecard pass on every tick with a bounded batch", async () => {
+    const loop = new PollerLoop({ tickMs: 1_000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runScorecardPass).toHaveBeenCalledWith({ limit: 5 });
+    await loop.stop();
+  });
+
+  it("swallows a failing scorecard pass so account polling still runs", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    runScorecardPass.mockRejectedValueOnce(new Error("posture scan failed"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[scorecards] tick failed:", expect.any(Error));
     errSpy.mockRestore();
     await loop.stop();
   });

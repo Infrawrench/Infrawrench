@@ -47,6 +47,7 @@ import { Route as OrgOrgIdQueryMonitorsRouteImport } from './routes/org.$orgId.q
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
 import { Route as OrgOrgIdRunbooksRouteImport } from './routes/org.$orgId.runbooks'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdServicesRouteImport } from './routes/org.$orgId.services'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSlosRouteImport } from './routes/org.$orgId.slos'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
@@ -61,6 +62,8 @@ import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
+import { Route as OrgOrgIdServicesServiceIdRouteImport } from './routes/org.$orgId.services.$serviceId'
+import { Route as OrgOrgIdServicesScorecardsRouteImport } from './routes/org.$orgId.services.scorecards'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.settings.agents'
@@ -288,6 +291,11 @@ const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
   path: '/savings',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdServicesRoute = OrgOrgIdServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -364,6 +372,18 @@ const OrgOrgIdInvoicesInvoiceIdRoute =
     id: '/$invoiceId',
     path: '/$invoiceId',
     getParentRoute: () => OrgOrgIdInvoicesRoute,
+  } as any)
+const OrgOrgIdServicesServiceIdRoute =
+  OrgOrgIdServicesServiceIdRouteImport.update({
+    id: '/$serviceId',
+    path: '/$serviceId',
+    getParentRoute: () => OrgOrgIdServicesRoute,
+  } as any)
+const OrgOrgIdServicesScorecardsRoute =
+  OrgOrgIdServicesScorecardsRouteImport.update({
+    id: '/scorecards',
+    path: '/scorecards',
+    getParentRoute: () => OrgOrgIdServicesRoute,
   } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
@@ -605,6 +625,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -619,6 +640,8 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -693,6 +716,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
@@ -706,6 +730,8 @@ export interface FileRoutesByTo {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -783,6 +809,7 @@ export interface FileRoutesById {
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/services': typeof OrgOrgIdServicesRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/slos': typeof OrgOrgIdSlosRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -797,6 +824,8 @@ export interface FileRoutesById {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
+  '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
@@ -875,6 +904,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/settings'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
@@ -889,6 +919,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -963,6 +995,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
@@ -976,6 +1009,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -1052,6 +1087,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
+    | '/org/$orgId/services'
     | '/org/$orgId/settings'
     | '/org/$orgId/slos'
     | '/org/$orgId/ssh-fanout'
@@ -1066,6 +1102,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/services/$serviceId'
+    | '/org/$orgId/services/scorecards'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/ai-attribution'
@@ -1384,6 +1422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/services': {
+      id: '/org/$orgId/services'
+      path: '/services'
+      fullPath: '/org/$orgId/services'
+      preLoaderRoute: typeof OrgOrgIdServicesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/settings': {
       id: '/org/$orgId/settings'
       path: '/settings'
@@ -1481,6 +1526,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/invoices/$invoiceId'
       preLoaderRoute: typeof OrgOrgIdInvoicesInvoiceIdRouteImport
       parentRoute: typeof OrgOrgIdInvoicesRoute
+    }
+    '/org/$orgId/services/$serviceId': {
+      id: '/org/$orgId/services/$serviceId'
+      path: '/$serviceId'
+      fullPath: '/org/$orgId/services/$serviceId'
+      preLoaderRoute: typeof OrgOrgIdServicesServiceIdRouteImport
+      parentRoute: typeof OrgOrgIdServicesRoute
+    }
+    '/org/$orgId/services/scorecards': {
+      id: '/org/$orgId/services/scorecards'
+      path: '/scorecards'
+      fullPath: '/org/$orgId/services/scorecards'
+      preLoaderRoute: typeof OrgOrgIdServicesScorecardsRouteImport
+      parentRoute: typeof OrgOrgIdServicesRoute
     }
     '/org/$orgId/settings/': {
       id: '/org/$orgId/settings/'
@@ -1795,6 +1854,19 @@ const OrgOrgIdInvoicesRouteChildren: OrgOrgIdInvoicesRouteChildren = {
 const OrgOrgIdInvoicesRouteWithChildren =
   OrgOrgIdInvoicesRoute._addFileChildren(OrgOrgIdInvoicesRouteChildren)
 
+interface OrgOrgIdServicesRouteChildren {
+  OrgOrgIdServicesServiceIdRoute: typeof OrgOrgIdServicesServiceIdRoute
+  OrgOrgIdServicesScorecardsRoute: typeof OrgOrgIdServicesScorecardsRoute
+}
+
+const OrgOrgIdServicesRouteChildren: OrgOrgIdServicesRouteChildren = {
+  OrgOrgIdServicesServiceIdRoute: OrgOrgIdServicesServiceIdRoute,
+  OrgOrgIdServicesScorecardsRoute: OrgOrgIdServicesScorecardsRoute,
+}
+
+const OrgOrgIdServicesRouteWithChildren =
+  OrgOrgIdServicesRoute._addFileChildren(OrgOrgIdServicesRouteChildren)
+
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
   OrgOrgIdSettingsAgentsRoute: typeof OrgOrgIdSettingsAgentsRoute
@@ -1926,6 +1998,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
   OrgOrgIdRunbooksRoute: typeof OrgOrgIdRunbooksRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
+  OrgOrgIdServicesRoute: typeof OrgOrgIdServicesRouteWithChildren
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSlosRoute: typeof OrgOrgIdSlosRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
@@ -1968,6 +2041,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,
   OrgOrgIdRunbooksRoute: OrgOrgIdRunbooksRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
+  OrgOrgIdServicesRoute: OrgOrgIdServicesRouteWithChildren,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSlosRoute: OrgOrgIdSlosRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,

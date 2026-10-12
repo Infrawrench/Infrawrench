@@ -57,7 +57,13 @@ import type {
   OwnershipClient,
   SchedulesClient,
 } from "@infrawrench/ui";
-import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
+import {
+  navigateToWorkspaceTarget,
+  resourceTabTarget,
+  servicesTabTarget,
+} from "../../lib/workspace-tabs";
+import { fetchDesktopServicesForResource } from "../../lib/services-client";
+import { ServiceAnnotation } from "@infrawrench/ui/services";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
 
@@ -448,11 +454,21 @@ export function DetailViewContainer({
               // server-side and names an org member. Ungated by type, since
               // any resource can have an owner.
               renderOwnershipTab: () => (
-                <ResourceOwnershipPanel
-                  client={getOwnershipClient()}
-                  resourceId={decodedResourceId}
-                  resourceName={resource?.displayName ?? decodedResourceId}
-                />
+                <>
+                  <ServiceAnnotation
+                    load={() => fetchDesktopServicesForResource(decodedResourceId)}
+                    onOpenService={(serviceId) =>
+                      void navigateToWorkspaceTarget(navigate, servicesTabTarget(serviceId), {
+                        mode: "pin",
+                      })
+                    }
+                  />
+                  <ResourceOwnershipPanel
+                    client={getOwnershipClient()}
+                    resourceId={decodedResourceId}
+                    resourceName={resource?.displayName ?? decodedResourceId}
+                  />
+                </>
               ),
               // Blast radius; cloud only for the same reason, and ungated by
               // type: "nothing depends on this" is worth knowing everywhere.

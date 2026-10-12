@@ -20,6 +20,7 @@
  * boundary lands on the wrong side of the handover and two people each think
  * the other is on call.
  */
+import type { CloudFetch } from "./fetch";
 import { isValidTimeOfDay, isValidTimeZone, wallTimeToUtc } from "./schedules";
 
 export interface OnCallSchedule {
@@ -355,4 +356,30 @@ export function validateOnCallOverride(input: {
     return `The reason must be ${ON_CALL_LIMITS.maxReasonLength} characters or fewer.`;
   }
   return null;
+}
+
+/** One rotation's answer in `GET /api/org/:orgId/on-call/now`. */
+export interface OnCallNowEntry {
+  scheduleId: string;
+  scheduleName: string;
+  enabled: boolean;
+  /** The live shift, cover included; null when nobody is on (or disabled). */
+  shift: OnCallShift | null;
+  /** Who takes over at the next handoff. */
+  next: OnCallParticipant | null;
+}
+
+export interface OnCallNowResponse {
+  onCall: OnCallNowEntry[];
+  generatedAt: string;
+}
+
+/** Who is on call right now, per rotation (`team:read`). */
+export async function fetchOnCallNow(api: CloudFetch, orgId: string): Promise<OnCallNowResponse> {
+  return (
+    (await api.org<OnCallNowResponse>(orgId, "/on-call/now")) ?? {
+      onCall: [],
+      generatedAt: new Date().toISOString(),
+    }
+  );
 }

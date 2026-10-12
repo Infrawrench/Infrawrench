@@ -364,6 +364,8 @@ export interface ParsedCli {
   unitCost: UnitCostFlags;
   /** `jit` flags: raw strings, validated by the command. */
   jit: JitFlags;
+  /** `services --tier 1`: only services of this criticality tier (1-4). */
+  tier: number | undefined;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -538,6 +540,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         repo: { type: "string" },
         pr: { type: "string" },
         base: { type: "string" },
+        // `services --tier <1-4>`.
+        tier: { type: "string" },
       },
     });
   } catch (e) {
@@ -758,6 +762,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     },
     alerts: values.alerts === true,
     margin: values.margin === true,
+    tier: boundedInt("tier", 1, 4),
     unitCost: {
       mode: str("mode"),
       scale: str("scale"),

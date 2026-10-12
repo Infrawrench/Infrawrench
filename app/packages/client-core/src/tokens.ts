@@ -47,6 +47,33 @@ export interface TokenManagerOptions {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * The two calls `createCloudFetch` needs from a credential. `TokenManager`
+ * satisfies it for a WorkOS session; `staticAccessToken` for an API key.
+ */
+export interface AccessTokenSource {
+  getAccessToken(): Promise<string | null>;
+  /** A new token after a 401, or null when there is nothing to refresh. */
+  forceRefreshAccessToken(): Promise<string | null>;
+}
+
+/**
+ * An `iwk_` API key (or any long-lived Bearer token) as a token source. A 401
+ * means the key was revoked or its owner left the org; there is no refresh,
+ * so the request fails with the 401 rather than retrying.
+ */
+export function staticAccessToken(token: string | null): AccessTokenSource {
+  return {
+    getAccessToken: () => Promise.resolve(token),
+    forceRefreshAccessToken: () => Promise.resolve(null),
+  };
+}
+
+/** True for an Infrawrench API key, as opposed to a WorkOS access token. */
+export function isApiKeyToken(token: string): boolean {
+  return token.startsWith("iwk_");
+}
+
 const STORAGE_KEYS = {
   accessToken: "cloud_access_token",
   refreshToken: "cloud_refresh_token",

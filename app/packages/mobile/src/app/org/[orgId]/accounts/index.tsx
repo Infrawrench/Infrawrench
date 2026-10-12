@@ -71,6 +71,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/slos`)}
         />
         <Row
+          title="Services"
+          subtitle="Resources grouped by service, with owners and scorecards"
+          onPress={() => router.push(`/org/${orgId}/services`)}
+        />
+        <Row
           title="Log workspace"
           subtitle="Saved multi-resource log tails and match alerts"
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}

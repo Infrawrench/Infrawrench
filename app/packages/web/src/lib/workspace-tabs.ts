@@ -32,6 +32,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -52,6 +53,7 @@ export {
   chatTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
@@ -340,6 +342,26 @@ export function getWorkspaceNavigateArgs(
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
+    case "services":
+      // The SLOs shape, plus a static `scorecards` child for the matrix view.
+      // Service ids are uuids, so the static segment never shadows a service.
+      return target.serviceId
+        ? {
+            to: "/org/$orgId/services/$serviceId",
+            params: { orgId, serviceId: target.serviceId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : target.view === "scorecards"
+          ? {
+              to: "/org/$orgId/services/scorecards",
+              params: { orgId },
+              ...(replace ? { replace: true } : {}),
+            }
+          : {
+              to: "/org/$orgId/services",
+              params: { orgId },
+              ...(replace ? { replace: true } : {}),
+            };
     // The section is a static child route, not a path param, so the path is
     // built concretely rather than through `params`.
     case "settings":
@@ -621,6 +643,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "slos") {
     return slosTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "services") {
+    if (s[1] === "scorecards") return servicesTabTarget(undefined, "scorecards");
+    return servicesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "settings") {
     return settingsTabTarget(s.slice(1).join("/") || undefined);

@@ -244,6 +244,37 @@ describe("slos tab kind", () => {
   });
 });
 
+describe("services tab kind", () => {
+  it("is a singleton tab id whatever service or view is open", () => {
+    expect(getWorkspaceTabId({ kind: "services" })).toBe("services");
+    expect(getWorkspaceTabId({ kind: "services", serviceId: "svc-1" })).toBe("services");
+    expect(getWorkspaceTabId({ kind: "services", view: "scorecards" })).toBe("services");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "services" })).toBe("Services");
+  });
+
+  it("compares by service and view, so reactivation restores where the tab was", () => {
+    expect(workspaceTabTargetsEqual({ kind: "services" }, { kind: "services" })).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "services", serviceId: "a" },
+        { kind: "services", serviceId: "a" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "services", serviceId: "a" },
+        { kind: "services", serviceId: "b" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual({ kind: "services" }, { kind: "services", view: "scorecards" }),
+    ).toBe(false);
+  });
+});
+
 describe("workflows tab kind", () => {
   it("is a singleton tab id regardless of which workflow is open", () => {
     expect(getWorkspaceTabId({ kind: "workflows" })).toBe("workflows");

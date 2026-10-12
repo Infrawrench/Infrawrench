@@ -299,6 +299,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // rates that say how bad and whether it is still burning.
     case "slo_alert":
       return `/org/${data.orgId}/slos/${data.sloId}`;
+    // A scorecard level drop names one service; its screen lists each
+    // scorecard's failing checks, which is what dropped it.
+    case "scorecard_level_drop":
+      return `/org/${data.orgId}/services/${data.serviceId}`;
     // A declared incident names exactly one thing to look at, and its screen
     // carries the timeline and the note box, which is the whole reason to open
     // a phone at 03:14.
@@ -587,6 +591,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "slo_alert", orgId, sloId, status };
+    }
+    case "scorecard_level_drop": {
+      const serviceId = data["serviceId"];
+      const scorecardId = data["scorecardId"];
+      if (typeof serviceId !== "string" || typeof scorecardId !== "string") return null;
+      return { type: "scorecard_level_drop", orgId, serviceId, scorecardId };
     }
     case "incident": {
       const incidentId = data["incidentId"];

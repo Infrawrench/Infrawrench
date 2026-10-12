@@ -16,6 +16,7 @@ import {
   PriceCatalogIcon,
   IncidentsIcon,
   SlosIcon,
+  ServicesIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -352,6 +353,14 @@ export function SidebarDashboards() {
             label: gt("SLOs"),
             icon: <SlosIcon />,
             onClick: () => void navigate({ to: "/slos" }),
+          },
+          // Cloud-only: membership and scores are resolved in the cloud, the
+          // SLOs stance.
+          {
+            key: "services",
+            label: gt("Services"),
+            icon: <ServicesIcon />,
+            onClick: () => void navigate({ to: "/services" }),
           },
           {
             key: "status-pages",

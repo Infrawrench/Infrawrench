@@ -1457,3 +1457,71 @@ func (c *Client) UpdatePrCheckRepository(ctx context.Context, id string, in PrCh
 func (c *Client) DeletePrCheckRepository(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/pr-checks/repositories/"+seg(id))
 }
+
+/* -------------------------------- services -------------------------------- */
+
+// GetService reads one service. The route accepts the id or the slug, which
+// is what lets `terraform import` and the data source take either.
+func (c *Client) GetService(ctx context.Context, idOrSlug string) (*Service, error) {
+	var out ServiceDetail
+	if err := c.Get(ctx, "/services/"+seg(idOrSlug), &out); err != nil {
+		return nil, err
+	}
+	return &out.Service, nil
+}
+
+func (c *Client) CreateService(ctx context.Context, in ServiceInput) (*Service, error) {
+	var out Service
+	if err := c.Post(ctx, "/services", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateService is a PATCH: lists that are present replace the stored ones.
+// Explicit members are not part of the body, so they survive any update.
+func (c *Client) UpdateService(ctx context.Context, id string, in ServiceInput) (*Service, error) {
+	var out Service
+	if err := c.Patch(ctx, "/services/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteService deletes the service. Its member resources are untouched.
+func (c *Client) DeleteService(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/services/"+seg(id))
+}
+
+/* ------------------------------- scorecards ------------------------------- */
+
+func (c *Client) GetScorecard(ctx context.Context, id string) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Get(ctx, "/scorecards/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateScorecard(ctx context.Context, in ScorecardInput) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Post(ctx, "/scorecards", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateScorecard is a PATCH carrying every key, so it replaces the whole
+// scorecard.
+func (c *Client) UpdateScorecard(ctx context.Context, id string, in ScorecardInput) (*Scorecard, error) {
+	var out Scorecard
+	if err := c.Patch(ctx, "/scorecards/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteScorecard deletes the scorecard. Services are untouched.
+func (c *Client) DeleteScorecard(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/scorecards/"+seg(id))
+}

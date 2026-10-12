@@ -1,6 +1,9 @@
 export {
   TokenManager,
   jwtExpMillis,
+  staticAccessToken,
+  isApiKeyToken,
+  type AccessTokenSource,
   type TokenPair,
   type TokenStorage,
   type TokenManagerOptions,
@@ -930,6 +933,9 @@ export * from "./metric-alerts";
 // A SQL query on a schedule: what the data says, which no metric reports.
 export * from "./query-monitors";
 export * from "./slos";
+// A logical service across providers, and how ready each one is.
+export * from "./services";
+export * from "./scorecards";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./remediation";
@@ -991,3 +997,6 @@ export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./custom-costs";
 export * from "./costs-panel-tabs";
+export * from "./deep-links";
+export * from "./search";
+export * from "./resource-insight";

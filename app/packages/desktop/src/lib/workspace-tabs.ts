@@ -32,6 +32,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -78,6 +79,7 @@ export {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -229,6 +231,18 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/slos",
         search: target.sloId ? { slo: target.sloId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    case "services":
+      // The SLOs rule: search passed explicitly so going back to the list
+      // CLEARS ?service= / ?view= instead of resolving back into them.
+      return {
+        to: "/services",
+        search: target.serviceId
+          ? { service: target.serviceId }
+          : target.view
+            ? { view: target.view }
+            : {},
         ...(replace ? { replace: true } : {}),
       };
     case "settings":
@@ -445,6 +459,13 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "slos") {
     const params = new URLSearchParams(search ?? "");
     return slosTabTarget(params.get("slo") ?? undefined);
+  }
+  if (segments[0] === "services") {
+    const params = new URLSearchParams(search ?? "");
+    return servicesTabTarget(
+      params.get("service") ?? undefined,
+      params.get("view") === "scorecards" ? "scorecards" : undefined,
+    );
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

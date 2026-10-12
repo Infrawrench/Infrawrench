@@ -908,3 +908,118 @@ export function parseNameStatusZ(output: string): NameStatusEntry[] {
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ *
+ * Services and scorecards (`infrawrench services`, `infrawrench scorecards`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resolve the argument to `services show`: an exact id, then a slug, then a
+ * case-insensitive name, then a unique case-insensitive name fragment. More
+ * than one fragment match returns the candidates instead of picking one.
+ */
+export function matchService<T extends { id: string; slug: string; name: string }>(
+  services: readonly T[],
+  query: string,
+): { match: T } | { match: null; candidates: T[] } {
+  const q = query.trim();
+  const needle = q.toLowerCase();
+  const exact =
+    services.find((s) => s.id === q) ??
+    services.find((s) => s.slug === needle) ??
+    services.find((s) => s.name.toLowerCase() === needle);
+  if (exact) return { match: exact };
+  const partial = needle ? services.filter((s) => s.name.toLowerCase().includes(needle)) : [];
+  if (partial.length === 1) return { match: partial[0]! };
+  return { match: null, candidates: partial };
+}
+
+/** `"T1"` for a tiered service, a dimmed dash otherwise. */
+export function formatServiceTier(tier: number | null): string {
+  return tier === null ? c.dim("-") : `T${tier}`;
+}
+
+/** The owning team and/or owning members, in one cell: `"payments · ana, bo"`. */
+export function formatServiceOwners(service: {
+  ownerTeam: string | null;
+  owners: ReadonlyArray<{ name: string | null; email: string | null; userId: string }>;
+}): string {
+  const people = service.owners.map((o) => safe(o.name ?? o.email ?? o.userId));
+  const parts = [service.ownerTeam ? safe(service.ownerTeam) : null, people.join(", ") || null];
+  const text = parts.filter((p): p is string => p !== null).join(" · ");
+  return text || c.dim("no owner");
+}
+
+/**
+ * A service's 30-day cost, one figure per currency. A cost warehouse that
+ * could not be read prints "unavailable", never a zero that reads as "free".
+ */
+export function formatServiceCostLine(
+  cost: { available: boolean; totals: ReadonlyArray<{ currency: string; amount: number }> },
+  formatMoney: (amount: number, currency: string) => string,
+): string {
+  if (!cost.available) return c.yellow("unavailable");
+  if (cost.totals.length === 0) return c.dim("no per-resource cost recorded");
+  return cost.totals.map((t) => formatMoney(t.amount, t.currency)).join(" + ");
+}
+
+/**
+ * One scorecard result as a cell: `"82% Silver"`, green at the top of the
+ * ladder, red below the bottom rung, yellow between. Null score (no check
+ * applied) is "not scored", never 0%.
+ */
+export function formatScoreCell(
+  result: { score: number | null; levelName: string | null } | null,
+  levelRank: number,
+  levelCount: number,
+): string {
+  if (result === null) return c.dim("n/a");
+  if (result.score === null) return c.dim("not scored");
+  const text = `${Math.round(result.score)}%${result.levelName ? ` ${safe(result.levelName)}` : ""}`;
+  if (levelRank < 0) return c.red(text);
+  if (levelRank >= levelCount - 1) return c.green(text);
+  return c.yellow(text);
+}
+
+/** A check outcome as a short coloured mark plus word. */
+export function formatCheckStatus(status: "pass" | "fail" | "not_applicable" | "error"): string {
+  switch (status) {
+    case "pass":
+      return c.green("✓ pass");
+    case "fail":
+      return c.red("✗ fail");
+    case "error":
+      return c.yellow("! error");
+    case "not_applicable":
+      return c.dim("- n/a");
+  }
+}
+
+/** A check's parameters, `key=value` joined: `"severities=critical,high"`. Empty for none. */
+export function formatScorecardParams(
+  params: Readonly<Record<string, number | string[]>>,
+  labelFor: (key: string) => string = (key) => key,
+): string {
+  return Object.entries(params)
+    .map(([key, value]) => {
+      const shown = Array.isArray(value)
+        ? value.length === 0
+          ? "(org policy)"
+          : value.map((v) => safe(String(v))).join(",")
+        : String(value);
+      return `${labelFor(key)}=${shown}`;
+    })
+    .join(" · ");
+}
+
+/** Sort results best first; "not scored" sinks to the bottom, ties by name. */
+export function orderScoreRows<T extends { score: number | null; name: string }>(
+  rows: readonly T[],
+): T[] {
+  return [...rows].sort((a, b) => {
+    if (a.score === null && b.score !== null) return 1;
+    if (b.score === null && a.score !== null) return -1;
+    if (a.score !== null && b.score !== null && a.score !== b.score) return b.score - a.score;
+    return a.name.localeCompare(b.name);
+  });
+}

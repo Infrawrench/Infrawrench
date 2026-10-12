@@ -459,6 +459,26 @@ describe("formatting", () => {
     );
   });
 
+  it("names the service the cost mover belongs to", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          costMover: {
+            displayName: "api-prod",
+            changeKind: "updated",
+            currency: "USD",
+            deltaPerDay: 42.5,
+            costBasis: "cash basis",
+            windowDays: 7,
+            contested: false,
+            serviceNames: ["Checkout API"],
+          },
+        }),
+      ),
+    );
+    expect(body).toContain("*Biggest cost move*: api-prod in Checkout API (updated): +$42.50/day");
+  });
+
   it("says so when other changes overlapped, rather than blaming the one it names", () => {
     const body = formatDigestSlackBody(
       composeWeeklyDigest(

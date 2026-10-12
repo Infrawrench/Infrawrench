@@ -89,6 +89,8 @@ export interface DigestCostMover {
   windowDays: number;
   /** True when other changes touched the same resource inside the window. */
   contested: boolean;
+  /** The services the resource belongs to, when any; named on the line. */
+  serviceNames?: string[];
 }
 
 /**
@@ -798,7 +800,11 @@ function costMoverSegments(mover: DigestCostMover | null): DigestLine | null {
     { text: "Biggest cost move", bold: true },
     {
       text:
-        `: ${mover.displayName} (${mover.changeKind}): ` +
+        `: ${mover.displayName}` +
+        (mover.serviceNames && mover.serviceNames.length > 0
+          ? ` in ${mover.serviceNames.join(", ")}`
+          : "") +
+        ` (${mover.changeKind}): ` +
         `${formatDelta(mover.deltaPerDay, mover.currency)}/day ` +
         `(${mover.costBasis}, ${mover.windowDays}d before/after${caveat})`,
       bold: false,

@@ -39,6 +39,7 @@ import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
 import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as ServicesRouteImport } from './routes/services'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SlosRouteImport } from './routes/slos'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
@@ -199,6 +200,11 @@ const SavingsRoute = SavingsRouteImport.update({
   path: '/savings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -277,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -360,6 +368,7 @@ export interface FileRoutesById {
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
+  '/services': typeof ServicesRoute
   '/settings': typeof SettingsRoute
   '/slos': typeof SlosRoute
   '/ssh-fanout': typeof SshFanoutRoute
@@ -403,6 +412,7 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
@@ -444,6 +454,7 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
@@ -485,6 +496,7 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/runbooks'
     | '/savings'
+    | '/services'
     | '/settings'
     | '/slos'
     | '/ssh-fanout'
@@ -527,6 +539,7 @@ export interface RootRouteChildren {
   QuotasRoute: typeof QuotasRoute
   RunbooksRoute: typeof RunbooksRoute
   SavingsRoute: typeof SavingsRoute
+  ServicesRoute: typeof ServicesRoute
   SettingsRoute: typeof SettingsRoute
   SlosRoute: typeof SlosRoute
   SshFanoutRoute: typeof SshFanoutRoute
@@ -750,6 +763,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SavingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -847,6 +867,7 @@ const rootRouteChildren: RootRouteChildren = {
   QuotasRoute: QuotasRoute,
   RunbooksRoute: RunbooksRoute,
   SavingsRoute: SavingsRoute,
+  ServicesRoute: ServicesRoute,
   SettingsRoute: SettingsRoute,
   SlosRoute: SlosRoute,
   SshFanoutRoute: SshFanoutRoute,

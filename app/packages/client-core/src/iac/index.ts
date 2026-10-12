@@ -16,6 +16,7 @@ export * from "./state";
 export * from "./type-map";
 export * from "./attribute-map";
 export * from "./reconcile";
+export * from "./terraform-blocks";
 
 /** Labels used by every surface, so the three words mean one thing. */
 export const IAC_STATUS_LABELS: Record<IacResourceStatus, string> = {

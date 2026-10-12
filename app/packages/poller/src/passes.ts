@@ -43,6 +43,7 @@ import {
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runSloPass } from "@infrawrench/server-core/slos/pass";
+import { runScorecardPass } from "@infrawrench/server-core/scorecards/pass";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
@@ -553,6 +554,17 @@ export const PASSES: readonly Pass[] = [
     name: "slos",
     runtime: "edge",
     run: guarded("[slos] tick failed:", () => runSloPass({ limit: 10 })),
+  },
+
+  // Scorecards: score every service on every enabled scorecard, hourly per
+  // org, and announce level drops. Gateway: the posture, orphan and backup
+  // feeds evaluate plugin rule declarations, which the edge registry only
+  // carries as metadata.
+  {
+    kind: "periodic",
+    name: "scorecards",
+    runtime: "gateway",
+    run: guarded("[scorecards] tick failed:", () => runScorecardPass({ limit: 5 })),
   },
 
   // Query monitors: a small batch of due SQL checks, each opening a

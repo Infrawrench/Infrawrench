@@ -1,3 +1,4 @@
+import type { CloudFetch } from "./fetch";
 import type { BlastRadiusSeverity } from "./blast-radius";
 import { formatMonthlyDelta } from "./cost-estimate";
 import type { GithubPermissionLevel } from "./github-issues";
@@ -350,4 +351,23 @@ export function prCheckMissingPermissions(
   }
   if (!readable(access.contents)) missing.push("contents");
   return missing;
+}
+
+/**
+ * Run the pull request check over files the caller supplies
+ * (`POST /pr-checks/preview`, `iac:read`): the same cost delta, blast radius
+ * and warnings a pull request gets, for a working tree that is not a pull
+ * request yet. `repo` (`owner/name`) applies that repository's directory
+ * filters and threshold when it has checks enabled.
+ */
+export async function previewPrCheckFiles(
+  api: CloudFetch,
+  orgId: string,
+  files: PrCheckPreviewFile[],
+  repo?: string,
+): Promise<PrCheckPreview | null> {
+  return api.org<PrCheckPreview>(orgId, "/pr-checks/preview", {
+    method: "POST",
+    body: JSON.stringify({ files, ...(repo ? { repo } : {}) }),
+  });
 }
