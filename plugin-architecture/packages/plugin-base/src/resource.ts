@@ -1007,6 +1007,18 @@ export interface ResourceTypeDefinition {
    * declare `resourceSqlDriver` don't need it; pickers accept either.
    */
   supportsRestQuery?: boolean;
+  /**
+   * Instances of this type can receive the organization's own event
+   * subscriptions (Settings > Notifications > Event subscriptions): the host
+   * delivers each event by calling `publishMessage` with the JSON envelope as
+   * the body and `PublishMessagePayload.event` set, so the plugin can fill its
+   * own required extras (an EventBridge source and detail type, Pub/Sub
+   * attributes) without the user typing them. Purely declarative; it is what
+   * lets the destination picker offer the right resources without
+   * instantiating a client. Only set it on types whose `publishMessage`
+   * succeeds with empty `extras` when `event` is present.
+   */
+  eventSink?: boolean;
   /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
   supportsMetrics?: boolean;
   /**

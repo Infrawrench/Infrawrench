@@ -94,6 +94,7 @@ import { cmdServices } from "./commands/services";
 import { cmdScorecards } from "./commands/scorecards";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
+import { cmdWebhooks } from "./commands/webhooks";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
@@ -349,6 +350,9 @@ COMMANDS
   paging [--all]      incidents mirrored from PagerDuty / incident.io (open ones; --all adds
                       resolved). paging ack|resolve <ref> writes back upstream as you;
                       paging events lists the alerts Infrawrench opened upstream
+  webhooks            event subscriptions (signed webhooks, EventBridge, Pub/Sub) and their
+       [list|test|    health; webhooks test <id|name> sends a test event now; webhooks
+        deliveries]   deliveries [id|name] is the delivery log
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -1035,6 +1039,10 @@ export async function runCli(): Promise<void> {
       case "paging":
         // Incidents mirrored from paging providers: the third "incident".
         await cmdPaging(ctx, rest, parsed.diff.all);
+        break;
+      case "webhooks":
+        // Event subscriptions: where the org's events are delivered, and how that is going.
+        await cmdWebhooks(ctx, rest);
         break;
       case "declared-incidents":
         // Incidents *we* declared (incident mode), as opposed to `incidents`

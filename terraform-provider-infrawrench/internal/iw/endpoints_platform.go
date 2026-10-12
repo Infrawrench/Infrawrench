@@ -1525,3 +1525,43 @@ func (c *Client) UpdateScorecard(ctx context.Context, id string, in ScorecardInp
 func (c *Client) DeleteScorecard(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/scorecards/"+seg(id))
 }
+
+/* --------------------------- event subscriptions --------------------------- */
+
+func (c *Client) GetEventSubscription(ctx context.Context, id string) (*EventSubscription, error) {
+	var out EventSubscription
+	if err := c.Get(ctx, "/event-subscriptions/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateEventSubscription(ctx context.Context, in EventSubscriptionInput) (*EventSubscriptionWithSecret, error) {
+	var out EventSubscriptionWithSecret
+	if err := c.Post(ctx, "/event-subscriptions", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateEventSubscription(ctx context.Context, id string, in EventSubscriptionInput) (*EventSubscription, error) {
+	var out EventSubscription
+	if err := c.Put(ctx, "/event-subscriptions/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RerollEventSubscriptionSecret mints a new signing secret; the old one keeps
+// signing for 24 hours.
+func (c *Client) RerollEventSubscriptionSecret(ctx context.Context, id string) (*EventSubscriptionWithSecret, error) {
+	var out EventSubscriptionWithSecret
+	if err := c.Post(ctx, "/event-subscriptions/"+seg(id)+"/reroll-secret", struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteEventSubscription(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/event-subscriptions/"+seg(id))
+}

@@ -128,6 +128,21 @@ describe("publishEventBridge", () => {
       .Entries[0]!;
     expect(entry["EventBusName"]).toBe("default");
   });
+  it("falls back to the event hint for an event subscription delivery", async () => {
+    jsonCall.mockResolvedValue({ FailedEntryCount: 0, Entries: [{ EventId: "e2" }] });
+    await publishEventBridge(ctx({ eventBusName: "ops" }), {
+      body: "{}",
+      extras: {},
+      event: { type: "drift.detected", version: 1, id: "evt_1", source: "infrawrench" },
+    });
+    const entry = (jsonCall.mock.calls[0]![3] as { Entries: Array<Record<string, string>> })
+      .Entries[0]!;
+    expect(entry).toMatchObject({
+      Source: "infrawrench",
+      DetailType: "drift.detected",
+      EventBusName: "ops",
+    });
+  });
   it("throws when source/detailType missing", async () => {
     await expect(publishEventBridge(ctx({}), payload("{}", { detailType: "d" }))).rejects.toThrow(
       /source/,

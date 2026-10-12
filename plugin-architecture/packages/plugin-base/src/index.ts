@@ -428,6 +428,7 @@ export type {
   ChatStreamEvent,
   PublishPanelCapability,
   PublishPanelField,
+  PublishEventHint,
   PublishMessagePayload,
   PublishMessageResult,
   SpeechPanelCapability,

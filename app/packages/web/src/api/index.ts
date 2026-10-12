@@ -164,6 +164,7 @@ import { providerOAuthRoutes, providerOAuthCallbackRoute } from "./routes/provid
 import { slackInboundRoutes } from "./routes/slack-inbound";
 import { anomalyFeedbackLinkRoutes } from "./routes/anomaly-feedback-link";
 import { msteamsRoutes } from "./routes/msteams";
+import { eventSubscriptionRoutes } from "./routes/event-subscriptions";
 import { jiraRoutes } from "./routes/jira";
 import { linearRoutes } from "./routes/linear";
 import { githubIssuesRoutes } from "./routes/github-issues";
@@ -536,6 +537,7 @@ orgScoped.route("/bastions", bastionRoutes);
 orgScoped.route("/twilio", twilioRoutes);
 orgScoped.route("/slack", slackRoutes);
 orgScoped.route("/msteams", msteamsRoutes);
+orgScoped.route("/event-subscriptions", eventSubscriptionRoutes);
 orgScoped.route("/jira", jiraRoutes);
 orgScoped.route("/linear", linearRoutes);
 orgScoped.route("/github-issues", githubIssuesRoutes);

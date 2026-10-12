@@ -4,6 +4,7 @@ import type { Recipient } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 import { SectionTabs } from "../components/SectionTabs.js";
 import { AlertRoutingSection } from "./AlertRoutingSection.js";
+import { EventSubscriptionsSection } from "./event-subscriptions/EventSubscriptionsSection.js";
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 import { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
@@ -191,6 +192,11 @@ export function NotificationsSection() {
             id: "routing",
             label: gt("Routing"),
             content: <AlertRoutingSection orgId={orgId} />,
+          },
+          {
+            id: "event-subscriptions",
+            label: gt("Event subscriptions"),
+            content: <EventSubscriptionsSection />,
           },
           {
             id: "alerts",

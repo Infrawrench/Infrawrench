@@ -88,6 +88,10 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // grant, both plugin code; a request resolves the requester's principal
   // through the plugin too. Policy writes do not, but share the prefix.
   new RegExp(`${ORG}/jit-access(/|$)`),
+  // Event subscriptions: saving vets the webhook host through the Node egress
+  // guard, and Send test event delivers inline, through plugin code for a
+  // publish destination. Reads (the list, the delivery log) stay on the edge.
+  new RegExp(`${ORG}/event-subscriptions(/|$)`),
   // A pull request check preview prices Terraform through plugin estimators
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.

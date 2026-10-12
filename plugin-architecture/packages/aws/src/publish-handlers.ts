@@ -140,8 +140,10 @@ export async function publishEventBridge(
   ctx: PublishContext,
   payload: PublishMessagePayload,
 ): Promise<PublishMessageResult> {
-  const source = extra(payload, "source");
-  const detailType = extra(payload, "detailType");
+  // An Infrawrench event subscription sends no extras: the event itself names
+  // the source and detail type, so rules can match `detail-type` on it.
+  const source = extra(payload, "source") || payload.event?.source || "";
+  const detailType = extra(payload, "detailType") || payload.event?.type || "";
   const eventBusName =
     extra(payload, "eventBusName") ||
     String(ctx.resource.fields["eventBusName"] ?? "") ||

@@ -71,6 +71,8 @@ import {
 import { pageAboutAnomalies, type AnomalySmsItem } from "./anomaly-sms";
 import { isoDay, addDays, daysBetween } from "./dates";
 import { orgAppUrl } from "../app-url";
+import { publishEvent } from "../events/publish";
+import { COST_ANOMALY_DETECTED } from "@infrawrench/client-core";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
 const BASELINE_DAYS = 28;
@@ -490,6 +492,25 @@ export async function detectCostAnomaliesForOrg(
         const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
 
         const url = orgAppUrl(organizationId, "costs");
+        // Event subscriptions get the anomaly as data, independent of whether
+        // any routing rule takes it. Keyed on the anomaly so a re-evaluated
+        // day never sends it twice.
+        await publishEvent(
+          COST_ANOMALY_DETECTED,
+          organizationId,
+          {
+            anomalyId: anomaly.id,
+            day: anomaly.day,
+            kind: anomaly.kind,
+            dimension,
+            dimensionKey: anomaly.dimensionKey,
+            actual: anomaly.actual,
+            baseline: anomaly.mean,
+            currency: anomaly.currency,
+            hints,
+          },
+          { title, url, idempotencyKey: `cost-anomaly:${anomaly.id}` },
+        );
         // `facts` is what routing rules match on, and this is the trigger the
         // feature was designed around: "anomalies over $500 on the prod account
         // → #incidents" is `amountCents >= 50000` AND `accountId in [prod]`.
