@@ -219,6 +219,23 @@ infrawrench slos checkout         # one SLO: budget, burn rates, burndown sparkl
 infrawrench slos --json
 ```
 
+`services` lists the org's services, the named sets of resources that make up one system across providers: each one's tier, owning team or members, member count and its level on every scorecard that applies. `--tier 1` keeps one criticality tier. `services show` takes a service's id, slug or name (a unique fragment of the name works too) and prints its summary: owners and links, who is on call now and next, the last 30 days of member cost per currency (printed as "unavailable" when the cost warehouse could not be read, never as zero), linked SLOs and runbooks, posture, orphan and backup findings (naming any feed that could not be loaded), members with where each came from, recent changes, and each scorecard's score with the reason every failing check gave. Its `--json` is `{ org, service, members, excluded, summary, scorecards, history }`. Cloud-only, and read-only: services are edited from the Services tab, where the resource and rule pickers live:
+
+```
+infrawrench services
+infrawrench services --tier 1
+infrawrench services show checkout-api   # owners, on-call, cost, SLOs, findings, members, changes
+infrawrench services show "Checkout API" --json
+```
+
+`scorecards` prints the scorecard matrix: one row per service, one column per scorecard, each cell the score and level reached, green at the top level, yellow between, red below the lowest. A service a scorecard does not apply to (by tier) shows `n/a`, and one where no check applied shows "not scored", never 0%. Give it a scorecard's id or name for its definition (checks with their weights and parameters, levels, tiers, whether a level drop alerts) and every service's score on it, best first, with a 90-day trend sparkline and the checks it fails:
+
+```
+infrawrench scorecards
+infrawrench scorecards "production readiness"
+infrawrench scorecards --json
+```
+
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
 
 ```

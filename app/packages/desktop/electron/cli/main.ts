@@ -90,6 +90,8 @@ import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
+import { cmdServices } from "./commands/services";
+import { cmdScorecards } from "./commands/scorecards";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
 import { cmdStatusPages } from "./commands/status-pages";
@@ -331,6 +333,14 @@ COMMANDS
                       live status, 24h uptime & last latency (give an id/name for its chart)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
                       share and as time) & burn rate (give an id/name for its burn rates & charts)
+  services [list]     services (resources grouped across providers): tier, owners, member count
+                      & level per scorecard   [--tier 1-4]
+  services show <id|slug|name>
+                      one service: owners, links, on-call now & next, 30-day cost, SLOs,
+                      runbooks, findings, members, recent changes & why each scorecard check
+                      failed (--json: { service, members, excluded, summary, scorecards, history })
+  scorecards [id|name]  every service × scorecard, score % and level per cell (give an id/name
+                      for its checks, weights, levels & each service's score with a 90-day trend)
   status-pages [name] public status pages built from your probes: what each publishes and the
                       URL it is live at (give a name/id for its components)
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
@@ -1013,6 +1023,14 @@ export async function runCli(): Promise<void> {
       case "slos":
         // `infrawrench slos <id|name>` shows one SLO's burn rates and charts.
         await cmdSlos(ctx, rest[0]);
+        break;
+      case "services":
+        // `services [list] [--tier n]`, `services show <id|slug|name>`.
+        await cmdServices(ctx, rest, parsed.tier);
+        break;
+      case "scorecards":
+        // `infrawrench scorecards <id|name>` shows one scorecard's checks and results.
+        await cmdScorecards(ctx, rest.join(" ") || undefined);
         break;
       case "paging":
         // Incidents mirrored from paging providers: the third "incident".

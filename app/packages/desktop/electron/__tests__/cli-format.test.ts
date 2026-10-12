@@ -31,6 +31,14 @@ import {
   matchVirtualTag,
   parseGroupByFlag,
   shareOfTotal,
+  formatCheckStatus,
+  formatScoreCell,
+  formatScorecardParams,
+  formatServiceCostLine,
+  formatServiceOwners,
+  formatServiceTier,
+  matchService,
+  orderScoreRows,
 } from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
@@ -698,5 +706,99 @@ describe("pr-check helpers", () => {
       { status: "D", path: "gone.tf", previousPath: null },
       { status: "A", path: "Infrafile", previousPath: null },
     ]);
+  });
+});
+
+describe("services and scorecards helpers", () => {
+  const services = [
+    { id: "svc-1", slug: "checkout-api", name: "Checkout API" },
+    { id: "svc-2", slug: "checkout-web", name: "Checkout Web" },
+    { id: "svc-3", slug: "search", name: "Search" },
+  ];
+
+  it("matchService resolves id, slug, then case-insensitive name", () => {
+    expect(matchService(services, "svc-3").match?.slug).toBe("search");
+    expect(matchService(services, "checkout-web").match?.id).toBe("svc-2");
+    expect(matchService(services, "checkout api").match?.id).toBe("svc-1");
+    expect(matchService(services, "SEARCH").match?.id).toBe("svc-3");
+  });
+
+  it("matchService takes a unique fragment and reports an ambiguous one", () => {
+    expect(matchService(services, "web").match?.id).toBe("svc-2");
+    const ambiguous = matchService(services, "checkout");
+    expect(ambiguous.match).toBeNull();
+    expect(ambiguous.match === null && ambiguous.candidates.map((s) => s.id)).toEqual([
+      "svc-1",
+      "svc-2",
+    ]);
+    const none = matchService(services, "billing");
+    expect(none.match === null && none.candidates).toEqual([]);
+  });
+
+  it("formatServiceCostLine never renders an unreadable warehouse as zero", () => {
+    const money = (amount: number, currency: string) => `${currency} ${amount}`;
+    expect(formatServiceCostLine({ available: false, totals: [] }, money)).toBe("unavailable");
+    expect(
+      formatServiceCostLine({ available: false, totals: [{ currency: "USD", amount: 0 }] }, money),
+    ).toBe("unavailable");
+    expect(formatServiceCostLine({ available: true, totals: [] }, money)).toBe(
+      "no per-resource cost recorded",
+    );
+    expect(
+      formatServiceCostLine(
+        {
+          available: true,
+          totals: [
+            { currency: "USD", amount: 120 },
+            { currency: "EUR", amount: 30 },
+          ],
+        },
+        money,
+      ),
+    ).toBe("USD 120 + EUR 30");
+  });
+
+  it("formatServiceOwners joins the team and the members", () => {
+    expect(
+      formatServiceOwners({
+        ownerTeam: "payments",
+        owners: [
+          { userId: "u1", name: "Ana", email: null },
+          { userId: "u2", name: null, email: "bo@example.com" },
+        ],
+      }),
+    ).toBe("payments · Ana, bo@example.com");
+    expect(formatServiceOwners({ ownerTeam: null, owners: [] })).toBe("no owner");
+    expect(formatServiceTier(1)).toBe("T1");
+    expect(formatServiceTier(null)).toBe("-");
+  });
+
+  it("formatScoreCell prints not scored rather than 0%", () => {
+    expect(formatScoreCell(null, -1, 0)).toBe("n/a");
+    expect(formatScoreCell({ score: null, levelName: null }, -1, 3)).toBe("not scored");
+    expect(formatScoreCell({ score: 82.4, levelName: "Silver" }, 1, 3)).toBe("82% Silver");
+    expect(formatScoreCell({ score: 12, levelName: null }, -1, 3)).toBe("12%");
+  });
+
+  it("formatCheckStatus and formatScorecardParams", () => {
+    expect(formatCheckStatus("fail")).toBe("✗ fail");
+    expect(formatCheckStatus("not_applicable")).toBe("- n/a");
+    expect(formatScorecardParams({})).toBe("");
+    expect(
+      formatScorecardParams(
+        { severities: ["critical", "high"], drillWithinDays: 90, tags: [] },
+        (k) => (k === "drillWithinDays" ? "drill days" : k),
+      ),
+    ).toBe("severities=critical,high · drill days=90 · tags=(org policy)");
+  });
+
+  it("orderScoreRows sorts best first with unscored last", () => {
+    const rows = orderScoreRows([
+      { name: "b", score: null },
+      { name: "c", score: 40 },
+      { name: "a", score: 90 },
+      { name: "d", score: 40 },
+    ]);
+    expect(rows.map((r) => r.name)).toEqual(["a", "c", "d", "b"]);
   });
 });
