@@ -541,12 +541,15 @@ const INVOKE_CHANNELS = [
   "cloud_chat_answer_question",
   "cloud_chat_stream_start",
   "cloud_chat_stream_abort",
+  "deep_link_take_pending",
 ] as const;
 
 const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
   // a local account's OAuth connection changed state (e.g. needs reconnecting)
   "provider_oauth_status",
+  // main forwards an infrawrench://open/… link for the renderer to open
+  "deep_link_open",
   "storage_download_progress",
   "ssh_host_key_prompt",
   "update_available_prompt",

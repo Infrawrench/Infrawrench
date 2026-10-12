@@ -14,6 +14,7 @@ import {
   buildAuthorizeUrl,
 } from "./cloud-tokens";
 import { PROTOCOL, CLOUD_URL } from "../env";
+import { deliverDeepLink, isDeepLink } from "./deep-links";
 
 export { getAccessToken, forceRefreshAccessToken };
 
@@ -63,6 +64,11 @@ function dispatchProtocolUrl(url: string): void {
       .then(() => route(url))
       .catch((e: unknown) => console.error("[cloud-auth] protocol route failed:", e))
       .finally(focusMainWindow);
+    return;
+  }
+  if (isDeepLink(url)) {
+    focusMainWindow();
+    deliverDeepLink(url);
     return;
   }
   void handleOAuthCallback(url).finally(focusMainWindow);
