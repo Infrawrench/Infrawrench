@@ -236,6 +236,16 @@ infrawrench scorecards "production readiness"
 infrawrench scorecards --json
 ```
 
+`dora` is [Delivery (DORA metrics)](./dora-metrics.md): deployment frequency, lead time for changes, change failure rate and time to restore for production, each with its performance band, the previous period and a sparkline trend, then a breakdown by environment (or `--group-by repository|owner`). `--scope <dimension>=<value>` narrows to one environment, repository or owner (`--scope owner` alone is the deploys with no owner recorded). `dora changes` lists the production changes behind the numbers (`--failed` for the failed ones and what they were blamed on), `dora restores` the recoveries, and `dora settings` what counts as production. Cloud-only; needs `deployments:read`:
+
+```
+infrawrench dora
+infrawrench dora --last 90d --group-by repository
+infrawrench dora --scope environment=production --json
+infrawrench dora changes --failed
+infrawrench dora restores
+```
+
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
 
 ```

@@ -89,6 +89,7 @@ import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebSlosPanel } from "./WebSlosPanel";
 import { WebServicesPanel } from "./WebServicesPanel";
+import { WebDeliveryPanel } from "./WebDeliveryPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
@@ -812,6 +813,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
         />
       );
+    case "delivery":
+      return <WebDeliveryPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":

@@ -14,6 +14,7 @@ import { NetlifySnippetResourceType } from "./resources/snippet.js";
 import { NetlifyDatabaseResourceType } from "./resources/database.js";
 import { netlifyTerraformExport } from "./terraform.js";
 import { completeNetlifyOAuth, netlifyOAuth } from "./oauth.js";
+import { netlifyDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "netlify",
@@ -58,6 +59,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
 ];
 
 export const plugin: Plugin = {
+  deployEvents: netlifyDeployEvents,
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new NetlifyClient(credentials, services),

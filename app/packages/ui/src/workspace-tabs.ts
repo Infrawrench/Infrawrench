@@ -209,6 +209,14 @@ export function servicesTabTarget(serviceId?: string, view?: "scorecards"): Work
   return { kind: "services", ...(view ? { view } : {}) };
 }
 
+/**
+ * Delivery: DORA metrics. Single-instance with no remembered state; the range
+ * and scope are view state, like the Changes feed's filters.
+ */
+export function deliveryTabTarget(): WorkspaceTabTarget {
+  return { kind: "delivery" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

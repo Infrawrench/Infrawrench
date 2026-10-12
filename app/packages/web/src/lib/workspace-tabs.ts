@@ -35,6 +35,7 @@ import {
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
+  deliveryTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -57,6 +58,7 @@ export {
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
+  deliveryTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
@@ -266,6 +268,12 @@ export function getWorkspaceNavigateArgs(
     case "query-monitors":
       return {
         to: "/org/$orgId/query-monitors",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "delivery":
+      return {
+        to: "/org/$orgId/delivery",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -633,6 +641,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "query-monitors") {
     return queryMonitorsTabTarget();
+  }
+  if (s[0] === "delivery") {
+    return deliveryTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

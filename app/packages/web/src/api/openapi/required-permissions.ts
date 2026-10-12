@@ -353,6 +353,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PATCH /scorecards/{scorecardId}": "resources:write",
   "DELETE /scorecards/{scorecardId}": "resources:write",
   "POST /scorecards/{scorecardId}/evaluate": "resources:write",
+  // DORA metrics: a view over the deployment record, so the deployments
+  // permissions. The settings decide what counts as production for everyone.
+  "GET /dora": "deployments:read",
+  "GET /dora/changes": "deployments:read",
+  "GET /dora/restores": "deployments:read",
+  "GET /dora/settings": "deployments:read",
+  "PUT /dora/settings": "org:settings:write",
+  "POST /dora/deployments": "deployments:write",
   // incident mode: the declared kind. `incidents:write` is held by members
   // as well as admins on purpose (see the permission catalog); what a
   // declaration may *do* keeps its own gates, so requesting a change freeze

@@ -16,6 +16,7 @@ import {
   exchangeVercelCode,
   vercelOAuth,
 } from "./oauth.js";
+import { vercelDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "vercel",
@@ -86,6 +87,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
 ];
 
 export const plugin: Plugin = {
+  deployEvents: vercelDeployEvents,
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new VercelClient(credentials, services),

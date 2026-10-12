@@ -1344,6 +1344,13 @@ export interface Plugin extends OAuthPluginHooks {
    */
   remediationCommands?(finding: RemediationFinding): RemediationCommand[];
   /**
+   * Turn synced deploy/run rows into deploy events for the host's DORA
+   * metrics. Pure work over stored fields (no credentials, no API calls), so
+   * it lives on the Plugin. Hosts call it through `resolveDeployEvent`, which
+   * catches and validates. See `deploy-events.ts`.
+   */
+  deployEvents?: DeployEventsCapability;
+  /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
    * Plugin (not the client) because it needs no credentials: the feed is
@@ -1417,6 +1424,7 @@ import type {
 } from "./leaked-secrets.js";
 import type { OAuthDeclaration, OAuthHostServices, OAuthPluginHooks } from "./oauth.js";
 import type { RemediationCommand, RemediationFinding } from "./remediation.js";
+import type { DeployEventsCapability } from "./deploy-events.js";
 import type {
   BusinessMetricSourceDeclaration,
   BusinessMetricSourceDryRun,

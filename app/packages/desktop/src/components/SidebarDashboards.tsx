@@ -17,6 +17,7 @@ import {
   IncidentsIcon,
   SlosIcon,
   ServicesIcon,
+  DeliveryIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -365,6 +366,13 @@ export function SidebarDashboards() {
             label: gt("Services"),
             icon: <ServicesIcon />,
             onClick: () => void navigate({ to: "/services" }),
+          },
+          // Cloud-only: deploy events and incidents live in the cloud.
+          {
+            key: "delivery",
+            label: gt("Delivery"),
+            icon: <DeliveryIcon />,
+            onClick: () => void navigate({ to: "/delivery" }),
           },
           {
             key: "status-pages",

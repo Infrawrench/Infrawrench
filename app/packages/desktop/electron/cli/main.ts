@@ -94,6 +94,7 @@ import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
 import { cmdServices } from "./commands/services";
 import { cmdScorecards } from "./commands/scorecards";
+import { cmdDora } from "./commands/dora";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
 import { cmdWebhooks } from "./commands/webhooks";
@@ -371,6 +372,10 @@ COMMANDS
                       failed (--json: { service, members, excluded, summary, scorecards, history })
   scorecards [id|name]  every service × scorecard, score % and level per cell (give an id/name
                       for its checks, weights, levels & each service's score with a 90-day trend)
+  dora [changes|restores|settings]
+                      DORA metrics for production: deploy frequency, lead time, change failure
+                      rate & time to restore, with bands, the previous period & a trend
+                      [--last 30d] [--scope <dim>=<value>] [--group-by <dim>] [--failed]
   status-pages [name] public status pages built from your probes: what each publishes and the
                       URL it is live at (give a name/id for its components)
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
@@ -1109,6 +1114,10 @@ export async function runCli(): Promise<void> {
       case "scorecards":
         // `infrawrench scorecards <id|name>` shows one scorecard's checks and results.
         await cmdScorecards(ctx, rest.join(" ") || undefined);
+        break;
+      case "dora":
+        // `infrawrench dora [changes|restores|settings]`: delivery metrics.
+        await cmdDora(ctx, rest[0], parsed.range, parsed.dora);
         break;
       case "paging":
         // Incidents mirrored from paging providers: the third "incident".

@@ -14,6 +14,7 @@ import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { decryptAccountCredentials } from "./provider-oauth";
 import { captureSavingsFromChanges } from "./savings/capture";
+import { recordDeployEventsFromSync } from "./dora/record";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -189,6 +190,25 @@ async function recordChangeTimeline(
   }
 }
 
+/**
+ * Record the pass's deploy rows as DORA deploy events (see `dora/record.ts`).
+ * Wrapped like the change timeline: a failure here can never break a sync,
+ * and the next pass re-sees the same deploys.
+ */
+async function recordDeploys(
+  organizationId: string,
+  accountId: string,
+  plugin: Plugin,
+  fetched: ResourceInstance[],
+): Promise<void> {
+  if (!plugin.deployEvents) return;
+  try {
+    await recordDeployEventsFromSync(organizationId, accountId, plugin, fetched);
+  } catch (err) {
+    console.error(`[sync] recording deploy events for account ${accountId} failed:`, err);
+  }
+}
+
 type SavingsCaptureCtx = Parameters<typeof captureSavingsFromChanges>[0]["ctx"];
 
 /** Sync one resource type for an account. Returns the fresh resources. */
@@ -210,6 +230,7 @@ export async function syncAccountResourceType(
   });
 
   await Promise.all(fetched.map((r) => upsertResource(organizationId, accountId, r)));
+  await recordDeploys(organizationId, accountId, plugin, fetched);
 
   if (prior) {
     await recordChangeTimeline(organizationId, accountId, prior, fetched, [typeId], {
@@ -332,6 +353,7 @@ export async function syncAccountResources(
   });
 
   await Promise.all(allResources.map((r) => upsertResource(organizationId, accountId, r)));
+  await recordDeploys(organizationId, accountId, plugin, allResources);
 
   if (prior) {
     await recordChangeTimeline(

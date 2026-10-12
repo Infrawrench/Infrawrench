@@ -399,6 +399,8 @@ export interface ParsedCli {
   tier: number | undefined;
   /** `leaks` flags. `--reason`, `--account` and `--status` are the shared ones. */
   leaks: LeakFlags;
+  /** `dora`: `--scope <dimension>[=<value>]` and `--failed` (drill-down to failed changes). */
+  dora: { scope: string | undefined; failed: boolean; restores: boolean };
 }
 
 export interface LeakFlags {
@@ -579,6 +581,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         ticket: { type: "string" },
         status: { type: "string" },
         mine: { type: "boolean", default: false },
+        // `dora`: list only failed changes / list recoveries.
+        failed: { type: "boolean", default: false },
+        restores: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
         // `leaks`: a dismissal's note, the replacement value's source (stdin
         // only: a secret on argv lands in shell history), and whether to
@@ -813,6 +818,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       gaps: values.gaps === true,
     },
     savings: { amount: str("amount"), note: str("note") },
+    dora: {
+      scope: str("scope"),
+      failed: values.failed === true,
+      restores: values.restores === true,
+    },
     jit: {
       policy: str("policy"),
       role: str("role"),
