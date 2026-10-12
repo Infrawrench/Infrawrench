@@ -81,6 +81,8 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Git push webhook: runs the workflow.
   /^\/api\/workflows\/git\//,
   new RegExp(`${ORG}/(workflows|accounts|ssh-keys|resources)(/|$)`),
+  // Removing a seat calls the plugin's removeSeat.
+  new RegExp(`${ORG}/seats/[^/]+/remove$`),
   // Registering a provider webhook and acknowledging a provider incident both
   // call plugin code, the first after it has already written a settings row.
   new RegExp(`${ORG}/(paging-providers|paging-incidents)(/|$)`),

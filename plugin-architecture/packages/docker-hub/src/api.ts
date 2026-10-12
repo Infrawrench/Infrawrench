@@ -185,3 +185,31 @@ export async function hubPaged<T>(
   }
   return out;
 }
+
+/**
+ * Like {@link hubPaged}, but every page or nothing: running past `maxPages`
+ * throws instead of truncating, because a reader that stores the result as
+ * the complete set (the seat inventory) must never see a partial list.
+ */
+export async function hubPagedAll<T>(
+  ctx: HubContext,
+  path: string,
+  query: Query = {},
+  maxPages = 500,
+): Promise<T[]> {
+  const out: T[] = [];
+  let res = await hubFetch<{ results?: T[]; next?: string | null }>(ctx, path, {
+    query: { page_size: 100, ...query },
+  });
+  for (let page = 1; ; page++) {
+    out.push(...(res?.results ?? []));
+    const next = res?.next;
+    if (!next) return out;
+    if (page >= maxPages)
+      throw new HubApiError(
+        500,
+        `Docker Hub plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
+      );
+    res = await hubFetch(ctx, next);
+  }
+}

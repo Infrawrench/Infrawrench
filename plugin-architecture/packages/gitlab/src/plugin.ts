@@ -10,7 +10,8 @@ import type { GitLabContext } from "./api.js";
 import { glFetch, glPaged, isPermissionError, resolveBaseUrl } from "./api.js";
 import { GitLabClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import { gitlabRemediationCommands } from "./remediation.js";
+import { gitlabRemediationCommands, gitlabSeatRemediationCommands } from "./remediation.js";
+import { GITLAB_PRODUCT } from "./seats.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
@@ -50,6 +51,16 @@ const preflight: PreflightDeclaration = {
       description:
         "Read secret detection vulnerabilities so leaked credentials are matched to what Infrawrench holds (read_api, Developer role), and resolve or dismiss them after a rotation (api, Maintainer role). The vulnerability report needs GitLab Ultimate.",
       requiredPermissions: [{ id: "api", label: "Read and write the API (read_api to only read)" }],
+    },
+    {
+      id: "seats",
+      label: "Subscription seats",
+      description:
+        "List the billable members of paid GitLab.com top-level groups and when each was last active, and remove them. Removing needs the api scope.",
+      requiredPermissions: [
+        { id: "read_api", label: "Read the API (api also works)" },
+        { id: "owner", label: "Owner role on the top-level group" },
+      ],
     },
   ],
 };
@@ -111,6 +122,8 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
     partial: true,
   },
+  // GitLab.com subscription seats (billable members of paid top-level groups).
+  seats: { products: [GITLAB_PRODUCT], removal: true },
   preflight,
   statusFeed,
   secretScanning: {
@@ -194,6 +207,7 @@ export const plugin: Plugin = {
   listCredentialOptions,
   terraformExport: gitlabTerraformExport,
   remediationCommands: gitlabRemediationCommands,
+  seatRemediationCommands: gitlabSeatRemediationCommands,
   validateServerCredentials: (credentials) => {
     try {
       const url = resolveBaseUrl(credentials["url"]);

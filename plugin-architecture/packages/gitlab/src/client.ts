@@ -17,6 +17,10 @@ import type {
   QuotaUsage,
   ResourceCreateReturn,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SelectOption,
   SidebarItemSchema,
   VulnerabilityFinding,
@@ -30,6 +34,7 @@ import {
   glFetch,
   glGraphql,
   glPaged,
+  glRequest,
   isAbsent,
   isPermissionError,
   resolveBaseUrl,
@@ -78,6 +83,7 @@ import {
 } from "./metrics.js";
 import { DETAIL_KEYS, renderGitLabDetail, renderGitLabSidebar } from "./render.js";
 import { fetchGitLabVulnerabilities } from "./vulnerabilities.js";
+import { fetchGitLabSeats, isGitLabCom, removeGitLabSeat, topLevelGroups } from "./seats.js";
 import type {
   GlDeployKey,
   GlDeployToken,
@@ -933,6 +939,24 @@ export class GitLabClient implements PluginClient {
     return fetchGitLabVulnerabilities(this.ctx, { projects: await this.fanout() });
   }
 
+  // -------------------------------------------------------------------------
+  // Seats
+  // -------------------------------------------------------------------------
+
+  /**
+   * Billable members of the paid top-level groups in scope (GitLab.com only).
+   * `last_activity_on` is an exact date, so `options.lookbackDays` needs no
+   * wider read.
+   */
+  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
+    return fetchGitLabSeats(this.ctx, this.groupValue);
+  }
+
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const groupId = seat.context?.["groupId"] ?? seat.seatKey ?? "";
+    return removeGitLabSeat(this.ctx, groupId, seat.memberId, seat.login ?? seat.memberId);
+  }
+
   async verifyCredentials(): Promise<PreflightResult> {
     let scopes: string[] | undefined;
     let identity: string | undefined;
@@ -948,11 +972,13 @@ export class GitLabClient implements PluginClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
-        checks: ["inventory", "manage", "runners", "secret-detection"].map((capabilityId) => ({
-          capabilityId,
-          status: "unknown" as const,
-          message: isPermissionError(err) ? "GitLab rejected the token." : message,
-        })),
+        checks: ["inventory", "manage", "runners", "secret-detection", "seats"].map(
+          (capabilityId) => ({
+            capabilityId,
+            status: "unknown" as const,
+            message: isPermissionError(err) ? "GitLab rejected the token." : message,
+          }),
+        ),
       };
     }
     const has = (s: string) => scopes?.includes(s) ?? false;
@@ -991,8 +1017,46 @@ export class GitLabClient implements PluginClient {
                   "read_api reads findings; resolving them after a rotation needs the api scope.",
               }
             : missing("secret-detection", [SCOPE_READ_API]),
+        await this.seatsCheck(has("api") || has("read_api")),
       ],
     };
+  }
+
+  /**
+   * Seats need GitLab.com, a readable API and the Owner role on a top-level
+   * group; the last is only provable by asking for one billable member.
+   */
+  private async seatsCheck(canRead: boolean): Promise<PreflightResult["checks"][number]> {
+    if (!isGitLabCom(this.ctx)) {
+      return {
+        capabilityId: "seats",
+        status: "unknown",
+        message:
+          "Seats are reported for GitLab.com subscriptions only; self-managed and Dedicated instances are licensed per instance.",
+      };
+    }
+    if (!canRead) {
+      return { capabilityId: "seats", status: "missing", missingPermissions: [SCOPE_READ_API] };
+    }
+    try {
+      const groups = await topLevelGroups(this.ctx, this.groupValue);
+      if (groups.length === 0) {
+        return { capabilityId: "seats", status: "missing", missingPermissions: [ROLE_OWNER] };
+      }
+      await glRequest(this.ctx, `/groups/${groups[0]!.id}/billable_members`, {
+        query: { per_page: 1 },
+      });
+      return { capabilityId: "seats", status: "ok" };
+    } catch (err) {
+      if (isPermissionError(err)) {
+        return { capabilityId: "seats", status: "missing", missingPermissions: [ROLE_OWNER] };
+      }
+      return {
+        capabilityId: "seats",
+        status: "unknown",
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -2405,6 +2469,7 @@ export interface GroupStorage {
 const SCOPE_API = { id: "api", label: "Read and write the API (create, edit, delete, actions)" };
 const SCOPE_READ_API = { id: "read_api", label: "Read the API (inventory, metrics, logs)" };
 const SCOPE_CREATE_RUNNER = { id: "create_runner", label: "Create runners" };
+const ROLE_OWNER = { id: "owner", label: "Owner role on the top-level group" };
 
 /** The job fields the detail tables show, so stashed data stays small. */
 function slimJob(j: GlJob) {

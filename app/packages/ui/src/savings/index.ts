@@ -4,6 +4,7 @@ export {
   ExtendedSupportSection,
   type ExtendedSupportSectionProps,
 } from "./ExtendedSupportSection.js";
+export { SeatsSection, type SeatsSectionProps } from "./SeatsSection.js";
 export {
   OversizedSection,
   describeResizeConfirm,

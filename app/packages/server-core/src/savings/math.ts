@@ -257,6 +257,8 @@ function estimatedDaily(
       if (base !== null) return { realized: base, current: 0 };
       break;
     case "rightsizing":
+    case "saas_seat":
+      // A removed seat's post-action cost is 0; a downgraded one's is the cheaper tier.
       if (base !== null && input.postDailyEstimate !== null) {
         return { realized: base - input.postDailyEstimate, current: input.postDailyEstimate };
       }

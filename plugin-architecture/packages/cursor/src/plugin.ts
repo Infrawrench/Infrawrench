@@ -6,7 +6,8 @@ import { DEFAULT_PREMIUM_SEAT_PRICE, DEFAULT_STANDARD_SEAT_PRICE } from "./cost-
 import { logoSvg } from "./logo.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import { cursorRemediationCommands } from "./remediation.js";
+import { cursorSeatRemediationCommands } from "./remediation.js";
+import { SEAT_PRODUCT } from "./seats.js";
 
 const manifest: PluginManifest = {
   id: "cursor",
@@ -68,6 +69,9 @@ const manifest: PluginManifest = {
     restatementDays: 3,
     estimated: true,
   },
+  // Paid seats with daily-usage evidence for the seats finder; removal is
+  // POST /teams/remove-member, which Cursor allows on Enterprise only.
+  seats: { products: [SEAT_PRODUCT], removal: true },
   statusFeed,
   preflight: {
     capabilities: [
@@ -85,7 +89,7 @@ const manifest: PluginManifest = {
         id: "write",
         label: "Spend limits, groups and blocklists",
         description:
-          "Set per-user spend limits, manage billing and member groups and repository blocklists, remove members.",
+          "Set per-user spend limits, manage billing and member groups and repository blocklists, remove members (removal through the API needs an Enterprise plan).",
         requiredPermissions: [{ id: "admin", label: "Team API key with the admin scope" }],
       },
       {
@@ -107,5 +111,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new CursorClient(credentials, services),
   parseStatusFeed,
-  remediationCommands: cursorRemediationCommands,
+  seatRemediationCommands: cursorSeatRemediationCommands,
 };

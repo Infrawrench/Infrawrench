@@ -126,6 +126,20 @@ export {
   VULNERABILITY_SEVERITIES,
   VulnerabilityAccessError,
 } from "./vulnerabilities.js";
+export type {
+  SeatActivity,
+  SeatActivityBasis,
+  SeatCategory,
+  SeatDowngrade,
+  SeatFetchOptions,
+  SeatPrice,
+  SeatPriceSource,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
+  SeatsCapabilityDeclaration,
+} from "./seats.js";
+export { normalizeSeatRecords, SEAT_CATEGORIES } from "./seats.js";
 
 export type {
   PriceCatalogArea,
@@ -356,7 +370,10 @@ export type {
   RemediationFindingKind,
   RemediationPlaceholder,
   RemediationResource,
+  RemediationSeat,
   RemediationSource,
+  SeatRemediationFinding,
+  SeatRemediationSource,
   RemediationTool,
   TerraformRemediationInput,
 } from "./remediation.js";
@@ -367,6 +384,7 @@ export {
   remediationField,
   remediationId,
   resolveRemediationCommands,
+  resolveSeatRemediationCommands,
   shellQuote,
   terraformRemediationHint,
 } from "./remediation.js";

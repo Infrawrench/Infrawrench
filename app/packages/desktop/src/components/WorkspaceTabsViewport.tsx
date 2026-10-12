@@ -41,6 +41,7 @@ import {
   type ExtendedSupportClient,
   type OrphansClient,
   type RightsizingClient,
+  type SeatsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
@@ -51,6 +52,7 @@ import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
+import { createDesktopSeatsClient } from "@/lib/seats-client";
 import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
@@ -142,6 +144,12 @@ let extendedSupportClient: ExtendedSupportClient | null = null;
 function getExtendedSupportClient(): ExtendedSupportClient {
   if (!extendedSupportClient) extendedSupportClient = createDesktopExtendedSupportClient();
   return extendedSupportClient;
+}
+
+let seatsClient: SeatsClient | null = null;
+function getSeatsClient(): SeatsClient {
+  if (!seatsClient) seatsClient = createDesktopSeatsClient();
+  return seatsClient;
 }
 
 let rightsizingClient: RightsizingClient | null = null;
@@ -344,6 +352,7 @@ function renderPanel(
           }
           // Cloud-only: the rows live server-side and the cloud poller runs
           // the transitions, so local mode omits the section entirely.
+          seats={activeCloudOrgId ? getSeatsClient() : undefined}
           schedules={activeCloudOrgId ? getSchedulesClient() : undefined}
           onOpenScheduledResource={(s) =>
             void navigate(

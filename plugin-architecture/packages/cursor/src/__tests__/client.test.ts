@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { CursorClient, parseDollarLimit, validateRepoUrl } from "../client.js";
 import { TeamMemberResourceType } from "../resource-types.js";
 import type { Reply } from "./helpers.js";
@@ -115,10 +114,8 @@ describe("team members", () => {
     expect(byEmail["it@acme.com"]!.fields).toMatchObject({ seat: "none", seatStatus: "unpaid" });
     expect(byEmail["gone@acme.com"]!.fields["seatStatus"]).toBe("removed");
 
-    const flagged = rows
-      .filter((r) => evaluateOrphanRule(TeamMemberResourceType.orphanRule!, r.fields))
-      .map((r) => r.fields["email"]);
-    expect(flagged).toEqual(["idle@acme.com"]);
+    // Idle seats are the seat finder's now; the resource type must not list them a second time.
+    expect(TeamMemberResourceType.orphanRule).toBeUndefined();
     expect(rows[0]!.id).toBe("acc:team-member:user_1");
   });
 

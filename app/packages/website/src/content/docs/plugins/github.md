@@ -18,7 +18,7 @@ An account is scoped to one **organization** or one **enterprise**, and opens st
   - premium requests and AI credits
   - Codespaces compute hours
   - net spend
-- **Copilot seats**: every Business or Enterprise seat with when its user last used Copilot, in which editor, and what the seat costs. A seat with no activity for 30 days is marked **Idle** and appears in the [orphan finder](../features/orphan-finder.md). **Remove seat** sets it to cancel at the end of the billing cycle (the user keeps Copilot until then, and the seat is not billed after). **+ Create** assigns a seat to an organization member picked from a list of members who do not have one yet.
+- **Copilot seats**: every Business or Enterprise seat with when its user last used Copilot, in which editor, and what the seat costs. Idle seats are reported under **Seats** (below), against your organization's own inactivity threshold. **Remove seat** sets it to cancel at the end of the billing cycle (the user keeps Copilot until then, and the seat is not billed after). **+ Create** assigns a seat to an organization member picked from a list of members who do not have one yet.
 - **Larger runners**: GitHub-hosted larger runners with platform, machine size, image, runner group, concurrency limit and this month's spend on their SKU. Create one by picking an image, a machine size and a runner group from GitHub's own lists; change its name, maximum concurrent jobs or static IP; delete it.
 - **Self-hosted runners**: registered runners with OS, labels, status and version. An offline runner is flagged in the orphan finder; deleting one removes its registration.
 - **Actions caches**: one entry per repository with its cache count and size, and its largest caches listed. Delete a single cache from the list, or **Delete all caches** to clear the repository.
@@ -87,6 +87,18 @@ Infrawrench already has a GitHub App for git-triggered workflows and agents. Thi
 - Enterprise billing and cost centres cannot be read by a GitHub App installed on an organization at all.
 - The App installation belongs to the web app's server, so the desktop app (and local mode) could not use it. A token works the same everywhere, which is also why the token form stays available next to Connect with GitHub.
 
+## Seats
+
+GitHub accounts report their **Copilot** seats to Seats, which flags seats nobody uses, people paying for Copilot and another AI coding tool, and adds up what removing them would save.
+
+- **What is read.** Every Copilot Business and Enterprise seat on the organization (or, for an enterprise account, across the enterprise), with the user's login, name and email where GitHub shows it. An enterprise lists one entry per organization or team that grants a user Copilot; GitHub bills the user once, so Infrawrench folds those into one seat.
+- **Activity.** GitHub's **last activity** date for Copilot, with the editor it came from. GitHub only records editor activity when the user has IDE telemetry turned on, so for a user with no activity date the last time they **authenticated** with Copilot is used instead. A seat with neither date is treated as never used once it has been held for longer than your threshold.
+- **Price.** This month's unit price for the plan's SKU from your bill when it has one; otherwise GitHub's published price, labelled as an estimate: $19 per user per month for Copilot Business and $39 for Copilot Enterprise (GitHub Docs, October 2026). A seat whose plan GitHub reports as unknown has no price.
+- **Remove.** Sets the seat to pending cancellation: the user keeps Copilot, and the seat stays billed, until the end of the billing cycle. Seats granted through a team cannot be cancelled on their own (change the team instead), and on an enterprise account seats granted by a child organization have to be cancelled in that organization; both are shown as not removable, with the reason.
+- **Permissions.** The same as Copilot seats above: Organization **GitHub Copilot Business** (read to list, write to remove) on a fine-grained token, or `manage_billing:copilot` on a classic one.
+- **GitHub organization seats are not reported.** No GitHub API gives the last activity of an organization member, so an idle member could only be guessed at.
+- Copilot is never suggested as a downgrade from Enterprise to Business: nothing GitHub reports shows which users would do without the Enterprise features.
+
 ## Cost graphs
 
 GitHub accounts feed [cost graphs & budgets](../features/cloud-costs.md) from the usage report:
@@ -125,7 +137,7 @@ Findings are about a **repository** (`owner/name`), not a running workload, so t
 
 - **The enhanced billing platform is required.** The usage API only exists there. If your organization is still on the legacy billing pages, the account says so instead of graphing nothing.
 - **Enterprise accounts cover the bill, organization accounts cover the things.** Self-hosted runners, Actions caches and codespaces are organization-level in GitHub's API, so add each organization you want to manage as its own account. Spend is not double counted as long as cost graphs are read from either the enterprise or its organizations, not both.
-- **Seats from teams.** Removing a seat only works for seats assigned directly. A seat a user gets through a team needs the team changed in GitHub; the seat page says when that is the case.
+- **Seats from teams.** Removing a seat (here or from Seats) only works for seats assigned directly. A seat a user gets through a team needs the team changed in GitHub; the seat page says when that is the case.
 - **Larger runner cost is per SKU.** GitHub reports spend by SKU, not by runner, so runners of the same size and platform share the figure shown.
 - **Copilot metrics need the reports to exist.** GitHub publishes the Copilot usage reports once a day; a new organization has nothing to chart for a day or two.
 - **Provider status** follows GitHub's status page; an Actions incident lines up with Actions spend.

@@ -376,7 +376,8 @@ export async function getTeamSpend(
 
 /**
  * POST /teams/daily-usage-data for one window of at most 30 days, every page.
- * Only days on which a user was active come back.
+ * Paginated, so every member comes back with a row per day of membership and
+ * `isActive` set (unpaginated calls return active users only).
  */
 export async function getDailyUsage(
   ctx: CursorContext,
@@ -480,12 +481,30 @@ export async function setUserSpendLimit(
   }
 }
 
-/** POST /teams/remove-member */
-export async function removeTeamMember(ctx: CursorContext, userId: string): Promise<void> {
-  await cursorRequest<unknown>(ctx, "/teams/remove-member", {
-    method: "POST",
-    body: userId.startsWith("user_") ? { userId } : { email: userId },
-  });
+export interface CursorRemoveMemberResponse {
+  success?: boolean;
+  userId?: string;
+  /** True when the member used credits this cycle, which keeps the seat billed until it ends. */
+  hasBillingCycleUsage?: boolean;
+}
+
+/**
+ * POST /teams/remove-member (Enterprise only; at least one paid member and one
+ * admin must remain). https://cursor.com/docs/account/teams/admin-api
+ */
+export async function removeTeamMember(
+  ctx: CursorContext,
+  userId: string,
+): Promise<CursorRemoveMemberResponse> {
+  const body = await cursorRequest<CursorRemoveMemberResponse | undefined>(
+    ctx,
+    "/teams/remove-member",
+    {
+      method: "POST",
+      body: userId.startsWith("user_") ? { userId } : { email: userId },
+    },
+  );
+  return body ?? {};
 }
 
 /** GET /teams/groups (billing groups) for the current billing cycle. */

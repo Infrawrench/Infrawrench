@@ -5319,3 +5319,4 @@ export * from "./event-subscription-schema.js";
 export * from "./leaked-secret-schema.js";
 export * from "./compliance-schema.js";
 export * from "./dora-schema.js";
+export * from "./seat-schema.js";

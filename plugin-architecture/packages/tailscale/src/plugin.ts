@@ -2,6 +2,7 @@ import type { Plugin } from "@infrawrench/plugin-base";
 import { TailscaleClient } from "./client.js";
 import { INSTALL_MESSAGES } from "./install.js";
 import { logoSvg } from "./logo.js";
+import { tailscaleSeatRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resource-types.js";
 
 export const plugin: Plugin = {
@@ -40,8 +41,20 @@ export const plugin: Plugin = {
         optional: true,
         sensitive: false,
       },
+      {
+        key: "seatPriceMonthly",
+        label: "Seat price (USD per seat per month)",
+        description:
+          "What one Tailscale seat costs you per month. The API does not report your plan, so without this the Seats page estimates with the Standard plan's list price of $8 (Premium is $18). Enter 0 for the free Personal plan.",
+        sensitive: false,
+        optional: true,
+        advanced: true,
+        placeholder: "8",
+      },
     ],
+    seats: { products: ["Tailscale"], removal: true },
   },
   resourceTypes,
   createClient: (credentials, services) => new TailscaleClient(credentials, services),
+  seatRemediationCommands: tailscaleSeatRemediationCommands,
 };

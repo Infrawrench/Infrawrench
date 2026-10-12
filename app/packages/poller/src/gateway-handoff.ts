@@ -5,7 +5,7 @@ import { markAccountRequiresGateway } from "@infrawrench/server-core/runtime/acc
 import type { PollAccountRow } from "./poll-account";
 
 export type PollKind =
-  "resources" | "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities";
+  "resources" | "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats";
 
 /** The lease table for the passes whose schedule lives off `accounts`. */
 const LEASE_TABLES = {
@@ -13,6 +13,7 @@ const LEASE_TABLES = {
   commitments: "account_commitment_polls",
   quotas: "account_quota_polls",
   vulnerabilities: "account_vulnerability_polls",
+  seats: "account_seat_polls",
 } as const;
 
 /**

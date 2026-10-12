@@ -26,8 +26,20 @@ To add an existing server, open its resource page and choose **Install serviceâ€
 
 The integration uses the [Tailscale API](https://tailscale.com/api). API access does not connect the Infrawrench machine to the tailnet. To use a device's Tailscale IP for SSH, the machine making the SSH connection must already have a network path into your tailnet.
 
+## Seats
+
+Tailscale accounts report the tailnet's users to the **Seats** page, which flags users not seen on the tailnet for your inactivity threshold and adds up what removing them would save.
+
+- **What is read**: the tailnet's members (`GET /tailnet/{tailnet}/users`). Tailscale bills for seats, and a user takes one once they first log in or connect a device, so active and idle users with a last-seen time count. Suspended users, users waiting for approval or held back by the billing limit, invited users, and users shared in from another tailnet do not hold a seat here and are left out.
+- **Activity**: the user's **last seen on the tailnet**: the later of the last time any of their devices was connected and the last time they signed in to Tailscale, including the admin console. A user connected right now counts as active today.
+- **Price**: the **Seat price** you set under **Advanced options** on the account (enter 0 on the free Personal plan). The API does not report your plan, so without it each seat is estimated at the Standard plan's list price, $8 per user per month (Premium is $18; tailscale.com/pricing, October 2026), and labelled as an estimate.
+- **Remove** suspends the user. Their devices stay in the tailnet but cannot exchange traffic, their API and auth keys stop working, and the seat is freed; **Restore** on the user undoes it. Tailscale charges for every seat including empty ones, from the seat count at the start of each month, so also lower the seat count in the billing settings to stop paying for it. The tailnet owner cannot be removed until ownership moves to someone else.
+- **Cheaper tier**: never suggested; the API does not report the plan.
+- **Scopes**: `users:read` to read seats, `users` to remove them. A user-owned API access token cannot suspend its own user.
+- [Remediation commands](../features/remediation-commands.md) for a flagged user are `curl` calls with an API token (`$TAILSCALE_API_KEY`): show the user, then suspend them.
+
 ## Limits
 
-- Tailscale has no billing or usage API, so the plugin reports no costs.
+- Tailscale has no billing or usage API, so the plugin reports no costs, and seat prices come from the price you set or the published list price.
 - The policy file itself is not edited here; it is read only to offer your defined tags in pickers.
 - Traffic metrics and flow logs come from network flow logs, which need a Premium or Enterprise plan, **Network flow logs** turned on in the tailnet settings and a token that can read them (`logs:network:read`). Tailscale keeps them for 30 days and returns a whole window in one response, so the Metrics tab defaults to the last hour and reads at most 24 hours at a time. Sent and received are counted from each device's side, so tailnet totals count traffic between two of your devices once on each end.

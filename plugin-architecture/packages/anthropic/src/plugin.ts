@@ -13,6 +13,8 @@ import { ApiKeyResourceType } from "./resources/api-key.js";
 import { WorkspaceMemberResourceType } from "./resources/workspace-member.js";
 import { RateLimitResourceType } from "./resources/rate-limit.js";
 import { SkillResourceType } from "./resources/skill.js";
+import { anthropicSeatRemediationCommands } from "./remediation.js";
+import { SEAT_PRODUCT } from "./seats.js";
 
 // Anthropic's corporate "A" mark, taken verbatim from the official logo
 // (native viewBox "0 0 24 24", path unmodified) and rescaled onto the 100×100
@@ -62,13 +64,26 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin; only an organization admin can create one. Unlocks Workspaces, Members, Invites, API Keys, Rate Limits and the usage, Claude Code and cost charts. Leave blank and those sections stay empty. Not available on individual accounts.",
+        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin; only an organization admin can create one. Unlocks Workspaces, Members, Invites, API Keys, Rate Limits and the usage, Claude Code and cost charts. Leave blank and those sections stay empty. Not available on individual accounts. For a Claude Enterprise organization, use an Admin API key created in claude.ai organization settings with the read:members scope (add write:members to remove members); it lists members and their seats.",
       sensitive: true,
       optional: true,
       placeholder: "sk-ant-admin01-...",
       helpLink: {
         label: "How to create an Admin API key",
         url: "https://platform.claude.com/docs/en/manage-claude/admin-api-keys",
+      },
+    },
+    {
+      key: "analyticsApiKey",
+      label: "Claude Enterprise Analytics API Key (optional)",
+      description:
+        "Claude Enterprise only. An Analytics API key with the read:analytics scope, created by the primary owner in claude.ai organization settings under API. It supplies each member's last activity, so idle Claude seats can be found. Without it seat activity is unknown.",
+      sensitive: true,
+      optional: true,
+      advanced: true,
+      helpLink: {
+        label: "Get access to the Claude Enterprise Analytics API",
+        url: "https://platform.claude.com/docs/en/manage-claude/analytics-api",
       },
     },
     caCertCredentialField,
@@ -84,6 +99,9 @@ const manifest: PluginManifest = {
   },
   aiModelRates: anthropicModelRates,
   statusFeed,
+  // Claude Enterprise members are paid seats; Console organizations have no
+  // per-seat charge and report none. Removal is DELETE /v1/organizations/users/{id}.
+  seats: { products: [SEAT_PRODUCT], removal: true },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -104,4 +122,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new AnthropicClient(credentials, services),
   parseStatusFeed,
+  seatRemediationCommands: anthropicSeatRemediationCommands,
 };

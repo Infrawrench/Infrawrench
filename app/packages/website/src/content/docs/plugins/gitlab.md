@@ -66,6 +66,17 @@ When none of the account's projects can show the report, the account says so as 
 
 **Bounds.** A group-scoped account reads the group's report (subgroups included) up to 5,000 findings. Without a group, the report of each of the 100 most recently active projects is read, up to 1,000 findings each. The list is marked partial because these bounds can bite on a large instance.
 
+## Seats
+
+GitLab.com accounts report their subscription seats to Seats, which flags members nobody uses, people paying for GitLab and another source control tool, and adds up what removing them would save.
+
+- **What is read.** The billable members of every paid top-level group in scope: the top-level group above the account's **Group**, or, with no group picked, every top-level group the token's user owns. Groups on the Free plan, a trial, or a free program (open source and similar) have no paid seats and are skipped. Members waiting for approval do not take a seat and are left out. Email addresses appear when the member made theirs public or is an enterprise user of the group.
+- **Activity.** GitLab's **last activity** date for the user, which counts any activity on GitLab.com, not only in your group. A member who has never been active is treated as idle once their account is older than your threshold (GitLab gives no date for when they joined the group).
+- **Price.** GitLab's published Premium price, $29 per user per month billed annually (about.gitlab.com/pricing, October 2026), labelled as an estimate. Ultimate is priced per contract, so Ultimate seats are counted but have no price.
+- **Remove.** Removes the user from the top-level group and all its subgroups and projects; GitLab finishes it in the background within a few minutes. The seat frees up for someone else, but seats already bought stay billed until the subscription renews. A member billed only because a group or project was shared with another group cannot be removed this way and is shown as not removable.
+- **Permissions.** The **Owner** role on the top-level group, and a token with **read_api** to list or **api** to remove. **Check credentials** tests this with a one-member read.
+- **Self-managed and Dedicated instances are not reported.** They are licensed per instance rather than per group subscription, so there is no group seat or plan price to read.
+
 ## Tips & limits
 
 - Children (pipelines, variables, environments and so on) are listed for the 100 most recently active, non-archived projects, to keep a sync on a large instance to a bounded number of requests. Up to 500 projects are listed in total.

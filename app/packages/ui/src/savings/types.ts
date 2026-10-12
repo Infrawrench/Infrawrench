@@ -56,3 +56,27 @@ export interface RightsizingClient {
   listRightsizing(refresh?: boolean): Promise<RightsizingListResponse>;
   applyResize(resource: OversizedResource, accountId: string): Promise<void>;
 }
+
+export type {
+  SeatFinding,
+  SeatListResponse,
+  SeatRemovalResponse,
+  SeatSettings,
+  SeatView,
+} from "@infrawrench/client-core";
+
+import type { SeatListResponse, SeatRemovalResponse, SeatSettings } from "@infrawrench/client-core";
+
+/**
+ * Host-injected data access for the Seats section. Cloud-only on every host:
+ * the inventory is collected by the cloud poller. `removeSeat` must reject
+ * with the server's message (a change freeze, a provider refusal) so the row
+ * can show it verbatim. `updateSeatSettings` is optional: a host that cannot
+ * write the threshold leaves the control out.
+ */
+export interface SeatsClient {
+  listSeats(): Promise<SeatListResponse>;
+  refreshSeats(): Promise<{ queued: number }>;
+  removeSeat(seatId: string): Promise<SeatRemovalResponse>;
+  updateSeatSettings?(settings: SeatSettings): Promise<SeatSettings>;
+}

@@ -7,7 +7,8 @@ import { listOwnerOptions } from "./owners.js";
 import { GITHUB_PREFLIGHT, githubPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import { githubRemediationCommands } from "./remediation.js";
+import { githubRemediationCommands, githubSeatRemediationCommands } from "./remediation.js";
+import { COPILOT_PRODUCT } from "./seats.js";
 import { GITHUB_OAUTH, completeGitHubOAuth, validateOAuthHost } from "./oauth.js";
 
 const manifest: PluginManifest = {
@@ -73,6 +74,9 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
     partial: true,
   },
+  // Copilot seats only: organization member seats have no per-member
+  // activity in any GitHub API, so they could not be judged idle.
+  seats: { products: [COPILOT_PRODUCT], removal: true },
   preflight: GITHUB_PREFLIGHT,
   secretScanning: {
     label: "Secret scanning",
@@ -121,5 +125,6 @@ export const plugin: Plugin = {
     }
   },
   remediationCommands: githubRemediationCommands,
+  seatRemediationCommands: githubSeatRemediationCommands,
   completeOAuthConnection: completeGitHubOAuth,
 };

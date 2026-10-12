@@ -28,6 +28,18 @@ Connect a Docker Hub account to manage the images you publish and the organizati
 
 <insert [Docker Hub repository detail page with the Tags tab open] here>
 
+## Seats
+
+Docker Hub accounts report the members of each organization they manage to the **Seats** page, which flags members who have not signed in for your inactivity threshold and adds up what removing them would save. Personal namespaces have no seats.
+
+- **What is read**: every member of every organization in **Namespaces** (`GET /v2/orgs/{org}/members`, all pages). Owners, editors, members and guests each take a seat. Pending invitations take one too, but they are listed under invites, not here. Unlike the resource lists, an organization the token cannot read fails the whole read rather than being skipped, because a skipped organization would look as if all its seats had been removed; use an owner's token, or leave that organization out of **Namespaces**.
+- **Activity**: the later of the member's **last sign-in** and **last seen** time. Docker only returns these when the organization has [Insights](https://docs.docker.com/accounts/organization/insights/) turned on, a Docker Business feature your Docker account executive enables. Without them every member shows activity unknown and is never flagged. Docker does not say when someone joined an organization, so a member with no sign-in on record is also shown as unknown rather than idle.
+- **Price**: the **Seat price** you set under **Advanced options** on the account. The Hub API does not report your plan, so without it each seat is estimated at the lowest organization list price, $15 per seat per month for Team billed annually (Team monthly is $16, Business $24; docker.com/pricing, October 2026), and labelled as an estimate.
+- **Remove** takes the member out of the organization and all its teams, which frees their seat; they can be invited again later. Docker bills for the seats you bought, not the members using them, so also reduce the seat count under **Billing**; that change applies from the next billing cycle. Docker refuses to remove an organization's last owner, so a sole owner is shown as not removable.
+- **Cheaper tier**: never suggested; the API does not report the plan.
+- **Permissions**: listing members and removing them need an organization owner's personal access token, or an organization access token allowed to manage members.
+- [Remediation commands](../features/remediation-commands.md) for a flagged member get a bearer token, show the member's row, then remove them (`curl` and `jq`).
+
 ## Tips & limits
 
 - Docker Hub only lets you list and manage **personal access tokens** when the connection signs in with your password; a token-based connection shows an error on that section. Accounts under enforced SSO cannot use a password.

@@ -10,6 +10,7 @@ import { SavingsSection } from "../savings/SavingsSection.js";
 import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { ExtendedSupportSection } from "../savings/ExtendedSupportSection.js";
+import { SeatsSection } from "../savings/SeatsSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
 import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
@@ -22,6 +23,7 @@ import type {
   OrphansClient,
   OversizedResource,
   RightsizingClient,
+  SeatsClient,
 } from "../savings/types.js";
 import { SleepSchedulesSection } from "../schedules/SleepSchedulesSection.js";
 import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
@@ -116,6 +118,12 @@ export interface CostsPanelProps {
   /** Open an extended-support finding's resource detail view. */
   onOpenExtendedSupportResource?: ((finding: ExtendedSupportFinding) => void) | undefined;
   /**
+   * Data access for the "Seats" section (paid SaaS seats). Cloud-only: the
+   * inventory is collected by the cloud poller, so desktop leaves it off in
+   * local mode and the section is left out.
+   */
+  seats?: SeatsClient | undefined;
+  /**
    * Data access for the "Sleep schedules" section. Omitted when the host has
    * no schedule store (desktop in local-only mode): the section is then left
    * out rather than shown empty.
@@ -157,6 +165,7 @@ export function CostsPanel({
   onOpenOversizedResource,
   extendedSupport,
   onOpenExtendedSupportResource,
+  seats,
   schedules,
   onOpenScheduledResource,
   onOpenExternal,
@@ -471,6 +480,7 @@ export function CostsPanel({
                       onOpenExternal={onOpenExternal}
                     />
                   )}
+                  {seats && <SeatsSection client={seats} />}
                   {schedules && (
                     <SleepSchedulesSection
                       client={schedules}

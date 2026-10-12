@@ -19,6 +19,7 @@ Infrawrench records a saving at the moment the action happens, and also catches 
 | **Right-sizing**    | A machine of a right-sizing type is resized to a smaller size, by the Oversized section's **Apply** button or any edit in Infrawrench, or a smaller size is **detected on sync** after a console resize | The difference between the old and new size in the provider's live size catalogue                              |
 | **Orphan cleanup**  | A resource the orphan finder flags is deleted, in Infrawrench (including through the AI chat or MCP) or **detected on sync** after a console delete                                                     | Its trailing 30 days of billed spend, or the list-price estimate when the provider has no per-resource billing |
 | **Sleep schedule**  | A [sleep schedule](./sleep-schedules.md) is created or resumed. Pausing or deleting it ends the stretch; changing its hours starts a new one                                                            | Hours off times the resource's rate                                                                            |
+| **SaaS seats**      | A [seat](./saas-seats.md) flagged as inactive or duplicated is removed with **Remove seat**, or is **detected** gone (or being removed) on the next daily collection after a removal elsewhere          | The seat's price (list, billed or the price set on the account)                                                |
 | **Commitments**     | Derived from billing: the on-demand value a reservation or savings plan offset, less its amortized fee                                                                                                  | None on record                                                                                                 |
 | **Logged manually** | Someone logs it (see below)                                                                                                                                                                             | The monthly amount entered                                                                                     |
 
@@ -42,7 +43,7 @@ Commitment savings count only days where the provider writes a separate discount
 The section shows realized against projected per currency, then a breakdown you can switch between:
 
 - **Month**: when the savings landed.
-- **Action type**: right-sizing, orphan cleanup, sleep schedules, commitments, logged.
+- **Action type**: right-sizing, orphan cleanup, sleep schedules, SaaS seats, commitments, logged.
 - **Cost centre**: the team each saving belongs to, from your [cost allocation rules](./tag-policy-and-showback.md) (account, provider and tag rules apply; service rules do not, because an action is about a resource rather than a service line). You can override the cost centre per saving.
 - **Account**.
 
