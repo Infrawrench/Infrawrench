@@ -49,6 +49,12 @@ export type WorkspaceTabTarget =
    * SLO whose detail is open so reactivation and reload return to it.
    */
   | { kind: "slos"; sloId?: string }
+  /**
+   * Services and scorecards. Single-instance, remembering the open service
+   * and which of the two views ("scorecards" for the matrix) is showing, so
+   * reactivation and reload return to the same place.
+   */
+  | { kind: "services"; serviceId?: string; view?: "scorecards" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -201,6 +207,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "incidents";
     case "slos":
       return "slos";
+    case "services":
+      return "services";
     case "workflows":
       // Not keyed by workflow: opening a second workflow should retarget the
       // open Workflows tab rather than pile up a tab per workflow. The id on
@@ -298,6 +306,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Incidents";
     case "slos":
       return "SLOs";
+    case "services":
+      return "Services";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -364,6 +374,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // Same trick: one tab by id, the SLO compared so the route sync records
       // which detail is open.
       return a.sloId === (b as { sloId?: string }).sloId;
+    case "services": {
+      // Same trick again, over both the open service and the view.
+      const other = b as { serviceId?: string; view?: "scorecards" };
+      return a.serviceId === other.serviceId && a.view === other.view;
+    }
     case "cost-reports":
       // The deployments/settings trick: one tab by id, but comparing the report
       // is what makes the route sync record which report the tab is on, so
