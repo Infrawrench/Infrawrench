@@ -24,6 +24,18 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "service-token",
+      label: "PlanetScale service token",
+      scannerTypes: ["planetscale_service_token", "Planetscale API token"],
+      prefixes: ["pscale_tkn_"],
+      credentialFields: ["serviceTokenSecret"],
+    },
+  ],
   credentialFields: [
     {
       key: "serviceTokenId",

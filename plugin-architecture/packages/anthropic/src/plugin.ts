@@ -32,6 +32,19 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "Anthropic API key",
+      scannerTypes: ["anthropic_api_key", "anthropic_admin_api_key", "anthropic_key"],
+      prefixes: ["sk-ant-api", "sk-ant-admin"],
+      credentialFields: ["apiKey", "adminApiKey"],
+      manageUrl: "https://console.anthropic.com/settings/keys",
+    },
+  ],
   credentialFields: [
     {
       key: "apiKey",

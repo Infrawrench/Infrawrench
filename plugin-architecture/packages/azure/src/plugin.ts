@@ -58,6 +58,19 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "client-secret",
+      label: "Microsoft Entra client secret",
+      scannerTypes: ["azure_active_directory_application_secret", "AzureEntraClientSecret"],
+      credentialFields: ["clientSecret"],
+      manageUrl:
+        "https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/RegisteredApps",
+    },
+  ],
   credentialFields: [
     {
       key: "tenantId",

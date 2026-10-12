@@ -281,6 +281,19 @@ export type PushNotificationData =
     }
   | {
       /**
+       * New leaked credentials found by a secret scanner (see server-core
+       * `leaked-secrets/alerts.ts`). One notification per scan that found
+       * something new; `leakId` is set when there is exactly one.
+       *
+       * Target route: the posture screen's leaked credentials list,
+       * `/org/{orgId}/posture`.
+       */
+      type: "leaked_secret";
+      orgId: string;
+      leakId?: string;
+    }
+  | {
+      /**
        * A new orphaned or oversized resource found by the savings scan (see
        * server-core `github-issues/savings-scan.ts`). One per new finding;
        * the trigger is push-muted by default.

@@ -95,6 +95,7 @@ import { cmdScorecards } from "./commands/scorecards";
 import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdPaging } from "./commands/paging";
 import { cmdWebhooks } from "./commands/webhooks";
+import { cmdLeaks } from "./commands/leaks";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
@@ -292,6 +293,18 @@ COMMANDS
   posture dismiss     accept a finding as a known risk; it leaves the list and the daily alerts
                       <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
   posture restore     put a dismissed finding back   <resourceId> <ruleId>
+  leaks               leaked credentials: secrets GitHub/GitLab secret scanning found in code,
+                      what each matched (an account, a stored secret) and the scanners' state
+                      [--status open|rotated|dismissed|resolved|all] [--account <id|name>]
+  leaks scan          scan every scanner account now
+  leaks rotate <id>   reissue the matched secret, or store a replacement read from stdin
+                      [--value-stdin] (account/manual leaks: prints where to rotate instead)
+  leaks mark-rotated <id>
+                      record a rotation done at the provider
+  leaks dismiss <id>  accept it   --reason false-positive|wont-fix|used-in-tests [--comment <c>]
+  leaks reopen <id>   undo a dismissal or a manual rotation
+                      (rotate, mark-rotated and dismiss also close the finding on the scanner;
+                      --keep-upstream-open leaves it open; cloud only)
   dns                 every DNS zone & record across your providers, with dangling targets
                       (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
@@ -401,7 +414,12 @@ FLAGS
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
                       costs push: json (default), csv or focus
   --reason <text>     posture dismiss: why the finding is an accepted risk; costs --anomalies
-                      feedback: the reason category (planned_launch, migration, …)
+                      feedback: the reason category (planned_launch, migration, …); leaks
+                      dismiss: false-positive, wont-fix or used-in-tests
+  --status <s>        leaks: open (default), rotated, dismissed, resolved or all; jit: queue filter
+  --comment <text>    leaks dismiss: a note kept with the dismissal
+  --value-stdin       leaks rotate: read the replacement value from stdin (hidden at a terminal)
+  --keep-upstream-open  leaks rotate|mark-rotated|dismiss: leave the finding open on the scanner
   --expected / --unexpected / --clear   costs --anomalies feedback: the verdict, or withdraw it
   --note <text>       costs --anomalies feedback: context for the verdict (max 500 chars)
   --explain           costs --anomalies feedback: also publish --note as the explanation
@@ -955,6 +973,10 @@ export async function runCli(): Promise<void> {
         if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
         else if (rest[0] === "restore") await cmdPostureRestore(ctx, rest.slice(1));
         else await cmdPosture(ctx);
+        break;
+      case "leaks":
+        // Leaked credentials: the Posture tab's "Leaked credentials" category.
+        await cmdLeaks(ctx, rest, parsed.leaks);
         break;
       case "dns":
         await cmdDns(ctx);

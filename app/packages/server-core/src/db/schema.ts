@@ -5301,3 +5301,4 @@ export * from "./pr-check-schema.js";
 export * from "./paging-provider-schema.js";
 export * from "./jit-access-schema.js";
 export * from "./event-subscription-schema.js";
+export * from "./leaked-secret-schema.js";

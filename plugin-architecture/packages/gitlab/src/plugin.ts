@@ -43,6 +43,13 @@ const preflight: PreflightDeclaration = {
       description: "Register a new runner from Infrawrench.",
       requiredPermissions: [{ id: "create_runner", label: "Create runners" }],
     },
+    {
+      id: "secret-detection",
+      label: "Secret detection findings",
+      description:
+        "Read secret detection vulnerabilities so leaked credentials are matched to what Infrawrench holds (read_api, Developer role), and resolve or dismiss them after a rotation (api, Maintainer role). The vulnerability report needs GitLab Ultimate.",
+      requiredPermissions: [{ id: "api", label: "Read and write the API (read_api to only read)" }],
+    },
   ],
 };
 
@@ -96,6 +103,28 @@ const manifest: PluginManifest = {
   },
   preflight,
   statusFeed,
+  secretScanning: {
+    label: "Secret detection",
+    description:
+      "Reads secret detection findings from the vulnerability report (GitLab Ultimate) of the account's 100 most recently active projects every 30 minutes. GitLab never returns the secret itself, so findings are matched by token type.",
+    canResolve: true,
+    returnsSecretValue: false,
+  },
+  tokenFormats: [
+    {
+      id: "access-token",
+      label: "GitLab access token",
+      scannerTypes: [
+        "gitlab_personal_access_token",
+        "gitlab_personal_access_token_routable",
+        "gitlab_personal_access_token_routable_versioned",
+        "gitlab_access_token",
+      ],
+      prefixes: ["glpat-"],
+      credentialFields: ["token"],
+      manageUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
+    },
+  ],
   // GitLab.com allows 2,000 authenticated API requests a minute per user.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
 };

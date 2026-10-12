@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useGT } from "gt-react";
 import {
   POSTURE_CATEGORY_LABELS,
@@ -41,6 +41,12 @@ export interface PostureSectionProps {
   onDismiss?: ((finding: PostureFinding, reason: string) => Promise<void>) | undefined;
   /** Undo a dismissal. Omitted, dismissed findings are listed but not undoable. */
   onRestore?: ((finding: PostureFinding) => Promise<void>) | undefined;
+  /**
+   * The "Leaked credentials" category, rendered above the rule findings. Cloud
+   * hosts pass a `LeakedCredentialsSection`; local mode passes nothing, since
+   * scanning runs in the cloud poller.
+   */
+  leakedCredentials?: ReactNode;
 }
 
 type GroupBy = "severity" | "category" | "account";
@@ -377,6 +383,7 @@ export function PostureSection({
   onOpenResource,
   onDismiss,
   onRestore,
+  leakedCredentials,
 }: PostureSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -422,6 +429,8 @@ export function PostureSection({
           "Security checks across every provider (public buckets, open firewall rules, unencrypted disks, stale credentials), from the last sync.",
         )}
       </p>
+
+      {leakedCredentials}
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">

@@ -565,6 +565,31 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
         }
       }
 
+      const secretScanning = plugin.manifest.secretScanning;
+      if (secretScanning) {
+        it("manifest.secretScanning → client lists leaked secrets", () => {
+          expect(typeof client.listLeakedSecrets).toBe("function");
+        });
+        if (secretScanning.canResolve) {
+          it("secretScanning.canResolve → client resolves leaked secrets", () => {
+            expect(typeof client.resolveLeakedSecret).toBe("function");
+          });
+        }
+      }
+
+      const tokenFormats = plugin.manifest.tokenFormats ?? [];
+      if (tokenFormats.length > 0) {
+        it("tokenFormats are unique and name declared credential fields", () => {
+          const keys = new Set(plugin.manifest.credentialFields.map((f) => f.key));
+          const ids = tokenFormats.map((t) => t.id);
+          expect(new Set(ids).size).toBe(ids.length);
+          for (const format of tokenFormats) {
+            expect(format.scannerTypes.length + (format.prefixes?.length ?? 0)).toBeGreaterThan(0);
+            for (const field of format.credentialFields ?? []) expect(keys.has(field)).toBe(true);
+          }
+        });
+      }
+
       const hasSupportsStorageBrowser = plugin.resourceTypes.some(
         (rt) => rt.supportsStorageBrowser,
       );

@@ -18,6 +18,18 @@ const manifest: PluginManifest = {
   logoSvg: SUPABASE_LOGO,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "access-token",
+      label: "Supabase personal access token",
+      scannerTypes: ["supabase_personal_access_token", "supabase_scoped_personal_access_token"],
+      credentialFields: ["accessToken"],
+      manageUrl: "https://supabase.com/dashboard/account/tokens",
+    },
+  ],
   credentialFields: [
     {
       key: "accessToken",

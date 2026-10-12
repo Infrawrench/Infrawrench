@@ -16,6 +16,24 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "token",
+      label: "Grafana Cloud token",
+      scannerTypes: [
+        "grafana_cloud_api_token",
+        "grafana_cloud_api_key",
+        "grafana_project_service_account_token",
+        "GrafanaCloudAccessPolicyToken",
+        "GrafanaServiceAccountToken",
+      ],
+      prefixes: ["glc_", "glsa_"],
+      credentialFields: ["token"],
+    },
+  ],
   credentialFields: [
     {
       key: "token",

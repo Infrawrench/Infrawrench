@@ -242,6 +242,17 @@ export type {
 export { jitGrantName } from "./jit-access.js";
 
 export type {
+  LeakedSecretFinding,
+  LeakedSecretLocation,
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
+  LeakedSecretResolutionReason,
+  SecretScanningDeclaration,
+  TokenFormatDeclaration,
+} from "./leaked-secrets.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,

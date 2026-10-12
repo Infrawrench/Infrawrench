@@ -22,6 +22,7 @@ import type {
   EnvironmentDiffResponse,
   ExpiryListResponse,
   PostureListResponse,
+  LeakedCredentialsClient,
   Runbook,
   RunbookInput,
   RunbookRun,
@@ -33,6 +34,7 @@ import type {
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
+import type { LeakedSecret, LeakedSecretListResponse } from "@infrawrench/client-core";
 import { invoke } from "./invoke";
 
 /**
@@ -93,6 +95,44 @@ export async function dismissCloudPostureFinding(
   reason: string,
 ): Promise<void> {
   await invoke("cloud_posture_dismiss", { orgId, resourceId, ruleId, reason });
+}
+
+/**
+ * The leaked-credentials client for the Posture tab and the account banner.
+ * Cloud only: scanning runs in the cloud poller. Without `canWrite` it gets
+ * only the list, which renders the section read-only (the server enforces
+ * `secrets:write` either way).
+ */
+export function cloudLeakedCredentialsClient(
+  orgId: string,
+  canWrite: boolean,
+): LeakedCredentialsClient {
+  const act = async (id: string, action: string, body: unknown): Promise<LeakedSecret> =>
+    (
+      (await invoke("cloud_leaked_secret_action", { orgId, id, action, body })) as {
+        leak: LeakedSecret;
+      }
+    ).leak;
+  return {
+    list: () => invoke("cloud_leaked_secrets", { orgId }),
+    ...(canWrite
+      ? {
+          rotate: (id, input) => act(id, "rotate", input),
+          markRotated: (id, input) => act(id, "mark-rotated", input),
+          dismiss: (id, input) => act(id, "dismiss", input),
+          reopen: (id) => act(id, "reopen", {}),
+          scan: () => invoke("cloud_leaked_secrets_scan", { orgId }),
+        }
+      : {}),
+  };
+}
+
+/** Open leaks for one account, for the account page banner. */
+export async function fetchCloudAccountLeaks(
+  orgId: string,
+  accountId: string,
+): Promise<LeakedSecretListResponse> {
+  return invoke("cloud_leaked_secrets", { orgId, status: "open", accountId });
 }
 
 /** Undo a dismissal, putting the finding back on the list and in the alerts. */

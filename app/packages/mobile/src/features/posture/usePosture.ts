@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dismissPostureFinding,
+  fetchLeakedSecrets,
   fetchPosture,
   restorePostureFinding,
   type PostureFinding,
@@ -23,6 +24,23 @@ export function usePosture() {
   return useQuery({
     queryKey: ["posture", orgId],
     queryFn: () => fetchPosture(api, orgId),
+  });
+}
+
+/**
+ * Open leaked credentials (`GET /leaked-secrets?status=open`): secrets a
+ * scanner (GitHub secret scanning, GitLab secret detection) found committed
+ * to code, with what each matched. Read-only here; rotating, dismissing and
+ * scanning live on web and desktop, like the secret-reroll wizard.
+ *
+ * A separate query from `usePosture` on purpose: each section of the screen
+ * owns its own failure, so a leaks outage never blanks the findings.
+ */
+export function useLeakedSecrets() {
+  const { api, orgId } = useOrgApi();
+  return useQuery({
+    queryKey: ["leaked-secrets", orgId, "open"],
+    queryFn: () => fetchLeakedSecrets(api, orgId, { status: "open" }),
   });
 }
 

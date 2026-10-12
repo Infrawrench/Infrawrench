@@ -366,6 +366,19 @@ export interface ParsedCli {
   jit: JitFlags;
   /** `services --tier 1`: only services of this criticality tier (1-4). */
   tier: number | undefined;
+  /** `leaks` flags. `--reason`, `--account` and `--status` are the shared ones. */
+  leaks: LeakFlags;
+}
+
+export interface LeakFlags {
+  /** `--status open|rotated|dismissed|resolved|all`, validated by the command. */
+  status: string | undefined;
+  /** `leaks dismiss --comment`: a note kept with the dismissal. */
+  comment: string | undefined;
+  /** `leaks rotate --value-stdin`: read the replacement value from stdin, never argv. */
+  valueStdin: boolean;
+  /** `--keep-upstream-open`: leave the finding open on the scanner. */
+  keepUpstreamOpen: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -536,6 +549,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         status: { type: "string" },
         mine: { type: "boolean", default: false },
         holding: { type: "boolean", default: false },
+        // `leaks`: a dismissal's note, the replacement value's source (stdin
+        // only: a secret on argv lands in shell history), and whether to
+        // leave the finding open on the scanner.
+        comment: { type: "string" },
+        "value-stdin": { type: "boolean", default: false },
+        "keep-upstream-open": { type: "boolean", default: false },
         // `pr-check`: a pull request by number, or a local diff against a base.
         repo: { type: "string" },
         pr: { type: "string" },
@@ -746,6 +765,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       status: str("status"),
       mine: values.mine === true,
       holding: values.holding === true,
+    },
+    leaks: {
+      status: str("status"),
+      comment: str("comment"),
+      valueStdin: values["value-stdin"] === true,
+      keepUpstreamOpen: values["keep-upstream-open"] === true,
     },
     positionals: parsed.positionals,
     version: values.version === true,

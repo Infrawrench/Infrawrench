@@ -571,6 +571,32 @@ Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench
 
 All of these are read-only and need the **Organization settings** permission (an address on the unsubscribed list, or outside the [email](./email-alerts.md) domains your organization allows, is skipped at send time); editing rules lives on the web and desktop Notifications page.
 
+## Leaked credentials
+
+`infrawrench leaks` lists the credentials a secret scanner (GitHub secret scanning, GitLab secret detection) found committed to code: the token type with its masked hint, where it was found, what Infrawrench matched it to (an account, a secret stored on a resource, or nothing it holds), when it was detected and where it stands. Above the table are the counts per status and one line per scanner account, with its last scan or the error that stopped it. It is the [Posture](./posture-checks.md) tab's "Leaked credentials" category, from the terminal:
+
+```bash
+infrawrench leaks                          # open leaks, the scanners and the counts
+infrawrench leaks --status all             # also rotated, dismissed and resolved upstream
+infrawrench leaks --account "Prod AWS"     # leaks that matched, or may belong to, one account
+infrawrench leaks scan                     # scan every scanner account now
+infrawrench leaks --json                   # the raw response: full ids, finding URLs, rotation modes
+```
+
+Leaks are addressed by the short id the table prints, or any unique prefix of the full one. The actions:
+
+```bash
+infrawrench leaks rotate 3f9a1c2e                              # the provider reissues the value
+infrawrench leaks rotate 3f9a1c2e --value-stdin < new-key.txt  # store a value you created yourself
+infrawrench leaks mark-rotated 3f9a1c2e                        # you rotated it at the provider
+infrawrench leaks dismiss 3f9a1c2e --reason used-in-tests --comment "fixture key"
+infrawrench leaks reopen 3f9a1c2e
+```
+
+`rotate` does what the Rotate button does. When the owning plugin can mint a new value it does, and every resource that references it follows. When the stored secret is a literal, you supply the replacement, and only on stdin: piped, or typed at the prompt with echo off. It is never accepted as an argument, where it would land in shell history. A leaked account credential, or one Infrawrench does not hold, cannot be rotated from here; the command prints where to rotate it at the provider and exits non-zero, and `mark-rotated` records it afterwards (updating the account's credentials records it on its own).
+
+`--reason` for `dismiss` is `false-positive`, `wont-fix` or `used-in-tests`. `rotate`, `mark-rotated` and `dismiss` also close the finding on the scanner when the scanner allows it; `--keep-upstream-open` leaves it open there. Every subcommand takes `--json`. Reading needs `resources:read`; scanning and every action need `secrets:write`. Cloud only: scanning runs on the server, so `--local` is refused.
+
 ## Config as code
 
 `infrawrench config` exports the organization's dashboards, workflows, custom graphs, budgets, alert rules and policies as one JSON document — and applies one back:

@@ -5,8 +5,10 @@ import { useRouterState } from "@tanstack/react-router";
 import { hasPermission } from "@infrawrench/client-core";
 import {
   WorkspaceTabsViewport as BaseViewport,
+  accountTabTarget,
   dashboardTabTarget,
   environmentDiffTabTarget,
+  postureTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
   invoicesTabTarget,
@@ -58,6 +60,7 @@ import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
+import { DesktopAccountLeakBanner } from "@/components/DesktopAccountLeakBanner";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
@@ -278,7 +281,17 @@ function renderPanel(
     case "dashboard":
       return <DashboardPanel dashboardId={t.dashboardId} />;
     case "account":
-      return <AccountPanel accountId={t.accountId} />;
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <DesktopAccountLeakBanner
+            accountId={t.accountId}
+            onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          />
+          <div className="min-h-0 flex-1">
+            <AccountPanel accountId={t.accountId} />
+          </div>
+        </div>
+      );
     case "agents":
       return <DesktopAgentsPanel navigate={(args) => void navigate(args)} />;
     case "workflows":
@@ -474,6 +487,9 @@ function renderPanel(
           // Keyed by mode so switching org (or dropping to local) remounts
           // and refetches rather than showing the previous mode's findings.
           key={activeCloudOrgId ?? "local"}
+          openAccount={(accountId) =>
+            void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(

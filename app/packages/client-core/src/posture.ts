@@ -33,6 +33,7 @@ import type { PostureCategory, PostureCheckRule, PostureSeverity } from "@infraw
 import type { DnsInventoryResponse } from "./dns";
 import { parseExpiryInstant } from "./expiry";
 import type { CloudFetch } from "./fetch";
+import type { LeakedCredentialsSummary } from "./leaked-secrets";
 
 export type {
   PostureCategory,
@@ -130,6 +131,12 @@ export interface PostureListResponse {
   dismissed: DismissedPostureFinding[];
   /** `dismissed.length`, so a caller can badge the count without the rows. */
   dismissedCount: number;
+  /**
+   * The "Leaked credentials" category: secrets a scanner found committed to
+   * code (see `leaked-secrets.ts`). Cloud only; absent from local scans and
+   * from servers that predate it.
+   */
+  leakedCredentials?: LeakedCredentialsSummary;
   generatedAt: string;
 }
 
