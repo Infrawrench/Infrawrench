@@ -14,6 +14,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -61,6 +62,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -173,6 +175,14 @@ export function getWorkspaceNavigateArgs(
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
     case "vulnerabilities":
       return { to: "/vulnerabilities", ...(replace ? { replace: true } : {}) };
+    // `?framework=` is which framework the tab is on. Search passed
+    // explicitly, the settings rule: going back to the default CLEARS it.
+    case "compliance":
+      return {
+        to: "/compliance",
+        search: target.framework ? { framework: target.framework } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "access-review":
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
     case "jit-access":
@@ -392,6 +402,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "vulnerabilities") {
     return vulnerabilitiesTabTarget();
+  }
+  if (segments[0] === "compliance") {
+    const params = new URLSearchParams(search ?? "");
+    return complianceTabTarget(params.get("framework") ?? undefined);
   }
   if (segments[0] === "access-review") {
     return accessReviewTabTarget();

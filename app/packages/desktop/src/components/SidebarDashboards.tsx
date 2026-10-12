@@ -20,6 +20,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   VulnerabilitiesIcon,
+  ComplianceIcon,
   AccessReviewIcon,
   JitAccessIcon,
   BackupsIcon,
@@ -59,6 +60,7 @@ import {
   deploymentsTabTarget,
   backupsTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
@@ -436,6 +438,22 @@ export function SidebarDashboards() {
         void navigateToWorkspaceTarget(navigate, vulnerabilitiesTabTarget(), {
           label: gt("Vulnerabilities"),
         }),
+    },
+    // Compliance is cloud only (its evidence is org state: the audit log,
+    // access decisions, scanner findings) but shows in both modes like
+    // Vulnerabilities. A workspace-tab kind that remembers its framework, so
+    // the tile returns to the open tab's framework rather than resetting it.
+    {
+      key: "compliance",
+      label: gt("Compliance"),
+      icon: <ComplianceIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(
+          navigate,
+          useUIStore.getState().workspaceTabs.find((tab) => tab.target.kind === "compliance")
+            ?.target ?? complianceTabTarget(),
+          { label: gt("Compliance") },
+        ),
     },
     // Backups is cloud only: the coverage could be computed locally, but the
     // recovery objectives it is judged against are org state with nowhere to

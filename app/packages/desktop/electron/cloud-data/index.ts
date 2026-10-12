@@ -15,6 +15,7 @@ import "./quotas";
 import "./price-catalog";
 import "./posture";
 import "./vulnerabilities";
+import "./compliance";
 import "./access-review";
 import "./backups";
 import "./wallboard";

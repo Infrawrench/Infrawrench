@@ -1,5 +1,16 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
-import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
+import type {
+  ComplianceControlSetting,
+  ComplianceControlSettingInput,
+  ComplianceFrameworkSummary,
+  CompliancePackSchedule,
+  CompliancePackScheduleInput,
+  CompliancePeriod,
+  ComplianceStatusResponse,
+  ReportDeliveryTargets,
+  ReportNotificationSendResult,
+  ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 // From client-core, where it is defined, rather than through the `@infrawrench/ui`
 // barrel that re-exports it: this is the only *value* the cloud API modules take
 // from `ui`, and importing it from there pulls the whole component library into
@@ -146,6 +157,95 @@ export async function updateCloudVulnerabilitySettings(
   patch: VulnerabilitySettingsPatch,
 ): Promise<VulnerabilitySettings> {
   return invoke("cloud_vulnerability_settings_update", { orgId, patch });
+}
+
+/* Compliance: cloud only, like Vulnerabilities. Reads are `audit:read`;
+ * control decisions and pack schedules `org:settings:write` server-side. */
+
+export async function fetchCloudComplianceFrameworks(
+  orgId: string,
+): Promise<ComplianceFrameworkSummary[]> {
+  const res = await invoke<{ frameworks: ComplianceFrameworkSummary[] }>(
+    "cloud_compliance_frameworks",
+    { orgId },
+  );
+  return res.frameworks;
+}
+
+export async function fetchCloudComplianceStatus(
+  orgId: string,
+  framework: string,
+  period: CompliancePeriod,
+): Promise<ComplianceStatusResponse> {
+  return invoke("cloud_compliance_status", { orgId, framework, period });
+}
+
+/** The evidence pack ZIP as bytes; the caller saves it. */
+export async function loadCloudCompliancePack(
+  orgId: string,
+  framework: string,
+  period: CompliancePeriod,
+): Promise<Uint8Array> {
+  return invoke("cloud_compliance_pack", { orgId, framework, period });
+}
+
+export async function putCloudComplianceControl(
+  orgId: string,
+  frameworkId: string,
+  controlId: string,
+  input: ComplianceControlSettingInput,
+): Promise<ComplianceControlSetting> {
+  return invoke("cloud_compliance_control_put", { orgId, frameworkId, controlId, input });
+}
+
+export async function deleteCloudComplianceControl(
+  orgId: string,
+  frameworkId: string,
+  controlId: string,
+): Promise<void> {
+  await invoke("cloud_compliance_control_delete", { orgId, frameworkId, controlId });
+}
+
+export async function listCloudCompliancePackSchedules(
+  orgId: string,
+  framework: string,
+): Promise<CompliancePackSchedule[]> {
+  return invoke("cloud_compliance_schedules", { orgId, framework });
+}
+
+export async function fetchCloudCompliancePackTargets(
+  orgId: string,
+): Promise<ReportDeliveryTargets> {
+  return invoke("cloud_compliance_schedule_targets", { orgId });
+}
+
+export async function createCloudCompliancePackSchedule(
+  orgId: string,
+  input: CompliancePackScheduleInput,
+): Promise<CompliancePackSchedule> {
+  return invoke("cloud_compliance_schedule_create", { orgId, input });
+}
+
+export async function updateCloudCompliancePackSchedule(
+  orgId: string,
+  scheduleId: string,
+  input: CompliancePackScheduleInput,
+): Promise<CompliancePackSchedule> {
+  return invoke("cloud_compliance_schedule_update", { orgId, scheduleId, input });
+}
+
+export async function deleteCloudCompliancePackSchedule(
+  orgId: string,
+  scheduleId: string,
+): Promise<void> {
+  await invoke("cloud_compliance_schedule_delete", { orgId, scheduleId });
+}
+
+export async function sendCloudCompliancePackScheduleNow(
+  orgId: string,
+  scheduleId: string,
+): Promise<ReportNotificationSendResult> {
+  return invoke("cloud_compliance_schedule_send", { orgId, scheduleId });
 }
 
 /**

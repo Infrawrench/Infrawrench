@@ -202,6 +202,7 @@ const TabTarget = strict({
     "expiring",
     "posture",
     "vulnerabilities",
+    "compliance",
     "access-review",
     "jit-access",
     "backups",
@@ -257,6 +258,11 @@ const TabTarget = strict({
    * to invalidate the tab: a deleted SLO just lands on the list.
    */
   sloId: Uuid.optional(),
+  /**
+   * Which framework the Compliance tab was last on (`soc2`, `iso27001`).
+   * Never used to invalidate the tab: an unknown framework lands on the first.
+   */
+  framework: z.string().max(64).optional(),
   /** Which app-server session a `linux-app` tab belonged to. */
   sessionId: z.string().max(128).optional(),
   /** Which window of that session. */

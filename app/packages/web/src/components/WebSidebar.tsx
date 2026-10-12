@@ -33,6 +33,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   VulnerabilitiesIcon,
+  ComplianceIcon,
   AccessReviewIcon,
   JitAccessIcon,
   BackupsIcon,
@@ -55,7 +56,12 @@ import {
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
-import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
+import {
+  chatTabTarget,
+  complianceTabTarget,
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+} from "@/lib/workspace-tabs";
 import { AddAccountModal } from "./AddAccountModal";
 
 interface ResourceSummary {
@@ -614,6 +620,22 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <VulnerabilitiesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/vulnerabilities", params: { orgId: orgId! } }),
+              },
+              // A workspace-tab kind that remembers its framework: the tile
+              // returns to the open tab's framework rather than resetting it.
+              {
+                key: "compliance",
+                label: gt("Compliance"),
+                icon: <ComplianceIcon />,
+                onClick: () =>
+                  void navigate(
+                    getWorkspaceNavigateArgs(
+                      useUIStore
+                        .getState()
+                        .workspaceTabs.find((tab) => tab.target.kind === "compliance")?.target ??
+                        complianceTabTarget(),
+                    ),
+                  ),
               },
               {
                 key: "access-review",

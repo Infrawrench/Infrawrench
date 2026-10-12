@@ -14,6 +14,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -51,6 +52,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
+  complianceTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   workflowsTabTarget,
@@ -209,6 +211,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "compliance":
+      // The SLOs shape: the framework is a path segment, so a link reads as a
+      // place, /org/{org}/compliance/{framework}.
+      return target.framework
+        ? {
+            to: "/org/$orgId/compliance/$framework",
+            params: { orgId, framework: target.framework },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/compliance",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "access-review":
       return {
         to: "/org/$orgId/access-review",
@@ -571,6 +587,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "vulnerabilities") {
     return vulnerabilitiesTabTarget();
+  }
+  if (s[0] === "compliance") {
+    return complianceTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "access-review") {
     return accessReviewTabTarget();

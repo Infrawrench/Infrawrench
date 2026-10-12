@@ -432,6 +432,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns compliance route args, with the framework as a path segment", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "compliance" })).toEqual({
+      to: "/org/$orgId/compliance",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "compliance", framework: "iso27001" })).toEqual({
+      to: "/org/$orgId/compliance/$framework",
+      params: { orgId: "test-org", framework: "iso27001" },
+    });
+  });
+
   it("returns access review route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({
       to: "/org/$orgId/access-review",
@@ -533,6 +544,14 @@ describe("syncWorkspaceRouteFromPath", () => {
   it("parses the org-scoped vulnerabilities path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/vulnerabilities")).toEqual({
       kind: "vulnerabilities",
+    });
+  });
+
+  it("parses the org-scoped compliance paths", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/compliance")).toEqual({ kind: "compliance" });
+    expect(syncWorkspaceRouteFromPath("/org/test-org/compliance/soc2")).toEqual({
+      kind: "compliance",
+      framework: "soc2",
     });
   });
 

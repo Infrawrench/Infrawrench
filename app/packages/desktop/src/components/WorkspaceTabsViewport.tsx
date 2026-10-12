@@ -14,6 +14,7 @@ import {
   workflowsTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
   useUIStore,
@@ -61,6 +62,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopVulnerabilitiesPanel } from "@/components/DesktopVulnerabilitiesPanel";
+import { DesktopCompliancePanel } from "@/components/DesktopCompliancePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
@@ -510,6 +512,18 @@ function renderPanel(
                 ),
               ),
             )
+          }
+        />
+      );
+    case "compliance":
+      return (
+        <DesktopCompliancePanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+          framework={t.framework}
+          // The URL owns which framework is open, the SLOs rule.
+          onFrameworkChange={(framework) =>
+            void navigate(getWorkspaceNavigateArgs(complianceTabTarget(framework)))
           }
         />
       );

@@ -51,6 +51,7 @@ import {
   resourceTabTarget,
   settingsTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   type OrphansClient,
   type RightsizingClient,
   type ExtendedSupportClient,
@@ -66,6 +67,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebVulnerabilitiesPanel } from "./WebVulnerabilitiesPanel";
+import { WebCompliancePanel } from "./WebCompliancePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebJitAccessPanel } from "./WebJitAccessPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
@@ -522,6 +524,19 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                 ),
               ),
             )
+          }
+        />
+      );
+    case "compliance":
+      return (
+        <WebCompliancePanel
+          // Keyed by org so switching org remounts and refetches.
+          key={orgId}
+          orgId={orgId}
+          framework={t.framework}
+          // The URL owns which framework is open, the SLOs rule.
+          onFrameworkChange={(framework) =>
+            void navigate(getWorkspaceNavigateArgs(complianceTabTarget(framework)))
           }
         />
       );

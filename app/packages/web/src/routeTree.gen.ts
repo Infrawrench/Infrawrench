@@ -24,6 +24,7 @@ import { Route as OrgOrgIdBackupsRouteImport } from './routes/org.$orgId.backups
 import { Route as OrgOrgIdCalendarRouteImport } from './routes/org.$orgId.calendar'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
+import { Route as OrgOrgIdComplianceRouteImport } from './routes/org.$orgId.compliance'
 import { Route as OrgOrgIdCostCanvasesRouteImport } from './routes/org.$orgId.cost-canvases'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
@@ -57,6 +58,7 @@ import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workf
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
 import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
+import { Route as OrgOrgIdComplianceFrameworkRouteImport } from './routes/org.$orgId.compliance.$framework'
 import { Route as OrgOrgIdCostCanvasesCanvasIdRouteImport } from './routes/org.$orgId.cost-canvases.$canvasId'
 import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
@@ -172,6 +174,11 @@ const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
 const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdComplianceRoute = OrgOrgIdComplianceRouteImport.update({
+  id: '/compliance',
+  path: '/compliance',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdCostCanvasesRoute = OrgOrgIdCostCanvasesRouteImport.update({
@@ -340,6 +347,12 @@ const OrgOrgIdChatConversationIdRoute =
     id: '/$conversationId',
     path: '/$conversationId',
     getParentRoute: () => OrgOrgIdChatRoute,
+  } as any)
+const OrgOrgIdComplianceFrameworkRoute =
+  OrgOrgIdComplianceFrameworkRouteImport.update({
+    id: '/$framework',
+    path: '/$framework',
+    getParentRoute: () => OrgOrgIdComplianceRoute,
   } as any)
 const OrgOrgIdCostCanvasesCanvasIdRoute =
   OrgOrgIdCostCanvasesCanvasIdRouteImport.update({
@@ -588,6 +601,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
@@ -621,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -677,6 +692,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
@@ -709,6 +725,7 @@ export interface FileRoutesByTo {
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -768,6 +785,7 @@ export interface FileRoutesById {
   '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
+  '/org/$orgId/compliance': typeof OrgOrgIdComplianceRouteWithChildren
   '/org/$orgId/cost-canvases': typeof OrgOrgIdCostCanvasesRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
@@ -801,6 +819,7 @@ export interface FileRoutesById {
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
+  '/org/$orgId/compliance/$framework': typeof OrgOrgIdComplianceFrameworkRoute
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -861,6 +880,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
@@ -894,6 +914,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -950,6 +971,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/backups'
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
@@ -982,6 +1004,7 @@ export interface FileRouteTypes {
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -1040,6 +1063,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
+    | '/org/$orgId/compliance'
     | '/org/$orgId/cost-canvases'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
@@ -1073,6 +1097,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
+    | '/org/$orgId/compliance/$framework'
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -1233,6 +1258,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/org/$orgId/chat'
       preLoaderRoute: typeof OrgOrgIdChatRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/compliance': {
+      id: '/org/$orgId/compliance'
+      path: '/compliance'
+      fullPath: '/org/$orgId/compliance'
+      preLoaderRoute: typeof OrgOrgIdComplianceRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/cost-canvases': {
@@ -1465,6 +1497,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/chat/$conversationId'
       preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
       parentRoute: typeof OrgOrgIdChatRoute
+    }
+    '/org/$orgId/compliance/$framework': {
+      id: '/org/$orgId/compliance/$framework'
+      path: '/$framework'
+      fullPath: '/org/$orgId/compliance/$framework'
+      preLoaderRoute: typeof OrgOrgIdComplianceFrameworkRouteImport
+      parentRoute: typeof OrgOrgIdComplianceRoute
     }
     '/org/$orgId/cost-canvases/$canvasId': {
       id: '/org/$orgId/cost-canvases/$canvasId'
@@ -1770,6 +1809,17 @@ const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
   OrgOrgIdChatRouteChildren,
 )
 
+interface OrgOrgIdComplianceRouteChildren {
+  OrgOrgIdComplianceFrameworkRoute: typeof OrgOrgIdComplianceFrameworkRoute
+}
+
+const OrgOrgIdComplianceRouteChildren: OrgOrgIdComplianceRouteChildren = {
+  OrgOrgIdComplianceFrameworkRoute: OrgOrgIdComplianceFrameworkRoute,
+}
+
+const OrgOrgIdComplianceRouteWithChildren =
+  OrgOrgIdComplianceRoute._addFileChildren(OrgOrgIdComplianceRouteChildren)
+
 interface OrgOrgIdCostCanvasesRouteChildren {
   OrgOrgIdCostCanvasesCanvasIdRoute: typeof OrgOrgIdCostCanvasesCanvasIdRoute
 }
@@ -1922,6 +1972,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdCalendarRoute: typeof OrgOrgIdCalendarRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
+  OrgOrgIdComplianceRoute: typeof OrgOrgIdComplianceRouteWithChildren
   OrgOrgIdCostCanvasesRoute: typeof OrgOrgIdCostCanvasesRouteWithChildren
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
@@ -1965,6 +2016,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdCalendarRoute: OrgOrgIdCalendarRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
+  OrgOrgIdComplianceRoute: OrgOrgIdComplianceRouteWithChildren,
   OrgOrgIdCostCanvasesRoute: OrgOrgIdCostCanvasesRouteWithChildren,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
