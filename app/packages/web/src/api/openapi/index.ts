@@ -57,6 +57,7 @@ import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
 import { registerVulnerabilityPaths } from "./paths/vulnerabilities";
+import { registerCompliancePaths } from "./paths/compliance";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
@@ -213,6 +214,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
   registerVulnerabilityPaths(ctx);
+  registerCompliancePaths(ctx);
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
@@ -472,6 +474,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Quota radar",
         description:
           "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero.",
+      },
+      {
+        name: "Compliance",
+        description:
+          "Evidence Infrawrench already collects (access review, just-in-time access, the audit log, posture, vulnerabilities, backups and restore drills, the change timeline and freezes, session recordings, incidents) mapped to SOC 2 and ISO/IEC 27001:2022 Annex A controls, with a status and an owner per control, and downloadable or scheduled evidence packs.",
       },
       {
         name: "Vulnerabilities",
