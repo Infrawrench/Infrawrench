@@ -242,7 +242,7 @@ Key manifest fields:
 - `kvDriver?: KvDriverDeclaration` — opts in to Redis-style KV console
 - `dockerDriver?: DockerDriverDeclaration` — opts in to Docker container management
 - `peerPlugins?` — plugin IDs this plugin may receive association data from
-- `secretScanning?` / `tokenFormats?` — a scanner of secrets committed to code, and the tokens an issuer owns (scanner identifiers, prefixes, credential fields, key management URL). The host joins them by keyed fingerprint; see "Leaked credentials".
+- `secretScanning?` / `tokenFormats?`: a scanner of secrets committed to code, and the tokens an issuer owns (scanner identifiers, prefixes, credential fields, key management URL). The host joins them by keyed fingerprint; see "Leaked credentials".
 
 Key `PluginClient` methods (all optional except the four core ones):
 
