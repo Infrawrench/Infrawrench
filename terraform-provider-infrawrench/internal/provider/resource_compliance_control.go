@@ -86,7 +86,7 @@ func (r *complianceControlResource) Schema(_ context.Context, _ resource.SchemaR
 			"justification": schema.StringAttribute{
 				Optional: true,
 				MarkdownDescription: "Why the control does not apply, at most 2000 characters. Required when " +
-					"`applicable` is `false`; kept but not shown as the reason while it is `true`.",
+					"`applicable` is `false`.",
 				Validators: []validatorString{stringvalidator.LengthAtMost(2000)},
 			},
 			"owner_user_id": schema.StringAttribute{

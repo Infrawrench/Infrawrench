@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 68 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 71 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -468,6 +468,8 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_extended_support_settings`    | [Extended support](./extended-support.md) alert and look-ahead                                |
 | `infrawrench_posture_alert_settings`       | Whether [posture findings](./posture-checks.md) notify                                        |
 | `infrawrench_vulnerability_alert_settings` | Which [vulnerability findings](./vulnerabilities.md) notify, and from what severity           |
+| `infrawrench_compliance_control`           | A [compliance](./compliance.md) control's applicability, justification, owner and notes       |
+| `infrawrench_compliance_pack_schedule`     | Scheduled [evidence pack](./compliance.md) delivery to email, Slack or Teams                  |
 | `infrawrench_session_recording_settings`   | [Session recording](./session-recording.md) and retention                                     |
 | `infrawrench_network_flow_settings`        | Whether [network flow costs](./network-costs.md) are collected                                |
 | `infrawrench_kubernetes_network_settings`  | A cluster's billed source for [Kubernetes network costs](./kubernetes-costs.md#network-costs) |
