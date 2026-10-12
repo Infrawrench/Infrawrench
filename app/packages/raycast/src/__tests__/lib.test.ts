@@ -72,13 +72,21 @@ describe("loadResourceInsight", () => {
       }
       if (path === "/costs/query") throw new Error("403 costs:read");
       if (path.startsWith("/iac/resource")) {
-        return { status: "drifted", stateId: "s", stateLabel: "prod", terraformAddress: "aws_instance.web", driftFieldCount: 2 };
+        return {
+          status: "drifted",
+          stateId: "s",
+          stateLabel: "prod",
+          terraformAddress: "aws_instance.web",
+          driftFieldCount: 2,
+        };
       }
       if (path.startsWith("/services/for-resources")) {
         return { services: { r1: [{ id: "s1", name: "Checkout", slug: "checkout", tier: 1 }] } };
       }
       if (path === "/posture") {
-        return { findings: [{ resourceId: "r1", severity: "high", title: "Open SSH", ruleId: "x" }] };
+        return {
+          findings: [{ resourceId: "r1", severity: "high", title: "Open SSH", ruleId: "x" }],
+        };
       }
       if (path === "/incidents") {
         return {
