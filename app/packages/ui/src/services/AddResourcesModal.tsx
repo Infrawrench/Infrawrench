@@ -95,9 +95,7 @@ export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddReso
       <div className="w-[36rem] max-w-[94vw] max-h-[90vh] flex flex-col rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">{gt("Add resources")}</h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
-          {gt(
-            "Hand-picked members stay until you remove them, whatever the membership rules say.",
-          )}
+          {gt("Hand-picked members stay until you remove them, whatever the membership rules say.")}
         </p>
         <div className="mt-3">
           <label className={labelClass} htmlFor={searchId}>
@@ -178,13 +176,20 @@ export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddReso
           </div>
         )}
         <div className="mt-3 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className={secondaryButtonClass}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className={secondaryButtonClass}
+          >
             {gt("Cancel")}
           </button>
           <button
             type="button"
             onClick={() => void add()}
-            disabled={saving || picked.size === 0 || picked.size > SERVICE_LIMITS.maxMembersPerRequest}
+            disabled={
+              saving || picked.size === 0 || picked.size > SERVICE_LIMITS.maxMembersPerRequest
+            }
             className={primaryButtonClass}
           >
             {saving

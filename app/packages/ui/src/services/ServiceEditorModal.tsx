@@ -326,7 +326,12 @@ function RuleEditor({
  * what the org's data carries, virtual tags from their definitions, and the
  * provider and account narrowing from the connected accounts.
  */
-export function ServiceEditorModal({ client, existing, onSaved, onClose }: ServiceEditorModalProps) {
+export function ServiceEditorModal({
+  client,
+  existing,
+  onSaved,
+  onClose,
+}: ServiceEditorModalProps) {
   const gt = useGT();
   const dataString = useDataString();
   const tierLabel = useTierLabel();
@@ -383,11 +388,13 @@ export function ServiceEditorModal({ client, existing, onSaved, onClose }: Servi
     load("runbooks", client.listRunbooks());
     load(
       "tagKeys",
-      client.listTagKeys().then((res) =>
-        res.keys
-          .filter((k) => !k.hidden)
-          .map((k) => ({ value: k.key, label: k.key, preferred: k.preferred })),
-      ),
+      client
+        .listTagKeys()
+        .then((res) =>
+          res.keys
+            .filter((k) => !k.hidden)
+            .map((k) => ({ value: k.key, label: k.key, preferred: k.preferred })),
+        ),
     );
     load("virtualTags", client.listVirtualTags());
     load("accounts", client.listAccounts());
@@ -766,7 +773,12 @@ export function ServiceEditorModal({ client, existing, onSaved, onClose }: Servi
           )}
 
           <div className="mt-1 flex justify-end gap-2">
-            <button type="button" onClick={dismiss} disabled={saving} className={secondaryButtonClass}>
+            <button
+              type="button"
+              onClick={dismiss}
+              disabled={saving}
+              className={secondaryButtonClass}
+            >
               {gt("Cancel")}
             </button>
             <button

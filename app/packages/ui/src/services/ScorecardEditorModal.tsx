@@ -600,7 +600,12 @@ export function ScorecardEditorModal({
           )}
 
           <div className="mt-1 flex justify-end gap-2">
-            <button type="button" onClick={dismiss} disabled={saving} className={secondaryButtonClass}>
+            <button
+              type="button"
+              onClick={dismiss}
+              disabled={saving}
+              className={secondaryButtonClass}
+            >
               {gt("Cancel")}
             </button>
             <button

@@ -185,10 +185,7 @@ export function slosTabTarget(sloId?: string): WorkspaceTabTarget {
  * or that the scorecards matrix is showing. A service id wins over the view:
  * the detail is reached from either.
  */
-export function servicesTabTarget(
-  serviceId?: string,
-  view?: "scorecards",
-): WorkspaceTabTarget {
+export function servicesTabTarget(serviceId?: string, view?: "scorecards"): WorkspaceTabTarget {
   if (serviceId) return { kind: "services", serviceId };
   return { kind: "services", ...(view ? { view } : {}) };
 }
