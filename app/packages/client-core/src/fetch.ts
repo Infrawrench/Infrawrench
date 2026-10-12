@@ -1,4 +1,4 @@
-import type { TokenManager } from "./tokens";
+import type { AccessTokenSource } from "./tokens";
 
 /**
  * Bearer-authenticated fetch against the cloud API, ported from the desktop's
@@ -7,7 +7,11 @@ import type { TokenManager } from "./tokens";
  */
 
 export interface CloudFetchOptions {
-  tokens: TokenManager;
+  /**
+   * Where the Bearer token comes from: a WorkOS `TokenManager` (refreshes on
+   * 401), or `staticAccessToken(key)` for an `iwk_` API key (never refreshes).
+   */
+  tokens: AccessTokenSource;
   /** Cloud origin, e.g. `https://app.infrawrench.com`. */
   baseUrl: string;
   fetch?: typeof fetch;

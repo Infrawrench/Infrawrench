@@ -1,6 +1,9 @@
 export {
   TokenManager,
   jwtExpMillis,
+  staticAccessToken,
+  isApiKeyToken,
+  type AccessTokenSource,
   type TokenPair,
   type TokenStorage,
   type TokenManagerOptions,
@@ -994,3 +997,6 @@ export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./custom-costs";
 export * from "./costs-panel-tabs";
+export * from "./deep-links";
+export * from "./search";
+export * from "./resource-insight";
