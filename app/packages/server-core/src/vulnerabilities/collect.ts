@@ -16,7 +16,11 @@ import {
 } from "@infrawrench/plugin-base";
 
 import { db } from "../db/client";
-import { accountVulnerabilityFindings, accountVulnerabilityPolls } from "../db/schema";
+import {
+  accountVulnerabilityFindings,
+  accountVulnerabilityPolls,
+  vulnerabilityResolutions,
+} from "../db/schema";
 import { renderableHelpLink, renderableHelpUrl } from "../help-links";
 import { loadAccountClient } from "../sync-resources";
 
@@ -101,7 +105,7 @@ export async function collectAccountVulnerabilities(
         });
     }
     const seen = findings.map((f) => f.id);
-    await tx
+    const pruned = await tx
       .delete(accountVulnerabilityFindings)
       .where(
         seen.length > 0
@@ -110,7 +114,35 @@ export async function collectAccountVulnerabilities(
               notInArray(accountVulnerabilityFindings.findingId, seen),
             )
           : eq(accountVulnerabilityFindings.accountId, accountId),
+      )
+      .returning({
+        findingId: accountVulnerabilityFindings.findingId,
+        advisoryId: accountVulnerabilityFindings.advisoryId,
+        severity: accountVulnerabilityFindings.severity,
+        artifactKind: accountVulnerabilityFindings.artifactKind,
+        artifactName: accountVulnerabilityFindings.artifactName,
+        firstSeenAt: accountVulnerabilityFindings.firstSeenAt,
+        createdAt: accountVulnerabilityFindings.createdAt,
+      });
+    // The time-to-fix log. Only a complete read may say a finding was fixed:
+    // a truncated one drops findings that are still open.
+    if (pruned.length > 0 && raw.length === findings.length) {
+      await tx.insert(vulnerabilityResolutions).values(
+        pruned.map((p) => ({
+          id: randomUUID(),
+          organizationId,
+          accountId,
+          pluginId: account.pluginId,
+          findingId: p.findingId,
+          advisoryId: p.advisoryId,
+          severity: p.severity,
+          artifactKind: p.artifactKind,
+          artifactName: p.artifactName,
+          firstSeenAt: p.firstSeenAt ?? p.createdAt,
+          resolvedAt: collectedAt,
+        })),
       );
+    }
   });
 
   return { findingCount: findings.length, droppedCount: raw.length - findings.length };

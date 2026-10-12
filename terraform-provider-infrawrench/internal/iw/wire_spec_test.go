@@ -398,6 +398,10 @@ func specChecks() []specCheck {
 		// PrCheckRepository is an `allOf` extension of its Input (adding the
 		// id and timestamps); the Go struct decodes every Input field.
 		{schema: "PrCheckRepositoryInput", value: PrCheckRepository{}},
+		{schema: "ComplianceControlSetting", value: ComplianceControlSetting{}},
+		{schema: "ComplianceControlSettingInput", value: ComplianceControlSettingInput{}},
+		{schema: "CompliancePackSchedule", value: CompliancePackSchedule{}},
+		{schema: "CompliancePackScheduleInput", value: CompliancePackScheduleInput{}},
 		{
 			schema: "GithubIssuesStatus",
 			value:  GithubIssuesStatus{},

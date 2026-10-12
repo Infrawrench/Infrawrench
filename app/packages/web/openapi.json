@@ -185,6 +185,10 @@
       "description": "How close each account is to its provider-enforced limits, with a trend fitted over recent readings. Used and limit both come from the provider, never from published defaults. A provider with no quota API contributes nothing rather than zero."
     },
     {
+      "name": "Compliance",
+      "description": "Evidence Infrawrench already collects (access review, just-in-time access, the audit log, posture, vulnerabilities, backups and restore drills, the change timeline and freezes, session recordings, incidents) mapped to SOC 2 and ISO/IEC 27001:2022 Annex A controls, with a status and an owner per control, and downloadable or scheduled evidence packs."
+    },
+    {
       "name": "Vulnerabilities",
       "description": "CVE findings read from each connected provider's own scanner and joined to what is actually running: a finding in an image names the pods, tasks and functions running that digest. Marked against the CISA Known Exploited Vulnerabilities catalog. A provider with no scanner contributes nothing rather than a clean result."
     },
@@ -6650,6 +6654,7 @@
               "expiring",
               "posture",
               "vulnerabilities",
+              "compliance",
               "access-review",
               "jit-access",
               "backups",
@@ -6729,6 +6734,10 @@
               "apps",
               "scorecards"
             ]
+          },
+          "framework": {
+            "type": "string",
+            "maxLength": 64
           },
           "sessionId": {
             "type": "string",
@@ -28086,6 +28095,758 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "ComplianceFrameworkSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Framework registry id: `soc2` or `iso27001`.",
+            "example": "soc2"
+          },
+          "name": {
+            "type": "string",
+            "example": "SOC 2"
+          },
+          "version": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "scopeNote": {
+            "type": "string",
+            "description": "Which controls the registry covers and which need outside evidence."
+          },
+          "controlCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "description",
+          "scopeNote",
+          "controlCount"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceControlOwner": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isLabel": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "isLabel"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceControlRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "CC6.1"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short paraphrase of the control, not the framework's own text."
+          },
+          "group": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "evidence",
+              "gaps",
+              "not-applicable"
+            ],
+            "description": "`evidence`: at least one mapped source has evidence and none shows a gap. `gaps`: a source shows a gap, or no mapped source produced evidence. `not-applicable`: the org said so, with a justification."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "applicable": {
+            "type": "boolean"
+          },
+          "justification": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ComplianceControlOwner"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settingUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "group",
+          "sources",
+          "status",
+          "reasons",
+          "missingSources",
+          "applicable",
+          "justification",
+          "owner",
+          "notes",
+          "settingUpdatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceEvidenceMetric": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when unknown; never read as zero."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceEvidenceSourceResult": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "example": "vulnerabilities"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "snapshot",
+              "period"
+            ],
+            "description": "`snapshot` sources describe the org at generation time; `period` sources are filtered to the period."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "gap",
+              "no-data",
+              "unavailable"
+            ],
+            "description": "`present`: evidence exists and shows nothing wrong. `gap`: evidence shows a problem. `no-data`: the source ran and has nothing to show. `unavailable`: the source could not be read (missing permission, read failure, no evaluator); never counted as evidence."
+          },
+          "summary": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceEvidenceMetric"
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "itemCount": {
+            "type": "integer",
+            "description": "Rows this source contributes to an evidence pack."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sourceId",
+          "label",
+          "kind",
+          "status",
+          "summary",
+          "metrics",
+          "gaps",
+          "itemCount",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceStatusCounts": {
+        "type": "object",
+        "properties": {
+          "evidence": {
+            "type": "integer"
+          },
+          "gaps": {
+            "type": "integer"
+          },
+          "notApplicable": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "unowned": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence",
+          "gaps",
+          "notApplicable",
+          "total",
+          "unowned"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceStatus": {
+        "type": "object",
+        "properties": {
+          "framework": {
+            "$ref": "#/components/schemas/ComplianceFrameworkSummary"
+          },
+          "period": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-09-30"
+              },
+              "to": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-09-30"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceControlRow"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplianceEvidenceSourceResult"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ComplianceStatusCounts"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "framework",
+          "period",
+          "controls",
+          "sources",
+          "counts",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceControlSetting": {
+        "type": "object",
+        "properties": {
+          "frameworkId": {
+            "type": "string",
+            "description": "Framework registry id: `soc2` or `iso27001`.",
+            "example": "soc2"
+          },
+          "controlId": {
+            "type": "string",
+            "example": "8.8"
+          },
+          "applicable": {
+            "type": "boolean"
+          },
+          "justification": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when `applicable` is false."
+          },
+          "ownerUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A member who owns the control."
+          },
+          "ownerLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A team or alias, when the owner is not one member."
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "frameworkId",
+          "controlId",
+          "applicable",
+          "justification",
+          "ownerUserId",
+          "ownerLabel",
+          "notes",
+          "updatedByUserId",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ComplianceControlSettingInput": {
+        "type": "object",
+        "properties": {
+          "applicable": {
+            "type": "boolean"
+          },
+          "justification": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "ownerUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "applicable"
+        ],
+        "additionalProperties": false
+      },
+      "CompliancePackSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "frameworkId": {
+            "type": "string",
+            "description": "Framework registry id: `soc2` or `iso27001`.",
+            "example": "soc2"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "quarterly"
+            ],
+            "description": "`monthly` delivers the previous calendar month on `sendDayOfMonth`; `quarterly` delivers the previous calendar quarter in January, April, July and October."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/London"
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "nextSendAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "frameworkId",
+          "cadence",
+          "sendDayOfMonth",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled",
+          "nextSendAt",
+          "lastSentAt",
+          "lastStatus",
+          "lastError",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CompliancePackDeliveryTargets": {
+        "type": "object",
+        "properties": {
+          "slackChannels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "teamsWebhooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "emailAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slackChannels",
+          "teamsWebhooks",
+          "emailAvailable"
+        ],
+        "additionalProperties": false
+      },
+      "CompliancePackScheduleInput": {
+        "type": "object",
+        "properties": {
+          "frameworkId": {
+            "type": "string",
+            "description": "Framework registry id: `soc2` or `iso27001`.",
+            "example": "soc2"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "quarterly"
+            ],
+            "description": "`monthly` delivers the previous calendar month on `sendDayOfMonth`; `quarterly` delivers the previous calendar quarter in January, April, July and October."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "frameworkId",
+          "cadence",
+          "hour",
+          "timezone",
+          "emailRecipients",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "CompliancePackSendResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "teams": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "pdfAttached": {
+            "type": "boolean"
+          },
+          "slackFilesUploaded": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempted",
+          "succeeded",
+          "slack",
+          "teams",
+          "email",
+          "pdfAttached",
+          "slackFilesUploaded"
+        ],
         "additionalProperties": false
       },
       "AccessPrincipalOwner": {
@@ -77205,6 +77966,900 @@
           }
         },
         "operationId": "putOrgOrgIdVulnerabilitiesSettings"
+      }
+    },
+    "/api/org/{orgId}/compliance/frameworks": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "List compliance frameworks",
+        "description": "The framework registry: SOC 2 Trust Services Criteria and ISO/IEC 27001:2022 Annex A, each listing only the controls Infrawrench holds evidence for.\n\n_Requires permission: `audit:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Frameworks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "frameworks": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ComplianceFrameworkSummary"
+                      }
+                    }
+                  },
+                  "required": [
+                    "frameworks"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceFrameworks",
+        "x-required-permission": "audit:read"
+      }
+    },
+    "/api/org/{orgId}/compliance": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Compliance status for a framework and period",
+        "description": "Runs every evidence source the framework maps (access review, just-in-time access, the audit log, posture, vulnerabilities, backup coverage, restore drills, the change timeline, change freezes, session recordings, incidents) and returns a status per control. Makes no provider API calls. A source whose own permission the caller lacks comes back `unavailable` naming it, rather than failing the request.\n\n_Requires permission: `audit:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": true,
+            "name": "framework",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "First day of the period (UTC). Defaults to 90 days before `to`.",
+              "example": "2026-09-30"
+            },
+            "required": false,
+            "description": "First day of the period (UTC). Defaults to 90 days before `to`.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Last day of the period, inclusive (UTC). Defaults to today.",
+              "example": "2026-09-30"
+            },
+            "required": false,
+            "description": "Last day of the period, inclusive (UTC). Defaults to today.",
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status per control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCompliance",
+        "x-required-permission": "audit:read"
+      }
+    },
+    "/api/org/{orgId}/compliance/pack": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Download an evidence pack",
+        "description": "A ZIP holding `summary.pdf`, `controls.csv`/`controls.json`, one CSV and JSON per control under `controls/`, one CSV and JSON per evidence source under `evidence/`, `manifest.json` (every other file with its SHA-256) and `SHA256SUMS` (the manifest's own digest, in `sha256sum -c` format). Audited as `compliance.pack_exported`.\n\n_Requires permission: `audit:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": true,
+            "name": "framework",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "First day of the period (UTC). Defaults to 90 days before `to`.",
+              "example": "2026-09-30"
+            },
+            "required": false,
+            "description": "First day of the period (UTC). Defaults to 90 days before `to`.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Last day of the period, inclusive (UTC). Defaults to today.",
+              "example": "2026-09-30"
+            },
+            "required": false,
+            "description": "Last day of the period, inclusive (UTC). Defaults to today.",
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The evidence pack",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCompliancePack",
+        "x-required-permission": "audit:read"
+      }
+    },
+    "/api/org/{orgId}/compliance/controls": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "List stored control decisions",
+        "description": "Only controls somebody decided about; a missing control is applicable and unowned.\n\n_Requires permission: `audit:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": false,
+            "name": "framework",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ComplianceControlSetting"
+                      }
+                    }
+                  },
+                  "required": [
+                    "settings"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceControls",
+        "x-required-permission": "audit:read"
+      }
+    },
+    "/api/org/{orgId}/compliance/controls/{frameworkId}/{controlId}": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Get one control decision",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": true,
+            "name": "frameworkId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "CC6.1"
+            },
+            "required": true,
+            "name": "controlId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceControlSetting"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceControlsFrameworkIdControlId",
+        "x-required-permission": "audit:read",
+        "description": "_Requires permission: `audit:read`._"
+      },
+      "put": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Set a control's applicability, owner and notes",
+        "description": "A full replace. Marking a control not applicable requires a justification. An owner is either a member (`ownerUserId`) or a free-text label, not both. Audited.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": true,
+            "name": "frameworkId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "CC6.1"
+            },
+            "required": true,
+            "name": "controlId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComplianceControlSettingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplianceControlSetting"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdComplianceControlsFrameworkIdControlId",
+        "x-required-permission": "org:settings:write"
+      },
+      "delete": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Reset a control to applicable and unowned",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": true,
+            "name": "frameworkId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "CC6.1"
+            },
+            "required": true,
+            "name": "controlId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The decision was removed"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdComplianceControlsFrameworkIdControlId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/compliance/schedules": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "List evidence-pack schedules",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Framework registry id: `soc2` or `iso27001`.",
+              "example": "soc2"
+            },
+            "required": false,
+            "name": "framework",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompliancePackSchedule"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceSchedules",
+        "x-required-permission": "audit:read",
+        "description": "_Requires permission: `audit:read`._"
+      },
+      "post": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Schedule an evidence pack",
+        "description": "Delivers the previous calendar month or quarter's pack: email attaches the ZIP, Slack uploads it in the message thread, Teams gets the summary and a link. Packs render with full access. Audited.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompliancePackScheduleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePackSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdComplianceSchedules",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/compliance/schedules/targets": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Destinations a pack schedule can use",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Slack channels, Teams webhooks, email",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePackDeliveryTargets"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceSchedulesTargets",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/compliance/schedules/{id}": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Get an evidence-pack schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePackSchedule"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdComplianceSchedulesId",
+        "x-required-permission": "audit:read",
+        "description": "_Requires permission: `audit:read`._"
+      },
+      "put": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Replace an evidence-pack schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompliancePackScheduleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePackSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdComplianceSchedulesId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Delete an evidence-pack schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdComplianceSchedulesId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/compliance/schedules/{id}/send": {
+      "post": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Send an evidence-pack schedule now",
+        "description": "Builds the pack the next delivery would cover and sends it immediately.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-transport outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompliancePackSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdComplianceSchedulesIdSend",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/access-review": {

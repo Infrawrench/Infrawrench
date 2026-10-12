@@ -1982,3 +1982,67 @@ type EventSubscriptionWithSecret struct {
 	Subscription EventSubscription `json:"subscription"`
 	Secret       *string           `json:"secret"`
 }
+
+/* -------------------------------- compliance ------------------------------- */
+
+// ComplianceControlSettingInput is the PUT body for the organization's
+// decision about one framework control. A PUT replaces every field, so the
+// optional strings carry no omitempty: an explicit null is how a cleared
+// justification, owner or note is said.
+type ComplianceControlSettingInput struct {
+	Applicable    bool    `json:"applicable"`
+	Justification *string `json:"justification"`
+	OwnerUserID   *string `json:"ownerUserId"`
+	OwnerLabel    *string `json:"ownerLabel"`
+	Notes         *string `json:"notes"`
+}
+
+// ComplianceControlSetting is the stored decision about one control. The
+// server trims every string and stores an empty one as null.
+type ComplianceControlSetting struct {
+	FrameworkID     string  `json:"frameworkId"`
+	ControlID       string  `json:"controlId"`
+	Applicable      bool    `json:"applicable"`
+	Justification   *string `json:"justification"`
+	OwnerUserID     *string `json:"ownerUserId"`
+	OwnerLabel      *string `json:"ownerLabel"`
+	Notes           *string `json:"notes"`
+	UpdatedByUserID *string `json:"updatedByUserId"`
+	UpdatedAt       string  `json:"updatedAt"`
+}
+
+// CompliancePackScheduleInput is the POST/PUT body for a scheduled evidence
+// pack. A PUT is a full replace, and may move the schedule to another
+// framework.
+type CompliancePackScheduleInput struct {
+	FrameworkID     string   `json:"frameworkId"`
+	Cadence         string   `json:"cadence"`
+	SendDayOfMonth  *int64   `json:"sendDayOfMonth,omitempty"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	EmailRecipients []string `json:"emailRecipients"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	Enabled         bool     `json:"enabled"`
+}
+
+// CompliancePackSchedule is a stored evidence-pack delivery schedule.
+type CompliancePackSchedule struct {
+	ID              string   `json:"id"`
+	FrameworkID     string   `json:"frameworkId"`
+	Cadence         string   `json:"cadence"`
+	SendDayOfMonth  int64    `json:"sendDayOfMonth"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	NextSendAt      *string  `json:"nextSendAt"`
+	LastSentAt      *string  `json:"lastSentAt"`
+	LastStatus      *string  `json:"lastStatus"`
+	LastError       *string  `json:"lastError"`
+	CreatedByUserID *string  `json:"createdByUserId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
+}

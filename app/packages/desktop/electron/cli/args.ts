@@ -351,6 +351,14 @@ export interface VulnsFlags {
   includeDismissed: boolean;
 }
 
+/** `compliance` flags. `--from`/`--to` are the shared range flags. */
+export interface ComplianceFlags {
+  /** `--framework soc2|iso27001`; the command defaults and validates it. */
+  framework?: string | undefined;
+  /** `--gaps`: only controls without evidence, with their reasons. */
+  gaps: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
@@ -366,6 +374,7 @@ export interface ParsedCli {
   diff: DiffFlags;
   config: ConfigFlags;
   vulns: VulnsFlags;
+  compliance: ComplianceFlags;
   /** `savings log`: the monthly amount (validated by the command) and a note. */
   savings: { amount: string | undefined; note: string | undefined };
   positionals: string[];
@@ -585,6 +594,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         kev: { type: "boolean", default: false },
         search: { type: "string" },
         "include-dismissed": { type: "boolean", default: false },
+        // `compliance`: which framework, and only the controls with gaps.
+        framework: { type: "string" },
+        gaps: { type: "boolean", default: false },
         // `pr-check`: a pull request by number, or a local diff against a base.
         repo: { type: "string" },
         pr: { type: "string" },
@@ -795,6 +807,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       plugin: str("plugin"),
       search: str("search"),
       includeDismissed: values["include-dismissed"] === true,
+    },
+    compliance: {
+      framework: str("framework"),
+      gaps: values.gaps === true,
     },
     savings: { amount: str("amount"), note: str("note") },
     jit: {

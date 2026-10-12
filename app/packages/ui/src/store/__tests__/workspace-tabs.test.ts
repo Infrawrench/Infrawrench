@@ -111,6 +111,11 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "vulnerabilities" })).toBe("vulnerabilities");
   });
 
+  it("returns one id for the compliance target whatever the framework", () => {
+    expect(getWorkspaceTabId({ kind: "compliance" })).toBe("compliance");
+    expect(getWorkspaceTabId({ kind: "compliance", framework: "soc2" })).toBe("compliance");
+  });
+
   it("returns the singleton id for the access review target", () => {
     expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
     expect(getWorkspaceTabId({ kind: "jit-access" })).toBe("jit-access");
@@ -378,6 +383,12 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "vulnerabilities" })).toBe("Vulnerabilities");
   });
 
+  it("returns 'Compliance' for the compliance target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "compliance", framework: "soc2" })).toBe(
+      "Compliance",
+    );
+  });
+
   it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "access-review" })).toBe("Access review");
     expect(getWorkspaceTabFallbackTitle({ kind: "jit-access" })).toBe("Just-in-time access");
@@ -507,6 +518,24 @@ describe("workspaceTabTargetsEqual", () => {
       true,
     );
     expect(workspaceTabTargetsEqual({ kind: "vulnerabilities" }, { kind: "posture" })).toBe(false);
+  });
+
+  it("compares the compliance framework so the route sync records it", () => {
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "compliance", framework: "soc2" },
+        { kind: "compliance", framework: "soc2" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "compliance", framework: "soc2" },
+        { kind: "compliance", framework: "iso27001" },
+      ),
+    ).toBe(false);
+    expect(workspaceTabTargetsEqual({ kind: "compliance" }, { kind: "vulnerabilities" })).toBe(
+      false,
+    );
   });
 
   it("treats two access review targets as equal (singleton tab)", () => {

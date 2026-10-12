@@ -56,6 +56,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
         />
         <Row
+          title="Compliance"
+          subtitle="SOC 2 and ISO 27001 controls, with the evidence behind them"
+          onPress={() => router.push(`/org/${orgId}/compliance`)}
+        />
+        <Row
           title="Domains"
           subtitle="Every DNS zone and record, with dangling targets flagged"
           onPress={() => router.push(`/org/${orgId}/dns`)}
