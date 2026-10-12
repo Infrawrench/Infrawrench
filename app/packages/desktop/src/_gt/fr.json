@@ -21183,5 +21183,8 @@
   "bf9d4f49c55e0d70": "Non évalué",
   "0b3364fd508007ac": "{level} · {score}",
   "dc214d45035d4aa3": "Aucun niveau · {score}",
-  "b9afe5d17f1d2387": "Les services nécessitent le mode cloud : connectez-vous pour synchroniser."
+  "b9afe5d17f1d2387": "Les services nécessitent le mode cloud : connectez-vous pour synchroniser.",
+  "facbe233c792e2c0": "Cette version ne peut pas ouvrir ce lien Infrawrench.",
+  "7deb5c566ca1c26b": "Connectez-vous à Infrawrench Cloud pour ouvrir des liens depuis d'autres applications.",
+  "0dd445367f66efcc": "Ce lien concerne une autre organisation. Passez à celle-ci, puis rouvrez le lien."
 }

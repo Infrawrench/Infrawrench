@@ -21184,5 +21184,8 @@
   "bf9d4f49c55e0d70": "Sin puntuar",
   "0b3364fd508007ac": "{level} · {score}",
   "dc214d45035d4aa3": "Sin nivel · {score}",
-  "b9afe5d17f1d2387": "Los servicios requieren el modo en la nube: inicia sesión para sincronizar."
+  "b9afe5d17f1d2387": "Los servicios requieren el modo en la nube: inicia sesión para sincronizar.",
+  "facbe233c792e2c0": "Ese enlace de Infrawrench no se puede abrir con esta versión.",
+  "7deb5c566ca1c26b": "Inicia sesión en Infrawrench Cloud para abrir enlaces desde otras aplicaciones.",
+  "0dd445367f66efcc": "Ese enlace es de otra organización. Cambia a ella y vuelve a abrir el enlace."
 }
