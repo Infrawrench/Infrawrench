@@ -282,6 +282,12 @@ export function pushDataToPath(data: MobilePushData): string {
     // A posture alert summarises the whole feed, so it opens the feed.
     case "posture_alert":
       return `/org/${data.orgId}/posture`;
+    // Leaked credentials are the top section of the posture screen; a push
+    // about exactly one carries its id so the screen can point at it.
+    case "leaked_secret":
+      return data.leakId
+        ? `/org/${data.orgId}/posture?leakId=${encodeURIComponent(data.leakId)}`
+        : `/org/${data.orgId}/posture`;
     // A savings finding is listed in the Costs screen's savings sections.
     case "savings_finding":
     // Extended-support findings are a section of the Costs screen.
@@ -558,6 +564,13 @@ export function parsePushData(raw: unknown): MobilePushData | null {
     }
     case "posture_alert":
       return { type: "posture_alert", orgId };
+    case "leaked_secret": {
+      // Optional: set only when the scan found exactly one new leak.
+      const leakId = data["leakId"];
+      return typeof leakId === "string" && leakId
+        ? { type: "leaked_secret", orgId, leakId }
+        : { type: "leaked_secret", orgId };
+    }
     case "savings_finding": {
       const kind = data["kind"];
       const resourceId = data["resourceId"];
