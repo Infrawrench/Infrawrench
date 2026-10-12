@@ -320,3 +320,45 @@ describe("worker /probe", () => {
     expect(timeoutSpy).toHaveBeenCalledWith(60_000);
   });
 });
+
+describe("slow upstream logging", () => {
+  it("logs host and timings when the upstream misses the deadline, never the URL", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    // An upstream that never answers: the request ends only when the
+    // deadline (already expired here) aborts it.
+    globalThis.fetch = vi.fn((_url: unknown, init?: RequestInit) =>
+      Promise.reject(
+        init?.signal?.aborted ? new DOMException("aborted", "AbortError") : new Error("unexpected"),
+      ),
+    ) as typeof fetch;
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => AbortSignal.abort());
+
+    const res = await worker.fetch(
+      post({ url: "https://status.example.com/feed.json?token=secret", method: "GET" }),
+      env,
+    );
+    expect(res.status).toBe(504);
+    expect((await proxyError(res)).code).toBe("timeout");
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "upstream_slow",
+        host: "status.example.com",
+        phase: "headers",
+        outcome: "timeout",
+        headersMs: null,
+      }),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain("secret");
+  });
+
+  it("stays quiet for a fast upstream", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    globalThis.fetch = stubUpstream(new Response("ok")) as unknown as typeof fetch;
+    const res = await worker.fetch(
+      post({ url: "https://status.example.com/", method: "GET" }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect(log).not.toHaveBeenCalled();
+  });
+});

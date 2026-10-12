@@ -44,6 +44,12 @@ export interface Env {
 /** How many redirects we'll follow before giving up. */
 const MAX_REDIRECTS = 5;
 
+/**
+ * Upstream requests slower than this are logged (see {@link logSlowUpstream}).
+ * Normal traffic is ~200 ms at the median and a few seconds at p99.
+ */
+const SLOW_UPSTREAM_MS = 5_000;
+
 /** Ceilings, mirroring the runtime's. A caller asking for more is clamped. */
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -251,6 +257,29 @@ function clamp(raw: unknown, fallback: number, max: number): number {
   return Math.min(Math.floor(n), max);
 }
 
+interface UpstreamTiming {
+  host: string;
+  method: string;
+  /** Redirect hops followed before the one that ended the request. */
+  hop: number;
+  /** Where the time went: waiting for response headers, or reading the body. */
+  phase: "headers" | "body" | "done";
+  headersMs: number | null;
+  totalMs: number;
+  status: number | null;
+  outcome: "ok" | "timeout" | "failed";
+}
+
+/**
+ * One structured line per slow or failed upstream request, for Workers Logs
+ * (`observability` in wrangler.jsonc), which indexes its fields. Host only,
+ * never the URL: a workflow's query string can carry its credentials.
+ */
+function logSlowUpstream(timing: UpstreamTiming): void {
+  if (timing.outcome === "ok" && timing.totalMs < SLOW_UPSTREAM_MS) return;
+  console.log({ event: "upstream_slow", ...timing });
+}
+
 /**
  * Perform the request, following redirects by hand so each hop is validated.
  * `redirect: "manual"` in the incoming request means the caller wants the 3xx
@@ -278,9 +307,25 @@ async function proxyFetch(body: ProxyRequestBody): Promise<Response> {
   }
 
   const deadline = AbortSignal.timeout(timeoutMs);
+  const started = Date.now();
   let redirected = false;
 
   for (let hop = 0; ; hop++) {
+    const timing = (
+      phase: UpstreamTiming["phase"],
+      outcome: UpstreamTiming["outcome"],
+      status: number | null,
+      headersMs: number | null,
+    ): UpstreamTiming => ({
+      host: url.host,
+      method,
+      hop,
+      phase,
+      headersMs,
+      totalMs: Date.now() - started,
+      status,
+      outcome,
+    });
     let upstream: Response;
     try {
       upstream = await fetch(url, {
@@ -292,23 +337,40 @@ async function proxyFetch(body: ProxyRequestBody): Promise<Response> {
       });
     } catch (err) {
       if (deadline.aborted) {
+        logSlowUpstream(timing("headers", "timeout", null, null));
         throw new ProxyError(
           "timeout",
           `Request to ${url.host} timed out after ${timeoutMs}ms.`,
           504,
         );
       }
+      logSlowUpstream(timing("headers", "failed", null, null));
       throw new ProxyError(
         "request_failed",
         `Request to ${url.host} failed: ${err instanceof Error ? err.message : String(err)}`,
         502,
       );
     }
+    const headersMs = Date.now() - started;
 
     const location = upstream.headers.get("location");
     const isRedirect = upstream.status >= 300 && upstream.status < 400 && location;
     if (!follow || !isRedirect) {
-      const bytes = await readCapped(upstream, maxBytes);
+      let bytes: Uint8Array;
+      try {
+        bytes = await readCapped(upstream, maxBytes);
+      } catch (err) {
+        if (deadline.aborted) {
+          logSlowUpstream(timing("body", "timeout", upstream.status, headersMs));
+          throw new ProxyError(
+            "timeout",
+            `Request to ${url.host} timed out after ${timeoutMs}ms while reading the response.`,
+            504,
+          );
+        }
+        throw err;
+      }
+      logSlowUpstream(timing("done", "ok", upstream.status, headersMs));
       const out: Record<string, string> = {};
       upstream.headers.forEach((value, name) => {
         if (!STRIPPED_RESPONSE_HEADERS.has(name.toLowerCase())) out[name.toLowerCase()] = value;
