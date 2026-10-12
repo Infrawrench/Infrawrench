@@ -19,6 +19,7 @@ import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
 import { listPostureDismissals } from "./dismissals";
+import { leakedCredentialsSummary } from "../leaked-secrets/store";
 
 export interface ListPostureOptions {
   /** Scan instant; defaults to `Date.now()`. Fixed in tests. */
@@ -38,7 +39,7 @@ export async function listPosture(
   organizationId: string,
   opts: ListPostureOptions = {},
 ): Promise<PostureListResponse> {
-  const [orgResources, orgAccounts, plugins, dismissals] = await Promise.all([
+  const [orgResources, orgAccounts, plugins, dismissals, leakedCredentials] = await Promise.all([
     db
       .select({
         id: resources.id,
@@ -64,6 +65,12 @@ export async function listPosture(
       .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt))),
     loadPlugins(),
     listPostureDismissals(organizationId),
+    // The "Leaked credentials" category. A failure here must not blank the
+    // rule findings, so it degrades to absent.
+    leakedCredentialsSummary(organizationId).catch((err: unknown) => {
+      console.error("[posture] leaked credentials summary failed:", err);
+      return undefined;
+    }),
   ]);
 
   const scanPlugins = plugins.map(({ plugin }) => ({
@@ -93,7 +100,7 @@ export async function listPosture(
     opts.now !== undefined ? { now: opts.now } : {},
   );
 
-  return computePostureFindings(
+  const feed = computePostureFindings(
     {
       plugins: scanPlugins,
       accounts: orgAccounts,
@@ -102,4 +109,5 @@ export async function listPosture(
     },
     { dns, ...(opts.now !== undefined ? { now: opts.now } : {}) },
   );
+  return leakedCredentials ? { ...feed, leakedCredentials } : feed;
 }

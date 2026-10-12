@@ -242,6 +242,14 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    id: "leakedSecretAlerts",
+    label: "Leaked credentials",
+    description: "A secret scanner found a credential committed to code.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     id: "probeAlerts",
     label: "Probes",
     description: "A synthetic probe went down or recovered.",

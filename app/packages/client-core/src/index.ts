@@ -921,6 +921,7 @@ export * from "./log-discovery";
 export * from "./log-tail-options";
 export * from "./alert-routing";
 export * from "./event-catalog";
+export * from "./leaked-secrets";
 // Email as an alert transport: recipients, the external-address policy.
 export * from "./alert-email";
 // Who to wake, rather than which channel to shout into.

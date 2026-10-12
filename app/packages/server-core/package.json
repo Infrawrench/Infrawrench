@@ -286,7 +286,13 @@
     "./billing/build-meter": "./src/billing/build-meter.ts",
     "./billing/capacity-slots": "./src/billing/capacity-slots.ts",
     "./billing/ai-pricing": "./src/billing/ai-pricing.ts",
-    "./billing/ai-usage": "./src/billing/ai-usage.ts"
+    "./billing/ai-usage": "./src/billing/ai-usage.ts",
+    "./leaked-secrets/store": "./src/leaked-secrets/store.ts",
+    "./leaked-secrets/scan": "./src/leaked-secrets/scan.ts",
+    "./leaked-secrets/actions": "./src/leaked-secrets/actions.ts",
+    "./leaked-secrets/match": "./src/leaked-secrets/match.ts",
+    "./leaked-secrets/fingerprints": "./src/leaked-secrets/fingerprints.ts",
+    "./leaked-secrets/alerts": "./src/leaked-secrets/alerts.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
