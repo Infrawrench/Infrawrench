@@ -62,6 +62,29 @@ const manifest: PluginManifest = {
     chargeTypes: true,
   },
   preflight: GITHUB_PREFLIGHT,
+  secretScanning: {
+    label: "Secret scanning",
+    description:
+      "Reads the organization's secret scanning alerts every 30 minutes. The token needs Secret scanning alerts (read, or read and write to close alerts after a rotation) and an organization owner or security manager. Enterprise accounts have no organization-wide alert list.",
+    canResolve: true,
+    returnsSecretValue: true,
+  },
+  tokenFormats: [
+    {
+      id: "personal-access-token",
+      label: "GitHub personal access token",
+      scannerTypes: [
+        "github_personal_access_token",
+        "github_oauth_access_token",
+        "Github Personal Access Token",
+        "GithubFineGrainedPersonalAccessToken",
+        "Github OAuth Access Token",
+      ],
+      prefixes: ["github_pat_", "ghp_", "gho_"],
+      credentialFields: ["token"],
+      manageUrl: "https://github.com/settings/personal-access-tokens",
+    },
+  ],
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
 };

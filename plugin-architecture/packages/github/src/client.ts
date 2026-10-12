@@ -1,4 +1,7 @@
 import type {
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
   CostFetchRange,
   CostRow,
   CreateFieldConfig,
@@ -47,6 +50,7 @@ import {
 } from "./mappers.js";
 import { METRICS_WINDOW_MS, billingAccountSeries, rangeOrDefault } from "./metrics.js";
 import { verifyGitHubCredentials } from "./preflight.js";
+import { listSecretScanningAlerts, resolveSecretScanningAlert } from "./secret-scanning.js";
 import {
   PRODUCTS,
   budgetProductOptions,
@@ -109,6 +113,14 @@ export class GitHubClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+  }
+
+  listLeakedSecrets(query: LeakedSecretQuery): Promise<LeakedSecretPage> {
+    return listSecretScanningAlerts(this.ctx, query);
+  }
+
+  resolveLeakedSecret(ref: string, resolution: LeakedSecretResolution): Promise<void> {
+    return resolveSecretScanningAlert(this.ctx, ref, resolution);
   }
 
   private get isOrg(): boolean {

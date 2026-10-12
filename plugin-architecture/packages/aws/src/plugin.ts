@@ -84,6 +84,19 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "access-key",
+      label: "AWS access key",
+      scannerTypes: ["aws_access_key_id", "aws_secret_access_key", "AWS", "AWSSecretAccessKey"],
+      prefixes: ["AKIA"],
+      credentialFields: ["accessKeyId", "secretAccessKey"],
+      manageUrl: "https://console.aws.amazon.com/iam/home#/security_credentials",
+    },
+  ],
   credentialFields: [
     {
       key: "accessKeyId",

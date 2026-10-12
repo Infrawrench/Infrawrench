@@ -37,6 +37,24 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "OpenAI API key",
+      scannerTypes: [
+        "openai_api_key",
+        "open ai token",
+        "OpenAiProjectKey",
+        "OpenAiServiceAccountKey",
+      ],
+      prefixes: ["sk-proj-", "sk-svcacct-", "sk-admin-"],
+      credentialFields: ["apiKey", "adminApiKey"],
+      manageUrl: "https://platform.openai.com/api-keys",
+    },
+  ],
   credentialFields: [
     {
       key: "apiKey",

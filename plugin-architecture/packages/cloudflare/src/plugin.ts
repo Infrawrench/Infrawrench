@@ -73,6 +73,18 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-token",
+      label: "Cloudflare API token",
+      scannerTypes: ["cloudflare_account_api_token", "cloudflare_user_api_token"],
+      credentialFields: ["apiToken"],
+      manageUrl: "https://dash.cloudflare.com/profile/api-tokens",
+    },
+  ],
   credentialFields: [
     {
       key: "apiToken",

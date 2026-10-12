@@ -1,4 +1,7 @@
 import type {
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
   ArtifactEntry,
   CreateFieldConfig,
   CreateResourceConfig,
@@ -19,6 +22,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
+import { listSecretDetectionFindings, resolveSecretDetectionFinding } from "./secret-detection.js";
 import {
   enc,
   glCount,
@@ -904,6 +908,14 @@ export class GitLabClient implements PluginClient {
     return out;
   }
 
+  async listLeakedSecrets(query: LeakedSecretQuery): Promise<LeakedSecretPage> {
+    return listSecretDetectionFindings(this.ctx, await this.fanout(), query);
+  }
+
+  resolveLeakedSecret(ref: string, resolution: LeakedSecretResolution): Promise<void> {
+    return resolveSecretDetectionFinding(this.ctx, ref, resolution);
+  }
+
   async verifyCredentials(): Promise<PreflightResult> {
     let scopes: string[] | undefined;
     let identity: string | undefined;
@@ -919,7 +931,7 @@ export class GitLabClient implements PluginClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
-        checks: ["inventory", "manage", "runners"].map((capabilityId) => ({
+        checks: ["inventory", "manage", "runners", "secret-detection"].map((capabilityId) => ({
           capabilityId,
           status: "unknown" as const,
           message: isPermissionError(err) ? "GitLab rejected the token." : message,
@@ -952,6 +964,16 @@ export class GitLabClient implements PluginClient {
                   "GitLab documents create_runner for creating runners; api may not be enough.",
               }
             : missing("runners", [SCOPE_CREATE_RUNNER]),
+        has("api")
+          ? ok("secret-detection")
+          : has("read_api")
+            ? {
+                capabilityId: "secret-detection",
+                status: "unknown" as const,
+                message:
+                  "read_api reads findings; resolving them after a rotation needs the api scope.",
+              }
+            : missing("secret-detection", [SCOPE_READ_API]),
       ],
     };
   }

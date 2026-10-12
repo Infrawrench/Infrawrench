@@ -78,6 +78,18 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "service-account-key",
+      label: "Google Cloud service account key",
+      scannerTypes: ["google_cloud_service_account_credentials", "Google (GCP) Service-account"],
+      credentialFields: ["serviceAccountJson"],
+      manageUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
+    },
+  ],
   credentialFields: [
     {
       key: "serviceAccountJson",

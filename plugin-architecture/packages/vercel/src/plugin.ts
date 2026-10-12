@@ -21,6 +21,18 @@ const manifest: PluginManifest = {
   </svg>`,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "access-token",
+      label: "Vercel access token",
+      scannerTypes: ["vercel_api_key", "vercel_personal_access_token"],
+      credentialFields: ["accessToken"],
+      manageUrl: "https://vercel.com/account/settings/tokens",
+    },
+  ],
   credentialFields: [
     {
       key: "accessToken",

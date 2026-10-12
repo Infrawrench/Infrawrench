@@ -15,6 +15,18 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "Twilio API key or auth token",
+      scannerTypes: ["twilio_api_key", "Twilio API Key"],
+      credentialFields: ["apiKeySecret", "authToken"],
+      manageUrl: "https://console.twilio.com/us1/account/keys-credentials/api-keys",
+    },
+  ],
   credentialFields: [
     {
       key: "accountSid",

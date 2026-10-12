@@ -15,6 +15,25 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "token",
+      label: "Doppler token",
+      scannerTypes: [
+        "doppler_personal_token",
+        "doppler_service_token",
+        "doppler_service_account_token",
+        "doppler_cli_token",
+        "Doppler API token",
+        "Doppler Service token",
+      ],
+      prefixes: ["dp.pt.", "dp.st.", "dp.sa.", "dp.ct."],
+      credentialFields: ["token"],
+    },
+  ],
   credentialFields: [
     {
       key: "token",
