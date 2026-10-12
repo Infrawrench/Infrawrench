@@ -41,6 +41,8 @@ export function savingsKindLabel(gt: Gt, kind: SavingsEventKind): string {
       return gt("Sleep schedule");
     case "commitment":
       return gt("Commitments");
+    case "saas_seat":
+      return gt("SaaS seats");
     case "manual":
       return gt("Logged manually");
   }

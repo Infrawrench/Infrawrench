@@ -178,6 +178,12 @@ export const pluginManifestSchema = z.object({
       kinds: z.array(z.enum(["reservation", "savings_plan", "committed_use"])).min(1),
     })
     .optional(),
+  seats: z
+    .object({
+      products: z.array(z.string().min(1)).min(1),
+      removal: z.boolean().optional(),
+    })
+    .optional(),
   credits: z
     .object({
       label: z.string().optional(),

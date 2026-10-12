@@ -119,6 +119,20 @@ export interface DigestRealizedSavings {
   shortfallCount: number;
 }
 
+/**
+ * Paid SaaS seats worth acting on (see `seats/feed.ts`): inactive for the
+ * org's threshold, duplicated across tools, or on a dearer tier than the
+ * member's usage needs. Point-in-time, like the posture and quota counts.
+ * Omitted when there is nothing to act on.
+ */
+export interface DigestSeats {
+  findings: number;
+  inactive: number;
+  /** Savings in the primary currency (the largest); null when none is priced. */
+  currency: string | null;
+  monthly: number | null;
+}
+
 export interface DigestInput {
   window: DigestWindow;
   /** Daily costs from `prevWeekStart` through `weekEnd`, grouped by provider. */
@@ -187,6 +201,8 @@ export interface DigestInput {
   realizedSavings?: DigestRealizedSavings | null;
   /** DORA metrics for the week, when the org has deploys and kept the section on. */
   delivery?: DigestDelivery | null;
+  /** Seat findings, when there are any. */
+  seats?: DigestSeats | null;
 }
 
 /**
@@ -256,6 +272,8 @@ export interface WeeklyDigest {
   realizedSavings: DigestRealizedSavings | null;
   /** DORA metrics, when there is anything to report. */
   delivery: DigestDelivery | null;
+  /** Seat findings, when there are any. */
+  seats: DigestSeats | null;
 }
 
 const MAX_MOVERS = 3;
@@ -518,6 +536,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     costMover: input.costMover ?? null,
     realizedSavings: input.realizedSavings ?? null,
     delivery: input.delivery ?? null,
+    seats: input.seats && input.seats.findings > 0 ? input.seats : null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
 }
@@ -740,11 +759,28 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
   if (projectionLine) lines.push(projectionLine);
   const costMoverLine = costMoverSegments(digest.costMover);
   if (costMoverLine) lines.push(costMoverLine);
+  const seatsLine = seatsSegments(digest.seats);
+  if (seatsLine) lines.push(seatsLine);
   const savingsLine = realizedSavingsSegments(digest.realizedSavings);
   if (savingsLine) lines.push(savingsLine);
   const deliveryLine = deliverySegments(digest.delivery);
   if (deliveryLine) lines.push(deliveryLine);
   return lines;
+}
+
+/** The SaaS seats line: how many paid seats to act on, and what that saves a month. */
+function seatsSegments(seats: DigestSeats | null): DigestLine | null {
+  if (!seats || seats.findings === 0) return null;
+  const parts = [`${pluralize(seats.findings, "paid seat")} to review`];
+  if (seats.inactive > 0) parts.push(`${seats.inactive} inactive`);
+  const saving =
+    seats.monthly !== null && seats.currency && seats.monthly > 0
+      ? `, ${formatAmount(seats.monthly, seats.currency)}/mo to save`
+      : "";
+  return [
+    { text: "Seats", bold: true },
+    { text: `: ${parts.join(", ")}${saving}`, bold: false },
+  ];
 }
 
 /**

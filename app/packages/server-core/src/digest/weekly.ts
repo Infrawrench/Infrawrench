@@ -76,6 +76,7 @@ import {
   type DigestProjection,
   type DigestRealizedSavings,
   type DigestDelivery,
+  type DigestSeats,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -85,6 +86,7 @@ import { orgAppUrl } from "../app-url";
 import { getRealizedSavingsReport } from "../savings/realized";
 import { getDoraReport } from "../dora/load";
 import { getDoraSettings } from "../dora/settings";
+import { listSeats } from "../seats/feed";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -318,6 +320,7 @@ export async function buildWeeklyDigest(
     costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
     realizedSavings: await buildRealizedSavings(organizationId, window),
     delivery: await buildDelivery(organizationId, window),
+    seats: await buildSeats(organizationId),
   });
 }
 
@@ -347,6 +350,28 @@ async function buildDelivery(
     };
   } catch (err) {
     console.error(`[digest] delivery metrics for org ${organizationId} failed:`, err);
+    return null;
+  }
+}
+
+/**
+ * The seats line: findings over the stored inventory, org-wide (the digest
+ * goes to admin-configured channels, like every other line here). Never the
+ * reason a digest fails to send.
+ */
+async function buildSeats(organizationId: string): Promise<DigestSeats | null> {
+  try {
+    const list = await listSeats(organizationId, { unscoped: true, withoutRemediation: true });
+    if (list.findings.length === 0) return null;
+    const primary = list.savingsMonthly[0] ?? null;
+    return {
+      findings: list.findings.length,
+      inactive: list.counts.inactive,
+      currency: primary?.currency ?? null,
+      monthly: primary?.monthly ?? null,
+    };
+  } catch (err) {
+    console.error(`[digest] seats for org ${organizationId} failed:`, err);
     return null;
   }
 }

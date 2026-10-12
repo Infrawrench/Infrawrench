@@ -360,6 +360,14 @@ infrawrench prices compare --vcpus 8 --memory 32
 infrawrench prices compare m7i.xlarge --provider aws --json
 ```
 
+`seats` lists [SaaS seat findings](./saas-seats.md): paid seats that are inactive, duplicated across tools, or on a dearer tier, with the monthly saving and remediation commands. `seats all` lists every seat with its last activity and how that was determined, `seats remove <id>` removes a flagged seat through its provider (asks first unless `-y`), and `seats refresh` re-collects now. Cloud only:
+
+```sh
+infrawrench seats
+infrawrench seats all --json
+infrawrench seats remove 7c0e1f52-... -y
+```
+
 `extended-support` lists [extended support findings](./extended-support.md): clusters and databases on versions billed at extended-support or end-of-life rates, with the monthly surcharge an upgrade removes (billed where the provider's billing names it, list price otherwise). `--local` checks the desktop workspace on your machine, at list price:
 
 ```

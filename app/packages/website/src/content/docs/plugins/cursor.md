@@ -1,6 +1,6 @@
 ---
 title: Cursor
-description: Administer a Cursor team, covering members and seats with idle-seat detection, per-user spend limits, billing and member groups, repository blocklists, usage by model and member, and daily cost from usage-based spend plus seat estimates.
+description: Administer a Cursor team, covering members and seats with idle-seat detection and seat findings, per-user spend limits, billing and member groups, repository blocklists, usage by model and member, and daily cost from usage-based spend plus seat estimates.
 sidebar_order: 50
 ---
 
@@ -39,9 +39,18 @@ To change a group's members, edit the **Member emails** field: the group ends up
 
 <insert [Cursor team member detail page showing an idle seat, the spend section with member, team and effective limits, and the Edit button] here>
 
-## Idle seats
+## Seats
 
-A member on a paid seat with no editor, agent or Bugbot activity in the last 30 days is an **idle seat**. Idle seats are flagged on the team page and appear in **Potential savings** under Costs, with the seat's cost over the last 30 days next to each one. Unpaid admins and removed members are never flagged.
+Every member on a paid seat appears on the **Seats** page, where idle seats, people paying for Cursor and another AI coding tool, and their savings are found against your organization's inactivity threshold.
+
+- **What is read**: the member list. Unpaid admins and removed members hold no seat and are left out. Members in **Premium seat members** are Premium seats, everyone else Standard.
+- **Activity**: Cursor's daily usage, which marks each member active or not for every day they belonged to the team. The last active day inside the window read is the member's last activity. The window is your inactivity threshold, at least 30 and at most 90 days, so a longer threshold leaves Cursor seats as "activity unknown" rather than calling them idle on too little data. Cursor reports no join date, but the first day a member appears in the window is taken as the day they joined, so a member added last week is not called idle. A member with no usage rows yet shows activity unknown.
+- **Price**: the seat price you set on the account. Left at its default, Teams seats are priced at the published list price ($40 Standard, $120 Premium per user per month, billed monthly) and labelled as an estimate. Enterprise pricing is custom, so an Enterprise team with no price set has its seats counted but not priced.
+- **Remove** takes the member off the team. Cursor only allows this through the API on **Enterprise** plans, with an **admin**-scoped key, and always keeps at least one paid member and one admin; on Teams plans remove members from the Members page of the dashboard instead. A member who used credits this cycle keeps the seat billed until the cycle ends.
+- **Cheaper tier**: never suggested. Cursor does not publish how much usage a Standard seat includes, so nothing in the API shows that a Premium member would fit on one. To move someone, use the member's menu on the Members page; the change applies at the next renewal.
+- **Scopes**: a read-only key reads seats. Removal needs the admin scope and an Enterprise plan. The plugin recognises Enterprise by being able to reach the Analytics API, which also needs the admin scope, so a read-only key on Enterprise is treated as a Teams plan (list prices, no Remove).
+
+The team page and each member still show an **idle seat** status for no activity in the last 30 days.
 
 ## Costs
 
@@ -66,7 +75,7 @@ Because seat costs are derived, the account is labelled as an **estimate** where
 These are not in Cursor's public API, so the plugin does not show them:
 
 - Your plan, the seat tier of each member, seat prices and invoices. Seat costs are estimated from the prices you enter.
-- When a member joined or was removed, so a member added this week is flagged idle until they use Cursor.
+- When a member joined or was removed. The Seats page infers a join date from daily usage, and the team member list shows a member added this week as idle until they use Cursor.
 - Inviting members, changing a member's role, and changing the team-wide default spend limit. Do these in the Cursor dashboard; the team default limit is shown read-only on each member.
 - Model access controls are a preview API and are not managed here yet.
 

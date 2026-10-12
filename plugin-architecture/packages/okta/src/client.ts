@@ -12,12 +12,17 @@ import type {
   PreflightResult,
   QuotaUsage,
   ResourceInstance,
+  SeatFetchOptions,
+  SeatRecord,
+  SeatRef,
+  SeatRemovalResult,
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import { OktaApi, readCredentials } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
+import { mapOktaSeat, oktaSeatPrice } from "./seats.js";
 import type {
   OktaApiToken,
   OktaApp,
@@ -141,9 +146,11 @@ function zoneList(value: unknown, key: "locations" | "asns"): string {
 export class OktaClient implements PluginClient {
   readonly api: OktaApi;
   private orgCache: Promise<OktaOrg> | null = null;
+  private readonly seatPriceMonthly: string | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     this.api = new OktaApi(readCredentials(credentials), services);
+    this.seatPriceMonthly = credentials["seatPriceMonthly"];
   }
 
   private org(): Promise<OktaOrg> {
@@ -1437,6 +1444,49 @@ export class OktaClient implements PluginClient {
       default:
         throw new Error(`Okta plugin: cannot update resource type "${typeId}"`);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Seats
+  // -------------------------------------------------------------------------
+
+  /**
+   * Every licensed user, read with `GET /api/v1/users` (200 per page, `after`
+   * cursor in the `Link` header; DEPROVISIONED users are omitted by default).
+   * https://developer.okta.com/docs/api/openapi/okta-management/management/tag/User/#tag/User/operation/listUsers
+   * Every page or nothing: a failed page fails the read.
+   */
+  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
+    const users = await this.api.paginateAll<OktaUser>("/api/v1/users", { limit: 200 });
+    const price = oktaSeatPrice(this.seatPriceMonthly);
+    const orgUrl = this.api.orgUrl;
+    const seats: SeatRecord[] = [];
+    for (const user of users) {
+      const seat = mapOktaSeat(user, orgUrl, price);
+      if (seat) seats.push(seat);
+    }
+    return seats;
+  }
+
+  /**
+   * Deactivate the user, which frees the licence. Destructive:
+   * Okta deprovisions every app assignment.
+   * https://developer.okta.com/docs/api/openapi/okta-management/management/tag/User/#tag/User/operation/deactivateUser
+   */
+  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
+    const id = encodeURIComponent(seat.memberId);
+    const user = await this.api.request<OktaUser>(`/api/v1/users/${id}`);
+    if (user.status === "DEPROVISIONED") {
+      return { effective: "immediate", message: "The user was already deactivated in Okta." };
+    }
+    await this.api.request(`/api/v1/users/${id}/lifecycle/deactivate`, { method: "POST" });
+    // The licence is free at once, but Okta contracts are annual: the bill
+    // only drops at the next true-up or renewal.
+    return {
+      effective: "end-of-cycle",
+      message:
+        "Deactivated in Okta. Their app assignments were removed; Okta bills annually, so the saving shows at your next true-up or renewal.",
+    };
   }
 
   // -------------------------------------------------------------------------

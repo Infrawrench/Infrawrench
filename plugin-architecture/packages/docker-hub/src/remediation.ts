@@ -6,6 +6,7 @@ import {
   type RemediationFinding,
   type RemediationPlaceholder,
   type RemediationResource,
+  type SeatRemediationFinding,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -93,6 +94,47 @@ export function dockerHubRemediationCommands(finding: RemediationFinding): Remed
   }
 
   return [];
+}
+
+/**
+ * Remediation for Docker seat findings. Inactive or duplicate: get a bearer
+ * token, show the member's row (role, teams, last sign-in), then remove them
+ * from the organization with the documented
+ * `DELETE /v2/orgs/{org}/members/{username}`
+ * (https://docs.docker.com/reference/api/hub/latest/, operation
+ * deleteV2OrgsByOrgNameMembersByUsername). Removing frees the seat; the bill
+ * only drops once the seat count is reduced in Billing. Downgrade: never
+ * produced, the API does not report the plan.
+ */
+export function dockerHubSeatRemediationCommands(
+  finding: SeatRemediationFinding,
+): RemediationCommand[] {
+  if (finding.reason === "downgrade") return [];
+  const { seat } = finding;
+  const i = seat.memberId.indexOf("/");
+  const org = (seat.context["org"] ?? "").trim() || (i > 0 ? seat.memberId.slice(0, i) : "");
+  const username = (seat.login ?? "").trim() || (i > 0 ? seat.memberId.slice(i + 1) : "");
+  if (!org || !username) return [];
+  const members = `/v2/orgs/${enc(org)}/members`;
+  const filter = `.results[] | select(.username == ${JSON.stringify(username)})`;
+  return [
+    tokenCommand(),
+    {
+      tool: "curl",
+      command: `${get(`${members}?page_size=100&search=${enc(username)}`)} | jq ${shellQuote(filter)}`,
+      description: `Show ${username}'s role, teams and last sign-in in ${org} before removing them.`,
+      destructive: false,
+      placeholders: [JWT],
+    },
+    {
+      tool: "curl",
+      command: del(`${members}/${enc(username)}`),
+      description:
+        "Remove the member from the organization and all its teams, freeing the seat; they can be invited again later. Then reduce the seat count in Billing, or Docker keeps charging for the empty seat.",
+      destructive: false,
+      placeholders: [JWT],
+    },
+  ];
 }
 
 const HUB = "https://hub.docker.com";

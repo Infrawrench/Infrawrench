@@ -3,6 +3,7 @@ import {
   type RemediationCommand,
   type RemediationFinding,
   type RemediationPlaceholder,
+  type SeatRemediationFinding,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -93,6 +94,40 @@ export function gitlabRemediationCommands(finding: RemediationFinding): Remediat
     default:
       return [];
   }
+}
+
+/**
+ * Commands for a GitLab.com seat finding: show where the member holds
+ * memberships, then remove them as a billable member. Seats are only reported
+ * for GitLab.com, so the host is literal. Downgrade findings are never raised
+ * for GitLab (the plan is per group, not per seat), so they get nothing.
+ *
+ * https://docs.gitlab.com/api/members/#list-memberships-for-a-billable-member-of-a-group
+ * https://docs.gitlab.com/api/members/#remove-a-billable-member-from-a-group
+ */
+export function gitlabSeatRemediationCommands(
+  finding: SeatRemediationFinding,
+): RemediationCommand[] {
+  if (finding.reason === "downgrade") return [];
+  const { seat } = finding;
+  const groupId = seat.context["groupId"] ?? seat.seatKey;
+  if (!isId(groupId ?? "") || !isId(seat.memberId)) return [];
+  const path = `groups/${groupId}/billable_members/${seat.memberId}`;
+  return [
+    {
+      tool: "glab",
+      command: `glab api --hostname gitlab.com ${shellQuote(`${path}/memberships`)}`,
+      description: "List the groups and projects the member belongs to directly.",
+      destructive: false,
+    },
+    {
+      tool: "glab",
+      command: `glab api -X DELETE --hostname gitlab.com ${shellQuote(path)}`,
+      description:
+        "Remove the member from the group and all its subgroups and projects (GitLab finishes it in the background); they can be invited again later.",
+      destructive: true,
+    },
+  ];
 }
 
 /** GitLab ids are integers; anything else is not something to put in a path. */
