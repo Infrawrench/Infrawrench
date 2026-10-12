@@ -1,0 +1,206 @@
+{
+  "name": "@infrawrench/vscode",
+  "displayName": "Infrawrench",
+  "description": "See the live resource, monthly cost, owning service and open posture findings behind every Terraform block, estimate the cost of your working-tree diff, and search your Infrawrench org from the command palette.",
+  "version": "0.1.0",
+  "license": "BUSL-1.1",
+  "private": true,
+  "publisher": "infrawrench",
+  "icon": "media/icon.png",
+  "homepage": "https://infrawrench.com/docs/features/vscode-extension",
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "terraform",
+    "infrastructure",
+    "cloud cost",
+    "finops",
+    "posture"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:terraform",
+    "workspaceContains:**/*.tf",
+    "onView:infrawrench.services"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "infrawrench.signIn",
+        "title": "Sign In",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.signOut",
+        "title": "Sign Out",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.selectOrg",
+        "title": "Switch Organization",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.search",
+        "title": "Search Resources and Services",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.estimateDiff",
+        "title": "Estimate Cost of Working Tree Changes",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.refresh",
+        "title": "Refresh",
+        "category": "Infrawrench",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "infrawrench.openResource",
+        "title": "Open Resource in Infrawrench",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.openService",
+        "title": "Open Service in Infrawrench",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.copyText",
+        "title": "Copy",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.openBlock",
+        "title": "Open Terraform Block's Resource",
+        "category": "Infrawrench"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "infrawrench.openResource",
+          "when": "false"
+        },
+        {
+          "command": "infrawrench.openService",
+          "when": "false"
+        },
+        {
+          "command": "infrawrench.copyText",
+          "when": "false"
+        },
+        {
+          "command": "infrawrench.openBlock",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "infrawrench.refresh",
+          "when": "view == infrawrench.services",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "infrawrench.estimateDiff",
+          "when": "resourceExtname == .tf",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "infrawrench",
+          "title": "Infrawrench",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "infrawrench": [
+        {
+          "id": "infrawrench.services",
+          "name": "Services"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "infrawrench.services",
+        "contents": "Sign in to see your organization's services.\n[Sign In](command:infrawrench.signIn)",
+        "when": "!infrawrench.signedIn"
+      }
+    ],
+    "configuration": {
+      "title": "Infrawrench",
+      "properties": {
+        "infrawrench.cloudUrl": {
+          "type": "string",
+          "default": "https://app.infrawrench.com",
+          "markdownDescription": "Origin of your Infrawrench cloud, e.g. `https://app.infrawrench.com`."
+        },
+        "infrawrench.openIn": {
+          "type": "string",
+          "enum": [
+            "web",
+            "desktop"
+          ],
+          "enumDescriptions": [
+            "Open resources in the web app.",
+            "Open resources in the Infrawrench desktop app (it must be signed in to the same organization)."
+          ],
+          "default": "web",
+          "description": "Where \"Open in Infrawrench\" goes."
+        },
+        "infrawrench.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the live resource and its cost above each Terraform resource block."
+        },
+        "infrawrench.costEstimate.repository": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "`owner/name` whose pull request check settings the working-tree estimate applies. Empty reads it from the `origin` remote."
+        },
+        "infrawrench.auth.workosClientId": {
+          "type": "string",
+          "default": "client_01KY8MAZ7NCYMN6K44G9FFZ5KS",
+          "description": "Sign-in client id. Change only for a self-hosted Infrawrench."
+        },
+        "infrawrench.auth.workosApiUrl": {
+          "type": "string",
+          "default": "https://auth-api.infrawrench.com",
+          "description": "Sign-in API origin. Change only for a self-hosted Infrawrench."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist out"
+  },
+  "dependencies": {
+    "@infrawrench/client-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "workspace:@infrawrench/typescript@*",
+    "vitest": "^4.1.10"
+  }
+}

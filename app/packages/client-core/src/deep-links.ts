@@ -49,6 +49,10 @@ export function webServiceUrl(baseUrl: string, orgId: string, serviceId?: string
   return serviceId ? `${base}/${encodeURIComponent(serviceId)}` : base;
 }
 
+export function webWorkflowUrl(baseUrl: string, orgId: string, workflowId: string): string {
+  return `${orgBase(baseUrl, orgId)}/workflows/${encodeURIComponent(workflowId)}`;
+}
+
 export function webOnCallUrl(baseUrl: string, orgId: string): string {
   return `${orgBase(baseUrl, orgId)}/settings/on-call`;
 }
