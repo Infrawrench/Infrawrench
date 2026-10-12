@@ -63,6 +63,7 @@ import { listJitGrantIssues } from "../jit-access/service";
 import { getSessionRecordingSettings } from "../ssh-recording/settings";
 import { listLeakedSecrets } from "../leaked-secrets/store";
 import { listScorecardRecords, listScorecardResults, scorecardToWire } from "../scorecards/store";
+import { listOrgScorecardTrend } from "../scorecards/org-snapshots";
 import { listServiceRecords } from "../service-catalog/store";
 
 export interface EvidenceContext {
@@ -367,10 +368,24 @@ const vulnerabilities: EvidenceEvaluator = async (ctx) => {
 const scorecardsSource: EvidenceEvaluator = async (ctx) => {
   // The overview the Scorecards view renders, read without seeding the
   // default scorecard: an evidence read must not create configuration.
-  const [cards, serviceRows, results] = await Promise.all([
+  const fromDay = ctx.start.toISOString().slice(0, 10);
+  const toDay = ctx.end.toISOString().slice(0, 10);
+  const [cards, serviceRows, results, gradeTrend] = await Promise.all([
     listScorecardRecords(ctx.organizationId),
     listServiceRecords(ctx.organizationId),
     listScorecardResults(ctx.organizationId),
+    // The org grade's stored daily readings inside the period (never computed
+    // live here: a pack describes what was recorded). A failed read costs
+    // only these figures, not the source.
+    listOrgScorecardTrend(ctx.organizationId, {
+      days: Math.ceil((ctx.end.getTime() - ctx.start.getTime()) / 86_400_000) + 1,
+      now: ctx.end.getTime(),
+    })
+      .then((trend) => trend.filter((p) => p.day >= fromDay && p.day < toDay))
+      .catch((err: unknown) => {
+        console.error("[compliance] org grade history read failed:", err);
+        return [];
+      }),
   ]);
   const summary = summarizeScorecardEvidence(
     {
@@ -398,6 +413,24 @@ const scorecardsSource: EvidenceEvaluator = async (ctx) => {
     m("stale", "Results older than 48 hours", summary.stale),
     m("lastEvaluated", "Last evaluated", summary.lastEvaluatedAt),
   ];
+  const latestGrade = gradeTrend[gradeTrend.length - 1];
+  const lowestGrade = gradeTrend.reduce<(typeof gradeTrend)[number] | undefined>(
+    (low, p) => (!low || p.score < low.score ? p : low),
+    undefined,
+  );
+  metrics.push(
+    m(
+      "orgGrade",
+      "Org grade (latest daily reading in period)",
+      latestGrade ? `${latestGrade.grade} ${latestGrade.score} on ${latestGrade.day}` : null,
+    ),
+    m(
+      "orgGradeLowest",
+      "Lowest org grade in period",
+      lowestGrade ? `${lowestGrade.grade} ${lowestGrade.score} on ${lowestGrade.day}` : null,
+    ),
+    m("orgGradeReadings", "Org grade daily readings in period", gradeTrend.length),
+  );
   for (const card of summary.byScorecard) {
     metrics.push(
       m(
@@ -458,7 +491,7 @@ const scorecardsSource: EvidenceEvaluator = async (ctx) => {
         r.serviceId,
       ]),
     ),
-    summary,
+    { ...summary, orgGradeReadings: gradeTrend },
   );
 };
 

@@ -213,6 +213,8 @@
     "./scorecards/store": "./src/scorecards/store.ts",
     "./scorecards/eval": "./src/scorecards/eval.ts",
     "./scorecards/pass": "./src/scorecards/pass.ts",
+    "./scorecards/org-grade": "./src/scorecards/org-grade.ts",
+    "./scorecards/org-snapshots": "./src/scorecards/org-snapshots.ts",
     "./backups/store": "./src/backups/store.ts",
     "./calendar/feed": "./src/calendar/feed.ts",
     "./calendar/subscriptions": "./src/calendar/subscriptions.ts",

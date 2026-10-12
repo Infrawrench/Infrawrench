@@ -3,6 +3,7 @@
 import type {
   DiscoveredTagKeysResponse,
   OnCallSchedule,
+  OrgScorecardResponse,
   OwnerCandidate,
   Runbook,
   Scorecard,
@@ -49,6 +50,8 @@ export interface ServicesClient {
   getServiceScorecards(serviceId: string): Promise<ServiceScorecardsResponse>;
   listScorecards(): Promise<Scorecard[]>;
   getScorecardOverview(): Promise<ScorecardOverviewResponse>;
+  /** The org grade above the matrix (`GET /scorecards/org`). */
+  getOrgScorecard(): Promise<OrgScorecardResponse>;
 
   listOwnerCandidates(): Promise<OwnerCandidate[]>;
   listOnCallSchedules(): Promise<OnCallSchedule[]>;

@@ -49,6 +49,10 @@ import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runSloPass } from "@infrawrench/server-core/slos/pass";
 import { runScorecardPass } from "@infrawrench/server-core/scorecards/pass";
+import {
+  pruneOrgScorecardSnapshots,
+  runOrgScorecardSnapshotPass,
+} from "@infrawrench/server-core/scorecards/org-snapshots";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
@@ -105,6 +109,10 @@ import type { TokenBucketRegistry } from "./token-bucket";
 
 const WORKFLOW_LIMIT = 8;
 const COST_LIMIT = 2;
+/** How often the org grade snapshot sweep may run, per process. */
+const ORG_SCORECARD_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
+/** Orgs snapshotted per sweep: seven feed computations each. */
+const ORG_SCORECARD_SNAPSHOTS_PER_RUN = 4;
 
 /** What the passes share across ticks within one process or isolate. */
 export interface PassContext {
@@ -275,6 +283,13 @@ async function runRetention(): Promise<void> {
     await pruneQuotaSnapshots();
   } catch (e) {
     console.error("[poller] quota snapshot retention tick failed:", e);
+  }
+  // Org grade readings keep 400 days, a year plus a margin, so "how did we
+  // look this time last year" survives a late prune.
+  try {
+    await pruneOrgScorecardSnapshots();
+  } catch (e) {
+    console.error("[poller] org grade snapshot retention tick failed:", e);
   }
   // Delivery rows ride the same hourly clock rather than their own: the work
   // is idempotent and tiny, and a second clock would be a second thing to
@@ -646,6 +661,23 @@ export const PASSES: readonly Pass[] = [
     name: "scorecards",
     runtime: "gateway",
     run: guarded("[scorecards] tick failed:", () => runScorecardPass({ limit: 5 })),
+  },
+
+  // The org grade's daily reading (the header above the scorecard matrix):
+  // today's snapshot for a bounded batch of orgs with a live account and no
+  // row yet. No lease: the `(organization_id, day)` primary key plus
+  // `onConflictDoNothing` makes the write once per day across replicas, and
+  // `minIntervalMs` keeps seven feed computations per org off the 15s tick.
+  // A steady state costs one indexed NOT EXISTS scan per run. Gateway, like
+  // `scorecards`: the posture and backup feeds bind plugin functions.
+  {
+    kind: "periodic",
+    name: "org-scorecard-snapshots",
+    runtime: "gateway",
+    minIntervalMs: ORG_SCORECARD_SNAPSHOT_INTERVAL_MS,
+    run: guarded("[scorecards] org grade snapshot tick failed:", () =>
+      runOrgScorecardSnapshotPass({ limit: ORG_SCORECARD_SNAPSHOTS_PER_RUN }),
+    ),
   },
 
   // DORA band changes: compare each subscribed org's trailing 30 days with

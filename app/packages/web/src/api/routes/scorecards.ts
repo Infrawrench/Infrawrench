@@ -1,5 +1,9 @@
 import { Hono, type Context } from "hono";
-import { isServiceTier, type ScorecardInput } from "@infrawrench/client-core";
+import {
+  ORG_SCORECARD_RETENTION_DAYS,
+  isServiceTier,
+  type ScorecardInput,
+} from "@infrawrench/client-core";
 import {
   ScorecardInputError,
   createScorecardRecord,
@@ -12,6 +16,10 @@ import {
   updateScorecardRecord,
 } from "@infrawrench/server-core/scorecards/store";
 import { evaluateOrgScorecards } from "@infrawrench/server-core/scorecards/eval";
+import {
+  getOrgScorecard,
+  listOrgScorecardTrend,
+} from "@infrawrench/server-core/scorecards/org-snapshots";
 import { listServiceRecords } from "@infrawrench/server-core/service-catalog/store";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
@@ -22,6 +30,10 @@ import { parseObjectBody } from "../object-body";
  * Scorecards: org-defined checks, weights and levels every service is graded
  * against. CRUD, the overview matrix, and an evaluate-now for the editor.
  * Scoring itself runs hourly in the poller (`server-core/src/scorecards/`).
+ *
+ * The org grade (`/org`, `/org/history`) is the header above the matrix:
+ * seven pillars read from existing feeds, one of them these scorecards'
+ * results, with a daily history the poller records.
  *
  * Reads are `resources:read`, writes `resources:write`: the SLO stance.
  * The first read seeds the default scorecard for orgs created before
@@ -129,6 +141,44 @@ app.get("/overview", async (c) => {
   const organizationId = c.get("organizationId");
   await ensureDefaultScorecard(organizationId);
   return c.json(await overview(organizationId));
+});
+
+/**
+ * The org grade: seven pillars, the weighted overall and the stored history.
+ * Never seeds the default scorecard (a read of the grade must not create
+ * configuration). `resources:read`, like every feed it reads: gating the
+ * summary more tightly than its parts would be a lock on a door with no
+ * walls. Listed as a gateway route: the posture and backup pillars bind
+ * plugin functions the edge Worker only stubs.
+ */
+app.get("/org", async (c) => {
+  requirePermission(c, "resources:read");
+  return c.json(await getOrgScorecard(c.get("organizationId")));
+});
+
+/**
+ * The org grade's history alone, the cheap half: a tile that wants only the
+ * sparkline should not pay for seven feed computations. Postgres only, so it
+ * stays on the edge.
+ */
+app.get("/org/history", async (c) => {
+  requirePermission(c, "resources:read");
+  const raw = c.req.query("days");
+  const days = raw === undefined ? undefined : Number(raw);
+  if (
+    days !== undefined &&
+    (!Number.isInteger(days) || days < 1 || days > ORG_SCORECARD_RETENTION_DAYS)
+  ) {
+    return c.json(
+      { error: `days must be a whole number between 1 and ${ORG_SCORECARD_RETENTION_DAYS}` },
+      400,
+    );
+  }
+  const trend = await listOrgScorecardTrend(
+    c.get("organizationId"),
+    days === undefined ? {} : { days },
+  );
+  return c.json({ trend });
 });
 
 app.get("/:id", async (c) => {

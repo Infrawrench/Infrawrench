@@ -1,4 +1,8 @@
-import { SCORECARD_CHECK_TYPE_IDS } from "@infrawrench/client-core";
+import {
+  ORG_SCORECARD_PILLARS,
+  ORG_SCORECARD_RETENTION_DAYS,
+  SCORECARD_CHECK_TYPE_IDS,
+} from "@infrawrench/client-core";
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
@@ -25,6 +29,16 @@ const CheckStatus = z.enum(["pass", "fail", "not_applicable", "error"]).openapi(
     "`not_applicable` leaves the score's denominator; `error` (a feed that could not be read) " +
     "counts as failing.",
 });
+
+const OrgPillarId = z
+  .enum(ORG_SCORECARD_PILLARS as unknown as [string, ...string[]])
+  .openapi("OrgScorecardPillarId", {
+    description:
+      "Which existing feed the org grade pillar reads. Each is a reading of a feed that " +
+      "already exists, so a pillar can never disagree with the page it links to.",
+  });
+
+const OrgGrade = z.enum(["A", "B", "C", "D", "F"]).openapi("OrgScorecardGrade");
 
 export function registerServicePaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
@@ -389,6 +403,82 @@ export function registerServicePaths(ctx: BuildContext) {
     results: z.array(ScorecardResult),
   }).openapi("ScorecardOverview");
 
+  const OrgScorecardFact = strict({
+    label: z.string(),
+    value: z.string(),
+    bad: z.boolean().optional().describe("True when this is the number that hurts."),
+  }).openapi("OrgScorecardFact");
+
+  const OrgScorecardPillar = strict({
+    id: OrgPillarId,
+    score: z
+      .number()
+      .int()
+      .min(0)
+      .max(100)
+      .nullable()
+      .describe(
+        "Null when the pillar could not be assessed, **never zero**. An unassessed pillar is " +
+          "excluded from the overall rather than counted as failure.",
+      ),
+    weight: z
+      .number()
+      .int()
+      .describe(
+        "Relative weight in the overall, fixed: posture 25, recoverability 20, services 15, " +
+          "deadlines 15, access 10, headroom 10, ownership 5. Weights renormalize over the " +
+          "assessed pillars, so gaining one cannot read as a regression.",
+      ),
+    headline: z.string().describe("What the score measures over, in one line."),
+    unassessedReason: z
+      .string()
+      .nullable()
+      .describe("Why there is no score, phrased so a reader can act on it. Null when scored."),
+    nextStep: z
+      .string()
+      .nullable()
+      .describe("The single most valuable thing to fix. Null when clean or unassessed."),
+    facts: z.array(OrgScorecardFact),
+  }).openapi("OrgScorecardPillar");
+
+  const OrgScorecardTrendPoint = strict({
+    day: z.string().openapi({ example: "2026-10-12" }).describe("UTC calendar day."),
+    score: z.number().int().min(0).max(100),
+    grade: OrgGrade,
+    pillars: z
+      .record(z.string(), z.number().int())
+      .describe("Per-pillar scores that day. A pillar unassessed then is absent, not zero."),
+  }).openapi("OrgScorecardTrendPoint");
+
+  const OrgScorecard = strict({
+    score: z
+      .number()
+      .int()
+      .min(0)
+      .max(100)
+      .nullable()
+      .describe(
+        "Weighted mean over the assessed pillars, or null when none could be assessed: an " +
+          "organization with nothing connected has nothing to grade.",
+      ),
+    grade: OrgGrade.nullable(),
+    pillars: z.array(OrgScorecardPillar),
+    failedPillars: z
+      .array(OrgPillarId)
+      .describe(
+        "Pillars whose computation failed, as opposed to having no data. Excluded from the " +
+          "overall exactly as unassessed ones are, but named apart.",
+      ),
+    trend: z
+      .array(OrgScorecardTrendPoint)
+      .describe("Stored daily readings for the last 90 days, oldest first."),
+    generatedAt: IsoDateTime,
+  }).openapi("OrgScorecard");
+
+  const OrgScorecardHistory = strict({
+    trend: z.array(OrgScorecardTrendPoint),
+  }).openapi("OrgScorecardHistory");
+
   const ServiceIdParam = OrgIdParam.extend({
     serviceId: z.string().describe("Service id or slug."),
   });
@@ -571,6 +661,51 @@ export function registerServicePaths(ctx: BuildContext) {
     description: "Every service, every scorecard and the current result for each applicable pair.",
     request: { params: OrgIdParam },
     responses: { 200: json("The matrix", ScorecardOverview) },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/scorecards/org",
+    tags: scTags,
+    summary: "Grade the organization",
+    description:
+      "The org grade shown above the scorecard matrix: one weighted reading over seven feeds " +
+      "the product already computes (security posture, backup coverage, the service " +
+      "scorecard results, declared deadlines, the cross-cloud access review, quota headroom " +
+      "and resource ownership). Nothing is re-derived.\n\n" +
+      "An unassessed pillar is excluded, never scored zero, and weights renormalize over what " +
+      "was assessed. The trend comes from a daily snapshot the poller records; days when " +
+      "nothing could be graded are absent rather than zero. Does not seed the default " +
+      "scorecard.",
+    request: { params: OrgIdParam },
+    responses: { 200: json("The org grade, its pillars and its history", OrgScorecard) },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/scorecards/org/history",
+    tags: scTags,
+    summary: "List stored org grade readings",
+    description:
+      "The daily history alone, without computing the grade: the cheap read for a " + "sparkline.",
+    request: {
+      params: OrgIdParam,
+      query: z.object({
+        days: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(ORG_SCORECARD_RETENTION_DAYS)
+          .optional()
+          .describe(
+            `How far back to read. Defaults to 90; readings are kept for ${ORG_SCORECARD_RETENTION_DAYS} days.`,
+          ),
+      }),
+    },
+    responses: {
+      200: json("Stored readings, oldest first", OrgScorecardHistory),
+      400: ErrorResponses[400],
+    },
   });
 
   registry.registerPath({

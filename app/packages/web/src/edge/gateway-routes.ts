@@ -48,6 +48,10 @@ const ALWAYS_GATEWAY: readonly RegExp[] = [
   /^\/api\/internal(\/|$)/,
   // SSE, and tools that drive drivers and SSH mid-stream.
   new RegExp(`${ORG}/chat(/|$)`),
+  // The org grade reads the posture and backup feeds, which bind plugin
+  // functions the edge registry only stubs: every attempt there would replay.
+  // Its history (`/scorecards/org/history`) is Postgres only and stays.
+  new RegExp(`${ORG}/scorecards/org$`),
   new RegExp(
     `${ORG}/(` +
       [

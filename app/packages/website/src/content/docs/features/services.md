@@ -1,6 +1,6 @@
 ---
 title: Services and scorecards
-description: Group resources across providers into the services you actually run, see each service's cost, reliability, findings, on-call and changes on one page, and grade every service against your own production-readiness bar.
+description: Group resources across providers into the services you actually run, see each service's cost, reliability, findings, on-call and changes on one page, grade every service against your own production-readiness bar, and see one org grade over it all.
 sidebar_order: 13
 ---
 
@@ -10,13 +10,15 @@ Neon database, a Cloudflare Worker and a queue. A **service** in Infrawrench nam
 says who owns it and how critical it is, and links the reliability objects that already exist on
 their own: [SLOs](./slos.md), [runbooks](./runbooks.md) and an [on-call schedule](./on-call.md).
 A **scorecard** then grades every service against the bar your organisation sets: does it have an
-owner, an on-call rotation, an SLO within budget, tested backups?
+owner, an on-call rotation, an SLO within budget, tested backups? Above the scorecards sits one
+[org grade](#org-grade) for the whole organisation, with a 90-day trend.
 
 <insert [The Services tab listing several services: name, Tier 1 / Tier 2 badges, owning team, member count and a Gold / Silver / Bronze level badge per scorecard] here>
 
 Find it under **Services** in the sidebar on the web app and the desktop app (cloud mode). The
-mobile app has a read-only list, service page and scorecard overview, and the `infrawrench`
-[CLI](./cli.md) prints the same data with `infrawrench services` and `infrawrench scorecards`.
+mobile app has a read-only list, service page and scorecard overview (with the org grade), and the
+`infrawrench` [CLI](./cli.md) prints the same data with `infrawrench services` and
+`infrawrench scorecards` (which prints the org grade first).
 
 ## Creating a service
 
@@ -136,6 +138,84 @@ scorecard. **Evaluate now** in the editor re-scores immediately; drops found tha
 but not announced, since you just changed the bar yourself. Each service's page shows its score
 history over the last 90 days.
 
+## Org grade
+
+The top of the **Scorecards** view answers "how are we doing overall?": one letter grade and a
+score out of 100, a 90-day trend line, the pillar dragging the grade down hardest, and a card per
+pillar. Each card says what it measured, what it would take to move it, and links to the page it
+reads.
+
+<insert [The top of the Scorecards view: the org grade header showing a B and 84, a 90-day trend sparkline, the "Biggest drag" callout naming Recoverability, and the grid of seven pillar cards (one marked "Not assessed"), with the service scorecard matrix starting below] here>
+
+### The seven pillars
+
+| Pillar            | Weight | Reads                                                            |
+| ----------------- | -----: | ---------------------------------------------------------------- |
+| Security posture  |     25 | [Posture checks](./posture-checks.md)                            |
+| Recoverability    |     20 | [Backup coverage](./backup-coverage.md)                          |
+| Service standards |     15 | The service scorecards on this page                              |
+| Deadlines         |     15 | [Expiry radar](./expiry-radar.md)                                |
+| Access hygiene    |     10 | [Access review](./access-review.md)                              |
+| Headroom          |     10 | [Quota radar](./quota-radar.md), scored on the worst quota       |
+| Ownership         |      5 | [Resource owner records](../core-concepts/resource-ownership.md) |
+
+Nothing on the org grade is a new check. Each pillar reads exactly the feed its own page reads, so
+a number here can never disagree with the page it links to. **Service standards** is the mean
+score of every service on every scorecard that applies to it by tier, the same cells the matrix
+below shows; services that are not scored (no check applies, or not evaluated yet) are left out.
+
+The weights are fixed and encode a claim we are willing to defend: an exposed database is worse
+than an unowned one, and losing data is worse than running out of a quota you can ask to have
+raised. Service standards takes 15 because it carries what no other pillar measures (on-call,
+SLOs, runbooks, vulnerabilities, change failure rate), and its weight came from posture,
+recoverability and access, the pillars your default scorecard already partly re-checks per
+service. If you disagree with the weights, the pillars are always on screen: the grade is never
+the only thing you can see.
+
+Grades: **A** from 90, **B** from 80, **C** from 65, **D** from 50, **F** below 50.
+
+### Two rules that keep the number honest
+
+**A pillar with nothing to measure is left out, never scored zero.** If no connected provider
+reports quotas, you have no headroom score, not a headroom score of nought. An organisation with no
+services has no service standards score.
+
+**Weights are shared out over what was measured.** With four of seven pillars measurable, the
+grade is the weighted mean of those four, so connecting a provider that reports quotas, or scoring
+your first service, can never look like a sudden drop.
+
+A brand new organisation shows no grade at all rather than an F. If a pillar fails to run, as
+opposed to having nothing to measure, the page says so and leaves it out: "you have no
+quota-reporting provider" and "we could not read your quotas" are different answers.
+
+### The trend
+
+A reading is recorded once a day, in the background, for every organisation with at least one
+connected account. The page draws the last 90 days and keeps 400. The line is always plotted
+against the full 0 to 100 range, so a two-point wobble does not look like a cliff. Days where
+nothing could be graded are absent rather than stored as zero, and your first day has no line:
+two readings are needed before one can be drawn.
+
+The [compliance evidence](./compliance.md) for service scorecards includes the org grade's daily
+readings over the pack's period.
+
+### What is not on it
+
+**Cost efficiency** is missing on purpose for now: waste and tag-policy compliance are computed over
+billing data, and a pillar that could only be scored for organisations with cost collection
+enabled would be unassessed for most people while looking like a gap.
+[Potential savings](./orphan-finder.md) and [tag policy](./tag-policy-and-showback.md) remain their
+own pages. **Terraform drift** is absent because reconciliation loads your whole inventory per
+state document, which would make a daily grade the most expensive job we run. See
+[IaC reconciliation](./iac-reconciliation.md).
+
+### Over the API
+
+`GET /api/org/{orgId}/scorecards/org` returns the pillars, the grade and the last 90 days of
+history. `GET /api/org/{orgId}/scorecards/org/history?days=` returns just the history, up to 400
+days, for a tile that only wants the sparkline. See the
+[OpenAPI reference](../team-and-billing/openapi.md).
+
 ## Terraform
 
 Services and scorecards can be managed with the
@@ -145,5 +225,6 @@ Terraform-native way to define members; resources picked by hand are managed in 
 
 ## Permissions
 
-Viewing services and scorecards needs **Read resources**; creating and editing them needs
-**Write resources**, the same permissions as resource ownership and SLOs.
+Viewing services, scorecards and the org grade needs **Read resources**; creating and editing
+services and scorecards needs **Write resources**, the same permissions as resource ownership and
+SLOs. The org grade has nothing to configure.

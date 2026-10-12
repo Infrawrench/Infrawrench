@@ -21786,5 +21786,32 @@
       " días, personas que pagan por dos herramientas que hacen lo mismo y licencias en un nivel más caro del que su uso necesita."
     ]
   },
-  "95514a6660c65444": "Filtrar por servicio"
+  "95514a6660c65444": "Filtrar por servicio",
+  "a504674a0379c418": "La tendencia aparece cuando se ha registrado una segunda lectura diaria.",
+  "57fd2d29470a529e": "Calificación en las últimas {count} lecturas",
+  "5e582b8919071238": "Postura de seguridad",
+  "d68b903f8e366f4b": "Recuperabilidad",
+  "c7ee4622c0d5404d": "Estándares de servicio",
+  "147d89f732ea81c6": "Higiene de acceso",
+  "4bd2e9669b90824f": "Margen",
+  "7e08eecf78404a56": "Hallazgos de postura abiertos, ponderados por gravedad, en tus recursos sincronizados.",
+  "281ef602dc3a1641": "La proporción de recursos con estado que algo protege realmente.",
+  "e59cccf9975e9db1": "La puntuación media de los servicios en las scorecards de abajo.",
+  "79743db43371384e": "Certificados, dominios, claves y alquileres que han caducado o están a punto de hacerlo.",
+  "6c4ce0c696159bcb": "Hallazgos sobre los usuarios, roles y cuentas de servicio de IAM dentro de tus nubes.",
+  "52a0e71f6bdffc9a": "La peor cuota del proveedor: lo que detendrá primero un despliegue.",
+  "5f1c6dc7e73a19f0": "La proporción de recursos que tienen el nombre de alguien.",
+  "8e858f757b96715c": "Siguiente: {step}",
+  "c2f5efe9c1560678": "Peso {weight}",
+  "80396c0d9b6fc261": "No se pudo cargar la calificación de la organización",
+  "a0b27f3d1b18e0ac": "Calificación de la organización",
+  "1ba42e74a3f43ec3": "Una sola lectura sobre comprobaciones que ya tienes: postura, copias de seguridad, las scorecards de servicio de abajo, plazos, acceso a la nube, margen de cuotas y propiedad. Cada número es el mismo que muestra su propia página.",
+  "7bdb86addd169f62": "No se pudo actualizar la calificación de la organización; se muestra la última cargada. {error}",
+  "8b94f5646ed98367": "Leyendo la calificación de la organización…",
+  "d19dce518c2dd2e8": "{count} comprobaciones no se pudieron leer y se excluyen de la calificación, no cuentan en su contra.",
+  "8dea74a8fc939285": "Total",
+  "fca2f72df8fef7e3": "Todavía no se ha podido evaluar nada. Conecta una cuenta y deja que se sincronice; una calificación antes de que haya algo que calificar sería solo una suposición.",
+  "8872c1bb1dbcd3f1": "desde {day}",
+  "b623d7676b816425": "Mayor lastre",
+  "fb3a70a74b0292f3": "Una comprobación sin nada que medir se excluye de la calificación en lugar de contar como fallo, y los pesos se reparten entre lo que se ha medido, así que conectar un proveedor nuevo nunca puede parecer una caída. Los pesos son fijos: postura 25, recuperabilidad 20, estándares de servicio 15, plazos 15, acceso 10, margen 10, propiedad 5."
 }

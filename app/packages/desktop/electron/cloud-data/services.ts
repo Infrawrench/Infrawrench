@@ -127,6 +127,20 @@ ipcMain.handle("cloud_scorecards_overview", async (_e, { orgId }: { orgId: strin
   return cloudFetch(orgId, "/scorecards/overview");
 });
 
+// The org grade above the matrix. The grade read computes seven feeds on the
+// server; the history read is the cheap half for a sparkline alone.
+ipcMain.handle("cloud_scorecards_org", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/scorecards/org");
+});
+
+ipcMain.handle(
+  "cloud_scorecards_org_history",
+  async (_e, { orgId, days }: { orgId: string; days?: number }) => {
+    const query = typeof days === "number" ? `?days=${encodeURIComponent(String(days))}` : "";
+    return cloudFetch(orgId, `/scorecards/org/history${query}`);
+  },
+);
+
 ipcMain.handle(
   "cloud_scorecards_create",
   async (_e, { orgId, input }: { orgId: string; input: unknown }) => {

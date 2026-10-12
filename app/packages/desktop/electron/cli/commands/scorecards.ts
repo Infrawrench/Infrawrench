@@ -1,4 +1,5 @@
-// `infrawrench scorecards`: the service × scorecard matrix (rows services,
+// `infrawrench scorecards`: the org grade (overall grade, 90-day trend and the
+// seven pillars it reads) above the service × scorecard matrix (rows services,
 // columns scorecards, each cell the score and level), and
 // `infrawrench scorecards <id|name>` for one scorecard's definition plus every
 // service's result on it, best first, with a 90-day score sparkline.
@@ -7,7 +8,9 @@
 // edited from the web/desktop Scorecards tab.
 //
 // `--json` shapes:
-//   scorecards         → { org, scorecards, services, results }  (GET /scorecards/overview)
+//   scorecards         → { org, orgGrade, scorecards, services, results }
+//                        `orgGrade` is GET /scorecards/org (null when it could not be read),
+//                        the rest GET /scorecards/overview.
 //   scorecards <name>  → { org, scorecard, services, results, history }
 //                        `history` is service id → daily points for this scorecard.
 //
@@ -15,6 +18,7 @@
 // loaded with a dynamic import (the CLI project is CJS).
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
+  OrgScorecardResponse,
   Scorecard,
   ScorecardHistoryPoint,
   ScorecardOverviewResponse,
@@ -23,7 +27,7 @@ import type {
   ServiceScorecardsResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { c, printJson, println, printTable, safe, type Column } from "../output";
-import { sparkline } from "../charts";
+import { rangedSparkline, sparkline } from "../charts";
 import {
   formatChangeTime,
   formatScoreCell,
@@ -56,7 +60,14 @@ export async function cmdScorecards(ctx: CliContext, arg?: string): Promise<void
     );
   }
   const org = await resolveOrg(ctx);
-  const overview = await orgFetch<ScorecardOverviewResponse>(org.id, "/scorecards/overview");
+  const [overview, orgGrade] = await Promise.all([
+    orgFetch<ScorecardOverviewResponse>(org.id, "/scorecards/overview"),
+    // Only the matrix view prints the grade. It computes seven feeds on the
+    // server, and a failure there must not cost the matrix.
+    arg
+      ? Promise.resolve(null)
+      : orgFetch<OrgScorecardResponse>(org.id, "/scorecards/org").catch(() => null),
+  ]);
 
   if (arg) {
     const byId = matchIdPrefix(overview.scorecards, arg);
@@ -74,9 +85,12 @@ export async function cmdScorecards(ctx: CliContext, arg?: string): Promise<void
   }
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, ...overview });
+    printJson({ org: org.id, orgGrade, ...overview });
     return;
   }
+
+  const core: Core = await import("@infrawrench/client-core");
+  printOrgGrade(core, safe(org.displayName), orgGrade);
 
   const { scorecards, services, results } = overview;
   if (scorecards.length === 0) {
@@ -111,6 +125,81 @@ export async function cmdScorecards(ctx: CliContext, arg?: string): Promise<void
       "n/a: the scorecard does not apply to the service's tier. `infrawrench scorecards <name>` shows one scorecard's checks.",
     ),
   );
+}
+
+function gradeColor(grade: string): (s: string) => string {
+  if (grade === "A" || grade === "B") return c.green;
+  if (grade === "C") return c.yellow;
+  return c.red;
+}
+
+/** The org grade block printed above the matrix. */
+function printOrgGrade(core: Core, orgName: string, grade: OrgScorecardResponse | null): void {
+  if (!grade) {
+    println(c.dim("Org grade: could not be read right now. The matrix below is unaffected."));
+    println();
+    return;
+  }
+  if (grade.score === null || grade.grade === null) {
+    println(
+      `${c.bold("Org grade")} ${c.dim(`· ${orgName} · nothing could be assessed yet; connect an account and let it sync`)}`,
+    );
+    println();
+    return;
+  }
+  const delta = core.orgScorecardTrendDelta(grade.trend, grade.score);
+  const since =
+    delta !== null && delta !== 0 && grade.trend[0]
+      ? `  ${(delta > 0 ? c.green : c.red)(`${delta > 0 ? "+" : ""}${delta}`)} ${c.dim(`since ${grade.trend[0].day}`)}`
+      : "";
+  println(
+    `${c.bold("Org grade")}  ${c.bold(gradeColor(grade.grade)(grade.grade))} ${grade.score}${since}  ${c.dim(`· ${orgName}`)}`,
+  );
+  if (grade.trend.length > 1) {
+    println(
+      `  ${c.dim(
+        rangedSparkline(
+          grade.trend.map((p) => p.score),
+          0,
+          100,
+          Math.min(grade.trend.length, 30),
+        ),
+      )} ${c.dim(`${grade.trend.length} daily readings`)}`,
+    );
+  }
+  const drag = core.orgScorecardBiggestDrag(grade.pillars);
+  if (drag) {
+    println(
+      `  ${c.dim("biggest drag:")} ${core.ORG_SCORECARD_PILLAR_LABELS[drag.id]}${drag.nextStep ? c.dim(` · ${safe(drag.nextStep)}`) : ""}`,
+    );
+  }
+  if (grade.failedPillars.length > 0) {
+    println(
+      c.yellow(
+        `  ${grade.failedPillars.length} pillar${grade.failedPillars.length === 1 ? "" : "s"} could not be read and ${grade.failedPillars.length === 1 ? "is" : "are"} excluded, not counted against the grade`,
+      ),
+    );
+  }
+  println();
+  printTable(
+    grade.pillars,
+    [
+      { header: "pillar", value: (p) => core.ORG_SCORECARD_PILLAR_LABELS[p.id] },
+      { header: "weight", value: (p) => String(p.weight), align: "right" },
+      {
+        header: "score",
+        value: (p) => (p.score === null ? c.dim("n/a") : String(p.score)),
+        align: "right",
+      },
+      {
+        header: "reading",
+        value: (p) =>
+          p.score === null ? c.dim(safe(p.unassessedReason ?? p.headline)) : safe(p.headline),
+      },
+    ],
+    { indent: 2 },
+  );
+  println();
 }
 
 async function fetchHistories(

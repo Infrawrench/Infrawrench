@@ -1,7 +1,14 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { useUIStore } from "@infrawrench/ui";
+import {
+  accessReviewTabTarget,
+  backupsTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  quotasTabTarget,
+  useUIStore,
+} from "@infrawrench/ui";
 import { ServicesPanel } from "@infrawrench/ui/services";
 import { createDesktopServicesClient } from "@/lib/services-client";
 import {
@@ -28,6 +35,19 @@ export function DesktopServicesPanel({
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopServicesClient(), []);
+  // The org grade's pillar cards lead to the page each one reads. Ownership
+  // is recorded per resource and has no org-level page; service standards
+  // reads the matrix on the same view.
+  const orgScorecardLinks = useMemo(
+    () => ({
+      posture: () => void navigate(getWorkspaceNavigateArgs(postureTabTarget())),
+      recoverability: () => void navigate(getWorkspaceNavigateArgs(backupsTabTarget())),
+      deadlines: () => void navigate(getWorkspaceNavigateArgs(expiringTabTarget())),
+      access: () => void navigate(getWorkspaceNavigateArgs(accessReviewTabTarget())),
+      headroom: () => void navigate(getWorkspaceNavigateArgs(quotasTabTarget())),
+    }),
+    [navigate],
+  );
 
   if (!activeCloudOrgId) {
     return (
@@ -50,6 +70,7 @@ export function DesktopServicesPanel({
             label: gt("Services"),
           })
         }
+        orgScorecardLinks={orgScorecardLinks}
         onOpenResource={(ref) =>
           void navigate(
             getWorkspaceNavigateArgs(

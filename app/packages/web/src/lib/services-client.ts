@@ -6,6 +6,7 @@ import type {
 import type {
   DiscoveredTagKeysResponse,
   OnCallSchedule,
+  OrgScorecardResponse,
   OwnerCandidate,
   Runbook,
   Scorecard,
@@ -56,6 +57,7 @@ export function createWebServicesClient(
     getServiceScorecards: (id) => apiGet<ServiceScorecardsResponse>(`${one(id)}/scorecards`),
     listScorecards: async () => (await apiGet<ScorecardListResponse>(scorecards)).scorecards,
     getScorecardOverview: () => apiGet<ScorecardOverviewResponse>(`${scorecards}/overview`),
+    getOrgScorecard: () => apiGet<OrgScorecardResponse>(`${scorecards}/org`),
     listOwnerCandidates: async () =>
       (await apiGet<{ members: OwnerCandidate[] }>(`${org}/ownership/members`)).members,
     listOnCallSchedules: async () =>

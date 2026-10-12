@@ -377,8 +377,9 @@ COMMANDS
                       one service: owners, links, on-call now & next, 30-day cost, SLOs,
                       runbooks, findings, members, recent changes & why each scorecard check
                       failed (--json: { service, members, excluded, summary, scorecards, history })
-  scorecards [id|name]  every service × scorecard, score % and level per cell (give an id/name
-                      for its checks, weights, levels & each service's score with a 90-day trend)
+  scorecards [id|name]  the org grade (seven pillars, 90-day trend) above every service ×
+                      scorecard, score % and level per cell (give an id/name for its checks,
+                      weights, levels & each service's score with a 90-day trend)
   dora [changes|restores|settings]
                       DORA metrics for production: deploy frequency, lead time, change failure
                       rate & time to restore, with bands, the previous period & a trend

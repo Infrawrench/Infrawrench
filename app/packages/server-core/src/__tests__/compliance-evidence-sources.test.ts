@@ -127,6 +127,14 @@ vi.mock("../scorecards/store", () => ({
     },
   ],
 }));
+vi.mock("../scorecards/org-snapshots", () => ({
+  listOrgScorecardTrend: async () => [
+    // Before the period: not evidence of it.
+    { day: "2026-06-30", score: 40, grade: "F", pillars: {} },
+    { day: "2026-08-01", score: 72, grade: "C", pillars: { posture: 80 } },
+    { day: "2026-09-30", score: 84, grade: "B", pillars: { posture: 90 } },
+  ],
+}));
 vi.mock("../service-catalog/store", () => ({
   listServiceRecords: async () => [
     { id: "svc1", name: "Checkout API", slug: "checkout", tier: 1, ownerTeam: "Payments" },
@@ -167,5 +175,13 @@ describe("scorecards evidence", () => {
     ]);
     expect(out.csv).toContain("Checkout API");
     expect(out.csv).toContain("Has runbook: No runbook linked");
+  });
+
+  it("reports the org grade from the daily readings inside the period", async () => {
+    const out = await getEvidenceEvaluator("scorecards")!(ctx);
+    const metric = (key: string) => out.result.metrics.find((x) => x.key === key)?.value;
+    expect(metric("orgGrade")).toBe("B 84 on 2026-09-30");
+    expect(metric("orgGradeLowest")).toBe("C 72 on 2026-08-01");
+    expect(metric("orgGradeReadings")).toBe(2);
   });
 });

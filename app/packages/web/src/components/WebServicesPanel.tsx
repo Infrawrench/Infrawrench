@@ -1,4 +1,12 @@
 import { useMemo } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  accessReviewTabTarget,
+  backupsTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  quotasTabTarget,
+} from "@infrawrench/ui";
 import {
   ServicesPanel,
   type ServiceResourceRef,
@@ -6,6 +14,7 @@ import {
 } from "@infrawrench/ui/services";
 import { usePermissions } from "@/auth/permissions-context";
 import { createWebServicesClient } from "@/lib/services-client";
+import { getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
 
 /**
  * Web host for the shared Services screen, rendered as the "services"
@@ -34,6 +43,20 @@ export function WebServicesPanel({
     () => createWebServicesClient(orgId, { canWrite, canReadTeam, canReadCosts }),
     [orgId, canWrite, canReadTeam, canReadCosts],
   );
+  const navigate = useNavigate();
+  // The org grade's pillar cards lead to the page each one reads. Ownership
+  // is recorded per resource and has no org-level page; service standards
+  // reads the matrix on the same view.
+  const orgScorecardLinks = useMemo(
+    () => ({
+      posture: () => void navigate(getWorkspaceNavigateArgs(postureTabTarget())),
+      recoverability: () => void navigate(getWorkspaceNavigateArgs(backupsTabTarget())),
+      deadlines: () => void navigate(getWorkspaceNavigateArgs(expiringTabTarget())),
+      access: () => void navigate(getWorkspaceNavigateArgs(accessReviewTabTarget())),
+      headroom: () => void navigate(getWorkspaceNavigateArgs(quotasTabTarget())),
+    }),
+    [navigate],
+  );
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
@@ -44,6 +67,7 @@ export function WebServicesPanel({
         view={view}
         onNavigate={onNavigate}
         onOpenResource={onOpenResource}
+        orgScorecardLinks={orgScorecardLinks}
       />
     </div>
   );

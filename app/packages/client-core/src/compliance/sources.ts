@@ -166,7 +166,7 @@ export const EVIDENCE_SOURCES: Record<BuiltinEvidenceSourceId, EvidenceSourceDef
     id: "scorecards",
     label: "Service scorecards",
     description:
-      "Every service graded against the org's scorecards at generation time: score, level reached, and each failing check with its reason.",
+      "Every service graded against the org's scorecards at generation time: score, level reached, and each failing check with its reason. Also the org grade's daily readings over the period.",
     kind: "snapshot",
     permission: "resources:read",
     surface: "Services > Scorecards",

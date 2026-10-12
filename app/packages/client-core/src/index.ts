@@ -941,6 +941,9 @@ export * from "./slos";
 // A logical service across providers, and how ready each one is.
 export * from "./services";
 export * from "./scorecards";
+// One graded reading over the radars above, shown above the scorecard matrix.
+// Pure arithmetic only; the pillars are assembled server-side.
+export * from "./org-scorecard";
 export * from "./dora";
 export * from "./org-config";
 export * from "./rightsizing";
