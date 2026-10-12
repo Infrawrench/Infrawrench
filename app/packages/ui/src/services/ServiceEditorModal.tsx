@@ -673,7 +673,6 @@ export function ServiceEditorModal({
                     aria-label={gt("Link {n} URL", { n: i + 1 })}
                     className={inputClass}
                     maxLength={SERVICE_LIMITS.linkUrlMaxLength}
-                    // i18n-ignore: example URL
                     placeholder="https://"
                     value={link.url}
                     onChange={(e) =>
