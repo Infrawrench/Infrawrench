@@ -144,6 +144,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /extended-support/settings": "org:settings:write",
   "PUT /extended-support/settings": "org:settings:write",
   "GET /posture": "resources:read",
+  // leaked credentials; reading is the posture stance, acting on one rotates
+  // or accepts a secret, so it needs secrets:write.
+  "GET /leaked-secrets": "resources:read",
+  "POST /leaked-secrets/scan": "secrets:write",
+  "POST /leaked-secrets/{id}/rotate": "secrets:write",
+  "POST /leaked-secrets/{id}/mark-rotated": "secrets:write",
+  "POST /leaked-secrets/{id}/dismiss": "secrets:write",
+  "POST /leaked-secrets/{id}/reopen": "secrets:write",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
   // cross-cloud access review; the posture stance exactly: the review and its

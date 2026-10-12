@@ -86,6 +86,9 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // guard, and Send test event delivers inline, through plugin code for a
   // publish destination. Reads (the list, the delivery log) stay on the edge.
   new RegExp(`${ORG}/event-subscriptions(/|$)`),
+  // Leaked credentials: scanning, rotating and closing a finding upstream all
+  // call plugin code (the scanner, the issuer's reroll). Reads stay on the edge.
+  new RegExp(`${ORG}/leaked-secrets/(scan|[^/]+/(rotate|mark-rotated|dismiss|reopen))$`),
   // A pull request check preview prices Terraform through plugin estimators
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.

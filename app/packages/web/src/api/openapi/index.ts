@@ -56,6 +56,7 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
+import { registerLeakedSecretPaths } from "./paths/leaked-secrets";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
@@ -212,6 +213,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
+  registerLeakedSecretPaths(ctx);
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
@@ -605,6 +607,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Microsoft Teams",
         description:
           "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
+      },
+      {
+        name: "Leaked credentials",
+        description:
+          "Secrets a scanner account (GitHub secret scanning, GitLab secret detection) found committed to code, matched by keyed fingerprint to the account or stored secret they belong to, and rotated from here.",
       },
       {
         name: "Event subscriptions",
