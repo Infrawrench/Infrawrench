@@ -366,6 +366,8 @@ func specChecks() []specCheck {
 
 		{schema: "DriftAlertSettings", value: DriftAlertSettings{}},
 		{schema: "DriftAlertSettingsUpdate", value: DriftAlertSettingsUpdate{}},
+		{schema: "DoraSettings", value: DoraSettings{}},
+		{schema: "DoraSettingsUpdate", value: DoraSettingsUpdate{}},
 		{schema: "ExpiryAlertSettings", value: ExpiryAlertSettings{}},
 		{schema: "ExpiryAlertSettingsUpdate", value: ExpiryAlertSettingsUpdate{}},
 		{schema: "ExtendedSupportSettings", value: ExtendedSupportSettings{}},

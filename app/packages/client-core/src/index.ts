@@ -940,6 +940,7 @@ export * from "./slos";
 // A logical service across providers, and how ready each one is.
 export * from "./services";
 export * from "./scorecards";
+export * from "./dora";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./remediation";

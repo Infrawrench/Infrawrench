@@ -86,6 +86,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/services`)}
         />
         <Row
+          title="Delivery"
+          subtitle="Deploy frequency, lead time, failure rate and time to restore"
+          onPress={() => router.push(`/org/${orgId}/delivery`)}
+        />
+        <Row
           title="Log workspace"
           subtitle="Saved multi-resource log tails and match alerts"
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}

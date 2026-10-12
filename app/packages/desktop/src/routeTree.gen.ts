@@ -20,6 +20,7 @@ import { Route as ComplianceRouteImport } from './routes/compliance'
 import { Route as CostCanvasesRouteImport } from './routes/cost-canvases'
 import { Route as CostReportsRouteImport } from './routes/cost-reports'
 import { Route as CostsRouteImport } from './routes/costs'
+import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
@@ -105,6 +106,11 @@ const CostReportsRoute = CostReportsRouteImport.update({
 const CostsRoute = CostsRouteImport.update({
   id: '/costs',
   path: '/costs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
@@ -276,6 +282,7 @@ export interface FileRoutesByFullPath {
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -320,6 +327,7 @@ export interface FileRoutesByTo {
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/cost-canvases': typeof CostCanvasesRoute
   '/cost-reports': typeof CostReportsRoute
   '/costs': typeof CostsRoute
+  '/delivery': typeof DeliveryRoute
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
@@ -411,6 +420,7 @@ export interface FileRouteTypes {
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -455,6 +465,7 @@ export interface FileRouteTypes {
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -499,6 +510,7 @@ export interface FileRouteTypes {
     | '/cost-canvases'
     | '/cost-reports'
     | '/costs'
+    | '/delivery'
     | '/deployments'
     | '/dns'
     | '/environment-diff'
@@ -544,6 +556,7 @@ export interface RootRouteChildren {
   CostCanvasesRoute: typeof CostCanvasesRoute
   CostReportsRoute: typeof CostReportsRoute
   CostsRoute: typeof CostsRoute
+  DeliveryRoute: typeof DeliveryRoute
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
@@ -654,6 +667,13 @@ declare module '@tanstack/react-router' {
       path: '/costs'
       fullPath: '/costs'
       preLoaderRoute: typeof CostsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delivery': {
+      id: '/delivery'
+      path: '/delivery'
+      fullPath: '/delivery'
+      preLoaderRoute: typeof DeliveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments': {
@@ -888,6 +908,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostCanvasesRoute: CostCanvasesRoute,
   CostReportsRoute: CostReportsRoute,
   CostsRoute: CostsRoute,
+  DeliveryRoute: DeliveryRoute,
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,

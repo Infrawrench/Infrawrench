@@ -78,6 +78,7 @@ import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
+import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
@@ -255,6 +256,14 @@ async function runRetention(): Promise<void> {
     await pruneCreditSnapshots();
   } catch (e) {
     console.error("[poller] credit snapshot retention tick failed:", e);
+  }
+  // DORA deploy events keep a little over a year: the Delivery page's longest
+  // range is a year, and its previous-period delta needs the year before
+  // that only for the first few weeks, which is not worth keeping forever.
+  try {
+    await pruneDeployEvents();
+  } catch (e) {
+    console.error("[poller] deploy event retention tick failed:", e);
   }
   // Quota snapshots keep a year for the same reason credit snapshots do:
   // the rows are tiny, and a longer series is the only way to answer "when

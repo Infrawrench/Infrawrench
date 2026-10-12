@@ -14,6 +14,7 @@ import { buildkiteRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { buildkiteTerraformExport } from "./terraform.js";
+import { buildkiteDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "buildkite",
@@ -87,6 +88,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: buildkiteDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BuildkiteClient(credentials, services),

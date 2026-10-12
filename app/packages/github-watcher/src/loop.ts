@@ -10,6 +10,7 @@ import {
 import { getBranchHeadSha, isGithubAppConfigured } from "@infrawrench/server-core/github/app";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { runPrCheckPass } from "@infrawrench/server-core/pr-checks/pass";
+import { runDoraGithubPass } from "@infrawrench/server-core/dora/github-pass";
 
 const TICK_MS = 30_000;
 
@@ -50,7 +51,8 @@ interface LoopOptions {
  * same installations, so one slow deploy never delays a workflow (or the
  * reverse) beyond the tick it is in. Pull request checks are the third pass:
  * cost and blast radius posted as a check run on each new head commit of an
- * open pull request in a repository the org enabled them on.
+ * open pull request in a repository the org enabled them on. The fourth pass
+ * feeds DORA metrics: commit times and GitHub deployments (`dora/github-pass`).
  */
 export class GithubWatcher extends TickLoop {
   constructor(options: LoopOptions = {}) {
@@ -63,6 +65,8 @@ export class GithubWatcher extends TickLoop {
     await this.workflowPass();
     await this.deploymentPass();
     await runPrCheckPass().catch((e) => console.error("[github-watcher] pr-check pass failed:", e));
+    // DORA: commit times for lead time, and deployments other tools made.
+    await runDoraGithubPass();
   }
 
   private async workflowPass(): Promise<void> {

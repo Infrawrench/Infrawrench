@@ -15,6 +15,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
 import type { GlGroup, GlUser } from "./types.js";
+import { gitlabDeployEvents } from "./deploy-events.js";
 
 const SCOPES_LINK = {
   label: "Create a personal access token",
@@ -185,6 +186,7 @@ async function listCredentialOptions(
 }
 
 export const plugin: Plugin = {
+  deployEvents: gitlabDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new GitLabClient(credentials, services),

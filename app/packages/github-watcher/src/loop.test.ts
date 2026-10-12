@@ -59,6 +59,9 @@ const runPrCheckPass = vi.fn().mockResolvedValue(undefined);
 vi.mock("@infrawrench/server-core/pr-checks/pass", () => ({
   runPrCheckPass: () => runPrCheckPass(),
 }));
+vi.mock("@infrawrench/server-core/dora/github-pass", () => ({
+  runDoraGithubPass: () => Promise.resolve(),
+}));
 
 const { GithubWatcher } = await import("./loop");
 const { runDeployment } = vi.mocked(await import("@infrawrench/server-core/infrafile/runner"));

@@ -22,6 +22,7 @@ import {
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
+  deliveryTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -131,6 +132,10 @@ describe("tab target factories", () => {
       kind: "services",
       serviceId: "svc-1",
     });
+  });
+
+  it("deliveryTabTarget carries no state", () => {
+    expect(deliveryTabTarget()).toEqual({ kind: "delivery" });
   });
 
   it("workflowsTabTarget omits workflowId for the list view", () => {

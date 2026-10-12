@@ -269,6 +269,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "runbooks" })).toEqual({ to: "/runbooks" });
   });
 
+  it("returns delivery route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "delivery" })).toEqual({ to: "/delivery" });
+  });
+
   it("returns query-monitors route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "query-monitors" })).toEqual({ to: "/query-monitors" });
   });
@@ -413,6 +417,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the runbooks path", () => {
     expect(syncWorkspaceRouteFromPath("/runbooks")).toEqual({ kind: "runbooks" });
+  });
+
+  it("parses the delivery path", () => {
+    expect(syncWorkspaceRouteFromPath("/delivery")).toEqual({ kind: "delivery" });
   });
 
   it("parses the query-monitors path", () => {

@@ -6,6 +6,7 @@ import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { spaceliftTerraformExport } from "./terraform.js";
+import { spaceliftDeployEvents } from "./deploy-events.js";
 
 const manifest: PluginManifest = {
   id: "spacelift",
@@ -71,6 +72,7 @@ function validateServerCredentials(credentials: Record<string, string>): string 
 }
 
 export const plugin: Plugin = {
+  deployEvents: spaceliftDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SpaceliftClient(credentials, services),

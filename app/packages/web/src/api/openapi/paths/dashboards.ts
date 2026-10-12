@@ -223,6 +223,7 @@ const TabTarget = strict({
     "incidents",
     "slos",
     "services",
+    "delivery",
     "workflows",
     "deployments",
     "settings",

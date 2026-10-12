@@ -63,6 +63,8 @@ export type WorkspaceTabTarget =
    * reactivation and reload return to the same place.
    */
   | { kind: "services"; serviceId?: string; view?: "scorecards" }
+  /** Delivery: DORA metrics over deploys and incidents. Single-instance, no state. */
+  | { kind: "delivery" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -223,6 +225,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "slos";
     case "services":
       return "services";
+    case "delivery":
+      return "delivery";
     case "workflows":
       // Not keyed by workflow: opening a second workflow should retarget the
       // open Workflows tab rather than pile up a tab per workflow. The id on
@@ -326,6 +330,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "SLOs";
     case "services":
       return "Services";
+    case "delivery":
+      return "Delivery";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -369,6 +375,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "calendar":
     case "runbooks":
     case "query-monitors":
+    case "delivery":
     case "dns":
     case "iac":
     case "environments":

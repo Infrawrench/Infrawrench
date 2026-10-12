@@ -88,6 +88,7 @@ import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
 import { registerSloPaths } from "./paths/slos";
 import { registerServicePaths } from "./paths/services";
+import { registerDoraPaths } from "./paths/dora";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -251,6 +252,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerProbePaths(ctx);
   registerSloPaths(ctx);
   registerServicePaths(ctx);
+  registerDoraPaths(ctx);
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);

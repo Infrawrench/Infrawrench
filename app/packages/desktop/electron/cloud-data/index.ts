@@ -34,6 +34,7 @@ import "./leases";
 import "./probes";
 import "./slos";
 import "./services";
+import "./dora";
 import "./incidents";
 import "./status-pages";
 import "./ownership";
