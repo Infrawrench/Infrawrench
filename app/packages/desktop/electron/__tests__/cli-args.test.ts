@@ -282,3 +282,36 @@ describe("costs --anomalies feedback flags", () => {
     expect(() => parseCliArgs(["costs", "--months", "0"])).toThrow(/at least 1/);
   });
 });
+
+describe("parseCliArgs: leaks", () => {
+  it("reads the leak flags, defaulting to closing the finding upstream", () => {
+    const bare = parseCliArgs(["leaks", "rotate", "abc"]);
+    expect(bare.positionals).toEqual(["leaks", "rotate", "abc"]);
+    expect(bare.leaks).toEqual({
+      status: undefined,
+      comment: undefined,
+      valueStdin: false,
+      keepUpstreamOpen: false,
+    });
+    const full = parseCliArgs([
+      "leaks",
+      "dismiss",
+      "abc",
+      "--reason",
+      "used-in-tests",
+      "--comment",
+      "fixture key",
+      "--keep-upstream-open",
+      "--status",
+      "all",
+      "--value-stdin",
+    ]);
+    expect(full.flags.reason).toBe("used-in-tests");
+    expect(full.leaks).toEqual({
+      status: "all",
+      comment: "fixture key",
+      valueStdin: true,
+      keepUpstreamOpen: true,
+    });
+  });
+});
