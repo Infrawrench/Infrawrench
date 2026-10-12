@@ -1,21 +1,40 @@
-import { MongoClient, ObjectId } from "mongodb";
+import type { MongoClient } from "mongodb";
 import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
-import { findServerUnsafeMongoOptions, mongoRejectionMessage } from "./uri-policy.js";
+import {
+  findServerUnsafeMongoOptions,
+  mongoRejectionMessage,
+  serverMongoUriError,
+} from "./uri-policy.js";
 export { findServerUnsafeMongoOptions, serverMongoUriError } from "./uri-policy.js";
 
+type Mongo = typeof import("mongodb");
+
+/**
+ * The driver, loaded on first use rather than with this module. Importing it
+ * runs bson's `ObjectId` setup, which draws the random process id and counter
+ * every ObjectId this process mints carries; a host that snapshots the
+ * process after loading its drivers (the Lambda gateway on SnapStart) would
+ * otherwise hand every copy the same ones.
+ */
+let mongo: Promise<Mongo> | undefined;
+function loadMongo(): Promise<Mongo> {
+  mongo ??= import("mongodb");
+  return mongo;
+}
+
 /** Convert ObjectId instances to { $oid: "hex" } for JSON-safe serialization */
-function serializeDoc(doc: unknown): unknown {
+function serializeDoc(ObjectId: Mongo["ObjectId"], doc: unknown): unknown {
   if (doc === null || doc === undefined) return doc;
   if (doc instanceof ObjectId) return { $oid: doc.toHexString() };
   if (doc instanceof Date) return { $date: doc.toISOString() };
   if (typeof doc === "object" && doc !== null && "buffer" in doc && "byteLength" in doc)
     return { $binary: String(doc) };
-  if (Array.isArray(doc)) return doc.map(serializeDoc);
+  if (Array.isArray(doc)) return doc.map((item) => serializeDoc(ObjectId, item));
   if (typeof doc === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc as Record<string, unknown>)) {
-      out[k] = serializeDoc(v);
+      out[k] = serializeDoc(ObjectId, v);
     }
     return out;
   }
@@ -23,15 +42,15 @@ function serializeDoc(doc: unknown): unknown {
 }
 
 /** Convert { $oid: "hex" } back to ObjectId for filters */
-function deserializeFilter(filter: unknown): unknown {
+function deserializeFilter(ObjectId: Mongo["ObjectId"], filter: unknown): unknown {
   if (filter === null || filter === undefined) return filter;
-  if (Array.isArray(filter)) return filter.map(deserializeFilter);
+  if (Array.isArray(filter)) return filter.map((item) => deserializeFilter(ObjectId, item));
   if (typeof filter === "object") {
     const obj = filter as Record<string, unknown>;
     if (typeof obj["$oid"] === "string") return new ObjectId(obj["$oid"]);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj)) {
-      out[k] = deserializeFilter(v);
+      out[k] = deserializeFilter(ObjectId, v);
     }
     return out;
   }
@@ -70,7 +89,7 @@ const clientPool = new Map<
 >();
 const IDLE_TIMEOUT = 60_000;
 
-function getClient(connectionString: string): MongoClient {
+function getClient({ MongoClient }: Mongo, connectionString: string): MongoClient {
   let entry = clientPool.get(connectionString);
   if (entry) {
     entry.refCount++;
@@ -133,7 +152,9 @@ export const driver = {
     cmd: string,
     args: (string | number)[],
   ): Promise<unknown> {
-    const client = getClient(connectionString);
+    const mongo = await loadMongo();
+    const { ObjectId } = mongo;
+    const client = getClient(mongo, connectionString);
 
     try {
       const dbName = String(args[0] ?? "test");
@@ -211,7 +232,7 @@ export const driver = {
         case "find": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("find requires a collection name");
-          const filter = deserializeFilter(args[2] ? JSON.parse(String(args[2])) : {});
+          const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
           const skip = Number(args[3] ?? 0);
           const limit = Number(args[4] ?? 50);
           const docs = await db
@@ -220,13 +241,13 @@ export const driver = {
             .skip(skip)
             .limit(limit)
             .toArray();
-          return docs.map(serializeDoc);
+          return docs.map((doc) => serializeDoc(ObjectId, doc));
         }
 
         case "countDocuments": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("countDocuments requires a collection name");
-          const filter = deserializeFilter(args[2] ? JSON.parse(String(args[2])) : {});
+          const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
           return db.collection(collection).countDocuments(filter as Record<string, unknown>);
         }
 
@@ -241,7 +262,7 @@ export const driver = {
         case "updateOne": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("updateOne requires a collection name");
-          const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
+          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
           const update = JSON.parse(String(args[3] ?? "{}"));
           const result = await db
             .collection(collection)
@@ -252,7 +273,7 @@ export const driver = {
         case "deleteOne": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("deleteOne requires a collection name");
-          const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
+          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
           const result = await db
             .collection(collection)
             .deleteOne(filter as Record<string, unknown>);
@@ -262,7 +283,7 @@ export const driver = {
         case "deleteMany": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("deleteMany requires a collection name");
-          const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
+          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
           const result = await db
             .collection(collection)
             .deleteMany(filter as Record<string, unknown>);
@@ -279,7 +300,7 @@ export const driver = {
         case "replaceOne": {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("replaceOne requires a collection name");
-          const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
+          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
           const replacement = JSON.parse(String(args[3] ?? "{}"));
           const result = await db
             .collection(collection)
@@ -304,18 +325,22 @@ export const driver = {
 /**
  * The server policy as a credential check: a user-facing message when the
  * connection string is refused, or null. This is the authoritative check the
- * server driver runs before every call; the save-time
- * `Plugin.validateServerCredentials` hook uses the driver-free
- * `serverMongoUriError` instead, because the plugin entry also loads in the
- * desktop renderer. A string the driver cannot parse at all is left to the
- * connection attempt to report.
+ * server driver runs before every call, on the options as the driver itself
+ * parses them; the save-time `Plugin.validateServerCredentials` hook and
+ * `serverDriver.dialTargets` use the driver-free `serverMongoUriError`
+ * instead, because the plugin entry also loads in the desktop renderer and
+ * `dialTargets` is synchronous. A string the driver cannot parse at all is
+ * left to the connection attempt to report.
  */
-export function serverMongoConnectionStringError(connectionString: string): string | null {
+export async function serverMongoConnectionStringError(
+  connectionString: string,
+): Promise<string | null> {
   // A pooled client already holds the parsed options. Otherwise parse with a
   // throwaway client: the constructor reads and dials nothing, so a refused
   // one is simply dropped.
   let options = clientPool.get(connectionString)?.client.options;
   if (!options) {
+    const { MongoClient } = await loadMongo();
     try {
       options = new MongoClient(connectionString).options;
     } catch {
@@ -336,7 +361,9 @@ export function serverMongoConnectionStringError(connectionString: string): stri
 export const serverDriver = {
   id: driver.id,
   dialTargets(connectionString: string): DialTarget[] {
-    const error = serverMongoConnectionStringError(connectionString);
+    // The egress guard asks before `command` runs, so refuse here first, on
+    // the driver-free parse; `command` repeats the check on the driver's own.
+    const error = serverMongoUriError(connectionString);
     if (error) throw new Error(error);
     return dialTargets(connectionString);
   },
@@ -345,7 +372,7 @@ export const serverDriver = {
     cmd: string,
     args: (string | number)[],
   ): Promise<unknown> {
-    const error = serverMongoConnectionStringError(connectionString);
+    const error = await serverMongoConnectionStringError(connectionString);
     if (error) throw new Error(error);
     return driver.command(connectionString, cmd, args);
   },

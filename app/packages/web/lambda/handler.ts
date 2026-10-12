@@ -17,7 +17,12 @@
  * the 6 MB buffered-response limit to 200 MB.
  *
  * Packaged as a container image (`infra/docker/lambda.Dockerfile`) because the
- * externalized native and socket libraries need a real `node_modules`.
+ * externalized native and socket libraries need a real `node_modules`. The
+ * image runs our own runtime (`lambda/runtime.ts`), which provides the
+ * `awslambda` global the managed runtime would, and the function runs on
+ * SnapStart: everything above the handler is init, done once per deploy and
+ * copied into every environment, so it must not keep randomness or sockets
+ * (`server-core/src/runtime/lambda-snapshot.ts` refuses a snapshot that does).
  */
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";

@@ -373,8 +373,14 @@ locals {
   lambda_image_uri = local.lambda_functions ? "${aws_ecr_repository.lambda[0].repository_url}:${var.lambda_initial_image_tag}" : ""
   lambda_environment = local.lambda_enabled ? {
     INFRAWRENCH_APP_ENV_SECRET_ARN = aws_secretsmanager_secret.app_env[0].arn
-    NODE_OPTIONS                   = "--enable-source-maps"
+    # Read by nothing: it changes the functions' configuration whenever
+    # app_env does, so running environments are replaced and the web
+    # function publishes a version (and so a snapshot) holding the new values.
+    INFRAWRENCH_APP_ENV_VERSION = aws_secretsmanager_secret_version.app_env[0].version_id
+    NODE_OPTIONS                = "--enable-source-maps"
   } : {}
+  # What the function URL serves; CI moves it to each version it publishes.
+  lambda_web_alias = "live"
 }
 
 resource "aws_lambda_function" "web" {
@@ -393,8 +399,20 @@ resource "aws_lambda_function" "web" {
     command = ["app/packages/web/dist/lambda.handler"]
   }
 
+  # SnapStart: init (the whole API with every plugin, tens of seconds) runs
+  # once when a version is published, and new environments resume from a
+  # snapshot of it. Only published versions get one, so the function URL
+  # serves the `live` alias below, and terraform publishes a version whenever
+  # it changes the configuration (CI does on each deploy).
+  publish = true
+  snap_start {
+    apply_on = "PublishedVersions"
+  }
+
+  # SnapStart's ceiling. Uploads big enough to need more go to the session
+  # gateway (SESSION_ROUTES).
   ephemeral_storage {
-    size = 1024
+    size = 512
   }
 
   environment {
@@ -417,9 +435,21 @@ resource "aws_lambda_function" "web" {
   depends_on = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy_attachment.lambda_logs]
 }
 
+# The provider reads `version` back as the newest published one, so this
+# follows CI's deploys rather than undoing them, and moves to the version an
+# apply publishes. A version takes a minute or two to snapshot; neither
+# terraform nor CI points the alias at it before it is active.
+resource "aws_lambda_alias" "web_live" {
+  count            = local.lambda_functions ? 1 : 0
+  name             = local.lambda_web_alias
+  function_name    = aws_lambda_function.web[0].function_name
+  function_version = aws_lambda_function.web[0].version
+}
+
 resource "aws_lambda_function_url" "web" {
   count              = local.lambda_functions ? 1 : 0
   function_name      = aws_lambda_function.web[0].function_name
+  qualifier          = aws_lambda_alias.web_live[0].name
   authorization_type = "NONE"
   # Streamed responses: up to 200 MB instead of the buffered 6 MB.
   invoke_mode = "RESPONSE_STREAM"
@@ -432,6 +462,7 @@ resource "aws_lambda_permission" "web_url" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.web[0].function_name
+  qualifier              = aws_lambda_alias.web_live[0].name
   principal              = "*"
   function_url_auth_type = "NONE"
 }
@@ -441,6 +472,7 @@ resource "aws_lambda_permission" "web_url_invoke" {
   statement_id             = "FunctionURLInvokeAllowPublicAccess"
   action                   = "lambda:InvokeFunction"
   function_name            = aws_lambda_function.web[0].function_name
+  qualifier                = aws_lambda_alias.web_live[0].name
   principal                = "*"
   invoked_via_function_url = true
 }
@@ -581,8 +613,10 @@ resource "aws_iam_role" "lambda_ci" {
   })
 }
 
-# Push to the one repository and swap code on the two functions. Nothing
-# here can change a function's configuration, role or URL.
+# Push to the one repository, swap code on the two functions, and publish the
+# web function's versions: point its alias at a new one and delete old ones,
+# which are billed for their snapshots while they exist. Nothing here can
+# change a function's configuration, role or URL, or delete a function.
 resource "aws_iam_role_policy" "lambda_ci" {
   count = local.lambda_enabled ? 1 : 0
   name  = "push-and-deploy"
@@ -615,8 +649,18 @@ resource "aws_iam_role_policy" "lambda_ci" {
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
           "lambda:UpdateFunctionCode",
+          "lambda:PublishVersion",
+          "lambda:ListVersionsByFunction",
+          "lambda:GetAlias",
+          "lambda:UpdateAlias",
         ]
         Resource = "arn:aws:lambda:${var.aws_region}:*:function:${local.lambda_name}-*"
+      },
+      {
+        # Qualified ARNs only: a numbered version, never the function itself.
+        Effect   = "Allow"
+        Action   = "lambda:DeleteFunction"
+        Resource = "arn:aws:lambda:${var.aws_region}:*:function:${local.lambda_name}-web:*"
       },
     ]
   })
@@ -637,7 +681,7 @@ output "lambda_ci_role_arn" {
 }
 
 output "lambda_web_function_url" {
-  description = "The web gateway's function URL. Already in infrawrench-env as LAMBDA_GATEWAY_URL; shown for smoke tests."
+  description = "The web gateway's function URL (the `live` alias). Already in infrawrench-env as LAMBDA_GATEWAY_URL; shown for smoke tests."
   value       = one(aws_lambda_function_url.web[*].function_url)
 }
 

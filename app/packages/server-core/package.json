@@ -17,6 +17,7 @@
     "./runtime/account-runtime": "./src/runtime/account-runtime.ts",
     "./runtime/edge-invocation": "./src/runtime/edge-invocation.ts",
     "./runtime/lambda": "./src/runtime/lambda.ts",
+    "./runtime/lambda-runtime": "./src/runtime/lambda-runtime.ts",
     "./plugin-registry": "./src/plugin-registry.ts",
     "./edge/gateway-only-stub.cjs": "./edge/gateway-only-stub.cjs",
     "./edge/gateway-only-modules.json": "./edge/gateway-only-modules.json",

@@ -61,14 +61,14 @@ describe("findServerUnsafeMongoOptions", () => {
 });
 
 describe("serverMongoConnectionStringError", () => {
-  it("returns null for safe and for unparseable strings", () => {
-    expect(serverMongoConnectionStringError("mongodb://u:p@db.example.com/app")).toBeNull();
-    expect(serverMongoConnectionStringError("not a uri")).toBeNull();
+  it("returns null for safe and for unparseable strings", async () => {
+    expect(await serverMongoConnectionStringError("mongodb://u:p@db.example.com/app")).toBeNull();
+    expect(await serverMongoConnectionStringError("not a uri")).toBeNull();
   });
 
-  it("returns one user-facing message", () => {
+  it("returns one user-facing message", async () => {
     expect(
-      serverMongoConnectionStringError("mongodb://db.example.com/?authMechanism=MONGODB-AWS"),
+      await serverMongoConnectionStringError("mongodb://db.example.com/?authMechanism=MONGODB-AWS"),
     ).toMatch(/^MongoDB connection string rejected: .*desktop app/);
   });
 });
@@ -95,8 +95,10 @@ describe("serverMongoUriError (driver-free, save time)", () => {
     "mongodb://u:p@db.example.com/?tls=true&tlsCRLFile=%2Fetc%2Fhostname",
   ];
 
-  it.each(corpus)("agrees with the driver's own parse: %s", (uri) => {
-    expect(serverMongoUriError(uri) === null).toBe(serverMongoConnectionStringError(uri) === null);
+  it.each(corpus)("agrees with the driver's own parse: %s", async (uri) => {
+    expect(serverMongoUriError(uri) === null).toBe(
+      (await serverMongoConnectionStringError(uri)) === null,
+    );
   });
 
   it("refuses a repeated authMechanism when any value is unsafe", () => {

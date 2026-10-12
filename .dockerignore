@@ -18,6 +18,12 @@
 !**/.env.example
 **/*.local
 **/.dev.vars
+# Terraform working state: provider binaries, and tfvars holding production
+# credentials (infra/terraform/terraform.tfvars).
+**/.terraform
+**/*.tfvars
+**/*.tfstate
+**/*.tfstate.*
 
 # Generated SDKs, framework caches, misc
 /sdk

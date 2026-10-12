@@ -3,7 +3,7 @@
  * long-lived Node process does not need to.
  *
  * Lambda runs ordinary Node, so the server code is unchanged there: real
- * socket drivers, ssh2, the workflow isolate. Three things differ from a pod:
+ * socket drivers, ssh2, the workflow isolate. Four things differ from a pod:
  *
  * - **Configuration.** `app_env` is far past the 4 KB Lambda allows for
  *   environment variables, so terraform (`infra/terraform/lambda.tf`) writes it
@@ -14,6 +14,9 @@
  *   and is frozen between them; a socket left idle across a freeze is often
  *   dead on thaw (NAT and Neon both time idle connections out). So the pool is
  *   small and recycles quickly.
+ * - **Snapshots.** The web function runs on SnapStart (`lambda-runtime.ts`), so
+ *   its init happens once per deploy and is copied into every environment;
+ *   init must not keep randomness or open sockets (`lambda-snapshot.ts`).
  * - **Fire-and-forget work.** From Node 24 Lambda no longer waits for pending
  *   promises once the handler resolves, and on any version the environment can
  *   be frozen with them mid-flight. {@link lambdaInvocation} gives each
@@ -22,6 +25,7 @@
  *   has been sent and before the handler returns.
  */
 import { setProcessDbOptions } from "../db/client";
+import { withInitRandomnessAllowed } from "./lambda-snapshot";
 import { runInRequestScope, type RequestScope } from "./request-scope";
 
 /** The secret terraform writes `app_env` into; set on the function by `lambda.tf`. */
@@ -35,7 +39,13 @@ async function loadAppEnv(secretId: string): Promise<void> {
   const { SecretsManagerClient, GetSecretValueCommand } =
     await import("@aws-sdk/client-secrets-manager");
   const client = new SecretsManagerClient({});
-  const out = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
+  // The SDK names the request with a UUID and jitters its retries; both are
+  // spent once the call returns, so a SnapStart snapshot may follow it.
+  // Destroying the client closes its socket, which would be dead after a
+  // restore anyway.
+  const out = await withInitRandomnessAllowed("Secrets Manager app_env load", () =>
+    client.send(new GetSecretValueCommand({ SecretId: secretId })),
+  ).finally(() => client.destroy());
   if (!out.SecretString) throw new Error(`Secret ${secretId} has no string value`);
   const values = JSON.parse(out.SecretString) as Record<string, unknown>;
   for (const [key, value] of Object.entries(values)) {

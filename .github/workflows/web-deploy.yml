@@ -270,8 +270,42 @@ jobs:
             aws lambda update-function-code --function-name "$name" \
               --image-uri "${ECR_REPOSITORY}:${GITHUB_SHA}" >/dev/null
             aws lambda wait function-updated-v2 --function-name "$name"
-            echo "$name now runs ${GITHUB_SHA}"
+            echo "$name \$LATEST now runs ${GITHUB_SHA}"
           done
+
+      # The web function's URL serves its `live` alias, from a SnapStart
+      # snapshot of a published version (infra/terraform/lambda.tf). Publishing
+      # runs init and takes the snapshot; the runtime refuses one that would
+      # share randomness between environments (server-core lambda-snapshot.ts),
+      # and then this fails with `live` still on the previous version.
+      - name: Publish the web function and move live
+        run: |
+          name="${FUNCTION_PREFIX}-web"
+          if ! aws lambda get-alias --function-name "$name" --name live >/dev/null 2>&1; then
+            echo "::notice::$name has no live alias yet; the terraform apply that creates it publishes the first version."
+            exit 0
+          fi
+          version=$(aws lambda publish-version --function-name "$name" \
+            --description "${GITHUB_SHA}" --query Version --output text)
+          if ! aws lambda wait published-version-active --function-name "$name" --qualifier "$version"; then
+            aws lambda get-function-configuration --function-name "$name" --qualifier "$version" \
+              --query '{State: State, Reason: StateReason, Code: StateReasonCode}'
+            echo "::error::Version $version did not become active; live is unchanged. The init log is in /aws/lambda/$name."
+            exit 1
+          fi
+          aws lambda update-alias --function-name "$name" --name live --function-version "$version" >/dev/null
+          echo "$name:live now runs version $version (${GITHUB_SHA})"
+
+          # Every published version keeps its snapshot, billed while it exists.
+          # Keep the live one and the two before it, the rollback targets.
+          aws lambda list-versions-by-function --function-name "$name" \
+              --query "Versions[?Version!='\$LATEST'].Version" --output text \
+            | tr '\t' '\n' | sort -n | head -n -3 \
+            | while read -r old; do
+                [ "$old" = "$version" ] && continue
+                aws lambda delete-function --function-name "$name" --qualifier "$old"
+                echo "deleted $name:$old"
+              done
 
   # The Cloudflare edge: the web front door and the edge poller, both built
   # from this same commit. After `deploy` so the gateway (the pods above) is

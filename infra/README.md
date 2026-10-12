@@ -389,11 +389,18 @@ KNOWLEDGE.md ("Edge/gateway split") explains the routing; this is the runbook.
 | Poller, gateway half                                                                                                      | Lambda `infrawrench-prod-lambda-poller` |
 | `github-watcher` (deploys run up to 20 minutes, past Lambda's 15)                                                         | GKE `github-watcher` pod                |
 
-- **One image, two functions** (`infra/docker/lambda.Dockerfile`, built on the
-  AWS Lambda Node.js base image so native addons match its glibc). The web
-  function is reached through a function URL in `RESPONSE_STREAM` mode; the
-  poller is invoked by an EventBridge Scheduler rule every minute and ticks on
-  its usual 15-second cadence for most of it.
+- **One image, two functions** (`infra/docker/lambda.Dockerfile`, built on
+  the OS-only `provided.al2023` image with Amazon Linux's Node and our own
+  runtime client). The web function is reached through a function URL in
+  `RESPONSE_STREAM` mode on its `live` alias; the poller is invoked by an
+  EventBridge Scheduler rule every minute and ticks on its usual 15-second
+  cadence for most of it.
+- **The web function runs on SnapStart.** Init (the whole API with every
+  plugin) runs once when a version is published, and new environments resume
+  from a snapshot of it in about a second instead of a ~30-second cold start.
+  Only published versions have snapshots, which is why the URL serves the
+  `live` alias. KNOWLEDGE.md ("Lambda gateway") has why the runtime and the
+  base image are what they are.
 - **The function URL is public**, so the web function refuses any request
   without `LAMBDA_GATEWAY_SECRET`, which only the Worker holds. Terraform
   generates it and merges it, with the URL, into `infrawrench-env`, which is
@@ -433,7 +440,9 @@ KNOWLEDGE.md ("Edge/gateway split") explains the routing; this is the runbook.
    claiming at once, beside the Node poller; the leases make that safe.
 6. **Smoke test** before the Worker uses it: a request to the function URL
    without the secret must answer 403. `GET /healthz` with the
-   `x-iw-gateway-secret` header answers `ok`.
+   `x-iw-gateway-secret` header answers `ok`. The apply that creates the
+   function also publishes version 1 and its snapshot, which takes a minute
+   or two; the URL answers once it is done.
 
 ### Cutover order
 
@@ -457,14 +466,24 @@ Lambda tier existed.
 ### Day-2
 
 - **Code** deploys with every main push (`deploy-lambda`, before the Worker).
-  Terraform ignores `image_uri`, so an apply never rolls code back.
+  Terraform ignores `image_uri`, so an apply never rolls code back. For the
+  web function the job also publishes a version, waits for its snapshot,
+  moves `live` to it and deletes all but the newest three versions.
+- **A deploy that fails at "Publish the web function"** left `live` where it
+  was; nothing is serving the new version. The job prints the version's
+  state reason and the init log is in `/aws/lambda/infrawrench-prod-lambda-web`.
+  The usual cause is init drawing randomness (`[lambda-runtime] refusing the
+snapshot`, with the call sites): load the module that does it lazily.
+- **Rolling the web function back** is moving the alias:
+  `aws lambda update-alias --function-name infrawrench-prod-lambda-web --name live --function-version <n>`.
+  The previous two versions are kept for this; the next deploy moves it on.
 - **Configuration**: edit `app_env` or `lambda_app_env`, `terraform apply`.
-  Running environments keep what they loaded at cold start; the next code
-  deploy replaces them, or force it with
-  `aws lambda update-function-configuration --function-name <fn> --description "rotated $(date -u +%FT%TZ)"`.
-- **Cold starts** load the whole API with every plugin: a few seconds, paid
-  once per execution environment. If they show in latency, add provisioned
-  concurrency on an alias; the function URL then needs to move to that alias.
+  The secret's version id is in the functions' environment, so the change
+  replaces the poller's running environments and publishes a new web version
+  (and snapshot) that `live` moves to. Nothing reads the secret after init.
+- **Cold starts**: the web function resumes from its snapshot, so a new
+  environment costs about a second. The poller still runs its full init when
+  it starts a new environment, which is off every request path.
 - **A Lambda request that 503s** with "could not be completed here" wrote to
   the database and then reached a bastion agent. The path should go to the
   session gateway: add it to the `SESSION_ROUTES` list in
