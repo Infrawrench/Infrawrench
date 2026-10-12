@@ -92,6 +92,9 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.
   new RegExp(`${ORG}/pr-checks/preview$`),
+  // Evaluating a scorecard runs the org-wide posture, orphan and backup scans,
+  // which bind plugin remediation functions the edge registry only stubs.
+  new RegExp(`${ORG}/scorecards/[^/]+/evaluate$`),
 ];
 
 const ACCOUNT_IN_PATH = new RegExp(`${ORG}/accounts/([^/]+)`);

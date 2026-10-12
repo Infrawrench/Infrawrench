@@ -294,6 +294,26 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /slos/{sloId}": "resources:write",
   "DELETE /slos/{sloId}": "resources:write",
   "POST /slos/{sloId}/freeze": "freezes:write",
+  // services: the resource ownership stance. Grouping resources into a
+  // service is the same kind of statement as "this VM is mine".
+  "GET /services": "resources:read",
+  "GET /services/for-resources": "resources:read",
+  "GET /services/{serviceId}": "resources:read",
+  "GET /services/{serviceId}/summary": "resources:read",
+  "GET /services/{serviceId}/scorecards": "resources:read",
+  "POST /services": "resources:write",
+  "PATCH /services/{serviceId}": "resources:write",
+  "DELETE /services/{serviceId}": "resources:write",
+  "POST /services/{serviceId}/members": "resources:write",
+  "DELETE /services/{serviceId}/members/{resourceId}": "resources:write",
+  // scorecards: the SLO stance
+  "GET /scorecards": "resources:read",
+  "GET /scorecards/overview": "resources:read",
+  "GET /scorecards/{scorecardId}": "resources:read",
+  "POST /scorecards": "resources:write",
+  "PATCH /scorecards/{scorecardId}": "resources:write",
+  "DELETE /scorecards/{scorecardId}": "resources:write",
+  "POST /scorecards/{scorecardId}/evaluate": "resources:write",
   // incident mode: the declared kind. `incidents:write` is held by members
   // as well as admins on purpose (see the permission catalog); what a
   // declaration may *do* keeps its own gates, so requesting a change freeze

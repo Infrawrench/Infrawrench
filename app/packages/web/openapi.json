@@ -34371,6 +34371,7 @@
           "orphan_deletion",
           "sleep_schedule",
           "commitment",
+          "saas_seat",
           "manual"
         ],
         "description": "`rightsizing`: a resize to a smaller size; `orphan_deletion`: a resource the orphan finder flags was deleted; `sleep_schedule`: a stretch of a sleep/wake schedule in force; `commitment`: reservation and savings-plan discounts, derived from billing; `manual`: logged by a person."
@@ -37457,6 +37458,1917 @@
           },
           "reason": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServiceLink": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "At most 80 characters."
+          },
+          "url": {
+            "type": "string",
+            "description": "An http or https URL."
+          }
+        },
+        "required": [
+          "label",
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceMembershipRule": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tag",
+              "virtual_tag",
+              "name"
+            ],
+            "description": "`tag`: the resource carries provider tag `key` (with `value` when set). `virtual_tag`: the org's virtual tag `key` resolves to `value` on the resource's cost rows over the last 30 days. `name`: the display name matches `value` per `nameMatch`, case-insensitively."
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`tag` / `virtual_tag`: the key. Null for `name`."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`tag`: exact value, null for any. `virtual_tag`: required. `name`: the pattern."
+          },
+          "nameMatch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "contains",
+              "prefix",
+              "suffix",
+              "exact"
+            ],
+            "description": "`name` only; defaults to `contains`."
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrow the rule to one provider."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrow the rule to one account."
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "value",
+          "nameMatch",
+          "pluginId",
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceScoreBadge": {
+        "type": "object",
+        "properties": {
+          "scorecardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scorecardName": {
+            "type": "string"
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "levelName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scorecardId",
+          "scorecardName",
+          "score",
+          "level",
+          "levelName"
+        ],
+        "additionalProperties": false
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Lower-case letters, digits and dashes; unique. Derived from the name when omitted."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  2
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  3
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Criticality, 1 being the most critical."
+          },
+          "ownerTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text owning team; display-only, never routed. At most 120 characters."
+          },
+          "ownerUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Owning org members (at most 20)."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceLink"
+            },
+            "description": "Dashboards, repositories, docs (at most 20)."
+          },
+          "onCallScheduleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sloIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked SLOs (at most 50)."
+          },
+          "runbookIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked runbooks (at most 50)."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceMembershipRule"
+            },
+            "description": "Membership rules (at most 20)."
+          },
+          "monthlyBudget": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly budget in `budgetCurrency`; read by the cost scorecard check."
+          },
+          "budgetCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code; required with a budget."
+          },
+          "owners": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "userId",
+                "name",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "onCallScheduleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memberCount": {
+            "type": "integer",
+            "description": "Resolved members: explicit plus rule-matched."
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceScoreBadge"
+            },
+            "description": "Current standing on each enabled scorecard."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "tier",
+          "ownerTeam",
+          "ownerUserIds",
+          "links",
+          "onCallScheduleId",
+          "sloIds",
+          "runbookIds",
+          "rules",
+          "monthlyBudget",
+          "budgetCurrency",
+          "owners",
+          "onCallScheduleName",
+          "memberCount",
+          "scores",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceList": {
+        "type": "object",
+        "properties": {
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            }
+          }
+        },
+        "required": [
+          "services"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  2
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  3
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Criticality, 1 being the most critical."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "tier"
+        ],
+        "additionalProperties": false
+      },
+      "ServicesForResources": {
+        "type": "object",
+        "properties": {
+          "services": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ServiceRef"
+              }
+            },
+            "description": "Resource id to the services it belongs to; resources in none are absent."
+          }
+        },
+        "required": [
+          "services"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceMemberOwner": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when a routable org member owns it."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isLabel": {
+            "type": "boolean",
+            "description": "True when `displayName` is free text."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "isLabel",
+          "ticketUrl",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceMember": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "rule"
+            ]
+          },
+          "ruleIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Index into `rules` for `rule` members."
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ServiceMemberOwner"
+          },
+          "missing": {
+            "type": "boolean",
+            "description": "The resource was deleted upstream."
+          }
+        },
+        "required": [
+          "resourceId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "resourceTypeId",
+          "resourceName",
+          "externalId",
+          "source",
+          "ruleIndex",
+          "owner",
+          "missing"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceDetail": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "$ref": "#/components/schemas/Service"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceMember"
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceMember"
+            },
+            "description": "Rule-matched resources the service deliberately leaves out."
+          }
+        },
+        "required": [
+          "service",
+          "members",
+          "excluded"
+        ],
+        "additionalProperties": false
+      },
+      "ServicePostureFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "ruleId",
+          "title",
+          "severity",
+          "category",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardCheckType": {
+        "type": "string",
+        "enum": [
+          "has_owner",
+          "has_on_call",
+          "slo_within_budget",
+          "has_runbook",
+          "backups_verified",
+          "no_critical_posture",
+          "no_orphans",
+          "required_tags",
+          "cost_within_budget",
+          "no_critical_vulnerabilities",
+          "change_failure_rate"
+        ],
+        "description": "A check type from the scorecard registry."
+      },
+      "ScorecardCheckResult": {
+        "type": "object",
+        "properties": {
+          "checkId": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ScorecardCheckType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable",
+              "error"
+            ],
+            "description": "`not_applicable` leaves the score's denominator; `error` (a feed that could not be read) counts as failing."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checkId",
+          "type",
+          "name",
+          "weight",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardResult": {
+        "type": "object",
+        "properties": {
+          "scorecardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scorecardName": {
+            "type": "string"
+          },
+          "serviceId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "0-100; null when no check applied."
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "levelName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardCheckResult"
+            }
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "scorecardId",
+          "scorecardName",
+          "serviceId",
+          "score",
+          "level",
+          "levelName",
+          "checks",
+          "evaluatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceSummary": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "$ref": "#/components/schemas/Service"
+          },
+          "memberCount": {
+            "type": "integer"
+          },
+          "cost": {
+            "type": "object",
+            "properties": {
+              "windowDays": {
+                "type": "integer"
+              },
+              "available": {
+                "type": "boolean",
+                "description": "False when the cost warehouse could not be read; never read that as zero."
+              },
+              "totals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "currency": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "currency",
+                    "amount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "byProvider": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "pluginId": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "pluginId",
+                    "currency",
+                    "amount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "costedMembers": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "windowDays",
+              "available",
+              "totals",
+              "byProvider",
+              "costedMembers"
+            ],
+            "additionalProperties": false,
+            "description": "Trailing member spend, per currency. Respects the caller's cost visibility scope."
+          },
+          "slos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "exhausted",
+                    "fast_burn",
+                    "slow_burn",
+                    "ok",
+                    "unknown"
+                  ]
+                },
+                "targetPercent": {
+                  "type": "number"
+                },
+                "budgetRemaining": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "status",
+                "targetPercent",
+                "budgetRemaining"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "runbooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "enabled"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "onCall": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "scheduleId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "scheduleName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "current": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "email": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "endsAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "userId",
+                  "name",
+                  "email",
+                  "endsAt"
+                ],
+                "additionalProperties": false
+              },
+              "next": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "email": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "userId",
+                  "name",
+                  "email"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "scheduleId",
+              "scheduleName",
+              "enabled",
+              "current",
+              "next"
+            ],
+            "additionalProperties": false
+          },
+          "findings": {
+            "type": "object",
+            "properties": {
+              "posture": {
+                "type": "object",
+                "properties": {
+                  "counts": {
+                    "type": "object",
+                    "properties": {
+                      "critical": {
+                        "type": "integer"
+                      },
+                      "high": {
+                        "type": "integer"
+                      },
+                      "medium": {
+                        "type": "integer"
+                      },
+                      "low": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ServicePostureFinding"
+                    },
+                    "description": "At most 25, worst first."
+                  }
+                },
+                "required": [
+                  "counts",
+                  "items"
+                ],
+                "additionalProperties": false
+              },
+              "orphans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "resourceName": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "resourceId",
+                    "resourceName",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "backups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "resourceName": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "description": "`unprotected`, `rpo-breach`, `retention-below-policy`, `drill-stale`, `drill-failed` or `drill-never`."
+                    },
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "resourceId",
+                    "resourceName",
+                    "kind",
+                    "detail"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "unavailable": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "posture",
+                    "orphans",
+                    "backups"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "posture",
+              "orphans",
+              "backups",
+              "unavailable"
+            ],
+            "additionalProperties": false
+          },
+          "recentChanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "resourceId": {
+                  "type": "string"
+                },
+                "resourceName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "changeKind": {
+                  "type": "string",
+                  "enum": [
+                    "created",
+                    "updated",
+                    "deleted"
+                  ]
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "resourceId",
+                "resourceName",
+                "pluginId",
+                "changeKind",
+                "fields",
+                "at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "scorecards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardResult"
+            }
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "service",
+          "memberCount",
+          "cost",
+          "slos",
+          "runbooks",
+          "onCall",
+          "findings",
+          "recentChanges",
+          "scorecards",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardHistoryPoint": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, UTC."
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "day",
+          "score",
+          "level"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceScorecards": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardResult"
+            }
+          },
+          "history": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ScorecardHistoryPoint"
+              }
+            },
+            "description": "Per scorecard id, oldest first, at most 90 days."
+          }
+        },
+        "required": [
+          "results",
+          "history"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Lower-case letters, digits and dashes; unique. Derived from the name when omitted."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  2
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  3
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Criticality, 1 being the most critical."
+          },
+          "ownerTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text owning team; display-only, never routed. At most 120 characters."
+          },
+          "ownerUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Owning org members (at most 20)."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceLink"
+            },
+            "description": "Dashboards, repositories, docs (at most 20)."
+          },
+          "onCallScheduleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sloIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked SLOs (at most 50)."
+          },
+          "runbookIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked runbooks (at most 50)."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceMembershipRule"
+            },
+            "description": "Membership rules (at most 20)."
+          },
+          "monthlyBudget": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly budget in `budgetCurrency`; read by the cost scorecard check."
+          },
+          "budgetCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code; required with a budget."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "ServiceUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Lower-case letters, digits and dashes; unique. Derived from the name when omitted."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  2
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  3
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Criticality, 1 being the most critical."
+          },
+          "ownerTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text owning team; display-only, never routed. At most 120 characters."
+          },
+          "ownerUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Owning org members (at most 20)."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceLink"
+            },
+            "description": "Dashboards, repositories, docs (at most 20)."
+          },
+          "onCallScheduleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sloIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked SLOs (at most 50)."
+          },
+          "runbookIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Linked runbooks (at most 50)."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceMembershipRule"
+            },
+            "description": "Membership rules (at most 20)."
+          },
+          "monthlyBudget": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly budget in `budgetCurrency`; read by the cost scorecard check."
+          },
+          "budgetCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code; required with a budget."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ServiceMembersRequest": {
+        "type": "object",
+        "properties": {
+          "resourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Infrawrench resource ids (at most 500)."
+          }
+        },
+        "required": [
+          "resourceIds"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardCheck": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable within the scorecard."
+          },
+          "type": {
+            "$ref": "#/components/schemas/ScorecardCheckType"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display override; the type's label when null."
+          },
+          "weight": {
+            "type": "integer",
+            "description": "1 to 10."
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "description": "Type parameters: `minBudgetRemainingPercent` (0-100), `drillWithinDays` (1-730), `severities` (critical/high/medium/low), `tags` (tag keys)."
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "name",
+          "weight",
+          "params"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardLevel": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Lower-case letters, digits, dashes and underscores; unique."
+          },
+          "name": {
+            "type": "string",
+            "description": "At most 40 characters."
+          },
+          "minScore": {
+            "type": "number",
+            "description": "0 to 100; unique within the scorecard."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Six-digit hex, e.g. `#d4a72c`."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "minScore",
+          "color"
+        ],
+        "additionalProperties": false
+      },
+      "Scorecard": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardCheck"
+            },
+            "description": "1 to 30 checks."
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardLevel"
+            },
+            "description": "1 to 6 levels; stored lowest first."
+          },
+          "applicableTiers": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "enum": [
+                    1
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    2
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    3
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    4
+                  ]
+                }
+              ],
+              "description": "Criticality, 1 being the most critical."
+            },
+            "description": "Tiers it applies to; empty means every service."
+          },
+          "alertOnLevelDrop": {
+            "type": "boolean",
+            "description": "Route a `scorecardAlerts` alert when a service drops a level."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "The scorecard seeded for the organization."
+          },
+          "lastEvaluatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "checks",
+          "levels",
+          "applicableTiers",
+          "alertOnLevelDrop",
+          "enabled",
+          "isDefault",
+          "lastEvaluatedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardList": {
+        "type": "object",
+        "properties": {
+          "scorecards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scorecard"
+            }
+          }
+        },
+        "required": [
+          "scorecards"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardOverview": {
+        "type": "object",
+        "properties": {
+          "scorecards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scorecard"
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "tier": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        2
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        3
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        4
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Criticality, 1 being the most critical."
+                },
+                "ownerTeam": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug",
+                "tier",
+                "ownerTeam"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardResult"
+            }
+          }
+        },
+        "required": [
+          "scorecards",
+          "services",
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardCheck"
+            },
+            "description": "1 to 30 checks."
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardLevel"
+            },
+            "description": "1 to 6 levels; stored lowest first."
+          },
+          "applicableTiers": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "enum": [
+                    1
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    2
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    3
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    4
+                  ]
+                }
+              ],
+              "description": "Criticality, 1 being the most critical."
+            },
+            "description": "Tiers it applies to; empty means every service."
+          },
+          "alertOnLevelDrop": {
+            "type": "boolean",
+            "description": "Route a `scorecardAlerts` alert when a service drops a level."
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization; at most 120 characters."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 1000 characters."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardCheck"
+            },
+            "description": "1 to 30 checks."
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardLevel"
+            },
+            "description": "1 to 6 levels; stored lowest first."
+          },
+          "applicableTiers": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "enum": [
+                    1
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    2
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    3
+                  ]
+                },
+                {
+                  "type": "number",
+                  "enum": [
+                    4
+                  ]
+                }
+              ],
+              "description": "Criticality, 1 being the most critical."
+            },
+            "description": "Tiers it applies to; empty means every service."
+          },
+          "alertOnLevelDrop": {
+            "type": "boolean",
+            "description": "Route a `scorecardAlerts` alert when a service drops a level."
+          },
+          "enabled": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -43981,8 +45893,11 @@
           "expiryAlerts",
           "logMatchAlerts",
           "postureAlerts",
+          "leakedSecretAlerts",
+          "vulnerabilityAlerts",
           "probeAlerts",
           "sloAlerts",
+          "scorecardAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
@@ -82221,6 +84136,998 @@
         },
         "operationId": "postOrgOrgIdSlosSloIdFreeze",
         "x-required-permission": "freezes:write"
+      }
+    },
+    "/api/org/{orgId}/services": {
+      "get": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "List services",
+        "description": "Every service with its owners, links, resolved member count and current scorecard levels.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The services",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdServices",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Create a service",
+        "description": "Owners, the on-call schedule, SLOs and runbooks must belong to the organization. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdServices",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/services/for-resources": {
+      "get": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Look up the services resources belong to",
+        "description": "Membership is explicit members plus rules minus exclusions, resolved against the current inventory. Resources in no service are absent from the map.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated Infrawrench resource ids (at most 500)."
+            },
+            "required": true,
+            "description": "Comma-separated Infrawrench resource ids (at most 500).",
+            "name": "ids",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Services per resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesForResources"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdServicesForResources",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/services/{serviceId}": {
+      "get": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Read a service with its members",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdServicesServiceId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "patch": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Update a service",
+        "description": "Omitted fields keep their value. List fields (owners, links, SLOs, runbooks, rules) replace the stored list. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdServicesServiceId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Delete a service",
+        "description": "The member resources, SLOs, runbooks and schedule are untouched. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdServicesServiceId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/services/{serviceId}/summary": {
+      "get": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Summarize a service",
+        "description": "Trailing 30-day member spend (scoped to the caller's cost visibility), linked SLO standing, open posture, orphan and backup findings on members, the current on-call shift, the last week's changes and current scorecard results. Feeds that fail are listed in `findings.unavailable` or `cost.available` rather than failing the request.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdServicesServiceIdSummary",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/services/{serviceId}/scorecards": {
+      "get": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Read a service's scorecard results and history",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Results and history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceScorecards"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdServicesServiceIdScorecards",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      }
+    },
+    "/api/org/{orgId}/services/{serviceId}/members": {
+      "post": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Add members to a service",
+        "description": "Adds resources by hand. An excluded resource is put back. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceMembersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The service with its members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdServicesServiceIdMembers",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/services/{serviceId}/members/{resourceId}": {
+      "delete": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Remove a member from a service",
+        "description": "A hand-added member is removed; a rule-matched one is excluded, since the rule would otherwise put it back. With `restore=1`, deletes an exclusion instead. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Service id or slug."
+            },
+            "required": true,
+            "description": "Service id or slug.",
+            "name": "serviceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ],
+              "description": "Delete an exclusion instead."
+            },
+            "required": false,
+            "description": "Delete an exclusion instead.",
+            "name": "restore",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The service with its members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdServicesServiceIdMembersResourceId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/scorecards": {
+      "get": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "List scorecards",
+        "description": "Seeds the default scorecard for organizations that have never had one (once; a deleted default is not recreated).\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scorecards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecards",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Create a scorecard",
+        "description": "Omitted checks and levels default to every built-in check and bronze/silver/gold. Out-of-range inputs are rejected. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScorecardCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created scorecard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scorecard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdScorecards",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/scorecards/overview": {
+      "get": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Read the scorecard matrix",
+        "description": "Every service, every scorecard and the current result for each applicable pair.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The matrix",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardOverview"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecardsOverview",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/scorecards/{scorecardId}": {
+      "get": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Read a scorecard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scorecardId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scorecard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scorecard"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecardsScorecardId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "patch": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Update a scorecard",
+        "description": "Omitted fields keep their value; `checks` and `levels` replace the stored lists. Services are re-scored within one poller tick. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scorecardId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScorecardUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated scorecard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scorecard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdScorecardsScorecardId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Delete a scorecard",
+        "description": "Its results and history go with it. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scorecardId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdScorecardsScorecardId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/scorecards/{scorecardId}/evaluate": {
+      "post": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Score every service on a scorecard now",
+        "description": "Level drops found here are stored but not announced: the caller just changed the bar.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scorecardId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The matrix after scoring",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardOverview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdScorecardsScorecardIdEvaluate",
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/incidents": {
