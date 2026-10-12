@@ -88,9 +88,28 @@ describe("routeRequest", () => {
 
   it("computes the org grade on the gateway but serves its history at the edge", () => {
     // The grade reads plugin-bound feeds; the history is a Postgres read.
-    expect(routeRequest("GET", "/api/org/org_1/scorecards/org", null).target).toBe("gateway");
+    // Plugin work that finishes in the request: any Node runtime will do.
+    expect(routeRequest("GET", "/api/org/org_1/scorecards/org", null)).toMatchObject({
+      target: "gateway",
+      tier: "node",
+    });
     expect(routeRequest("GET", "/api/org/org_1/scorecards/org/history", null).target).toBe("edge");
     expect(routeRequest("GET", "/api/org/org_1/scorecards/overview", null).target).toBe("edge");
+  });
+
+  it("sends plugin-calling writes to any Node runtime", () => {
+    for (const path of [
+      "/api/org/org_1/seats/seat_1/remove",
+      "/api/org/org_1/event-subscriptions",
+      "/api/org/org_1/leaked-secrets/scan",
+      "/api/org/org_1/leaked-secrets/ls_1/rotate",
+      "/api/org/org_1/scorecards/sc_1/evaluate",
+    ]) {
+      expect(routeRequest("POST", path, null), path).toMatchObject({
+        target: "gateway",
+        tier: "node",
+      });
+    }
   });
 
   it("does not mistake a prefix for a gateway route", () => {

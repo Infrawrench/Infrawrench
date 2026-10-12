@@ -45,10 +45,6 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in
   // with the session gateway's GKE Workload Identity.
   new RegExp(`${ORG}/chat(/|$)`),
-  // The org grade reads the posture and backup feeds, which bind plugin
-  // functions the edge registry only stubs: every attempt there would replay.
-  // Its history (`/scorecards/org/history`) is Postgres only and stays.
-  new RegExp(`${ORG}/scorecards/org$`),
   new RegExp(
     `${ORG}/(` +
       [
@@ -84,6 +80,10 @@ const NODE_ROUTES: readonly RegExp[] = [
   // carry (authorize: `registerOAuthClient`, `buildOAuthAuthorizeUrl`;
   // callback: `exchangeOAuthCode`, `completeOAuthConnection`).
   /^\/api\/provider-oauth\/[^/]+\/callback$/,
+  // The org grade reads the posture and backup feeds, which bind plugin
+  // functions the edge registry only stubs: every attempt there would replay.
+  // Its history (`/scorecards/org/history`) is Postgres only and stays.
+  new RegExp(`${ORG}/scorecards/org$`),
   new RegExp(
     `${ORG}/(` +
       [

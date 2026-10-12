@@ -14,9 +14,15 @@
  * - The loop (its token buckets, the in-memory `minIntervalMs` clock) lives as
  *   long as the execution environment, so a cold start resets them. The
  *   buckets only smooth bursts against providers; the per-account schedule,
- *   backoff and leases are all in Postgres. No gateway pass uses
- *   `minIntervalMs`; under `POLLER_SCOPE=all` the change-retention prune may
- *   run a little more often than hourly, which is harmless.
+ *   backoff and leases are all in Postgres. A pass throttled by
+ *   `minIntervalMs` (the org scorecard snapshots; under `POLLER_SCOPE=all`
+ *   also the edge passes such as the change-retention prune) is throttled per
+ *   execution environment rather than fleet-wide, so with N warm environments
+ *   it can run up to N times per interval. That is safe because every such
+ *   pass is idempotent by its own keys (the snapshots' `(organization_id,
+ *   day)` primary key, for one), and N is capped by the function's reserved
+ *   concurrency. A new throttled gateway pass must be idempotent the same way,
+ *   or keep its clock in Postgres.
  * - Fire-and-forget work is awaited before the invocation ends
  *   (`lambdaInvocation().drain()`), so nothing is frozen mid-write.
  */
