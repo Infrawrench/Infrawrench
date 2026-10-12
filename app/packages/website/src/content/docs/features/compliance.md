@@ -106,11 +106,11 @@ The mobile app shows each framework's control status read-only: counts, controls
 ```bash
 infrawrench compliance                       # SOC 2 status for the last 90 days
 infrawrench compliance status --framework iso27001 --gaps
-infrawrench compliance export --framework soc2 --from 2026-07-01 --to 2026-09-30 -o q3.zip
+infrawrench compliance export --framework soc2 --from 2026-07-01 --to 2026-09-30 --out q3.zip
 infrawrench compliance frameworks --json
 ```
 
-Every command takes `--json`.
+Every command takes `--json`. `export` writes the ZIP to `--out` (or the server's file name in the current directory).
 
 ## Terraform
 
