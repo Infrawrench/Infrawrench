@@ -1,35 +1,51 @@
 /**
- * Replicate public status feed (incident.io emulating the Statuspage v2 API,
- * https://www.replicatestatus.com: verified 2026-08).
+ * Replicate's status lives on Cloudflare's status page (Atlassian Statuspage,
+ * https://www.cloudflarestatus.com) since Cloudflare acquired Replicate:
+ * www.replicatestatus.com now redirects there (verified 2026-10-12).
  *
- * incident.io hosts 404 on /incidents/unresolved.json, so this fetches
- * /api/v2/incidents.json (full history) and filters to unresolved after
- * parsing. Incident objects carry no components: the parser marks them
- * provider-wide automatically; the component mapper below is
- * future-proofing in case components ever appear.
+ * Replicate is one component of that page, "Replicate" (id `fvgfcmy66tdr`,
+ * in the "Cloudflare Sites and Services" group), and its incidents are tagged
+ * with it. The feed is Cloudflare's unresolved incidents, so the parser keeps
+ * only those tagged Replicate; the rest are Cloudflare's own, which the
+ * Cloudflare plugin reports. Matched by id, with the name as a fallback in
+ * case the component is ever recreated.
  */
-import type {
-  StatusComponentMapping,
-  StatusFeedDeclaration,
-  StatusIncident,
-} from "@infrawrench/plugin-base";
+import type { StatusFeedDeclaration, StatusIncident } from "@infrawrench/plugin-base";
 import { parseStatuspageIncidents } from "@infrawrench/plugin-base";
 
 export const statusFeed: StatusFeedDeclaration = {
-  url: "https://www.replicatestatus.com/api/v2/incidents.json",
+  url: "https://www.cloudflarestatus.com/api/v2/incidents/unresolved.json",
   format: "statuspage-v2",
+  // Redirects to Cloudflare's page already filtered to Replicate.
   statusPageUrl: "https://www.replicatestatus.com",
 };
 
-function mapComponent(name: string): StatusComponentMapping | null {
-  return { services: [name] };
+const REPLICATE_COMPONENT_ID = "fvgfcmy66tdr";
+const REPLICATE_COMPONENT_NAME = "Replicate";
+
+interface IncidentWithComponents {
+  components?: { id?: string; name?: string }[];
+}
+
+function isReplicate(component: { id?: string; name?: string }): boolean {
+  return component.id === REPLICATE_COMPONENT_ID || component.name === REPLICATE_COMPONENT_NAME;
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  // The feed is full history: keep only active incidents; the host closes
-  // cached rows that disappear from the parsed set.
-  return parseStatuspageIncidents(body, {
-    mapComponent,
+  const parsed = JSON.parse(body) as { incidents?: IncidentWithComponents[] };
+  if (!Array.isArray(parsed.incidents)) {
+    throw new Error("statuspage feed: missing incidents array");
+  }
+  // Keep Replicate's incidents, with only the Replicate component (under its
+  // canonical name), so Cloudflare components tagged alongside it don't show
+  // up as Replicate services.
+  const replicate = parsed.incidents
+    .filter((incident) => (incident?.components ?? []).some(isReplicate))
+    .map((incident) => ({ ...incident, components: [{ name: REPLICATE_COMPONENT_NAME }] }));
+  // A Replicate incident is about the whole service: every prediction,
+  // deployment and model goes through the same API.
+  return parseStatuspageIncidents(JSON.stringify({ incidents: replicate }), {
+    mapComponent: (name) => ({ services: [name], providerWide: true }),
     statusPageUrl: statusFeed.statusPageUrl ?? statusFeed.url,
-  }).filter((incident) => incident.state !== "resolved" && !incident.resolvedAt);
+  });
 }

@@ -1,6 +1,12 @@
 /**
- * Supabase public status feed (Atlassian Statuspage, https://status.supabase.com:
- * verified 2026-10).
+ * Supabase public status feed (https://status.supabase.com, incident.io
+ * emulating the Statuspage v2 API: verified 2026-10-12, when the page had
+ * moved off Atlassian Statuspage).
+ *
+ * incident.io hosts 404 on /incidents/unresolved.json, so this reads
+ * /api/v2/incidents.json (recent history) and keeps the unresolved ones.
+ * incident.io incidents carry no components today, so they arrive
+ * provider-wide; the mapper below applies if components come back.
  *
  * Components are either AWS regions named exactly as the Management API
  * reports a project's `region` ("us-east-1", "eu-central-2", …), or product
@@ -19,7 +25,7 @@ import type {
 import { parseStatuspageIncidents } from "@infrawrench/plugin-base";
 
 export const statusFeed: StatusFeedDeclaration = {
-  url: "https://status.supabase.com/api/v2/incidents/unresolved.json",
+  url: "https://status.supabase.com/api/v2/incidents.json",
   format: "statuspage-v2",
   statusPageUrl: "https://status.supabase.com",
 };
@@ -53,8 +59,10 @@ export function mapComponent(name: string): StatusComponentMapping | null {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
+  // The feed is history: keep only active incidents; the host closes cached
+  // rows that disappear from the parsed set.
   return parseStatuspageIncidents(body, {
     mapComponent,
     statusPageUrl: statusFeed.statusPageUrl ?? statusFeed.url,
-  });
+  }).filter((incident) => incident.state !== "resolved" && !incident.resolvedAt);
 }

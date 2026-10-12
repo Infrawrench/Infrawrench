@@ -355,6 +355,7 @@ export const pluginManifestSchema = z.object({
       url: z.string().url(),
       format: z.enum(["statuspage-v2", "custom-json", "rss", "atom"]),
       statusPageUrl: z.string().url().optional(),
+      reachableFromEdge: z.boolean().optional(),
     })
     .optional(),
   preflight: z

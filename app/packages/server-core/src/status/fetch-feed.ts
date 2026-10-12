@@ -7,13 +7,22 @@
  * outbound HTTP (`workflows/fetch.ts` has the full argument). Feed URLs come
  * from plugin manifests (code, not user input) so unlike workflow fetch a
  * deployment without a proxy (local dev, self-hosters outside Kubernetes)
- * falls back to a direct fetch instead of failing.
+ * falls back to a direct fetch instead of failing. The same fixed-URL
+ * reasoning lets a feed that Cloudflare's network cannot reach skip the proxy
+ * (`direct`), from Node only: on the edge a direct fetch is Cloudflare's too.
  */
 import { fetchFromWorkflow, isWorkflowFetchConfigured } from "../workflows/fetch.js";
 
 /** Feeds are small (AWS's is ~230 KB); anything bigger is a broken feed. */
 const FEED_MAX_BYTES = 5 * 1024 * 1024;
 const FEED_TIMEOUT_MS = 20_000;
+
+/**
+ * Who is asking. Some status pages sit behind a Cloudflare zone that answers
+ * a request with no User-Agent with an empty `202` bot check (Heroku's did,
+ * 2026-10-12), which reads as a successful, empty feed.
+ */
+const FEED_USER_AGENT = "Infrawrench-StatusFeeds/1.0 (+https://infrawrench.com)";
 
 const FEED_ACCEPT =
   "application/json, application/rss+xml, application/atom+xml, text/xml, application/xml;q=0.9, */*;q=0.8";
@@ -40,12 +49,17 @@ export function decodeFeedBody(bytes: Uint8Array): string {
  * or HTTP failure: the collector records the error against the feed row so
  * a broken feed is diagnosable rather than silently reporting "no incidents".
  */
-export async function fetchStatusFeedBody(url: string): Promise<string> {
+export async function fetchStatusFeedBody(
+  url: string,
+  options: { direct?: boolean } = {},
+): Promise<string> {
   return fetchPublicFeedBody(url, {
     accept: FEED_ACCEPT,
+    userAgent: FEED_USER_AGENT,
     timeoutMs: FEED_TIMEOUT_MS,
     maxBytes: FEED_MAX_BYTES,
     label: "status feed",
+    ...(options.direct ? { direct: true } : {}),
   });
 }
 
@@ -56,6 +70,22 @@ export interface PublicFeedFetchOptions {
   maxBytes: number;
   /** Prefix for error messages, e.g. "status feed". */
   label: string;
+  /** Sent as `User-Agent`; without one, some origins answer a bot check. */
+  userAgent?: string;
+  /**
+   * Fetch from this process even when the egress proxy is configured: for a
+   * fixed URL the proxy's network cannot reach (see
+   * `StatusFeedDeclaration.reachableFromEdge`). The URL must come from code,
+   * never from user input; the proxy exists for the URLs that do.
+   */
+  direct?: boolean;
+}
+
+/** A 2xx with nothing in it is a bot check or a broken feed, never a feed. */
+function assertNotEmpty(bytes: Uint8Array, status: number, label: string): void {
+  if (bytes.byteLength === 0) {
+    throw new Error(`${label} responded HTTP ${status} with an empty body`);
+  }
 }
 
 /**
@@ -68,12 +98,16 @@ export async function fetchPublicFeedBody(
   url: string,
   options: PublicFeedFetchOptions,
 ): Promise<string> {
-  const { accept, timeoutMs, maxBytes, label } = options;
-  if (isWorkflowFetchConfigured()) {
+  const { accept, timeoutMs, maxBytes, label, userAgent } = options;
+  const headers: Record<string, string> = {
+    accept,
+    ...(userAgent ? { "user-agent": userAgent } : {}),
+  };
+  if (isWorkflowFetchConfigured() && !options.direct) {
     const response = await fetchFromWorkflow({
       url,
       method: "GET",
-      headers: { accept },
+      headers,
       timeoutMs,
       maxBytes,
       redirect: "follow",
@@ -81,12 +115,15 @@ export async function fetchPublicFeedBody(
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`${label} responded HTTP ${response.status}`);
     }
-    return decodeFeedBody(Uint8Array.from(Buffer.from(response.bodyBase64, "base64")));
+    const bytes = Uint8Array.from(Buffer.from(response.bodyBase64, "base64"));
+    assertNotEmpty(bytes, response.status, label);
+    return decodeFeedBody(bytes);
   }
 
-  // No proxy configured: direct fetch (dev / self-hosted outside k8s).
+  // Direct: no proxy configured (dev / self-hosted outside k8s), or a feed
+  // the proxy's network cannot reach.
   const res = await fetch(url, {
-    headers: { accept },
+    headers,
     redirect: "follow",
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -121,6 +158,7 @@ export async function fetchPublicFeedBody(
     reader.releaseLock();
   }
   const buffer = new Uint8Array(total);
+  if (total === 0) assertNotEmpty(buffer, res.status, label);
   let offset = 0;
   for (const chunk of chunks) {
     buffer.set(chunk, offset);

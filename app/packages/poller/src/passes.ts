@@ -480,7 +480,17 @@ export const PASSES: readonly Pass[] = [
     kind: "periodic",
     name: "status-feeds",
     runtime: "edge",
-    run: guarded("[poller] status feed tick failed:", () => runStatusFeedCollection()),
+    run: guarded("[poller] status feed tick failed:", () => runStatusFeedCollection("edge")),
+  },
+  // The few feeds whose own Cloudflare zone challenges Workers
+  // (`reachableFromEdge: false`), fetched directly from Node. Same leases.
+  {
+    kind: "periodic",
+    name: "status-feeds-origin",
+    runtime: "gateway",
+    run: guarded("[poller] origin status feed tick failed:", () =>
+      runStatusFeedCollection("origin"),
+    ),
   },
 
   // Expiry alerts. A bounded batch of orgs whose 24h scan window has elapsed;

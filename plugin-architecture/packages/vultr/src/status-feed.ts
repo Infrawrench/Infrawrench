@@ -10,6 +10,11 @@
  * what the plugin writes into `fields.region`. Service alerts carry an
  * optional `region`; without one they are provider-wide. `status` is
  * `ongoing` while active; anything else (`resolved`, `completed`) is closed.
+ *
+ * The page's Cloudflare zone answers requests from Cloudflare Workers with a
+ * managed challenge (`cf-mitigated: challenge`, 403; checked 2026-10-12)
+ * while serving the same URL to anything else, so the feed is fetched from
+ * Node, not the edge.
  */
 
 import type {
@@ -23,6 +28,7 @@ export const statusFeed: StatusFeedDeclaration = {
   url: "https://status.vultr.com/status.json",
   format: "custom-json",
   statusPageUrl: "https://status.vultr.com",
+  reachableFromEdge: false,
 };
 
 interface VultrAlert {

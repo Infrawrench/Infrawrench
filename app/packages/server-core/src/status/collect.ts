@@ -13,6 +13,12 @@
  * persisted to `provider_status_feeds.last_status`/`last_error`, with an
  * exponential backoff so a dead feed doesn't get hammered. A failure never
  * silently reports "no incidents": the previous cache stays as-is.
+ *
+ * Two passes share this: the edge pass collects every feed that Cloudflare's
+ * network can reach (through the egress proxy where one is configured), and
+ * a gateway pass collects the few whose own Cloudflare zone challenges
+ * Workers (`StatusFeedDeclaration.reachableFromEdge: false`), fetched
+ * directly from Node. Each claims only its own feeds.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
@@ -38,11 +44,24 @@ const RESOLVED_BACKFILL_CUTOFF_MS = 30 * 24 * 60 * 60 * 1000;
 
 const MAX_ERROR_LENGTH = 500;
 
+/**
+ * Which feeds a pass collects: `edge` the ones Cloudflare's network can
+ * reach, `origin` the ones it cannot, fetched directly from Node.
+ */
+export type StatusFeedRoute = "edge" | "origin";
+
+function routeOf(plugin: LoadedPlugin): StatusFeedRoute {
+  return plugin.plugin.manifest.statusFeed?.reachableFromEdge === false ? "origin" : "edge";
+}
+
 /** Plugins whose manifest declares a feed *and* that ship the parser. */
-async function statusFeedPlugins(): Promise<LoadedPlugin[]> {
+async function statusFeedPlugins(route: StatusFeedRoute): Promise<LoadedPlugin[]> {
   const loaded = await loadPlugins();
   return loaded.filter(
-    (p) => p.plugin.manifest.statusFeed && typeof p.plugin.parseStatusFeed === "function",
+    (p) =>
+      p.plugin.manifest.statusFeed &&
+      typeof p.plugin.parseStatusFeed === "function" &&
+      routeOf(p) === route,
   );
 }
 
@@ -51,8 +70,11 @@ async function statusFeedPlugins(): Promise<LoadedPlugin[]> {
  * claim the due ones, and collect each. Individual feed failures are
  * contained: one broken provider never blocks the rest.
  */
-export async function runStatusFeedCollection(limit = FEEDS_PER_TICK): Promise<void> {
-  const capable = await statusFeedPlugins();
+export async function runStatusFeedCollection(
+  route: StatusFeedRoute = "edge",
+  limit = FEEDS_PER_TICK,
+): Promise<void> {
+  const capable = await statusFeedPlugins(route);
   if (capable.length === 0) return;
   const byId = new Map(capable.map((p) => [p.plugin.manifest.id, p]));
   const ids = Array.from(byId.keys());
@@ -66,7 +88,7 @@ export async function runStatusFeedCollection(limit = FEEDS_PER_TICK): Promise<v
   for (const pluginId of claimed) {
     const plugin = byId.get(pluginId);
     if (!plugin) continue; // Row for a plugin since removed from the registry.
-    await collectOneFeed(plugin);
+    await collectOneFeed(plugin, route);
   }
 }
 
@@ -91,14 +113,14 @@ async function claimDueFeeds(pluginIds: string[], limit: number): Promise<string
   return Array.from(rows as Iterable<Record<string, unknown>>, (r) => String(r["plugin_id"]));
 }
 
-async function collectOneFeed(loaded: LoadedPlugin): Promise<void> {
+async function collectOneFeed(loaded: LoadedPlugin, route: StatusFeedRoute): Promise<void> {
   const manifest = loaded.plugin.manifest;
   const feed = manifest.statusFeed;
   const parse = loaded.plugin.parseStatusFeed;
   if (!feed || !parse) return;
   const fetchStart = new Date();
   try {
-    const body = await fetchStatusFeedBody(feed.url);
+    const body = await fetchStatusFeedBody(feed.url, { direct: route === "origin" });
     const incidents = parse.call(loaded.plugin, body);
     await upsertIncidents(manifest.id, incidents, fetchStart);
     await closeStaleIncidents(manifest.id, fetchStart);

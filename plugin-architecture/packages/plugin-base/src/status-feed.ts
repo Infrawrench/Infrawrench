@@ -39,6 +39,14 @@ export interface StatusFeedDeclaration {
    * origin of `url` when omitted.
    */
   statusPageUrl?: string;
+  /**
+   * False when the feed cannot be fetched from Cloudflare's network: its own
+   * Cloudflare zone challenges requests that come from Workers (Vultr's
+   * does). The host then fetches it from a Node runtime, directly, rather
+   * than from the edge or through the Worker egress proxy. Leave unset
+   * unless a fetch from a Worker has been seen to fail.
+   */
+  reachableFromEdge?: boolean;
 }
 
 /** Normalized incident impact, ordered from least to most severe. */

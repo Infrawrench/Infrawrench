@@ -437,6 +437,39 @@ describe("helpers", () => {
     expect(incidents[0]!.resourceTypes).toContain("supabase-project");
   });
 
+  it("keeps only unresolved incidents from the incident.io history feed", () => {
+    const incidents = parseStatusFeed(
+      JSON.stringify({
+        incidents: [
+          {
+            id: "open",
+            name: "Log ingestion impaired",
+            status: "identified",
+            impact: "minor",
+            created_at: "2026-10-12T20:00:00Z",
+            updated_at: "2026-10-12T21:00:00Z",
+            resolved_at: null,
+            components: [],
+            incident_updates: [],
+          },
+          {
+            id: "closed",
+            name: "Upgrade issues",
+            status: "resolved",
+            impact: "minor",
+            created_at: "2026-10-06T00:00:00Z",
+            updated_at: "2026-10-06T18:18:45Z",
+            resolved_at: "2026-10-06T18:18:45Z",
+            components: [],
+            incident_updates: [],
+          },
+        ],
+      }),
+    );
+    expect(incidents.map((i) => i.externalId)).toEqual(["open"]);
+    expect(incidents[0]!.providerWide).toBe(true);
+  });
+
   it("exports projects to Terraform with a password variable", () => {
     const result = supabaseTerraformExport.mapResource({
       id: `${ACCOUNT}:supabase-project:${REF}`,

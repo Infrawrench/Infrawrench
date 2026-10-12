@@ -1,6 +1,12 @@
 /**
- * Fly.io public status feed (Atlassian Statuspage, https://status.flyio.net:
- * verified 2026-08; status.fly.io 301s there).
+ * Fly.io public status feed (https://status.flyio.net, incident.io emulating
+ * the Statuspage v2 API: verified 2026-10-12, when the page had moved off
+ * Atlassian Statuspage; status.fly.io 301s there).
+ *
+ * incident.io hosts 404 on /incidents/unresolved.json, so this reads
+ * /api/v2/incidents.json (recent history) and keeps the unresolved ones.
+ * Incidents carry no components today, so they arrive provider-wide; the
+ * mapper applies if components come back.
  *
  * Region components are named "AMS - Amsterdam, Netherlands" (IATA prefix),
  * with per-region control-plane components like "Management Plane - ORD".
@@ -15,7 +21,7 @@ import type {
 import { parseStatuspageIncidents } from "@infrawrench/plugin-base";
 
 export const statusFeed: StatusFeedDeclaration = {
-  url: "https://status.flyio.net/api/v2/incidents/unresolved.json",
+  url: "https://status.flyio.net/api/v2/incidents.json",
   format: "statuspage-v2",
   statusPageUrl: "https://status.flyio.net",
 };
@@ -29,6 +35,8 @@ const SERVICE_TYPES: Record<string, string[]> = {
   "Machines API": ["machine"],
   Machines: ["machine"],
   Volumes: ["volume"],
+  "Persistent Storage (Volumes)": ["volume"],
+  "Customer Applications": ["app", "machine"],
   Certificates: ["certificate"],
   "Anycast Proxy": ["app", "ip-allocation"],
 };
@@ -49,8 +57,10 @@ function mapComponent(name: string): StatusComponentMapping | null {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
+  // The feed is history: keep only active incidents; the host closes cached
+  // rows that disappear from the parsed set.
   return parseStatuspageIncidents(body, {
     mapComponent,
     statusPageUrl: statusFeed.statusPageUrl ?? statusFeed.url,
-  });
+  }).filter((incident) => incident.state !== "resolved" && !incident.resolvedAt);
 }
