@@ -19,6 +19,7 @@ import type {
   ResourceInstance,
   SelectOption,
   SidebarItemSchema,
+  VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
@@ -76,6 +77,7 @@ import {
   runnerSeries,
 } from "./metrics.js";
 import { DETAIL_KEYS, renderGitLabDetail, renderGitLabSidebar } from "./render.js";
+import { fetchGitLabVulnerabilities } from "./vulnerabilities.js";
 import type {
   GlDeployKey,
   GlDeployToken,
@@ -914,6 +916,21 @@ export class GitLabClient implements PluginClient {
 
   resolveLeakedSecret(ref: string, resolution: LeakedSecretResolution): Promise<void> {
     return resolveSecretDetectionFinding(this.ctx, ref, resolution);
+  }
+
+  /**
+   * Open dependency- and container-scanning findings: one walk of the
+   * group's report for a group-scoped account, otherwise the report of each
+   * fanned-out project. See `vulnerabilities.ts` for the tier handling.
+   */
+  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
+    if (this.groupRef) {
+      const root = (await this.groups())[0];
+      if (!root?.full_path) throw new Error("GitLab plugin: the account's group was not found");
+      const projects = await this.fanout().catch(() => [] as GlProject[]);
+      return fetchGitLabVulnerabilities(this.ctx, { groupPath: root.full_path, projects });
+    }
+    return fetchGitLabVulnerabilities(this.ctx, { projects: await this.fanout() });
   }
 
   async verifyCredentials(): Promise<PreflightResult> {

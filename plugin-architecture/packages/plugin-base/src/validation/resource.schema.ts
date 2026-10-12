@@ -513,6 +513,20 @@ const principalRoleSchema = z
     path: ["mfaKey"],
   });
 
+const runningImagesSchema = z
+  .object({
+    imageKeys: z.array(z.string().min(1)).min(1),
+    digestKeys: z.array(z.string().min(1)).min(1).optional(),
+    runningKey: z.string().min(1).optional(),
+    runningValues: z.array(z.string().min(1)).min(1).optional(),
+  })
+  // A running field with no values (or values with no field) is dead config:
+  // the `adminValues` stance.
+  .refine((d) => (d.runningKey === undefined) === (d.runningValues === undefined), {
+    message: "runningKey and runningValues must be declared together",
+    path: ["runningValues"],
+  });
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -542,4 +556,5 @@ export const resourceTypeDefinitionSchema = z.object({
   extendedSupport: extendedSupportSchema.optional(),
   carbon: carbonSchema.optional(),
   principalRole: principalRoleSchema.optional(),
+  runningImages: runningImagesSchema.optional(),
 });

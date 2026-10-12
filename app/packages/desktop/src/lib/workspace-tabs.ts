@@ -13,6 +13,7 @@ import {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -60,6 +61,7 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  vulnerabilitiesTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -171,6 +173,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/expiring", ...(replace ? { replace: true } : {}) };
     case "posture":
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
+    case "vulnerabilities":
+      return { to: "/vulnerabilities", ...(replace ? { replace: true } : {}) };
     case "access-review":
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
     case "jit-access":
@@ -399,6 +403,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "posture") {
     return postureTabTarget();
+  }
+  if (segments[0] === "vulnerabilities") {
+    return vulnerabilitiesTabTarget();
   }
   if (segments[0] === "access-review") {
     return accessReviewTabTarget();

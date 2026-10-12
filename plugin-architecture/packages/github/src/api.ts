@@ -173,6 +173,67 @@ export async function ghFetch<T>(
   }
 }
 
+/**
+ * A GET that also hands back the (lower-cased) response headers, for the list
+ * endpoints that paginate by cursor in the `Link` header (`after`/`before`),
+ * where `ghPaged`'s page numbers are refused. Same host-HTTP routing and
+ * error mapping as `ghFetch`.
+ */
+export async function ghFetchWithHeaders<T>(
+  ctx: Pick<GitHubContext, "token" | "host" | "caCert" | "http">,
+  path: string,
+  query: Query = {},
+): Promise<{ data: T; headers: Record<string, string> }> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== "") params.set(k, String(v));
+  }
+  const qs = params.toString();
+  const url = `${ctx.host.apiUrl}${path}${qs ? `?${qs}` : ""}`;
+  const reqHeaders = headers(ctx.token);
+  let status: number;
+  let text: string;
+  const lower: Record<string, string> = {};
+  if (ctx.http) {
+    const res = await ctx.http.request({
+      url,
+      method: "GET",
+      headers: reqHeaders,
+      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    });
+    status = res.status;
+    text = res.body;
+    for (const [k, v] of Object.entries(res.headers ?? {})) lower[k.toLowerCase()] = v;
+  } else {
+    const res = await fetch(url, { headers: reqHeaders });
+    status = res.status;
+    text = await res.text();
+    res.headers.forEach((v, k) => {
+      lower[k.toLowerCase()] = v;
+    });
+  }
+  if (status < 200 || status >= 300) {
+    throw new GitHubApiError(status, friendlyMessage(status, path, text));
+  }
+  return { data: (text ? JSON.parse(text) : undefined) as T, headers: lower };
+}
+
+/** The `rel="next"` URL of a `Link` header, if there is one. */
+export function nextLink(link: string | undefined): URL | undefined {
+  if (!link) return undefined;
+  for (const part of link.split(",")) {
+    const m = /<([^>]+)>\s*;\s*rel="?next"?/i.exec(part.trim());
+    if (m) {
+      try {
+        return new URL(m[1]!);
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** POST a GraphQL query. Returns `data` and any field errors; never throws on partial data. */
 export async function ghGraphql<T>(
   ctx: Pick<GitHubContext, "token" | "host" | "caCert" | "http">,

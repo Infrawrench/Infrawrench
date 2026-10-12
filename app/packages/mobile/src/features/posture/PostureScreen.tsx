@@ -109,6 +109,13 @@ export function PostureScreen() {
           )
         }
       />
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
+        hitSlop={8}
+      >
+        <Text style={styles.link}>Vulnerabilities in running images →</Text>
+      </Pressable>
     </Screen>
   );
 }
@@ -519,4 +526,5 @@ const styles = StyleSheet.create({
   action: { color: colors.textMuted, fontSize: 12 },
   actionBusy: { opacity: 0.5 },
   footnote: { color: colors.textFaint, fontSize: 11 },
+  link: { color: colors.accent, fontSize: 12 },
 });

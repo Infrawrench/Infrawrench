@@ -23,6 +23,7 @@ import {
 interface DesktopPosturePanelProps {
   openResource: (finding: PostureFinding) => void;
   openAccount: (accountId: string) => void;
+  openVulnerabilities?: (() => void) | undefined;
 }
 
 /**
@@ -32,7 +33,11 @@ interface DesktopPosturePanelProps {
  * declarations. Same wiring as DesktopExpiryPanel: a failed *refresh* must
  * not blank findings that are already drawn.
  */
-export function DesktopPosturePanel({ openResource, openAccount }: DesktopPosturePanelProps) {
+export function DesktopPosturePanel({
+  openResource,
+  openAccount,
+  openVulnerabilities,
+}: DesktopPosturePanelProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +122,7 @@ export function DesktopPosturePanel({ openResource, openAccount }: DesktopPostur
       error={error}
       onRetry={retry}
       onOpenResource={openResource}
+      onOpenVulnerabilities={openVulnerabilities}
       // Both modes can dismiss: cloud mode records it for the org through the
       // API (and the server rejects a caller without `resources:write`),
       // local mode writes this workspace's own SQLite table.

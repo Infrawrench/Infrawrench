@@ -72,6 +72,7 @@ import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
+import { cmdVulns, cmdVulnsDismiss, cmdVulnsRestore, cmdVulnsSources } from "./commands/vulns";
 import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
 import { cmdDiff } from "./commands/diff";
@@ -305,6 +306,14 @@ COMMANDS
   leaks reopen <id>   undo a dismissal or a manual rotation
                       (rotate, mark-rotated and dismiss also close the finding on the scanner;
                       --keep-upstream-open leaves it open; cloud only)
+  vulns [list]        known vulnerabilities (CVEs) from your providers' scanners, joined to what
+                      runs them, worst first   [--severity critical,high] [--running|--not-running]
+                      [--fix-available] [--kev] [--plugin <id>] [-a <account>] [--search <text>]
+                      [--include-dismissed] [--limit 50]   (cloud only)
+  vulns dismiss       accept an advisory as a known risk, for one artifact or everywhere ("*")
+                      <advisoryId> <artifactKey|"*"> [--reason <text>]   (keys from vulns --json)
+  vulns restore       put a dismissed vulnerability back   <advisoryId> <artifactKey|"*">
+  vulns sources       scanner accounts, when each last collected, errors and help links
   dns                 every DNS zone & record across your providers, with dangling targets
                       (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
@@ -411,9 +420,15 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
+  --severity <list>   vulns: comma-separated critical, high, medium, low, unscored
+  --running / --not-running   vulns: only findings whose artifact is (or is not) running
+  --fix-available     vulns: only findings the scanner names a fixed version for
+  --kev               vulns: only advisories in the CISA Known Exploited Vulnerabilities catalog
+  --search <text>     vulns: substring over advisory, aliases, package, artifact & title
+  --include-dismissed vulns: also list the findings dismissed as accepted risks
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
                       costs push: json (default), csv or focus
-  --reason <text>     posture dismiss: why the finding is an accepted risk; costs --anomalies
+  --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
                       feedback: the reason category (planned_launch, migration, …); leaks
                       dismiss: false-positive, wont-fix or used-in-tests
   --status <s>        leaks: open (default), rotated, dismissed, resolved or all; jit: queue filter
@@ -977,6 +992,20 @@ export async function runCli(): Promise<void> {
       case "leaks":
         // Leaked credentials: the Posture tab's "Leaked credentials" category.
         await cmdLeaks(ctx, rest, parsed.leaks);
+        break;
+      case "vulns":
+      case "vulnerabilities":
+        if (rest[0] === "dismiss") await cmdVulnsDismiss(ctx, rest.slice(1));
+        else if (rest[0] === "restore") await cmdVulnsRestore(ctx, rest.slice(1));
+        else if (rest[0] === "sources") await cmdVulnsSources(ctx);
+        else if (rest[0] === undefined || rest[0] === "list") {
+          await cmdVulns(ctx, parsed.vulns, parsed.range);
+        } else {
+          throw new CliError(
+            `Unknown "${rest[0]}". \`vulns\` takes list, dismiss, restore or sources.`,
+            2,
+          );
+        }
         break;
       case "dns":
         await cmdDns(ctx);

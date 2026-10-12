@@ -51,6 +51,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/posture`)}
         />
         <Row
+          title="Vulnerabilities"
+          subtitle="Scanner findings, joined to what is running"
+          onPress={() => router.push(`/org/${orgId}/vulnerabilities`)}
+        />
+        <Row
           title="Domains"
           subtitle="Every DNS zone and record, with dangling targets flagged"
           onPress={() => router.push(`/org/${orgId}/dns`)}

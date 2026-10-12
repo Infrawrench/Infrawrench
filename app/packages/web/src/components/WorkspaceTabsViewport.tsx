@@ -52,6 +52,7 @@ import {
   expiringTabTarget,
   resourceTabTarget,
   settingsTabTarget,
+  vulnerabilitiesTabTarget,
   type OrphansClient,
   type RightsizingClient,
   type ExtendedSupportClient,
@@ -67,6 +68,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccountLeakBanner } from "./WebAccountLeakBanner";
+import { WebVulnerabilitiesPanel } from "./WebVulnerabilitiesPanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebJitAccessPanel } from "./WebJitAccessPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
@@ -503,6 +505,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           openAccount={(accountId) =>
             void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
           }
+          openVulnerabilities={() =>
+            void navigate(getWorkspaceNavigateArgs(vulnerabilitiesTabTarget()))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(
@@ -511,6 +516,27 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "vulnerabilities":
+      return (
+        <WebVulnerabilitiesPanel
+          // Keyed by org so switching org remounts and refetches.
+          key={orgId}
+          orgId={orgId}
+          openPosture={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          openResource={(resource) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  resource.accountId,
+                  resource.resourceId,
+                  resource.pluginId,
+                  resource.resourceTypeId,
                 ),
               ),
             )

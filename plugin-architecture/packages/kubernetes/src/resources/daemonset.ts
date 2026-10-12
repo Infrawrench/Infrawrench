@@ -11,6 +11,11 @@ export const DaemonSetResourceType = rt({
     f("desiredNumberScheduled", "Desired", { kind: "number", required: false }),
     f("numberReady", "Ready", { kind: "number", required: false }),
     f("image", "Image", { required: false }),
+    f("images", "Images", {
+      required: false,
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
+    }),
   ],
   outputs: [],
   dependsOn: [
@@ -25,4 +30,5 @@ export const DaemonSetResourceType = rt({
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
   supportsMetrics: true,
+  runningImages: { imageKeys: ["images", "image"] },
 });

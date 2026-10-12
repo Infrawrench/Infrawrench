@@ -47,6 +47,11 @@ export interface PostureSectionProps {
    * scanning runs in the cloud poller.
    */
   leakedCredentials?: ReactNode;
+  /**
+   * Jump to the Vulnerabilities tab: scanner findings in what runs, the other
+   * half of "is this exposed". Omitted, the link is not shown.
+   */
+  onOpenVulnerabilities?: (() => void) | undefined;
 }
 
 type GroupBy = "severity" | "category" | "account";
@@ -384,6 +389,7 @@ export function PostureSection({
   onDismiss,
   onRestore,
   leakedCredentials,
+  onOpenVulnerabilities,
 }: PostureSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -423,7 +429,18 @@ export function PostureSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">{gt("Posture")}</h1>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-3">
+        <h1 className="text-xl font-semibold">{gt("Posture")}</h1>
+        {onOpenVulnerabilities && (
+          <button
+            type="button"
+            onClick={onOpenVulnerabilities}
+            className="text-xs text-on-surface-tertiary underline hover:text-on-surface-secondary"
+          >
+            {gt("Scanner findings are in Vulnerabilities")}
+          </button>
+        )}
+      </div>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
           "Security checks across every provider (public buckets, open firewall rules, unencrypted disks, stale credentials), from the last sync.",

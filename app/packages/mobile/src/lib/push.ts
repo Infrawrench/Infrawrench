@@ -288,6 +288,8 @@ export function pushDataToPath(data: MobilePushData): string {
       return data.leakId
         ? `/org/${data.orgId}/posture?leakId=${encodeURIComponent(data.leakId)}`
         : `/org/${data.orgId}/posture`;
+    case "vulnerability_alert":
+      return `/org/${data.orgId}/vulnerabilities`;
     // A savings finding is listed in the Costs screen's savings sections.
     case "savings_finding":
     // Extended-support findings are a section of the Costs screen.
@@ -574,6 +576,10 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       return typeof leakId === "string" && leakId
         ? { type: "leaked_secret", orgId, leakId }
         : { type: "leaked_secret", orgId };
+    }
+    case "vulnerability_alert": {
+      const count = data["count"];
+      return { type: "vulnerability_alert", orgId, count: typeof count === "number" ? count : 0 };
     }
     case "savings_finding": {
       const kind = data["kind"];

@@ -14,6 +14,7 @@ import {
   invoicesTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
+  vulnerabilitiesTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
   useUIStore,
@@ -61,6 +62,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccountLeakBanner } from "@/components/DesktopAccountLeakBanner";
+import { DesktopVulnerabilitiesPanel } from "@/components/DesktopVulnerabilitiesPanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopJitAccessPanel } from "@/components/DesktopJitAccessPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
@@ -490,6 +492,9 @@ function renderPanel(
           openAccount={(accountId) =>
             void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
           }
+          openVulnerabilities={() =>
+            void navigate(getWorkspaceNavigateArgs(vulnerabilitiesTabTarget()))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(
@@ -498,6 +503,26 @@ function renderPanel(
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "vulnerabilities":
+      return (
+        <DesktopVulnerabilitiesPanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+          openPosture={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          openResource={(resource) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  resource.accountId,
+                  resource.resourceId,
+                  resource.pluginId,
+                  resource.resourceTypeId,
                 ),
               ),
             )

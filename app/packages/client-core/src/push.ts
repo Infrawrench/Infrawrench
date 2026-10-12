@@ -294,6 +294,19 @@ export type PushNotificationData =
     }
   | {
       /**
+       * New critical (or, per settings, high / KEV-listed) vulnerabilities in
+       * images that are running (see server-core `vulnerabilities/alerts.ts`).
+       * One batched notification per scan, never one per finding.
+       *
+       * Target route: the vulnerabilities screen, `/org/{orgId}/vulnerabilities`.
+       */
+      type: "vulnerability_alert";
+      orgId: string;
+      /** How many findings the message names. */
+      count: number;
+    }
+  | {
+      /**
        * A new orphaned or oversized resource found by the savings scan (see
        * server-core `github-issues/savings-scan.ts`). One per new finding;
        * the trigger is push-muted by default.

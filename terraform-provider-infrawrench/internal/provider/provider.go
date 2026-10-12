@@ -214,6 +214,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewExpiryAlertSettingsResource,
 		NewExtendedSupportSettingsResource,
 		NewPostureAlertSettingsResource,
+		NewVulnerabilityAlertSettingsResource,
 		NewSessionRecordingSettingsResource,
 		NewNetworkFlowSettingsResource,
 		NewKubernetesNetworkSettingsResource,
