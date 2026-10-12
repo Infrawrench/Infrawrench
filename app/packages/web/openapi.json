@@ -3958,6 +3958,7 @@
               "price-catalog",
               "incidents",
               "slos",
+              "services",
               "workflows",
               "deployments",
               "settings",
@@ -4002,6 +4003,21 @@
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "serviceId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "details",
+              "ssh",
+              "sftp",
+              "apps",
+              "scorecards"
+            ]
           },
           "sessionId": {
             "type": "string",
@@ -39782,11 +39798,70 @@
             "items": {
               "$ref": "#/components/schemas/IncidentNote"
             }
+          },
+          "affectedServices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "tier": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        2
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        3
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        4
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug",
+                "tier"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Services the affected resources belong to, resolved on read."
           }
         },
         "required": [
           "incident",
-          "notes"
+          "notes",
+          "affectedServices"
         ],
         "additionalProperties": false
       },
