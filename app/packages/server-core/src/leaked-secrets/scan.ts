@@ -104,6 +104,34 @@ async function attribute(
   };
 }
 
+/**
+ * What a scan does to a leak it already holds, given the scanner's state.
+ *
+ * - Closed on the scanner by someone before it was rotated here: `resolved`.
+ *   A row we closed upstream ourselves keeps the status we gave it.
+ * - Reopened on the scanner after it was closed there: `open` again.
+ * - Attribution is re-run for open leaks not pinned by fingerprint (an
+ *   account connected since the last scan may be the one it belongs to). A
+ *   fingerprint match is kept: a target whose value changed is no longer in
+ *   the index, and re-matching it would erase the very match
+ *   `detectRotations` then checks.
+ */
+export function planFindingUpdate(
+  prior: Pick<LeakedSecretRow, "status" | "upstreamResolvedAt" | "matchConfidence">,
+  upstreamState: "open" | "resolved",
+): { status?: "open" | "resolved"; reattribute: boolean } {
+  let status: "open" | "resolved" | undefined;
+  if (upstreamState === "resolved" && prior.status === "open" && !prior.upstreamResolvedAt) {
+    status = "resolved";
+  }
+  if (upstreamState === "open" && prior.status === "resolved") status = "open";
+  const nextStatus = status ?? prior.status;
+  return {
+    ...(status ? { status } : {}),
+    reattribute: nextStatus === "open" && prior.matchConfidence !== "fingerprint",
+  };
+}
+
 export interface ScanResult {
   found: number;
   newLeakIds: string[];
@@ -191,16 +219,9 @@ export async function scanLeakedSecretAccount(
     }
 
     const patch: Partial<LeakedSecretRow> = { ...upstream, updatedAt: now };
-    // Closed by someone on the scanner before it was rotated here. A row we
-    // closed upstream ourselves keeps the status we gave it.
-    if (finding.state === "resolved" && prior.status === "open" && !prior.upstreamResolvedAt) {
-      patch.status = "resolved";
-    }
-    // Reopened on the scanner after it was closed there.
-    if (finding.state === "open" && prior.status === "resolved") patch.status = "open";
-    // Attribution is re-run for open leaks: an account connected since the
-    // last scan may be the one it belongs to.
-    if ((patch.status ?? prior.status) === "open") {
+    const plan = planFindingUpdate(prior, finding.state);
+    if (plan.status) patch.status = plan.status;
+    if (plan.reattribute) {
       const a = await attribute(organizationId, finding, ctx, prior.fingerprint);
       Object.assign(patch, a.match, {
         fingerprint: a.fingerprint,

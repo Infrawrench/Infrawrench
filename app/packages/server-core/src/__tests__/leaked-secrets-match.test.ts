@@ -242,3 +242,34 @@ describe("bundled token formats", () => {
     expect(types.get("gitlab_personal_access_token")).toBe("gitlab");
   });
 });
+
+describe("planFindingUpdate", () => {
+  let plan: typeof import("../leaked-secrets/scan").planFindingUpdate;
+  beforeAll(async () => {
+    plan = (await import("../leaked-secrets/scan")).planFindingUpdate;
+  }, 120_000);
+
+  const open = { status: "open", upstreamResolvedAt: null, matchConfidence: "none" };
+
+  it("follows the scanner when someone else closes or reopens it", () => {
+    expect(plan(open, "resolved")).toEqual({ status: "resolved", reattribute: false });
+    expect(plan({ ...open, status: "resolved" }, "open")).toEqual({
+      status: "open",
+      reattribute: true,
+    });
+  });
+
+  it("keeps the status of a leak Infrawrench closed upstream itself", () => {
+    expect(plan({ ...open, upstreamResolvedAt: new Date() }, "resolved")).toEqual({
+      reattribute: true,
+    });
+    expect(plan({ ...open, status: "rotated" }, "resolved")).toEqual({ reattribute: false });
+  });
+
+  it("never re-matches a fingerprint match, so a rotation stays detectable", () => {
+    expect(plan({ ...open, matchConfidence: "fingerprint" }, "open")).toEqual({
+      reattribute: false,
+    });
+    expect(plan({ ...open, matchConfidence: "token-type" }, "open")).toEqual({ reattribute: true });
+  });
+});
