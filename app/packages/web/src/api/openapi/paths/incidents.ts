@@ -112,6 +112,16 @@ export function registerIncidentPaths(ctx: BuildContext) {
   const IncidentDetail = strict({
     incident: Incident,
     notes: z.array(IncidentNote),
+    affectedServices: z
+      .array(
+        strict({
+          id: Uuid,
+          name: z.string(),
+          slug: z.string(),
+          tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable(),
+        }),
+      )
+      .describe("Services the affected resources belong to, resolved on read."),
   }).openapi("IncidentDetail");
 
   const IncidentActions = strict({

@@ -46,9 +46,11 @@ import {
   type IncidentProbeTransition,
   type IncidentTimelineResponse,
   type PostmortemResource,
+  type ServiceRef,
 } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { routeAlert } from "@infrawrench/server-core/alerts/route";
+import { getServicesForResources } from "@infrawrench/server-core/service-catalog/lookup";
 import {
   createStatusPageNotice,
   resolveStatusPageNotice,
@@ -265,6 +267,10 @@ async function announce(
   if (incident.summary) bodyLines.push(incident.summary);
   if (incident.affectedResourceIds.length > 0) {
     bodyLines.push(`Affected resources: ${incident.affectedResourceIds.length}`);
+    const services = await affectedServices(organizationId, incident.affectedResourceIds);
+    if (services.length > 0) {
+      bodyLines.push(`Affected services: ${services.map((s) => s.name).join(", ")}`);
+    }
   }
   if (phase !== "declared") {
     bodyLines.push(`Started ${incident.startedAt}.`);
@@ -823,15 +829,34 @@ async function lookupResources(
       ),
     );
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const services = await getServicesForResources(organizationId, resourceIds);
   return resourceIds.map((resourceId) => {
     const row = byId.get(resourceId);
+    const names = (services.get(resourceId) ?? []).map((s) => s.name);
     return {
       resourceId,
       displayName: row?.displayName ?? null,
       pluginId: row?.pluginId ?? null,
       resourceTypeId: row?.resourceTypeId ?? null,
+      ...(names.length > 0 ? { services: names } : {}),
     };
   });
+}
+
+/**
+ * The distinct services an incident's affected resources belong to, by name.
+ * Resolved on read: membership is rules plus explicit members and moves with
+ * the inventory, so it is never copied onto the incident. Never throws.
+ */
+export async function affectedServices(
+  organizationId: string,
+  resourceIds: readonly string[],
+): Promise<ServiceRef[]> {
+  if (resourceIds.length === 0) return [];
+  const byResource = await getServicesForResources(organizationId, resourceIds);
+  const out = new Map<string, ServiceRef>();
+  for (const refs of byResource.values()) for (const ref of refs) out.set(ref.id, ref);
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Re-exported so routes have one import for the read path. */

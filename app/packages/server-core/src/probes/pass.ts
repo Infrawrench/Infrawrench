@@ -203,7 +203,7 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
       probeId: probe.id,
       status: "down",
     },
-    facts: { key: probe.name },
+    facts: { key: probe.name, ...(probe.resourceId ? { resourceId: probe.resourceId } : {}) },
     lifecycle: { key: `probe:${probe.id}`, phase: "open" },
   });
   await notifyResourceOwner(probe.organizationId, probe.resourceId, "probeAlerts", (o) => ({
