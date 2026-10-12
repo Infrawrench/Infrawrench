@@ -83,7 +83,10 @@ export async function collectComplianceEvidence(
       const def = getEvidenceSource(sourceId);
       const evaluator = getEvidenceEvaluator(sourceId);
       if (!def || !evaluator) {
-        collections.set(sourceId, unavailable(sourceId, "No evaluator is registered for this source."));
+        collections.set(
+          sourceId,
+          unavailable(sourceId, "No evaluator is registered for this source."),
+        );
         return;
       }
       if (opts.canRead && !opts.canRead(def.permission)) {
@@ -99,7 +102,10 @@ export async function collectComplianceEvidence(
         console.error(`[compliance] source ${sourceId} for org ${organizationId} failed:`, err);
         collections.set(
           sourceId,
-          unavailable(sourceId, `This evidence could not be read: ${err instanceof Error ? err.message : String(err)}`),
+          unavailable(
+            sourceId,
+            `This evidence could not be read: ${err instanceof Error ? err.message : String(err)}`,
+          ),
         );
       }
     }),
@@ -111,7 +117,12 @@ export async function collectComplianceEvidence(
     settings.map((s) => s.ownerUserId).filter((id): id is string => id !== null),
   );
   const results = sourceIds.map((id) => collections.get(id)!.result);
-  const { controls, counts } = computeComplianceControls({ framework, results, settings, memberNames });
+  const { controls, counts } = computeComplianceControls({
+    framework,
+    results,
+    settings,
+    memberNames,
+  });
   return {
     framework,
     collections,

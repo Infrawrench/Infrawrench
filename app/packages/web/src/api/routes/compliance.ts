@@ -186,7 +186,10 @@ app.get("/controls/:frameworkId/:controlId", async (c) => {
   }
 });
 
-function readNullableString(body: Record<string, unknown>, key: string): string | null | undefined | { error: string } {
+function readNullableString(
+  body: Record<string, unknown>,
+  key: string,
+): string | null | undefined | { error: string } {
   const v = body[key];
   if (v === undefined || v === null || typeof v === "string") return v;
   return { error: `${key} must be a string or null` };
@@ -266,11 +269,14 @@ app.delete("/controls/:frameworkId/:controlId", async (c) => {
  * Pack schedules
  * ------------------------------------------------------------------ */
 
-function readScheduleInput(body: Record<string, unknown>): CompliancePackScheduleInput | { error: string } {
+function readScheduleInput(
+  body: Record<string, unknown>,
+): CompliancePackScheduleInput | { error: string } {
   const strings = (key: string): string[] | { error: string } | undefined => {
     const v = body[key];
     if (v === undefined) return undefined;
-    if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) return { error: `${key} must be an array of strings` };
+    if (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
+      return { error: `${key} must be an array of strings` };
     return v as string[];
   };
   if (typeof body["frameworkId"] !== "string") return { error: "frameworkId is required" };
@@ -303,7 +309,10 @@ function readScheduleInput(body: Record<string, unknown>): CompliancePackSchedul
 app.get("/schedules", async (c) => {
   requirePermission(c, "audit:read");
   return c.json(
-    await listCompliancePackSchedules(c.get("organizationId"), c.req.query("framework") || undefined),
+    await listCompliancePackSchedules(
+      c.get("organizationId"),
+      c.req.query("framework") || undefined,
+    ),
   );
 });
 
@@ -335,14 +344,22 @@ app.post("/schedules", async (c) => {
   if ("error" in input) return c.json({ error: input.error }, 400);
   const organizationId = c.get("organizationId");
   try {
-    const created = await createCompliancePackSchedule(organizationId, input, c.get("session").userId ?? null);
+    const created = await createCompliancePackSchedule(
+      organizationId,
+      input,
+      c.get("session").userId ?? null,
+    );
     void logAudit({
       organizationId,
       userId: c.get("session").userId,
       action: "compliance.schedule.create",
       entityType: "compliance_pack_schedule",
       entityId: created.id,
-      metadata: { frameworkId: created.frameworkId, cadence: created.cadence, recipients: created.emailRecipients.length },
+      metadata: {
+        frameworkId: created.frameworkId,
+        cadence: created.cadence,
+        recipients: created.emailRecipients.length,
+      },
     });
     return c.json(created, 201);
   } catch (e) {
@@ -367,7 +384,11 @@ app.put("/schedules/:id", async (c) => {
       action: "compliance.schedule.update",
       entityType: "compliance_pack_schedule",
       entityId: updated.id,
-      metadata: { frameworkId: updated.frameworkId, cadence: updated.cadence, enabled: updated.enabled },
+      metadata: {
+        frameworkId: updated.frameworkId,
+        cadence: updated.cadence,
+        enabled: updated.enabled,
+      },
     });
     return c.json(updated);
   } catch (e) {

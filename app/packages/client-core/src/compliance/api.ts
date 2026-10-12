@@ -4,7 +4,11 @@
  * through the shared UI's host-injected client instead.
  */
 import type { CloudFetch } from "../fetch";
-import type { CompliancePeriod, ComplianceFrameworkSummary, ComplianceStatusResponse } from "./status";
+import type {
+  CompliancePeriod,
+  ComplianceFrameworkSummary,
+  ComplianceStatusResponse,
+} from "./status";
 
 /** `GET /compliance/frameworks` (permission `audit:read`). */
 export async function fetchComplianceFrameworks(

@@ -28,7 +28,9 @@ const ControlStatus = z.enum(["evidence", "gaps", "not-applicable"]).openapi({
 
 const PeriodQuery = z.object({
   framework: FrameworkId,
-  from: IsoDay.optional().describe("First day of the period (UTC). Defaults to 90 days before `to`."),
+  from: IsoDay.optional().describe(
+    "First day of the period (UTC). Defaults to 90 days before `to`.",
+  ),
   to: IsoDay.optional().describe("Last day of the period, inclusive (UTC). Defaults to today."),
 });
 
@@ -47,22 +49,29 @@ export function registerCompliancePaths(ctx: BuildContext) {
     name: z.string().openapi({ example: "SOC 2" }),
     version: z.string(),
     description: z.string(),
-    scopeNote: z.string().describe("Which controls the registry covers and which need outside evidence."),
+    scopeNote: z
+      .string()
+      .describe("Which controls the registry covers and which need outside evidence."),
     controlCount: z.number().int(),
   }).openapi("ComplianceFrameworkSummary");
 
   const Metric = strict({
     key: z.string(),
     label: z.string(),
-    value: z.union([z.number(), z.string()]).nullable().describe("Null when unknown; never read as zero."),
+    value: z
+      .union([z.number(), z.string()])
+      .nullable()
+      .describe("Null when unknown; never read as zero."),
   }).openapi("ComplianceEvidenceMetric");
 
   const SourceResult = strict({
     sourceId: z.string().openapi({ example: "vulnerabilities" }),
     label: z.string(),
-    kind: z.enum(["snapshot", "period"]).describe(
-      "`snapshot` sources describe the org at generation time; `period` sources are filtered to the period.",
-    ),
+    kind: z
+      .enum(["snapshot", "period"])
+      .describe(
+        "`snapshot` sources describe the org at generation time; `period` sources are filtered to the period.",
+      ),
     status: EvidenceStatus,
     summary: z.string(),
     metrics: z.array(Metric),
@@ -115,7 +124,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     applicable: z.boolean(),
     justification: z.string().nullable().describe("Required when `applicable` is false."),
     ownerUserId: z.string().nullable().describe("A member who owns the control."),
-    ownerLabel: z.string().nullable().describe("A team or alias, when the owner is not one member."),
+    ownerLabel: z
+      .string()
+      .nullable()
+      .describe("A team or alias, when the owner is not one member."),
     notes: z.string().nullable(),
     updatedByUserId: z.string().nullable(),
     updatedAt: IsoDateTime,
@@ -197,7 +209,9 @@ export function registerCompliancePaths(ctx: BuildContext) {
     responses: {
       200: {
         description: "Frameworks",
-        content: { "application/json": { schema: strict({ frameworks: z.array(FrameworkSummary) }) } },
+        content: {
+          "application/json": { schema: strict({ frameworks: z.array(FrameworkSummary) }) },
+        },
       },
     },
   });
@@ -215,7 +229,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
       "`unavailable` naming it, rather than failing the request.",
     request: { params: OrgIdParam, query: PeriodQuery },
     responses: {
-      200: { description: "Status per control", content: { "application/json": { schema: StatusResponse } } },
+      200: {
+        description: "Status per control",
+        content: { "application/json": { schema: StatusResponse } },
+      },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
@@ -247,7 +264,8 @@ export function registerCompliancePaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/compliance/controls",
     tags,
     summary: "List stored control decisions",
-    description: "Only controls somebody decided about; a missing control is applicable and unowned.",
+    description:
+      "Only controls somebody decided about; a missing control is applicable and unowned.",
     request: { params: OrgIdParam, query: z.object({ framework: FrameworkId.optional() }) },
     responses: {
       200: {
@@ -265,7 +283,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     summary: "Get one control decision",
     request: { params: ControlParams },
     responses: {
-      200: { description: "The decision", content: { "application/json": { schema: ControlSetting } } },
+      200: {
+        description: "The decision",
+        content: { "application/json": { schema: ControlSetting } },
+      },
       404: ErrorResponses[404],
     },
   });
@@ -283,7 +304,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
       body: { content: { "application/json": { schema: ControlSettingInput } } },
     },
     responses: {
-      200: { description: "The saved decision", content: { "application/json": { schema: ControlSetting } } },
+      200: {
+        description: "The saved decision",
+        content: { "application/json": { schema: ControlSetting } },
+      },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
@@ -308,7 +332,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     summary: "List evidence-pack schedules",
     request: { params: OrgIdParam, query: z.object({ framework: FrameworkId.optional() }) },
     responses: {
-      200: { description: "Schedules", content: { "application/json": { schema: z.array(PackSchedule) } } },
+      200: {
+        description: "Schedules",
+        content: { "application/json": { schema: z.array(PackSchedule) } },
+      },
     },
   });
 
@@ -319,7 +346,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     summary: "Destinations a pack schedule can use",
     request: { params: OrgIdParam },
     responses: {
-      200: { description: "Slack channels, Teams webhooks, email", content: { "application/json": { schema: Targets } } },
+      200: {
+        description: "Slack channels, Teams webhooks, email",
+        content: { "application/json": { schema: Targets } },
+      },
     },
   });
 
@@ -337,7 +367,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
       body: { content: { "application/json": { schema: PackScheduleInput } } },
     },
     responses: {
-      201: { description: "The schedule", content: { "application/json": { schema: PackSchedule } } },
+      201: {
+        description: "The schedule",
+        content: { "application/json": { schema: PackSchedule } },
+      },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
@@ -350,7 +383,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     summary: "Get an evidence-pack schedule",
     request: { params: ScheduleParams },
     responses: {
-      200: { description: "The schedule", content: { "application/json": { schema: PackSchedule } } },
+      200: {
+        description: "The schedule",
+        content: { "application/json": { schema: PackSchedule } },
+      },
       404: ErrorResponses[404],
     },
   });
@@ -365,7 +401,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
       body: { content: { "application/json": { schema: PackScheduleInput } } },
     },
     responses: {
-      200: { description: "The schedule", content: { "application/json": { schema: PackSchedule } } },
+      200: {
+        description: "The schedule",
+        content: { "application/json": { schema: PackSchedule } },
+      },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
@@ -391,7 +430,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     description: "Builds the pack the next delivery would cover and sends it immediately.",
     request: { params: ScheduleParams },
     responses: {
-      200: { description: "Per-transport outcome", content: { "application/json": { schema: SendResult } } },
+      200: {
+        description: "Per-transport outcome",
+        content: { "application/json": { schema: SendResult } },
+      },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },

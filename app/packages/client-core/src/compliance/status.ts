@@ -230,7 +230,9 @@ function controlRow(
     return { ...base, status: "not-applicable", reasons: [], missingSources };
   }
   if (present === 0) {
-    const labels = control.sources.map((id) => results.get(id)?.label ?? getEvidenceSource(id)?.label ?? id);
+    const labels = control.sources.map(
+      (id) => results.get(id)?.label ?? getEvidenceSource(id)?.label ?? id,
+    );
     reasons.push(`No evidence collected from ${labels.join(", ")}`);
   }
   return {
@@ -256,9 +258,7 @@ export function computeComplianceControls(input: ComputeComplianceInput): {
 } {
   const results = new Map(input.results.map((r) => [r.sourceId, r]));
   const settings = new Map(
-    input.settings
-      .filter((s) => s.frameworkId === input.framework.id)
-      .map((s) => [s.controlId, s]),
+    input.settings.filter((s) => s.frameworkId === input.framework.id).map((s) => [s.controlId, s]),
   );
   const controls = input.framework.controls.map((control) => {
     const setting = settings.get(control.id);

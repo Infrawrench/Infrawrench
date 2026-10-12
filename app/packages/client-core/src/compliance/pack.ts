@@ -65,9 +65,7 @@ export function parseCompliancePeriod(
   }
   const period = { from: f ?? fallback.from, to: t ?? fallback.to };
   if (f === null && t !== null) {
-    period.from = utcDay(
-      new Date(dayToUtc(t) - (DEFAULT_COMPLIANCE_PERIOD_DAYS - 1) * 86_400_000),
-    );
+    period.from = utcDay(new Date(dayToUtc(t) - (DEFAULT_COMPLIANCE_PERIOD_DAYS - 1) * 86_400_000));
   }
   if (period.from > period.to) return { error: "from must be on or before to" };
   if (compliancePeriodDays(period) > MAX_COMPLIANCE_PERIOD_DAYS) {
@@ -151,8 +149,10 @@ export interface CompliancePackScheduleInput {
 }
 
 /** A pack schedule as returned by the API: a `report_notifications` row targeting a framework. */
-export interface CompliancePackSchedule
-  extends Omit<ReportNotification, "costReportId" | "cadence" | "sendDay"> {
+export interface CompliancePackSchedule extends Omit<
+  ReportNotification,
+  "costReportId" | "cadence" | "sendDay"
+> {
   frameworkId: string;
   cadence: CompliancePackCadence;
   lastStatus: ReportNotificationStatus | null;

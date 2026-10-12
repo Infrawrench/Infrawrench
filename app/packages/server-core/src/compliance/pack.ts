@@ -64,26 +64,68 @@ function metricValue(v: number | string | null): string {
   return v === null ? "unknown" : String(v);
 }
 
-function controlCsv(control: ComplianceControlRow, results: Map<string, EvidenceSourceResult>): string {
+function controlCsv(
+  control: ComplianceControlRow,
+  results: Map<string, EvidenceSourceResult>,
+): string {
   const rows: (string | number | null)[][] = [];
   for (const sourceId of control.sources) {
     const r = results.get(sourceId);
     const label = r?.label ?? getEvidenceSource(sourceId)?.label ?? sourceId;
     const status = r ? EVIDENCE_STATUS_LABELS[r.status] : "Unavailable";
-    rows.push([control.id, control.title, COMPLIANCE_CONTROL_STATUS_LABELS[control.status], label, status, "summary", r?.summary ?? null]);
+    rows.push([
+      control.id,
+      control.title,
+      COMPLIANCE_CONTROL_STATUS_LABELS[control.status],
+      label,
+      status,
+      "summary",
+      r?.summary ?? null,
+    ]);
     for (const metric of r?.metrics ?? []) {
-      rows.push([control.id, control.title, COMPLIANCE_CONTROL_STATUS_LABELS[control.status], label, status, metric.label, metricValue(metric.value)]);
+      rows.push([
+        control.id,
+        control.title,
+        COMPLIANCE_CONTROL_STATUS_LABELS[control.status],
+        label,
+        status,
+        metric.label,
+        metricValue(metric.value),
+      ]);
     }
     for (const gap of r?.gaps ?? []) {
-      rows.push([control.id, control.title, COMPLIANCE_CONTROL_STATUS_LABELS[control.status], label, status, "gap", gap]);
+      rows.push([
+        control.id,
+        control.title,
+        COMPLIANCE_CONTROL_STATUS_LABELS[control.status],
+        label,
+        status,
+        "gap",
+        gap,
+      ]);
     }
   }
-  return toComplianceCsv(["Control", "Title", "Control status", "Evidence source", "Source status", "Item", "Value"], rows);
+  return toComplianceCsv(
+    ["Control", "Title", "Control status", "Evidence source", "Source status", "Item", "Value"],
+    rows,
+  );
 }
 
 function controlsCsv(controls: readonly ComplianceControlRow[]): string {
   return toComplianceCsv(
-    ["Control", "Title", "Group", "Status", "Applicable", "Justification", "Owner", "Evidence sources", "Missing sources", "Reasons", "Notes"],
+    [
+      "Control",
+      "Title",
+      "Group",
+      "Status",
+      "Applicable",
+      "Justification",
+      "Owner",
+      "Evidence sources",
+      "Missing sources",
+      "Reasons",
+      "Notes",
+    ],
     controls.map((c) => [
       c.id,
       c.title,
@@ -110,9 +152,17 @@ function pdfSections(status: ComplianceStatusResponse): PdfSection[] {
           kind: "stats",
           items: [
             { label: "Evidence present", value: String(status.counts.evidence), tone: "good" },
-            { label: "Gaps", value: String(status.counts.gaps), tone: status.counts.gaps > 0 ? "bad" : "default" },
+            {
+              label: "Gaps",
+              value: String(status.counts.gaps),
+              tone: status.counts.gaps > 0 ? "bad" : "default",
+            },
             { label: "Not applicable", value: String(status.counts.notApplicable) },
-            { label: "Without an owner", value: String(status.counts.unowned), tone: status.counts.unowned > 0 ? "bad" : "default" },
+            {
+              label: "Without an owner",
+              value: String(status.counts.unowned),
+              tone: status.counts.unowned > 0 ? "bad" : "default",
+            },
           ],
         },
         { kind: "text", text: status.framework.scopeNote, tone: "muted" },
@@ -153,7 +203,11 @@ function pdfSections(status: ComplianceStatusResponse): PdfSection[] {
       title: s.label,
       subtitle: `${EVIDENCE_STATUS_LABELS[s.status]} · ${s.kind === "snapshot" ? "as of generation time" : "during the period"}`,
       blocks: [
-        { kind: "text", text: s.summary, ...(s.status === "unavailable" ? { tone: "muted" as const } : {}) },
+        {
+          kind: "text",
+          text: s.summary,
+          ...(s.status === "unavailable" ? { tone: "muted" as const } : {}),
+        },
         ...(s.metrics.length > 0
           ? [
               {
@@ -200,9 +254,21 @@ export async function buildEvidencePack(
 
   const results = new Map(status.sources.map((s) => [s.sourceId, s]));
   const files: Array<ZipEntry & { description: string }> = [
-    { path: "summary.pdf", data: pdf, description: "Printable summary of every control and evidence source" },
-    { path: "controls.csv", data: encoder.encode(controlsCsv(status.controls)), description: "One row per control: status, owner, applicability" },
-    { path: "controls.json", data: encoder.encode(JSON.stringify(status, null, 2)), description: "The full status as returned by the API" },
+    {
+      path: "summary.pdf",
+      data: pdf,
+      description: "Printable summary of every control and evidence source",
+    },
+    {
+      path: "controls.csv",
+      data: encoder.encode(controlsCsv(status.controls)),
+      description: "One row per control: status, owner, applicability",
+    },
+    {
+      path: "controls.json",
+      data: encoder.encode(JSON.stringify(status, null, 2)),
+      description: "The full status as returned by the API",
+    },
   ];
   for (const control of status.controls) {
     const seg = safeSegment(control.id);
@@ -214,7 +280,11 @@ export async function buildEvidencePack(
     files.push({
       path: `controls/${seg}.json`,
       data: encoder.encode(
-        JSON.stringify({ control, evidence: control.sources.map((id) => results.get(id) ?? null) }, null, 2),
+        JSON.stringify(
+          { control, evidence: control.sources.map((id) => results.get(id) ?? null) },
+          null,
+          2,
+        ),
       ),
       description: `Control ${control.id} as JSON`,
     });
@@ -229,7 +299,9 @@ export async function buildEvidencePack(
     }
     files.push({
       path: `evidence/${safeSegment(sourceId)}.json`,
-      data: encoder.encode(JSON.stringify({ result: collection.result, evidence: collection.json }, null, 2)),
+      data: encoder.encode(
+        JSON.stringify({ result: collection.result, evidence: collection.json }, null, 2),
+      ),
       description: `${collection.result.label}: full evidence`,
     });
   }
@@ -254,7 +326,10 @@ export async function buildEvidencePack(
   };
   const manifestBytes = encoder.encode(JSON.stringify(manifest, null, 2));
   const sums = encoder.encode(
-    [`${sha256(manifestBytes)}  manifest.json`, ...manifestFiles.map((f) => `${f.sha256}  ${f.path}`)].join("\n") + "\n",
+    [
+      `${sha256(manifestBytes)}  manifest.json`,
+      ...manifestFiles.map((f) => `${f.sha256}  ${f.path}`),
+    ].join("\n") + "\n",
   );
 
   const bytes = buildZip(

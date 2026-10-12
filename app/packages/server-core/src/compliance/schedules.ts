@@ -38,7 +38,11 @@ import { sendSlackToChannelsWithFile } from "../slack";
 import { sendMsTeamsToWebhooks } from "../msteams";
 import { civilMoment, formatSegmentsEmailHtml, type DigestLine } from "../digest/compose";
 import { orgAppUrl } from "../app-url";
-import { classifyReportDelivery, nextReportSendAt, MAX_REPORT_DELIVERY_ATTEMPTS } from "../report-delivery/compose";
+import {
+  classifyReportDelivery,
+  nextReportSendAt,
+  MAX_REPORT_DELIVERY_ATTEMPTS,
+} from "../report-delivery/compose";
 import {
   ReportNotificationInputError,
   normalizeInput,
@@ -53,7 +57,9 @@ function asStringArray(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
 }
 
-export function toCompliancePackScheduleView(row: ReportNotificationRecord): CompliancePackSchedule {
+export function toCompliancePackScheduleView(
+  row: ReportNotificationRecord,
+): CompliancePackSchedule {
   return {
     id: row.id,
     frameworkId: row.complianceFrameworkId ?? "",
@@ -194,7 +200,10 @@ export async function updateCompliancePackSchedule(
       updatedAt: now,
     })
     .where(
-      and(eq(reportNotifications.id, scheduleId), eq(reportNotifications.organizationId, organizationId)),
+      and(
+        eq(reportNotifications.id, scheduleId),
+        eq(reportNotifications.organizationId, organizationId),
+      ),
     )
     .returning();
   if (!updated) throw new ReportNotificationInputError("Schedule not found", 404);
@@ -223,7 +232,10 @@ export async function deleteCompliancePackSchedule(
  * ------------------------------------------------------------------ */
 
 /** The pack a schedule delivers when it fires at `now`. */
-export async function buildScheduledPack(row: ReportNotificationRecord, now: Date): Promise<EvidencePack> {
+export async function buildScheduledPack(
+  row: ReportNotificationRecord,
+  now: Date,
+): Promise<EvidencePack> {
   const today = civilMoment(now, row.timezone).date;
   const period = compliancePackPeriodFor(row.cadence as CompliancePackCadence, today);
   return buildEvidencePack(row.organizationId, row.complianceFrameworkId ?? "", {
@@ -248,7 +260,9 @@ function packLines(pack: EvidencePack, fileNote: string | null): DigestLine[] {
   ];
   const gaps = status.controls.filter((c) => c.status === "gaps").slice(0, 8);
   for (const c of gaps) {
-    lines.push([{ text: `• ${c.id} ${c.title}: ${COMPLIANCE_CONTROL_STATUS_LABELS[c.status]}`, bold: false }]);
+    lines.push([
+      { text: `• ${c.id} ${c.title}: ${COMPLIANCE_CONTROL_STATUS_LABELS[c.status]}`, bold: false },
+    ]);
   }
   if (fileNote) {
     lines.push([]);
@@ -280,7 +294,12 @@ export async function deliverCompliancePack(
   const url = orgAppUrl(row.organizationId, "compliance");
 
   const emailLines = packLines(pack, `The evidence pack is attached as ${pack.filename}.`);
-  const text = [title, "", flatten(emailLines, (s) => s, "\n"), ...(url ? ["", `View in Infrawrench: ${url}`] : [])].join("\n");
+  const text = [
+    title,
+    "",
+    flatten(emailLines, (s) => s, "\n"),
+    ...(url ? ["", `View in Infrawrench: ${url}`] : []),
+  ].join("\n");
   const html = recipients.length > 0 ? formatSegmentsEmailHtml(title, emailLines, url) : "";
   const emails: EmailMessage[] = recipients.map((to) => ({
     to,
@@ -297,15 +316,27 @@ export async function deliverCompliancePack(
       slackIds,
       {
         title,
-        body: flatten(packLines(pack, "The evidence pack is in the thread."), (s) => `*${s}*`, "\n"),
+        body: flatten(
+          packLines(pack, "The evidence pack is in the thread."),
+          (s) => `*${s}*`,
+          "\n",
+        ),
         ...(url ? { url } : {}),
         ...(context ? { context } : {}),
       },
-      { filename: pack.filename, title: `${pack.status.framework.name} evidence pack`, content: pack.bytes },
+      {
+        filename: pack.filename,
+        title: `${pack.status.framework.name} evidence pack`,
+        content: pack.bytes,
+      },
     ),
     sendMsTeamsToWebhooks(row.organizationId, teamsIds, {
       title,
-      body: flatten(packLines(pack, url ? "Open Compliance in Infrawrench to download the pack." : null), (s) => s, "\n\n"),
+      body: flatten(
+        packLines(pack, url ? "Open Compliance in Infrawrench to download the pack." : null),
+        (s) => s,
+        "\n\n",
+      ),
       ...(url ? { url } : {}),
       ...(context ? { context } : {}),
     }),
@@ -323,7 +354,10 @@ export async function deliverCompliancePack(
 }
 
 /** Build, deliver and record one claimed schedule. Never throws. */
-export async function runCompliancePackSchedule(row: ReportNotificationRecord, now = new Date()): Promise<void> {
+export async function runCompliancePackSchedule(
+  row: ReportNotificationRecord,
+  now = new Date(),
+): Promise<void> {
   try {
     const pack = await buildScheduledPack(row, now);
     const result = await deliverCompliancePack(row, pack, now);
@@ -365,11 +399,15 @@ export async function sendCompliancePackScheduleNow(
       lastError: outcome.error,
       lastAttemptAt: now,
       attemptCount: 0,
-      ...(outcome.status === "succeeded" || outcome.status === "partial" ? { lastSentAt: now } : {}),
+      ...(outcome.status === "succeeded" || outcome.status === "partial"
+        ? { lastSentAt: now }
+        : {}),
       updatedAt: now,
     })
     .where(eq(reportNotifications.id, row.id))
-    .catch((err: unknown) => console.error(`[compliance-pack] ${row.id}: failed to record manual send:`, err));
+    .catch((err: unknown) =>
+      console.error(`[compliance-pack] ${row.id}: failed to record manual send:`, err),
+    );
   if (result.succeeded === 0) {
     const emailOnly = result.slack.attempted === 0 && result.teams.attempted === 0;
     throw new ReportNotificationInputError(
@@ -389,7 +427,9 @@ export async function sendCompliancePackScheduleNow(
 export const COMPLIANCE_PACK_LEASE_MS = 10 * 60 * 1000;
 export const COMPLIANCE_PACKS_PER_TICK = 1;
 
-export async function claimDueCompliancePackSchedules(limit: number): Promise<ReportNotificationRecord[]> {
+export async function claimDueCompliancePackSchedules(
+  limit: number,
+): Promise<ReportNotificationRecord[]> {
   const claimed = await db.execute(sql`
     UPDATE report_notifications
     SET next_send_at = now() + ${COMPLIANCE_PACK_LEASE_MS}::float8 * interval '1 millisecond',

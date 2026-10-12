@@ -186,7 +186,18 @@ const posture: EvidenceEvaluator = async (ctx) => {
     gaps,
     rows.length,
     toComplianceCsv(
-      ["Decision", "Severity", "Category", "Rule", "Resource", "Type", "Account", "Plugin", "Resource id", "Accepted reason"],
+      [
+        "Decision",
+        "Severity",
+        "Category",
+        "Rule",
+        "Resource",
+        "Type",
+        "Account",
+        "Plugin",
+        "Resource id",
+        "Accepted reason",
+      ],
       rows.map((r) => [
         r.decision,
         r.severity,
@@ -234,17 +245,35 @@ const vulnerabilities: EvidenceEvaluator = async (ctx) => {
     m("scanners", "Connected scanners", summary.scannerCount),
     m("open", "Open findings", summary.totalOpen),
     m("openRunning", "Open on running artifacts", summary.totalOpenRunning),
-    m("openNotRunning", "Open on artifacts not running", summary.totalOpen - summary.totalOpenRunning),
-    m("runningResourcesAtRisk", "Running resources with critical or high", summary.runningResourcesAtRisk),
+    m(
+      "openNotRunning",
+      "Open on artifacts not running",
+      summary.totalOpen - summary.totalOpenRunning,
+    ),
+    m(
+      "runningResourcesAtRisk",
+      "Running resources with critical or high",
+      summary.runningResourcesAtRisk,
+    ),
     m("kevRunning", "Running and known exploited", summary.kevRunning),
     m("medianOpenAge", "Median age of open findings (days)", summary.medianOpenAgeDays),
   ];
   for (const row of summary.bySeverity) {
     if (row.severity === "unknown") continue;
-    metrics.push(m(`${row.severity}Open`, `${row.severity} open (running)`, `${row.open} (${row.openRunning})`));
-    metrics.push(m(`${row.severity}Overdue`, `${row.severity} past ${row.targetDays}-day target`, row.overdue));
+    metrics.push(
+      m(
+        `${row.severity}Open`,
+        `${row.severity} open (running)`,
+        `${row.open} (${row.openRunning})`,
+      ),
+    );
+    metrics.push(
+      m(`${row.severity}Overdue`, `${row.severity} past ${row.targetDays}-day target`, row.overdue),
+    );
     metrics.push(m(`${row.severity}Fixed`, `${row.severity} fixed in period`, row.fixed));
-    metrics.push(m(`${row.severity}MedianFix`, `${row.severity} median days to fix`, row.medianDaysToFix));
+    metrics.push(
+      m(`${row.severity}MedianFix`, `${row.severity} median days to fix`, row.medianDaysToFix),
+    );
   }
 
   const now = ctx.now.getTime();
@@ -269,24 +298,27 @@ const vulnerabilities: EvidenceEvaluator = async (ctx) => {
       null,
     ] as const;
   });
-  const fixedRows = records.map((r) => [
-    "fixed",
-    r.advisoryId,
-    r.severity,
-    null,
-    null,
-    null,
-    r.artifactKind,
-    r.artifactName,
-    null,
-    null,
-    null,
-    r.accountId,
-    null,
-    r.firstSeenAt,
-    Math.floor((Date.parse(r.resolvedAt) - Date.parse(r.firstSeenAt)) / 86_400_000),
-    r.resolvedAt,
-  ] as const);
+  const fixedRows = records.map(
+    (r) =>
+      [
+        "fixed",
+        r.advisoryId,
+        r.severity,
+        null,
+        null,
+        null,
+        r.artifactKind,
+        r.artifactName,
+        null,
+        null,
+        null,
+        r.accountId,
+        null,
+        r.firstSeenAt,
+        Math.floor((Date.parse(r.resolvedAt) - Date.parse(r.firstSeenAt)) / 86_400_000),
+        r.resolvedAt,
+      ] as const,
+  );
 
   return build(
     "vulnerabilities",
@@ -298,7 +330,24 @@ const vulnerabilities: EvidenceEvaluator = async (ctx) => {
     gaps,
     openRows.length + fixedRows.length,
     toComplianceCsv(
-      ["State", "Advisory", "Severity", "Known exploited", "Running", "Running resources", "Artifact kind", "Artifact", "Package", "Installed", "Fixed in", "Account", "Scanner", "First seen", "Age or days to fix", "Fixed at"],
+      [
+        "State",
+        "Advisory",
+        "Severity",
+        "Known exploited",
+        "Running",
+        "Running resources",
+        "Artifact kind",
+        "Artifact",
+        "Package",
+        "Installed",
+        "Fixed in",
+        "Account",
+        "Scanner",
+        "First seen",
+        "Age or days to fix",
+        "Fixed at",
+      ],
       [...openRows, ...fixedRows],
     ),
     { summary, findings: feed.findings, dismissedCount: feed.dismissedCount, fixed: records },
@@ -312,7 +361,12 @@ const backupCoverage: EvidenceEvaluator = async (ctx) => {
   });
   const s = coverage.summary;
   const severe = coverage.counts.critical + coverage.counts.high;
-  const gaps = severe > 0 ? [`${severe} critical or high backup finding(s) (unprotected data, recovery point breaches, short retention)`] : [];
+  const gaps =
+    severe > 0
+      ? [
+          `${severe} critical or high backup finding(s) (unprotected data, recovery point breaches, short retention)`,
+        ]
+      : [];
   return build(
     "backup-coverage",
     s.statefulCount === 0 ? "no-data" : gaps.length > 0 ? "gap" : "present",
@@ -331,7 +385,13 @@ const backupCoverage: EvidenceEvaluator = async (ctx) => {
     coverage.resources.length,
     toComplianceCsv(
       ["Resource", "Type", "Account", "State", "Resource id"],
-      coverage.resources.map((r) => [r.displayName, r.resourceTypeName, r.accountName, r.state, r.resourceId]),
+      coverage.resources.map((r) => [
+        r.displayName,
+        r.resourceTypeName,
+        r.accountName,
+        r.state,
+        r.resourceId,
+      ]),
     ),
     coverage,
   );
@@ -359,12 +419,18 @@ const restoreDrillsSource: EvidenceEvaluator = async (ctx) => {
   const s = standing.summary;
   const gaps: string[] = [];
   if (s.failedCount > 0) gaps.push(`${s.failedCount} resource(s) whose most recent drill failed`);
-  if (s.neverCount > 0) gaps.push(`${s.neverCount} protected resource(s) have never been restore-tested`);
-  if (s.staleCount > 0) gaps.push(`${s.staleCount} resource(s) last verified more than ${standing.validDays} days ago`);
+  if (s.neverCount > 0)
+    gaps.push(`${s.neverCount} protected resource(s) have never been restore-tested`);
+  if (s.staleCount > 0)
+    gaps.push(`${s.staleCount} resource(s) last verified more than ${standing.validDays} days ago`);
   const names = new Map(standing.rows.map((r) => [r.resourceId, r.resourceName]));
   return build(
     "restore-drills",
-    s.eligibleCount === 0 && inPeriodDrills.length === 0 ? "no-data" : gaps.length > 0 ? "gap" : "present",
+    s.eligibleCount === 0 && inPeriodDrills.length === 0
+      ? "no-data"
+      : gaps.length > 0
+        ? "gap"
+        : "present",
     s.eligibleCount === 0 && inPeriodDrills.length === 0
       ? "No protected resources and no restore drills recorded."
       : `${inPeriodDrills.length} drill(s) performed during the period; ${s.verifiedCount} of ${s.eligibleCount} protected resource(s) currently verified.`,
@@ -381,7 +447,15 @@ const restoreDrillsSource: EvidenceEvaluator = async (ctx) => {
     gaps,
     inPeriodDrills.length,
     toComplianceCsv(
-      ["Performed at", "Resource", "Resource id", "Outcome", "Recovery time (min)", "Restored from", "Notes"],
+      [
+        "Performed at",
+        "Resource",
+        "Resource id",
+        "Outcome",
+        "Recovery time (min)",
+        "Restored from",
+        "Notes",
+      ],
       inPeriodDrills.map((d) => [
         d.performedAt.toISOString(),
         names.get(d.resourceId) ?? null,
@@ -413,7 +487,10 @@ const jitAccess: EvidenceEvaluator = async (ctx) => {
       .select({ count: sql<number>`count(*)::int` })
       .from(jitAccessPolicies)
       .where(
-        and(eq(jitAccessPolicies.organizationId, ctx.organizationId), eq(jitAccessPolicies.enabled, true)),
+        and(
+          eq(jitAccessPolicies.organizationId, ctx.organizationId),
+          eq(jitAccessPolicies.enabled, true),
+        ),
       ),
     listJitGrantIssues(ctx.organizationId),
   ]);
@@ -422,7 +499,8 @@ const jitAccess: EvidenceEvaluator = async (ctx) => {
   const granted = count((r) => r.grantedAt !== null && !r.preexisting);
   const denied = count((r) => r.status === "denied");
   const selfApproved = count((r) => r.selfApproved);
-  const gaps = issues.length > 0 ? [`${issues.length} grant(s) were not removed cleanly at expiry`] : [];
+  const gaps =
+    issues.length > 0 ? [`${issues.length} grant(s) were not removed cleanly at expiry`] : [];
   return build(
     "jit-access",
     policyCount === 0 && requests.length === 0 ? "no-data" : gaps.length > 0 ? "gap" : "present",
@@ -440,7 +518,25 @@ const jitAccess: EvidenceEvaluator = async (ctx) => {
     gaps,
     requests.length,
     toComplianceCsv(
-      ["Requested at", "Requester", "Account", "Scope", "Role", "Principal", "Reason", "Ticket", "Minutes", "Status", "Decided by", "Decided at", "Self-approved", "Granted at", "Expires at", "Ended at", "End reason"],
+      [
+        "Requested at",
+        "Requester",
+        "Account",
+        "Scope",
+        "Role",
+        "Principal",
+        "Reason",
+        "Ticket",
+        "Minutes",
+        "Status",
+        "Decided by",
+        "Decided at",
+        "Self-approved",
+        "Granted at",
+        "Expires at",
+        "Ended at",
+        "End reason",
+      ],
       requests.map((r) => [
         r.createdAt.toISOString(),
         r.userName ?? r.userEmail ?? r.userId,
@@ -466,9 +562,15 @@ const jitAccess: EvidenceEvaluator = async (ctx) => {
 };
 
 const auditLog: EvidenceEvaluator = async (ctx) => {
-  const where = and(eq(auditLogs.organizationId, ctx.organizationId), inPeriod(auditLogs.createdAt, ctx));
+  const where = and(
+    eq(auditLogs.organizationId, ctx.organizationId),
+    inPeriod(auditLogs.createdAt, ctx),
+  );
   const [[total], rows] = await Promise.all([
-    db.select({ count: sql<number>`count(*)::int` }).from(auditLogs).where(where),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(auditLogs)
+      .where(where),
     db
       .select({
         createdAt: auditLogs.createdAt,
@@ -488,7 +590,9 @@ const auditLog: EvidenceEvaluator = async (ctx) => {
       .limit(MAX_EVIDENCE_ROWS),
   ]);
   const totalCount = total?.count ?? 0;
-  const actors = new Set(rows.map((r) => r.userId ?? (r.apiKeyId ? `key:${r.apiKeyId}` : null)).filter(Boolean));
+  const actors = new Set(
+    rows.map((r) => r.userId ?? (r.apiKeyId ? `key:${r.apiKeyId}` : null)).filter(Boolean),
+  );
   const byAction = new Map<string, number>();
   for (const r of rows) byAction.set(r.action, (byAction.get(r.action) ?? 0) + 1);
   const top = [...byAction.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -502,12 +606,25 @@ const auditLog: EvidenceEvaluator = async (ctx) => {
       m("entries", "Entries in period", totalCount),
       m("actors", "Distinct actors", actors.size),
       m("included", "Entries included in this pack", rows.length),
-      m("topActions", "Most frequent actions", top.map(([a, n]) => `${a} (${n})`).join(", ") || null),
+      m(
+        "topActions",
+        "Most frequent actions",
+        top.map(([a, n]) => `${a} (${n})`).join(", ") || null,
+      ),
     ],
     [],
     rows.length,
     toComplianceCsv(
-      ["Time", "Actor", "Actor email", "API key", "Action", "Entity type", "Entity id", "IP address"],
+      [
+        "Time",
+        "Actor",
+        "Actor email",
+        "API key",
+        "Action",
+        "Entity type",
+        "Entity id",
+        "IP address",
+      ],
       rows.map((r) => [
         r.createdAt.toISOString(),
         r.userName ?? r.userId,
@@ -572,7 +689,17 @@ const changeTimeline: EvidenceEvaluator = async (ctx) => {
     [],
     rows.length,
     toComplianceCsv(
-      ["Time", "Kind", "Resource", "Resource id", "Type", "Plugin", "Account id", "Fields changed", "Reverted at"],
+      [
+        "Time",
+        "Kind",
+        "Resource",
+        "Resource id",
+        "Type",
+        "Plugin",
+        "Account id",
+        "Fields changed",
+        "Reverted at",
+      ],
       rows.map((r) => [
         r.createdAt.toISOString(),
         r.changeKind,
@@ -620,12 +747,22 @@ const changeFreezesSource: EvidenceEvaluator = async (ctx) => {
     rows.length === 0
       ? "No change freezes were in effect during the period."
       : `${rows.length} change freeze(s) in effect during the period.`,
-    [m("freezes", "Freezes in period", rows.length), m("active", "Active now", rows.filter((r) => r.active).length)],
+    [
+      m("freezes", "Freezes in period", rows.length),
+      m("active", "Active now", rows.filter((r) => r.active).length),
+    ],
     [],
     rows.length,
     toComplianceCsv(
       ["Name", "Reason", "Starts", "Ends", "Active", "Opened by"],
-      rows.map((r) => [r.name, r.reason, r.startsAt.toISOString(), iso(r.endsAt), r.active ? "yes" : "no", r.createdByName]),
+      rows.map((r) => [
+        r.name,
+        r.reason,
+        r.startsAt.toISOString(),
+        iso(r.endsAt),
+        r.active ? "yes" : "no",
+        r.createdByName,
+      ]),
     ),
     rows,
   );
@@ -660,7 +797,9 @@ const sessionRecordings: EvidenceEvaluator = async (ctx) => {
   const gaps: string[] = [];
   if (!settings.enabled) gaps.push("Session recording is switched off");
   if (settings.enabled && settings.retentionDays < 90) {
-    gaps.push(`Recordings are kept for ${settings.retentionDays} day(s), less than a typical 90-day audit window`);
+    gaps.push(
+      `Recordings are kept for ${settings.retentionDays} day(s), less than a typical 90-day audit window`,
+    );
   }
   const status: EvidenceStatus =
     !settings.enabled && rows.length === 0 ? "gap" : gaps.length > 0 ? "gap" : "present";
@@ -680,7 +819,17 @@ const sessionRecordings: EvidenceEvaluator = async (ctx) => {
     gaps,
     rows.length,
     toComplianceCsv(
-      ["Started", "Ended", "Member", "Host", "Login", "Resource id", "Status", "Input captured", "Recording id"],
+      [
+        "Started",
+        "Ended",
+        "Member",
+        "Host",
+        "Login",
+        "Resource id",
+        "Status",
+        "Input captured",
+        "Recording id",
+      ],
       rows.map((r) => [
         r.startedAt.toISOString(),
         iso(r.endedAt),
@@ -755,7 +904,18 @@ const incidentsSource: EvidenceEvaluator = async (ctx) => {
     gaps,
     rows.length,
     toComplianceCsv(
-      ["Started", "Title", "Severity", "Status", "Mitigated", "Resolved", "Hours to resolve", "Notes", "Follow-up issue", "Incident id"],
+      [
+        "Started",
+        "Title",
+        "Severity",
+        "Status",
+        "Mitigated",
+        "Resolved",
+        "Hours to resolve",
+        "Notes",
+        "Follow-up issue",
+        "Incident id",
+      ],
       rows.map((r) => [
         r.startedAt.toISOString(),
         r.title,
@@ -795,7 +955,10 @@ const evaluators = new Map<EvidenceSourceId, EvidenceEvaluator>([
  * Extension point: register (or replace) the evaluator for a source id. See
  * the module note for the three edits a new source needs.
  */
-export function registerEvidenceEvaluator(id: EvidenceSourceId, evaluator: EvidenceEvaluator): void {
+export function registerEvidenceEvaluator(
+  id: EvidenceSourceId,
+  evaluator: EvidenceEvaluator,
+): void {
   evaluators.set(id, evaluator);
 }
 
