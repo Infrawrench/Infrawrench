@@ -44,8 +44,10 @@ import {
   workflowsTabTarget,
 } from "@/lib/workspace-tabs";
 import {
+  accountTabTarget,
   costsTabTarget,
   environmentDiffTabTarget,
+  postureTabTarget,
   expiringTabTarget,
   resourceTabTarget,
   settingsTabTarget,
@@ -63,6 +65,7 @@ import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
+import { WebAccountLeakBanner } from "./WebAccountLeakBanner";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebJitAccessPanel } from "./WebJitAccessPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
@@ -274,7 +277,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "dashboard":
       return <DashboardPanel orgId={orgId} dashboardId={t.dashboardId} />;
     case "account":
-      return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <WebAccountLeakBanner
+            orgId={orgId}
+            accountId={t.accountId}
+            onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+          />
+          <div className="min-h-0 flex-1">
+            <AccountPanel orgId={orgId} accountId={t.accountId} />
+          </div>
+        </div>
+      );
     case "agents":
       return (
         <WebAgentsPanel
@@ -484,6 +498,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // showing the previous org's findings.
           key={orgId}
           orgId={orgId}
+          openAccount={(accountId) =>
+            void navigate(getWorkspaceNavigateArgs(accountTabTarget(accountId)))
+          }
           openResource={(finding) =>
             void navigate(
               getWorkspaceNavigateArgs(
@@ -754,7 +771,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
         // Without pluginId/resourceTypeId we can't construct the detail URL.
         // Fall through to the account panel for the resource's account so
         // the user lands somewhere sensible.
-        return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+        return (
+          <div className="flex h-full min-h-0 flex-col">
+            <WebAccountLeakBanner
+              orgId={orgId}
+              accountId={t.accountId}
+              onReview={() => void navigate(getWorkspaceNavigateArgs(postureTabTarget()))}
+            />
+            <div className="min-h-0 flex-1">
+              <AccountPanel orgId={orgId} accountId={t.accountId} />
+            </div>
+          </div>
+        );
       }
       return (
         <ResourcePanel

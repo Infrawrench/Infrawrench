@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RESOURCES_CHANGED_EVENT,
+  LeakedCredentialsSection,
   PostureSection,
+  type LeakedCredentialsClient,
   type PostureFinding,
   type PostureListResponse,
 } from "@infrawrench/ui";
+import type {
+  LeakRotateInput,
+  LeakedSecret,
+  LeakedSecretListResponse,
+} from "@infrawrench/client-core";
 import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface WebPosturePanelProps {
   orgId: string;
   openResource: (finding: PostureFinding) => void;
+  openAccount: (accountId: string) => void;
 }
 
 /**
@@ -19,7 +27,7 @@ interface WebPosturePanelProps {
  * failed *refresh* must not blank findings that are already drawn, so the
  * last loaded data stays on screen under the section's banner.
  */
-export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
+export function WebPosturePanel({ orgId, openResource, openAccount }: WebPosturePanelProps) {
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -27,6 +35,33 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
   // buttons stay hidden rather than offering an action that would 403.
   const { has } = usePermissions();
   const canDismiss = has("resources:write");
+  const canRotate = has("secrets:write");
+
+  // The leaked-credentials category. Without `secrets:write` it gets only the
+  // list, which renders it read-only.
+  const leakClient = useMemo<LeakedCredentialsClient>(() => {
+    const base = `/api/org/${orgId}/leaked-secrets`;
+    const post = async (path: string, body: unknown) =>
+      (await apiPost<{ leak: LeakedSecret }>(`${base}${path}`, body)).leak;
+    return {
+      list: () => apiGet<LeakedSecretListResponse>(base),
+      ...(canRotate
+        ? {
+            rotate: (id: string, input: LeakRotateInput) =>
+              post(`/${encodeURIComponent(id)}/rotate`, input),
+            markRotated: (id: string, input: { resolveUpstream?: boolean }) =>
+              post(`/${encodeURIComponent(id)}/mark-rotated`, input),
+            dismiss: (
+              id: string,
+              input: Parameters<NonNullable<LeakedCredentialsClient["dismiss"]>>[1],
+            ) => post(`/${encodeURIComponent(id)}/dismiss`, input),
+            reopen: (id: string) => post(`/${encodeURIComponent(id)}/reopen`, {}),
+            scan: () =>
+              apiPost<{ scanned: number; newLeaks: number; errors: number }>(`${base}/scan`, {}),
+          }
+        : {}),
+    };
+  }, [orgId, canRotate]);
   // The load effect owns the refresh; dismiss/restore need to trigger one
   // without re-running the effect's teardown, so they go through a ref the
   // effect installs.
@@ -101,6 +136,23 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
       // offering an action that would 403.
       onDismiss={canDismiss ? dismiss : undefined}
       onRestore={canDismiss ? restore : undefined}
+      leakedCredentials={
+        <LeakedCredentialsSection
+          // Remounts when the permission read lands so the actions appear.
+          key={canRotate ? "rw" : "ro"}
+          client={leakClient}
+          onOpenAccount={openAccount}
+          onOpenResource={(leak) => {
+            if (!leak.matchedAccountId || !leak.matchedResourceId) return;
+            openResource({
+              accountId: leak.matchedAccountId,
+              resourceId: leak.matchedResourceId,
+              pluginId: leak.matchedPluginId ?? "",
+              resourceTypeId: leak.matchedResourceTypeId ?? "",
+            } as PostureFinding);
+          }}
+        />
+      }
     />
   );
 }
