@@ -3835,6 +3835,7 @@
               "expiring",
               "posture",
               "vulnerabilities",
+              "compliance",
               "access-review",
               "jit-access",
               "backups",
@@ -3898,6 +3899,10 @@
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "framework": {
+            "type": "string",
+            "maxLength": 64
           },
           "sessionId": {
             "type": "string",
