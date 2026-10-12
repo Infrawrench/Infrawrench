@@ -1911,6 +1911,8 @@ type ScorecardCheckParams struct {
 	DrillWithinDays           *float64  `json:"drillWithinDays,omitempty"`
 	Severities                *[]string `json:"severities,omitempty"`
 	Tags                      *[]string `json:"tags,omitempty"`
+	MaxFailureRatePercent     *float64  `json:"maxFailureRatePercent,omitempty"`
+	WindowDays                *float64  `json:"windowDays,omitempty"`
 }
 
 // ScorecardCheck is one weighted check.

@@ -78,6 +78,8 @@ function useDimensionLabel(): (id: string, fallback: string) => string {
           return gt("Repository");
         case "owner":
           return gt("Owner");
+        case "service":
+          return gt("Service");
         default:
           return data(fallback);
       }

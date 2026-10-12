@@ -1302,6 +1302,22 @@ export function formatVulnArtifact(artifact: {
 }
 
 /**
+ * The services a finding's running resources belong to: `checkout (T1), api`,
+ * the first two and a `+N` for the rest, or a dimmed dash for none (or a
+ * server too old to say).
+ */
+export function formatVulnServices(
+  services: readonly { slug: string; tier: number | null }[] | undefined,
+): string {
+  if (!services || services.length === 0) return c.dim("-");
+  const named = services
+    .slice(0, 2)
+    .map((s) => `${safe(s.slug)}${s.tier === null ? "" : c.dim(` (T${s.tier})`)}`);
+  const more = services.length > 2 ? c.dim(` +${services.length - 2}`) : "";
+  return `${named.join(", ")}${more}`;
+}
+
+/**
  * Resolve `--account` against the accounts that report vulnerabilities: an
  * exact id, else a case-insensitive name (exact, then a unique prefix). Null
  * when nothing matches, so the command can say so rather than print an empty

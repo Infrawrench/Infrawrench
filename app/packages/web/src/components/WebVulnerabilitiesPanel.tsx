@@ -15,6 +15,7 @@ interface WebVulnerabilitiesPanelProps {
   orgId: string;
   openResource: (resource: VulnerabilityRunningRef) => void;
   openPosture: () => void;
+  openService: (serviceId: string) => void;
 }
 
 /**
@@ -26,6 +27,7 @@ export function WebVulnerabilitiesPanel({
   orgId,
   openResource,
   openPosture,
+  openService,
 }: WebVulnerabilitiesPanelProps) {
   const [data, setData] = useState<VulnerabilityListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +131,7 @@ export function WebVulnerabilitiesPanel({
       onRetry={retry}
       onOpenResource={openResource}
       onOpenPosture={openPosture}
+      onOpenService={openService}
       onDismiss={canDismiss ? dismiss : undefined}
       onRestore={canDismiss ? restore : undefined}
       settings={canManageSettings ? settings : null}

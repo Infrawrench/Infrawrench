@@ -11,6 +11,11 @@
 // `vulns dismiss` / `vulns restore` accept and un-accept an advisory for one
 // artifact (its `artifact.key`), or for every artifact (`*`).
 //
+// Each finding names the services its running resources belong to; the table
+// prints them in a `service` column (when any finding has one) and
+// `--service <id|slug|name>` narrows to one, resolved against `/services`;
+// `--resource <id>` narrows to findings running on one resource.
+//
 // Types come from `@infrawrench/client-core` type-only; the shared filter and
 // the "3 Pods and 1 Lambda Function" phrasing are reached through a dynamic
 // `import()` (the CLI is CJS, client-core ESM), like `graph` and `ssh-fanout`.
@@ -18,6 +23,7 @@ import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type { RangeFlags, VulnsFlags } from "../args";
 import type {
   DismissedVulnerabilityFinding,
+  ServiceListResponse,
   VulnerabilityDismissal,
   VulnerabilityFilter,
   VulnerabilityFindingRow,
@@ -33,6 +39,8 @@ import {
   formatVulnArtifact,
   formatVulnCvss,
   formatVulnPackage,
+  formatVulnServices,
+  matchService,
   matchVulnAccount,
   parseVulnSeverityFlag,
   VULN_SEVERITIES,
@@ -131,6 +139,22 @@ function isFiltered(filter: VulnerabilityFilter): boolean {
   return Object.values(filter).some((v) => v !== undefined);
 }
 
+/** Resolve `--service` against the org's services (not the feed's, so a clean service reads as clean). */
+async function resolveServiceFilter(orgId: string, query: string): Promise<string> {
+  const { services } = await orgFetch<ServiceListResponse>(orgId, "/services");
+  const found = matchService(services, query);
+  if (found.match) return found.match.id;
+  if (found.candidates.length > 1) {
+    throw new CliError(
+      `"${query}" matches ${found.candidates.length} services: ${found.candidates
+        .map((s) => safe(s.slug))
+        .join(", ")}. Use the slug.`,
+      2,
+    );
+  }
+  throw new CliError(`No service matches "${query}". Run \`infrawrench services\` to list.`, 2);
+}
+
 /** `infrawrench vulns [list]`. */
 export async function cmdVulns(
   ctx: CliContext,
@@ -141,6 +165,9 @@ export async function cmdVulns(
   const org = await resolveOrg(ctx);
   const response = await orgFetch<VulnerabilityListResponse>(org.id, "/vulnerabilities");
   const filter = buildFilter(ctx, flags, response);
+  if (flags.service !== undefined)
+    filter.serviceId = await resolveServiceFilter(org.id, flags.service);
+  if (range.resource) filter.resourceIds = [range.resource];
   const { filterVulnerabilityFindings, describeRunning } = await import("@infrawrench/client-core");
 
   const matched = filterVulnerabilityFindings(response.findings, filter);
@@ -211,12 +238,16 @@ export async function cmdVulns(
         value: (r) => (r.running.length > 0 ? describeRunning(r.running) : c.dim("not running")),
       },
     ];
+    // Only when something is in a service: a column of dashes says nothing.
+    if (shown.some((r) => (r.services ?? []).length > 0)) {
+      columns.push({ header: "service", value: (r) => formatVulnServices(r.services) });
+    }
     printTable(shown, columns);
     if (matched.length > shown.length) {
       println();
       println(
         c.dim(
-          `${matched.length - shown.length} more not shown. Raise --limit, narrow with --severity / --running / --kev, or use --json.`,
+          `${matched.length - shown.length} more not shown. Raise --limit, narrow with --severity / --running / --kev / --service, or use --json.`,
         ),
       );
     }

@@ -4,6 +4,7 @@ import {
   webIncidentUrl,
   webResourceUrl,
   webServiceUrl,
+  webVulnerabilitiesUrl,
   type DesktopDeepLink,
 } from "@infrawrench/client-core";
 import type { Client } from "./client";
@@ -20,8 +21,15 @@ export function destinationsFor(client: Client, link: DesktopDeepLink): Destinat
       ? webResourceUrl(client.cloudUrl, client.orgId, link)
       : link.kind === "incident"
         ? webIncidentUrl(client.cloudUrl, client.orgId, link.incidentId)
-        : webServiceUrl(client.cloudUrl, client.orgId, link.serviceId);
+        : link.kind === "vulnerabilities"
+          ? webVulnerabilitiesUrl(client.cloudUrl, client.orgId)
+          : webServiceUrl(client.cloudUrl, client.orgId, link.serviceId);
   return { web, desktop: desktopDeepLink(link) };
+}
+
+/** The org's Vulnerabilities tab, in whichever app the user prefers. */
+export function vulnerabilitiesDestinations(client: Client): Destinations {
+  return destinationsFor(client, { kind: "vulnerabilities", orgId: client.orgId });
 }
 
 export async function openPreferred(client: Client, d: Destinations): Promise<void> {

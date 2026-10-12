@@ -20,14 +20,17 @@ Type to search resources across every connected account, plus your
   ([IaC reconciliation](./iac-reconciliation.md))
 - the **service** that owns it
 - open **posture findings** and any open **incidents** that list it
+- the **[vulnerabilities](./vulnerabilities.md)** running on it ("2 critical, 1 high (1 known
+  exploited)"), or no row at all when no connected account runs a scanner
 
 A service's pane shows its team, who is on call, its cost, open findings, SLO standing and
 scorecard levels.
 
-<insert [Raycast's Search Resources command with "checkout" typed: a Services section with Checkout (Tier 1), a Resources section below, and the detail pane for an AWS load balancer showing Cost (30 days), Terraform: Managed, Service: Checkout and Posture: No open findings] here>
+<insert [Raycast's Search Resources command with "checkout" typed: a Services section with Checkout (Tier 1), a Resources section below, and the detail pane for an AWS load balancer showing Cost (30 days), Terraform: Managed, Service: Checkout, Posture: No open findings and Vulnerabilities: 1 high] here>
 
 Actions: **Open in Infrawrench** (web or desktop, by preference, with the other one next to it),
-**Copy Resource ID**, **Copy Name**, **Copy Link**, and **Declare Incident Affecting This**,
+**Copy Resource ID**, **Copy Name**, **Copy Link**, **Open Vulnerabilities** (the
+organization's Vulnerabilities tab), and **Declare Incident Affecting This**,
 which for a service fills in every resource the service contains.
 
 ### Who Is On Call

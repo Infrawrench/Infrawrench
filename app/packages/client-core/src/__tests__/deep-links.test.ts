@@ -6,6 +6,7 @@ import {
   webIncidentUrl,
   webResourceUrl,
   webServiceUrl,
+  webVulnerabilitiesUrl,
 } from "../deep-links";
 
 const resource = {
@@ -28,6 +29,9 @@ describe("web URLs", () => {
     );
     expect(webIncidentUrl("https://x.test", "o")).toBe("https://x.test/org/o/incidents");
     expect(webServiceUrl("https://x.test", "o", "s1")).toBe("https://x.test/org/o/services/s1");
+    expect(webVulnerabilitiesUrl("https://x.test/", "o")).toBe(
+      "https://x.test/org/o/vulnerabilities",
+    );
   });
 });
 
@@ -37,6 +41,7 @@ describe("desktop deep links", () => {
       { kind: "resource" as const, orgId: "org-1", ...resource },
       { kind: "incident" as const, orgId: "org-1", incidentId: "inc-9" },
       { kind: "service" as const, orgId: "org-1", serviceId: "svc-2" },
+      { kind: "vulnerabilities" as const, orgId: "org-1" },
     ];
     for (const link of links) {
       const url = desktopDeepLink(link);
@@ -50,6 +55,7 @@ describe("desktop deep links", () => {
     expect(parseDesktopDeepLink("https://open/resource?org=o&id=1")).toBeNull();
     expect(parseDesktopDeepLink("infrawrench://open/resource?org=o&id=1")).toBeNull();
     expect(parseDesktopDeepLink("infrawrench://open/unknown?org=o&id=1")).toBeNull();
+    expect(parseDesktopDeepLink("infrawrench://open/vulnerabilities")).toBeNull();
     expect(parseDesktopDeepLink("not a url")).toBeNull();
   });
 });

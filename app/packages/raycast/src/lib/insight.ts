@@ -2,6 +2,7 @@ import {
   fetchAccountResources,
   fetchIncidents,
   fetchResourceSpend,
+  fetchResourceVulnerabilities,
   fetchServicesForResources,
   postureFindingsByResource,
   resourceStatusFromFields,
@@ -11,6 +12,7 @@ import {
   type PostureFinding,
   type PostureListResponse,
   type ResourceSpend,
+  type ResourceVulnerabilityTally,
   type SearchResult,
   type ServiceRef,
 } from "@infrawrench/client-core";
@@ -28,6 +30,8 @@ export interface ResourceInsight {
   iac: Part<IacResourceStatusResponse>;
   services: Part<ServiceRef[]>;
   findings: Part<PostureFinding[]>;
+  /** Null when no connected account runs a scanner: unknown, not clean. */
+  vulnerabilities: Part<ResourceVulnerabilityTally | null>;
   incidents: Part<Incident[]>;
 }
 
@@ -75,7 +79,7 @@ export async function loadResourceInsight(
     async () => (await cachedAccountRows(client, r.accountId)).find((x) => x.id === r.id) ?? null,
   );
   const row = rowPart.ok ? rowPart.value : null;
-  const [spend, iac, services, findings, incidents] = await Promise.all([
+  const [spend, iac, services, findings, vulnerabilities, incidents] = await Promise.all([
     part(async () => {
       if (!row?.externalId) return [];
       const map = await fetchResourceSpend(client.api, client.orgId, [
@@ -99,6 +103,10 @@ export async function loadResourceInsight(
       const feed = await cachedPosture(client);
       return feed ? (postureFindingsByResource(feed).get(r.id) ?? []) : [];
     }),
+    part(async () => {
+      const res = await fetchResourceVulnerabilities(client.api, client.orgId, [r.id]);
+      return res.byResource.get(r.id) ?? null;
+    }),
     part(async () =>
       (await fetchIncidents(client.api, client.orgId)).incidents.filter(
         (i) => i.status !== "resolved" && i.affectedResourceIds.includes(r.id),
@@ -112,6 +120,7 @@ export async function loadResourceInsight(
     iac,
     services,
     findings,
+    vulnerabilities,
     incidents,
   };
 }

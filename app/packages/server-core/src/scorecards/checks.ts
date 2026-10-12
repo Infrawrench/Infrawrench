@@ -19,7 +19,11 @@
  */
 import {
   extractRecordTags,
+  openVulnerabilitiesByResource,
+  SCORECARD_SEVERITIES,
   tagPolicyViolations,
+  type DoraSummary,
+  type ResourceVulnerabilitySummary,
   type ScorecardCheckStatus,
   type ScorecardCheckType,
   type ScorecardSeverity,
@@ -67,6 +71,52 @@ function list(params: Record<string, number | string[]>, key: string): string[] 
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The vulnerability feed as the check reads it; loaded once per evaluation. */
+export interface ScorecardVulnerabilityFeed {
+  /** Some scanner has completed a collection for this org. */
+  scanning: boolean;
+  /** Open findings per running resource at or above `min`, memoised per severity. */
+  atOrAbove(min: ScorecardSeverity): Map<string, ResourceVulnerabilitySummary>;
+}
+
+export const VULNERABILITY_FEED_KEY = "vulnerabilities";
+
+async function loadVulnerabilityFeed(organizationId: string): Promise<ScorecardVulnerabilityFeed> {
+  const { listVulnerabilities } = await import("../vulnerabilities/feed");
+  const feed = await listVulnerabilities(organizationId);
+  const byMin = new Map<ScorecardSeverity, Map<string, ResourceVulnerabilitySummary>>();
+  return {
+    // `lastCollectedAt` is only written on a successful collection, so an
+    // account whose scanner is off or unreachable does not count as scanning.
+    scanning: feed.sources.some((s) => s.lastCollectedAt !== null),
+    atOrAbove(min) {
+      let hit = byMin.get(min);
+      if (!hit) {
+        hit = openVulnerabilitiesByResource(feed, { minSeverity: min });
+        byMin.set(min, hit);
+      }
+      return hit;
+    },
+  };
+}
+
+/** Per-service DORA summaries over a trailing window, keyed by service id. */
+export const doraFeedKey = (windowDays: number) => `dora-service:${windowDays}`;
+
+function loadDoraByService(windowDays: number, now: number) {
+  return async (organizationId: string): Promise<Map<string | null, DoraSummary>> => {
+    const [{ getDoraSummariesByScope }, { SERVICE_DORA_DIMENSION_ID }] = await Promise.all([
+      import("../dora/load"),
+      import("../service-catalog/dora-dimension"),
+    ]);
+    return getDoraSummariesByScope(
+      organizationId,
+      { from: new Date(now - windowDays * 86_400_000), to: new Date(now) },
+      SERVICE_DORA_DIMENSION_ID,
+    );
+  };
 }
 
 export const SCORECARD_CHECK_EVALUATORS = {
@@ -209,6 +259,59 @@ export const SCORECARD_CHECK_EVALUATORS = {
     const line = `${total.toFixed(2)} ${service.budgetCurrency} in 30 days against ${service.monthlyBudget.toFixed(2)}`;
     const suffix = otherCurrency ? " (spend in other currencies not counted)" : "";
     return total <= service.monthlyBudget ? pass(`${line}${suffix}.`) : fail(`${line}${suffix}.`);
+  },
+
+  no_critical_vulnerabilities: async ({ members, signals }, params) => {
+    const feed = await signals.extension(VULNERABILITY_FEED_KEY, loadVulnerabilityFeed);
+    if (!feed) return unavailable("vulnerability");
+    if (!feed.scanning) return na("No vulnerability scanner has reported for this org.");
+    const chosen = new Set(list(params, "severities"));
+    const severities = SCORECARD_SEVERITIES.filter((s) => chosen.has(s));
+    if (severities.length === 0) severities.push("critical");
+    const lowest = severities[severities.length - 1]!;
+    const byResource = feed.atOrAbove(lowest);
+    let hitMembers = 0;
+    let findings = 0;
+    const advisories = new Set<string>();
+    for (const m of members) {
+      const summary = byResource.get(m.resourceId);
+      if (!summary) continue;
+      const count = severities.reduce((n, sev) => n + summary[sev], 0);
+      if (count === 0) continue;
+      hitMembers += 1;
+      findings += count;
+      for (const a of summary.advisories) advisories.add(a);
+    }
+    if (hitMembers === 0) return pass(null);
+    // Advisory ids are per summary, at or above `lowest`; name them only when
+    // the chosen severities are exactly that range, so a skipped severity's
+    // advisory is never named as the cause.
+    const contiguous = severities.length === SCORECARD_SEVERITIES.indexOf(lowest) + 1;
+    const ids = [...advisories];
+    const named =
+      contiguous && ids.length > 0
+        ? ` (${ids.slice(0, 3).join(", ")}${ids.length > 3 ? ` and ${ids.length - 3} more` : ""})`
+        : "";
+    return fail(
+      `${plural(hitMembers, "running member")} with ${plural(findings, "open vulnerability", "open vulnerabilities")} at ${severities.join("/")} severity${named}.`,
+    );
+  },
+
+  change_failure_rate: async ({ service, signals }, params) => {
+    const days = Math.max(1, Math.round(num(params, "windowDays", 30)));
+    const max = num(params, "maxFailureRatePercent", 15);
+    const byService = await signals.extension(
+      doraFeedKey(days),
+      loadDoraByService(days, signals.now),
+    );
+    if (!byService) return unavailable("delivery");
+    const cfr = byService.get(service.id)?.changeFailureRate;
+    if (!cfr || cfr.changes === 0 || cfr.value === null) {
+      return na(`No production change in the last ${plural(days, "day")}.`);
+    }
+    const pct = cfr.value * 100;
+    const line = `${cfr.failures} of ${plural(cfr.changes, "production change")} failed in ${plural(days, "day")} (${Math.round(pct)}%, threshold ${max}%)`;
+    return pct <= max ? pass(`${line}.`) : fail(`${line}.`);
   },
 } satisfies Record<ScorecardCheckType, CheckEvaluator>;
 

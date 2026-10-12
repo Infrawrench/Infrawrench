@@ -14,19 +14,26 @@
  * costs the pack one source rather than the whole document.
  *
  * Extension point: {@link registerEvidenceEvaluator}. A later feature that
- * adds an evidence source (service scorecards, leaked credentials) registers
- * its client-core definition with `registerEvidenceSource`, registers an
- * evaluator here under the same id, and adds the id to the controls it
- * speaks to in the framework files.
+ * adds an evidence source registers its client-core definition with
+ * `registerEvidenceSource`, registers an evaluator here under the same id,
+ * and adds the id to the controls it speaks to in the framework files.
  */
 import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import {
   accessReviewToCsv,
   getEvidenceSource,
+  isServiceTier,
+  LEAK_DISMISS_REASON_LABELS,
+  LEAKED_SECRET_STATUSES,
+  leakedCredentialEvidenceGaps,
+  scorecardEvidenceGaps,
+  summarizeLeakedCredentialEvidence,
+  summarizeScorecardEvidence,
   summarizeVulnerabilityEvidence,
   toComplianceCsv,
   vulnerabilityEvidenceGaps,
+  type LeakedSecret,
   type CompliancePeriod,
   type EvidenceMetric,
   type EvidenceSourceId,
@@ -54,6 +61,9 @@ import { listDrillCoverage } from "../backups/drills";
 import { listVulnerabilities } from "../vulnerabilities/feed";
 import { listJitGrantIssues } from "../jit-access/service";
 import { getSessionRecordingSettings } from "../ssh-recording/settings";
+import { listLeakedSecrets } from "../leaked-secrets/store";
+import { listScorecardRecords, listScorecardResults, scorecardToWire } from "../scorecards/store";
+import { listServiceRecords } from "../service-catalog/store";
 
 export interface EvidenceContext {
   organizationId: string;
@@ -351,6 +361,104 @@ const vulnerabilities: EvidenceEvaluator = async (ctx) => {
       [...openRows, ...fixedRows],
     ),
     { summary, findings: feed.findings, dismissedCount: feed.dismissedCount, fixed: records },
+  );
+};
+
+const scorecardsSource: EvidenceEvaluator = async (ctx) => {
+  // The overview the Scorecards view renders, read without seeding the
+  // default scorecard: an evidence read must not create configuration.
+  const [cards, serviceRows, results] = await Promise.all([
+    listScorecardRecords(ctx.organizationId),
+    listServiceRecords(ctx.organizationId),
+    listScorecardResults(ctx.organizationId),
+  ]);
+  const summary = summarizeScorecardEvidence(
+    {
+      scorecards: cards.map(scorecardToWire),
+      services: serviceRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        tier: isServiceTier(r.tier) ? r.tier : null,
+        ownerTeam: r.ownerTeam,
+      })),
+      results,
+    },
+    ctx.now.getTime(),
+  );
+  const gaps = scorecardEvidenceGaps(summary);
+  const metrics: EvidenceMetric[] = [
+    m("scorecards", "Enabled scorecards", summary.scorecardCount),
+    m("services", "Services", summary.serviceCount),
+    m("pairs", "Services graded (per scorecard)", summary.pairs),
+    m("belowLowestLevel", "Below the lowest level", summary.belowLowestLevel),
+    m("notScored", "Not scored (no check applies)", summary.notScored),
+    m("notEvaluated", "Not evaluated yet", summary.notEvaluated),
+    m("failingChecks", "Failing checks", summary.failingChecks),
+    m("stale", "Results older than 48 hours", summary.stale),
+    m("lastEvaluated", "Last evaluated", summary.lastEvaluatedAt),
+  ];
+  for (const card of summary.byScorecard) {
+    metrics.push(
+      m(
+        `scorecard:${card.scorecardId}`,
+        `${card.name}: ${card.levels.map((l) => `${l.name} ${l.services}`).join(", ") || "no levels"}`,
+        card.medianScore === null ? null : `median ${card.medianScore}`,
+      ),
+    );
+  }
+  const noData = summary.scorecardCount === 0 || summary.pairs === 0;
+  return build(
+    "scorecards",
+    noData ? "no-data" : gaps.length > 0 ? "gap" : "present",
+    summary.scorecardCount === 0
+      ? "No scorecard is enabled."
+      : summary.pairs === 0
+        ? "No service falls under an enabled scorecard."
+        : `${summary.pairs} service grade(s) across ${summary.scorecardCount} scorecard(s); ${summary.belowLowestLevel} below the lowest level, ${summary.failingChecks} failing check(s).`,
+    metrics,
+    gaps,
+    summary.rows.length,
+    toComplianceCsv(
+      [
+        "Scorecard",
+        "Service",
+        "Tier",
+        "Owner team",
+        "Score",
+        "Level",
+        "Below lowest level",
+        "Checks passed",
+        "Checks failing",
+        "Checks not applicable",
+        "Failing checks",
+        "Evaluated at",
+        "Stale",
+        "Service id",
+      ],
+      summary.rows.map((r) => [
+        r.scorecardName,
+        r.serviceName,
+        r.tier,
+        r.ownerTeam,
+        r.score,
+        r.levelName ?? r.level,
+        r.belowLowestLevel ? "yes" : "no",
+        r.checksPassed,
+        r.checksFailed,
+        r.checksNotApplicable,
+        r.failingChecks
+          .map(
+            (c) =>
+              `${c.name}${c.status === "error" ? " (could not evaluate)" : ""}${c.detail ? `: ${c.detail}` : ""}`,
+          )
+          .join("; "),
+        r.evaluatedAt,
+        r.stale ? "yes" : "no",
+        r.serviceId,
+      ]),
+    ),
+    summary,
   );
 };
 
@@ -933,6 +1041,154 @@ const incidentsSource: EvidenceEvaluator = async (ctx) => {
   );
 };
 
+/**
+ * Leak list reads are capped per call (open leaks first), so an org with
+ * more history than one read holds is read again per status. The total from
+ * the counts is reported beside what was included, the audit log's rule.
+ */
+async function readAllLeaks(organizationId: string) {
+  const first = await listLeakedSecrets(organizationId);
+  const total = LEAKED_SECRET_STATUSES.reduce((n, s) => n + first.counts[s], 0);
+  if (first.leaks.length >= total) return { ...first, total };
+  const byId = new Map<string, LeakedSecret>(first.leaks.map((l) => [l.id, l]));
+  const perStatus = await Promise.all(
+    LEAKED_SECRET_STATUSES.map((status) => listLeakedSecrets(organizationId, { status })),
+  );
+  for (const read of perStatus) for (const l of read.leaks) byId.set(l.id, l);
+  return { ...first, leaks: [...byId.values()], total };
+}
+
+const leakedCredentials: EvidenceEvaluator = async (ctx) => {
+  const read = await readAllLeaks(ctx.organizationId);
+  const summary = summarizeLeakedCredentialEvidence(
+    read,
+    { start: ctx.start.getTime(), end: ctx.end.getTime() },
+    ctx.now.getTime(),
+  );
+  const gaps = leakedCredentialEvidenceGaps(summary);
+  const { records: _records, ...figures } = summary;
+  const metrics: EvidenceMetric[] = [
+    m("scanners", "Connected secret scanners", summary.scannerCount),
+    m("opened", "Detected in period", summary.opened),
+    m("rotated", "Rotated in period", summary.rotated),
+    m("dismissed", "Dismissed in period", summary.dismissed),
+  ];
+  for (const [reason, label] of Object.entries(LEAK_DISMISS_REASON_LABELS)) {
+    metrics.push(
+      m(
+        `dismissed:${reason}`,
+        `Dismissed as ${label.toLowerCase()}`,
+        summary.dismissedByReason[reason as keyof typeof summary.dismissedByReason],
+      ),
+    );
+  }
+  metrics.push(
+    m("resolvedUpstream", "Resolved on the scanner", summary.resolvedUpstream),
+    m(
+      "closedUpstream",
+      "Closed on the scanner by Infrawrench",
+      summary.closedUpstreamByInfrawrench,
+    ),
+    m("medianRotate", "Median hours from detection to rotation", summary.medianHoursToRotate),
+    m("maxRotate", "Longest hours from detection to rotation", summary.maxHoursToRotate),
+    m("openNow", "Open at generation time", summary.openNow),
+    m(
+      "overdue",
+      `Open longer than the ${summary.targetHours}-hour target`,
+      summary.overdueCritical,
+    ),
+    m("openPublic", "Open and found in a public place", summary.openPublic),
+  );
+  if (read.leaks.length < read.total) {
+    metrics.push(m("included", "Leaks read (of total)", `${read.leaks.length} of ${read.total}`));
+  }
+  const noData = summary.scannerCount === 0 && summary.records.length === 0;
+  return build(
+    "leaked-credentials",
+    noData ? "no-data" : gaps.length > 0 ? "gap" : "present",
+    noData
+      ? "No secret scanner is connected."
+      : `${summary.opened} leak(s) detected during the period, ${summary.rotated} rotated and ${summary.dismissed} dismissed; ${summary.openNow} open at generation time.`,
+    metrics,
+    gaps,
+    summary.records.length,
+    toComplianceCsv(
+      [
+        "Status",
+        "Severity",
+        "Token type",
+        "Issuer",
+        "Scanner account",
+        "Repository",
+        "Path",
+        "Line",
+        "Commit",
+        "Validity",
+        "Public",
+        "Detected",
+        "First seen",
+        "Matched account",
+        "Matched resource",
+        "Match confidence",
+        "Rotated at",
+        "Rotated by",
+        "Rotation method",
+        "Hours to rotate",
+        "Dismissed at",
+        "Dismissed by",
+        "Dismiss reason",
+        "Dismiss comment",
+        "Closed on scanner at",
+        "Scanner resolution",
+        "Finding URL",
+      ],
+      summary.records.map((r) => [
+        r.status,
+        r.severity,
+        r.tokenTypeLabel,
+        r.ownerPluginName,
+        r.scannerAccountName,
+        r.repository,
+        r.path,
+        r.line,
+        r.commitSha,
+        r.validity,
+        r.publiclyLeaked ? "yes" : "no",
+        r.detectedAt,
+        r.firstSeenAt,
+        r.matchedAccountName,
+        r.matchedResourceName,
+        r.matchConfidence,
+        r.rotatedAt,
+        r.rotatedBy,
+        r.rotationMethod,
+        r.hoursToRotate,
+        r.dismissedAt,
+        r.dismissedBy,
+        r.dismissedReason ? LEAK_DISMISS_REASON_LABELS[r.dismissedReason] : null,
+        r.dismissedComment,
+        r.upstreamResolvedAt,
+        r.upstreamResolution,
+        r.url,
+      ]),
+    ),
+    // The JSON carries the whitelisted records only, never the wire leaks:
+    // those include the masked hint.
+    {
+      summary: figures,
+      scanners: read.scanners.map((s) => ({
+        accountName: s.accountName,
+        pluginId: s.pluginId,
+        label: s.label,
+        lastScannedAt: s.lastScannedAt,
+        lastError: s.lastError,
+      })),
+      leaks: summary.records,
+      totalLeaks: read.total,
+    },
+  );
+};
+
 /* ------------------------------------------------------------------ *
  * Registry
  * ------------------------------------------------------------------ */
@@ -949,6 +1205,8 @@ const evaluators = new Map<EvidenceSourceId, EvidenceEvaluator>([
   ["change-freezes", changeFreezesSource],
   ["session-recordings", sessionRecordings],
   ["incidents", incidentsSource],
+  ["scorecards", scorecardsSource],
+  ["leaked-credentials", leakedCredentials],
 ]);
 
 /**

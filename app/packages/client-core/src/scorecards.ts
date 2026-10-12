@@ -41,7 +41,9 @@ export type ScorecardCheckType =
   | "no_critical_posture"
   | "no_orphans"
   | "required_tags"
-  | "cost_within_budget";
+  | "cost_within_budget"
+  | "no_critical_vulnerabilities"
+  | "change_failure_rate";
 
 export type ScorecardParamKind = "number" | "string_list" | "severity_list";
 
@@ -174,6 +176,49 @@ export const SCORECARD_CHECK_TYPES: readonly ScorecardCheckTypeDef[] = [
       "The last 30 days of member spend is within the service's monthly budget. Not applicable when the service has no budget.",
     defaultWeight: 1,
     params: [],
+  },
+  {
+    type: "no_critical_vulnerabilities",
+    label: "No critical vulnerabilities on running members",
+    description:
+      "No member is running an artifact with an open (not dismissed) vulnerability at the chosen severities. Not applicable when no vulnerability scanner has reported yet.",
+    defaultWeight: 2,
+    params: [
+      {
+        key: "severities",
+        label: "Severities that fail",
+        description: "Open vulnerabilities at any of these severities fail the check.",
+        kind: "severity_list",
+        default: ["critical"],
+      },
+    ],
+  },
+  {
+    type: "change_failure_rate",
+    label: "Change failure rate under threshold",
+    description:
+      "The share of the service's production changes that led to a failure (DORA change failure rate) stays at or under the threshold. Not applicable when the service shipped no production change in the window.",
+    defaultWeight: 1,
+    params: [
+      {
+        key: "maxFailureRatePercent",
+        label: "Maximum change failure rate (%)",
+        description: "Fail when more than this share of production changes failed.",
+        kind: "number",
+        default: 15,
+        min: 0,
+        max: 100,
+      },
+      {
+        key: "windowDays",
+        label: "Window (days)",
+        description: "How many trailing days of production changes to count.",
+        kind: "number",
+        default: 30,
+        min: 1,
+        max: 90,
+      },
+    ],
   },
 ];
 
@@ -373,6 +418,24 @@ export function isScorecardLevelDrop(
 ): boolean {
   if (previous === null) return false;
   return scorecardLevelRank(next, levels) < scorecardLevelRank(previous, levels);
+}
+
+/**
+ * Which way a service moved on the ladder between two stored levels, or null
+ * when it stayed put. Unlike {@link isScorecardLevelDrop} this counts "no
+ * level" as the bottom rung in both directions, so reaching a first level is
+ * a move up; the caller decides that a pair's first evaluation is not a move
+ * at all.
+ */
+export function scorecardLevelDirection(
+  previous: string | null,
+  next: string | null,
+  levels: readonly ScorecardLevel[],
+): "up" | "down" | null {
+  const before = scorecardLevelRank(previous, levels);
+  const after = scorecardLevelRank(next, levels);
+  if (after === before) return null;
+  return after > before ? "up" : "down";
 }
 
 /**

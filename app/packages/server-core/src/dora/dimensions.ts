@@ -1,17 +1,21 @@
 /**
  * Scope dimensions for DORA metrics: what a change can be grouped and
- * filtered by. Environment, repository and owner are built in.
+ * filtered by. Environment, repository and owner are built in; `service`
+ * (the service catalogue's, `service-catalog/dora-dimension.ts`) is listed
+ * beside them so it is present wherever DORA loads.
  *
  * **Extension point.** Another feature adds a dimension by calling
- * `registerDoraScopeDimension` at module load (a service catalogue registering
- * `service`, mapping each change's resources to the service that owns them).
- * The API takes the dimension id as a free string and lists what is
+ * `registerDoraScopeDimension` at module load, or, when the module that
+ * resolves it would otherwise never be imported on a DORA path, by being
+ * added to the list below (which is how `service` is wired; its module
+ * imports only types from here, so there is no ESM cycle). The API takes the dimension id as a free string and lists what is
  * registered, so a new dimension needs no schema, route or UI change: the
  * picker, the breakdown table, the CLI's `--by` and the drill-down all read
  * the registry.
  */
 import { DORA_BUILTIN_DIMENSIONS, type DoraScopeValue } from "@infrawrench/client-core";
 import { lookupResourceOwners } from "../ownership/store";
+import { serviceDoraDimension } from "../service-catalog/dora-dimension";
 
 /** What a dimension sees of a change. */
 export interface DoraScopeSubject {
@@ -101,7 +105,10 @@ const ownerDimension: DoraScopeDimension = {
 };
 
 const registry = new Map<string, DoraScopeDimension>(
-  [environmentDimension, repositoryDimension, ownerDimension].map((d) => [d.id, d]),
+  [environmentDimension, repositoryDimension, ownerDimension, serviceDoraDimension].map((d) => [
+    d.id,
+    d,
+  ]),
 );
 
 /** Add (or replace) a scope dimension. See the module comment. */

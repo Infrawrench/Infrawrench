@@ -11,7 +11,9 @@
  * DISTINCT FROM <the level it read>`, and only the replica whose update lands
  * announces the drop, so N replicas evaluating the same org send one alert.
  * The first evaluation of a (scorecard, service) pair never announces: there
- * is nothing to have dropped from. Rises are recorded and never announced.
+ * is nothing to have dropped from. Rises are recorded and never announced to
+ * people; event subscriptions get `scorecard.level_changed` for a claimed move
+ * in either direction.
  *
  * A drop that reached nobody is **not** rolled back, unlike the SLO claim:
  * the stored level is what every page shows, and leaving it a level too high
@@ -20,9 +22,11 @@
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   computeScorecardScore,
+  SCORECARD_LEVEL_CHANGED,
   isScorecardLevelDrop,
   scorecardAppliesTo,
   scorecardCheckName,
+  scorecardLevelDirection,
   scorecardLevelFor,
   type Scorecard,
   type ScorecardCheckResult,
@@ -34,6 +38,7 @@ import { db } from "../db/client";
 import { resources, scorecardHistory, scorecardResults, scorecards } from "../db/schema";
 import { routeAlert } from "../alerts/route";
 import { orgAppUrl } from "../app-url";
+import { publishEvent } from "../events/publish";
 import { ServiceSignals } from "../service-catalog/signals";
 import { loadServicesWithMembers } from "../service-catalog/store";
 import { scorecardCheckEvaluator } from "./checks";
@@ -145,6 +150,49 @@ async function announceDrop(
 }
 
 /**
+ * `scorecard.level_changed`. No idempotency key, the SLO stance: the
+ * conditional update in {@link storeResult} already made this replica the only
+ * one that saw the move.
+ */
+async function publishLevelChange(
+  organizationId: string,
+  scorecard: Scorecard,
+  service: Service,
+  previous: string | null,
+  direction: "up" | "down",
+  result: Omit<ScorecardResult, "evaluatedAt">,
+): Promise<void> {
+  const previousLevelName = scorecard.levels.find((l) => l.key === previous)?.name ?? null;
+  const from = previousLevelName ?? previous ?? "no level";
+  const to = result.levelName ?? result.level ?? "no level";
+  await publishEvent(
+    SCORECARD_LEVEL_CHANGED,
+    organizationId,
+    {
+      scorecardId: scorecard.id,
+      scorecardName: scorecard.name,
+      serviceId: service.id,
+      serviceSlug: service.slug,
+      serviceName: service.name,
+      direction,
+      previousLevel: previous,
+      previousLevelName,
+      level: result.level,
+      levelName: result.levelName,
+      score: result.score,
+      failingChecks: result.checks
+        .filter((c) => c.status === "fail" || c.status === "error")
+        .map((c) => c.name),
+    },
+    {
+      title: `${service.name} ${direction === "up" ? "rose" : "dropped"} from ${from} to ${to} on "${scorecard.name}"`,
+      severity: direction === "down" ? "warning" : "info",
+      url: orgAppUrl(organizationId, `services/${service.id}`),
+    },
+  );
+}
+
+/**
  * Write one result. Returns true when this call recorded a level drop it
  * should announce.
  */
@@ -153,7 +201,7 @@ async function storeResult(
   scorecard: Scorecard,
   result: Omit<ScorecardResult, "evaluatedAt">,
   now: Date,
-): Promise<{ dropped: boolean; previous: string | null }> {
+): Promise<{ dropped: boolean; moved: "up" | "down" | null; previous: string | null }> {
   const [existing] = await db
     .select({ level: scorecardResults.level })
     .from(scorecardResults)
@@ -178,7 +226,7 @@ async function storeResult(
         target: [scorecardResults.scorecardId, scorecardResults.serviceId],
         set: values,
       });
-    return { dropped: false, previous: null };
+    return { dropped: false, moved: null, previous: null };
   }
   const updated = await db
     .update(scorecardResults)
@@ -194,6 +242,7 @@ async function storeResult(
   const claimed = updated.length > 0;
   return {
     dropped: claimed && isScorecardLevelDrop(existing.level, result.level, scorecard.levels),
+    moved: claimed ? scorecardLevelDirection(existing.level, result.level, scorecard.levels) : null,
     previous: existing.level,
   };
 }
@@ -225,7 +274,7 @@ export async function evaluateOrgScorecards(
     for (const entry of applicable) {
       const members = entry.membership.members.filter((m) => !m.missing);
       const result = await scoreService(card, entry.service, members, memberFields, signals);
-      const { dropped, previous } = await storeResult(organizationId, card, result, now);
+      const { dropped, moved, previous } = await storeResult(organizationId, card, result, now);
       await db
         .insert(scorecardHistory)
         .values({
@@ -241,6 +290,11 @@ export async function evaluateOrgScorecards(
           set: { score: result.score, level: result.level },
         });
       outcome.results += 1;
+      // Systems hear about every move, both directions, and whether or not
+      // the caller announces: a manual evaluation that moved the bar still
+      // moved the level, and the next pass will not see it again.
+      if (moved)
+        await publishLevelChange(organizationId, card, entry.service, previous, moved, result);
       if (dropped) {
         outcome.drops += 1;
         if (announce && card.alertOnLevelDrop) {

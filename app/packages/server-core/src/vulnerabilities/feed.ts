@@ -27,11 +27,19 @@ import {
   resources,
 } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
+import { getServicesForResources } from "../service-catalog/lookup";
 import { listVulnerabilityDismissals } from "./dismissals";
 import { loadKevCatalog } from "./kev";
 
 export interface ListVulnerabilitiesOptions {
   now?: number;
+  /**
+   * Annotate each finding with the services its running resources belong to
+   * (`row.services`). One `getServicesForResources` call for the whole read;
+   * off by default so the alert pass and the compliance and scorecard helpers,
+   * which never show it, do not pay for the membership resolve.
+   */
+  withServices?: boolean;
 }
 
 const SEVERITIES = new Set<VulnerabilitySeverity>(["critical", "high", "medium", "low", "unknown"]);
@@ -178,6 +186,16 @@ export async function listVulnerabilities(
       x.pluginName.localeCompare(y.pluginName) || x.accountName.localeCompare(y.accountName),
   );
 
+  // Every candidate resource, not only the ones that end up joined: the join
+  // runs after this, and the lookup resolves the org's membership once
+  // whatever the id count, so asking about a few extra costs nothing.
+  const servicesByResource = opts.withServices
+    ? await getServicesForResources(
+        organizationId,
+        orgResources.map((r) => r.id),
+      )
+    : undefined;
+
   return computeVulnerabilityFeed({
     plugins: scanPlugins,
     accounts: orgAccounts,
@@ -195,6 +213,7 @@ export async function listVulnerabilities(
     kev: kev.entries,
     kevUpdatedAt: kev.updatedAt,
     sources,
+    ...(servicesByResource ? { servicesByResource } : {}),
     ...(opts.now !== undefined ? { now: opts.now } : {}),
   });
 }

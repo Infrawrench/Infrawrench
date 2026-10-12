@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { estimateWorkingTree } from "./diff-estimate";
 import { IacIndexService } from "./iac-index";
-import { openResource, openService, type OpenResourceArgs } from "./open";
+import { openResource, openService, openVulnerabilities, type OpenResourceArgs } from "./open";
 import { clearSearchCache, runSearch } from "./search";
 import { ServicesTreeProvider } from "./services-tree";
 import { Session } from "./session";
@@ -83,6 +83,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     command("infrawrench.openResource", (args: OpenResourceArgs) => openResource(session, args)),
     command("infrawrench.openService", (args: { id: string }) => openService(session, args.id)),
+    command("infrawrench.openVulnerabilities", () => openVulnerabilities(session)),
     command("infrawrench.copyText", async (text: string) => {
       await vscode.env.clipboard.writeText(text);
       vscode.window.setStatusBarMessage("Copied", 2000);

@@ -109,10 +109,13 @@ scorecards, or delete it; a deleted default is not recreated.
 | No orphaned resources        | No resource is flagged by the orphan finder.                                                                                                 |
 | Required tags present        | Every taggable resource carries the required tags: the ones you list on the check, or your organisation's tag policy when the list is empty. |
 | Cost within budget           | The last 30 days of spend is within the service's monthly budget.                                                                            |
+| No critical vulnerabilities  | No running resource has an open, undismissed [vulnerability](./vulnerabilities.md) at the chosen severities (critical by default).           |
+| Change failure rate          | The service's [change failure rate](./dora-metrics.md) over the window is at or under the threshold (15% over 30 days by default).           |
 
 A check that has nothing to judge is **not applicable** and does not count either way: a
-stateless service is not marked down for lacking restore drills, and a service without a budget
-is not judged on cost. A check whose data could not be read counts as **failing** and says so,
+stateless service is not marked down for lacking restore drills, a service without a budget
+is not judged on cost, the vulnerability check waits until a scanner has reported, and the change
+failure rate check waits until the service has shipped a production change in the window. A check whose data could not be read counts as **failing** and says so,
 because a broken feed must not lift a service's level. A service where no check applies is
 **not scored**, never zero.
 

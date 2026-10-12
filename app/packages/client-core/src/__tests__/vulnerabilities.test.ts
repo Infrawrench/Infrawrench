@@ -6,7 +6,10 @@ import {
   filterVulnerabilityFindings,
   openVulnerabilitiesByResource,
   parseImageRef,
+  scopeVulnerabilityFeed,
   vulnerabilityArtifactKey,
+  vulnerabilityFeedQuery,
+  vulnerabilityServiceOptions,
   type StoredVulnerabilityFinding,
   type VulnerabilityFeedInput,
 } from "../vulnerabilities";
@@ -247,5 +250,55 @@ describe("computeVulnerabilityFeed", () => {
     expect(
       alertableVulnerabilityFindings(feed, { minSeverity: "critical", runningOnly: true }),
     ).toHaveLength(1);
+  });
+
+  it("names the owning services of the running resources, deduplicated", () => {
+    const checkout = { id: "s1", name: "Checkout", slug: "checkout", tier: 2 as const };
+    const payments = { id: "s2", name: "Payments", slug: "payments", tier: 1 as const };
+    const feed = computeVulnerabilityFeed(
+      input({
+        findings: [
+          stored(),
+          stored({ findingId: "f2", artifactName: "x/y", artifactDigest: null }),
+        ],
+        servicesByResource: new Map([
+          ["p1", [checkout]],
+          ["p2", [checkout, payments]],
+        ]),
+      }),
+    );
+    // Lowest tier number first; one entry per service however many pods run it.
+    expect(feed.findings[0]!.services?.map((s) => s.id)).toEqual(["s2", "s1"]);
+    expect(feed.findings[1]!.services).toEqual([]);
+    expect(vulnerabilityServiceOptions(feed.findings).map((s) => s.slug)).toEqual([
+      "payments",
+      "checkout",
+    ]);
+    // Without a lookup the field is absent, which old clients and servers share.
+    expect(computeVulnerabilityFeed(input()).findings[0]!.services).toBeUndefined();
+  });
+
+  it("scopes the feed to a service or resources and recomputes the counts", () => {
+    const feed = computeVulnerabilityFeed(
+      input({
+        findings: [
+          stored(),
+          stored({ findingId: "f2", severity: "high", artifactName: "x/y", artifactDigest: null }),
+        ],
+        servicesByResource: new Map([["p1", [{ id: "s1", name: "C", slug: "c", tier: null }]]]),
+      }),
+    );
+    expect(feed.totalCount).toBe(2);
+    const byService = scopeVulnerabilityFeed(feed, { serviceId: "s1" });
+    expect(byService.findings.map((f) => f.findingId)).toEqual(["f1"]);
+    expect(byService.counts).toMatchObject({ critical: 1, high: 0 });
+    expect(byService.totalCount).toBe(1);
+    expect(scopeVulnerabilityFeed(feed, { resourceIds: ["p2"] }).totalCount).toBe(1);
+    expect(scopeVulnerabilityFeed(feed, { resourceIds: ["nope"] }).runningCounts.critical).toBe(0);
+    expect(scopeVulnerabilityFeed(feed, {})).toBe(feed);
+    expect(vulnerabilityFeedQuery({ serviceId: "s1", resourceIds: ["a/b", "c"] })).toBe(
+      "?serviceId=s1&resourceId=a%2Fb&resourceId=c",
+    );
+    expect(vulnerabilityFeedQuery()).toBe("");
   });
 });

@@ -61,10 +61,20 @@ Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`) carry spend, s
 | `metric_alert.resolved`    | A firing metric alert recovers                                                    | info                                                                  |
 | `account.sync.failing`     | An account's sync keeps failing past your paging threshold                        | warning                                                               |
 | `account.sync.recovered`   | A failing sync that was announced succeeds again                                  | info                                                                  |
+| `vulnerability.found`      | A [vulnerability](./vulnerabilities.md) finding becomes alertable (once each)     | critical for critical or known exploited, else warning                |
+| `service.changed`          | A [service](./services.md) is created, edited or deleted, or its members change   | info                                                                  |
+| `scorecard.level_changed`  | A service moves up or down a level on a scorecard                                 | warning when it drops, info when it rises                             |
+| `dora.band_changed`        | A [DORA metric](./dora-metrics.md) for production changes performance band        | warning when it worsens, info when it improves                        |
 
 Posture findings ride the daily posture scan, so they need posture alerts turned on under **Notifications → Alerts & digest**; sync failures follow the paging threshold set under **SMS & voice**.
 
 Leak events come from the 30-minute secret scan and are raised whether or not any routing rule took the alert. Both carry the leak id, the token type and its owning plugin, and what it matched (`matchKind`, `matchedAccountId`, `matchedResourceId`); `secret.leaked` adds the scanner, the match confidence, the repository, file and finding URL, the scanner's validity check and whether it was also found in public, and `secret.rotated` adds how it was rotated (`reissued`, `replaced`, `detected` or `manual`), who did it, and whether the finding was closed on the scanner. Neither ever includes the secret or its masked hint.
+
+Vulnerability events ride the hourly vulnerability alert scan, so they follow its settings on the Vulnerabilities screen (minimum severity, running only, alerts on) and are raised whether or not any routing rule took the alert. Each names the advisory, the finding's severity, whether it is known exploited (with CISA's due date), whether a fix and an exploit are available, the package and versions, the artifact, and how many synced resources run it (with up to 50 of their ids). One scan sends at most 100, known exploited and most severe first; the rest are on the Vulnerabilities screen.
+
+`service.changed` carries `action` (`created`, `updated` or `deleted`), the service's id, slug, name, tier and owning team, and `changedFields`: the edited fields, or `members` when resources were added or removed. `scorecard.level_changed` carries the scorecard, the service, `direction` (`up` or `down`), the level before and after (null for no level), the score and the failing checks. A service's first evaluation on a scorecard is never sent, and a manual **Evaluate now** that moves a level sends one like the hourly evaluation does.
+
+`dora.band_changed` is checked a few times a day for organizations with deploys: the 30 complete days ending at midnight UTC are compared with the 30 ending a day earlier, using your [DORA settings](./dora-metrics.md) for what counts as production. Each metric that moved band sends one event per day with the band before and after, `direction` (`improved` or `worsened`), both values and the window. A metric with nothing to measure on either side (no restores in the window, say) is not a change.
 
 The full schema of every event's `data` is in the [API reference](../team-and-billing/openapi.md) under **Webhooks**, and the live catalog with JSON Schemas is at `GET /api/org/{orgId}/event-subscriptions/catalog`.
 

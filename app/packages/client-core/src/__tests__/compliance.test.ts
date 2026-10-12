@@ -6,14 +6,21 @@ import {
   compliancePeriodDays,
   computeComplianceControls,
   getEvidenceSource,
+  leakedCredentialEvidenceGaps,
   parseCompliancePeriod,
   registerEvidenceSource,
+  scorecardEvidenceGaps,
+  summarizeLeakedCredentialEvidence,
+  summarizeScorecardEvidence,
   summarizeVulnerabilityEvidence,
   toComplianceCsv,
   validateComplianceControlSetting,
   vulnerabilityEvidenceGaps,
   type ComplianceFrameworkDefinition,
   type EvidenceSourceResult,
+  type LeakedSecret,
+  type Scorecard,
+  type ScorecardResult,
   type VulnerabilityFindingRow,
 } from "../index";
 
@@ -348,6 +355,278 @@ describe("summarizeVulnerabilityEvidence", () => {
     expect(summary.runningResourcesAtRisk).toBe(1);
     expect(vulnerabilityEvidenceGaps(summary)).toEqual([
       "1 running critical finding(s) open longer than the 15-day fix target",
+    ]);
+  });
+});
+
+describe("summarizeScorecardEvidence", () => {
+  const now = Date.parse("2026-10-12T12:00:00Z");
+  const card = (over: Partial<Scorecard>): Scorecard => ({
+    id: "sc1",
+    name: "Production readiness",
+    description: null,
+    checks: [],
+    levels: [
+      { key: "gold", name: "Gold", minScore: 90, color: null },
+      { key: "bronze", name: "Bronze", minScore: 50, color: null },
+    ],
+    applicableTiers: [],
+    alertOnLevelDrop: true,
+    enabled: true,
+    isDefault: true,
+    lastEvaluatedAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...over,
+  });
+  const svc = (id: string, tier: 1 | 2 | 3 | 4 | null) => ({
+    id,
+    name: id,
+    slug: id,
+    tier,
+    ownerTeam: null,
+  });
+  const res = (over: Partial<ScorecardResult>): ScorecardResult => ({
+    scorecardId: "sc1",
+    scorecardName: "Production readiness",
+    serviceId: "a",
+    score: 95,
+    level: "gold",
+    levelName: "Gold",
+    checks: [],
+    evaluatedAt: "2026-10-12T11:00:00Z",
+    ...over,
+  });
+
+  it("grades applicable pairs and flags services below the lowest level", () => {
+    const summary = summarizeScorecardEvidence(
+      {
+        scorecards: [
+          card({}),
+          card({ id: "sc2", name: "Tier 1 only", applicableTiers: [1] }),
+          card({ id: "off", enabled: false }),
+        ],
+        services: [svc("a", 1), svc("b", 3), svc("c", null)],
+        results: [
+          res({ serviceId: "a" }),
+          res({
+            serviceId: "b",
+            score: 40,
+            level: null,
+            levelName: null,
+            checks: [
+              {
+                checkId: "o",
+                type: "has_owner",
+                name: "Has owner",
+                weight: 1,
+                status: "pass",
+                detail: null,
+              },
+              {
+                checkId: "r",
+                type: "has_runbook",
+                name: "Has runbook",
+                weight: 1,
+                status: "fail",
+                detail: "No runbook linked",
+              },
+              {
+                checkId: "x",
+                type: "no_orphans",
+                name: "No orphans",
+                weight: 1,
+                status: "error",
+                detail: null,
+              },
+            ],
+          }),
+          // A result for a pair the scorecard does not apply to is ignored.
+          res({ scorecardId: "sc2", serviceId: "b", score: 0, level: null }),
+        ],
+      },
+      now,
+    );
+    expect(summary.scorecardCount).toBe(2);
+    expect(summary.pairs).toBe(4); // sc1 x {a,b,c}, sc2 x {a}
+    expect(summary.scored).toBe(2);
+    expect(summary.notEvaluated).toBe(2); // sc1/c, sc2/a
+    expect(summary.belowLowestLevel).toBe(1);
+    expect(summary.failingChecks).toBe(2);
+    const b = summary.rows.find((r) => r.scorecardId === "sc1" && r.serviceId === "b")!;
+    expect(b.failingChecks.map((c) => c.status)).toEqual(["fail", "error"]);
+    expect(summary.byScorecard[0]!.levels).toEqual([
+      { key: "bronze", name: "Bronze", services: 0 },
+      { key: "gold", name: "Gold", services: 1 },
+    ]);
+    expect(scorecardEvidenceGaps(summary)).toEqual([
+      '1 service(s) are below the Bronze level of "Production readiness"',
+    ]);
+  });
+
+  it("reports stale results as a gap and nothing to grade as empty", () => {
+    const stale = summarizeScorecardEvidence(
+      {
+        scorecards: [card({})],
+        services: [svc("a", 2)],
+        results: [res({ evaluatedAt: "2026-10-09T00:00:00Z" })],
+      },
+      now,
+    );
+    expect(stale.stale).toBe(1);
+    expect(scorecardEvidenceGaps(stale)).toEqual([
+      "1 scorecard result(s) are more than 48 hours old",
+    ]);
+    const empty = summarizeScorecardEvidence(
+      { scorecards: [], services: [svc("a", 1)], results: [] },
+      now,
+    );
+    expect(empty.pairs).toBe(0);
+    expect(scorecardEvidenceGaps(empty)).toEqual([]);
+  });
+});
+
+describe("summarizeLeakedCredentialEvidence", () => {
+  const now = Date.parse("2026-10-12T12:00:00Z");
+  const period = {
+    start: Date.parse("2026-10-01T00:00:00Z"),
+    end: Date.parse("2026-10-13T00:00:00Z"),
+  };
+  const leak = (over: Partial<LeakedSecret>): LeakedSecret => ({
+    id: "l",
+    status: "open",
+    scannerAccountId: "s",
+    scannerAccountName: "GitHub org",
+    scannerPluginId: "github",
+    tokenType: "stripe_api_key",
+    tokenTypeLabel: "Stripe secret key",
+    ownerPluginId: "stripe",
+    ownerPluginName: "Stripe",
+    secretHint: "abcd…wxyz",
+    repository: "acme/api",
+    path: "config.ts",
+    line: 3,
+    commitSha: "abc",
+    url: null,
+    upstreamState: "open",
+    upstreamResolution: null,
+    validity: "active",
+    publiclyLeaked: false,
+    detectedAt: "2026-10-05T00:00:00Z",
+    firstSeenAt: "2026-10-05T00:00:00Z",
+    matchKind: "account",
+    matchConfidence: "fingerprint",
+    matchedAccountId: "acc",
+    matchedAccountName: "Stripe live",
+    matchedResourceId: null,
+    matchedResourceName: null,
+    matchedResourceTypeId: null,
+    matchedPluginId: null,
+    matchedFieldKey: null,
+    candidateAccountIds: [],
+    rotation: { mode: "account", manageUrl: null },
+    rotatedAt: null,
+    rotatedBy: null,
+    rotationMethod: null,
+    dismissedReason: null,
+    dismissedComment: null,
+    dismissedAt: null,
+    dismissedBy: null,
+    upstreamResolvedAt: null,
+    upstreamResolveError: null,
+    canResolveUpstream: true,
+    ...over,
+  });
+  const scanner = {
+    accountId: "s",
+    accountName: "GitHub org",
+    pluginId: "github",
+    label: "Secret scanning",
+    canResolve: true,
+    returnsSecretValue: true,
+    lastScannedAt: "2026-10-12T11:30:00Z",
+    lastError: null,
+    lastCount: 3,
+  };
+
+  it("logs the period's leaks and how each was handled, never the hint", () => {
+    const summary = summarizeLeakedCredentialEvidence(
+      {
+        leaks: [
+          leak({ id: "open-old" }),
+          leak({
+            id: "open-new",
+            firstSeenAt: "2026-10-12T06:00:00Z",
+            detectedAt: "2026-10-12T06:00:00Z",
+          }),
+          leak({
+            id: "rotated",
+            status: "rotated",
+            rotatedAt: "2026-10-05T06:00:00Z",
+            rotationMethod: "reissued",
+            upstreamResolvedAt: "2026-10-05T06:01:00Z",
+          }),
+          leak({
+            id: "dismissed",
+            status: "dismissed",
+            dismissedAt: "2026-10-06T00:00:00Z",
+            dismissedReason: "used-in-tests",
+            dismissedComment: "fixture",
+          }),
+          leak({ id: "resolved", status: "resolved" }),
+          // Closed before the period: out of the log entirely.
+          leak({
+            id: "before",
+            status: "rotated",
+            detectedAt: "2026-08-01T00:00:00Z",
+            rotatedAt: "2026-08-02T00:00:00Z",
+          }),
+        ],
+        scanners: [scanner],
+      },
+      period,
+      now,
+    );
+    expect(summary).toMatchObject({
+      opened: 5,
+      openNow: 2,
+      openCritical: 2,
+      overdueCritical: 1,
+      rotated: 1,
+      dismissed: 1,
+      resolvedUpstream: 1,
+      closedUpstreamByInfrawrench: 1,
+      medianHoursToRotate: 6,
+    });
+    expect(summary.dismissedByReason["used-in-tests"]).toBe(1);
+    expect(summary.records.map((r) => r.id)).toEqual([
+      "open-old",
+      "open-new",
+      "rotated",
+      "dismissed",
+      "resolved",
+    ]);
+    expect(summary.records.find((r) => r.id === "rotated")!.hoursToRotate).toBe(6);
+    expect(JSON.stringify(summary)).not.toContain("abcd");
+    for (const r of summary.records) expect(r).not.toHaveProperty("secretHint");
+    expect(leakedCredentialEvidenceGaps(summary)).toEqual([
+      "1 leaked credential(s) open longer than the 24-hour rotation target",
+    ]);
+  });
+
+  it("does not count an inactive unmatched leak as overdue, and flags a failing scanner", () => {
+    const summary = summarizeLeakedCredentialEvidence(
+      {
+        leaks: [leak({ validity: "inactive", matchKind: "none" })],
+        scanners: [{ ...scanner, lastError: "403" }],
+      },
+      period,
+      now,
+    );
+    expect(summary.openNow).toBe(1);
+    expect(summary.overdueCritical).toBe(0);
+    expect(leakedCredentialEvidenceGaps(summary)).toEqual([
+      "1 secret scanner(s) failed their most recent read",
     ]);
   });
 });

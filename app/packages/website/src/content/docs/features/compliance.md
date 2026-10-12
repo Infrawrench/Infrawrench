@@ -4,7 +4,7 @@ description: Map the evidence Infrawrench already collects to SOC 2 and ISO 2700
 sidebar_order: 13
 ---
 
-Most of what an auditor asks for during a SOC 2 or ISO 27001 audit is something Infrawrench already records: who holds access in your clouds, who approved a time-boxed role, what changed and when, which resources are exposed, which vulnerabilities are running, whether backups exist and restore, which sessions were recorded, and how incidents were handled. Compliance maps that evidence onto framework controls, tells you which controls have evidence and which have gaps, and packages it into an **evidence pack** you can hand over.
+Most of what an auditor asks for during a SOC 2 or ISO 27001 audit is something Infrawrench already records: who holds access in your clouds, who approved a time-boxed role, what changed and when, which resources are exposed, which vulnerabilities are running, whether backups exist and restore, which sessions were recorded, how incidents were handled, how your services score against your own readiness bar, and what happened to every credential a scanner found committed to code. Compliance maps that evidence onto framework controls, tells you which controls have evidence and which have gaps, and packages it into an **evidence pack** you can hand over.
 
 Open it from the **Compliance** tile in the sidebar. It is a cloud feature: the evidence lives in your organization's data.
 
@@ -15,7 +15,7 @@ Open it from the **Compliance** tile in the sidebar. It is a cloud feature: the 
 | Framework     | Edition                                                      | Controls covered |
 | ------------- | ------------------------------------------------------------ | ---------------- |
 | SOC 2         | Trust Services Criteria (2017, revised points of focus 2022) | 16               |
-| ISO/IEC 27001 | 2022, Annex A                                                | 20               |
+| ISO/IEC 27001 | 2022, Annex A                                                | 22               |
 
 Each framework lists only the controls Infrawrench can evidence: for SOC 2, criteria in the monitoring (CC4), access (CC6), system operations (CC7), change management (CC8), risk mitigation (CC9) and availability (A1) families; for ISO 27001, Annex A organizational (5.x) and technological (8.x) controls. Control environment, people, physical security and management-system requirements need evidence from outside the product. Control titles in Infrawrench are short paraphrases; read the id against your own copy of the standard for the authoritative wording.
 
@@ -36,6 +36,8 @@ Every control is mapped to one or more **evidence sources**. Each source reads d
 | Change freezes            | Freezes in effect during the period, and who opened them                                                            | Period   |
 | Session recordings        | Whether recording is on, the retention applied, and the sessions recorded                                           | Period   |
 | Incidents and postmortems | Declared incidents, time to mitigate and resolve, and whether each resolved incident has notes or a follow-up issue | Period   |
+| Service scorecards        | Every service graded against your scorecards: score, level reached, and each failing check with its reason          | Snapshot |
+| Leaked credentials        | Credentials found committed to code, when each was rotated or dismissed and why, time to rotate, and what is open   | Period   |
 
 **Snapshot** sources describe your organization as it stands when the status is generated; the period does not filter them, and the evidence pack says so. **Period** sources are filtered to the dates you choose.
 
@@ -48,6 +50,22 @@ The vulnerability source answers the three questions auditors ask of a vulnerabi
 - **How long do fixes take?** Infrawrench records when a finding leaves your scanner's results, so the pack shows the findings fixed during the period and the median days to fix per severity.
 
 A running critical or high finding past its target, a running finding on the CISA Known Exploited Vulnerabilities list, or a scanner whose last read failed counts as a gap. Findings on images nothing runs are reported as figures, not gaps. See [Vulnerabilities](./vulnerabilities.md).
+
+### Service scorecards in detail
+
+The scorecard source shows that operational readiness is evaluated continuously against a bar you wrote down. For every enabled scorecard and every service it applies to, the pack lists the service's score, the level it reaches, the checks it passes, and each failing check with the reason the check gave (for example "No runbook linked"). A check that could not be evaluated counts as failing, the same rule the score uses. It is a snapshot: the results as they stand when the pack is generated.
+
+A service below the lowest level of a scorecard that applies to it is a gap, because you chose which tiers each scorecard covers. Results more than 48 hours old are a gap too, since scorecards are evaluated hourly and an old result no longer describes the service. A single failing check on a service that still reaches a level is reported as a figure, not a gap. It supports SOC 2 CC4.1 and CC7.2, and ISO 27001 5.37 (documented operating procedures, through the runbook check) and 8.16. See [Services and scorecards](./services.md).
+
+### Leaked credentials in detail
+
+The leaked-credential source answers what an auditor asks of secret handling:
+
+- **Is anyone looking?** The connected secret scanners, and whether each one's last read worked.
+- **What leaked, and what happened to it?** Every leak detected during the period, plus every leak still open when the pack is generated: where it was found, what it matched, and whether it was rotated (by whom, how, and how many hours after detection), dismissed (with the reason and comment), or resolved on the scanner.
+- **Is anything open too long?** Critical leaks still open more than 24 hours after Infrawrench first saw them. Like the vulnerability fix targets, 24 hours is a common target rather than a framework requirement, and it is printed beside the figures.
+
+An overdue critical leak, or a scanner whose last read failed, counts as a gap. A leak the scanner reports as inactive and that matches nothing Infrawrench holds is reported as a figure. The pack never contains a secret value or any part of one, not even the masked hint shown on screen. It supports SOC 2 CC6.1, CC7.3 and CC7.4, and ISO 27001 5.17, 5.25, 5.26 and 8.12. See [Leaked credentials](./leaked-credentials.md).
 
 ## Control status
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -54,16 +55,19 @@ var (
 	scorecardCheckTypes = []string{
 		"has_owner", "has_on_call", "slo_within_budget", "has_runbook", "backups_verified",
 		"no_critical_posture", "no_orphans", "required_tags", "cost_within_budget",
+		"no_critical_vulnerabilities", "change_failure_rate",
 	}
 	scorecardSeverities = []string{"critical", "high", "medium", "low"}
 
-	// scorecardParamTypes says which check type each typed parameter
+	// scorecardParamTypes says which check types each typed parameter
 	// attribute belongs to. A parameter on any other type is a plan error.
-	scorecardParamTypes = map[string]string{
-		"min_budget_remaining_percent": "slo_within_budget",
-		"drill_within_days":            "backups_verified",
-		"severities":                   "no_critical_posture",
-		"tags":                         "required_tags",
+	scorecardParamTypes = map[string][]string{
+		"min_budget_remaining_percent": {"slo_within_budget"},
+		"drill_within_days":            {"backups_verified"},
+		"severities":                   {"no_critical_posture", "no_critical_vulnerabilities"},
+		"tags":                         {"required_tags"},
+		"max_failure_rate_percent":     {"change_failure_rate"},
+		"window_days":                  {"change_failure_rate"},
 	}
 
 	scorecardLevelKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
@@ -91,6 +95,8 @@ type scorecardCheckModel struct {
 	DrillWithinDays           types.Int64   `tfsdk:"drill_within_days"`
 	Severities                types.Set     `tfsdk:"severities"`
 	Tags                      types.Set     `tfsdk:"tags"`
+	MaxFailureRatePercent     types.Float64 `tfsdk:"max_failure_rate_percent"`
+	WindowDays                types.Int64   `tfsdk:"window_days"`
 }
 
 var scorecardCheckObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
@@ -102,6 +108,8 @@ var scorecardCheckObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
 	"drill_within_days":            types.Int64Type,
 	"severities":                   types.SetType{ElemType: types.StringType},
 	"tags":                         types.SetType{ElemType: types.StringType},
+	"max_failure_rate_percent":     types.Float64Type,
+	"window_days":                  types.Int64Type,
 }}
 
 type scorecardLevelModel struct {
@@ -125,9 +133,9 @@ func (r *scorecardResource) Metadata(_ context.Context, req resource.MetadataReq
 func (r *scorecardResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	trimmed := stringvalidator.RegexMatches(trimmedPattern,
 		"must not be empty or start or end with whitespace (the server trims it, which would diff forever)")
-	paramNote := func(checkType string) string {
-		return " Only on `" + checkType + "` checks. Optional and computed: omit it for the type's default, " +
-			"which the server fills in and state then records."
+	paramNote := func(checkTypes ...string) string {
+		return " Only on `" + joinBackticked(checkTypes) + "` checks. Optional and computed: omit it for the " +
+			"type's default, which the server fills in and state then records."
 	}
 
 	resp.Schema = schema.Schema{
@@ -214,7 +222,12 @@ func (r *scorecardResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"drill. `no_critical_posture`: no open posture finding at the chosen " +
 								"severities. `no_orphans`: no member flagged as orphaned. `required_tags`: " +
 								"every taggable member carries the required tags. `cost_within_budget`: the " +
-								"last 30 days of member spend within the service's `monthly_budget`.",
+								"last 30 days of member spend within the service's `monthly_budget`. " +
+								"`no_critical_vulnerabilities`: no running member has an open (not dismissed) " +
+								"vulnerability at the chosen severities; not applicable until a vulnerability " +
+								"scanner has reported. `change_failure_rate`: the service's DORA change failure " +
+								"rate over the window is at or under the threshold; not applicable when it " +
+								"shipped no production change in that window.",
 							Validators: []validatorString{oneOfValidator(scorecardCheckTypes...)},
 						},
 						"name": schema.StringAttribute{
@@ -251,9 +264,11 @@ func (r *scorecardResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 							Optional:    true,
 							Computed:    true,
 							ElementType: types.StringType,
-							MarkdownDescription: "Open posture findings at any of these severities fail the " +
-								"check: any of `" + joinBackticked(scorecardSeverities) + "` (default " +
-								"`critical` and `high`)." + paramNote("no_critical_posture"),
+							MarkdownDescription: "Open posture findings (`no_critical_posture`, default " +
+								"`critical` and `high`) or open vulnerabilities on running members " +
+								"(`no_critical_vulnerabilities`, default `critical`) at any of these severities " +
+								"fail the check: any of `" + joinBackticked(scorecardSeverities) + "`." +
+								paramNote("no_critical_posture", "no_critical_vulnerabilities"),
 							Validators: []validatorSet{setvalidator.ValueStringsAre(oneOfValidator(scorecardSeverities...))},
 						},
 						"tags": schema.SetAttribute{
@@ -263,6 +278,20 @@ func (r *scorecardResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 							MarkdownDescription: "Tag keys every taggable member must carry. Empty (the " +
 								"default) uses the organization's tag policy (`infrawrench_tag_policy`)." +
 								paramNote("required_tags"),
+						},
+						"max_failure_rate_percent": schema.Float64Attribute{
+							Optional: true,
+							Computed: true,
+							MarkdownDescription: "Fail when more than this share of the service's production " +
+								"changes failed, 0–100 (default `15`)." + paramNote("change_failure_rate"),
+							Validators: []validatorFloat64{betweenFloat(0, 100)},
+						},
+						"window_days": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+							MarkdownDescription: "How many trailing days of production changes to count, " +
+								"1–90 (default `30`)." + paramNote("change_failure_rate"),
+							Validators: []validatorInt64{between(1, 90)},
 						},
 					},
 				},
@@ -348,11 +377,13 @@ func (r *scorecardResource) ValidateConfig(ctx context.Context, req resource.Val
 				"drill_within_days":            !check.DrillWithinDays.IsNull(),
 				"severities":                   !check.Severities.IsNull(),
 				"tags":                         !check.Tags.IsNull(),
+				"max_failure_rate_percent":     !check.MaxFailureRatePercent.IsNull(),
+				"window_days":                  !check.WindowDays.IsNull(),
 			} {
-				if present && scorecardParamTypes[attribute] != checkType {
+				if present && !slices.Contains(scorecardParamTypes[attribute], checkType) {
 					resp.Diagnostics.AddAttributeError(at(attribute), "Parameter not used by this check",
-						"`"+attribute+"` only applies to `"+scorecardParamTypes[attribute]+"` checks, not `"+
-							checkType+"`; remove it.")
+						"`"+attribute+"` only applies to `"+joinBackticked(scorecardParamTypes[attribute])+
+							"` checks, not `"+checkType+"`; remove it.")
 				}
 			}
 		}
@@ -578,10 +609,17 @@ func scorecardInputFrom(ctx context.Context, plan scorecardResourceModel) (iw.Sc
 			if !c.Weight.IsNull() && !c.Weight.IsUnknown() {
 				weight = c.Weight.ValueInt64()
 			}
-			params := iw.ScorecardCheckParams{MinBudgetRemainingPercent: float64Ptr(c.MinBudgetRemainingPercent)}
+			params := iw.ScorecardCheckParams{
+				MinBudgetRemainingPercent: float64Ptr(c.MinBudgetRemainingPercent),
+				MaxFailureRatePercent:     float64Ptr(c.MaxFailureRatePercent),
+			}
 			if days := int64Ptr(c.DrillWithinDays); days != nil {
 				f := float64(*days)
 				params.DrillWithinDays = &f
+			}
+			if days := int64Ptr(c.WindowDays); days != nil {
+				f := float64(*days)
+				params.WindowDays = &f
 			}
 			var d diag.Diagnostics
 			params.Severities, d = setStringsPtr(ctx, c.Severities)
@@ -632,6 +670,8 @@ func scorecardStateFrom(ctx context.Context, remote *iw.Scorecard) (scorecardRes
 			DrillWithinDays:           types.Int64Null(),
 			Severities:                nullSet,
 			Tags:                      nullSet,
+			MaxFailureRatePercent:     types.Float64Null(),
+			WindowDays:                types.Int64Null(),
 		}
 		switch c.Type {
 		case "slo_within_budget":
@@ -640,7 +680,7 @@ func scorecardStateFrom(ctx context.Context, remote *iw.Scorecard) (scorecardRes
 			if c.Params.DrillWithinDays != nil {
 				m.DrillWithinDays = types.Int64Value(int64(math.Round(*c.Params.DrillWithinDays)))
 			}
-		case "no_critical_posture":
+		case "no_critical_posture", "no_critical_vulnerabilities":
 			if c.Params.Severities != nil {
 				set, d := stringSetOf(ctx, *c.Params.Severities)
 				diags.Append(d...)
@@ -654,6 +694,11 @@ func scorecardStateFrom(ctx context.Context, remote *iw.Scorecard) (scorecardRes
 			set, d := stringSetOf(ctx, tags)
 			diags.Append(d...)
 			m.Tags = set
+		case "change_failure_rate":
+			m.MaxFailureRatePercent = float64Value(c.Params.MaxFailureRatePercent)
+			if c.Params.WindowDays != nil {
+				m.WindowDays = types.Int64Value(int64(math.Round(*c.Params.WindowDays)))
+			}
 		}
 		checks = append(checks, m)
 	}

@@ -19,6 +19,7 @@ import type {
   VulnerabilitySeverity,
 } from "@infrawrench/plugin-base";
 import type { CloudFetch } from "./fetch";
+import type { ServiceRef } from "./services";
 
 export type { VulnerabilityArtifactKind, VulnerabilitySeverity };
 
@@ -211,6 +212,12 @@ export interface VulnerabilityFindingRow {
   collectedAt: string;
   /** Synced resources running the artifact now. Empty = not running anywhere we can see. */
   running: VulnerabilityRunningRef[];
+  /**
+   * The services those running resources belong to, deduplicated, lowest tier
+   * number first. Absent from older servers (read it as `?? []`);
+   * empty when nothing running is in a service.
+   */
+  services?: ServiceRef[];
 }
 
 /**
@@ -362,6 +369,11 @@ export interface VulnerabilityFeedInput {
   kev?: ReadonlyMap<string, VulnerabilityKevEntry> | undefined;
   kevUpdatedAt?: string | null | undefined;
   sources?: readonly VulnerabilitySource[] | undefined;
+  /**
+   * Resource id → the services it belongs to (`getServicesForResources`).
+   * When given, every row carries `services`; when omitted, none does.
+   */
+  servicesByResource?: ReadonlyMap<string, readonly ServiceRef[]> | undefined;
   now?: number;
 }
 
@@ -496,6 +508,26 @@ function compareRows(a: VulnerabilityFindingRow, b: VulnerabilityFindingRow): nu
   );
 }
 
+function compareServices(a: ServiceRef, b: ServiceRef): number {
+  return (
+    (a.tier ?? 99) - (b.tier ?? 99) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+  );
+}
+
+/** The services the running resources belong to, deduplicated across them. */
+export function servicesOfRunning(
+  running: readonly Pick<VulnerabilityRunningRef, "resourceId">[],
+  servicesByResource: ReadonlyMap<string, readonly ServiceRef[]>,
+): ServiceRef[] {
+  const out = new Map<string, ServiceRef>();
+  for (const r of running) {
+    for (const s of servicesByResource.get(r.resourceId) ?? []) {
+      if (!out.has(s.id)) out.set(s.id, { id: s.id, name: s.name, slug: s.slug, tier: s.tier });
+    }
+  }
+  return [...out.values()].sort(compareServices);
+}
+
 /**
  * Join stored findings to running resources, apply dismissals and KEV, and
  * shape the feed. Dismissed findings are partitioned out (the posture
@@ -564,6 +596,9 @@ export function computeVulnerabilityFeed(input: VulnerabilityFeedInput): Vulnera
       collectedAt: f.collectedAt,
       running: matchRunning(f, index),
     };
+    if (input.servicesByResource) {
+      row.services = servicesOfRunning(row.running, input.servicesByResource);
+    }
     const dismissal =
       dismissals.get(vulnerabilityDismissalKey({ advisoryId: f.advisoryId, artifactKey })) ??
       dismissals.get(vulnerabilityDismissalKey({ advisoryId: f.advisoryId, artifactKey: "*" }));
@@ -606,6 +641,10 @@ export interface VulnerabilityFilter {
   kev?: boolean | undefined;
   pluginId?: string | undefined;
   accountId?: string | undefined;
+  /** Only findings running on a resource of this service (`row.services`). */
+  serviceId?: string | undefined;
+  /** Only findings running on any of these resources (`row.running`). */
+  resourceIds?: readonly string[] | undefined;
   /** Case-insensitive substring over advisory, aliases, package, artifact and title. */
   search?: string | undefined;
 }
@@ -615,6 +654,8 @@ export function filterVulnerabilityFindings<T extends VulnerabilityFindingRow>(
   filter: VulnerabilityFilter,
 ): T[] {
   const q = filter.search?.trim().toLowerCase();
+  const resourceIds =
+    filter.resourceIds && filter.resourceIds.length > 0 ? new Set(filter.resourceIds) : null;
   return rows.filter((r) => {
     if (
       filter.severities &&
@@ -627,6 +668,9 @@ export function filterVulnerabilityFindings<T extends VulnerabilityFindingRow>(
     if (filter.kev && !r.kev) return false;
     if (filter.pluginId && r.pluginId !== filter.pluginId) return false;
     if (filter.accountId && r.accountId !== filter.accountId) return false;
+    if (filter.serviceId && !(r.services ?? []).some((s) => s.id === filter.serviceId))
+      return false;
+    if (resourceIds && !r.running.some((x) => resourceIds.has(x.resourceId))) return false;
     if (q) {
       const hay = [r.advisoryId, ...r.aliases, r.packageName ?? "", r.artifact.name, r.title ?? ""]
         .join("\n")
@@ -635,6 +679,46 @@ export function filterVulnerabilityFindings<T extends VulnerabilityFindingRow>(
     }
     return true;
   });
+}
+
+/**
+ * The feed narrowed to one service or a set of resources (the
+ * `?serviceId=` / `?resourceId=` query of `GET /vulnerabilities`), with the
+ * counts recomputed over what is left so they describe the scoped view.
+ * `sources` and the KEV freshness stay org-wide: they describe the scanners,
+ * not the findings.
+ */
+export function scopeVulnerabilityFeed(
+  feed: VulnerabilityListResponse,
+  scope: Pick<VulnerabilityFilter, "serviceId" | "resourceIds">,
+): VulnerabilityListResponse {
+  if (!scope.serviceId && !(scope.resourceIds && scope.resourceIds.length > 0)) return feed;
+  const findings = filterVulnerabilityFindings(feed.findings, scope);
+  const dismissed = filterVulnerabilityFindings(feed.dismissed, scope);
+  const counts = emptyVulnerabilityCounts();
+  const runningCounts = emptyVulnerabilityCounts();
+  for (const f of findings) {
+    counts[f.severity] += 1;
+    if (f.running.length > 0) runningCounts[f.severity] += 1;
+  }
+  return {
+    ...feed,
+    findings,
+    totalCount: findings.length,
+    counts,
+    runningCounts,
+    dismissed,
+    dismissedCount: dismissed.length,
+  };
+}
+
+/** Every service the findings touch, for a service filter picker. Lowest tier first. */
+export function vulnerabilityServiceOptions(
+  rows: readonly Pick<VulnerabilityFindingRow, "services">[],
+): ServiceRef[] {
+  const out = new Map<string, ServiceRef>();
+  for (const r of rows) for (const s of r.services ?? []) if (!out.has(s.id)) out.set(s.id, s);
+  return [...out.values()].sort(compareServices);
 }
 
 /**
@@ -776,12 +860,40 @@ function emptyFeed(): VulnerabilityListResponse {
   };
 }
 
-/** Read `GET /api/org/:orgId/vulnerabilities` (permission `resources:read`). No provider calls. */
+/** The most resources one `GET /vulnerabilities?resourceId=` read may name. */
+export const MAX_VULNERABILITY_RESOURCE_IDS = 100;
+
+export interface VulnerabilityFeedScope {
+  /** Only findings running on a resource of this service. */
+  serviceId?: string | undefined;
+  /** Only findings running on any of these resources (at most {@link MAX_VULNERABILITY_RESOURCE_IDS}). */
+  resourceIds?: readonly string[] | undefined;
+}
+
+/** The query string for a scoped read, with its leading `?`, or "" for the whole feed. */
+export function vulnerabilityFeedQuery(scope: VulnerabilityFeedScope = {}): string {
+  const q = new URLSearchParams();
+  if (scope.serviceId) q.set("serviceId", scope.serviceId);
+  for (const id of scope.resourceIds ?? []) q.append("resourceId", id);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+/**
+ * Read `GET /api/org/:orgId/vulnerabilities` (permission `resources:read`). No
+ * provider calls. A scope narrows the findings and recomputes the counts.
+ */
 export async function fetchVulnerabilities(
   api: CloudFetch,
   orgId: string,
+  scope: VulnerabilityFeedScope = {},
 ): Promise<VulnerabilityListResponse> {
-  return (await api.org<VulnerabilityListResponse>(orgId, "/vulnerabilities")) ?? emptyFeed();
+  return (
+    (await api.org<VulnerabilityListResponse>(
+      orgId,
+      `/vulnerabilities${vulnerabilityFeedQuery(scope)}`,
+    )) ?? emptyFeed()
+  );
 }
 
 export async function getVulnerabilitySettings(

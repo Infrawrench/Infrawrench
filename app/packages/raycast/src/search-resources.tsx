@@ -5,6 +5,7 @@ import {
   IAC_STATUS_LABELS,
   POSTURE_SEVERITY_LABELS,
   SERVICE_TIER_LABELS,
+  describeResourceVulnerabilities,
   fetchServiceDetail,
   fetchServiceSummary,
   fetchServices,
@@ -15,6 +16,7 @@ import {
   isWorkflowSearchResult,
   searchOrg,
   webWorkflowUrl,
+  type ResourceVulnerabilityTally,
   type SearchResult,
   type Service,
 } from "@infrawrench/client-core";
@@ -22,7 +24,12 @@ import { getClient, type Client } from "./lib/client";
 import { DeclareIncidentForm } from "./lib/declare-form";
 import { formatSpend } from "./lib/format";
 import { loadResourceInsight, type Part } from "./lib/insight";
-import { destinationsFor, openPreferred, type Destinations } from "./lib/open";
+import {
+  destinationsFor,
+  openPreferred,
+  vulnerabilitiesDestinations,
+  type Destinations,
+} from "./lib/open";
 
 export default function Command() {
   const client = getClient();
@@ -159,6 +166,11 @@ function ResourceItem({
             content={dest.web}
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
           />
+          <Action
+            title="Open Vulnerabilities"
+            icon={Icon.Bug}
+            onAction={() => void openPreferred(client, vulnerabilitiesDestinations(client))}
+          />
           <Action.Push
             title="Declare Incident Affecting This"
             icon={Icon.ExclamationMark}
@@ -257,6 +269,7 @@ function ResourceDetail({ client, result: r }: { client: Client; result: SearchR
               text={partText(data?.findings, () => "No open findings")}
             />
           )}
+          <VulnerabilitiesRow part={data?.vulnerabilities} />
           {incidents.length > 0 ? (
             <List.Item.Detail.Metadata.TagList title="Open incidents">
               {incidents.map((i) => (
@@ -271,6 +284,33 @@ function ResourceDetail({ client, result: r }: { client: Client; result: SearchR
         </List.Item.Detail.Metadata>
       }
     />
+  );
+}
+
+/**
+ * "2 critical, 1 high (1 known exploited)", red when anything critical or
+ * high runs here. No row at all when the org has no scanner: "none" would
+ * claim a scan that never happened.
+ */
+function VulnerabilitiesRow({
+  part,
+}: {
+  part: Part<ResourceVulnerabilityTally | null> | undefined;
+}) {
+  const t = part?.ok ? part.value : undefined;
+  if (t === null) return null;
+  if (t && t.total > 0) {
+    return (
+      <List.Item.Detail.Metadata.TagList title="Vulnerabilities">
+        <List.Item.Detail.Metadata.TagList.Item
+          text={describeResourceVulnerabilities(t)}
+          color={t.critical + t.high > 0 ? Color.Red : Color.Orange}
+        />
+      </List.Item.Detail.Metadata.TagList>
+    );
+  }
+  return (
+    <List.Item.Detail.Metadata.Label title="Vulnerabilities" text={partText(part, () => "None")} />
   );
 }
 

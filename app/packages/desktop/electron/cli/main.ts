@@ -317,7 +317,8 @@ COMMANDS
   vulns [list]        known vulnerabilities (CVEs) from your providers' scanners, joined to what
                       runs them, worst first   [--severity critical,high] [--running|--not-running]
                       [--fix-available] [--kev] [--plugin <id>] [-a <account>] [--search <text>]
-                      [--include-dismissed] [--limit 50]   (cloud only)
+                      [--service <slug>] [--resource <id>] [--include-dismissed] [--limit 50]
+                      (cloud only; a service column names the owning services)
   vulns dismiss       accept an advisory as a known risk, for one artifact or everywhere ("*")
                       <advisoryId> <artifactKey|"*"> [--reason <text>]   (keys from vulns --json)
   vulns restore       put a dismissed vulnerability back   <advisoryId> <artifactKey|"*">
@@ -435,7 +436,7 @@ FLAGS
   --kind <k>          changes filter: created | updated | deleted
   -b, --against <x>   diff: the second account (-a supplies the first)
   --all               diff: compare ids, addresses & timestamps too; paging: include resolved
-  --resource <id>     focus one resource (graph) / filter to it (changes)
+  --resource <id>     focus one resource (graph) / filter to it (changes, vulns)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
   --severity <list>   vulns: comma-separated critical, high, medium, low, unscored
@@ -444,6 +445,7 @@ FLAGS
   --kev               vulns: only advisories in the CISA Known Exploited Vulnerabilities catalog
   --search <text>     vulns: substring over advisory, aliases, package, artifact & title
   --include-dismissed vulns: also list the findings dismissed as accepted risks
+  --service <x>       vulns: only findings running on a resource of this service (id, slug or name)
   --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
   --gaps              compliance: only controls without evidence, with the reasons why
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;

@@ -11,9 +11,9 @@
  *
  * Adding a source is three edits: an entry here, an evaluator on the server,
  * and the control mappings in whichever framework files it supports. That is
- * the extension point later features plug into (a service scorecard source, a
- * leaked-credential source), deliberately without touching the frameworks'
- * control lists or the status computation.
+ * the extension point later features plug into (service scorecards and
+ * leaked credentials joined that way), deliberately without touching the
+ * status computation.
  */
 
 /** Stable id of an evidence source. Open-ended so integration can add more. */
@@ -32,6 +32,8 @@ export const BUILTIN_EVIDENCE_SOURCE_IDS = [
   "change-freezes",
   "session-recordings",
   "incidents",
+  "scorecards",
+  "leaked-credentials",
 ] as const;
 export type BuiltinEvidenceSourceId = (typeof BUILTIN_EVIDENCE_SOURCE_IDS)[number];
 
@@ -160,12 +162,30 @@ export const EVIDENCE_SOURCES: Record<BuiltinEvidenceSourceId, EvidenceSourceDef
     permission: "incidents:read",
     surface: "Incidents",
   },
+  scorecards: {
+    id: "scorecards",
+    label: "Service scorecards",
+    description:
+      "Every service graded against the org's scorecards at generation time: score, level reached, and each failing check with its reason.",
+    kind: "snapshot",
+    permission: "resources:read",
+    surface: "Services > Scorecards",
+  },
+  "leaked-credentials": {
+    id: "leaked-credentials",
+    label: "Leaked credentials",
+    description:
+      "Credentials secret scanners found committed to code: what leaked during the period, when each was rotated or dismissed and why, time to rotate, and what is still open.",
+    kind: "period",
+    permission: "resources:read",
+    surface: "Posture > Leaked credentials",
+  },
 };
 
 /**
- * Sources added at runtime by a later feature (scorecards, leaked
- * credentials). Kept apart from the built-in table so the built-in ids stay a
- * closed union for the tests; {@link getEvidenceSource} reads both.
+ * Sources added at runtime by a feature outside client-core. Kept apart
+ * from the built-in table so the built-in ids stay a closed union for the
+ * tests; {@link getEvidenceSource} reads both.
  */
 const extraSources = new Map<EvidenceSourceId, EvidenceSourceDefinition>();
 

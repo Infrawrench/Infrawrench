@@ -43,7 +43,7 @@ export function vulnerabilityTools(): ToolDefinition[] {
         "running before not running, then CISA Known Exploited Vulnerabilities (KEV), then " +
         "CVSS. Each finding has the package, installed and fixed versions, the artifact (with " +
         "the `artifact.key` a dismissal is keyed on), `running` (what runs it; empty means not " +
-        "running anywhere synced) and `kev` (non-null when actively exploited). `sources` lists " +
+        "running anywhere synced), `services` (the services those resources belong to) and `kev` (non-null when actively exploited). `sources` lists " +
         "each scanning account with its last collection time and any collection error. " +
         "Purely a read over what the poller already collected; no provider API calls. Use it " +
         "to answer which exposed CVEs are actually deployed, which have a fix, and which are " +
@@ -78,6 +78,17 @@ export function vulnerabilityTools(): ToolDefinition[] {
           .string()
           .optional()
           .describe("Only findings reported by this connected account (see list_accounts)."),
+        serviceId: z
+          .string()
+          .optional()
+          .describe(
+            "Only findings running on a resource of this service (an id from a finding's " +
+              "`services`).",
+          ),
+        resourceId: z
+          .string()
+          .optional()
+          .describe("Only findings running on this Infrawrench resource id."),
         search: z
           .string()
           .optional()
@@ -110,12 +121,14 @@ export function vulnerabilityTools(): ToolDefinition[] {
           kev: input["kev"] === true ? true : undefined,
           pluginId: input["pluginId"] as string | undefined,
           accountId: input["accountId"] as string | undefined,
+          serviceId: input["serviceId"] as string | undefined,
+          resourceIds: typeof input["resourceId"] === "string" ? [input["resourceId"]] : undefined,
           search: input["search"] as string | undefined,
         };
         const includeDismissed = input["includeDismissed"] === true;
         const limit = (input["limit"] as number | undefined) ?? DEFAULT_LIMIT;
 
-        const feed = await listVulnerabilities(auth.organizationId);
+        const feed = await listVulnerabilities(auth.organizationId, { withServices: true });
         const matched = filterVulnerabilityFindings(feed.findings, filter);
         // Counts always describe the whole feed so a filtered view still shows
         // the overall picture; matchedCount is the filtered length, before the cap.

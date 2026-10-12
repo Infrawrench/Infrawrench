@@ -5,6 +5,7 @@ vi.mock("../alerts/route", () => ({ routeAlert: vi.fn() }));
 
 import {
   defaultScorecardInput,
+  type ResourceVulnerabilitySummary,
   type Scorecard,
   type Service,
   type ServiceMember,
@@ -68,7 +69,14 @@ function signals(over: Partial<Record<keyof ServiceSignals, unknown>> = {}): Ser
     onCallSchedule: async () => null,
     onCallNow: async () => null,
     resourceSpend: async () => new Map(),
-    extension: async () => null,
+    // No scanner has reported and no deploys were recorded: both later feeds
+    // leave their checks not applicable.
+    extension: async (key: string) =>
+      key === "vulnerabilities"
+        ? { scanning: false, atOrAbove: () => new Map() }
+        : key.startsWith("dora-service:")
+          ? new Map()
+          : null,
   };
   return { ...base, ...over } as unknown as ServiceSignals;
 }
@@ -187,6 +195,126 @@ describe("scorecard checks", () => {
   });
 });
 
+describe("vulnerability and delivery checks", () => {
+  const vulnSummary = (
+    over: Partial<ResourceVulnerabilitySummary>,
+  ): ResourceVulnerabilitySummary => ({
+    resourceId: "r-1",
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    unknown: 0,
+    advisories: [],
+    kev: false,
+    ...over,
+  });
+
+  /** A vulnerability feed stub: `rows` are the summaries at "low" and above. */
+  const vulnFeed = (scanning: boolean, rows: ReturnType<typeof vulnSummary>[]) => {
+    const asked: string[] = [];
+    return {
+      asked,
+      sig: signals({
+        extension: async (key: string) =>
+          key === "vulnerabilities"
+            ? {
+                scanning,
+                atOrAbove: (min: string) => {
+                  asked.push(min);
+                  return new Map(rows.map((r) => [r.resourceId, r]));
+                },
+              }
+            : null,
+      }),
+    };
+  };
+
+  it("no_critical_vulnerabilities is not applicable until a scanner has reported", async () => {
+    const { sig } = vulnFeed(false, []);
+    const out = await run("no_critical_vulnerabilities", ctx(service(), sig));
+    expect(out.status).toBe("not_applicable");
+  });
+
+  it("no_critical_vulnerabilities fails on a critical by default and ignores a high", async () => {
+    const critical = vulnFeed(true, [vulnSummary({ critical: 2, advisories: ["CVE-2026-1"] })]);
+    const out = await run("no_critical_vulnerabilities", ctx(service(), critical.sig));
+    expect(out.status).toBe("fail");
+    expect(out.detail).toMatch(/1 running member with 2 open vulnerabilities at critical/);
+    expect(out.detail).toMatch(/CVE-2026-1/);
+    expect(critical.asked).toEqual(["critical"]);
+
+    const high = vulnFeed(true, [vulnSummary({ high: 3 })]);
+    expect((await run("no_critical_vulnerabilities", ctx(service(), high.sig))).status).toBe(
+      "pass",
+    );
+    expect(
+      (
+        await run("no_critical_vulnerabilities", ctx(service(), high.sig), {
+          severities: ["critical", "high"],
+        })
+      ).status,
+    ).toBe("fail");
+    expect(high.asked).toContain("high");
+  });
+
+  it("no_critical_vulnerabilities ignores resources that are not members", async () => {
+    const { sig } = vulnFeed(true, [vulnSummary({ resourceId: "r-other", critical: 1 })]);
+    expect((await run("no_critical_vulnerabilities", ctx(service(), sig))).status).toBe("pass");
+  });
+
+  it("no_critical_vulnerabilities reports an unreadable feed as an error", async () => {
+    const down = signals({ extension: async () => null });
+    expect((await run("no_critical_vulnerabilities", ctx(service(), down))).status).toBe("error");
+  });
+
+  const cfrFeed = (byService: Map<string | null, unknown> | null) => {
+    const keys: string[] = [];
+    return {
+      keys,
+      sig: signals({
+        extension: async (key: string) => {
+          keys.push(key);
+          return byService;
+        },
+      }),
+    };
+  };
+  const summary = (changes: number, failures: number) => ({
+    changeFailureRate: {
+      value: changes > 0 ? failures / changes : null,
+      band: null,
+      sample: changes,
+      changes,
+      failures,
+    },
+  });
+
+  it("change_failure_rate is not applicable without production changes", async () => {
+    const { sig } = cfrFeed(new Map([["svc-other", summary(10, 5)]]));
+    const out = await run("change_failure_rate", ctx(service(), sig));
+    expect(out.status).toBe("not_applicable");
+  });
+
+  it("change_failure_rate compares the service's rate to the threshold", async () => {
+    const { sig, keys } = cfrFeed(new Map([["svc-1", summary(20, 3)]]));
+    expect((await run("change_failure_rate", ctx(service(), sig))).status).toBe("pass");
+    const tight = await run("change_failure_rate", ctx(service(), sig), {
+      maxFailureRatePercent: 10,
+      windowDays: 7,
+    });
+    expect(tight.status).toBe("fail");
+    expect(tight.detail).toMatch(/3 of 20 production changes failed in 7 days \(15%/);
+    // One load per window, shared by every service in the evaluation.
+    expect(keys).toEqual(["dora-service:30", "dora-service:7"]);
+  });
+
+  it("change_failure_rate reports an unreadable feed as an error", async () => {
+    const { sig } = cfrFeed(null);
+    expect((await run("change_failure_rate", ctx(service(), sig))).status).toBe("error");
+  });
+});
+
 describe("scoreService", () => {
   it("scores the default scorecard and assigns a level", async () => {
     const card: Scorecard = {
@@ -206,7 +334,8 @@ describe("scoreService", () => {
     );
     // Applicable: owner (2, pass), on-call (2, fail), SLO (2, fail), runbook
     // (1, fail), posture (2, pass), orphans (1, pass). Backups, tags and cost
-    // are not applicable. 5 of 10.
+    // are not applicable, and so are vulnerabilities and change failure rate
+    // with no scanner and no deploys. 5 of 10.
     expect(result.score).toBe(50);
     expect(result.level).toBe("bronze");
     expect(result.checks.find((c) => c.type === "backups_verified")?.status).toBe("not_applicable");

@@ -557,6 +557,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               ),
             )
           }
+          openService={(serviceId) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(serviceId)))
+          }
         />
       );
     case "compliance":

@@ -10,9 +10,18 @@
  * one-hour window, so a burst of new findings from one scan arrives as one
  * message rather than one per CVE. Never throws: errors are logged with the
  * `[vulnerabilities]` prefix.
+ *
+ * Systems get one `vulnerability.found` event per finding in the same batch,
+ * raised before the alert is routed and whether or not it reached anyone (the
+ * leaked-secrets stance). A batch whose alert reached nobody is not stamped,
+ * so the next scan raises the same findings again; the per-finding
+ * idempotency key makes that a no-op for every subscription that already has
+ * them.
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
+  VULNERABILITY_FOUND,
+  VULNERABILITY_SEVERITY_ORDER,
   alertableVulnerabilityFindings,
   describeRunning,
   vulnerabilityFindingKey,
@@ -29,6 +38,7 @@ import {
   type WindowDelivery,
 } from "../alerts/daily-window";
 import { orgAppUrl } from "../app-url";
+import { publishEvent, resourceEnvironments } from "../events/publish";
 import { listVulnerabilities } from "./feed";
 import { getVulnerabilitySettings, type VulnerabilitySettingsRecord } from "./settings";
 
@@ -37,6 +47,17 @@ export const VULNERABILITY_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000;
 
 /** How many findings a message names before it says "and N more". */
 const MESSAGE_LIMIT = 8;
+
+/**
+ * Most `vulnerability.found` events one scan raises. The first scan of a big
+ * registry can turn up thousands of findings at once; the strongest are sent
+ * (known exploited, then severity, then most running) and the rest are in the
+ * alert's count and the Vulnerabilities page.
+ */
+export const VULNERABILITY_EVENT_LIMIT = 100;
+
+/** How many running resource ids one event lists. */
+const EVENT_RUNNING_IDS = 50;
 
 type VulnerabilityScanOutcome =
   | { status: "quiet" }
@@ -96,6 +117,81 @@ export function formatVulnerabilityAlert(findings: VulnerabilityFindingRow[]): {
   };
 }
 
+/** The findings a scan raises events for, strongest first. Exported for tests. */
+export function vulnerabilityEventBatch(
+  findings: readonly VulnerabilityFindingRow[],
+  limit = VULNERABILITY_EVENT_LIMIT,
+): VulnerabilityFindingRow[] {
+  const rank = (f: VulnerabilityFindingRow) => VULNERABILITY_SEVERITY_ORDER.indexOf(f.severity);
+  return [...findings]
+    .sort(
+      (a, b) =>
+        Number(b.kev !== null) - Number(a.kev !== null) ||
+        rank(a) - rank(b) ||
+        b.running.length - a.running.length,
+    )
+    .slice(0, limit);
+}
+
+async function publishFindingEvents(
+  organizationId: string,
+  findings: readonly VulnerabilityFindingRow[],
+): Promise<void> {
+  const batch = vulnerabilityEventBatch(findings);
+  const envs = await resourceEnvironments(organizationId, [
+    ...new Set(batch.flatMap((f) => f.running.map((r) => r.resourceId))),
+  ]);
+  const fallbackUrl = orgAppUrl(organizationId, "vulnerabilities");
+  for (const f of batch) {
+    // One environment only when every running resource that has one agrees.
+    const found = new Set(f.running.flatMap((r) => envs.get(r.resourceId) ?? []));
+    const environment = found.size === 1 ? [...found][0]! : null;
+    await publishEvent(
+      VULNERABILITY_FOUND,
+      organizationId,
+      {
+        findingId: f.findingId,
+        accountId: f.accountId,
+        pluginId: f.pluginId,
+        scanner: f.scanner,
+        advisoryId: f.advisoryId,
+        aliases: f.aliases,
+        title: f.title,
+        findingSeverity: f.severity,
+        cvssScore: f.cvssScore,
+        knownExploited: f.kev !== null,
+        kevDueDate: f.kev?.dueDate ?? null,
+        exploitAvailable: f.exploitAvailable,
+        fixAvailable: f.fixAvailable,
+        packageName: f.packageName,
+        installedVersion: f.installedVersion,
+        fixedVersion: f.fixedVersion,
+        artifactKind: f.artifact.kind,
+        artifactName: f.artifact.name,
+        artifactDigest: f.artifact.digest,
+        runningResourceCount: f.running.length,
+        runningResourceIds: f.running.slice(0, EVENT_RUNNING_IDS).map((r) => r.resourceId),
+        firstSeenAt: f.firstSeenAt,
+        url: f.url,
+      },
+      {
+        title: `${f.advisoryId} (${f.severity}) in ${f.artifact.name}`,
+        severity: f.severity === "critical" || f.kev ? "critical" : "warning",
+        accountId: f.accountId,
+        environment,
+        url: f.url ?? fallbackUrl,
+        // Not `f.key`: it is NUL-joined, which a Postgres text column refuses.
+        idempotencyKey: `vulnerability:${f.accountId}:${f.findingId}`,
+      },
+    );
+  }
+  if (findings.length > batch.length) {
+    console.warn(
+      `[vulnerabilities] raised ${batch.length} of ${findings.length} vulnerability.found events for org ${organizationId}`,
+    );
+  }
+}
+
 async function deliverWindow(
   organizationId: string,
   settings: VulnerabilitySettingsRecord,
@@ -136,6 +232,8 @@ async function deliverWindow(
     delivery.spent = true;
     return { status: "quiet" };
   }
+
+  await publishFindingEvents(organizationId, toSend);
 
   const message = formatVulnerabilityAlert(toSend);
   const routed = await routeAlert({

@@ -4,7 +4,9 @@ import {
   VULNERABILITY_SEVERITY_ORDER,
   filterVulnerabilityFindings,
   groupRunningByType,
+  vulnerabilityServiceOptions,
   type DismissedVulnerabilityFinding,
+  type ServiceRef,
   type VulnerabilityArtifactKind,
   type VulnerabilityFindingRow,
   type VulnerabilityListResponse,
@@ -18,6 +20,7 @@ import {
 
 import { useDataString } from "../i18n/data-strings.js";
 import { ChevronIcon } from "../components/icons/ChromeIcons.js";
+import { useTierLabel } from "../services/shared.js";
 
 /** What a dismissal (or a restore) is keyed on: the advisory plus an artifact key, `"*"` for everywhere. */
 export interface VulnerabilityDismissalTarget {
@@ -56,6 +59,8 @@ export interface VulnerabilitiesSectionProps {
   onUpdateSettings?: ((patch: VulnerabilitySettingsPatch) => Promise<void>) | undefined;
   /** Jump to the Posture tab, the configuration half of the same question. */
   onOpenPosture?: (() => void) | undefined;
+  /** Open a service in the Services tab. Omitted, service names are plain text. */
+  onOpenService?: ((serviceId: string) => void) | undefined;
 }
 
 type RunningFilter = "all" | "running" | "not-running";
@@ -362,11 +367,50 @@ function RunningList({
   );
 }
 
+/** The services a finding's running resources belong to, each a link when the host can open one. */
+function ServiceChips({
+  services,
+  onOpenService,
+}: {
+  services: readonly ServiceRef[];
+  onOpenService?: ((serviceId: string) => void) | undefined;
+}) {
+  const tierLabel = useTierLabel();
+  if (services.length === 0) return <span className="text-on-surface-faint">{"–"}</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {services.map((s) => {
+        const className =
+          "inline-flex max-w-40 truncate rounded-full border border-border px-1.5 text-[11px] text-on-surface-secondary";
+        const title = s.tier === null ? s.name : `${s.name} · ${tierLabel(s.tier)}`;
+        return onOpenService ? (
+          <button
+            key={s.id}
+            type="button"
+            title={title}
+            onClick={() => onOpenService(s.id)}
+            className={`${className} cursor-pointer hover:border-border-strong hover:text-on-surface`}
+          >
+            {s.name}
+          </button>
+        ) : (
+          <span key={s.id} title={title} className={className}>
+            {s.name}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 interface FindingRowProps {
   finding: VulnerabilityFindingRow;
   expanded: boolean;
   onToggleExpanded: () => void;
   onOpenResource?: ((resource: VulnerabilityRunningRef) => void) | undefined;
+  /** Present: the row has a Service column. */
+  showServices: boolean;
+  onOpenService?: ((serviceId: string) => void) | undefined;
   /** Present: the row offers Dismiss. Opens or closes the dismiss box. */
   onToggleDismiss?: (() => void) | undefined;
   dismissing: boolean;
@@ -385,6 +429,8 @@ function FindingRow({
   expanded,
   onToggleExpanded,
   onOpenResource,
+  showServices,
+  onOpenService,
   onToggleDismiss,
   dismissing,
   pending,
@@ -457,6 +503,11 @@ function FindingRow({
             </span>
           )}
         </td>
+        {showServices && (
+          <td className="px-3 py-2.5 align-top text-xs">
+            <ServiceChips services={finding.services ?? []} onOpenService={onOpenService} />
+          </td>
+        )}
         {onToggleDismiss && (
           <td className="px-3 py-2.5 align-top whitespace-nowrap text-right">
             <button
@@ -776,6 +827,7 @@ export function VulnerabilitiesSection({
   settings,
   onUpdateSettings,
   onOpenPosture,
+  onOpenService,
 }: VulnerabilitiesSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -784,6 +836,7 @@ export function VulnerabilitiesSection({
   const [fixOnly, setFixOnly] = useState(false);
   const [kevOnly, setKevOnly] = useState(false);
   const [accountId, setAccountId] = useState("");
+  const [serviceId, setServiceId] = useState("");
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -807,6 +860,12 @@ export function VulnerabilitiesSection({
     return [...out.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [data, gtData]);
 
+  // Only services that own something with a finding: a picker of every
+  // service in the org would offer choices that filter to nothing.
+  const services = useMemo(() => vulnerabilityServiceOptions(data?.findings ?? []), [data]);
+  const showServices = services.length > 0;
+  const activeServiceId = services.some((s) => s.id === serviceId) ? serviceId : "";
+
   const filtered = useMemo(
     () =>
       data
@@ -816,10 +875,11 @@ export function VulnerabilitiesSection({
             fixAvailable: fixOnly || undefined,
             kev: (kevKnown && kevOnly) || undefined,
             accountId: accountId || undefined,
+            serviceId: activeServiceId || undefined,
             search,
           })
         : [],
-    [data, severities, running, fixOnly, kevOnly, kevKnown, accountId, search],
+    [data, severities, running, fixOnly, kevOnly, kevKnown, accountId, activeServiceId, search],
   );
 
   async function run(key: string, action: () => Promise<void>): Promise<void> {
@@ -838,13 +898,14 @@ export function VulnerabilitiesSection({
   }
 
   const dismissed = data?.dismissed ?? [];
-  const columns = onDismiss ? 7 : 6;
+  const columns = 6 + (showServices ? 1 : 0) + (onDismiss ? 1 : 0);
   const filtersActive =
     severities.length > 0 ||
     running !== "all" ||
     fixOnly ||
     kevOnly ||
     accountId !== "" ||
+    activeServiceId !== "" ||
     search !== "";
 
   return (
@@ -974,6 +1035,24 @@ export function VulnerabilitiesSection({
                   ))}
                 </select>
               )}
+              {showServices && (
+                <select
+                  value={activeServiceId}
+                  onChange={(e) => {
+                    setLimit(PAGE_SIZE);
+                    setServiceId(e.target.value);
+                  }}
+                  aria-label={gt("Filter by service")}
+                  className="rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface"
+                >
+                  <option value="">{gt("All services")}</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <input
                 type="search"
                 value={search}
@@ -1016,6 +1095,7 @@ export function VulnerabilitiesSection({
                     <th className="px-3 py-2 font-medium">{gt("Package")}</th>
                     <th className="px-3 py-2 font-medium">{gt("Artifact")}</th>
                     <th className="px-3 py-2 font-medium">{gt("Running")}</th>
+                    {showServices && <th className="px-3 py-2 font-medium">{gt("Service")}</th>}
                     {onDismiss && (
                       <th className="px-3 py-2">
                         <span className="sr-only">{gt("Actions")}</span>
@@ -1034,6 +1114,8 @@ export function VulnerabilitiesSection({
                         setExpanded(expanded === finding.key ? null : finding.key)
                       }
                       onOpenResource={onOpenResource}
+                      showServices={showServices}
+                      onOpenService={onOpenService}
                       pending={pending.includes(finding.key)}
                       dismissing={dismissing === finding.key && onDismiss !== undefined}
                       reason={reason}

@@ -87,6 +87,8 @@ describe("buildEvidencePack", () => {
     expect(files.has("controls/CC6.1.csv")).toBe(true);
     expect(files.has("controls/A1.3.json")).toBe(true);
     expect(files.has("evidence/vulnerabilities.csv")).toBe(true);
+    expect(files.has("evidence/scorecards.csv")).toBe(true);
+    expect(files.has("evidence/leaked-credentials.csv")).toBe(true);
 
     const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json")!));
     expect(manifest.organization).toEqual({ id: "org-1", name: "Acme" });
