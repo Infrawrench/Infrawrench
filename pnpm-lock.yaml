@@ -967,6 +967,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.96.0
         version: 0.96.0(zod@4.4.3)
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.1106.0
+        version: 3.1106.0
       '@clickhouse/client':
         specifier: ^1.23.1
         version: 1.23.1

@@ -40,6 +40,33 @@ export function isClickHouseConfigured(): boolean {
   return configured;
 }
 
+/**
+ * Extra headers on every ClickHouse request, from `CLICKHOUSE_METRICS_HTTP_HEADERS`
+ * (a JSON object). The Lambda gateway reaches the in-cluster ClickHouse
+ * through a Cloudflare Tunnel hostname behind Cloudflare Access, and this is
+ * how it presents its service token (`CF-Access-Client-Id` and
+ * `CF-Access-Client-Secret`). Malformed JSON is reported and ignored rather
+ * than thrown, matching the best-effort contract of the metrics pipeline.
+ */
+function extraHttpHeaders(): Record<string, string> | undefined {
+  const raw = process.env["CLICKHOUSE_METRICS_HTTP_HEADERS"];
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const headers: Record<string, string> = {};
+      for (const [name, value] of Object.entries(parsed)) {
+        if (typeof value === "string") headers[name] = value;
+      }
+      return headers;
+    }
+  } catch {
+    // Fall through to the warning.
+  }
+  console.error("[clickhouse] CLICKHOUSE_METRICS_HTTP_HEADERS is not a JSON object; ignored");
+  return undefined;
+}
+
 function buildDb(client: ClickHouseClient) {
   return drizzle(client, { schema });
 }
@@ -63,7 +90,9 @@ export function getClickHouseClient(): ClickHouseClient {
         "CLICKHOUSE_METRICS_USER, CLICKHOUSE_METRICS_PASSWORD, CLICKHOUSE_METRICS_DATABASE.",
     );
   }
+  const httpHeaders = extraHttpHeaders();
   cachedClient = createClient({
+    ...(httpHeaders ? { http_headers: httpHeaders } : {}),
     url: process.env["CLICKHOUSE_METRICS_URL"]!,
     username: process.env["CLICKHOUSE_METRICS_USER"]!,
     password: process.env["CLICKHOUSE_METRICS_PASSWORD"]!,

@@ -5,6 +5,9 @@ Prod web stack on GKE: `web` (Hono + WebSockets, 2 replicas), `poller`
 (1 replica — its SHA CAS makes overlap safe, but replicas just multiply
 GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
 the CF Workers deployables (website, telemetry) are not part of this.
+In front of the pods sit the Cloudflare edge Workers and, optionally, the
+AWS Lambda gateway, which take over most of the web API and the poller; see
+[Cloudflare edge](#cloudflare-edge) and [Lambda gateway](#lambda-gateway).
 
 | Layer                                                                 | Owner                                       |
 | --------------------------------------------------------------------- | ------------------------------------------- |
@@ -15,6 +18,8 @@ the CF Workers deployables (website, telemetry) are not part of this.
 | Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`      |
 | Workflow egress proxy `egress.infrawrench.com` (CF Worker)            | `.github/workflows/egress-proxy-deploy.yml` |
 | Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`          |
+| Lambda gateway: ECR, functions, VPC, schedule (optional)              | `infra/terraform/lambda.tf`                 |
+| Lambda image `lambda`, tagged `:<commit sha>`                         | `.github/workflows/web-deploy.yml`          |
 | Cloudflare Tunnel connector to ClickHouse (optional)                  | `infra/terraform/edge.tf`                   |
 
 **The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
@@ -367,6 +372,103 @@ and restart the poller to make it do everything; the poller Worker can stay
 - **A write that 503s** with "could not be completed here" reached a Node-only
   path on the edge. The Worker logs `[edge] <method> <path> reached a
 gateway-only path`; add the route to `src/edge/gateway-routes.ts`.
+
+## Lambda gateway
+
+The Node half of the edge split is two tiers. The **Lambda gateway** runs on
+AWS Lambda and takes the Node work that finishes within a request; the GKE
+web pods stay as the **session gateway** for what needs a long-lived process.
+KNOWLEDGE.md ("Edge/gateway split") explains the routing; this is the runbook.
+
+| Work                                                                                                                      | Runs on                                 |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Most of the API                                                                                                           | `infrawrench-web` Worker                |
+| Plugin calls (the web Worker carries no plugin code), socket drivers, request-scoped SSH, account writes, OAuth, webhooks | Lambda `infrawrench-prod-lambda-web`    |
+| WebSockets, bastion agents and bastion-bound accounts, shared consoles, Linux apps, MCP, chat, deploys, storage uploads   | GKE `web` pods                          |
+| Poller, edge half                                                                                                         | `infrawrench-poller` Worker             |
+| Poller, gateway half                                                                                                      | Lambda `infrawrench-prod-lambda-poller` |
+| `github-watcher` (deploys run up to 20 minutes, past Lambda's 15)                                                         | GKE `github-watcher` pod                |
+
+- **One image, two functions** (`infra/docker/lambda.Dockerfile`, built on the
+  AWS Lambda Node.js base image so native addons match its glibc). The web
+  function is reached through a function URL in `RESPONSE_STREAM` mode; the
+  poller is invoked by an EventBridge Scheduler rule every minute and ticks on
+  its usual 15-second cadence for most of it.
+- **The function URL is public**, so the web function refuses any request
+  without `LAMBDA_GATEWAY_SECRET`, which only the Worker holds. Terraform
+  generates it and merges it, with the URL, into `infrawrench-env`, which is
+  how the Worker gets both.
+- **`app_env` stays the one place a value lives.** Terraform writes it to a
+  Secrets Manager secret the functions load at cold start, merged with
+  `lambda_app_env` for the few values that must differ there.
+- **Egress** leaves through a NAT gateway with one Elastic IP
+  (`lambda_egress_ip`), the counterpart of the Cloud NAT address. Allowlist it
+  wherever `egress_ip` is allowlisted.
+
+### Provisioning (once)
+
+1. **ClickHouse over the tunnel.** ClickHouse is in-cluster and the functions
+   are not, so give the tunnel from `edge.tf` a public hostname
+   (Networking > Tunnels > (tunnel) > Published application routes), say
+   `clickhouse-gw.infrawrench.com` to `http://clickhouse.infrawrench.svc.cluster.local:8123`,
+   and put a Cloudflare Access application with a **Service Auth** policy in
+   front of it. Create a service token (Access > Service credentials) and put
+   the hostname and token in `lambda_app_env` (`terraform.tfvars.example`
+   shows the shape). The ClickHouse password still applies behind Access.
+2. **Neon pooler.** Point `lambda_app_env.DATABASE_URL` at the `-pooler`
+   endpoint. Every warm execution environment holds its own small pool, and
+   the pooler keeps that from eating the compute's connection limit.
+3. **Terraform**, with AWS credentials for the target account:
+   `lambda_enabled = true`, then `terraform apply`. This creates the ECR
+   repository, the secret, the VPC and NAT, the roles and GitHub's OIDC
+   provider (set `aws_github_oidc_provider_arn` instead if the account
+   already has one). No functions yet: they need an image.
+4. **GitHub**: repository variables `LAMBDA_ECR_REPOSITORY` and
+   `AWS_LAMBDA_CI_ROLE_ARN` from the outputs (plus `AWS_REGION` if not
+   us-east-2), then `LAMBDA_DEPLOY_ENABLED=true`. The next deploy pushes the
+   image and notes that the functions do not exist yet.
+5. **Terraform again** with `lambda_initial_image_tag` set to that commit SHA.
+   The functions, the function URL and the schedule come up, and
+   `infrawrench-env` gains `LAMBDA_GATEWAY_URL`. The poller function starts
+   claiming at once, beside the Node poller; the leases make that safe.
+6. **Smoke test** before the Worker uses it: a request to the function URL
+   without the secret must answer 403. `GET /healthz` with the
+   `x-iw-gateway-secret` header answers `ok`.
+
+### Cutover order
+
+Each step is independently reversible.
+
+1. Re-run `deploy-edge` (any deploy does). The Worker now has
+   `LAMBDA_GATEWAY_URL` and sends Node work there. Watch the web function's
+   logs and the Worker's `wrangler tail`; a 421 from the Lambda is a normal
+   handoff to the pods, not an error.
+2. Once the poller function has run clean for a while, set `replicas: 0` in
+   `infra/k8s/poller-deployment.yaml`. `POLLER_SCOPE` is shared through
+   `app_env`, so the function claims exactly what the Node poller did.
+3. Drop `web` to the replica count the remaining session work needs.
+
+**Rollback**: restore the poller's replicas first, then set
+`lambda_initial_image_tag = ""` and apply. That deletes the functions and
+drops `LAMBDA_GATEWAY_URL` from `infrawrench-env`; re-run `deploy-edge` and
+the Worker sends every Node request to the pods again, exactly as before the
+Lambda tier existed.
+
+### Day-2
+
+- **Code** deploys with every main push (`deploy-lambda`, before the Worker).
+  Terraform ignores `image_uri`, so an apply never rolls code back.
+- **Configuration**: edit `app_env` or `lambda_app_env`, `terraform apply`.
+  Running environments keep what they loaded at cold start; the next code
+  deploy replaces them, or force it with
+  `aws lambda update-function-configuration --function-name <fn> --description "rotated $(date -u +%FT%TZ)"`.
+- **Cold starts** load the whole API with every plugin: a few seconds, paid
+  once per execution environment. If they show in latency, add provisioned
+  concurrency on an alias; the function URL then needs to move to that alias.
+- **A Lambda request that 503s** with "could not be completed here" wrote to
+  the database and then reached a bastion agent. The path should go to the
+  session gateway: add it to the `SESSION_ROUTES` list in
+  `src/edge/gateway-routes.ts`.
 
 ## Day-2 notes
 
