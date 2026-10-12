@@ -17,9 +17,9 @@ jobs:
           path: |
             .turbo
             node_modules
-          key: ${{ runner.os }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-
+            ${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:

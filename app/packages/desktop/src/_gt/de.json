@@ -21180,5 +21180,8 @@
   "bf9d4f49c55e0d70": "Nicht bewertet",
   "0b3364fd508007ac": "{level} · {score}",
   "dc214d45035d4aa3": "Keine Stufe · {score}",
-  "b9afe5d17f1d2387": "Services erfordern den Cloud-Modus: Melden Sie sich an, um zu synchronisieren."
+  "b9afe5d17f1d2387": "Services erfordern den Cloud-Modus: Melden Sie sich an, um zu synchronisieren.",
+  "facbe233c792e2c0": "Diese Version kann diesen Infrawrench-Link nicht öffnen.",
+  "7deb5c566ca1c26b": "Melden Sie sich bei Infrawrench Cloud an, um Links aus anderen Apps zu öffnen.",
+  "0dd445367f66efcc": "Dieser Link gehört zu einer anderen Organisation. Wechseln Sie zu ihr und öffnen Sie den Link erneut."
 }

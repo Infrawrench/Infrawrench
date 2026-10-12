@@ -11,6 +11,11 @@ overrides:
   "miniflare>sharp": ">=0.35.4"
   "miniflare>undici": ">=7.29.1 <8"
   "@smithy/middleware-compression>fflate": ">=0.8.3"
+  # @raycast/api depends on an exact @types/react. A third copy can become the
+  # hoisted one, and libraries that import React types without declaring them
+  # (react-native-svg, @dnd-kit) then resolve it and clash with the app's own
+  # (TS2322 on ReactNode in mobile and ui). Keep it on the workspace version.
+  "@raycast/api>@types/react": "^19.2.18"
 
 # @generaltranslation/compiler's typings import `vite` but the package declares
 # no dependency on it, so TypeScript found whichever vite pnpm hoisted. Adding
@@ -62,6 +67,10 @@ allowBuilds:
   # launcher. Nothing runs that bin: `tsc` comes from @infrawrench/typescript,
   # which finds the native binary itself.
   tsc-rs: false
+  # vsce's optional signing helper downloads a platform binary on install.
+  # Packaging the VS Code extension (`vsce package`) never signs; publishing
+  # to the Marketplace would, and is not done from this repository.
+  "@vscode/vsce-sign": false
 
 minimumReleaseAgeExclude:
   - "@tsc-rs/darwin-arm64@0.2.0"

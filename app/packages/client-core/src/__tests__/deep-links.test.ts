@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   desktopDeepLink,
   parseDesktopDeepLink,
+  parseOrgIdInput,
   webIncidentUrl,
   webResourceUrl,
   webServiceUrl,
@@ -50,5 +51,18 @@ describe("desktop deep links", () => {
     expect(parseDesktopDeepLink("infrawrench://open/resource?org=o&id=1")).toBeNull();
     expect(parseDesktopDeepLink("infrawrench://open/unknown?org=o&id=1")).toBeNull();
     expect(parseDesktopDeepLink("not a url")).toBeNull();
+  });
+});
+
+describe("parseOrgIdInput", () => {
+  it("takes an id or any web URL inside the org", () => {
+    expect(parseOrgIdInput("8f2c1a9e-1111-2222-3333-444455556666")).toBe(
+      "8f2c1a9e-1111-2222-3333-444455556666",
+    );
+    expect(parseOrgIdInput("https://app.infrawrench.com/org/abc123/settings/api-keys")).toBe(
+      "abc123",
+    );
+    expect(parseOrgIdInput("  ")).toBeNull();
+    expect(parseOrgIdInput("not an id!")).toBeNull();
   });
 });
