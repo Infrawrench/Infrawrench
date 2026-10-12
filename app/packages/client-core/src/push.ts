@@ -352,6 +352,21 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A service dropped a level on a scorecard (see server-core
+       * `scorecards/eval.ts`). One notification per drop, never per
+       * evaluation.
+       *
+       * Target route: the service, `/org/{orgId}/services/{serviceId}`.
+       */
+      type: "scorecard_level_drop";
+      orgId: string;
+      /** Service row id (`services.id`). */
+      serviceId: string;
+      /** Scorecard row id (`scorecards.id`). */
+      scorecardId: string;
+    }
+  | {
+      /**
        * A daily digest of provider quotas at or heading for their limit (see
        * server-core `quotas/alerts.ts`). Never one notification per quota: the
        * server batches everything over the org's threshold into this single

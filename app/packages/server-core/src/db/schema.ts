@@ -5294,6 +5294,7 @@ export * from "./on-call-schema.js";
 export * from "./restore-drill-schema.js";
 export * from "./query-monitor-schema.js";
 export * from "./slo-schema.js";
+export * from "./service-schema.js";
 export * from "./cost-visibility-schema.js";
 export * from "./github-issues-schema.js";
 export * from "./pr-check-schema.js";

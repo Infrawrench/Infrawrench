@@ -263,6 +263,17 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "critical",
   },
   {
+    // A service dropped a level on a scorecard (gold to silver, or off the
+    // ladder entirely). `warning`: a readiness regression is something to fix
+    // this week, not something to wake for. Rises are not announced.
+    id: "scorecardAlerts",
+    label: "Scorecards",
+    description: "A service dropped a level on one of the org's scorecards.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     // The deadline family's third member, beside expiry and commitment lapse:
     // a limit you will hit rather than a date you will pass. `warning` and not
     // `critical` because the alert fires at a *threshold*: 80% by default,
