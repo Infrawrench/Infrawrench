@@ -2,8 +2,10 @@ import {
   IAC_STATUS_LABELS,
   POSTURE_SEVERITY_LABELS,
   SERVICE_TIER_LABELS,
+  describeResourceVulnerabilities,
   fetchResourceCostEstimate,
   fetchResourceSpend,
+  fetchResourceVulnerabilities,
   formatMonthlyEstimate,
   partialEstimatePrefix,
   postureFindingsByResource,
@@ -12,6 +14,7 @@ import {
   type PostureFinding,
   type PostureListResponse,
   type ResourceSpend,
+  type ResourceVulnerabilityTally,
   type ServiceRef,
 } from "@infrawrench/client-core";
 import type { TtlCache } from "./cache";
@@ -209,6 +212,41 @@ const postureSection: ResourceSection<PostureFinding[]> = {
   },
 };
 
+/**
+ * Open CVEs running on the resource, from the org's scanners (one
+ * `GET /vulnerabilities?resourceId=…` read for the whole hover). An org with
+ * no scanner gets no line at all: "none" there would claim a scan that never
+ * happened.
+ */
+const vulnerabilitySection: ResourceSection<ResourceVulnerabilityTally> = {
+  id: "vulnerabilities",
+  async load(ctx, resources) {
+    return perResource(ctx, "vulnerabilities", resources, async (list) => {
+      const res = await fetchResourceVulnerabilities(
+        ctx.api,
+        ctx.orgId,
+        list.map((r) => r.resourceId),
+      );
+      return res.byResource;
+    });
+  },
+  render(tally) {
+    if (!tally) return [];
+    if (tally.total === 0) return ["Vulnerabilities: none"];
+    return [
+      `Vulnerabilities: ${commandLink(describeResourceVulnerabilities(tally), "infrawrench.openVulnerabilities", [])}`,
+    ];
+  },
+  lens(tally) {
+    if (!tally || tally.critical + tally.high === 0) return null;
+    const parts = [
+      tally.critical > 0 ? `${tally.critical} critical` : null,
+      tally.high > 0 ? `${tally.high} high` : null,
+    ].filter(Boolean);
+    return `${parts.join(", ")} CVE${tally.critical + tally.high === 1 ? "" : "s"}`;
+  },
+};
+
 function emptyPosture(): PostureListResponse {
   return {
     findings: [],
@@ -234,6 +272,7 @@ export const RESOURCE_SECTIONS: ResourceSection<unknown>[] = [
   spendSection,
   estimateSection,
   postureSection,
+  vulnerabilitySection,
 ] as ResourceSection<unknown>[];
 
 export interface LoadedSections {

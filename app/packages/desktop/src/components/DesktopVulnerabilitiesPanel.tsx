@@ -21,6 +21,7 @@ import {
 interface DesktopVulnerabilitiesPanelProps {
   openResource: (resource: VulnerabilityRunningRef) => void;
   openPosture: () => void;
+  openService: (serviceId: string) => void;
 }
 
 /**
@@ -32,6 +33,7 @@ interface DesktopVulnerabilitiesPanelProps {
 export function DesktopVulnerabilitiesPanel({
   openResource,
   openPosture,
+  openService,
 }: DesktopVulnerabilitiesPanelProps) {
   const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -146,6 +148,7 @@ export function DesktopVulnerabilitiesPanel({
       onRetry={retry}
       onOpenResource={openResource}
       onOpenPosture={openPosture}
+      onOpenService={openService}
       onDismiss={dismiss}
       onRestore={restore}
       settings={settings}

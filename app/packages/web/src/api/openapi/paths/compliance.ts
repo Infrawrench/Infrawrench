@@ -224,9 +224,10 @@ export function registerCompliancePaths(ctx: BuildContext) {
     description:
       "Runs every evidence source the framework maps (access review, just-in-time access, the " +
       "audit log, posture, vulnerabilities, backup coverage, restore drills, the change timeline, " +
-      "change freezes, session recordings, incidents) and returns a status per control. Makes no " +
-      "provider API calls. A source whose own permission the caller lacks comes back " +
-      "`unavailable` naming it, rather than failing the request.",
+      "change freezes, session recordings, incidents, service scorecards, leaked credentials) and " +
+      "returns a status per control. Makes no provider API calls. A source whose own " +
+      "permission the caller lacks comes back `unavailable` naming it, rather than failing " +
+      "the request.",
     request: { params: OrgIdParam, query: PeriodQuery },
     responses: {
       200: {

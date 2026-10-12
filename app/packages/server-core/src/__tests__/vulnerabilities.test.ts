@@ -6,7 +6,8 @@ const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
 const { parseKevFeed } = await import("../vulnerabilities/kev");
-const { formatVulnerabilityAlert } = await import("../vulnerabilities/alerts");
+const { formatVulnerabilityAlert, vulnerabilityEventBatch } =
+  await import("../vulnerabilities/alerts");
 const { findingColumns } = await import("../vulnerabilities/collect");
 
 describe("parseKevFeed", () => {
@@ -139,5 +140,32 @@ describe("formatVulnerabilityAlert", () => {
     expect(m.body.split("\n")).toHaveLength(9);
     expect(m.body).toContain("[known exploited]");
     expect(m.body).toContain("and 2 more");
+  });
+});
+
+describe("vulnerabilityEventBatch", () => {
+  const kev = { dateAdded: "2024-01-01", dueDate: null, knownRansomware: false };
+
+  it("sends known exploited first, then by severity, then by how much runs it", () => {
+    const batch = vulnerabilityEventBatch([
+      row({ key: "low", severity: "low" }),
+      row({ key: "high-idle", severity: "high", running: [] }),
+      row({ key: "high-running", severity: "high" }),
+      row({ key: "medium-kev", severity: "medium", kev }),
+      row({ key: "critical", severity: "critical" }),
+    ]);
+    expect(batch.map((f) => f.key)).toEqual([
+      "medium-kev",
+      "critical",
+      "high-running",
+      "high-idle",
+      "low",
+    ]);
+  });
+
+  it("caps the batch without reordering the input", () => {
+    const input = Array.from({ length: 5 }, (_, i) => row({ key: String(i) }));
+    expect(vulnerabilityEventBatch(input, 2).map((f) => f.key)).toEqual(["0", "1"]);
+    expect(input.map((f) => f.key)).toEqual(["0", "1", "2", "3", "4"]);
   });
 });

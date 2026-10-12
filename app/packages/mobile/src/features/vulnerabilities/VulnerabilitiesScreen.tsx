@@ -7,7 +7,9 @@ import {
   filterVulnerabilityFindings,
   groupRunningByType,
   vulnerabilityFindingKey,
+  vulnerabilityServiceOptions,
   type DismissedVulnerabilityFinding,
+  type ServiceRef,
   type VulnerabilityFindingRow,
   type VulnerabilityRunningRef,
   type VulnerabilitySeverity,
@@ -16,6 +18,7 @@ import {
 import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, radii, spacing } from "@/lib/theme";
+import { serviceTierLabel } from "../services/format";
 import { useVulnerabilities, useVulnerabilityDismissal } from "./useVulnerabilities";
 
 /** Rows rendered before "Show more": the feed can run to thousands on a busy registry. */
@@ -29,8 +32,10 @@ const PAGE = 100;
  * "Running only" starts on because a finding in an image nothing runs is a
  * backlog item, not a page; the summary chips still count both so the toggle
  * never hides the size of the backlog. Tapping a row expands it to the
- * resources running it (each opens the resource screen), the advisory link
- * and the dismiss action.
+ * resources running it (each opens the resource screen), the services they
+ * belong to (each opens the service), the advisory link and the dismiss
+ * action. The service chips filter to one service, offered only for services
+ * that own something with a finding.
  *
  * Dismissing is behind a confirm and takes no note, the posture stance: a
  * justification is a desktop job. The confirm offers the two scopes the API
@@ -47,12 +52,15 @@ export function VulnerabilitiesScreen() {
   const [runningOnly, setRunningOnly] = useState(true);
   const [fixOnly, setFixOnly] = useState(false);
   const [kevOnly, setKevOnly] = useState(false);
+  const [serviceId, setServiceId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [showDismissed, setShowDismissed] = useState(false);
 
   const data = feed.data;
   const kevKnown = Boolean(data?.kevUpdatedAt);
+  const services = useMemo(() => vulnerabilityServiceOptions(data?.findings ?? []), [data]);
+  const activeServiceId = services.some((s) => s.id === serviceId) ? serviceId : null;
 
   const visible = useMemo(
     () =>
@@ -62,9 +70,10 @@ export function VulnerabilitiesScreen() {
             running: runningOnly ? true : undefined,
             fixAvailable: fixOnly || undefined,
             kev: (kevKnown && kevOnly) || undefined,
+            serviceId: activeServiceId ?? undefined,
           })
         : [],
-    [data, severities, runningOnly, fixOnly, kevOnly, kevKnown],
+    [data, severities, runningOnly, fixOnly, kevOnly, kevKnown, activeServiceId],
   );
 
   const toggleSeverity = (sev: VulnerabilitySeverity) => {
@@ -106,6 +115,9 @@ export function VulnerabilitiesScreen() {
         r.resourceTypeId,
       )}/${encodeURIComponent(r.resourceId)}?accountId=${encodeURIComponent(r.accountId)}`,
     );
+
+  const openService = (service: ServiceRef) =>
+    router.push(`/org/${orgId}/services/${encodeURIComponent(service.id)}`);
 
   if (feed.isLoading) return <LoadingView />;
   if (feed.isError) {
@@ -189,6 +201,22 @@ export function VulnerabilitiesScreen() {
         )}
       </View>
 
+      {services.length > 0 && (
+        <View style={styles.chips}>
+          {services.map((service) => (
+            <FilterChip
+              key={service.id}
+              label={service.name}
+              selected={activeServiceId === service.id}
+              onPress={() => {
+                setLimit(PAGE);
+                setServiceId((cur) => (cur === service.id ? null : service.id));
+              }}
+            />
+          ))}
+        </View>
+      )}
+
       {visible.length === 0 ? (
         <Text style={styles.footnote}>
           {data.totalCount === 0
@@ -208,6 +236,7 @@ export function VulnerabilitiesScreen() {
                 expanded={expanded === key}
                 onToggle={() => setExpanded((cur) => (cur === key ? null : key))}
                 onOpenResource={openResource}
+                onOpenService={openService}
                 actionLabel="Dismiss"
                 onAction={() => confirmDismiss(finding)}
                 busy={dismiss.isPending}
@@ -250,6 +279,7 @@ export function VulnerabilitiesScreen() {
                     expanded={expanded === key}
                     onToggle={() => setExpanded((cur) => (cur === key ? null : key))}
                     onOpenResource={openResource}
+                    onOpenService={openService}
                     actionLabel="Restore"
                     onAction={() => undoDismiss(finding)}
                     busy={restore.isPending}
@@ -354,6 +384,7 @@ function FindingRow({
   expanded,
   onToggle,
   onOpenResource,
+  onOpenService,
   actionLabel,
   onAction,
   busy,
@@ -364,6 +395,7 @@ function FindingRow({
   expanded: boolean;
   onToggle: () => void;
   onOpenResource: (r: VulnerabilityRunningRef) => void;
+  onOpenService: (s: ServiceRef) => void;
   actionLabel: string;
   onAction: () => void;
   busy: boolean;
@@ -374,6 +406,7 @@ function FindingRow({
 }) {
   const severityColor = muted ? colors.textMuted : SEVERITY_COLORS[finding.severity];
   const url = finding.url;
+  const services = finding.services ?? [];
   return (
     <View>
       <Pressable
@@ -403,6 +436,12 @@ function FindingRow({
           <Text style={styles.reason} numberOfLines={2}>
             {detail ?? runningLine(finding.running)}
           </Text>
+          {services.length > 0 && (
+            <Text style={styles.reason} numberOfLines={1}>
+              {services.length === 1 ? "Service" : "Services"}:{" "}
+              {services.map((s) => s.name).join(", ")}
+            </Text>
+          )}
         </View>
         <View style={styles.rowEnd}>
           <Text style={[styles.severity, { color: severityColor }]}>
@@ -437,6 +476,22 @@ function FindingRow({
               <Text style={styles.reason} numberOfLines={1}>
                 {r.resourceTypeName} · {r.accountName}
                 {r.matchedBy === "tag" ? " · matched by tag" : ""}
+              </Text>
+            </Pressable>
+          ))}
+          {services.map((service) => (
+            <Pressable
+              key={service.id}
+              accessibilityRole="link"
+              accessibilityLabel={`Service ${service.name}`}
+              onPress={() => onOpenService(service)}
+              style={({ pressed }) => [styles.resource, pressed && styles.rowPressed]}
+            >
+              <Text style={styles.resourceName} numberOfLines={1}>
+                {service.name}
+              </Text>
+              <Text style={styles.reason} numberOfLines={1}>
+                {service.tier ? `Service · ${serviceTierLabel(service.tier)}` : "Service"}
               </Text>
             </Pressable>
           ))}

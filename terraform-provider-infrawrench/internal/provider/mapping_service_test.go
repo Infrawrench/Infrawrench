@@ -51,6 +51,9 @@ func TestScorecardStateWritesParamsOnlyForTheirType(t *testing.T) {
 	percent := 0.0
 	tags := []string{}
 	severities := []string{"critical", "high"}
+	critical := []string{"critical"}
+	maxRate := 15.0
+	window := 30.0
 	remote := &iw.Scorecard{
 		ID:   "sc",
 		Name: "Readiness",
@@ -62,6 +65,10 @@ func TestScorecardStateWritesParamsOnlyForTheirType(t *testing.T) {
 			// another type must not leak into state either.
 			{ID: "d", Type: "required_tags", Weight: 1, Params: iw.ScorecardCheckParams{Tags: &tags, DrillWithinDays: &days}},
 			{ID: "e", Type: "has_owner", Weight: 1},
+			// Severities is shared by two check types; the failure-rate pair
+			// is read only on its own type.
+			{ID: "f", Type: "no_critical_vulnerabilities", Weight: 2, Params: iw.ScorecardCheckParams{Severities: &critical}},
+			{ID: "g", Type: "change_failure_rate", Weight: 1, Params: iw.ScorecardCheckParams{MaxFailureRatePercent: &maxRate, WindowDays: &window}},
 		},
 		Levels: []iw.ScorecardLevel{{Key: "gold", Name: "Gold", MinScore: 90}},
 	}
@@ -87,6 +94,13 @@ func TestScorecardStateWritesParamsOnlyForTheirType(t *testing.T) {
 	}
 	if !checks[4].Tags.IsNull() || !checks[4].Severities.IsNull() || !checks[4].DrillWithinDays.IsNull() {
 		t.Errorf("has_owner takes no params: %+v", checks[4])
+	}
+	if len(checks[5].Severities.Elements()) != 1 || !checks[5].WindowDays.IsNull() {
+		t.Errorf("no_critical_vulnerabilities params: %+v", checks[5])
+	}
+	if checks[6].MaxFailureRatePercent.ValueFloat64() != 15 || checks[6].WindowDays.ValueInt64() != 30 ||
+		!checks[6].Severities.IsNull() {
+		t.Errorf("change_failure_rate params: %+v", checks[6])
 	}
 	if state.ApplicableTiers.IsNull() || len(state.ApplicableTiers.Elements()) != 0 {
 		t.Errorf("absent tiers must read back as an empty set, got %v", state.ApplicableTiers)

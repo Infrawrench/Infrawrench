@@ -12,6 +12,7 @@
  * they can read.
  */
 import { Hono } from "hono";
+import { MAX_VULNERABILITY_RESOURCE_IDS, scopeVulnerabilityFeed } from "@infrawrench/client-core";
 import { listVulnerabilities } from "@infrawrench/server-core/vulnerabilities/feed";
 import {
   dismissVulnerability,
@@ -37,10 +38,26 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/vulnerabilities: every open finding, joined to what runs it. */
+/**
+ * GET /api/org/:orgId/vulnerabilities: every open finding, joined to what runs
+ * it and to the services those resources belong to. `?serviceId=` and
+ * `?resourceId=` (repeatable) narrow it to findings running there, with the
+ * counts recomputed; the editor extensions' hover asks with `resourceId`.
+ */
 app.get("/", async (c) => {
   requirePermission(c, "resources:read");
-  return c.json(await listVulnerabilities(c.get("organizationId")));
+  const serviceId = c.req.query("serviceId")?.trim() || undefined;
+  const resourceIds = [
+    ...new Set((c.req.queries("resourceId") ?? []).map((s) => s.trim()).filter(Boolean)),
+  ];
+  if (resourceIds.length > MAX_VULNERABILITY_RESOURCE_IDS) {
+    return c.json(
+      { error: `Ask about at most ${MAX_VULNERABILITY_RESOURCE_IDS} resources at a time` },
+      400,
+    );
+  }
+  const feed = await listVulnerabilities(c.get("organizationId"), { withServices: true });
+  return c.json(scopeVulnerabilityFeed(feed, { serviceId, resourceIds }));
 });
 
 /** POST /dismissals: accept an advisory for one artifact (or `*`). Idempotent. */

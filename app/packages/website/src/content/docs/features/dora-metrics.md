@@ -1,6 +1,6 @@
 ---
 title: Delivery (DORA metrics)
-description: Deployment frequency, lead time for changes, change failure rate and time to restore for production, computed from the deploys and incidents Infrawrench already knows about, with performance bands, trends, a breakdown by environment, repository or owner, and the changes behind every number.
+description: Deployment frequency, lead time for changes, change failure rate and time to restore for production, computed from the deploys and incidents Infrawrench already knows about, with performance bands, trends, a breakdown by environment, repository, owner or service, and the changes behind every number.
 sidebar_order: 13
 ---
 
@@ -57,10 +57,14 @@ Each metric gets the standard performance band:
 
 The tiles compare against the period of the same length just before, and the charts show the trend
 per day (or per week past 45 days). The **Breakdown** table splits the four numbers by
-**environment**, **repository** or **owner** (the [resource owner](../core-concepts/resource-ownership.md)
-of the project or service a deploy went to); click a row, or use the **Scope** picker, to see one
-of them on its own. "Not known" collects the deploys with no repository or no owner recorded, which
-is usually where untracked services hide.
+**environment**, **repository**, **owner** (the [resource owner](../core-concepts/resource-ownership.md)
+of the project or service a deploy went to) or **service** (the [service](./services.md) whose
+resources the deploy or change touched); click a row, or use the **Scope** picker, to see one
+of them on its own. "Not known" collects the deploys with no repository, owner or service recorded,
+which is usually where untracked services hide. A resource that belongs to several services counts
+toward the most critical one (the lowest tier number, then by name), so every change is counted
+once. Infrafile runs and deploys recorded through the API without a resource are not placed in a
+service.
 
 <insert [The Delivery tab's Breakdown table grouped by repository, three repositories with their deploys, frequency, lead time, failure rate and restore time, and below it the Changes list filtered to failed changes, one row showing "Incident: Checkout 500s" in red] here>
 

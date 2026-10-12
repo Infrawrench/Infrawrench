@@ -35,7 +35,7 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "5.17",
       title: "Authentication secrets are allocated and rotated under control",
       group: ORG,
-      sources: ["access-review", "posture"],
+      sources: ["access-review", "posture", "leaked-credentials"],
     },
     {
       id: "5.18",
@@ -53,13 +53,13 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "5.25",
       title: "Security events are assessed and classified",
       group: ORG,
-      sources: ["incidents"],
+      sources: ["incidents", "leaked-credentials"],
     },
     {
       id: "5.26",
       title: "Incidents are responded to",
       group: ORG,
-      sources: ["incidents", "change-freezes"],
+      sources: ["incidents", "change-freezes", "leaked-credentials"],
     },
     {
       id: "5.27",
@@ -78,6 +78,12 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       title: "Systems are ready to support business continuity",
       group: ORG,
       sources: ["backup-coverage", "restore-drills"],
+    },
+    {
+      id: "5.37",
+      title: "Operating procedures are documented and available",
+      group: ORG,
+      sources: ["scorecards"],
     },
     {
       id: "8.2",
@@ -104,6 +110,12 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       sources: ["posture", "change-timeline"],
     },
     {
+      id: "8.12",
+      title: "Leakage of sensitive information is prevented and detected",
+      group: TECH,
+      sources: ["leaked-credentials", "posture"],
+    },
+    {
       id: "8.13",
       title: "Backups are kept and restores are tested",
       group: TECH,
@@ -119,7 +131,7 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "8.16",
       title: "Systems are monitored for anomalous behaviour",
       group: TECH,
-      sources: ["change-timeline", "audit-log"],
+      sources: ["change-timeline", "audit-log", "scorecards"],
     },
     {
       id: "8.20",

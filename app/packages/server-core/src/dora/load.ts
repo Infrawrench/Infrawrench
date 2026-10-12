@@ -11,6 +11,7 @@ import {
   analyzeDora,
   buildDoraReport,
   scopeDoraAnalysis,
+  summarizeDora,
   type DoraAnalysis,
   type DoraBucketSize,
   type DoraChange,
@@ -22,6 +23,7 @@ import {
   type DoraScopeFilter,
   type DoraScopeValue,
   type DoraSettingsView,
+  type DoraSummary,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import {
@@ -362,6 +364,58 @@ export async function getDoraReport(
     dimensions: listDoraScopeDimensions().map((d) => ({ id: d.id, label: d.label })),
     settingsView: inputs.settings,
   });
+}
+
+/**
+ * The four numbers for every value one dimension took over `[from, to)`,
+ * keyed by scope key (null = "not known"). Unlike the report's breakdown this
+ * is uncapped and loads once, so a caller asking about every service (the
+ * scorecard pass) pays one load, not one per service.
+ */
+export async function getDoraSummariesByScope(
+  organizationId: string,
+  window: DoraWindow,
+  dimension: string,
+): Promise<Map<string | null, DoraSummary>> {
+  checkDoraWindow(window);
+  checkDimension(dimension);
+  const { analysis } = await loadAnalysis(organizationId, window);
+  const from = window.from.toISOString();
+  const to = window.to.toISOString();
+  const fromMs = window.from.getTime();
+  const toMs = window.to.getTime();
+  const keys = new Set<string | null>();
+  for (const c of analysis.changes) {
+    const t = Date.parse(c.at);
+    if (t >= fromMs && t < toMs) keys.add(c.scope[dimension]?.key ?? null);
+  }
+  const out = new Map<string | null, DoraSummary>();
+  for (const key of keys) {
+    out.set(key, summarizeDora(scopeDoraAnalysis(analysis, { dimension, value: key }), from, to));
+  }
+  return out;
+}
+
+/**
+ * The org-wide production summary for several windows from one load: the
+ * analysis covers the span from the earliest `from` to the latest `to`, and
+ * each window is summarised over it. Cheaper than one report per window when
+ * they overlap (the band-change pass compares two 30-day windows a day
+ * apart), and each window is judged on the same data.
+ */
+export async function getDoraSummaries(
+  organizationId: string,
+  windows: readonly DoraWindow[],
+): Promise<DoraSummary[]> {
+  if (windows.length === 0) return [];
+  const span: DoraWindow = {
+    from: new Date(Math.min(...windows.map((w) => w.from.getTime()))),
+    to: new Date(Math.max(...windows.map((w) => w.to.getTime()))),
+  };
+  for (const w of windows) checkDoraWindow(w);
+  checkDoraWindow(span);
+  const { analysis } = await loadAnalysis(organizationId, span);
+  return windows.map((w) => summarizeDora(analysis, w.from.toISOString(), w.to.toISOString()));
 }
 
 export const DORA_DRILL_LIMIT = 500;

@@ -61,6 +61,7 @@ function finding(
     url: null,
     collectedAt: "2026-10-01T00:00:00.000Z",
     running: Array.from({ length: opts.running ?? 0 }, (_, i) => ({ resourceId: `r${i}` })),
+    services: opts.running ? [{ id: "svc-1", name: "Checkout", slug: "checkout", tier: 1 }] : [],
   };
 }
 
@@ -106,7 +107,7 @@ describe("vulnerabilityTools", () => {
     const out = parse(
       await tool("list_vulnerabilities").handler({ severity: ["critical", "high"] }, auth),
     );
-    expect(mockListVulnerabilities).toHaveBeenCalledWith("o1");
+    expect(mockListVulnerabilities).toHaveBeenCalledWith("o1", { withServices: true });
     expect(out.findings.map((f: { advisoryId: string }) => f.advisoryId)).toEqual([
       "CVE-1",
       "CVE-2",
@@ -132,6 +133,8 @@ describe("vulnerabilityTools", () => {
     expect(await ids({ kev: true })).toEqual(["CVE-1"]);
     expect(await ids({ pluginId: "github" })).toEqual(["CVE-2"]);
     expect(await ids({ search: "cve-3" })).toEqual(["CVE-3"]);
+    expect(await ids({ resourceId: "r1" })).toEqual(["CVE-1"]);
+    expect(await ids({ serviceId: "svc-1" })).toEqual(["CVE-1"]);
   });
 
   it("list_vulnerabilities caps rows with limit and says so", async () => {

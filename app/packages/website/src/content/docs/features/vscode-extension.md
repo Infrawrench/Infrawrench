@@ -1,6 +1,6 @@
 ---
 title: VS Code extension
-description: See the live resource, drift, owning service, cost and open findings behind every Terraform block, estimate the cost of uncommitted changes, and search your organization without leaving the editor.
+description: See the live resource, drift, owning service, cost, open findings and running vulnerabilities behind every Terraform block, estimate the cost of uncommitted changes, and search your organization without leaving the editor.
 sidebar_order: 40
 ---
 
@@ -20,11 +20,15 @@ resources it manages:
 - what it **cost over the last 30 days**, from your billing data
 - the provider's **list-price estimate** per month, where the plugin can price it
 - open **posture findings** on it, worst first
+- the **[vulnerabilities](./vulnerabilities.md)** running on it, as counts per severity with how
+  many are known exploited ("2 critical, 1 high (1 known exploited)"); click them to open the
+  Vulnerabilities tab. When no connected account runs a scanner the line is left out, since
+  "none" would claim a scan that never happened.
 
 Each resource has **Open in Infrawrench**, **Copy ID** and **Copy provider ID** links. A block
 used by several modules, or with `count` or `for_each`, lists every instance it manages.
 
-<insert [A VS Code editor showing a resource "aws_instance" "web" block with the Infrawrench hover open: Drifted (2 fields), Service: Checkout (Tier 1), Cost (last 30 days): $142.18, Estimate: $138.70/month, Posture: 1 open finding] here>
+<insert [A VS Code editor showing a resource "aws_instance" "web" block with the Infrawrench hover open: Drifted (2 fields), Service: Checkout (Tier 1), Cost (last 30 days): $142.18, Estimate: $138.70/month, Posture: 1 open finding, Vulnerabilities: 2 critical, 1 high (1 known exploited)] here>
 
 Blocks are tied to live resources through [IaC reconciliation](./iac-reconciliation.md): the
 Terraform state you uploaded on the IaC page records each block's address, and Infrawrench has
@@ -35,7 +39,8 @@ state lives elsewhere), it says that instead.
 ### CodeLens
 
 Above each block, a CodeLens names the live resource (click to open it) and summarises its
-drift, owning service, 30-day cost and findings. Turn lenses off with
+drift, owning service, 30-day cost, findings and any critical or high vulnerabilities running on
+it. Turn lenses off with
 `infrawrench.codeLens.enabled`.
 
 ### Estimate the cost of your changes
@@ -80,13 +85,13 @@ Run **Infrawrench: Sign In** and choose:
 Credentials are kept in VS Code's secret storage. The browser sign-in uses the same local
 callback as `infrawrench login` in the [CLI](./cli.md), so finish one before starting the other.
 
-The hover needs `iac:read` (to read the state), `resources:read`, and `costs:read` for the
-cost line; a section the key or your role cannot read is left out rather than shown as an
+The hover needs `iac:read` (to read the state), `resources:read` (which also covers the
+vulnerabilities line), and `costs:read` for the cost line; a section the key or your role cannot read is left out rather than shown as an
 error. The working-tree estimate needs `iac:read`.
 
 ## Opening in the desktop app
 
-Set `infrawrench.openIn` to `desktop` to open resources and services in the
+Set `infrawrench.openIn` to `desktop` to open resources, services and the Vulnerabilities tab in the
 [desktop app](../core-concepts/desktop-vs-web.md) instead of the browser. The desktop app must
 be signed in to the cloud and showing the same organization; a link for another organization
 asks you to switch first.

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { parseDesktopDeepLink } from "@infrawrench/client-core";
-import { toast, useUIStore } from "@infrawrench/ui";
+import { toast, useUIStore, vulnerabilitiesTabTarget } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import {
   incidentsTabTarget,
@@ -48,7 +48,9 @@ export function DeepLinkHost() {
           ? resourceTabTarget(link.accountId, link.resourceId, link.pluginId, link.resourceTypeId)
           : link.kind === "incident"
             ? incidentsTabTarget(link.incidentId)
-            : servicesTabTarget(link.serviceId);
+            : link.kind === "vulnerabilities"
+              ? vulnerabilitiesTabTarget()
+              : servicesTabTarget(link.serviceId);
       void navigateToWorkspaceTarget(navigate, target, { mode: "pin" });
     };
     window.electronAPI.on("deep_link_open", (...args: unknown[]) => open(args[0]));

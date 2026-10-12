@@ -557,6 +557,125 @@ export const ACCOUNT_SYNC_RECOVERED = defineEventType({
   fields: syncFields,
 });
 
+export const SERVICE_CHANGED = defineEventType({
+  type: "service.changed",
+  version: 1,
+  label: "Service changed",
+  description:
+    "A service in the catalog was created, edited, deleted, or had resources added or removed.",
+  category: "operations",
+  defaultSeverity: "info",
+  fields: {
+    action: str("What happened to the service.", { enum: ["created", "updated", "deleted"] }),
+    serviceId: str("Service id."),
+    slug: str("The service's slug."),
+    name: str("Service name."),
+    tier: int("Tier 1 (most critical) to 4; null when untiered.", { nullable: true }),
+    ownerTeam: str("Free-text owning team.", { nullable: true }),
+    changedFields: list(
+      "Fields the change touched: the edited service fields, or `members` for a membership change. Empty on create and delete.",
+    ),
+  },
+});
+
+export const SCORECARD_LEVEL_CHANGED = defineEventType({
+  type: "scorecard.level_changed",
+  version: 1,
+  label: "Scorecard level changed",
+  description:
+    "A service moved up or down a level on a scorecard between two evaluations. A service's first evaluation is never sent.",
+  category: "operations",
+  defaultSeverity: "info",
+  fields: {
+    scorecardId: str("Scorecard id."),
+    scorecardName: str("Scorecard name."),
+    serviceId: str("Service id."),
+    serviceSlug: str("The service's slug."),
+    serviceName: str("Service name."),
+    direction: str("Whether the service went up or down the ladder.", { enum: ["up", "down"] }),
+    previousLevel: str("Level key before; null for no level.", { nullable: true }),
+    previousLevelName: str("Level name before; null for no level.", { nullable: true }),
+    level: str("Level key now; null for no level.", { nullable: true }),
+    levelName: str("Level name now; null for no level.", { nullable: true }),
+    score: num("Weighted score now, 0-100; null when no check applied.", { nullable: true }),
+    failingChecks: list("Names of the checks failing (or erroring) now."),
+  },
+});
+
+export const VULNERABILITY_FOUND = defineEventType({
+  type: "vulnerability.found",
+  version: 1,
+  label: "Vulnerability found",
+  description:
+    "A vulnerability finding became alertable under the org's vulnerability alert settings. Each finding is sent once.",
+  category: "security",
+  defaultSeverity: "warning",
+  fields: {
+    findingId: str("The scanner's finding id, unique within `accountId`."),
+    accountId: str("The account whose scanner reported it."),
+    pluginId: str("Provider plugin id."),
+    scanner: str("The scanner, e.g. Amazon Inspector."),
+    advisoryId: str("Advisory id, CVE first when there is one."),
+    aliases: list("Other ids for the same advisory."),
+    title: str("Advisory title.", { nullable: true }),
+    findingSeverity: str("The finding's own severity.", {
+      enum: ["critical", "high", "medium", "low", "unknown"],
+    }),
+    cvssScore: num("CVSS base score.", { nullable: true }),
+    knownExploited: ef.bool("Listed in the CISA Known Exploited Vulnerabilities catalog."),
+    kevDueDate: str("CISA remediation due date (YYYY-MM-DD), when listed and set.", {
+      nullable: true,
+    }),
+    exploitAvailable: ef.bool("An exploit is public; null when the scanner does not say.", {
+      nullable: true,
+    }),
+    fixAvailable: ef.bool("A fixed version exists; null when the scanner does not say.", {
+      nullable: true,
+    }),
+    packageName: str("Affected package.", { nullable: true }),
+    installedVersion: str("Installed package version.", { nullable: true }),
+    fixedVersion: str("First version with the fix.", { nullable: true }),
+    artifactKind: str("What the finding affects.", {
+      enum: ["image", "function", "host", "repository", "package"],
+    }),
+    artifactName: str("Image repository, function, host or repository name."),
+    artifactDigest: str("Image digest, when the scanner gives one.", { nullable: true }),
+    runningResourceCount: int("Synced resources running the artifact now."),
+    runningResourceIds: list("Up to 50 of those resources' Infrawrench ids."),
+    firstSeenAt: time("When the scanner first saw it.", { nullable: true }),
+    url: str("The finding on the scanner.", { nullable: true }),
+  },
+});
+
+export const DORA_BAND_CHANGED = defineEventType({
+  type: "dora.band_changed",
+  version: 1,
+  label: "DORA band changed",
+  description:
+    "One of the four DORA metrics for production moved to a different performance band over the trailing 30 days. Checked once a day.",
+  category: "operations",
+  defaultSeverity: "info",
+  fields: {
+    metric: str("The metric.", {
+      enum: ["deployment_frequency", "lead_time", "change_failure_rate", "time_to_restore"],
+    }),
+    previousBand: str("Band over the 30 days ending the day before.", {
+      enum: ["elite", "high", "medium", "low"],
+    }),
+    band: str("Band over the 30 days ending `windowEnd`.", {
+      enum: ["elite", "high", "medium", "low"],
+    }),
+    direction: str("Whether performance got better or worse.", {
+      enum: ["improved", "worsened"],
+    }),
+    value: num("The metric now: deploys per day, median hours, or a 0-1 failure fraction."),
+    previousValue: num("The metric over the window ending the day before."),
+    sample: int("Observations the current value rests on."),
+    windowStart: str("First day of the current window (YYYY-MM-DD, UTC)."),
+    windowEnd: str("Last day of the current window (YYYY-MM-DD, UTC)."),
+  },
+});
+
 // --- Subscriptions ---
 
 export type EventDestinationKind = "webhook" | "publish";

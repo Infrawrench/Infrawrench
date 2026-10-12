@@ -236,7 +236,7 @@ infrawrench scorecards "production readiness"
 infrawrench scorecards --json
 ```
 
-`dora` is [Delivery (DORA metrics)](./dora-metrics.md): deployment frequency, lead time for changes, change failure rate and time to restore for production, each with its performance band, the previous period and a sparkline trend, then a breakdown by environment (or `--group-by repository|owner`). `--scope <dimension>=<value>` narrows to one environment, repository or owner (`--scope owner` alone is the deploys with no owner recorded). `dora changes` lists the production changes behind the numbers (`--failed` for the failed ones and what they were blamed on), `dora restores` the recoveries, and `dora settings` what counts as production. Cloud-only; needs `deployments:read`:
+`dora` is [Delivery (DORA metrics)](./dora-metrics.md): deployment frequency, lead time for changes, change failure rate and time to restore for production, each with its performance band, the previous period and a sparkline trend, then a breakdown by environment (or `--group-by repository|owner|service`). `--scope <dimension>=<value>` narrows to one environment, repository, owner or service (by service id) (`--scope owner` alone is the deploys with no owner recorded). `dora changes` lists the production changes behind the numbers (`--failed` for the failed ones and what they were blamed on), `dora restores` the recoveries, and `dora settings` what counts as production. Cloud-only; needs `deployments:read`:
 
 ```
 infrawrench dora

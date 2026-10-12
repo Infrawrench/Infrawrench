@@ -349,6 +349,8 @@ export interface VulnsFlags {
   search?: string | undefined;
   /** `--include-dismissed`: also list (and, with --json, keep) the dismissed rows. */
   includeDismissed: boolean;
+  /** `--service <id|slug|name>`: only findings running on a resource of this service. */
+  service?: string | undefined;
 }
 
 /** `compliance` flags. `--from`/`--to` are the shared range flags. */
@@ -599,6 +601,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         kev: { type: "boolean", default: false },
         search: { type: "string" },
         "include-dismissed": { type: "boolean", default: false },
+        service: { type: "string" },
         // `compliance`: which framework, and only the controls with gaps.
         framework: { type: "string" },
         gaps: { type: "boolean", default: false },
@@ -812,6 +815,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       plugin: str("plugin"),
       search: str("search"),
       includeDismissed: values["include-dismissed"] === true,
+      service: str("service"),
     },
     compliance: {
       framework: str("framework"),

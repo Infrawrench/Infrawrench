@@ -68,6 +68,14 @@ const routes = {
   "/resources/cost-estimate": {
     estimate: { monthlyAmount: 40, currency: "USD", lineItems: [], partial: false },
   },
+  "/vulnerabilities": {
+    findings: [
+      { severity: "critical", kev: { dateAdded: "2021-12-10" }, running: [{ resourceId: "r1" }] },
+      { severity: "critical", kev: null, running: [{ resourceId: "r1" }] },
+      { severity: "high", kev: null, running: [{ resourceId: "r1" }, { resourceId: "r9" }] },
+    ],
+    sources: [{ accountId: "acc" }],
+  },
   "/posture": {
     findings: [
       { resourceId: "r1", severity: "high", title: "Port 22 open to the world", ruleId: "a" },
@@ -90,6 +98,8 @@ describe("hover sections", () => {
     expect(text).toContain("Posture: 2 open finding(s)");
     // Worst first.
     expect(text.indexOf("Critical")).toBeLessThan(text.indexOf("High"));
+    expect(text).toContain("Vulnerabilities: [2 critical, 1 high \\(1 known exploited\\)]");
+    expect(text).toContain("command:infrawrench.openVulnerabilities");
   });
 
   it("summarises drift and builds a CodeLens line", async () => {
@@ -105,6 +115,7 @@ describe("hover sections", () => {
       "Checkout",
       "$42.50 / 30d",
       "2 finding(s), worst critical",
+      "2 critical, 1 high CVEs",
     ]);
   });
 
@@ -126,18 +137,37 @@ describe("hover sections", () => {
     expect(org.mock.calls.length).toBe(calls);
   });
 
+  it("asks for vulnerabilities once for the whole hover, scoped to its resources", async () => {
+    const { ctx, org } = ctxWith(routes);
+    const a = resource();
+    const b = resource({ resourceId: "r2", externalId: "i-2" });
+    const loaded = await loadSections(ctx, [a, b]);
+    const calls = org.mock.calls.filter(([, path]) => String(path).startsWith("/vulnerabilities"));
+    expect(calls.map(([, path]) => path)).toEqual(["/vulnerabilities?resourceId=r1&resourceId=r2"]);
+    expect(renderResource(loaded, b).join("\n")).toContain("Vulnerabilities: none");
+  });
+
+  it("says nothing about vulnerabilities when the org has no scanner", async () => {
+    const { ctx } = ctxWith({ ...routes, "/vulnerabilities": { findings: [], sources: [] } });
+    const r = resource();
+    const loaded = await loadSections(ctx, [r]);
+    expect(loaded.failures.has("vulnerabilities")).toBe(false);
+    expect(renderResource(loaded, r).join("\n")).not.toContain("Vulnerabilities");
+    expect(lensSummary(loaded, r)).not.toContain(expect.stringContaining("CVE"));
+  });
+
   it("accepts an appended section (the integration hook)", async () => {
     const { ctx } = ctxWith(routes);
     const extra: ResourceSection<number> = {
-      id: "vulnerabilities",
+      id: "example",
       load: async (_c, rs) => new Map(rs.map((x) => [x.resourceId, 3])),
-      render: (n) => (n ? [`Vulnerabilities: ${n}`] : []),
-      lens: (n) => (n ? `${n} CVEs` : null),
+      render: (n) => (n ? [`Example: ${n}`] : []),
+      lens: (n) => (n ? `${n} examples` : null),
     };
     const sections = [...RESOURCE_SECTIONS, extra as ResourceSection<unknown>];
     const r = resource();
     const loaded = await loadSections(ctx, [r], sections);
-    expect(renderResource(loaded, r, sections)).toContain("Vulnerabilities: 3");
-    expect(lensSummary(loaded, r, sections)).toContain("3 CVEs");
+    expect(renderResource(loaded, r, sections)).toContain("Example: 3");
+    expect(lensSummary(loaded, r, sections)).toContain("3 examples");
   });
 });

@@ -42,6 +42,18 @@ export function registerVulnerabilityPaths(ctx: BuildContext) {
     }),
   }).openapi("VulnerabilityRunningRef");
 
+  // Inline rather than a second `ServiceRef` component: the services paths
+  // register that name, and two schemas under one name would collide.
+  const OwningService = strict({
+    id: Uuid,
+    name: z.string(),
+    slug: z.string(),
+    tier: z
+      .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+      .nullable()
+      .describe("Criticality, 1 being the most critical."),
+  });
+
   const Kev = strict({
     dateAdded: z.string().describe("Date CISA added it (YYYY-MM-DD)."),
     dueDate: z.string().nullable().describe("Federal remediation due date, when set."),
@@ -85,6 +97,12 @@ export function registerVulnerabilityPaths(ctx: BuildContext) {
     running: z
       .array(RunningRef)
       .describe("Synced resources running the artifact now; empty when it runs nowhere we see."),
+    services: z
+      .array(OwningService)
+      .describe(
+        "Services the running resources belong to, deduplicated, most critical tier first; " +
+          "empty when none of them is in a service.",
+      ),
   } as const;
 
   const Finding = strict(findingShape).openapi("VulnerabilityFinding");
@@ -168,13 +186,30 @@ export function registerVulnerabilityPaths(ctx: BuildContext) {
       "resources that run the affected image or are the affected resource, and marked when " +
       "the advisory is in the CISA Known Exploited Vulnerabilities catalog. Read from what the " +
       "poller last collected; no provider calls are made. Dismissed findings are reported " +
-      "under `dismissed` and excluded from `findings`, the counts and the alerts.",
-    request: { params: OrgIdParam },
+      "under `dismissed` and excluded from `findings`, the counts and the alerts. Each finding " +
+      "names the services its running resources belong to. `serviceId` and `resourceId` " +
+      "narrow the findings (and `dismissed`) to those running there and recompute the counts; " +
+      "`sources` always describes every scanner.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        serviceId: Uuid.optional().describe("Only findings running on a resource of this service."),
+        resourceId: z
+          .array(z.string())
+          .max(100)
+          .optional()
+          .describe(
+            "Only findings running on any of these Infrawrench resource ids. Repeat the " +
+              "parameter for several (at most 100).",
+          ),
+      }),
+    },
     responses: {
       200: {
         description: "The vulnerability feed",
         content: { "application/json": { schema: ListResponse } },
       },
+      400: ErrorResponses[400],
     },
   });
 

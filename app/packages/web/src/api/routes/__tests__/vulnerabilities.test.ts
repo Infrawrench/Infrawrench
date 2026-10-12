@@ -45,7 +45,36 @@ describe("vulnerability routes", () => {
     mockList.mockResolvedValue({ findings: [], totalCount: 0 });
     const res = await reader().request("/");
     expect(res.status).toBe(200);
-    expect(mockList).toHaveBeenCalledWith("org-1");
+    expect(mockList).toHaveBeenCalledWith("org-1", { withServices: true });
+  });
+
+  it("scopes the feed to a service or to resources and recounts", async () => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 };
+    const finding = (key: string, severity: string, resourceId: string, serviceId?: string) => ({
+      key,
+      severity,
+      running: [{ resourceId }],
+      services: serviceId ? [{ id: serviceId, name: "S", slug: "s", tier: 1 }] : [],
+    });
+    mockList.mockResolvedValue({
+      findings: [finding("a", "critical", "r1", "svc-1"), finding("b", "high", "r2")],
+      totalCount: 2,
+      counts: { ...counts, critical: 1, high: 1 },
+      runningCounts: { ...counts, critical: 1, high: 1 },
+      dismissed: [],
+      dismissedCount: 0,
+      sources: [],
+      kevUpdatedAt: null,
+      generatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const byService = await (await reader().request("/?serviceId=svc-1")).json();
+    expect(byService.findings.map((f: { key: string }) => f.key)).toEqual(["a"]);
+    expect(byService.counts.high).toBe(0);
+    const byResource = await (await reader().request("/?resourceId=r2&resourceId=r9")).json();
+    expect(byResource.findings.map((f: { key: string }) => f.key)).toEqual(["b"]);
+    expect(byResource.totalCount).toBe(1);
+    const tooMany = Array.from({ length: 101 }, (_, i) => `resourceId=r${i}`).join("&");
+    expect((await reader().request(`/?${tooMany}`)).status).toBe(400);
   });
 
   it("records a dismissal against the caller, audits it, and returns the wire shape", async () => {

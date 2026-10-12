@@ -23,7 +23,8 @@ export interface DeepLinkResource {
 export type DesktopDeepLink =
   | ({ kind: "resource"; orgId: string } & DeepLinkResource)
   | { kind: "incident"; orgId: string; incidentId: string }
-  | { kind: "service"; orgId: string; serviceId: string };
+  | { kind: "service"; orgId: string; serviceId: string }
+  | { kind: "vulnerabilities"; orgId: string };
 
 function trimBase(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -65,6 +66,10 @@ export function webPostureUrl(baseUrl: string, orgId: string): string {
   return `${orgBase(baseUrl, orgId)}/posture`;
 }
 
+export function webVulnerabilitiesUrl(baseUrl: string, orgId: string): string {
+  return `${orgBase(baseUrl, orgId)}/vulnerabilities`;
+}
+
 /** `infrawrench://open/<kind>?org=…`: opened by the desktop app. */
 export function desktopDeepLink(link: DesktopDeepLink): string {
   const params = new URLSearchParams({ org: link.orgId });
@@ -80,6 +85,8 @@ export function desktopDeepLink(link: DesktopDeepLink): string {
       break;
     case "service":
       params.set("id", link.serviceId);
+      break;
+    case "vulnerabilities":
       break;
   }
   return `${DESKTOP_PROTOCOL}://open/${link.kind}?${params.toString()}`;
@@ -100,9 +107,13 @@ export function parseDesktopDeepLink(url: string): DesktopDeepLink | null {
   if (parsed.protocol !== `${DESKTOP_PROTOCOL}:` || parsed.hostname !== "open") return null;
   const q = parsed.searchParams;
   const orgId = q.get("org");
+  if (!orgId) return null;
+  const kind = parsed.pathname.replace(/^\/+|\/+$/g, "");
+  // The org-wide tabs name nothing else.
+  if (kind === "vulnerabilities") return { kind, orgId };
   const id = q.get("id");
-  if (!orgId || !id) return null;
-  switch (parsed.pathname.replace(/^\/+|\/+$/g, "")) {
+  if (!id) return null;
+  switch (kind) {
     case "resource": {
       const accountId = q.get("account");
       const pluginId = q.get("plugin");

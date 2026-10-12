@@ -79,6 +79,7 @@ import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
+import { DORA_BAND_INTERVAL_MS, runDoraBandPass } from "@infrawrench/server-core/dora/band-pass";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
@@ -645,6 +646,19 @@ export const PASSES: readonly Pass[] = [
     name: "scorecards",
     runtime: "gateway",
     run: guarded("[scorecards] tick failed:", () => runScorecardPass({ limit: 5 })),
+  },
+
+  // DORA band changes: compare each subscribed org's trailing 30 days with
+  // the 30 ending a day earlier and raise `dora.band_changed` per metric that
+  // moved. No row lease: the windows are UTC-day aligned and the events are
+  // keyed per org, metric and day, so replicas and repeats are no-ops, and
+  // `minIntervalMs` keeps it to a few runs a day. Edge: Postgres only.
+  {
+    kind: "periodic",
+    name: "dora-bands",
+    runtime: "edge",
+    minIntervalMs: DORA_BAND_INTERVAL_MS,
+    run: guarded("[dora] band change tick failed:", () => runDoraBandPass()),
   },
 
   // Query monitors: a small batch of due SQL checks, each opening a

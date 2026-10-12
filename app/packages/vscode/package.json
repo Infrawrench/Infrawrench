@@ -72,6 +72,11 @@
         "category": "Infrawrench"
       },
       {
+        "command": "infrawrench.openVulnerabilities",
+        "title": "Open Vulnerabilities",
+        "category": "Infrawrench"
+      },
+      {
         "command": "infrawrench.copyText",
         "title": "Copy",
         "category": "Infrawrench"

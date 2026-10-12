@@ -16,6 +16,7 @@ import {
   workflowsTabTarget,
   vulnerabilitiesTabTarget,
   complianceTabTarget,
+  servicesTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
   useUIStore,
@@ -538,6 +539,9 @@ function renderPanel(
                 ),
               ),
             )
+          }
+          openService={(serviceId) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(serviceId)))
           }
         />
       );

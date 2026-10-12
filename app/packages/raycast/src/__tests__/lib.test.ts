@@ -88,6 +88,19 @@ describe("loadResourceInsight", () => {
           findings: [{ resourceId: "r1", severity: "high", title: "Open SSH", ruleId: "x" }],
         };
       }
+      if (path.startsWith("/vulnerabilities")) {
+        expect(path).toBe("/vulnerabilities?resourceId=r1");
+        return {
+          findings: [
+            {
+              severity: "critical",
+              kev: { dateAdded: "2021-12-10" },
+              running: [{ resourceId: "r1" }],
+            },
+          ],
+          sources: [{ accountId: "acc" }],
+        };
+      }
       if (path === "/incidents") {
         return {
           incidents: [
@@ -112,5 +125,28 @@ describe("loadResourceInsight", () => {
     expect(insight.services).toMatchObject({ ok: true, value: [{ name: "Checkout" }] });
     expect(insight.findings.ok && insight.findings.value).toHaveLength(1);
     expect(insight.incidents.ok && insight.incidents.value.map((i) => i.id)).toEqual(["a"]);
+    expect(insight.vulnerabilities).toMatchObject({
+      ok: true,
+      value: { critical: 1, knownExploited: 1, total: 1 },
+    });
+  });
+
+  it("reads no scanner as unknown, not as clean", async () => {
+    const org = vi.fn(async (_org: string, path: string) => {
+      if (path.startsWith("/vulnerabilities")) return { findings: [], sources: [] };
+      if (path.startsWith("/accounts/")) return [];
+      if (path.startsWith("/services/for-resources")) return { services: {} };
+      if (path === "/posture") return { findings: [] };
+      if (path === "/incidents") return { incidents: [] };
+      throw new Error(`unexpected ${path}`);
+    });
+    const client: Client = {
+      api: { org } as unknown as CloudFetch,
+      orgId: "o",
+      cloudUrl: "https://x.test",
+      openIn: "web",
+    };
+    const insight = await loadResourceInsight(client, result);
+    expect(insight.vulnerabilities).toEqual({ ok: true, value: null });
   });
 });

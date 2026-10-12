@@ -3,6 +3,7 @@ import {
   desktopDeepLink,
   webResourceUrl,
   webServiceUrl,
+  webVulnerabilitiesUrl,
   type DeepLinkResource,
 } from "@infrawrench/client-core";
 import { readConfig } from "./config";
@@ -28,6 +29,16 @@ export async function openService(session: Session, serviceId: string): Promise<
     readConfig().openIn === "desktop"
       ? desktopDeepLink({ kind: "service", orgId, serviceId })
       : webServiceUrl(session.cloudUrl, orgId, serviceId);
+  await vscode.env.openExternal(vscode.Uri.parse(target, true));
+}
+
+export async function openVulnerabilities(session: Session): Promise<void> {
+  const orgId = session.orgId;
+  if (!orgId) return;
+  const target =
+    readConfig().openIn === "desktop"
+      ? desktopDeepLink({ kind: "vulnerabilities", orgId })
+      : webVulnerabilitiesUrl(session.cloudUrl, orgId);
   await vscode.env.openExternal(vscode.Uri.parse(target, true));
 }
 

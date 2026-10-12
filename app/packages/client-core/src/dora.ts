@@ -901,6 +901,61 @@ export function doraTrendDirection(
   return current > previous === higherIsBetter ? "better" : "worse";
 }
 
+/** The summary entry for each metric, so callers can walk {@link DORA_METRICS}. */
+export function doraMetricValue(summary: DoraSummary, metric: DoraMetric): DoraMetricValue {
+  switch (metric) {
+    case "deployment_frequency":
+      return summary.deploymentFrequency;
+    case "lead_time":
+      return summary.leadTime;
+    case "change_failure_rate":
+      return summary.changeFailureRate;
+    case "time_to_restore":
+      return summary.timeToRestore;
+  }
+}
+
+/** One metric that moved band between two summaries. */
+export interface DoraBandChange {
+  metric: DoraMetric;
+  previousBand: DoraBand;
+  band: DoraBand;
+  direction: "improved" | "worsened";
+  value: number;
+  previousValue: number;
+  /** Observations the current value rests on. */
+  sample: number;
+}
+
+/**
+ * The metrics whose band differs between `previous` and `current`, in
+ * {@link DORA_METRICS} order. A metric with no band on either side (nothing
+ * to measure: no restores in the window, no lead times) is not a change:
+ * data appearing or running out says nothing about performance, and a quiet
+ * month would otherwise flap in and out of the feed.
+ */
+export function doraBandChanges(previous: DoraSummary, current: DoraSummary): DoraBandChange[] {
+  const out: DoraBandChange[] = [];
+  for (const metric of DORA_METRICS) {
+    const before = doraMetricValue(previous, metric);
+    const now = doraMetricValue(current, metric);
+    if (before.band === null || now.band === null || before.band === now.band) continue;
+    if (before.value === null || now.value === null) continue;
+    out.push({
+      metric,
+      previousBand: before.band,
+      band: now.band,
+      // DORA_BANDS runs best first.
+      direction:
+        DORA_BANDS.indexOf(now.band) < DORA_BANDS.indexOf(before.band) ? "improved" : "worsened",
+      value: now.value,
+      previousValue: before.value,
+      sample: now.sample,
+    });
+  }
+  return out;
+}
+
 /* ------------------------------- wire shapes ------------------------------- */
 
 export interface DoraChangesResponse {

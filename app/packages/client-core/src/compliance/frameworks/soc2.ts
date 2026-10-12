@@ -27,13 +27,13 @@ export const SOC2_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "CC4.1",
       title: "Ongoing evaluations confirm that controls are present and working",
       group: CC4,
-      sources: ["posture", "access-review", "restore-drills"],
+      sources: ["posture", "access-review", "restore-drills", "scorecards"],
     },
     {
       id: "CC6.1",
       title: "Logical access security protects information assets",
       group: CC6,
-      sources: ["access-review", "posture", "session-recordings"],
+      sources: ["access-review", "posture", "session-recordings", "leaked-credentials"],
     },
     {
       id: "CC6.2",
@@ -75,19 +75,19 @@ export const SOC2_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "CC7.2",
       title: "System components are monitored for anomalous activity",
       group: CC7,
-      sources: ["audit-log", "session-recordings", "change-timeline"],
+      sources: ["audit-log", "session-recordings", "change-timeline", "scorecards"],
     },
     {
       id: "CC7.3",
       title: "Security events are evaluated to decide whether they are incidents",
       group: CC7,
-      sources: ["incidents"],
+      sources: ["incidents", "leaked-credentials"],
     },
     {
       id: "CC7.4",
       title: "Incidents are responded to through a defined process",
       group: CC7,
-      sources: ["incidents", "change-freezes"],
+      sources: ["incidents", "change-freezes", "leaked-credentials"],
     },
     {
       id: "CC7.5",

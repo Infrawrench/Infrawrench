@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { CloudFetch } from "../fetch";
 import type { PostureFinding } from "../posture";
 import {
+  describeResourceVulnerabilities,
   fetchResourceSpend,
+  fetchResourceVulnerabilities,
   postureFindingsByResource,
   resourceStatusFromFields,
 } from "../resource-insight";
@@ -84,5 +86,48 @@ describe("filterServices", () => {
     expect(filterServices(list, "pay").map((x) => x.name)).toEqual(["Checkout"]);
     expect(filterServices(list, "QUERY").map((x) => x.name)).toEqual(["Search"]);
     expect(filterServices(list, " ")).toHaveLength(2);
+  });
+});
+
+describe("fetchResourceVulnerabilities", () => {
+  const row = (severity: string, running: string[], kev = false) => ({
+    severity,
+    kev: kev ? { dateAdded: "2021-12-10", dueDate: null, knownRansomware: false } : null,
+    running: running.map((resourceId) => ({ resourceId })),
+  });
+
+  it("asks once, scoped to the resources, and tallies each one", async () => {
+    const org = vi.fn().mockResolvedValue({
+      findings: [
+        row("critical", ["r1", "elsewhere"], true),
+        row("critical", ["r1"]),
+        row("high", ["r1"]),
+        row("unknown", ["r2"]),
+      ],
+      sources: [{ accountId: "a" }],
+    });
+    const api = { org } as unknown as CloudFetch;
+    const out = await fetchResourceVulnerabilities(api, "o", ["r1", "r2", "r3", "r1"]);
+    expect(org).toHaveBeenCalledTimes(1);
+    expect(org.mock.calls[0]![1]).toBe(
+      "/vulnerabilities?resourceId=r1&resourceId=r2&resourceId=r3",
+    );
+    expect(out.scanned).toBe(true);
+    expect(describeResourceVulnerabilities(out.byResource.get("r1")!)).toBe(
+      "2 critical, 1 high (1 known exploited)",
+    );
+    expect(describeResourceVulnerabilities(out.byResource.get("r2")!)).toBe("1 unscored");
+    expect(describeResourceVulnerabilities(out.byResource.get("r3")!)).toBe("none");
+    expect(out.byResource.has("elsewhere")).toBe(false);
+  });
+
+  it("reports nothing scanned when the org has no scanner", async () => {
+    const org = vi.fn().mockResolvedValue({ findings: [], sources: [] });
+    const out = await fetchResourceVulnerabilities({ org } as unknown as CloudFetch, "o", ["r1"]);
+    expect(out).toEqual({ scanned: false, byResource: new Map() });
+    expect(
+      (await fetchResourceVulnerabilities({ org } as unknown as CloudFetch, "o", [])).scanned,
+    ).toBe(false);
+    expect(org).toHaveBeenCalledTimes(1);
   });
 });

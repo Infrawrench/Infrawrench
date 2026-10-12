@@ -16,6 +16,7 @@ import {
   formatVulnArtifact,
   formatVulnCvss,
   formatVulnPackage,
+  formatVulnServices,
   matchVulnAccount,
   parseVulnSeverityFlag,
 } from "../cli/format";
@@ -54,6 +55,12 @@ describe("parseCliArgs: vulns", () => {
     });
     expect(parsed.flags.account).toBe("Prod");
     expect(parsed.range.limit).toBe(20);
+  });
+
+  it("takes --service and the shared --resource", () => {
+    const parsed = parseCliArgs(["vulns", "--service", "checkout", "--resource", "r-1"]);
+    expect(parsed.vulns.service).toBe("checkout");
+    expect(parsed.range.resource).toBe("r-1");
   });
 
   it("reads --not-running as running: false, and neither as both", () => {
@@ -114,6 +121,18 @@ describe("vulns formatting", () => {
     expect(formatVulnAdvisory({ advisoryId: "CVE-1", kev: { knownRansomware: true } })).toBe(
       "CVE-1 KEV ransomware",
     );
+  });
+
+  it("names the owning services, two at most", () => {
+    expect(formatVulnServices(undefined)).toBe("-");
+    expect(formatVulnServices([])).toBe("-");
+    expect(
+      formatVulnServices([
+        { slug: "payments", tier: 1 },
+        { slug: "checkout", tier: null },
+        { slug: "search", tier: 3 },
+      ]),
+    ).toBe("payments (T1), checkout +1");
   });
 
   it("formats CVSS and artifacts", () => {

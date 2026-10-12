@@ -320,7 +320,8 @@ export function registerServicePaths(ctx: BuildContext) {
       .record(z.string(), z.union([z.number(), z.array(z.string())]))
       .describe(
         "Type parameters: `minBudgetRemainingPercent` (0-100), `drillWithinDays` (1-730), " +
-          "`severities` (critical/high/medium/low), `tags` (tag keys).",
+          "`severities` (critical/high/medium/low), `tags` (tag keys), " +
+          "`maxFailureRatePercent` (0-100), `windowDays` (1-90).",
       ),
   }).openapi("ScorecardCheck");
 

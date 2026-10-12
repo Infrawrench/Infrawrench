@@ -20,6 +20,8 @@ import {
 } from "@infrawrench/server-core/service-catalog/store";
 import { getServicesForResources } from "@infrawrench/server-core/service-catalog/lookup";
 import { buildServiceSummary } from "@infrawrench/server-core/service-catalog/summary";
+import { publishServiceChanged } from "@infrawrench/server-core/service-catalog/events";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import {
   ensureDefaultScorecard,
   listScorecardHistory,
@@ -204,6 +206,7 @@ app.post("/", async (c) => {
       entityId: created.id,
       metadata: { name: created.name, slug: created.slug, tier: created.tier },
     });
+    void keepAlive(publishServiceChanged(organizationId, created, "created"));
     const { service } = await getServiceWire(organizationId, created);
     return c.json(service, 201);
   } catch (err) {
@@ -231,6 +234,7 @@ app.patch("/:id", async (c) => {
       entityId: updated.id,
       metadata: { name: updated.name, fields: Object.keys(patch) },
     });
+    void keepAlive(publishServiceChanged(organizationId, updated, "updated", Object.keys(patch)));
     const { service } = await getServiceWire(organizationId, updated);
     return c.json(service);
   } catch (err) {
@@ -252,6 +256,7 @@ app.delete("/:id", async (c) => {
       entityId: deleted.id,
       metadata: { name: deleted.name },
     });
+    void keepAlive(publishServiceChanged(organizationId, deleted, "deleted"));
     return c.body(null, 204);
   } catch (err) {
     return serviceErrorResponse(c, err);
@@ -286,6 +291,7 @@ app.post("/:id/members", async (c) => {
       entityId: row.id,
       metadata: { name: row.name, count: added, resourceIds: body["resourceIds"].slice(0, 50) },
     });
+    void keepAlive(publishServiceChanged(organizationId, row, "updated", ["members"]));
     const { service, membership } = await getServiceWire(organizationId, row);
     return c.json({ service, members: membership.members, excluded: membership.excluded });
   } catch (err) {
@@ -324,6 +330,7 @@ app.delete("/:id/members/:resourceId", async (c) => {
       entityId: row.id,
       metadata: { name: row.name, resourceId },
     });
+    void keepAlive(publishServiceChanged(organizationId, row, "updated", ["members"]));
     const { service, membership } = await getServiceWire(organizationId, row);
     return c.json({ service, members: membership.members, excluded: membership.excluded });
   } catch (err) {

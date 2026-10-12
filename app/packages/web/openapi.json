@@ -2715,6 +2715,717 @@
         "additionalProperties": false,
         "description": "A failing account sync succeeded again."
       },
+      "EventData_service_changed_v1": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "deleted"
+            ],
+            "description": "What happened to the service."
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "Service id."
+          },
+          "slug": {
+            "type": "string",
+            "description": "The service's slug."
+          },
+          "name": {
+            "type": "string",
+            "description": "Service name."
+          },
+          "tier": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Tier 1 (most critical) to 4; null when untiered."
+          },
+          "ownerTeam": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text owning team."
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields the change touched: the edited service fields, or `members` for a membership change. Empty on create and delete."
+          }
+        },
+        "required": [
+          "action",
+          "serviceId",
+          "slug",
+          "name",
+          "tier",
+          "ownerTeam",
+          "changedFields"
+        ],
+        "description": "`data` of a `service.changed` event, version 1. A service in the catalog was created, edited, deleted, or had resources added or removed."
+      },
+      "Event_service_changed_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "service.changed"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_service_changed_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A service in the catalog was created, edited, deleted, or had resources added or removed."
+      },
+      "EventData_scorecard_level_changed_v1": {
+        "type": "object",
+        "properties": {
+          "scorecardId": {
+            "type": "string",
+            "description": "Scorecard id."
+          },
+          "scorecardName": {
+            "type": "string",
+            "description": "Scorecard name."
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "Service id."
+          },
+          "serviceSlug": {
+            "type": "string",
+            "description": "The service's slug."
+          },
+          "serviceName": {
+            "type": "string",
+            "description": "Service name."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "description": "Whether the service went up or down the ladder."
+          },
+          "previousLevel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level key before; null for no level."
+          },
+          "previousLevelName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level name before; null for no level."
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level key now; null for no level."
+          },
+          "levelName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Level name now; null for no level."
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Weighted score now, 0-100; null when no check applied."
+          },
+          "failingChecks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the checks failing (or erroring) now."
+          }
+        },
+        "required": [
+          "scorecardId",
+          "scorecardName",
+          "serviceId",
+          "serviceSlug",
+          "serviceName",
+          "direction",
+          "previousLevel",
+          "previousLevelName",
+          "level",
+          "levelName",
+          "score",
+          "failingChecks"
+        ],
+        "description": "`data` of a `scorecard.level_changed` event, version 1. A service moved up or down a level on a scorecard between two evaluations. A service's first evaluation is never sent."
+      },
+      "Event_scorecard_level_changed_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "scorecard.level_changed"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_scorecard_level_changed_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A service moved up or down a level on a scorecard between two evaluations. A service's first evaluation is never sent."
+      },
+      "EventData_vulnerability_found_v1": {
+        "type": "object",
+        "properties": {
+          "findingId": {
+            "type": "string",
+            "description": "The scanner's finding id, unique within `accountId`."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "The account whose scanner reported it."
+          },
+          "pluginId": {
+            "type": "string",
+            "description": "Provider plugin id."
+          },
+          "scanner": {
+            "type": "string",
+            "description": "The scanner, e.g. Amazon Inspector."
+          },
+          "advisoryId": {
+            "type": "string",
+            "description": "Advisory id, CVE first when there is one."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other ids for the same advisory."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Advisory title."
+          },
+          "findingSeverity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ],
+            "description": "The finding's own severity."
+          },
+          "cvssScore": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "CVSS base score."
+          },
+          "knownExploited": {
+            "type": "boolean",
+            "description": "Listed in the CISA Known Exploited Vulnerabilities catalog."
+          },
+          "kevDueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "CISA remediation due date (YYYY-MM-DD), when listed and set."
+          },
+          "exploitAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "An exploit is public; null when the scanner does not say."
+          },
+          "fixAvailable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "A fixed version exists; null when the scanner does not say."
+          },
+          "packageName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Affected package."
+          },
+          "installedVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed package version."
+          },
+          "fixedVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First version with the fix."
+          },
+          "artifactKind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "function",
+              "host",
+              "repository",
+              "package"
+            ],
+            "description": "What the finding affects."
+          },
+          "artifactName": {
+            "type": "string",
+            "description": "Image repository, function, host or repository name."
+          },
+          "artifactDigest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image digest, when the scanner gives one."
+          },
+          "runningResourceCount": {
+            "type": "integer",
+            "description": "Synced resources running the artifact now."
+          },
+          "runningResourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to 50 of those resources' Infrawrench ids."
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the scanner first saw it."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The finding on the scanner."
+          }
+        },
+        "required": [
+          "findingId",
+          "accountId",
+          "pluginId",
+          "scanner",
+          "advisoryId",
+          "aliases",
+          "title",
+          "findingSeverity",
+          "cvssScore",
+          "knownExploited",
+          "kevDueDate",
+          "exploitAvailable",
+          "fixAvailable",
+          "packageName",
+          "installedVersion",
+          "fixedVersion",
+          "artifactKind",
+          "artifactName",
+          "artifactDigest",
+          "runningResourceCount",
+          "runningResourceIds",
+          "firstSeenAt",
+          "url"
+        ],
+        "description": "`data` of a `vulnerability.found` event, version 1. A vulnerability finding became alertable under the org's vulnerability alert settings. Each finding is sent once."
+      },
+      "Event_vulnerability_found_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "vulnerability.found"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_vulnerability_found_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A vulnerability finding became alertable under the org's vulnerability alert settings. Each finding is sent once."
+      },
+      "EventData_dora_band_changed_v1": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "deployment_frequency",
+              "lead_time",
+              "change_failure_rate",
+              "time_to_restore"
+            ],
+            "description": "The metric."
+          },
+          "previousBand": {
+            "type": "string",
+            "enum": [
+              "elite",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Band over the 30 days ending the day before."
+          },
+          "band": {
+            "type": "string",
+            "enum": [
+              "elite",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Band over the 30 days ending `windowEnd`."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "improved",
+              "worsened"
+            ],
+            "description": "Whether performance got better or worse."
+          },
+          "value": {
+            "type": "number",
+            "description": "The metric now: deploys per day, median hours, or a 0-1 failure fraction."
+          },
+          "previousValue": {
+            "type": "number",
+            "description": "The metric over the window ending the day before."
+          },
+          "sample": {
+            "type": "integer",
+            "description": "Observations the current value rests on."
+          },
+          "windowStart": {
+            "type": "string",
+            "description": "First day of the current window (YYYY-MM-DD, UTC)."
+          },
+          "windowEnd": {
+            "type": "string",
+            "description": "Last day of the current window (YYYY-MM-DD, UTC)."
+          }
+        },
+        "required": [
+          "metric",
+          "previousBand",
+          "band",
+          "direction",
+          "value",
+          "previousValue",
+          "sample",
+          "windowStart",
+          "windowEnd"
+        ],
+        "description": "`data` of a `dora.band_changed` event, version 1. One of the four DORA metrics for production moved to a different performance band over the trailing 30 days. Checked once a day."
+      },
+      "Event_dora_band_changed_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "dora.band_changed"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_dora_band_changed_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "One of the four DORA metrics for production moved to a different performance band over the trailing 30 days. Checked once a day."
+      },
       "EventData_secret_leaked_v1": {
         "type": "object",
         "properties": {
@@ -28104,6 +28815,65 @@
               "$ref": "#/components/schemas/VulnerabilityRunningRef"
             },
             "description": "Synced resources running the artifact now; empty when it runs nowhere we see."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "tier": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        2
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        3
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        4
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Criticality, 1 being the most critical."
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug",
+                "tier"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Services the running resources belong to, deduplicated, most critical tier first; empty when none of them is in a service."
           }
         },
         "required": [
@@ -28132,7 +28902,8 @@
           "lastSeenAt",
           "url",
           "collectedAt",
-          "running"
+          "running",
+          "services"
         ],
         "additionalProperties": false
       },
@@ -28399,6 +29170,65 @@
             },
             "description": "Synced resources running the artifact now; empty when it runs nowhere we see."
           },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "tier": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        2
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        3
+                      ]
+                    },
+                    {
+                      "type": "number",
+                      "enum": [
+                        4
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Criticality, 1 being the most critical."
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "slug",
+                "tier"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Services the running resources belong to, deduplicated, most critical tier first; empty when none of them is in a service."
+          },
           "dismissal": {
             "$ref": "#/components/schemas/VulnerabilityDismissal"
           }
@@ -28430,6 +29260,7 @@
           "url",
           "collectedAt",
           "running",
+          "services",
           "dismissal"
         ],
         "additionalProperties": false
@@ -43527,7 +44358,9 @@
           "no_critical_posture",
           "no_orphans",
           "required_tags",
-          "cost_within_budget"
+          "cost_within_budget",
+          "no_critical_vulnerabilities",
+          "change_failure_rate"
         ],
         "description": "A check type from the scorecard registry."
       },
@@ -44402,7 +45235,7 @@
                 }
               ]
             },
-            "description": "Type parameters: `minBudgetRemainingPercent` (0-100), `drillWithinDays` (1-730), `severities` (critical/high/medium/low), `tags` (tag keys)."
+            "description": "Type parameters: `minBudgetRemainingPercent` (0-100), `drillWithinDays` (1-730), `severities` (critical/high/medium/low), `tags` (tag keys), `maxFailureRatePercent` (0-100), `windowDays` (1-90)."
           }
         },
         "required": [
@@ -79303,7 +80136,7 @@
           "Vulnerabilities"
         ],
         "summary": "List vulnerability findings joined to running resources",
-        "description": "Open findings from each connected provider's own scanner (Amazon Inspector, Artifact Analysis, Defender for Cloud, Dependabot, GitLab, JFrog Xray), joined to the synced resources that run the affected image or are the affected resource, and marked when the advisory is in the CISA Known Exploited Vulnerabilities catalog. Read from what the poller last collected; no provider calls are made. Dismissed findings are reported under `dismissed` and excluded from `findings`, the counts and the alerts.",
+        "description": "Open findings from each connected provider's own scanner (Amazon Inspector, Artifact Analysis, Defender for Cloud, Dependabot, GitLab, JFrog Xray), joined to the synced resources that run the affected image or are the affected resource, and marked when the advisory is in the CISA Known Exploited Vulnerabilities catalog. Read from what the poller last collected; no provider calls are made. Dismissed findings are reported under `dismissed` and excluded from `findings`, the counts and the alerts. Each finding names the services its running resources belong to. `serviceId` and `resourceId` narrow the findings (and `dismissed`) to those running there and recompute the counts; `sources` always describes every scanner.",
         "parameters": [
           {
             "schema": {
@@ -79315,6 +80148,32 @@
             "required": true,
             "name": "orgId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Only findings running on a resource of this service.",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "description": "Only findings running on a resource of this service.",
+            "name": "serviceId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 100,
+              "description": "Only findings running on any of these Infrawrench resource ids. Repeat the parameter for several (at most 100)."
+            },
+            "required": false,
+            "description": "Only findings running on any of these Infrawrench resource ids. Repeat the parameter for several (at most 100).",
+            "name": "resourceId",
+            "in": "query"
           }
         ],
         "responses": {
@@ -79324,6 +80183,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VulnerabilityListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -79589,7 +80458,7 @@
           "Compliance"
         ],
         "summary": "Compliance status for a framework and period",
-        "description": "Runs every evidence source the framework maps (access review, just-in-time access, the audit log, posture, vulnerabilities, backup coverage, restore drills, the change timeline, change freezes, session recordings, incidents) and returns a status per control. Makes no provider API calls. A source whose own permission the caller lacks comes back `unavailable` naming it, rather than failing the request.\n\n_Requires permission: `audit:read`._",
+        "description": "Runs every evidence source the framework maps (access review, just-in-time access, the audit log, posture, vulnerabilities, backup coverage, restore drills, the change timeline, change freezes, session recordings, incidents, service scorecards, leaked credentials) and returns a status per control. Makes no provider API calls. A source whose own permission the caller lacks comes back `unavailable` naming it, rather than failing the request.\n\n_Requires permission: `audit:read`._",
         "parameters": [
           {
             "schema": {
@@ -106725,6 +107594,98 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Event_account_sync_recovered_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "service.changed": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Service changed",
+        "description": "A service in the catalog was created, edited, deleted, or had resources added or removed.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_service_changed_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "scorecard.level_changed": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Scorecard level changed",
+        "description": "A service moved up or down a level on a scorecard between two evaluations. A service's first evaluation is never sent.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_scorecard_level_changed_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "vulnerability.found": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Vulnerability found",
+        "description": "A vulnerability finding became alertable under the org's vulnerability alert settings. Each finding is sent once.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_vulnerability_found_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "dora.band_changed": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "DORA band changed",
+        "description": "One of the four DORA metrics for production moved to a different performance band over the trailing 30 days. Checked once a day.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_dora_band_changed_v1"
               }
             }
           }

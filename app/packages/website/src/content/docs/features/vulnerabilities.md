@@ -44,10 +44,16 @@ Findings in source repositories (Dependabot, GitLab dependency scanning) are nev
 Web, desktop and mobile all get a **Vulnerabilities** screen, reachable from the sidebar and from Posture:
 
 - severity buckets (critical, high, medium, low and unscored) with how many of each are running;
-- filters for severity, running or not, fix available, and known exploited;
-- one row per finding: advisory, severity, CVSS, the package and the version that fixes it, the image, and which resources run it. Expand a row to see each resource and open it.
+- filters for severity, running or not, fix available, known exploited, account and [service](./services.md);
+- one row per finding: advisory, severity, CVSS, the package and the version that fixes it, the image, which resources run it, and the services those resources belong to. Expand a row to see each resource and open it; click a service to open it in the Services tab.
 
 <insert [Web Vulnerabilities screen: severity buckets with running counts, the Running filter on, and a critical finding expanded to show the three pods and one Lambda function running the image] here>
+
+### Owning services
+
+When the resources running a vulnerable artifact belong to a [service](./services.md), the finding names it: a critical CVE in an image used by pods in **Checkout** and **Payments** shows both, most critical tier first. Membership is the service's own, rules included, so a newly tagged resource is attributed on the next read. The **Service** column and filter appear only once at least one finding runs inside a service; the filter offers only the services that have findings. Mobile shows the services on each row and as filter chips.
+
+<insert [Web Vulnerabilities screen with the Service column showing Checkout and Payments chips on a critical finding, and the service filter open] here>
 
 **Unscored** findings are ones the scanner has not rated yet; they are never folded into low. "Fix available" follows the scanner: when it does not say, the screen says unknown rather than no.
 
@@ -79,21 +85,27 @@ The [Compliance](./compliance.md) tab uses these findings as the vulnerability-m
 ```sh
 infrawrench vulns                       # worst first, with what runs each one
 infrawrench vulns --severity critical,high --running --kev
+infrawrench vulns --service checkout     # only what runs in one service (id, slug or name)
+infrawrench vulns --resource <resourceId> # only what runs on one resource
 infrawrench vulns --json
 infrawrench vulns sources               # which scanners are connected, and any read errors
 infrawrench vulns dismiss CVE-2024-3094 'image:ghcr.io/acme/api' --reason "not reachable"
 infrawrench vulns restore CVE-2024-3094 'image:ghcr.io/acme/api'
 ```
 
-The CLI reads the cloud organization; there is no local mode, because findings are collected by the cloud poller.
+The table gains a `service` column when any finding runs inside a service, and `--json` carries each finding's `services`. The CLI reads the cloud organization; there is no local mode, because findings are collected by the cloud poller.
 
 ## MCP
 
-The MCP server exposes `list_vulnerabilities` (filters for severity, running, fix available, known exploited, provider, account and text; it always reports the whole-feed counts and how many findings are dismissed, so a quiet answer is distinguishable from a silenced one), `dismiss_vulnerability` and `restore_vulnerability`, with the same permissions as the screen.
+The MCP server exposes `list_vulnerabilities` (filters for severity, running, fix available, known exploited, provider, account, service, resource and text; each finding names its owning services; it always reports the whole-feed counts and how many findings are dismissed, so a quiet answer is distinguishable from a silenced one), `dismiss_vulnerability` and `restore_vulnerability`, with the same permissions as the screen.
 
 ## API
 
-`GET /api/org/{orgId}/vulnerabilities` returns the joined feed, `POST` and `DELETE /vulnerabilities/dismissals` manage dismissals, and `GET`/`PUT /vulnerabilities/settings` the alert settings. See the [API reference](../team-and-billing/openapi.md).
+`GET /api/org/{orgId}/vulnerabilities` returns the joined feed, each finding with the `services` its running resources belong to. `?serviceId=` narrows it to one service and `?resourceId=` (repeatable, up to 100) to findings running on those resources; both recompute the counts. `POST` and `DELETE /vulnerabilities/dismissals` manage dismissals, and `GET`/`PUT /vulnerabilities/settings` the alert settings. See the [API reference](../team-and-billing/openapi.md).
+
+## In your editor and launcher
+
+The [VS Code extension](./vscode-extension.md) adds a **Vulnerabilities** line to the Terraform hover ("2 critical, 1 high (1 known exploited)") and the [Raycast extension](./raycast-extension.md) a row to each resource's detail, both linking here. Neither says anything when no connected account runs a scanner.
 
 ## Caveats
 
