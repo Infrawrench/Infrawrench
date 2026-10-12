@@ -36,6 +36,7 @@ import {
   GraphIcon,
   ExpiryIcon,
   PostureIcon,
+  VulnerabilitiesIcon,
   AccessReviewIcon,
   JitAccessIcon,
   BackupsIcon,
@@ -635,6 +636,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <PostureIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
+              },
+              {
+                key: "vulnerabilities",
+                label: gt("Vulnerabilities"),
+                icon: <VulnerabilitiesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/vulnerabilities", params: { orgId: orgId! } }),
               },
               {
                 key: "access-review",

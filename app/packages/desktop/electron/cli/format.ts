@@ -1222,3 +1222,124 @@ export function leakRotateRefusal(
     `Then record it: \`infrawrench leaks mark-rotated ${shortId(leak.id)}\`.`,
   ].join("\n");
 }
+
+/* ------------------------------------------------------------------ *
+ * Vulnerabilities (`infrawrench vulns`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Severities `--severity` accepts, strongest first. A local twin of
+ * client-core's `VULNERABILITY_SEVERITY_ORDER` (the CLI's static imports from
+ * there are type-only).
+ */
+export const VULN_SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
+
+/**
+ * `--severity critical,high` split and checked. `invalid` lists what was not a
+ * severity so the command can name it; `unscored` is accepted as the label the
+ * UI shows for `unknown`.
+ */
+export function parseVulnSeverityFlag(raw: string): { severities: string[]; invalid: string[] } {
+  const severities: string[] = [];
+  const invalid: string[] = [];
+  for (const part of raw.split(",")) {
+    const value = part.trim().toLowerCase();
+    if (!value) continue;
+    const normalized = value === "unscored" ? "unknown" : value;
+    if ((VULN_SEVERITIES as readonly string[]).includes(normalized)) {
+      if (!severities.includes(normalized)) severities.push(normalized);
+    } else {
+      invalid.push(part.trim());
+    }
+  }
+  return { severities, invalid };
+}
+
+/** `openssl 3.0.1 -> 3.0.2`, or `openssl 3.0.1 (no fix)` when the scanner names none. */
+export function formatVulnPackage(row: {
+  packageName: string | null;
+  installedVersion: string | null;
+  fixedVersion: string | null;
+  fixAvailable: boolean | null;
+}): string {
+  const name = safe(row.packageName) || "(unknown package)";
+  const installed = row.installedVersion ? ` ${safe(row.installedVersion)}` : "";
+  if (row.fixedVersion) return `${name}${installed} -> ${c.green(safe(row.fixedVersion))}`;
+  if (row.fixAvailable === true) return `${name}${installed} -> ${c.green("fix available")}`;
+  if (row.fixAvailable === false) return `${name}${installed} ${c.dim("(no fix)")}`;
+  return `${name}${installed}`;
+}
+
+/** `CVE-2024-3094 KEV`: the advisory, with a red marker when it is actively exploited. */
+export function formatVulnAdvisory(row: {
+  advisoryId: string;
+  kev: { knownRansomware: boolean } | null;
+}): string {
+  const id = safe(row.advisoryId);
+  if (!row.kev) return id;
+  return `${id} ${c.red(row.kev.knownRansomware ? "KEV ransomware" : "KEV")}`;
+}
+
+/** CVSS to one decimal, or a dim dash when the scanner gave no score. */
+export function formatVulnCvss(score: number | null): string {
+  return score === null || !Number.isFinite(score) ? c.dim("-") : score.toFixed(1);
+}
+
+/** The artifact name plus its first tag (or a short digest), e.g. `ghcr.io/acme/api:1.4`. */
+export function formatVulnArtifact(artifact: {
+  name: string;
+  tags: readonly string[];
+  digest: string | null;
+}): string {
+  const name = safe(artifact.name);
+  const tag = artifact.tags[0];
+  if (tag) return `${name}:${safe(tag)}`;
+  if (artifact.digest)
+    return `${name}@${safe(artifact.digest)
+      .replace(/^sha256:/, "")
+      .slice(0, 12)}`;
+  return name;
+}
+
+/**
+ * Resolve `--account` against the accounts that report vulnerabilities: an
+ * exact id, else a case-insensitive name (exact, then a unique prefix). Null
+ * when nothing matches, so the command can say so rather than print an empty
+ * table that looks like a clean bill of health.
+ */
+export function matchVulnAccount(
+  sources: readonly { accountId: string; accountName: string }[],
+  wanted: string,
+): string | null {
+  const byId = sources.find((s) => s.accountId === wanted);
+  if (byId) return byId.accountId;
+  const lower = wanted.toLowerCase();
+  const exact = sources.filter((s) => s.accountName.toLowerCase() === lower);
+  if (exact.length >= 1) return exact[0]!.accountId;
+  const prefix = sources.filter((s) => s.accountName.toLowerCase().startsWith(lower));
+  return prefix.length === 1 ? prefix[0]!.accountId : null;
+}
+
+/** How long ago an ISO time was, coarsely: `just now`, `5m ago`, `3h ago`, `2d ago`. */
+export function formatAgo(iso: string, now: number = Date.now()): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const minutes = Math.max(0, Math.floor((now - ms) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * The CISA KEV catalog's freshness for the header. The poller mirrors it
+ * daily, so older than three days means the mirror has stopped and the KEV
+ * markers may be missing recent additions.
+ */
+export function formatKevFreshness(kevUpdatedAt: string | null, now: number = Date.now()): string {
+  if (!kevUpdatedAt) return c.yellow("CISA KEV catalog not fetched yet; no KEV markers");
+  const ms = Date.parse(kevUpdatedAt);
+  const text = `CISA KEV catalog updated ${formatAgo(kevUpdatedAt, now)}`;
+  return !Number.isNaN(ms) && now - ms > 3 * 86_400_000 ? c.yellow(`${text} (stale)`) : c.dim(text);
+}

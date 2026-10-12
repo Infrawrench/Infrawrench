@@ -9,6 +9,16 @@ export const CloudRunServiceResourceType = rt({
     f("region", "Region"),
     f("latestRevision", "Latest Revision", { required: false }),
     f("state", "State", { required: false }),
+    f("image", "Container Image", {
+      required: false,
+      editable: false,
+      description: "Image of the service's main container, as deployed (tag or digest)",
+    }),
+    f("containerImages", "Container Images", {
+      required: false,
+      editable: false,
+      description: "Every container image in the revision template, sidecars included",
+    }),
     f("ingress", "Ingress", { required: false }),
     f("serviceAccount", "Service Account", {
       required: false,
@@ -35,6 +45,10 @@ export const CloudRunServiceResourceType = rt({
   dependsOn: [
     { fieldKey: "serviceAccount", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
+  // Matched against Artifact Analysis (and other registries') findings. The
+  // service list carries no resolved digest (that lives on the revision's
+  // containerStatuses), so a tag-deployed service joins by repository + tag.
+  runningImages: { imageKeys: ["containerImages", "image"] },
   supportsCreate: true,
   supportsMetrics: true,
 });

@@ -18,6 +18,10 @@ export const AppServiceResourceType = rt({
       description: "Subnet the app is regional-VNet-integrated with",
     }),
     f("containerRegistry", "Container Registry", { required: false }),
+    f("containerImage", "Container Image", {
+      required: false,
+      description: "Image a custom-container app runs, from its DOCKER| Linux FX version",
+    }),
     f("managedIdentities", "Managed Identities", { required: false }),
   ],
   outputs: [o("defaultHostName", "Default Hostname"), o("outboundIpAddresses", "Outbound IPs")],
@@ -68,6 +72,9 @@ export const AppServiceResourceType = rt({
     runningValues: ["Running"],
     stoppedValues: ["Stopped"],
   },
+  // Vulnerability join for custom-container sites; built-in stacks leave
+  // `containerImage` empty and simply match nothing.
+  runningImages: { imageKeys: ["containerImage"], runningKey: "state", runningValues: ["Running"] },
   supportsCreate: true,
   supportsMetrics: true,
 });

@@ -73,6 +73,9 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
   if (!res.ok) {
     throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
   }
+  // 204 No Content (the dismissal DELETEs answer with it): there is nothing to
+  // parse, and treating the empty body as malformed fails a request that worked.
+  if (res.status === 204) return undefined as T;
 
   try {
     return JSON.parse(body) as T;

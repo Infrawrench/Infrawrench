@@ -71,8 +71,9 @@ To paste a token instead, fill in three fields:
 | Actions caches         | Organization: Administration (read); Repository: Actions (write to delete)  |
 | Codespaces             | Organization: Organization codespaces (write to stop and delete)            |
 | Secret scanning alerts | Repository: Secret scanning alerts (write to close alerts after a rotation) |
+| Dependabot alerts      | Repository: Dependabot alerts (read)                                        |
 
-A classic token works too, with `admin:org`, `manage_billing:copilot`, `repo` and `codespace`.
+A classic token works too, with `admin:org`, `manage_billing:copilot`, `repo` and `codespace` (plus `security_events` for Dependabot alerts).
 
 **For an enterprise**, use a classic token: fine-grained tokens cannot reach enterprise endpoints. It needs `manage_billing:enterprise` (billing, budgets, cost centres), `manage_billing:copilot` or `read:enterprise` (Copilot seats and metrics), and `manage_runners:enterprise` (larger runners).
 
@@ -105,6 +106,20 @@ An organization account also reads the organization's [secret scanning](https://
 - **Exact matches.** GitHub returns the secret with each alert. Infrawrench fingerprints it in memory with a key specific to your organization and discards it, so a match means the stored value is byte for byte the leaked one. The secret itself is never stored.
 - **Enterprise accounts** have no organization-wide alert list in GitHub's API, so they scan nothing. Connect each organization as its own account.
 - GitHub's own tokens are declared too: a leaked personal access token is attributed to the GitHub account that signs in with it.
+
+## Vulnerability findings
+
+GitHub accounts report **open Dependabot alerts**: known advisories in the dependencies of every repository the owner has, read from one owner-wide list (`/orgs/{org}/dependabot/alerts`, or `/enterprises/{enterprise}/dependabot/alerts` for an enterprise). Each finding carries the advisory (the CVE when GitHub has one, otherwise the GHSA id, with the other as an alias), GitHub's severity and CVSS score and vector, the package and its ecosystem, the first patched version, and a link to the alert. Dismissed, fixed and auto-dismissed alerts, and withdrawn advisories, are left out.
+
+What it needs, on top of the billing permissions:
+
+- The token's user must be an **organization owner or security manager**. For an enterprise, alerts come only from the organizations where the user is one of those.
+- A fine-grained token needs the repository permission **Dependabot alerts (read)** on all repositories. A classic token needs `security_events` (for an enterprise, `security_events` or `repo`).
+- Dependabot alerts must be turned on for the repositories (organization **Settings**, **Advanced Security**). Repositories without them simply have no alerts.
+
+If the token is refused, the account shows that as a permission gap with the steps above rather than as zero vulnerabilities.
+
+Findings are about a **repository** (`owner/name`), not a running workload, so they appear in the vulnerability inventory without joining to pods or functions. GitHub does not report which version is installed, only the vulnerable range, so that column stays empty. Up to 5,000 open alerts are read per account.
 
 ## Tips & limits
 

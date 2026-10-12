@@ -15,6 +15,11 @@ export const JobResourceType = rt({
       required: false,
       description: "The CronJob that scheduled this Job, from its owner reference",
     }),
+    f("images", "Images", {
+      required: false,
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
+    }),
   ],
   outputs: [],
   dependsOn: [
@@ -37,4 +42,9 @@ export const JobResourceType = rt({
   ],
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
+  runningImages: {
+    imageKeys: ["images", "image"],
+    runningKey: "status",
+    runningValues: ["Running"],
+  },
 });

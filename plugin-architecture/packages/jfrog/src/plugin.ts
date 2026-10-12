@@ -42,6 +42,16 @@ const manifest: PluginManifest = {
   ],
   preflight: JFROG_PREFLIGHT,
   statusFeed,
+  // Xray's artifact summary for the most recent artifacts of each repository
+  // with Xray indexing on. Needs Read on those repositories and an Xray
+  // subscription; `partial` because repositories and artifacts per repository
+  // are bounded. See `vulnerabilities.ts`.
+  vulnerabilities: {
+    label: "JFrog Xray",
+    consoleUrl: "https://docs.jfrog.com/security/docs/index-xray-resources",
+    requiresElevatedCredential: true,
+    partial: true,
+  },
   // JFrog Cloud throttles per instance; stay gentle.
   rateLimit: { capacity: 10, refillPerSecond: 5 },
 };

@@ -1152,6 +1152,21 @@ type PostureAlertSettings struct {
 	LastNotifiedAt *string `json:"lastNotifiedAt"`
 }
 
+// VulnerabilityAlertSettingsUpdate is the PUT body for vulnerability alerts.
+type VulnerabilityAlertSettingsUpdate struct {
+	AlertsEnabled *bool   `json:"alertsEnabled,omitempty"`
+	MinSeverity   *string `json:"minSeverity,omitempty"`
+	RunningOnly   *bool   `json:"runningOnly,omitempty"`
+}
+
+// VulnerabilityAlertSettings is the org singleton for vulnerability alerts.
+type VulnerabilityAlertSettings struct {
+	AlertsEnabled  bool    `json:"alertsEnabled"`
+	MinSeverity    string  `json:"minSeverity"`
+	RunningOnly    bool    `json:"runningOnly"`
+	LastNotifiedAt *string `json:"lastNotifiedAt"`
+}
+
 // SessionRecordingSettingsUpdate is the PUT body.
 type SessionRecordingSettingsUpdate struct {
 	Enabled       *bool  `json:"enabled,omitempty"`

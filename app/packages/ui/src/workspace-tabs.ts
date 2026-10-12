@@ -53,6 +53,15 @@ export function postureTabTarget(): WorkspaceTabTarget {
 }
 
 /**
+ * Vulnerabilities: what the providers' own scanners found, joined to the
+ * resources running the affected image. Single-instance like Posture; the
+ * filters are controls on the page, not part of the tab's identity.
+ */
+export function vulnerabilitiesTabTarget(): WorkspaceTabTarget {
+  return { kind: "vulnerabilities" };
+}
+
+/**
  * The cross-cloud access review: the principals inside the customer's clouds.
  * A single-instance tab like Posture: the staleness window is a control on the
  * page, not part of the tab's identity.

@@ -52,6 +52,7 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   orgExpirySettings: { organizationId: "organizationId" },
   orgQuotaSettings: { organizationId: "organizationId" },
   orgPostureSettings: { organizationId: "organizationId" },
+  orgVulnerabilitySettings: { organizationId: "organizationId" },
   orgExtendedSupportSettings: { organizationId: "organizationId" },
   accounts: { id: "id", organizationId: "organizationId" },
 }));
@@ -97,6 +98,12 @@ vi.mock("@infrawrench/server-core/credits/feed", () => ({
 const runFxRateFeedPass = vi.fn(async () => ({ claimed: false }));
 vi.mock("@infrawrench/server-core/cost/fx-feed-pass", () => ({
   runFxRateFeedPass: () => runFxRateFeedPass(),
+}));
+
+// The KEV pass fetches CISA's feed over the network; never from a unit test.
+vi.mock("@infrawrench/server-core/vulnerabilities/kev", () => ({
+  KEV_REFRESH_INTERVAL_MS: 12 * 60 * 60 * 1000,
+  runKevFeedPass: () => Promise.resolve(),
 }));
 
 // Mocked like the workflow runner: the real pass pulls in the ClickHouse

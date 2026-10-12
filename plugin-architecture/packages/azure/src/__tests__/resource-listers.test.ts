@@ -773,3 +773,83 @@ describe("listContainerInstances", () => {
     expect(out[0]!.resolvedOutputs["ipAddress"]).toBe("1.2.3.4");
   });
 });
+
+describe("running image fields (vulnerability join)", () => {
+  it("container apps and jobs list every template image, init containers included", async () => {
+    const template = {
+      containers: [{ image: "contoso.azurecr.io/api:1.4" }, { image: "docker.io/library/redis:7" }],
+      initContainers: [{ image: "contoso.azurecr.io/migrate@sha256:abc" }],
+    };
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.App/containerApps/api",
+          name: "api",
+          properties: { runningStatus: "Running", template },
+        },
+      ],
+    }));
+    const expected =
+      "contoso.azurecr.io/api:1.4, docker.io/library/redis:7, contoso.azurecr.io/migrate@sha256:abc";
+    const [app] = await listers.listContainerApps(ctx, ACCT);
+    expect(app!.fields["images"]).toBe(expected);
+    const [job] = await listers.listContainerAppJobs(ctx, ACCT);
+    expect(job!.fields["images"]).toBe(expected);
+  });
+
+  it("container instances list container and init container images", async () => {
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.ContainerInstance/containerGroups/cg",
+          name: "cg",
+          properties: {
+            containers: [{ name: "app", properties: { image: "contoso.azurecr.io/app:2" } }],
+            initContainers: [{ name: "init", properties: { image: "busybox:1.36" } }],
+          },
+        },
+      ],
+    }));
+    const [cg] = await listers.listContainerInstances(ctx, ACCT);
+    expect(cg!.fields["images"]).toBe("contoso.azurecr.io/app:2, busybox:1.36");
+  });
+
+  it("sites expose the DOCKER| image only, from siteConfig or siteProperties", async () => {
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.Web/sites/web",
+          name: "web",
+          kind: "app,linux,container",
+          properties: { siteConfig: { linuxFxVersion: "DOCKER|contoso.azurecr.io/web:3" } },
+        },
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.Web/sites/web2",
+          name: "web2",
+          kind: "app,linux,container",
+          properties: {
+            siteConfig: null,
+            siteProperties: {
+              properties: [
+                { name: "LinuxFxVersion", value: "DOCKER|nginx:1.27" },
+                { name: "WindowsFxVersion", value: null },
+              ],
+            },
+          },
+        },
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg/providers/Microsoft.Web/sites/node",
+          name: "node",
+          kind: "app,linux",
+          properties: { siteConfig: { linuxFxVersion: "NODE|20-lts" } },
+        },
+      ],
+    }));
+    const out = await listers.listAppServices(ctx, ACCT);
+    expect(out.map((s) => s.fields["containerImage"])).toEqual([
+      "contoso.azurecr.io/web:3",
+      "nginx:1.27",
+      "",
+    ]);
+  });
+});

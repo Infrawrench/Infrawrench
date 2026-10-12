@@ -2,6 +2,7 @@ import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
 import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
+import type { RunningImageDeclaration } from "./vulnerabilities.js";
 import type { ExtendedSupportDeclaration } from "./extended-support.js";
 
 export type { AssociationSource };
@@ -1123,6 +1124,14 @@ export interface ResourceTypeDefinition {
    * stores for you.
    */
   principalRole?: PrincipalRoleDeclaration;
+  /**
+   * Marks this type as one whose instances run container images and names the
+   * already-synced fields holding the references, so the host can join
+   * vulnerability findings to what is running; see
+   * {@link RunningImageDeclaration}. Absent = instances never count as running
+   * an image.
+   */
+  runningImages?: RunningImageDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

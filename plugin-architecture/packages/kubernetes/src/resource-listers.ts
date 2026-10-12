@@ -243,6 +243,29 @@ export async function listNodes(
   });
 }
 
+/**
+ * Every image a pod spec runs (init containers and sidecars included),
+ * comma-joined. The single `image` field only names the first container,
+ * which is enough for a label and not enough for "is this CVE running":
+ * the vulnerable image is as often the sidecar as the app.
+ */
+export function podSpecImages(spec: K8sPodSpec | undefined): string {
+  if (!spec) return "";
+  const all = [...(spec.initContainers ?? []), ...(spec.containers ?? [])]
+    .map((c) => c.image)
+    .filter((i): i is string => !!i);
+  return [...new Set(all)].join(", ");
+}
+
+/** Resolved digests (`imageID`) of every container in a pod, comma-joined. */
+export function podImageDigests(status: K8sPod["status"] | undefined): string {
+  if (!status) return "";
+  const all = [...(status.initContainerStatuses ?? []), ...(status.containerStatuses ?? [])]
+    .map((c) => (c.imageID ?? "").replace(/^[a-z-]+:\/\//, ""))
+    .filter((i) => i.includes("sha256:"));
+  return [...new Set(all)].join(", ");
+}
+
 export async function listPods(
   ctx: ListerContext,
   accountId: string,
@@ -308,6 +331,8 @@ export async function listPods(
         name: pod.metadata.name,
         namespace: pod.metadata.namespace ?? "default",
         image: container?.image ?? "",
+        images: podSpecImages(pod.spec),
+        imageDigests: podImageDigests(pod.status),
         status: phase,
         statusReason,
         containerName: container?.name ?? pod.metadata.name,
@@ -352,6 +377,7 @@ export async function listDeployments(
           replicas: d.spec.replicas ?? 0,
           readyReplicas: d.status.readyReplicas ?? 0,
           image: container?.image ?? "",
+          images: podSpecImages(d.spec.template.spec),
           serviceAccountName: d.spec.template.spec.serviceAccountName ?? "",
           ...resourceFields(d.spec.template.spec),
         },
@@ -435,6 +461,7 @@ export async function listStatefulSets(
           replicas: s.spec.replicas ?? 0,
           readyReplicas: s.status.readyReplicas ?? 0,
           image: container?.image ?? "",
+          images: podSpecImages(s.spec.template.spec),
           serviceAccountName: s.spec.template.spec.serviceAccountName ?? "",
           ...resourceFields(s.spec.template.spec),
         },
@@ -470,6 +497,7 @@ export async function listDaemonSets(
           desiredNumberScheduled: d.status.desiredNumberScheduled,
           numberReady: d.status.numberReady,
           image: container?.image ?? "",
+          images: podSpecImages(d.spec.template.spec),
           ...resourceFields(d.spec.template.spec),
         },
         resolvedOutputs: {},
@@ -514,6 +542,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
           completions: `${succeeded}/${completions}`,
           status,
           image: container?.image ?? "",
+          images: podSpecImages(j.spec.template.spec),
           cronJob,
         },
         resolvedOutputs: {},

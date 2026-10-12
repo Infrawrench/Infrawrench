@@ -7,6 +7,7 @@ import {
   propsOf,
   refId,
   registryHost,
+  siteContainerImage,
   subnetRef,
   userAssignedIdentityNames,
   type ListerContext,
@@ -300,6 +301,7 @@ export async function listFunctionApps(
         httpsOnly: (props?.["httpsOnly"] as boolean) ?? false,
         subnetRef: subnetRef(String(props?.["virtualNetworkSubnetId"] ?? "")),
         containerRegistry: registryHost(String(siteConfig?.["linuxFxVersion"] ?? "")),
+        containerImage: siteContainerImage(fa),
         managedIdentities: joinRefs(userAssignedIdentityNames(fa)),
       },
       resolvedOutputs: {
@@ -350,6 +352,7 @@ export async function listAppServices(
         linuxFxVersion: String(siteConfig?.["linuxFxVersion"] ?? ""),
         subnetRef: subnetRef(String(props?.["virtualNetworkSubnetId"] ?? "")),
         containerRegistry: registryHost(String(siteConfig?.["linuxFxVersion"] ?? "")),
+        containerImage: siteContainerImage(app),
         managedIdentities: joinRefs(userAssignedIdentityNames(app)),
       },
       resolvedOutputs: {
@@ -461,6 +464,14 @@ export async function listContainerInstances(
         ]),
         subnetRefs: joinRefs(
           (subnetIds ?? []).map((subnet) => subnetRef(String(subnet["id"] ?? ""))),
+        ),
+        // Every image the group runs, init containers included; the list
+        // response carries them, so this costs no extra request.
+        images: joinRefs(
+          [
+            ...(containers ?? []),
+            ...((props?.["initContainers"] as Array<Record<string, unknown>> | undefined) ?? []),
+          ].map((container) => String(propsOf(container)?.["image"] ?? "")),
         ),
       },
       resolvedOutputs: {

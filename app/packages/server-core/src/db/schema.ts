@@ -5283,6 +5283,7 @@ export * from "./commitment-schema.js";
 export * from "./network-flow-schema.js";
 export * from "./ai-attribution-schema.js";
 export * from "./quota-schema.js";
+export * from "./vulnerability-schema.js";
 export * from "./incident-schema.js";
 export * from "./backup-schema.js";
 export * from "./iac-schema.js";

@@ -281,6 +281,12 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({ to: "/posture" });
   });
 
+  it("returns vulnerabilities route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "vulnerabilities" })).toEqual({
+      to: "/vulnerabilities",
+    });
+  });
+
   it("returns access review route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "access-review" })).toEqual({ to: "/access-review" });
   });
@@ -408,6 +414,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the posture path", () => {
     expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the vulnerabilities path", () => {
+    expect(syncWorkspaceRouteFromPath("/vulnerabilities")).toEqual({ kind: "vulnerabilities" });
   });
 
   it("parses the access review path", () => {

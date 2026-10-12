@@ -23,6 +23,9 @@ import type {
   ExpiryListResponse,
   PostureListResponse,
   LeakedCredentialsClient,
+  VulnerabilityListResponse,
+  VulnerabilitySettings,
+  VulnerabilitySettingsPatch,
   Runbook,
   RunbookInput,
   RunbookRun,
@@ -142,6 +145,47 @@ export async function restoreCloudPostureFinding(
   ruleId: string,
 ): Promise<void> {
   await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
+/**
+ * The org's vulnerability feed: scanner findings joined server-side to the
+ * resources running them. Cloud only; collection needs the poller.
+ */
+export async function fetchCloudVulnerabilities(orgId: string): Promise<VulnerabilityListResponse> {
+  return invoke("cloud_vulnerabilities", { orgId });
+}
+
+/** Accept an advisory for one artifact (`artifactKey`) or everywhere (`"*"`). */
+export async function dismissCloudVulnerability(
+  orgId: string,
+  advisoryId: string,
+  artifactKey: string,
+  reason: string,
+): Promise<void> {
+  await invoke("cloud_vulnerabilities_dismiss", { orgId, advisoryId, artifactKey, reason });
+}
+
+/** Undo a vulnerability dismissal. */
+export async function restoreCloudVulnerability(
+  orgId: string,
+  advisoryId: string,
+  artifactKey: string,
+): Promise<void> {
+  await invoke("cloud_vulnerabilities_restore", { orgId, advisoryId, artifactKey });
+}
+
+/** The org's vulnerability alert settings (server requires `org:settings:write`). */
+export async function fetchCloudVulnerabilitySettings(
+  orgId: string,
+): Promise<VulnerabilitySettings> {
+  return invoke("cloud_vulnerability_settings_get", { orgId });
+}
+
+export async function updateCloudVulnerabilitySettings(
+  orgId: string,
+  patch: VulnerabilitySettingsPatch,
+): Promise<VulnerabilitySettings> {
+  return invoke("cloud_vulnerability_settings_update", { orgId, patch });
 }
 
 /**

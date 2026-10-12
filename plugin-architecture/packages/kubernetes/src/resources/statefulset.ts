@@ -14,6 +14,11 @@ export const StatefulSetResourceType = rt({
       required: false,
       description: "The ServiceAccount the pod template runs as, when it names one",
     }),
+    f("images", "Images", {
+      required: false,
+      description:
+        "Every container image the pod template runs, init containers and sidecars included",
+    }),
   ],
   outputs: [],
   dependsOn: [
@@ -28,4 +33,5 @@ export const StatefulSetResourceType = rt({
   parentTypeId: "k8s-namespace",
   supportsCreate: true,
   supportsMetrics: true,
+  runningImages: { imageKeys: ["images", "image"] },
 });

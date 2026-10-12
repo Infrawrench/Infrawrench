@@ -146,7 +146,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   }
 
   // Agents, Costs, Cost reports, Invoices, Graph, Logs, Changes, Expiring,
-  // Posture, Access review, Domains, Env diff, Fan-out, Alerts, Workflows, and
+  // Posture, Vulnerabilities, Access review, Domains, Env diff, Fan-out, Alerts, Workflows, and
   // Chat tabs
   // aren't backed by a single
   // resource row; keep them as-is.
@@ -162,6 +162,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "changes" ||
     target.kind === "expiring" ||
     target.kind === "posture" ||
+    target.kind === "vulnerabilities" ||
     target.kind === "access-review" ||
     target.kind === "jit-access" ||
     target.kind === "backups" ||
