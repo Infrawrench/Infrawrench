@@ -73,6 +73,7 @@ import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing
 import { cmdExpiring } from "./commands/expiring";
 import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
 import { cmdVulns, cmdVulnsDismiss, cmdVulnsRestore, cmdVulnsSources } from "./commands/vulns";
+import { cmdCompliance, cmdComplianceExport, cmdComplianceFrameworks } from "./commands/compliance";
 import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
 import { cmdDiff } from "./commands/diff";
@@ -298,6 +299,12 @@ COMMANDS
                       <advisoryId> <artifactKey|"*"> [--reason <text>]   (keys from vulns --json)
   vulns restore       put a dismissed vulnerability back   <advisoryId> <artifactKey|"*">
   vulns sources       scanner accounts, when each last collected, errors and help links
+  compliance [status] controls of a compliance framework with evidence, gaps & owners, plus the
+                      evidence sources behind them   [--framework soc2|iso27001] [--gaps]
+                      [--from YYYY-MM-DD] [--to YYYY-MM-DD]  (default: last 90 days; cloud only)
+  compliance export   save the auditor's evidence pack as a ZIP   [--framework ...] [--from] [--to]
+                      [--out <path>]  (default file: <framework>-evidence-<from>-to-<to>.zip)
+  compliance frameworks   the frameworks Infrawrench can report on
   dns                 every DNS zone & record across your providers, with dangling targets
                       (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
@@ -399,6 +406,8 @@ FLAGS
   --kev               vulns: only advisories in the CISA Known Exploited Vulnerabilities catalog
   --search <text>     vulns: substring over advisory, aliases, package, artifact & title
   --include-dismissed vulns: also list the findings dismissed as accepted risks
+  --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
+  --gaps              compliance: only controls without evidence, with the reasons why
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
                       costs push: json (default), csv or focus
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
@@ -440,7 +449,8 @@ FLAGS
   --replace/--append  costs push into a custom source: what to do when the dates overlap an
                       earlier upload (required then)
   --out <path>        config export / export --format focus: write here instead of stdout;
-                      reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here)
+                      reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here);
+                      compliance export: the ZIP's path
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
@@ -967,6 +977,19 @@ export async function runCli(): Promise<void> {
         } else {
           throw new CliError(
             `Unknown "${rest[0]}". \`vulns\` takes list, dismiss, restore or sources.`,
+            2,
+          );
+        }
+        break;
+      case "compliance":
+        if (rest[0] === "export") {
+          await cmdComplianceExport(ctx, parsed.compliance, parsed.range, parsed.config);
+        } else if (rest[0] === "frameworks") await cmdComplianceFrameworks(ctx);
+        else if (rest[0] === undefined || rest[0] === "status") {
+          await cmdCompliance(ctx, parsed.compliance, parsed.range);
+        } else {
+          throw new CliError(
+            `Unknown "${rest[0]}". \`compliance\` takes status, export or frameworks.`,
             2,
           );
         }
