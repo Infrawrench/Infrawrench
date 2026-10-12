@@ -1,20 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TtlCache } from "../cache";
 import { escapeMarkdown, commandLink } from "../markdown";
-import { githubRepoFromRemote, parseOrgIdInput } from "../org-input";
-
-describe("parseOrgIdInput", () => {
-  it("takes an id or any web URL inside the org", () => {
-    expect(parseOrgIdInput("8f2c1a9e-1111-2222-3333-444455556666")).toBe(
-      "8f2c1a9e-1111-2222-3333-444455556666",
-    );
-    expect(parseOrgIdInput("https://app.infrawrench.com/org/abc123/settings/api-keys")).toBe(
-      "abc123",
-    );
-    expect(parseOrgIdInput("  ")).toBeNull();
-    expect(parseOrgIdInput("not an id!")).toBeNull();
-  });
-});
+import { githubRepoFromRemote } from "../org-input";
 
 describe("githubRepoFromRemote", () => {
   it("reads https and ssh remotes", () => {

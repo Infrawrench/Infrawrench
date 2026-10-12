@@ -1,0 +1,120 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "@infrawrench/raycast",
+  "title": "Infrawrench",
+  "description": "Search your Infrawrench resources and services, see cost and status, check who is on call, and declare incidents.",
+  "icon": "icon.png",
+  "author": "infrawrench",
+  "license": "BUSL-1.1",
+  "private": true,
+  "version": "0.1.0",
+  "platforms": [
+    "macOS",
+    "Windows"
+  ],
+  "categories": [
+    "Developer Tools",
+    "Productivity"
+  ],
+  "keywords": [
+    "infrastructure",
+    "cloud",
+    "terraform",
+    "on-call",
+    "incident"
+  ],
+  "commands": [
+    {
+      "name": "search-resources",
+      "title": "Search Resources",
+      "subtitle": "Infrawrench",
+      "description": "Search resources and services across every connected account, with cost, status and owning service.",
+      "mode": "view"
+    },
+    {
+      "name": "on-call",
+      "title": "Who Is On Call",
+      "subtitle": "Infrawrench",
+      "description": "Who is on call right now, per rotation, and who is next.",
+      "mode": "view"
+    },
+    {
+      "name": "incidents",
+      "title": "Open Incidents",
+      "subtitle": "Infrawrench",
+      "description": "Open and mitigated incidents, worst first.",
+      "mode": "view"
+    },
+    {
+      "name": "declare-incident",
+      "title": "Declare Incident",
+      "subtitle": "Infrawrench",
+      "description": "Declare an incident, after a confirmation.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "apiKey",
+      "title": "API Key",
+      "description": "An iwk_ key from Settings > API keys in Infrawrench.",
+      "type": "password",
+      "required": true,
+      "placeholder": "iwk_…"
+    },
+    {
+      "name": "organization",
+      "title": "Organization",
+      "description": "Any Infrawrench address from inside the organization (for example the API keys page), or its id.",
+      "type": "textfield",
+      "required": true,
+      "placeholder": "https://app.infrawrench.com/org/…"
+    },
+    {
+      "name": "cloudUrl",
+      "title": "Infrawrench URL",
+      "description": "Your Infrawrench origin. Change only for a self-hosted Infrawrench.",
+      "type": "textfield",
+      "required": false,
+      "default": "https://app.infrawrench.com"
+    },
+    {
+      "name": "openIn",
+      "title": "Open In",
+      "description": "Where the primary Open action goes.",
+      "type": "dropdown",
+      "required": false,
+      "default": "web",
+      "data": [
+        {
+          "title": "Web app",
+          "value": "web"
+        },
+        {
+          "title": "Desktop app",
+          "value": "desktop"
+        }
+      ]
+    }
+  ],
+  "scripts": {
+    "build": "ray build -e dist -o dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "publish": "npx @raycast/api@latest publish"
+  },
+  "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
+    "@raycast/api": "^2.7.3",
+    "@raycast/utils": "^2.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "react": "19.0.0",
+    "typescript": "workspace:@infrawrench/typescript@*",
+    "vitest": "^4.1.10"
+  }
+}

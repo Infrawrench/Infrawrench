@@ -6,13 +6,13 @@ import {
   TokenManager,
   createCloudFetch,
   fetchOrgs,
+  parseOrgIdInput,
   staticAccessToken,
   type AccessTokenSource,
   type CloudFetch,
   type TokenStorage,
 } from "@infrawrench/client-core";
 import { readConfig } from "./config";
-import { parseOrgIdInput } from "./org-input";
 
 /**
  * Who the extension talks to the cloud as, and in which org.
