@@ -12,6 +12,38 @@
 import { isServiceTier, type ServiceRef } from "@infrawrench/client-core";
 import { listServiceRecords, resolveServiceMembers } from "./store";
 
+/** Every member resource id → its services, for one org. */
+type OrgIndex = Map<string, ServiceRef[]>;
+
+/**
+ * Per-isolate cache of the org index, for callers that ask once per alert.
+ * A cache, never coordination (the edge stance on in-memory maps): a stale
+ * entry only means an alert names a service membership up to `cacheMs` old.
+ */
+const indexCache = new Map<string, { at: number; index: OrgIndex }>();
+const INDEX_CACHE_MAX_ORGS = 200;
+
+async function buildOrgIndex(organizationId: string): Promise<OrgIndex> {
+  const index: OrgIndex = new Map();
+  const rows = await listServiceRecords(organizationId);
+  if (rows.length === 0) return index;
+  const membership = await resolveServiceMembers(organizationId, rows);
+  for (const row of rows) {
+    const ref: ServiceRef = {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      tier: isServiceTier(row.tier) ? row.tier : null,
+    };
+    for (const member of membership.get(row.id)?.members ?? []) {
+      const list = index.get(member.resourceId) ?? [];
+      list.push(ref);
+      index.set(member.resourceId, list);
+    }
+  }
+  return index;
+}
+
 /**
  * Services each resource belongs to, keyed by Infrawrench resource id.
  *
@@ -21,32 +53,30 @@ import { listServiceRecords, resolveServiceMembers } from "./store";
  * logs and returns an empty map.
  *
  * Cost: one inventory read for the org when any service has rules. An org
- * with no services answers from a single indexed query.
+ * with no services answers from a single indexed query. `cacheMs` lets a hot
+ * caller (the alert router) reuse a recent index instead.
  */
 export async function getServicesForResources(
   organizationId: string,
   resourceIds: readonly string[],
+  opts: { cacheMs?: number } = {},
 ): Promise<Map<string, ServiceRef[]>> {
   const out = new Map<string, ServiceRef[]>();
   const wanted = new Set(resourceIds.filter(Boolean));
   if (wanted.size === 0) return out;
   try {
-    const rows = await listServiceRecords(organizationId);
-    if (rows.length === 0) return out;
-    const membership = await resolveServiceMembers(organizationId, rows);
-    for (const row of rows) {
-      const ref: ServiceRef = {
-        id: row.id,
-        name: row.name,
-        slug: row.slug,
-        tier: isServiceTier(row.tier) ? row.tier : null,
-      };
-      for (const member of membership.get(row.id)?.members ?? []) {
-        if (!wanted.has(member.resourceId)) continue;
-        const list = out.get(member.resourceId) ?? [];
-        list.push(ref);
-        out.set(member.resourceId, list);
-      }
+    let index: OrgIndex;
+    const cached = indexCache.get(organizationId);
+    if (opts.cacheMs && cached && Date.now() - cached.at < opts.cacheMs) {
+      index = cached.index;
+    } else {
+      index = await buildOrgIndex(organizationId);
+      if (indexCache.size >= INDEX_CACHE_MAX_ORGS) indexCache.clear();
+      indexCache.set(organizationId, { at: Date.now(), index });
+    }
+    for (const id of wanted) {
+      const refs = index.get(id);
+      if (refs) out.set(id, refs);
     }
   } catch (err) {
     console.error(`[services] lookup for org ${organizationId} failed:`, err);
@@ -58,8 +88,9 @@ export async function getServicesForResources(
 export async function getServicesForResource(
   organizationId: string,
   resourceId: string,
+  opts: { cacheMs?: number } = {},
 ): Promise<ServiceRef[]> {
-  return (await getServicesForResources(organizationId, [resourceId])).get(resourceId) ?? [];
+  return (await getServicesForResources(organizationId, [resourceId], opts)).get(resourceId) ?? [];
 }
 
 /**

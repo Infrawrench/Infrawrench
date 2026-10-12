@@ -668,7 +668,12 @@ async function withServiceContext(event: AlertEvent): Promise<AlertEvent> {
   try {
     const { getServicesForResource, serviceContextLine } =
       await import("../service-catalog/lookup");
-    const line = serviceContextLine(await getServicesForResource(event.organizationId, resourceId));
+    // A minute-old index is fine for a body line, and a burst of alerts
+    // across one org's resources must not rebuild it per alert.
+    const refs = await getServicesForResource(event.organizationId, resourceId, {
+      cacheMs: 60_000,
+    });
+    const line = serviceContextLine(refs);
     if (!line || event.body.includes(line)) return event;
     return { ...event, body: `${event.body}\n${line}` };
   } catch (err) {
