@@ -40,6 +40,7 @@ import {
   costCanvasesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  servicesTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
 } from "@/lib/workspace-tabs";
@@ -80,6 +81,7 @@ import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebSlosPanel } from "./WebSlosPanel";
+import { WebServicesPanel } from "./WebServicesPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
@@ -729,6 +731,26 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // The URL owns which SLO is open, the incidents rule.
           onSelectSlo={(sloId) =>
             void navigate(getWorkspaceNavigateArgs(slosTabTarget(sloId ?? undefined)))
+          }
+        />
+      );
+    case "services":
+      return (
+        <WebServicesPanel
+          key={orgId}
+          orgId={orgId}
+          serviceId={t.serviceId}
+          view={t.view}
+          // The URL owns where the panel is, the SLOs rule.
+          onNavigate={(next) =>
+            void navigate(getWorkspaceNavigateArgs(servicesTabTarget(next.serviceId, next.view)))
+          }
+          onOpenResource={(ref) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+              ),
+            )
           }
         />
       );

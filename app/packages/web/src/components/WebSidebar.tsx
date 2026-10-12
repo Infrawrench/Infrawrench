@@ -54,6 +54,7 @@ import {
   PriceCatalogIcon,
   IncidentsIcon,
   SlosIcon,
+  ServicesIcon,
   EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
@@ -712,6 +713,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 label: gt("SLOs"),
                 icon: <SlosIcon />,
                 onClick: () => void navigate({ to: "/org/$orgId/slos", params: { orgId: orgId! } }),
+              },
+              {
+                key: "services",
+                label: gt("Services"),
+                icon: <ServicesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/services", params: { orgId: orgId! } }),
               },
               {
                 key: "status-pages",
