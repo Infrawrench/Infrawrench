@@ -795,6 +795,38 @@ export type {
 } from "./vulnerabilities/VulnerabilitiesSection.js";
 
 /**
+ * Compliance: evidence mapped to framework controls, per-control decisions,
+ * evidence packs and their schedules. The contract and the status rule live
+ * in `@infrawrench/client-core`; re-exported here because web and desktop
+ * import from `ui`.
+ */
+export {
+  COMPLIANCE_CONTROL_STATUS_LABELS,
+  COMPLIANCE_PACK_CADENCES,
+  EVIDENCE_STATUS_LABELS,
+  complianceQuery,
+  evidencePackFileName,
+  validateComplianceControlSetting,
+} from "@infrawrench/client-core";
+export type {
+  ComplianceControlRow,
+  ComplianceControlSetting,
+  ComplianceControlSettingInput,
+  ComplianceControlStatus,
+  ComplianceFrameworkSummary,
+  CompliancePackCadence,
+  CompliancePackSchedule,
+  CompliancePackScheduleInput,
+  CompliancePeriod,
+  ComplianceStatusResponse,
+  EvidenceSourceResult,
+  EvidenceStatus,
+} from "@infrawrench/client-core";
+export { ComplianceSection } from "./compliance/ComplianceSection.js";
+export type { ComplianceSectionProps } from "./compliance/ComplianceSection.js";
+export type { ComplianceClient } from "./compliance/types.js";
+
+/**
  * Cross-cloud access review: the principals inside the *customer's* clouds,
  * not Infrawrench's own team roles and not the credentials Infrawrench holds.
  * The pure contract lives in `@infrawrench/client-core`; re-exported here
@@ -842,6 +874,7 @@ export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
 export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { VulnerabilitiesIcon } from "./components/icons/VulnerabilitiesIcon.js";
+export { ComplianceIcon } from "./components/icons/ComplianceIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
 
