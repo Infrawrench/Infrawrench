@@ -62,6 +62,16 @@ export function vulnerabilitiesTabTarget(): WorkspaceTabTarget {
 }
 
 /**
+ * Compliance: evidence Infrawrench already collects, mapped to framework
+ * controls. Single-instance like Settings; `framework` is remembered state
+ * (which framework the tab is on), not part of the tab's identity. The
+ * period is a control on the page.
+ */
+export function complianceTabTarget(framework?: string): WorkspaceTabTarget {
+  return { kind: "compliance", ...(framework ? { framework } : {}) };
+}
+
+/**
  * The cross-cloud access review: the principals inside the customer's clouds.
  * A single-instance tab like Posture: the staleness window is a control on the
  * page, not part of the tab's identity.

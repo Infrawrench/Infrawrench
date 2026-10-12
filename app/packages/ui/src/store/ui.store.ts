@@ -17,6 +17,12 @@ export type WorkspaceTabTarget =
   | { kind: "posture" }
   /** Scanner-reported vulnerabilities, joined to what is running. Single-instance. */
   | { kind: "vulnerabilities" }
+  /**
+   * Compliance: evidence mapped to framework controls, plus evidence packs.
+   * Single-instance; `framework` is remembered state (which framework the
+   * tab is on), compared in workspaceTabTargetsEqual like Settings' section.
+   */
+  | { kind: "compliance"; framework?: string }
   | { kind: "access-review" }
   /** Just-in-time access: time-boxed provider roles, requested and approved. */
   | { kind: "jit-access" }
@@ -163,6 +169,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "posture";
     case "vulnerabilities":
       return "vulnerabilities";
+    case "compliance":
+      // Not keyed by framework: one Compliance tab that remembers which
+      // framework it was on.
+      return "compliance";
     case "access-review":
       return "access-review";
     case "jit-access":
@@ -265,6 +275,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Posture";
     case "vulnerabilities":
       return "Vulnerabilities";
+    case "compliance":
+      return "Compliance";
     case "access-review":
       return "Access review";
     case "jit-access":
@@ -396,6 +408,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       const other = b as { a?: string; b?: string };
       return a.a === other.a && a.b === other.b;
     }
+    case "compliance":
+      // The settings trick: one tab by id, but comparing the framework lets
+      // the route sync record which framework the tab is on, so reactivating
+      // it restores that framework rather than the default.
+      return a.framework === (b as { framework?: string }).framework;
     case "settings":
       // Same deployments trick: single tab by id, but comparing the section
       // lets the route sync record which settings page the tab is on.

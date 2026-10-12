@@ -7,6 +7,7 @@ import {
   invoicesTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
+  complianceTabTarget,
   accessReviewTabTarget,
   jitAccessTabTarget,
   backupsTabTarget,
@@ -70,6 +71,11 @@ describe("tab target factories", () => {
 
   it("vulnerabilitiesTabTarget", () => {
     expect(vulnerabilitiesTabTarget()).toEqual({ kind: "vulnerabilities" });
+  });
+
+  it("complianceTabTarget", () => {
+    expect(complianceTabTarget()).toEqual({ kind: "compliance" });
+    expect(complianceTabTarget("iso27001")).toEqual({ kind: "compliance", framework: "iso27001" });
   });
 
   it("accessReviewTabTarget", () => {

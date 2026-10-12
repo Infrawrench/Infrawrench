@@ -1475,3 +1475,65 @@ func (c *Client) UpdatePrCheckRepository(ctx context.Context, id string, in PrCh
 func (c *Client) DeletePrCheckRepository(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/pr-checks/repositories/"+seg(id))
 }
+
+/* -------------------------------- compliance ------------------------------- */
+
+// complianceControlPath builds the per-control route. Control ids carry dots
+// ("CC6.1", "8.8"), and escaping them keeps any future id with a slash or a
+// space addressable too.
+func complianceControlPath(frameworkID, controlID string) string {
+	return "/compliance/controls/" + seg(frameworkID) + "/" + seg(controlID)
+}
+
+// GetComplianceControlSetting reads the stored decision about one control. A
+// control nobody decided about 404s, as does an unknown framework or control.
+func (c *Client) GetComplianceControlSetting(ctx context.Context, frameworkID, controlID string) (*ComplianceControlSetting, error) {
+	var out ComplianceControlSetting
+	if err := c.Get(ctx, complianceControlPath(frameworkID, controlID), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutComplianceControlSetting upserts the decision: a full replace.
+func (c *Client) PutComplianceControlSetting(ctx context.Context, frameworkID, controlID string, in ComplianceControlSettingInput) (*ComplianceControlSetting, error) {
+	var out ComplianceControlSetting
+	if err := c.Put(ctx, complianceControlPath(frameworkID, controlID), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteComplianceControlSetting resets the control to the default
+// (applicable, unowned). 404 when nothing was stored.
+func (c *Client) DeleteComplianceControlSetting(ctx context.Context, frameworkID, controlID string) error {
+	return c.Delete(ctx, complianceControlPath(frameworkID, controlID))
+}
+
+func (c *Client) GetCompliancePackSchedule(ctx context.Context, id string) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Get(ctx, "/compliance/schedules/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCompliancePackSchedule(ctx context.Context, in CompliancePackScheduleInput) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Post(ctx, "/compliance/schedules", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCompliancePackSchedule(ctx context.Context, id string, in CompliancePackScheduleInput) (*CompliancePackSchedule, error) {
+	var out CompliancePackSchedule
+	if err := c.Put(ctx, "/compliance/schedules/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCompliancePackSchedule(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/compliance/schedules/"+seg(id))
+}
