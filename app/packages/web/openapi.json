@@ -45490,6 +45490,211 @@
         ],
         "additionalProperties": false
       },
+      "OrgScorecardGrade": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "F"
+        ]
+      },
+      "OrgScorecardPillarId": {
+        "type": "string",
+        "enum": [
+          "posture",
+          "recoverability",
+          "services",
+          "deadlines",
+          "access",
+          "headroom",
+          "ownership"
+        ],
+        "description": "Which existing feed the org grade pillar reads. Each is a reading of a feed that already exists, so a pillar can never disagree with the page it links to."
+      },
+      "OrgScorecardFact": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "bad": {
+            "type": "boolean",
+            "description": "True when this is the number that hurts."
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "OrgScorecardPillar": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/OrgScorecardPillarId"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Null when the pillar could not be assessed, **never zero**. An unassessed pillar is excluded from the overall rather than counted as failure."
+          },
+          "weight": {
+            "type": "integer",
+            "description": "Relative weight in the overall, fixed: posture 25, recoverability 20, services 15, deadlines 15, access 10, headroom 10, ownership 5. Weights renormalize over the assessed pillars, so gaining one cannot read as a regression."
+          },
+          "headline": {
+            "type": "string",
+            "description": "What the score measures over, in one line."
+          },
+          "unassessedReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no score, phrased so a reader can act on it. Null when scored."
+          },
+          "nextStep": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The single most valuable thing to fix. Null when clean or unassessed."
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgScorecardFact"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "score",
+          "weight",
+          "headline",
+          "unassessedReason",
+          "nextStep",
+          "facts"
+        ],
+        "additionalProperties": false
+      },
+      "OrgScorecardTrendPoint": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "UTC calendar day.",
+            "example": "2026-10-12"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "grade": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrgScorecardGrade"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "pillars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Per-pillar scores that day. A pillar unassessed then is absent, not zero."
+          }
+        },
+        "required": [
+          "day",
+          "score",
+          "grade",
+          "pillars"
+        ],
+        "additionalProperties": false
+      },
+      "OrgScorecard": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Weighted mean over the assessed pillars, or null when none could be assessed: an organization with nothing connected has nothing to grade."
+          },
+          "grade": {
+            "$ref": "#/components/schemas/OrgScorecardGrade"
+          },
+          "pillars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgScorecardPillar"
+            }
+          },
+          "failedPillars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgScorecardPillarId"
+            },
+            "description": "Pillars whose computation failed, as opposed to having no data. Excluded from the overall exactly as unassessed ones are, but named apart."
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgScorecardTrendPoint"
+            },
+            "description": "Stored daily readings for the last 90 days, oldest first."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "score",
+          "grade",
+          "pillars",
+          "failedPillars",
+          "trend",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OrgScorecardHistory": {
+        "type": "object",
+        "properties": {
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgScorecardTrendPoint"
+            }
+          }
+        },
+        "required": [
+          "trend"
+        ],
+        "additionalProperties": false
+      },
       "ScorecardCreate": {
         "type": "object",
         "properties": {
@@ -94367,6 +94572,98 @@
         },
         "operationId": "getOrgOrgIdScorecardsOverview",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/scorecards/org": {
+      "get": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "Grade the organization",
+        "description": "The org grade shown above the scorecard matrix: one weighted reading over seven feeds the product already computes (security posture, backup coverage, the service scorecard results, declared deadlines, the cross-cloud access review, quota headroom and resource ownership). Nothing is re-derived.\n\nAn unassessed pillar is excluded, never scored zero, and weights renormalize over what was assessed. The trend comes from a daily snapshot the poller records; days when nothing could be graded are absent rather than zero. Does not seed the default scorecard.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org grade, its pillars and its history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgScorecard"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecardsOrg"
+      }
+    },
+    "/api/org/{orgId}/scorecards/org/history": {
+      "get": {
+        "tags": [
+          "Scorecards"
+        ],
+        "summary": "List stored org grade readings",
+        "description": "The daily history alone, without computing the grade: the cheap read for a sparkline.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 400,
+              "description": "How far back to read. Defaults to 90; readings are kept for 400 days."
+            },
+            "required": false,
+            "description": "How far back to read. Defaults to 90; readings are kept for 400 days.",
+            "name": "days",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored readings, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgScorecardHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecardsOrgHistory"
       }
     },
     "/api/org/{orgId}/scorecards/{scorecardId}": {

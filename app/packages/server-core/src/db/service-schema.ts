@@ -267,3 +267,41 @@ export const orgScorecardSettings = pgTable("org_scorecard_settings", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * The org grade's daily reading (the header above the scorecard matrix), so
+ * "are we getting better?" has an answer. The grade itself is computed on
+ * read from the feeds it summarises; only the history is stored.
+ *
+ * **`(organization_id, day)` is the primary key, and that uniqueness is the
+ * whole concurrency protocol.** The poller inserts with
+ * `onConflictDoNothing`, so N replicas racing the same day produce one row
+ * with no lock, claim column or settings field, the `budget_alert_events`
+ * once-per-period trick. A day whose grade is null (nothing assessed) writes
+ * no row: a trend line is a claim that something was measured.
+ *
+ * `pillars` is `{pillarId: score}` and omits a pillar unassessed that day
+ * rather than storing a zero, so the history can still tell "we scored
+ * badly" from "we could not look". `grade` is stored rather than derived so a
+ * boundary change cannot rewrite history.
+ */
+export const orgScorecardSnapshots = pgTable(
+  "org_scorecard_snapshots",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** UTC day. */
+    day: date("day", { mode: "string" }).notNull(),
+    /** 0-100 over the pillars assessed that day. */
+    score: integer("score").notNull(),
+    /** "A".."F". */
+    grade: text("grade").notNull(),
+    /** `{pillarId: score}`; a pillar unassessed that day is absent. */
+    pillars: jsonb("pillars").$type<Record<string, number>>().notNull().default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.organizationId, t.day] }),
+  }),
+);

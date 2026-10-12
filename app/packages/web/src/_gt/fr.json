@@ -21785,5 +21785,32 @@
       " jours, personnes qui paient deux outils faisant le même travail, et licences sur un niveau plus cher que leur usage ne le demande."
     ]
   },
-  "95514a6660c65444": "Filtrer par service"
+  "95514a6660c65444": "Filtrer par service",
+  "a504674a0379c418": "La tendance apparaît dès qu'une deuxième mesure quotidienne a été enregistrée.",
+  "57fd2d29470a529e": "Note sur les {count} dernières mesures",
+  "5e582b8919071238": "Posture de sécurité",
+  "d68b903f8e366f4b": "Récupérabilité",
+  "c7ee4622c0d5404d": "Standards de service",
+  "147d89f732ea81c6": "Hygiène des accès",
+  "4bd2e9669b90824f": "Marge",
+  "7e08eecf78404a56": "Constats de posture ouverts, pondérés par gravité, sur vos ressources synchronisées.",
+  "281ef602dc3a1641": "La part des ressources avec état réellement protégées.",
+  "e59cccf9975e9db1": "Le score moyen des services sur les scorecards ci-dessous.",
+  "79743db43371384e": "Certificats, domaines, clés et baux expirés ou sur le point de l'être.",
+  "6c4ce0c696159bcb": "Constats sur les utilisateurs, rôles et comptes de service IAM de vos clouds.",
+  "52a0e71f6bdffc9a": "Le pire quota fournisseur : ce qui bloquera un déploiement en premier.",
+  "5f1c6dc7e73a19f0": "La part des ressources qui portent le nom de quelqu'un.",
+  "8e858f757b96715c": "Étape suivante : {step}",
+  "c2f5efe9c1560678": "Poids {weight}",
+  "80396c0d9b6fc261": "Impossible de charger la note de l'organisation",
+  "a0b27f3d1b18e0ac": "Note de l'organisation",
+  "1ba42e74a3f43ec3": "Une seule mesure sur des contrôles que vous avez déjà : posture, sauvegardes, les scorecards de service ci-dessous, échéances, accès cloud, marge de quotas et propriété. Chaque chiffre est celui qu'affiche sa propre page.",
+  "7bdb86addd169f62": "Impossible d'actualiser la note de l'organisation, affichage de la dernière chargée. {error}",
+  "8b94f5646ed98367": "Lecture de la note de l'organisation…",
+  "d19dce518c2dd2e8": "{count} contrôles n'ont pas pu être lus et sont exclus de la note, sans être comptés contre elle.",
+  "8dea74a8fc939285": "Global",
+  "fca2f72df8fef7e3": "Rien n'a encore pu être évalué. Connectez un compte et laissez-le se synchroniser ; une note avant qu'il y ait quoi que ce soit à noter ne serait qu'une supposition.",
+  "8872c1bb1dbcd3f1": "depuis le {day}",
+  "b623d7676b816425": "Plus gros frein",
+  "fb3a70a74b0292f3": "Un contrôle sans rien à mesurer est exclu de la note au lieu d'être compté comme un échec, et les poids sont répartis sur ce qui a été mesuré : connecter un nouveau fournisseur ne peut donc jamais ressembler à une baisse. Les poids sont fixes : posture 25, récupérabilité 20, standards de service 15, échéances 15, accès 10, marge 10, propriété 5."
 }

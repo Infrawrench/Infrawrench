@@ -14,6 +14,26 @@ export function sparkline(values: number[], width = values.length): string {
   return sampled.map((v) => SPARK_TICKS[Math.min(7, Math.floor(((v - min) / span) * 8))]!).join("");
 }
 
+/**
+ * Sparkline on a fixed range rather than the data's own min and max, for
+ * scores: an auto-scaled axis turns a two-point wobble into a cliff.
+ */
+export function rangedSparkline(
+  values: number[],
+  min: number,
+  max: number,
+  width = values.length,
+): string {
+  if (values.length === 0) return "─".repeat(Math.max(1, width));
+  const span = max - min || 1;
+  return resample(values, width)
+    .map((v) => {
+      const t = Math.max(0, Math.min(1, (v - min) / span));
+      return SPARK_TICKS[Math.min(7, Math.floor(t * 8))]!;
+    })
+    .join("");
+}
+
 /** Average-bucket resample of a series to a fixed number of points. */
 export function resample(values: number[], buckets: number): number[] {
   if (buckets <= 0 || values.length === 0) return [];

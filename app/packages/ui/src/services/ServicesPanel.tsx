@@ -11,6 +11,7 @@ import {
 import { ServiceDetailView, type ServiceResourceRef } from "./ServiceDetail.js";
 import { ServiceEditorModal } from "./ServiceEditorModal.js";
 import { ScorecardsView } from "./ScorecardsView.js";
+import type { OrgScorecardPillarLinks } from "./OrgScorecardHeader.js";
 import {
   ScoreBadge,
   errorMessage,
@@ -38,6 +39,8 @@ export interface ServicesPanelProps {
   onNavigate: (location: ServicesPanelLocation) => void;
   /** Open a member resource in the host's own resource surface. */
   onOpenResource?: ((ref: ServiceResourceRef) => void) | undefined;
+  /** Where the org grade's pillar cards (in the scorecards view) lead. */
+  orgScorecardLinks?: OrgScorecardPillarLinks | undefined;
 }
 
 function ServiceRow({
@@ -349,6 +352,7 @@ export function ServicesPanel({
   view,
   onNavigate,
   onOpenResource,
+  orgScorecardLinks,
 }: ServicesPanelProps) {
   const gt = useGT();
   const [editing, setEditing] = useState<{ existing: Service | null } | null>(null);
@@ -395,7 +399,11 @@ export function ServicesPanel({
           reloadKey={reloadKey}
         />
       ) : showScorecards ? (
-        <ScorecardsView client={client} onOpenService={(id) => onNavigate({ serviceId: id })} />
+        <ScorecardsView
+          client={client}
+          onOpenService={(id) => onNavigate({ serviceId: id })}
+          orgScorecardLinks={orgScorecardLinks}
+        />
       ) : (
         <ServiceList
           key={reloadKey}

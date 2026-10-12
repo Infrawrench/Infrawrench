@@ -342,6 +342,8 @@ const INVOKE_CHANNELS = [
   "cloud_services_virtual_tags",
   "cloud_scorecards_list",
   "cloud_scorecards_overview",
+  "cloud_scorecards_org",
+  "cloud_scorecards_org_history",
   "cloud_scorecards_create",
   "cloud_scorecards_update",
   "cloud_scorecards_delete",

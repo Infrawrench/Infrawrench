@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import {
   SCORECARD_CHECK_TYPES,
@@ -11,6 +11,7 @@ import {
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 import { ScorecardEditorModal } from "./ScorecardEditorModal.js";
+import { OrgScorecardHeader, type OrgScorecardPillarLinks } from "./OrgScorecardHeader.js";
 import {
   ScoreBadge,
   errorMessage,
@@ -25,6 +26,11 @@ import type { ServicesClient } from "./types.js";
 export interface ScorecardsViewProps {
   client: ServicesClient;
   onOpenService: (serviceId: string) => void;
+  /**
+   * Where the org grade's pillar cards lead. The service standards pillar
+   * needs no entry: it reads the matrix on this same page, and scrolls to it.
+   */
+  orgScorecardLinks?: OrgScorecardPillarLinks | undefined;
 }
 
 /** Sentinel for the "no level reached" filter option. */
@@ -38,7 +44,7 @@ function resultKey(serviceId: string, scorecardId: string): string {
  * The scorecard matrix (services down, scorecards across) with its filters,
  * and the scorecards themselves: create, edit, re-evaluate and delete.
  */
-export function ScorecardsView({ client, onOpenService }: ScorecardsViewProps) {
+export function ScorecardsView({ client, onOpenService, orgScorecardLinks }: ScorecardsViewProps) {
   const gt = useGT();
   const dataString = useDataString();
   const tierLabel = useTierLabel();
@@ -51,6 +57,15 @@ export function ScorecardsView({ client, onOpenService }: ScorecardsViewProps) {
   };
   const [data, setData] = useState<ScorecardOverviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [gradeKey, setGradeKey] = useState(0);
+  const matrixRef = useRef<HTMLElement | null>(null);
+  const pillarLinks = useMemo<OrgScorecardPillarLinks>(
+    () => ({
+      ...orgScorecardLinks,
+      services: () => matrixRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    }),
+    [orgScorecardLinks],
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ existing: Scorecard | null } | null>(null);
   const [scorecardFilter, setScorecardFilter] = useState("");
@@ -133,6 +148,8 @@ export function ScorecardsView({ client, onOpenService }: ScorecardsViewProps) {
       const next = await client.evaluateScorecard(card.id);
       if (next) setData(next);
       else reload();
+      // The service standards pillar reads these results.
+      setGradeKey((k) => k + 1);
     } catch (e) {
       setError(errorMessage(e, gt("Failed to evaluate the scorecard")));
     } finally {
@@ -167,7 +184,9 @@ export function ScorecardsView({ client, onOpenService }: ScorecardsViewProps) {
         </p>
       )}
 
-      <section>
+      <OrgScorecardHeader client={client} pillarLinks={pillarLinks} reloadKey={gradeKey} />
+
+      <section ref={matrixRef}>
         <h2 className="text-base font-semibold text-on-surface">{gt("Scorecard overview")}</h2>
         <p className="text-xs text-on-surface-faint mb-3">
           {gt(

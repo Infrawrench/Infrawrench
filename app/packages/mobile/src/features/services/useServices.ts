@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  fetchOrgScorecard,
   fetchScorecardOverview,
   fetchServiceDetail,
   fetchServiceScorecards,
@@ -57,5 +58,18 @@ export function useScorecardOverview() {
   return useQuery({
     queryKey: ["scorecards", orgId, "overview"],
     queryFn: () => fetchScorecardOverview(api, orgId),
+  });
+}
+
+/**
+ * `GET /scorecards/org`: the org grade above the matrix. Computed live over
+ * seven feeds server-side, so it is cached a little longer than the matrix.
+ */
+export function useOrgScorecard() {
+  const { api, orgId } = useOrgApi();
+  return useQuery({
+    queryKey: ["scorecards", orgId, "org"],
+    queryFn: () => fetchOrgScorecard(api, orgId),
+    staleTime: 5 * 60 * 1000,
   });
 }

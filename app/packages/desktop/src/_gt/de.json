@@ -21614,5 +21614,32 @@
       " Tagen niemand genutzt hat, Personen, die für zwei Tools mit derselben Aufgabe zahlen, und Lizenzen auf einer teureren Stufe, als ihre Nutzung erfordert."
     ]
   },
-  "95514a6660c65444": "Nach Service filtern"
+  "95514a6660c65444": "Nach Service filtern",
+  "a504674a0379c418": "Der Verlauf erscheint, sobald ein zweiter Tageswert erfasst wurde.",
+  "57fd2d29470a529e": "Note über die letzten {count} Messwerte",
+  "5e582b8919071238": "Sicherheitslage",
+  "d68b903f8e366f4b": "Wiederherstellbarkeit",
+  "c7ee4622c0d5404d": "Service-Standards",
+  "147d89f732ea81c6": "Zugriffshygiene",
+  "4bd2e9669b90824f": "Spielraum",
+  "7e08eecf78404a56": "Offene Sicherheitsbefunde, nach Schweregrad gewichtet, über Ihre synchronisierten Ressourcen.",
+  "281ef602dc3a1641": "Der Anteil zustandsbehafteter Ressourcen, die tatsächlich geschützt sind.",
+  "e59cccf9975e9db1": "Die durchschnittliche Service-Bewertung über die Scorecards unten.",
+  "79743db43371384e": "Zertifikate, Domains, Schlüssel und Leases, die abgelaufen sind oder bald ablaufen.",
+  "6c4ce0c696159bcb": "Befunde zu IAM-Benutzern, Rollen und Dienstkonten in Ihren Clouds.",
+  "52a0e71f6bdffc9a": "Das am stärksten ausgelastete Anbieterkontingent: was ein Deployment zuerst stoppt.",
+  "5f1c6dc7e73a19f0": "Der Anteil der Ressourcen, die jemandem zugeordnet sind.",
+  "8e858f757b96715c": "Nächster Schritt: {step}",
+  "c2f5efe9c1560678": "Gewichtung {weight}",
+  "80396c0d9b6fc261": "Die Organisationsnote konnte nicht geladen werden",
+  "a0b27f3d1b18e0ac": "Organisationsnote",
+  "1ba42e74a3f43ec3": "Eine Bewertung über Prüfungen, die Sie bereits haben: Sicherheitslage, Backups, die Service-Scorecards unten, Fristen, Cloud-Zugriff, Kontingent-Spielraum und Zuständigkeit. Jede Zahl ist dieselbe, die ihre eigene Seite zeigt.",
+  "7bdb86addd169f62": "Die Organisationsnote konnte nicht aktualisiert werden, die zuletzt geladene wird angezeigt. {error}",
+  "8b94f5646ed98367": "Organisationsnote wird ermittelt…",
+  "d19dce518c2dd2e8": "{count} Prüfungen konnten nicht gelesen werden und werden aus der Note ausgeschlossen, nicht gegen sie gewertet.",
+  "8dea74a8fc939285": "Gesamt",
+  "fca2f72df8fef7e3": "Noch konnte nichts bewertet werden. Verbinden Sie ein Konto und lassen Sie es synchronisieren; eine Note, bevor es etwas zu bewerten gibt, wäre nur eine Vermutung.",
+  "8872c1bb1dbcd3f1": "seit {day}",
+  "b623d7676b816425": "Größter Bremsfaktor",
+  "fb3a70a74b0292f3": "Eine Prüfung ohne Messgrundlage wird aus der Note herausgenommen statt als Fehlschlag gezählt, und die Gewichtungen werden auf das Gemessene verteilt, sodass das Verbinden eines neuen Anbieters nie wie ein Rückgang aussieht. Die Gewichtungen sind fest: Sicherheitslage 25, Wiederherstellbarkeit 20, Service-Standards 15, Fristen 15, Zugriff 10, Spielraum 10, Zuständigkeit 5."
 }

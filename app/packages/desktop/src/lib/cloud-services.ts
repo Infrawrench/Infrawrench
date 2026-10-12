@@ -5,6 +5,8 @@
 import type {
   DiscoveredTagKeysResponse,
   OnCallSchedule,
+  OrgScorecardHistoryResponse,
+  OrgScorecardResponse,
   Scorecard,
   ScorecardInput,
   ScorecardListResponse,
@@ -114,6 +116,19 @@ export async function listCloudScorecards(orgId: string): Promise<ScorecardListR
 
 export async function getCloudScorecardOverview(orgId: string): Promise<ScorecardOverviewResponse> {
   return invoke("cloud_scorecards_overview", { orgId });
+}
+
+/** The org grade above the matrix: seven pillars, the overall and 90 days of history. */
+export async function getCloudOrgScorecard(orgId: string): Promise<OrgScorecardResponse> {
+  return invoke("cloud_scorecards_org", { orgId });
+}
+
+/** The org grade's stored readings alone, oldest first. */
+export async function getCloudOrgScorecardHistory(
+  orgId: string,
+  days?: number,
+): Promise<OrgScorecardHistoryResponse> {
+  return invoke("cloud_scorecards_org_history", { orgId, days });
 }
 
 export async function createCloudScorecard(
