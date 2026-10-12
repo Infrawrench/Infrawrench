@@ -17,6 +17,8 @@
  *
  * Never throws: evaluation runs inside the poller loop.
  */
+import { SLO_BURN_ALERT } from "@infrawrench/client-core";
+import { publishEvent } from "../events/publish";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import {
   computeSloSnapshot,
@@ -133,6 +135,36 @@ function sliLine(row: SloRecord, snapshot: SloSnapshot): string {
   return `${sli} against a ${formatSloTarget(row.targetPercent)} target over ${row.windowDays} days`;
 }
 
+/**
+ * The event-subscription copy of an SLO alert. No idempotency key: the
+ * conditional update in `settleBurnAlert` already makes one replica the only
+ * one that ever reaches a notify for a given flip.
+ */
+async function emitSloEvent(
+  ctx: SloAlertContext,
+  status: "fast_burn" | "slow_burn" | "recovered" | "exhausted",
+  title: string,
+  severity: "info" | "warning" | "critical",
+): Promise<void> {
+  const { row, snapshot } = ctx;
+  await publishEvent(
+    SLO_BURN_ALERT,
+    row.organizationId,
+    {
+      sloId: row.id,
+      sloName: row.name,
+      status,
+      targetPercent: row.targetPercent,
+      windowDays: row.windowDays,
+      sli: snapshot.sli,
+      budgetRemaining: snapshot.budgetRemaining,
+      burnRate1h: snapshot.burnRates["1h"] ?? null,
+      burnRate3d: snapshot.burnRates["3d"] ?? null,
+    },
+    { title, severity, url: orgAppUrl(row.organizationId, `slos/${row.id}`) },
+  );
+}
+
 async function notifyBurn(ctx: SloAlertContext, level: Exclude<SloBurnAlert, "none">) {
   const { row, snapshot } = ctx;
   const fast = level === "fast";
@@ -146,6 +178,7 @@ async function notifyBurn(ctx: SloAlertContext, level: Exclude<SloBurnAlert, "no
     `infrawrench SLO "${row.name}" (${ctx.sourceText}): ` +
     `${rate === null || rate === undefined ? "" : `burning at ${formatBurnRate(rate)}, `}` +
     `${sliLine(row, snapshot)}; ${budgetLine(row, snapshot)}.`;
+  await emitSloEvent(ctx, fast ? "fast_burn" : "slow_burn", title, fast ? "critical" : "warning");
   return routeAlert({
     organizationId: row.organizationId,
     trigger: "sloAlerts",
@@ -168,6 +201,7 @@ async function notifyBurn(ctx: SloAlertContext, level: Exclude<SloBurnAlert, "no
 
 async function notifyRecovered(ctx: SloAlertContext) {
   const { row, snapshot } = ctx;
+  await emitSloEvent(ctx, "recovered", `SLO "${row.name}" stopped burning`, "info");
   return routeAlert({
     organizationId: row.organizationId,
     trigger: "sloAlerts",
@@ -189,6 +223,12 @@ async function notifyExhausted(ctx: SloAlertContext) {
   const freeze = row.suggestFreeze
     ? " Consider a change freeze until the budget recovers; you can start one from the SLO's page."
     : "";
+  await emitSloEvent(
+    ctx,
+    "exhausted",
+    `SLO "${row.name}" has exhausted its error budget`,
+    "critical",
+  );
   return routeAlert({
     organizationId: row.organizationId,
     trigger: "sloAlerts",

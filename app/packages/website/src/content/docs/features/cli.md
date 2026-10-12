@@ -557,6 +557,14 @@ infrawrench routing queue      # held and escalating alerts   [--limit 50]
 infrawrench routing email      # alert email policy and unsubscribed addresses
 ```
 
+Machines get the same events through [event subscriptions](./event-subscriptions.md). `infrawrench webhooks` lists them with their health (on, off, turned off automatically, failing), `webhooks test <id|name>` sends a test event now and exits non-zero when the receiver refuses it, and `webhooks deliveries [id|name]` prints the delivery log. All three take `--json`:
+
+```bash
+infrawrench webhooks                       # subscriptions and their health
+infrawrench webhooks test "Security feed"  # send infrawrench.test now
+infrawrench webhooks deliveries --json     # the last 50 deliveries, every subscription
+```
+
 Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
 
 `infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything: on the local working tree against the merge base with the default branch (`--base <ref>` for another one, uncommitted edits included), or on an open pull request with `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource; `--json` returns the full report. Needs `iac:read`.

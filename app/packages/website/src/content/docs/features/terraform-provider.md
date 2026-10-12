@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 70 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 71 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -397,6 +397,7 @@ Several resources hold write-only material that no route returns. Importing them
 | `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
 | `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
 | `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
+| `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
 | `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
@@ -502,6 +503,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_on_call_schedule`         | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                                                 |
 | `infrawrench_slack_channel`            | [Slack](./slack-alerts.md) channels as destinations                                                                                                          |
 | `infrawrench_msteams_webhook`          | [Teams](./teams-alerts.md) webhooks as destinations                                                                                                          |
+| `infrawrench_event_subscription`       | [Event subscriptions](./event-subscriptions.md): org events to a signed webhook, an EventBridge bus or a Pub/Sub topic                                       |
 | `infrawrench_alert_email_settings`     | The external-address policy for [alert email](./email-alerts.md)                                                                                             |
 | `infrawrench_digest_settings`          | When the [weekly digest](./weekly-digest.md) is sent                                                                                                         |
 | `infrawrench_digest_recipient`         | An email address the digest goes to                                                                                                                          |

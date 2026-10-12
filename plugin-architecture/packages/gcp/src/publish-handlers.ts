@@ -33,7 +33,16 @@ export async function publishPubsubTopic(
   const topicName = `projects/${ctx.project}/topics/${externalId}`;
   const orderingKey = extra(payload, "orderingKey");
   const attributes = extraRecord(payload, "attributes");
-  const cleanAttributes: Record<string, string> = {};
+  // An Infrawrench event subscription sends no extras: tag the message with
+  // the event's type and id so subscriptions can filter on attributes.
+  const cleanAttributes: Record<string, string> = payload.event
+    ? {
+        eventType: payload.event.type,
+        eventVersion: String(payload.event.version),
+        eventId: payload.event.id,
+        source: payload.event.source,
+      }
+    : {};
   for (const [k, v] of Object.entries(attributes)) {
     if (k.trim()) cleanAttributes[k] = v;
   }

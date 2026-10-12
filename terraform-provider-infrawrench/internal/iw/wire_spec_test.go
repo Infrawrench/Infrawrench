@@ -310,6 +310,9 @@ func specChecks() []specCheck {
 		{schema: "SlackStatus", value: SlackStatus{}},
 		{schema: "SlackInstallation", value: SlackInstallation{}},
 		{schema: "SlackChannel", value: SlackChannel{}},
+		{schema: "EventSubscription", value: EventSubscription{}},
+		{schema: "EventSubscriptionInput", value: EventSubscriptionInput{}},
+		{schema: "EventSubscriptionWithSecret", value: EventSubscriptionWithSecret{}},
 		{schema: "SlackChannelCreate", value: SlackChannelCreate{}},
 		{schema: "SlackChannelUpdate", value: SlackChannelUpdate{}},
 

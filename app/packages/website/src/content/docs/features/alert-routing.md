@@ -8,6 +8,8 @@ Every alert Infrawrench raises — a sync failure, a budget crossing, a cost ano
 
 > **Cloud-managed.** Rules live with your organization in the cloud, and the cloud's background poller applies them as alerts are raised. You can edit them from the web app or from the desktop app's Settings tab while signed in to your organization — the desktop app edits the same cloud configuration, it does not keep a local copy. There is no rules editor on mobile; the mobile app carries your personal push mutes instead.
 
+Routing is about people. To send the same events to your own systems as versioned JSON (a SIEM, an event bus, a ticketing tool), use [event subscriptions](./event-subscriptions.md) instead; they are independent of these rules.
+
 ## The shape of a rule
 
 A rule has four parts:

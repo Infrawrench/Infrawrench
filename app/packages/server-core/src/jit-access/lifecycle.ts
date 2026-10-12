@@ -28,6 +28,14 @@
  * - A revoke is checked afterwards (`checkJitAccess`), and a grant still
  *   present upstream is a failure, not a success.
  */
+import {
+  JIT_ACCESS_APPROVED,
+  JIT_ACCESS_DENIED,
+  JIT_ACCESS_EXPIRED,
+  JIT_ACCESS_REQUESTED,
+} from "@infrawrench/client-core";
+import { publishEvent } from "../events/publish";
+import { orgAppUrl } from "../app-url";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
 import type { JitGrantSpec, PluginClient } from "@infrawrench/plugin-base";
@@ -107,7 +115,47 @@ export async function auditJit(
   } catch (err) {
     console.error(`[jit-access] audit ${action} for ${row.id} failed:`, err);
   }
+  // The audit row is the one place every state change passes through, so it
+  // is also where event subscriptions hear about them.
+  const def = JIT_EVENTS[action];
+  if (def) {
+    const rowDuration = (row as { durationMinutes?: unknown }).durationMinutes;
+    const duration =
+      typeof extra["durationMinutes"] === "number"
+        ? extra["durationMinutes"]
+        : typeof rowDuration === "number"
+          ? rowDuration
+          : null;
+    await publishEvent(
+      def,
+      row.organizationId,
+      {
+        requestId: row.id,
+        accountId: row.accountId,
+        pluginId: row.pluginId,
+        scopeId: row.scopeId,
+        roleId: row.roleId,
+        principalId: row.principalId,
+        requesterUserId: row.userId,
+        actorName: actor.name,
+        durationMinutes: duration,
+      },
+      {
+        title: `Just-in-time access ${action.replace("_", " ")}: ${row.roleId} on ${row.scopeId}`,
+        accountId: row.accountId,
+        url: orgAppUrl(row.organizationId, "jit-access"),
+        idempotencyKey: `jit:${row.id}:${action}`,
+      },
+    );
+  }
 }
+
+const JIT_EVENTS: Record<string, typeof JIT_ACCESS_REQUESTED | undefined> = {
+  requested: JIT_ACCESS_REQUESTED,
+  approved: JIT_ACCESS_APPROVED,
+  denied: JIT_ACCESS_DENIED,
+  expired: JIT_ACCESS_EXPIRED,
+};
 
 export function grantSpec(row: JitRequestRow): JitGrantSpec {
   return {

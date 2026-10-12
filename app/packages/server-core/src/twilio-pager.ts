@@ -1,3 +1,5 @@
+import { ACCOUNT_SYNC_FAILING, ACCOUNT_SYNC_RECOVERED } from "@infrawrench/client-core";
+import { publishEvent } from "./events/publish";
 import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "./db/client";
@@ -354,13 +356,23 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       // Even when disabled, we still close incidents on success so toggling
       // back on later doesn't immediately re-page on stale state.
       if (args.outcome === "ok") {
-        await closeOpenIncident(args.organizationId, args.accountId, args.resourceTypeId);
+        await closeOpenIncident(
+          args.organizationId,
+          args.accountId,
+          args.resourceTypeId,
+          args.accountLabel,
+        );
       }
       return;
     }
 
     if (args.outcome === "ok") {
-      await closeOpenIncident(args.organizationId, args.accountId, args.resourceTypeId);
+      await closeOpenIncident(
+        args.organizationId,
+        args.accountId,
+        args.resourceTypeId,
+        args.accountLabel,
+      );
       await db
         .delete(accountSyncFailures)
         .where(
@@ -432,7 +444,7 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
         accountId: args.accountId,
         resourceTypeId: args.resourceTypeId,
         openedAt: now,
-        error: errorText,
+        error: errorText ?? "Unknown error",
       });
       shouldPage = true;
     } else {
@@ -458,6 +470,27 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
         twilioResult = await fanOutPage(settings.creds, recipients, body);
       }
     }
+
+    // Keyed per incident and page, so the cooldown re-page is a fresh event
+    // and a retry of the same page is not.
+    await publishEvent(
+      ACCOUNT_SYNC_FAILING,
+      args.organizationId,
+      {
+        accountId: args.accountId,
+        accountName: args.accountLabel,
+        resourceTypeId: args.resourceTypeId,
+        incidentId,
+        error: errorText ?? "Unknown error",
+        failureCount: count,
+        windowMinutes: Math.round(settings.windowMs / 60_000),
+      },
+      {
+        title: `Sync failure: ${args.accountLabel}`,
+        accountId: args.accountId,
+        idempotencyKey: `sync:${incidentId}:${now.toISOString()}`,
+      },
+    );
 
     const routed = await routeAlert({
       organizationId: args.organizationId,
@@ -511,6 +544,7 @@ async function closeOpenIncident(
   organizationId: string,
   accountId: string,
   resourceTypeId: string,
+  accountLabel: string,
 ): Promise<void> {
   // Runs on every successful poll, so the paging-provider resolve is only
   // attempted when an incident actually closed here.
@@ -525,7 +559,22 @@ async function closeOpenIncident(
         isNull(pagingIncidents.closedAt),
       ),
     )
-    .returning({ id: pagingIncidents.id });
+    .returning({ id: pagingIncidents.id, pagedAt: pagingIncidents.pagedAt });
+  // Only an incident that was announced as failing gets a recovery event; a
+  // blip that closed before it paged was never news.
+  for (const incident of closed) {
+    if (!incident.pagedAt) continue;
+    await publishEvent(
+      ACCOUNT_SYNC_RECOVERED,
+      organizationId,
+      { accountId, accountName: accountLabel, resourceTypeId, incidentId: incident.id },
+      {
+        title: `Sync recovered: ${accountLabel}`,
+        accountId,
+        idempotencyKey: `sync:${incident.id}:recovered`,
+      },
+    );
+  }
   if (closed.length > 0) {
     await applyPagingLifecycle(
       organizationId,

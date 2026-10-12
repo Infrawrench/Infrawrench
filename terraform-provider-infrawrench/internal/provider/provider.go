@@ -235,6 +235,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAlertEmailSettingsResource,
 		NewSlackChannelResource,
 		NewMSTeamsWebhookResource,
+		NewEventSubscriptionResource,
 		NewDigestSettingsResource,
 		NewDigestRecipientResource,
 		NewPagingProviderSettingsResource,

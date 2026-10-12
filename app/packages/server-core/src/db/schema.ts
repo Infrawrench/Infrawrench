@@ -5300,3 +5300,4 @@ export * from "./github-issues-schema.js";
 export * from "./pr-check-schema.js";
 export * from "./paging-provider-schema.js";
 export * from "./jit-access-schema.js";
+export * from "./event-subscription-schema.js";

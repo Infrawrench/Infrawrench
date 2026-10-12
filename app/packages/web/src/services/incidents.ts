@@ -51,6 +51,8 @@ import {
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { routeAlert } from "@infrawrench/server-core/alerts/route";
 import { getServicesForResources } from "@infrawrench/server-core/service-catalog/lookup";
+import { publishEvent } from "@infrawrench/server-core/events/publish";
+import { INCIDENT_DECLARED, INCIDENT_MITIGATED, INCIDENT_RESOLVED } from "@infrawrench/client-core";
 import {
   createStatusPageNotice,
   resolveStatusPageNotice,
@@ -276,6 +278,41 @@ async function announce(
     bodyLines.push(`Started ${incident.startedAt}.`);
   }
   if (bodyLines.length === 0) bodyLines.push("No summary was given.");
+
+  // Event subscriptions get the incident as data. Keyed per phase, so a
+  // retried announcement (`retryIncidentArtifacts`) does not repeat it.
+  await publishEvent(
+    phase === "declared"
+      ? INCIDENT_DECLARED
+      : phase === "mitigated"
+        ? INCIDENT_MITIGATED
+        : INCIDENT_RESOLVED,
+    organizationId,
+    {
+      incidentId: incident.id,
+      title: incident.title,
+      incidentSeverity: incident.severity,
+      status: incident.status,
+      summary: incident.summary,
+      startedAt: incident.startedAt,
+      resolvedAt: incident.resolvedAt,
+      declaredByName: incident.declaredByName,
+      affectedResourceIds: incident.affectedResourceIds,
+    },
+    {
+      title,
+      severity:
+        phase === "resolved"
+          ? "info"
+          : incident.severity === "sev1" || incident.severity === "sev2"
+            ? "critical"
+            : "warning",
+      accountId:
+        incident.affectedAccountIds.length === 1 ? (incident.affectedAccountIds[0] ?? null) : null,
+      url,
+      idempotencyKey: `incident:${incident.id}:${phase}`,
+    },
+  );
 
   try {
     const result = await routeAlert(

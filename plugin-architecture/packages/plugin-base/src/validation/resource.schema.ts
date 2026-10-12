@@ -528,6 +528,7 @@ export const resourceTypeDefinitionSchema = z.object({
   peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),
   secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
   attachTargets: z.array(attachTargetSchema).optional(),
+  eventSink: z.boolean().optional(),
   supportsMetrics: z.boolean().optional(),
   orphanRule: orphanRuleSchema.optional(),
   postureChecks: z.array(postureCheckRuleSchema).optional(),
