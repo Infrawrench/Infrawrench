@@ -18,6 +18,18 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "api-key",
+      label: "Datadog API or application key",
+      scannerTypes: ["datadog_api_key", "datadog_app_key", "DataDogAPIKey"],
+      credentialFields: ["apiKey", "appKey"],
+      manageUrl: "https://app.datadoghq.com/organization-settings/api-keys",
+    },
+  ],
   credentialFields: [
     {
       key: "site",

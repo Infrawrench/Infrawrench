@@ -40,6 +40,14 @@ Your GitLab role decides what you see: CI/CD variables, webhooks, deploy keys an
 
 For a self-managed instance with its own certificate authority, paste the CA certificate under **Advanced options**.
 
+## Secret detection
+
+With GitLab **Ultimate**, the account reads the secret detection findings from the vulnerability report of its 100 most recently active projects, every 30 minutes, into [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Projects on other tiers are skipped.
+
+- **Permissions.** Reading findings needs `read_api` and the Developer role on the project. Resolving a finding after a rotation, or dismissing it with your reason, needs `api` and the Maintainer role (or Security Manager).
+- **Matched by token type.** GitLab never returns the secret itself, only which rule found it (`gitlab_personal_access_token`, `AWS` and so on). Infrawrench matches the finding to your accounts on the provider that issues that kind of token; with exactly one such account it is shown as probably that account, with several they are listed as candidates. Either way it may be another key from the same provider.
+- On rotation the finding is resolved in GitLab; a dismissal maps **False positive** and **Used in tests** to GitLab's reasons of the same name and **Won't fix** to Acceptable risk.
+
 ## Tips & limits
 
 - Children (pipelines, variables, environments and so on) are listed for the 100 most recently active, non-archived projects, to keep a sync on a large instance to a bounded number of requests. Up to 500 projects are listed in total.

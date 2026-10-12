@@ -19,6 +19,8 @@ Rules fall into a handful of categories, each finding carrying the plugin's own 
 
 One check is not a per-resource rule: **dangling DNS** (`dns-dangling-target`) flags a DNS record still pointing at a provider name nothing in your workspace claims — the subdomain-takeover case. It has to look across the whole workspace rather than at one field bag, so it is computed by the [Domains](./domains.md) surface and folded into these findings, where it alerts through the same channel as everything else.
 
+**Leaked credentials** are the other category that is not a resource rule. When a GitHub or GitLab account scans your code for committed secrets, its findings sit in their own section at the top of the Posture tab, each matched to the account or stored secret it belongs to and rotatable from the row. They come from the scanner rather than from synced fields, refresh every 30 minutes, and have their own alert trigger; see [Leaked credentials](./leaked-credentials.md).
+
 Every finding lands in a severity bucket: **critical**, **high**, **medium** or **low**. Critical and high findings are the alertable ones; medium and low are hygiene work that stays on the screen.
 
 ## The Posture screen

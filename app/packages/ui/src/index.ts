@@ -772,6 +772,14 @@ export type {
 } from "@infrawrench/client-core";
 export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
+export {
+  AccountLeakBanner,
+  LeakedCredentialsSection,
+} from "./leaked-secrets/LeakedCredentialsSection.js";
+export type {
+  LeakedCredentialsClient,
+  LeakedCredentialsSectionProps,
+} from "./leaked-secrets/LeakedCredentialsSection.js";
 
 /**
  * Cross-cloud access review: the principals inside the *customer's* clouds,

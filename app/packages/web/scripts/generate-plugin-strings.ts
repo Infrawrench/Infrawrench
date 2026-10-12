@@ -47,6 +47,9 @@ for (const plugin of BUNDLED_PLUGINS) {
   add(manifest.jitAccess?.roleLabel);
   add(manifest.jitAccess?.principalLabel);
   add(manifest.jitAccess?.description);
+  add(manifest.secretScanning?.label);
+  add(manifest.secretScanning?.description);
+  for (const format of manifest.tokenFormats ?? []) add(format.label);
   add(manifest.warehouseSink?.label);
   add(manifest.warehouseSink?.description);
   for (const field of manifest.warehouseSink?.targetFields ?? []) {

@@ -54,6 +54,7 @@ import {
 } from "@infrawrench/server-core/events/deliver";
 import { runPagingProvidersPass } from "@infrawrench/server-core/paging/providers";
 import { runJitAccessExpiryPass } from "@infrawrench/server-core/jit-access/service";
+import { runLeakedSecretScanPass } from "@infrawrench/server-core/leaked-secrets/scan";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
@@ -672,6 +673,24 @@ export const PASSES: readonly Pass[] = [
         console.log(
           `[jit-access] sweep: ${stats.revoked} revoked, ${stats.granted} granted, ` +
             `${stats.timedOut} timed out, ${stats.failed} failed`,
+        );
+      }
+    }),
+  },
+
+  // Leaked credentials: reads each secret-scanning account's findings every
+  // 30 minutes, attributes them to what the org stores by fingerprint, records
+  // rotations done elsewhere, and alerts on new ones. Gateway: it calls plugin
+  // code for arbitrary accounts, some behind a bastion.
+  {
+    kind: "periodic",
+    name: "leaked-secrets",
+    runtime: "gateway",
+    run: guarded("[leaked-secrets] scan tick failed:", async () => {
+      const stats = await runLeakedSecretScanPass({ limit: 10 });
+      if (stats.scanned || stats.errors) {
+        console.log(
+          `[leaked-secrets] scanned ${stats.scanned} accounts, ${stats.newLeaks} new leaks, ${stats.errors} errors`,
         );
       }
     }),

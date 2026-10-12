@@ -39,6 +39,15 @@ import {
   formatServiceTier,
   matchService,
   orderScoreRows,
+  formatLeakCounts,
+  formatLeakLocation,
+  formatLeakScanner,
+  formatLeakSeverity,
+  formatLeakStatus,
+  formatLeakTarget,
+  leakRotateRefusal,
+  parseLeakDismissReason,
+  parseLeakStatusFlag,
 } from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
@@ -800,5 +809,144 @@ describe("services and scorecards helpers", () => {
       { name: "d", score: 40 },
     ]);
     expect(rows.map((r) => r.name)).toEqual(["a", "c", "d", "b"]);
+  });
+});
+
+describe("leaked credentials helpers", () => {
+  const target = {
+    matchKind: "none" as const,
+    matchConfidence: "none" as const,
+    matchedAccountId: null,
+    matchedAccountName: null,
+    matchedResourceId: null,
+    matchedResourceName: null,
+    candidateAccountIds: [] as string[],
+    ownerPluginName: null as string | null,
+  };
+
+  it("rates a leak critical unless it is dead and matched nothing", () => {
+    expect(formatLeakSeverity({ validity: "active", matchKind: "none" })).toBe("critical");
+    expect(formatLeakSeverity({ validity: "inactive", matchKind: "account" })).toBe("critical");
+    expect(formatLeakSeverity({ validity: "inactive", matchKind: "none" })).toBe("high");
+    expect(formatLeakSeverity({ validity: null, matchKind: "none" })).toBe("critical");
+  });
+
+  it("prints as much of the location as is known", () => {
+    expect(formatLeakLocation({ repository: "acme/api", path: "src/a.ts", line: 12 })).toBe(
+      "acme/api: src/a.ts:12",
+    );
+    expect(formatLeakLocation({ repository: "acme/api", path: null, line: null })).toBe("acme/api");
+    expect(formatLeakLocation({ repository: null, path: ".env", line: null })).toBe(".env");
+    expect(formatLeakLocation({ repository: null, path: null, line: 3 })).toBe("");
+  });
+
+  it("names what the leak matched", () => {
+    expect(
+      formatLeakTarget({
+        ...target,
+        matchKind: "account",
+        matchConfidence: "fingerprint",
+        matchedAccountName: "Prod AWS",
+      }),
+    ).toBe("account Prod AWS");
+    expect(
+      formatLeakTarget({
+        ...target,
+        matchKind: "account",
+        matchConfidence: "token-type",
+        matchedAccountName: "Prod AWS",
+      }),
+    ).toBe("probably account Prod AWS (by token type)");
+    expect(
+      formatLeakTarget({ ...target, matchKind: "secret-field", matchedResourceName: "api-env" }),
+    ).toBe("stored on api-env");
+    expect(
+      formatLeakTarget({ ...target, candidateAccountIds: ["a", "b"], ownerPluginName: "Stripe" }),
+    ).toBe("one of 2 Stripe accounts (by token type)");
+    expect(formatLeakTarget(target)).toBe("nothing Infrawrench holds");
+  });
+
+  it("explains how a leak reached its status", () => {
+    const base = {
+      rotationMethod: null,
+      dismissedReason: null,
+      upstreamResolution: null,
+      rotatedBy: null,
+    };
+    expect(formatLeakStatus({ ...base, status: "open" })).toBe("Open");
+    expect(
+      formatLeakStatus({
+        ...base,
+        status: "rotated",
+        rotationMethod: "reissued",
+        rotatedBy: "ana@example.com",
+      }),
+    ).toBe("Rotated: Reissued in Infrawrench by ana@example.com");
+    expect(
+      formatLeakStatus({ ...base, status: "dismissed", dismissedReason: "used-in-tests" }),
+    ).toBe("Dismissed: Used in tests");
+    expect(formatLeakStatus({ ...base, status: "resolved", upstreamResolution: "revoked" })).toBe(
+      "Resolved upstream (revoked)",
+    );
+  });
+
+  it("summarizes scanners and counts", () => {
+    const scanner = {
+      accountName: "acme",
+      label: "Secret scanning",
+      lastScannedAt: "2026-10-01T09:30:00Z",
+      lastError: null,
+      lastCount: 3,
+      returnsSecretValue: true,
+    };
+    expect(formatLeakScanner(scanner)).toBe(
+      "acme (Secret scanning): scanned 2026-10-01 09:30, 3 findings",
+    );
+    expect(formatLeakScanner({ ...scanner, returnsSecretValue: false, lastCount: 1 })).toBe(
+      "acme (Secret scanning): scanned 2026-10-01 09:30, 1 finding; matches by token type only",
+    );
+    expect(formatLeakScanner({ ...scanner, lastScannedAt: null })).toBe(
+      "acme (Secret scanning): first scan pending",
+    );
+    expect(formatLeakScanner({ ...scanner, lastError: "403 Forbidden" })).toBe(
+      "acme (Secret scanning): last scan failed: 403 Forbidden",
+    );
+    expect(formatLeakCounts({ open: 2, rotated: 5, dismissed: 0, resolved: 1 })).toBe(
+      "2 open · 5 rotated · 1 resolved upstream",
+    );
+    expect(formatLeakCounts({ open: 0, rotated: 0, dismissed: 0, resolved: 0 })).toBe("none");
+  });
+
+  it("parses --status and --reason", () => {
+    expect(parseLeakStatusFlag(undefined)).toBe("open");
+    expect(parseLeakStatusFlag("all")).toBeNull();
+    expect(parseLeakStatusFlag("Dismissed")).toBe("dismissed");
+    expect(() => parseLeakStatusFlag("closed")).toThrow(/--status must be one of/);
+    expect(parseLeakDismissReason("wont-fix")).toBe("wont-fix");
+    expect(() => parseLeakDismissReason(null)).toThrow(/needs --reason/);
+    expect(() => parseLeakDismissReason("meh")).toThrow(/--reason must be one of/);
+  });
+
+  it("refuses to rotate what only the provider can rotate", () => {
+    const leak = {
+      id: "0123456789abcdef",
+      status: "open" as const,
+      ownerPluginName: "GitHub",
+      rotation: { mode: "reissue" as const, manageUrl: null },
+    };
+    expect(leakRotateRefusal(leak)).toBeNull();
+    expect(
+      leakRotateRefusal({ ...leak, rotation: { mode: "replace", manageUrl: null } }),
+    ).toBeNull();
+    const account = leakRotateRefusal({
+      ...leak,
+      rotation: { mode: "account", manageUrl: "https://github.com/settings/tokens" },
+    });
+    expect(account).toContain("Rotate it at GitHub: https://github.com/settings/tokens");
+    expect(account).toContain("leaks mark-rotated 01234567");
+    expect(leakRotateRefusal({ ...leak, rotation: { mode: "manual", manageUrl: null } })).toContain(
+      "not one Infrawrench holds",
+    );
+    expect(leakRotateRefusal({ ...leak, status: "dismissed" })).toContain("leaks reopen 01234567");
   });
 });

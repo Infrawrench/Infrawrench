@@ -15,6 +15,23 @@ const manifest: PluginManifest = {
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
+  // The tokens this plugin issues, so a leak a secret scanner reports can be
+  // matched to an account here. Identifiers from GitHub's supported secret
+  // scanning patterns and GitLab's secret detection rules (verified 2026-10).
+  tokenFormats: [
+    {
+      id: "token",
+      label: "Vault token",
+      scannerTypes: [
+        "hashicorp_vault_service_token",
+        "hashicorp_vault_batch_token",
+        "HashicorpVaultServiceToken",
+        "Hashicorp Vault batch token",
+      ],
+      prefixes: ["hvs.", "hvb."],
+      credentialFields: ["token"],
+    },
+  ],
   credentialFields: [
     {
       key: "address",

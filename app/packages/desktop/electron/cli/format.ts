@@ -1,8 +1,17 @@
 // Pure presentation helpers shared by the newer read commands. Kept out of the
 // command modules (those reach the network through `./context`, which drags in
 // Electron and every plugin) so the tree walk and the number formatting can be
-// unit-tested on their own. Imports nothing but `./output`.
+// unit-tested on their own. Imports nothing at runtime but `./output`; wire
+// types come type-only from client-core.
 import { c, safe } from "./output";
+import type {
+  LeakDismissReason,
+  LeakRotationMethod,
+  LeakedSecret,
+  LeakedSecretCounts,
+  LeakedSecretScanner,
+  LeakedSecretStatus,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
 
 /* ------------------------------------------------------------------ *
  * ASCII trees (`infrawrench graph`)
@@ -1022,4 +1031,194 @@ export function orderScoreRows<T extends { score: number | null; name: string }>
     if (a.score !== null && b.score !== null && a.score !== b.score) return b.score - a.score;
     return a.name.localeCompare(b.name);
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * Leaked credentials (`infrawrench leaks`)
+ * ------------------------------------------------------------------ */
+
+/*
+ * Labels and the two derivations below are restated from client-core's
+ * `leaked-secrets.ts` (`LEAKED_SECRET_STATUS_LABELS`, `leakSeverity`,
+ * `leakLocationLabel`, ...) because the CLI's client-core imports are
+ * type-only. Each map is typed against the wire union, so a value added or
+ * removed upstream fails this file's typecheck rather than printing blank.
+ */
+export const LEAK_STATUS_LABELS: Record<LeakedSecretStatus, string> = {
+  open: "Open",
+  rotated: "Rotated",
+  dismissed: "Dismissed",
+  resolved: "Resolved upstream",
+};
+
+export const LEAK_ROTATION_LABELS: Record<LeakRotationMethod, string> = {
+  reissued: "Reissued in Infrawrench",
+  replaced: "New value stored",
+  detected: "Stored value changed",
+  manual: "Marked rotated",
+};
+
+export const LEAK_DISMISS_LABELS: Record<LeakDismissReason, string> = {
+  "false-positive": "False positive",
+  "used-in-tests": "Used in tests",
+  "wont-fix": "Won't fix",
+};
+
+const LEAK_STATUSES = Object.keys(LEAK_STATUS_LABELS) as LeakedSecretStatus[];
+const LEAK_DISMISS_REASONS = Object.keys(LEAK_DISMISS_LABELS) as LeakDismissReason[];
+
+/** Critical unless the scanner says the token is dead and it matched nothing. */
+export function formatLeakSeverity(
+  leak: Pick<LeakedSecret, "validity" | "matchKind">,
+): "critical" | "high" {
+  if (leak.validity === "inactive" && leak.matchKind === "none") return "high";
+  return "critical";
+}
+
+/** `owner/repo: path/to/file.ts:12`, or as much of it as is known. */
+export function formatLeakLocation(
+  leak: Pick<LeakedSecret, "repository" | "path" | "line">,
+): string {
+  const file = leak.path ? `${leak.path}${leak.line != null ? `:${leak.line}` : ""}` : "";
+  if (leak.repository && file) return `${leak.repository}: ${file}`;
+  return leak.repository ?? file;
+}
+
+/** What the leak was attributed to, in the words the Posture tab uses. */
+export function formatLeakTarget(
+  leak: Pick<
+    LeakedSecret,
+    | "matchKind"
+    | "matchConfidence"
+    | "matchedAccountId"
+    | "matchedAccountName"
+    | "matchedResourceId"
+    | "matchedResourceName"
+    | "candidateAccountIds"
+    | "ownerPluginName"
+  >,
+): string {
+  if (leak.matchKind === "account") {
+    const name = safe(leak.matchedAccountName ?? leak.matchedAccountId ?? "");
+    return leak.matchConfidence === "token-type"
+      ? `probably account ${name} (by token type)`
+      : `account ${name}`;
+  }
+  if (leak.matchKind === "output" || leak.matchKind === "secret-field") {
+    return `stored on ${safe(leak.matchedResourceName ?? leak.matchedResourceId ?? "")}`;
+  }
+  const n = leak.candidateAccountIds.length;
+  if (n > 0) {
+    const provider = leak.ownerPluginName ? `${safe(leak.ownerPluginName)} ` : "";
+    return `one of ${n} ${provider}account${n === 1 ? "" : "s"} (by token type)`;
+  }
+  return "nothing Infrawrench holds";
+}
+
+/** The status cell: the label plus how it got there, e.g. "Dismissed: Used in tests". */
+export function formatLeakStatus(
+  leak: Pick<
+    LeakedSecret,
+    "status" | "rotationMethod" | "dismissedReason" | "upstreamResolution" | "rotatedBy"
+  >,
+): string {
+  const label = LEAK_STATUS_LABELS[leak.status] ?? safe(leak.status);
+  if (leak.status === "rotated" && leak.rotationMethod) {
+    const how = LEAK_ROTATION_LABELS[leak.rotationMethod] ?? safe(leak.rotationMethod);
+    return `${label}: ${how}${leak.rotatedBy ? ` by ${safe(leak.rotatedBy)}` : ""}`;
+  }
+  if (leak.status === "dismissed" && leak.dismissedReason) {
+    return `${label}: ${LEAK_DISMISS_LABELS[leak.dismissedReason] ?? safe(leak.dismissedReason)}`;
+  }
+  if (leak.status === "resolved" && leak.upstreamResolution) {
+    return `${label} (${safe(leak.upstreamResolution)})`;
+  }
+  return label;
+}
+
+/** One line per scanner account: when it last scanned, or why it failed. */
+export function formatLeakScanner(
+  scanner: Pick<
+    LeakedSecretScanner,
+    "accountName" | "label" | "lastScannedAt" | "lastError" | "lastCount" | "returnsSecretValue"
+  >,
+): string {
+  const who = `${safe(scanner.accountName)} (${safe(scanner.label)})`;
+  if (scanner.lastError) return `${who}: last scan failed: ${safe(scanner.lastError)}`;
+  if (!scanner.lastScannedAt) return `${who}: first scan pending`;
+  const count =
+    scanner.lastCount != null
+      ? `, ${scanner.lastCount} finding${scanner.lastCount === 1 ? "" : "s"}`
+      : "";
+  const byType = scanner.returnsSecretValue ? "" : "; matches by token type only";
+  return `${who}: scanned ${formatChangeTime(scanner.lastScannedAt)}${count}${byType}`;
+}
+
+/** "2 open · 5 rotated · 1 dismissed", zero buckets left out. */
+export function formatLeakCounts(counts: Partial<LeakedSecretCounts>): string {
+  const parts = LEAK_STATUSES.filter((s) => (counts[s] ?? 0) > 0).map(
+    (s) => `${counts[s]} ${s === "resolved" ? "resolved upstream" : s}`,
+  );
+  return parts.length > 0 ? parts.join(" · ") : "none";
+}
+
+/**
+ * `--status`: a status, `all`, or (absent) the open default. Returns null
+ * for all, so the request carries no filter.
+ */
+export function parseLeakStatusFlag(raw: string | undefined): LeakedSecretStatus | null {
+  if (raw === undefined) return "open";
+  const value = raw.trim().toLowerCase();
+  if (value === "all") return null;
+  const status = LEAK_STATUSES.find((s) => s === value);
+  if (!status) {
+    throw new Error(
+      `--status must be one of ${[...LEAK_STATUSES, "all"].join(", ")} (got "${raw}").`,
+    );
+  }
+  return status;
+}
+
+/** `--reason` for `leaks dismiss`: required, one of the three server reasons. */
+export function parseLeakDismissReason(raw: string | null | undefined): LeakDismissReason {
+  const reason = LEAK_DISMISS_REASONS.find((r) => r === raw?.trim().toLowerCase());
+  if (!reason) {
+    throw new Error(
+      raw
+        ? `--reason must be one of ${LEAK_DISMISS_REASONS.join(", ")} (got "${raw}").`
+        : `Dismissing needs --reason ${LEAK_DISMISS_REASONS.join("|")}.`,
+    );
+  }
+  return reason;
+}
+
+/**
+ * Why `leaks rotate` cannot act on this leak from a terminal, or null when it
+ * can. `account` and `manual` leaks are rotated at the provider; the CLI says
+ * where, and what records it afterwards.
+ */
+export function leakRotateRefusal(
+  leak: Pick<LeakedSecret, "id" | "status" | "rotation" | "ownerPluginName">,
+): string | null {
+  if (leak.status !== "open") {
+    return `This leak is ${LEAK_STATUS_LABELS[leak.status]?.toLowerCase() ?? safe(leak.status)}, not open. Reopen it first with \`infrawrench leaks reopen ${shortId(leak.id)}\`.`;
+  }
+  const { mode, manageUrl } = leak.rotation;
+  if (mode === "reissue" || mode === "replace") return null;
+  const where = manageUrl
+    ? `Rotate it at ${leak.ownerPluginName ? safe(leak.ownerPluginName) : "the provider"}: ${safe(manageUrl)}`
+    : `Rotate it at ${leak.ownerPluginName ? safe(leak.ownerPluginName) : "the provider"}.`;
+  if (mode === "account") {
+    return [
+      "This is an account credential; Infrawrench cannot mint a new one for you.",
+      where,
+      "Then update the account's credentials in Infrawrench; the change is detected and the leak is recorded as rotated.",
+      `Or record it yourself: \`infrawrench leaks mark-rotated ${shortId(leak.id)}\`.`,
+    ].join("\n");
+  }
+  return [
+    "This credential is not one Infrawrench holds, so it can only be rotated at the provider.",
+    where,
+    `Then record it: \`infrawrench leaks mark-rotated ${shortId(leak.id)}\`.`,
+  ].join("\n");
 }

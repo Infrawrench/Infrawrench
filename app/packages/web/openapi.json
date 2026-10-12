@@ -333,6 +333,10 @@
       "description": "Microsoft Teams webhook connections and the channels alert rules can name as destinations."
     },
     {
+      "name": "Leaked credentials",
+      "description": "Secrets a scanner account (GitHub secret scanning, GitLab secret detection) found committed to code, matched by keyed fingerprint to the account or stored secret they belong to, and rotated from here."
+    },
+    {
       "name": "Event subscriptions",
       "description": "Outbound delivery of Infrawrench's own events (cost anomalies, budget thresholds, posture findings, drift, incidents, just-in-time access, SLO and metric alerts, sync failures) to a signed HTTPS webhook, an AWS EventBridge bus or a GCP Pub/Sub topic. The payload of every event type is described under `webhooks`."
     },
@@ -2698,6 +2702,370 @@
         ],
         "additionalProperties": false,
         "description": "A failing account sync succeeded again."
+      },
+      "EventData_secret_leaked_v1": {
+        "type": "object",
+        "properties": {
+          "leakId": {
+            "type": "string",
+            "description": "Infrawrench leaked secret id."
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "The scanner's identifier for the token type."
+          },
+          "tokenTypeLabel": {
+            "type": "string",
+            "description": "Human name of the token type."
+          },
+          "ownerPluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plugin that issues this token type."
+          },
+          "matchKind": {
+            "type": "string",
+            "enum": [
+              "account",
+              "secret-field",
+              "output",
+              "none"
+            ],
+            "description": "What the leak was matched to."
+          },
+          "matchedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The connected account the leak belongs to."
+          },
+          "matchedResourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource whose stored secret leaked."
+          },
+          "scannerPluginId": {
+            "type": "string",
+            "description": "Plugin of the scanner that found it."
+          },
+          "scannerAccountId": {
+            "type": "string",
+            "description": "Scanner account that found it."
+          },
+          "matchConfidence": {
+            "type": "string",
+            "enum": [
+              "fingerprint",
+              "token-type",
+              "none"
+            ],
+            "description": "How the match was made."
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Repository the secret was found in."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "File the secret was found in."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The finding on the scanner."
+          },
+          "validity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "active",
+              "inactive",
+              "unknown"
+            ],
+            "description": "The scanner's validity check."
+          },
+          "publiclyLeaked": {
+            "type": "boolean",
+            "description": "The scanner also found it in a public place."
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the scanner first saw it."
+          }
+        },
+        "required": [
+          "leakId",
+          "tokenType",
+          "tokenTypeLabel",
+          "ownerPluginId",
+          "matchKind",
+          "matchedAccountId",
+          "matchedResourceId",
+          "scannerPluginId",
+          "scannerAccountId",
+          "matchConfidence",
+          "repository",
+          "path",
+          "url",
+          "validity",
+          "publiclyLeaked",
+          "detectedAt"
+        ],
+        "description": "`data` of a `secret.leaked` event, version 1. A secret scanner found a credential committed to code. Each finding is sent once; the value itself is never included."
+      },
+      "Event_secret_leaked_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "secret.leaked"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_secret_leaked_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A secret scanner found a credential committed to code. Each finding is sent once; the value itself is never included."
+      },
+      "EventData_secret_rotated_v1": {
+        "type": "object",
+        "properties": {
+          "leakId": {
+            "type": "string",
+            "description": "Infrawrench leaked secret id."
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "The scanner's identifier for the token type."
+          },
+          "tokenTypeLabel": {
+            "type": "string",
+            "description": "Human name of the token type."
+          },
+          "ownerPluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plugin that issues this token type."
+          },
+          "matchKind": {
+            "type": "string",
+            "enum": [
+              "account",
+              "secret-field",
+              "output",
+              "none"
+            ],
+            "description": "What the leak was matched to."
+          },
+          "matchedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The connected account the leak belongs to."
+          },
+          "matchedResourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource whose stored secret leaked."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "reissued",
+              "replaced",
+              "detected",
+              "manual"
+            ],
+            "description": "How the rotation was recorded."
+          },
+          "rotatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who rotated it, when a person did."
+          },
+          "upstreamResolved": {
+            "type": "boolean",
+            "description": "The finding was closed on the scanner as revoked."
+          }
+        },
+        "required": [
+          "leakId",
+          "tokenType",
+          "tokenTypeLabel",
+          "ownerPluginId",
+          "matchKind",
+          "matchedAccountId",
+          "matchedResourceId",
+          "method",
+          "rotatedBy",
+          "upstreamResolved"
+        ],
+        "description": "`data` of a `secret.rotated` event, version 1. A leaked credential was rotated, or its stored value was seen to change."
+      },
+      "Event_secret_rotated_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "secret.rotated"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_secret_rotated_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A leaked credential was rotated, or its stored value was seen to change."
       },
       "Session": {
         "type": "object",
@@ -26258,6 +26626,30 @@
           "dismissedCount": {
             "type": "integer"
           },
+          "leakedCredentials": {
+            "type": "object",
+            "properties": {
+              "open": {
+                "type": "integer",
+                "description": "Open leaked credentials."
+              },
+              "matched": {
+                "type": "integer",
+                "description": "Open leaks matched to something Infrawrench holds."
+              },
+              "scanners": {
+                "type": "integer",
+                "description": "Secret scanning accounts connected."
+              }
+            },
+            "required": [
+              "open",
+              "matched",
+              "scanners"
+            ],
+            "additionalProperties": false,
+            "description": "The Leaked credentials category: secrets a scanner found committed to code. The rows are at `GET /leaked-secrets`."
+          },
           "generatedAt": {
             "type": "string",
             "format": "date-time"
@@ -26328,6 +26720,533 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "LeakedSecret": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "rotated",
+              "dismissed",
+              "resolved"
+            ],
+            "description": "`open` needs rotating; `rotated` was rotated through Infrawrench or detected because the stored value changed; `dismissed` was accepted as not a risk; `resolved` was closed on the scanner by someone else before it was rotated here."
+          },
+          "scannerAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The scanner account (GitHub, GitLab) the finding came from.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scannerAccountName": {
+            "type": "string"
+          },
+          "scannerPluginId": {
+            "type": "string"
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "The scanner's identifier for the token type.",
+            "example": "github_personal_access_token"
+          },
+          "tokenTypeLabel": {
+            "type": "string"
+          },
+          "ownerPluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plugin that issues this kind of token."
+          },
+          "ownerPluginName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secretHint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most the first and last four characters. The secret itself is never stored or returned."
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "commitSha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The finding on the scanner."
+          },
+          "upstreamState": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved"
+            ]
+          },
+          "upstreamResolution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "validity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "active",
+              "inactive",
+              "unknown"
+            ]
+          },
+          "publiclyLeaked": {
+            "type": "boolean"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "matchKind": {
+            "type": "string",
+            "enum": [
+              "account",
+              "secret-field",
+              "output",
+              "none"
+            ],
+            "description": "What the leak was matched to: an account credential, a secret stored on a resource, a resource output other resources reference, or nothing Infrawrench holds."
+          },
+          "matchConfidence": {
+            "type": "string",
+            "enum": [
+              "fingerprint",
+              "token-type",
+              "none"
+            ],
+            "description": "`fingerprint`: the leaked value equals a stored one (compared by keyed hash, never by value). `token-type`: the scanner withheld the value, so only the token's issuer is known."
+          },
+          "matchedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedAccountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedResourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedResourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedResourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedPluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedFieldKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "candidateAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Accounts it may belong to when a token-type match is ambiguous."
+          },
+          "rotation": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "reissue",
+                  "replace",
+                  "account",
+                  "manual"
+                ],
+                "description": "`reissue`: one call rotates it. `replace`: send the new value. `account`: rotate it at the provider and update the account; the change is detected. `manual`: rotate it at the provider and mark it rotated."
+              },
+              "manageUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The provider's own key management page."
+              }
+            },
+            "required": [
+              "mode",
+              "manageUrl"
+            ],
+            "additionalProperties": false
+          },
+          "rotatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "rotatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rotationMethod": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "reissued",
+              "replaced",
+              "detected",
+              "manual"
+            ]
+          },
+          "dismissedReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "false-positive",
+              "wont-fix",
+              "used-in-tests"
+            ]
+          },
+          "dismissedComment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dismissedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "dismissedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upstreamResolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "upstreamResolveError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canResolveUpstream": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "scannerAccountId",
+          "scannerAccountName",
+          "scannerPluginId",
+          "tokenType",
+          "tokenTypeLabel",
+          "ownerPluginId",
+          "ownerPluginName",
+          "secretHint",
+          "repository",
+          "path",
+          "line",
+          "commitSha",
+          "url",
+          "upstreamState",
+          "upstreamResolution",
+          "validity",
+          "publiclyLeaked",
+          "detectedAt",
+          "firstSeenAt",
+          "matchKind",
+          "matchConfidence",
+          "matchedAccountId",
+          "matchedAccountName",
+          "matchedResourceId",
+          "matchedResourceName",
+          "matchedResourceTypeId",
+          "matchedPluginId",
+          "matchedFieldKey",
+          "candidateAccountIds",
+          "rotation",
+          "rotatedAt",
+          "rotatedBy",
+          "rotationMethod",
+          "dismissedReason",
+          "dismissedComment",
+          "dismissedAt",
+          "dismissedBy",
+          "upstreamResolvedAt",
+          "upstreamResolveError",
+          "canResolveUpstream"
+        ],
+        "additionalProperties": false
+      },
+      "LeakedSecretScanner": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "canResolve": {
+            "type": "boolean"
+          },
+          "returnsSecretValue": {
+            "type": "boolean"
+          },
+          "lastScannedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "label",
+          "canResolve",
+          "returnsSecretValue",
+          "lastScannedAt",
+          "lastError",
+          "lastCount"
+        ],
+        "additionalProperties": false
+      },
+      "LeakedSecretList": {
+        "type": "object",
+        "properties": {
+          "leaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeakedSecret"
+            },
+            "description": "Open first, newest first within a status. At most 500."
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "open": {
+                "type": "integer"
+              },
+              "rotated": {
+                "type": "integer"
+              },
+              "dismissed": {
+                "type": "integer"
+              },
+              "resolved": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "open",
+              "rotated",
+              "dismissed",
+              "resolved"
+            ],
+            "additionalProperties": false
+          },
+          "scanners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeakedSecretScanner"
+            }
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "leaks",
+          "counts",
+          "scanners",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "LeakedSecretScanResult": {
+        "type": "object",
+        "properties": {
+          "scanned": {
+            "type": "integer"
+          },
+          "newLeaks": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scanned",
+          "newLeaks",
+          "errors"
+        ],
+        "additionalProperties": false
+      },
+      "LeakedSecretResponse": {
+        "type": "object",
+        "properties": {
+          "leak": {
+            "$ref": "#/components/schemas/LeakedSecret"
+          }
+        },
+        "required": [
+          "leak"
+        ],
+        "additionalProperties": false
+      },
+      "LeakedSecretRotate": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The new value, for a `replace` rotation."
+          },
+          "resolveUpstream": {
+            "type": "boolean",
+            "description": "Close the finding on the scanner afterwards, when it can. Defaults to true."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LeakedSecretMarkRotated": {
+        "type": "object",
+        "properties": {
+          "resolveUpstream": {
+            "type": "boolean",
+            "description": "Close the finding on the scanner afterwards, when it can. Defaults to true."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LeakedSecretDismiss": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "false-positive",
+              "wont-fix",
+              "used-in-tests"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "resolveUpstream": {
+            "type": "boolean",
+            "description": "Close the finding on the scanner afterwards, when it can. Defaults to true."
+          }
+        },
+        "required": [
+          "reason"
+        ],
         "additionalProperties": false
       },
       "AccessPrincipalOwner": {
@@ -48303,6 +49222,7 @@
           "expiryAlerts",
           "logMatchAlerts",
           "postureAlerts",
+          "leakedSecretAlerts",
           "probeAlerts",
           "sloAlerts",
           "scorecardAlerts",
@@ -74781,6 +75701,434 @@
         "x-required-permission": "org:settings:write"
       }
     },
+    "/api/org/{orgId}/leaked-secrets": {
+      "get": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "List leaked credentials",
+        "description": "Secrets a scanner account (GitHub secret scanning, GitLab secret detection) found committed to code, attributed to the account or stored secret they belong to. Read from the last scan; no provider call is made.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "rotated",
+                "dismissed",
+                "resolved"
+              ],
+              "description": "`open` needs rotating; `rotated` was rotated through Infrawrench or detected because the stored value changed; `dismissed` was accepted as not a risk; `resolved` was closed on the scanner by someone else before it was rotated here."
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Only leaks matched to, or possibly belonging to, this account."
+            },
+            "required": false,
+            "description": "Only leaks matched to, or possibly belonging to, this account.",
+            "name": "accountId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaks and scanners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdLeakedSecrets",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/leaked-secrets/scan": {
+      "post": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "Scan every scanner account now",
+        "description": "Reads every scanner account's findings now instead of waiting for the next 30-minute scan.\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan totals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretScanResult"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLeakedSecretsScan",
+        "x-required-permission": "secrets:write"
+      }
+    },
+    "/api/org/{orgId}/leaked-secrets/{id}/rotate": {
+      "post": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "Rotate a leaked credential",
+        "description": "For `reissue` leaks the provider mints a new value and every output reference consuming it is updated at once; for `replace` leaks send the new `value`, which the provider receives first when it can. Refused with 409 when the stored value still equals the leaked one afterwards. Records the rotation, raises `secret.rotated` and closes the finding upstream as revoked unless `resolveUpstream` is false.\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeakedSecretRotate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated leak",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLeakedSecretsIdRotate",
+        "x-required-permission": "secrets:write"
+      }
+    },
+    "/api/org/{orgId}/leaked-secrets/{id}/mark-rotated": {
+      "post": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "Record a rotation done at the provider",
+        "description": "For an account credential, the account must have been updated first: the request is refused with 409 while the stored credential still equals the leaked one.\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeakedSecretMarkRotated"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated leak",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLeakedSecretsIdMarkRotated",
+        "x-required-permission": "secrets:write"
+      }
+    },
+    "/api/org/{orgId}/leaked-secrets/{id}/dismiss": {
+      "post": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "Dismiss a leaked credential",
+        "description": "Accept the finding as not a risk. Closes it upstream with the matching reason unless `resolveUpstream` is false.\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeakedSecretDismiss"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated leak",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLeakedSecretsIdDismiss",
+        "x-required-permission": "secrets:write"
+      }
+    },
+    "/api/org/{orgId}/leaked-secrets/{id}/reopen": {
+      "post": {
+        "tags": [
+          "Leaked credentials"
+        ],
+        "summary": "Reopen a leaked credential",
+        "description": "Undo a dismissal or a rotation recorded by mistake. Does not reopen the finding on the scanner.\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated leak",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeakedSecretResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLeakedSecretsIdReopen",
+        "x-required-permission": "secrets:write"
+      }
+    },
     "/api/org/{orgId}/access-review": {
       "get": {
         "tags": [
@@ -100633,6 +101981,52 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Event_account_sync_recovered_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "secret.leaked": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Secret leaked",
+        "description": "A secret scanner found a credential committed to code. Each finding is sent once; the value itself is never included.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_secret_leaked_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "secret.rotated": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Leaked secret rotated",
+        "description": "A leaked credential was rotated, or its stored value was seen to change.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_secret_rotated_v1"
               }
             }
           }

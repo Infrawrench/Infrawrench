@@ -306,6 +306,18 @@ export interface PluginManifest {
    * the host owns approvals and expiry, the plugin owns the provider calls.
    */
   jitAccess?: JitAccessDeclaration;
+  /**
+   * If present, this plugin finds secrets committed to code (GitHub secret
+   * scanning, GitLab secret detection) and the host ingests its findings into
+   * the org's leaked credentials list. See `leaked-secrets.ts`.
+   */
+  secretScanning?: SecretScanningDeclaration;
+  /**
+   * The tokens this plugin issues, so the host can attribute a leaked secret
+   * found by any scanner to this plugin's accounts and stored secrets. See
+   * `leaked-secrets.ts`; the host never sends a stored secret anywhere.
+   */
+  tokenFormats?: TokenFormatDeclaration[];
 }
 
 export interface RateLimitDeclaration {
@@ -897,6 +909,17 @@ export interface PluginClient {
     accountId: string,
   ): Promise<void>;
   /**
+   * Secrets this scanner account found committed to code. Required when the
+   * manifest declares `secretScanning`. See `leaked-secrets.ts`.
+   */
+  listLeakedSecrets?(query: LeakedSecretQuery): Promise<LeakedSecretPage>;
+  /**
+   * Close one finding upstream (`ref` from `listLeakedSecrets`). Required when
+   * `secretScanning.canResolve` is set. Resolving an already resolved finding
+   * must succeed.
+   */
+  resolveLeakedSecret?(ref: string, resolution: LeakedSecretResolution): Promise<void>;
+  /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.
@@ -1360,6 +1383,13 @@ export interface Plugin extends OAuthPluginHooks {
 }
 
 // Forward declarations: defined in their own modules but used here
+import type {
+  LeakedSecretPage,
+  LeakedSecretQuery,
+  LeakedSecretResolution,
+  SecretScanningDeclaration,
+  TokenFormatDeclaration,
+} from "./leaked-secrets.js";
 import type { OAuthDeclaration, OAuthHostServices, OAuthPluginHooks } from "./oauth.js";
 import type { RemediationCommand, RemediationFinding } from "./remediation.js";
 import type {

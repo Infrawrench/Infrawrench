@@ -82,6 +82,16 @@ export function registerPosturePaths(ctx: BuildContext) {
           "been fixed simply drops out.",
       ),
     dismissedCount: z.number().int(),
+    leakedCredentials: strict({
+      open: z.number().int().describe("Open leaked credentials."),
+      matched: z.number().int().describe("Open leaks matched to something Infrawrench holds."),
+      scanners: z.number().int().describe("Secret scanning accounts connected."),
+    })
+      .optional()
+      .describe(
+        "The Leaked credentials category: secrets a scanner found committed to code. The rows are " +
+          "at `GET /leaked-secrets`.",
+      ),
     generatedAt: IsoDateTime,
   }).openapi("PostureListResponse");
 

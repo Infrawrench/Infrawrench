@@ -1072,6 +1072,13 @@
       "when": 1791798438115,
       "tag": "0152_event_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1791798554813,
+      "tag": "0153_leaked_secrets",
+      "breakpoints": true
     }
   ]
 }
