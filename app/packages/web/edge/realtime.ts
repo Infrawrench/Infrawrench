@@ -511,7 +511,11 @@ export async function handleRealtime(
     const { ids } = (await request.json()) as { ids: string[] };
     const statuses = await Promise.all(
       ids.map(async (bastionId) => {
-        const response = await toObject(env.BASTION_RELAY, bastionId, request, "status");
+        // A fresh request per object: this one's body has already been read.
+        const ask = new Request(`${url.origin}${REALTIME_PREFIX}/bastions/${bastionId}`, {
+          method: "GET",
+        });
+        const response = await toObject(env.BASTION_RELAY, bastionId, ask, "status");
         return [bastionId, await response.json()] as const;
       }),
     );
