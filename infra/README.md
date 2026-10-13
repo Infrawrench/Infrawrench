@@ -497,6 +497,85 @@ snapshot`, with the call sites): load the module that does it lazily.
   session gateway: add it to the `SESSION_ROUTES` list in
   `src/edge/gateway-routes.ts`.
 
+## Oracle Cloud
+
+The session gateway (the third tier, after the edge Worker and the Lambda:
+WebSockets, SSE, SSH and kubectl PTYs, uploads over 4 MiB) and the
+github-watcher run on Oracle Cloud's Always Free tier, in place of the GKE
+`web` and `github-watcher` Deployments. The cluster stays: ClickHouse and the
+`cloudflared` connector the edge and the Lambda reach it through run there.
+Terraform is `infra/terraform/oci.tf`; the VMs' side is `infra/oci/`.
+
+- **Web**: two Ampere A1 VMs (2 OCPU, 6 GB), each running the web image and a
+  connector for the Cloudflare Tunnel `infrawrench-session-gateway`, whose
+  routes are `app.infrawrench.com` and `oci-gateway.infrawrench.com` (a test
+  hostname) to `http://localhost:3000`. `app.infrawrench.com` is a proxied
+  CNAME to the tunnel, so the Worker's `fetch(request)` to its own host lands
+  there. Cloudflare spreads requests over the connected replicas; a VM that
+  dies drops out, and so does one whose app fails `/healthz`, because the
+  agent stops its connector. The cross-replica relay uses the VMs' private
+  IPs (`POD_IP`), port 3000 inside the VCN.
+- **github-watcher**: one E2.1.Micro VM (1/8 OCPU, 1 GB, 2 GB swap). The
+  micro shape is only offered in AD-2 of us-ashburn-1.
+- **Configuration**: the same as the Lambda's, `app_env` merged with
+  `lambda_app_env` (ClickHouse through the tunnel hostname). Terraform writes
+  it to the private bucket `infrawrench-runtime`; nothing listens publicly.
+- **Deploys**: CI's `deploy-oci` job copies each deploy's `web:<sha>-arm64`
+  (built on an arm runner) and `github-watcher:<sha>` from Artifact Registry
+  to OCIR as `web:oci-arm64` and `github-watcher:oci`. Each VM's agent
+  (`infra/oci/agent.sh`, every minute) pulls the tag and restarts on a new
+  image id; web-2 waits three minutes after web-1, and a web VM's connector is
+  down while its app restarts. OCIR, not Artifact Registry, because the GCP
+  org policy forbids service-account keys.
+
+### Provisioning (once)
+
+1. API key: Console > My profile > Tokens and keys > Add API key (paste a
+   public key), then put the preview in `~/.oci/config` with `key_file`. The
+   tenancy's region is its home region, the only one with Always Free
+   compute.
+2. Cloudflare: a remotely-managed tunnel with the two routes above, and the
+   `oci-gateway` proxied CNAME to `<tunnel id>.cfargotunnel.com`. Its token is
+   `oci_tunnel_token`.
+3. `oci_*` variables in `terraform.tfvars` (see the example), then
+   `terraform apply`. **Ampere capacity**: us-ashburn-1 often answers "Out of
+   host capacity" in every availability domain. Retry, moving the failing
+   node between domains with `oci_web_availability_domains`; capacity comes
+   and goes through the day.
+4. CI: repo variables `OCI_DEPLOY_ENABLED=true` and `OCIR_REGISTRY`
+   (`terraform output ocir`), `production` environment secrets
+   `OCIR_USERNAME` and `OCIR_TOKEN` (`terraform output -raw ocir_token`).
+
+### Cutover order
+
+1. Check the VMs through the test hostname: `curl
+https://oci-gateway.infrawrench.com/healthz` answers `ok`, and stopping
+   one VM's connector (`sudo docker stop cloudflared`) keeps it answering.
+2. Point `app.infrawrench.com` at the tunnel: change its record to a proxied
+   CNAME to `<tunnel id>.cfargotunnel.com`. Watch WebSocket features (a
+   terminal session) and `/healthz`.
+3. Set `replicas: 0` in `infra/k8s/web-deployment.yaml` and
+   `github-watcher-deployment.yaml`. Leave the cluster and everything else on
+   it alone.
+
+**Rollback**: put `app.infrawrench.com` back to the proxied A record
+`34.48.86.92` (the GKE ingress) and restore the replicas (web 2,
+github-watcher 1). The watcher is safe to run in both places at once.
+
+### Day-2
+
+- **Logs**: `ssh ubuntu@<ip>` (`terraform output oci_instances`; SSH is open
+  to `oci_admin_cidrs` only), then `sudo docker logs app`, `sudo docker logs
+cloudflared`, `sudo journalctl -u infrawrench-agent`.
+- **Configuration change**: edit `app_env` or `lambda_app_env`, `terraform
+apply`; the agents restart the app within a minute.
+- **Agent change**: edit `infra/oci/agent.sh`, `terraform apply`. Changes to
+  `cloud-init.yaml` only reach new VMs (metadata changes are ignored).
+- **OCIR storage** counts against the 20 GB Always Free object storage, and
+  every deploy leaves an untagged image behind. Set an image retention policy
+  (Console > Developer Services > Container Registry > the `infrawrench/*`
+  repositories) that deletes untagged images after a day.
+
 ## Day-2 notes
 
 - **Deploys are push-to-main.** Every deploy is a full image rebuild pinned to
