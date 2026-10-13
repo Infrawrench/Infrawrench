@@ -5,7 +5,12 @@ metadata:
   labels:
     app: web
 spec:
-  replicas: 2
+  # Scaled to 0 on 2026-10-13: the session gateway runs on two AWS t4g.medium
+  # instances behind a Cloudflare Tunnel (infra/terraform/aws-web.tf), and
+  # app.infrawrench.com points at that tunnel. Kept as the fallback: set
+  # replicas back to 2 and point app.infrawrench.com back at the GKE ingress
+  # (proxied A record, 34.48.86.92).
+  replicas: 0
   selector:
     matchLabels:
       app: web
