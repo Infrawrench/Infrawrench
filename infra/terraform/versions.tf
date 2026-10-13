@@ -24,6 +24,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    # Key pair for the Oracle Cloud CI user (oci.tf).
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
     # The Oracle Cloud session gateway and github-watcher (oci.tf).
     oci = {
       source  = "oracle/oci"

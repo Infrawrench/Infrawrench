@@ -241,10 +241,11 @@ jobs:
       - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       # skopeo (preinstalled on the runner) copies registry to registry
-      # without pulling into a local daemon. --multi-arch all: buildx pushes a
-      # manifest list (image plus attestation), and skopeo would otherwise
-      # look in it for the runner's own architecture, which the arm64 web
-      # build does not have.
+      # without pulling into a local daemon. buildx pushes a manifest list
+      # (image plus attestation); copy just the platform each VM runs, so a
+      # tag in OCIR is one image and every untagged one is an old build the
+      # prune below may delete. (Copying the whole list would make the
+      # current image's own manifests untagged entries too.)
       - name: Copy images to OCIR
         env:
           OCIR_USERNAME: ${{ secrets.OCIR_USERNAME }}
@@ -252,14 +253,44 @@ jobs:
         run: |
           src_token="$(gcloud auth print-access-token)"
           copy() {
-            skopeo copy --retry-times 3 --multi-arch all \
+            skopeo copy --retry-times 3 --override-os linux --override-arch "$3" \
               --src-creds "oauth2accesstoken:${src_token}" \
               --dest-creds "${OCIR_USERNAME}:${OCIR_TOKEN}" \
               "docker://${REGISTRY}/$1" "docker://${OCIR_REGISTRY}/$2"
           }
-          copy "web:${GITHUB_SHA}-arm64" "web:oci-arm64"
-          copy "github-watcher:${GITHUB_SHA}" "github-watcher:oci"
+          copy "web:${GITHUB_SHA}-arm64" "web:oci-arm64" arm64
+          copy "github-watcher:${GITHUB_SHA}" "github-watcher:oci" amd64
           echo "OCIR now serves ${GITHUB_SHA}; the VMs' agents pick it up within a minute."
+
+      # OCIR storage counts against the 20 GB Always Free object storage and
+      # has no retention setting in the API, so prune here: untagged images
+      # (previous builds) older than a day. Signed as the infrawrench-ci user,
+      # which may only manage repositories in the infrawrench compartment.
+      - name: Prune untagged OCIR images
+        env:
+          OCI_CI_KEY: ${{ secrets.OCI_CI_KEY }}
+          OCI_CI_USER: ${{ vars.OCI_CI_USER }}
+          OCI_CI_FINGERPRINT: ${{ vars.OCI_CI_FINGERPRINT }}
+          OCI_TENANCY: ${{ vars.OCI_TENANCY }}
+          OCI_COMPARTMENT: ${{ vars.OCI_COMPARTMENT }}
+        run: |
+          if [ -z "$OCI_CI_KEY" ]; then
+            echo "::notice::OCI_CI_KEY not set; skipping the OCIR prune."
+            exit 0
+          fi
+          pipx install oci-cli >/dev/null
+          umask 077
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_CI_KEY" > ~/.oci/ci.pem
+          printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=us-ashburn-1\nkey_file=%s\n' \
+            "$OCI_CI_USER" "$OCI_CI_FINGERPRINT" "$OCI_TENANCY" ~/.oci/ci.pem > ~/.oci/config
+          cutoff="$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S)"
+          oci artifacts container image list --compartment-id "$OCI_COMPARTMENT" --all \
+            --query 'data.items[].{id:id,version:version,created:"time-created"}' --output json |
+            jq -r --arg cutoff "$cutoff" '.[] | select(.version == null and .created < $cutoff) | .id' |
+            while read -r id; do
+              oci artifacts container image delete --image-id "$id" --force >/dev/null && echo "pruned $id"
+            done
 
   # The AWS Lambda gateway: the web gateway and the poller, one image with
   # two handlers (infra/docker/lambda.Dockerfile). After `migrate` for the

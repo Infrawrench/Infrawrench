@@ -327,6 +327,68 @@ output "ocir_token" {
   sensitive   = true
 }
 
+# CI's own Oracle identity, for pruning OCIR: every deploy leaves the previous
+# image untagged, and OCIR storage counts against the 20 GB Always Free object
+# storage. Least privilege: one group, allowed only to manage the container
+# repositories in this compartment.
+resource "tls_private_key" "oci_ci" {
+  count     = local.oci_enabled ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "oci_identity_user" "ci" {
+  count          = local.oci_enabled ? 1 : 0
+  compartment_id = var.oci_tenancy_ocid
+  name           = "infrawrench-ci"
+  description    = "GitHub Actions: prunes untagged OCIR images (infra/terraform/oci.tf)"
+  email          = "infrawrench-ci@infrawrench.com"
+}
+
+resource "oci_identity_group" "ci" {
+  count          = local.oci_enabled ? 1 : 0
+  compartment_id = var.oci_tenancy_ocid
+  name           = "infrawrench-ci"
+  description    = "Infrawrench CI: manage container repositories in the infrawrench compartment"
+}
+
+resource "oci_identity_user_group_membership" "ci" {
+  count    = local.oci_enabled ? 1 : 0
+  user_id  = oci_identity_user.ci[0].id
+  group_id = oci_identity_group.ci[0].id
+}
+
+resource "oci_identity_policy" "ci" {
+  count          = local.oci_enabled ? 1 : 0
+  compartment_id = var.oci_tenancy_ocid
+  name           = "infrawrench-ci"
+  description    = "Infrawrench CI prunes OCIR images (infra/terraform/oci.tf)"
+  statements = [
+    "Allow group 'Default'/'infrawrench-ci' to manage repos in compartment infrawrench",
+  ]
+}
+
+resource "oci_identity_api_key" "ci" {
+  count     = local.oci_enabled ? 1 : 0
+  user_id   = oci_identity_user.ci[0].id
+  key_value = tls_private_key.oci_ci[0].public_key_pem
+}
+
+output "oci_ci" {
+  description = "Repo variables for CI's OCIR pruning: OCI_CI_USER, OCI_CI_FINGERPRINT, OCI_TENANCY, OCI_COMPARTMENT (the private key is `terraform output -raw oci_ci_private_key`, secret OCI_CI_KEY)."
+  value = local.oci_enabled ? {
+    user        = oci_identity_user.ci[0].id
+    fingerprint = oci_identity_api_key.ci[0].fingerprint
+    tenancy     = var.oci_tenancy_ocid
+    compartment = oci_identity_compartment.infrawrench[0].id
+  } : null
+}
+
+output "oci_ci_private_key" {
+  value     = local.oci_enabled ? tls_private_key.oci_ci[0].private_key_pem : ""
+  sensitive = true
+}
+
 # ---------------------------------------------------------------------------
 # Instances
 # ---------------------------------------------------------------------------
