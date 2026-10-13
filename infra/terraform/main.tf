@@ -87,15 +87,6 @@ resource "google_compute_router_nat" "prod" {
   }
 }
 
-# Reserved in advance so the ingress load balancer's address survives a
-# reinstall of the ingress-nginx release — DNS for app.infrawrench.com points
-# here and shouldn't have to change again.
-resource "google_compute_address" "ingress" {
-  name         = "${var.cluster_name}-ingress"
-  region       = var.region
-  address_type = "EXTERNAL"
-}
-
 # ---------------------------------------------------------------------------
 # Cluster
 # ---------------------------------------------------------------------------

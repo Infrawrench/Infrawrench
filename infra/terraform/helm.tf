@@ -1,38 +1,8 @@
-# Ingress + TLS machinery. The chart's LoadBalancer Service provisions a GCP
-# regional external passthrough load balancer, pinned to the address reserved
-# in main.tf — point app.infrawrench.com's A record at that IP.
-
-resource "helm_release" "ingress_nginx" {
-  name             = "ingress-nginx"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  chart            = "ingress-nginx"
-  namespace        = "ingress-nginx"
-  create_namespace = true
-  version          = "4.13.3"
-
-  set {
-    name  = "controller.replicaCount"
-    value = "2"
-  }
-
-  # Reserved static IP (google_compute_address.ingress). spec.loadBalancerIP is
-  # deprecated upstream in Kubernetes but is still how GKE pins a passthrough
-  # LB to a reserved regional address.
-  set {
-    name  = "controller.service.loadBalancerIP"
-    value = google_compute_address.ingress.address
-  }
-
-  # GCP passthrough LBs deliver packets with the original source IP intact, but
-  # only when the receiving node also serves the pod — otherwise kube-proxy
-  # SNATs on the second hop and every client looks like a node.
-  set {
-    name  = "controller.service.externalTrafficPolicy"
-    value = "Local"
-  }
-
-  depends_on = [google_container_node_pool.default]
-}
+# TLS machinery. ingress-nginx (and its regional passthrough load balancer
+# and reserved address) were removed on 2026-10-13: app.infrawrench.com and
+# jeeves.infrawrench.com are both served through Cloudflare Tunnels now
+# (aws-web.tf, edge.tf), so nothing in the cluster takes public traffic.
+# cert-manager stays installed; it requests no resources.
 
 resource "helm_release" "cert_manager" {
   name             = "cert-manager"

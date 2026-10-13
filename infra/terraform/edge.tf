@@ -147,8 +147,8 @@ resource "kubernetes_deployment_v1" "cloudflared" {
   }
 }
 
-# The connector needs exactly two things: ClickHouse's HTTP port, and
-# Cloudflare's edge (7844 over QUIC or HTTP/2, plus 443 for the API it
+# The connector needs exactly three things: ClickHouse's HTTP port, jeeves's,
+# and Cloudflare's edge (7844 over QUIC or HTTP/2, plus 443 for the API it
 # registers with). It is deliberately *not* in `app-egress`
 # (infra/k8s/network-policy.yaml): that policy opens the public internet to
 # the app pods, which this pod has no reason to reach.
@@ -192,6 +192,28 @@ resource "kubernetes_network_policy_v1" "cloudflared" {
       ports {
         protocol = "TCP"
         port     = "8123"
+      }
+    }
+
+    # jeeves.infrawrench.com is a route on this tunnel too (since
+    # 2026-10-13, when ingress-nginx and its load balancer were removed):
+    # the jeeves Service's pods on 8080.
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "jeeves"
+          }
+        }
+        pod_selector {
+          match_labels = {
+            app = "jeeves"
+          }
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "8080"
       }
     }
 

@@ -543,9 +543,14 @@ cloudflared`, `sudo journalctl -u infrawrench-agent`.
 apply`; the agents restart the app within a minute.
 - **Agent change**: edit `infra/vm/agent.sh`, `terraform apply` (it is an S3
   object). Changes to `cloud-init-aws.yaml` only reach new instances.
-- **Rollback to GKE**: set `replicas: 2` in `infra/k8s/web-deployment.yaml`
-  and deploy, then point `app.infrawrench.com` back at the proxied A record
-  `34.48.86.92`.
+- **Rollback to GKE**: there is no ingress or load balancer in the cluster
+  any more (removed 2026-10-13). Set `replicas: 2` in
+  `infra/k8s/web-deployment.yaml` and deploy; add a route
+  `app.infrawrench.com` -> `http://web.infrawrench.svc.cluster.local:80` to
+  the cluster's tunnel (`infrawrench-clickhouse`, which also carries
+  `clickhouse-gw` and `jeeves`) and an egress rule to the web pods in
+  `kubernetes_network_policy_v1.cloudflared` (edge.tf); then point
+  `app.infrawrench.com` at that tunnel (`<id>.cfargotunnel.com`, proxied).
 
 ## Oracle Cloud
 

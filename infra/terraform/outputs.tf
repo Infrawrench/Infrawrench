@@ -33,11 +33,6 @@ output "workload_identity_provider" {
   value       = google_iam_workload_identity_pool_provider.github.name
 }
 
-output "ingress_ip" {
-  description = "Static IP the ingress load balancer answers on — the A record for app.infrawrench.com."
-  value       = google_compute_address.ingress.address
-}
-
 output "egress_ip" {
   description = "Cloud NAT address every pod's outbound traffic leaves from — allowlist this in Neon (and ClickHouse Cloud, if metrics haven't been cut over to the in-cluster ClickHouse yet)."
   value       = google_compute_address.nat.address

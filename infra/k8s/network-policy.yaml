@@ -96,6 +96,10 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # ingress-nginx was removed on 2026-10-13 (web runs on AWS behind a
+    # Cloudflare Tunnel), so this rule admits nothing today. Rolling web back
+    # to GKE goes through the cluster's cloudflared tunnel instead: allow the
+    # `app: cloudflared` pods here (infra/README.md, "AWS session gateway").
     # Public traffic arrives through ingress-nginx (helm release in the
     # `ingress-nginx` namespace, infra/terraform/helm.tf) — including the
     # inbound WebSockets from customer-run bastion-agent containers, which dial
