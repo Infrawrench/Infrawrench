@@ -5,10 +5,11 @@ metadata:
   labels:
     app: github-watcher
 spec:
-  # One replica on purpose: the watcher's SHA compare-and-swap makes overlap
-  # *safe* (rolling deploys can't double-fire), but every extra replica
-  # multiplies GitHub API reads for zero benefit.
-  replicas: 1
+  # Scaled to 0 on 2026-10-13: the github-watcher runs on an Oracle Cloud VM
+  # (infra/terraform/oci.tf). Kept as the fallback: set replicas back to 1.
+  # The watcher's SHA compare-and-swap makes overlap *safe* (two watchers
+  # can't double-fire), but every extra replica multiplies GitHub API reads.
+  replicas: 0
   selector:
     matchLabels:
       app: github-watcher

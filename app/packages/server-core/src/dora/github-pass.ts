@@ -48,7 +48,10 @@ interface Pending {
  * (stored with the attempts exhausted), or a transient miss tried recently.
  */
 function settled(retryBefore: Date) {
-  return sql`(${doraCommitTimes.committedAt} IS NOT NULL OR ${doraCommitTimes.attempts} >= ${MAX_ATTEMPTS} OR ${doraCommitTimes.checkedAt} > ${retryBefore})`;
+  // An ISO string, not the Date: a raw `sql` parameter skips drizzle's column
+  // mapping, and postgres-js rejects a Date there ("The string argument must
+  // be of type string ... Received an instance of Date"), failing every pass.
+  return sql`(${doraCommitTimes.committedAt} IS NOT NULL OR ${doraCommitTimes.attempts} >= ${MAX_ATTEMPTS} OR ${doraCommitTimes.checkedAt} > ${retryBefore.toISOString()}::timestamptz)`;
 }
 
 async function pendingCommitLookups(since: Date, retryBefore: Date): Promise<Pending[]> {
