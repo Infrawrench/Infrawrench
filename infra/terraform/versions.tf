@@ -24,6 +24,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    # The Oracle Cloud session gateway and github-watcher (oci.tf).
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 9.9"
+    }
   }
 
   # State is local by default. For anything beyond a single operator, move it

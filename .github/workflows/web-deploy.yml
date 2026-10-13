@@ -38,6 +38,14 @@ name: web-deploy
 #   AWS_REGION                     - defaults to us-east-2
 #   LAMBDA_FUNCTION_PREFIX         - defaults to infrawrench-prod-lambda
 #                                    (terraform's "<cluster_name>-lambda")
+# Optional repo variables (Oracle Cloud session gateway and github-watcher;
+# see "Oracle Cloud" in infra/README.md):
+#   OCI_DEPLOY_ENABLED             - "true" to copy each deploy's web (arm64)
+#                                    and github-watcher images to OCIR under
+#                                    the tags the VMs' agents follow.
+#   OCIR_REGISTRY                  - terraform output ocir.registry
+#   (secrets OCIR_USERNAME, OCIR_TOKEN in the production environment:
+#   terraform output ocir.username and -raw ocir_token)
 # Optional repo variables:
 #   GKE_DNS_ENDPOINT               - "true" to reach the control plane through
 #                                    its IAM-gated DNS endpoint instead of the
@@ -78,7 +86,7 @@ jobs:
   build-push:
     # workflow_dispatch can target any ref; only main may deploy.
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     environment: production
     # id-token lets the job mint the OIDC assertion Workload Identity
     # Federation trades for GCP credentials.
@@ -91,12 +99,25 @@ jobs:
           - service: web
             package: "@infrawrench/web"
             app_dir: app/packages/web
+            runner: ubuntu-latest
+            tag_suffix: ""
+          # The Oracle Cloud session gateway runs on Ampere (arm64) VMs. Built
+          # natively on an arm runner rather than under emulation.
+          - service: web
+            package: "@infrawrench/web"
+            app_dir: app/packages/web
+            runner: ubuntu-24.04-arm
+            tag_suffix: "-arm64"
           - service: poller
             package: "@infrawrench/poller"
             app_dir: app/packages/poller
+            runner: ubuntu-latest
+            tag_suffix: ""
           - service: github-watcher
             package: "@infrawrench/github-watcher"
             app_dir: app/packages/github-watcher
+            runner: ubuntu-latest
+            tag_suffix: ""
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -112,18 +133,18 @@ jobs:
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - name: Build and push ${{ matrix.service }}:${{ github.sha }}
+      - name: Build and push ${{ matrix.service }}:${{ github.sha }}${{ matrix.tag_suffix }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: infra/docker/service.Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}${{ matrix.tag_suffix }}
           build-args: |
             PACKAGE=${{ matrix.package }}
             APP_DIR=${{ matrix.app_dir }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}${{ matrix.tag_suffix }}
+          cache-to: type=gha,scope=${{ matrix.service }}${{ matrix.tag_suffix }},mode=max
 
   migrate:
     if: github.ref == 'refs/heads/main'
@@ -197,6 +218,46 @@ jobs:
           kubectl -n infrawrench rollout status deployment/web --timeout=300s
           kubectl -n infrawrench rollout status deployment/poller --timeout=300s
           kubectl -n infrawrench rollout status deployment/github-watcher --timeout=300s
+
+  # The Oracle Cloud VMs (infra/terraform/oci.tf): copy this deploy's images
+  # into OCIR under the tags their agents follow; each agent pulls within a
+  # minute and restarts (web-2 three minutes after web-1). After `migrate`,
+  # and before `deploy-edge`, like the Lambda.
+  deploy-oci:
+    if: github.ref == 'refs/heads/main' && vars.OCI_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [build-push, migrate]
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      OCIR_REGISTRY: ${{ vars.OCIR_REGISTRY }}
+    steps:
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+
+      # skopeo (preinstalled on the runner) copies registry to registry
+      # without pulling into a local daemon.
+      - name: Copy images to OCIR
+        env:
+          OCIR_USERNAME: ${{ secrets.OCIR_USERNAME }}
+          OCIR_TOKEN: ${{ secrets.OCIR_TOKEN }}
+        run: |
+          src_token="$(gcloud auth print-access-token)"
+          copy() {
+            skopeo copy --retry-times 3 \
+              --src-creds "oauth2accesstoken:${src_token}" \
+              --dest-creds "${OCIR_USERNAME}:${OCIR_TOKEN}" \
+              "docker://${REGISTRY}/$1" "docker://${OCIR_REGISTRY}/$2"
+          }
+          copy "web:${GITHUB_SHA}-arm64" "web:oci-arm64"
+          copy "github-watcher:${GITHUB_SHA}" "github-watcher:oci"
+          echo "OCIR now serves ${GITHUB_SHA}; the VMs' agents pick it up within a minute."
 
   # The AWS Lambda gateway: the web gateway and the poller, one image with
   # two handlers (infra/docker/lambda.Dockerfile). After `migrate` for the
@@ -316,13 +377,13 @@ jobs:
   # duplicated in GitHub, so the runtimes can never disagree about a value.
   deploy-edge:
     # `!failure() && !cancelled()` rather than the implicit success(): a
-    # skipped deploy-lambda (the Lambda gateway not adopted) must not skip
-    # this job too.
+    # skipped deploy-lambda or deploy-oci (not adopted) must not skip this
+    # job too.
     if: >-
       !failure() && !cancelled() &&
       github.ref == 'refs/heads/main' && vars.EDGE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    needs: [migrate, deploy, deploy-lambda]
+    needs: [migrate, deploy, deploy-lambda, deploy-oci]
     environment: production
     permissions:
       contents: read

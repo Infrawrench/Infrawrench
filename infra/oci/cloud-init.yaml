@@ -1,0 +1,62 @@
+#cloud-config
+# Bootstrap for the Oracle Cloud VMs (infra/terraform/oci.tf). Deliberately
+# small and stable: everything that changes (the agent, the configuration,
+# the image) is fetched by the agent each minute, because a change to this
+# file only reaches new instances (oci.tf ignores metadata changes).
+package_update: true
+packages:
+  - docker.io
+  - curl
+  - iptables-persistent
+
+write_files:
+  - path: /etc/infrawrench/node.env
+    permissions: "0600"
+    content: |
+      ROLE=${role}
+      PAR_URL='${par_url}'
+      IMAGE='${image}'
+      REGISTRY_HOST='${registry_host}'
+      DEPLOY_DELAY=${deploy_delay}
+
+  # Fetch the current agent and run it, one run at a time.
+  - path: /usr/local/bin/infrawrench-agent
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      . /etc/infrawrench/node.env
+      mkdir -p /var/lib/infrawrench
+      curl -fsS --retry 3 --max-time 30 "$${PAR_URL}agent.sh" -o /var/lib/infrawrench/agent.sh
+      exec flock -n /run/infrawrench-agent.lock bash /var/lib/infrawrench/agent.sh
+
+  - path: /etc/systemd/system/infrawrench-agent.service
+    content: |
+      [Unit]
+      Description=Infrawrench deploy agent
+      After=docker.service network-online.target
+      Wants=network-online.target
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/infrawrench-agent
+
+  - path: /etc/systemd/system/infrawrench-agent.timer
+    content: |
+      [Unit]
+      Description=Run the Infrawrench deploy agent every minute
+      [Timer]
+      OnBootSec=20s
+      OnUnitActiveSec=60s
+      AccuracySec=5s
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  # A 1 GB micro instance needs room for Node's heap spikes.
+  - [bash, -c, "if [ ${swap_gb} -gt 0 ] && [ ! -f /swapfile ]; then fallocate -l ${swap_gb}G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi"]
+  # Oracle's Ubuntu images allow only SSH inbound in iptables; the web VMs'
+  # cross-replica relay needs port 3000 from inside the VCN.
+  - [bash, -c, "iptables -I INPUT 5 -p tcp -s ${vcn_cidr} --dport 3000 -j ACCEPT && netfilter-persistent save"]
+  - [systemctl, enable, --now, docker]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, infrawrench-agent.timer]
