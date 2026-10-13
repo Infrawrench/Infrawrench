@@ -45,11 +45,12 @@ variable "node_count_max" {
 variable "clickhouse_machine_type" {
   description = <<-EOT
     Machine type for the dedicated ClickHouse node pool (one node per replica,
-    two replicas). 4 vCPU / 16 GB by default — ClickHouse is memory-hungry and
-    shares its node with nothing else.
+    two replicas). 2 vCPU / 8 GB: each replica used ~0.2 CPU and ~1.1 GiB of
+    the 4 vCPU / 16 GB nodes it had before 2026-10-13, and requests 500m /
+    3Gi (limit 6Gi). Raise this and the StatefulSet's resources together.
   EOT
   type        = string
-  default     = "e2-standard-4"
+  default     = "e2-standard-2"
 }
 
 variable "clickhouse_disk_gb" {

@@ -45,9 +45,12 @@ data "google_compute_zones" "region" {
 # Exactly one node in each of two zones: a fixed home per replica, zone
 # redundancy, and no autoscaler surprises under a stateful workload. The
 # taint keeps app pods off; the ClickHouse pods tolerate it and select the
-# role label.
-resource "google_container_node_pool" "clickhouse" {
-  name           = "clickhouse"
+# role label. Named clickhouse-v2 because it replaced an e2-standard-4 pool on
+# 2026-10-13 (replicas used ~0.2 CPU and ~1.1 GiB each; requests are now 500m
+# / 3Gi). To resize again: add a pool with the same label and taint, cordon
+# this one, roll the StatefulSet, then remove this one.
+resource "google_container_node_pool" "clickhouse_v2" {
+  name           = "clickhouse-v2"
   cluster        = google_container_cluster.prod.id
   location       = var.region
   node_locations = slice(data.google_compute_zones.region.names, 0, local.ch_replicas)
@@ -595,16 +598,18 @@ resource "kubernetes_stateful_set" "clickhouse" {
             container_port = 9009
           }
 
-          # Sized against an e2-standard-4 (~13.5Gi allocatable) that the pod
-          # has to itself. No CPU limit on purpose: merges are bursty and the
-          # node is dedicated.
+          # Sized against an e2-standard-2 (~1.9 CPU / ~6Gi allocatable) that
+          # the pod has to itself, at about 3x what a replica used on
+          # 2026-10-13 (~0.2 CPU, ~1.1Gi). ClickHouse caps its own memory at
+          # 90% of the limit. No CPU limit on purpose: merges are bursty and
+          # the node is dedicated.
           resources {
             requests = {
-              cpu    = "2"
-              memory = "10Gi"
+              cpu    = "500m"
+              memory = "3Gi"
             }
             limits = {
-              memory = "12Gi"
+              memory = "6Gi"
             }
           }
 
@@ -690,7 +695,7 @@ resource "kubernetes_stateful_set" "clickhouse" {
   }
 
   depends_on = [
-    google_container_node_pool.clickhouse,
+    google_container_node_pool.clickhouse_v2,
     kubernetes_stateful_set.clickhouse_keeper,
   ]
 }
