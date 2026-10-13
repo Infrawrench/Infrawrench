@@ -14,6 +14,7 @@
  */
 import { eq, sql, type SQL } from "drizzle-orm";
 import { db } from "../db/client";
+import { realtimeEnabled } from "../realtime/client";
 import { accounts } from "../db/schema";
 
 /**
@@ -98,7 +99,9 @@ async function accountRuntime(accountId: string): Promise<AccountRuntime> {
   const first = Array.from(rows as Iterable<Record<string, unknown>>)[0];
   const value: AccountRuntime = {
     needsGateway: first?.["needs"] === true,
-    needsSession: first?.["session"] === true,
+    // With the realtime relay the agent is reachable from any Node runtime
+    // (realtime/protocol.ts), so a bastion no longer pins the session gateway.
+    needsSession: first?.["session"] === true && !realtimeEnabled(),
     at: Date.now(),
   };
   if (runtimeCache.size >= CACHE_MAX) runtimeCache.clear();
@@ -117,7 +120,8 @@ export async function accountNeedsGateway(accountId: string): Promise<boolean> {
 /**
  * Whether requests about this account need the long-lived session gateway
  * specifically, rather than any Node runtime: true when it is bound to a
- * bastion, whose agent connection lives in one session gateway process. SSH
+ * bastion and the realtime relay is off, so its agent connection lives in one
+ * session gateway process. With the relay every Node runtime reaches the agent. SSH
  * tunnels do not count; any Node process can open one for the duration of a
  * request, as the poller always has. Read by the edge router to choose
  * between the Lambda gateway and the session gateway.

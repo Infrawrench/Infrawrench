@@ -23,7 +23,8 @@ import { decrypt, buildAad } from "./encryption";
 import { setLiteralSecretState } from "./secret-states";
 import { freshAccountCredentials } from "./provider-oauth/refresh";
 import { resourceIdBelongsToAccount } from "./resource-ids";
-import { getDispatcherFor } from "./bastion/registry";
+import { resolveDispatcher } from "./bastion/registry";
+import { realtimeEnabled } from "./realtime/client";
 import { BastionDisconnectedError } from "./bastion/errors";
 import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
 import { sessionHandoffInScope } from "./runtime/request-scope";
@@ -194,20 +195,20 @@ function buildHttpHostServices(
   return {
     request: async (req) => {
       const binary = req.responseEncoding === "binary";
-      // A Worker has neither the agent connections (they live in the Node
-      // process the agent dialled) nor a way to trust a per-request CA, so
-      // both hand the call to the gateway. Plain requests need no guard
-      // there: Workers egress cannot reach private or loopback addresses.
-      // The web Lambda is Node but holds no agent connections either, so it
-      // hands bastion traffic on the same way (to the session gateway).
-      if (bastionId && (isEdgeRuntime() || sessionHandoffInScope())) {
+      // A Worker cannot drive the agent's streams (undici, node:stream) nor
+      // trust a per-request CA, so both hand the call to the gateway. Plain
+      // requests need no guard there: Workers egress cannot reach private or
+      // loopback addresses. The web Lambda is Node and reaches the agent
+      // through the realtime relay; without the relay it holds no agent
+      // connection and hands bastion traffic to the session gateway.
+      if (bastionId && (isEdgeRuntime() || (sessionHandoffInScope() && !realtimeEnabled()))) {
         throw new GatewayOnlyError("Routing through a bastion agent");
       }
       if (isEdgeRuntime() && req.caCert) {
         throw new GatewayOnlyError("A request trusting a custom CA certificate");
       }
       if (bastionId) {
-        const dispatcher = getDispatcherFor(bastionId);
+        const dispatcher = await resolveDispatcher(bastionId);
         if (!dispatcher) throw new BastionDisconnectedError(bastionId);
         // caCert is rarely combined with a bastion (the agent terminates the
         // TCP, but TLS is still client-side). undici uses the OS trust store

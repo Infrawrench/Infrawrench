@@ -44,6 +44,7 @@ import type {
 import { securityHeaderEntries } from "../src/api/security-headers";
 import { isApiPath, routeRequest } from "../src/edge/gateway-routes";
 import { handleEdgeApi } from "../src/edge/handle-api";
+import { handleRealtime, type AgentAuthenticator, type RealtimeEnv } from "./realtime";
 import {
   GATEWAY_SECRET_HEADER,
   LAMBDA_MAX_REQUEST_BYTES,
@@ -85,7 +86,10 @@ function loadServer() {
   return server;
 }
 
-export interface Env extends EdgeBindings {
+// The realtime relay's Durable Objects (bindings in wrangler.jsonc).
+export { BastionRelay, ConsoleRelay } from "./realtime";
+
+export interface Env extends EdgeBindings, RealtimeEnv {
   /** The static assets binding, typed against the global Request/Response. */
   ASSETS: { fetch(request: Request): Promise<Response> };
   /** Local development only: where the session gateway listens. */
@@ -213,6 +217,31 @@ async function handleApi(
   );
 }
 
+/**
+ * The bastion agent's token check, run like any API request (the server is
+ * loaded, Postgres is a per-invocation client): the agent's socket only reaches
+ * its relay object once the token names a live bastion.
+ */
+function agentAuthenticator(env: Env, ctx: ExecutionContext): () => Promise<AgentAuthenticator> {
+  return async () => {
+    const [{ withEdgeInvocation }, registry, { keyedHash }] = await Promise.all([
+      loadServer(),
+      import("@infrawrench/server-core/bastion/registry"),
+      import("@infrawrench/server-core/encryption"),
+    ]);
+    return (token) =>
+      withEdgeInvocation(env, ctx, async () => {
+        const row = await registry.findBastionByHashedToken(
+          await keyedHash(token, "bastion-agent"),
+        );
+        if (!row) return null;
+        const allowlist = await registry.computeAllowlist(row.id);
+        await registry.markBastionActive(row.id);
+        return { bastionId: row.id, allowlist };
+      });
+  };
+}
+
 const handler: ExportedHandler<Env> = {
   async fetch(incoming: WorkerRequest, env: Env, ctx: ExecutionContext) {
     // The runtime's Request and the global one are the same object; the cast
@@ -223,6 +252,13 @@ const handler: ExportedHandler<Env> = {
       return withSecurityHeaders(new Response("ok", { headers: { "content-type": "text/plain" } }));
     }
     if (!isApiPath(pathname)) return serveAsset(request, env);
+
+    // The realtime relay (bastion agents, Node's relay sockets) ends here,
+    // before any routing to the gateways.
+    if (env.BASTION_RELAY && env.CONSOLE_RELAY) {
+      const relayed = await handleRealtime(request, env, ctx, agentAuthenticator(env, ctx));
+      if (relayed) return relayed;
+    }
 
     const route = routeRequest(request.method, pathname, request.headers.get("upgrade"));
     // Upgrades pass through untouched: the 101 and its socket are the gateway's.

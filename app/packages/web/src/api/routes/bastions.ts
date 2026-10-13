@@ -7,7 +7,7 @@ import { bastionVms, accounts } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { keyedHash } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
-import { isBastionConnected } from "@infrawrench/server-core/bastion/registry";
+import { bastionLiveStatuses } from "@infrawrench/server-core/bastion/registry";
 import type { AuthSession } from "../auth-middleware";
 
 const BASTION_TOKEN_HASH_DOMAIN = "bastion-agent";
@@ -91,18 +91,21 @@ app.get("/", async (c) => {
     if (r.bastionId) countByBastion.set(r.bastionId, Number(r.count));
   }
 
+  // Connected here or to the realtime relay, where production agents connect.
+  const live = await bastionLiveStatuses(rows.map((r) => r.id));
+
   return c.json(
     rows.map((r) => ({
       id: r.id,
       name: r.name,
       tokenPrefix: r.tokenPrefix,
-      agentVersion: r.agentVersion,
+      agentVersion: live.get(r.id)?.agentVersion ?? r.agentVersion,
       lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
       status: r.status,
       revokedAt: r.revokedAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
       createdByUserId: r.createdByUserId,
-      connected: isBastionConnected(r.id),
+      connected: live.get(r.id)?.connected ?? false,
       accountCount: countByBastion.get(r.id) ?? 0,
     })),
   );

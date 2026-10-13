@@ -29,6 +29,7 @@ import {
 } from "@infrawrench/server-core/ssh-recording/recorder";
 import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
 import { sharedConsoleHub } from "@/services/shared-console/hub";
+import { startHostLink, stopHostLink } from "./shared-console/relay";
 
 interface DirectSshParams {
   sshKeyId: string;
@@ -246,6 +247,7 @@ export async function handleSshSession(
         // Detaches every guest and settles the share as `ended`. Before the
         // recorder is finished, so the closing marker lands on the tape.
         sharedConsoleHub.unregister(liveConsoleId);
+        stopHostLink(liveConsoleId);
       }
       // Fire-and-forget: `finish` flushes the tail and settles the row, and the
       // terminal's teardown must not wait on a database write. A recording
@@ -383,6 +385,8 @@ export async function handleSshSession(
           rows ?? 24,
         );
         registered = true;
+        // Reachable from the other replicas through the console relay.
+        startHostLink(liveConsoleId);
 
         // `liveConsoleId` is what `POST /shared-consoles` names to bind a share
         // to this pty, and `routingKey` is what a joiner puts in their own

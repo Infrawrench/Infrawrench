@@ -330,7 +330,11 @@
     "./leaked-secrets/actions": "./src/leaked-secrets/actions.ts",
     "./leaked-secrets/match": "./src/leaked-secrets/match.ts",
     "./leaked-secrets/fingerprints": "./src/leaked-secrets/fingerprints.ts",
-    "./leaked-secrets/alerts": "./src/leaked-secrets/alerts.ts"
+    "./leaked-secrets/alerts": "./src/leaked-secrets/alerts.ts",
+    "./realtime/protocol": "./src/realtime/protocol.ts",
+    "./realtime/client": "./src/realtime/client.ts",
+    "./realtime/bastion-mux": "./src/realtime/bastion-mux.ts",
+    "./bastion/remote": "./src/bastion/remote.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

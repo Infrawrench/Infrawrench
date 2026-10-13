@@ -19,7 +19,13 @@ vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
 
 const mockIsBastionConnected = vi.fn();
 vi.mock("@infrawrench/server-core/bastion/registry", () => ({
-  isBastionConnected: (...a: unknown[]) => mockIsBastionConnected(...a),
+  bastionLiveStatuses: async (ids: string[]) =>
+    new Map(
+      ids.map((id) => [
+        id,
+        { connected: mockIsBastionConnected(id) as boolean, agentVersion: null },
+      ]),
+    ),
 }));
 
 vi.mock("uuid", () => ({ v4: () => "bastion-uuid-1" }));

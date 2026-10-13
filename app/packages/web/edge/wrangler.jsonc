@@ -78,6 +78,18 @@
   // Postgres, through Hyperdrive's pool (shared with the poller Worker).
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
 
+  // The realtime relay (edge/realtime.ts, server-core/realtime/protocol.ts):
+  // one object per bastion holding its agent's socket, one per live SSH
+  // console joining the replica that owns the pty to the rest. Hibernating
+  // WebSockets, so idle sockets cost nothing.
+  "durable_objects": {
+    "bindings": [
+      { "name": "BASTION_RELAY", "class_name": "BastionRelay" },
+      { "name": "CONSOLE_RELAY", "class_name": "ConsoleRelay" },
+    ],
+  },
+  "migrations": [{ "tag": "realtime-v1", "new_sqlite_classes": ["BastionRelay", "ConsoleRelay"] }],
+
   // The in-cluster ClickHouse, via Cloudflare Tunnel (connector in infra/terraform/edge.tf).
   "vpc_services": [
     { "binding": "CLICKHOUSE", "service_id": "01a11103-f076-7aa3-b40c-1688380e249b" },

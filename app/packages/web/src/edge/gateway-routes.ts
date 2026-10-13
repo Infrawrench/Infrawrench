@@ -34,6 +34,9 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // well as by the Upgrade header so a request that loses the header on the
   // way still reaches the only process that can answer it.
   /^\/api\/(ws|apps)$/,
+  // Bastion agents connect to the realtime relay in the edge Worker
+  // (`edge/realtime.ts`) before routing runs; this is the fallback for a
+  // Worker deployed without the relay's bindings.
   /^\/api\/bastions\/agent$/,
   // Node HTTP handler, not part of the Hono app; its app tools reach Linux
   // app sessions through the cross-replica relay, which needs a pod address.

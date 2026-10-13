@@ -69,11 +69,8 @@ import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
-import {
-  publicParticipant,
-  publicShare,
-  sharedConsoleHub,
-} from "../../services/shared-console/hub";
+import { publicParticipant, publicShare } from "../../services/shared-console/hub";
+import * as consoleRelay from "../../services/shared-console/relay";
 import type { AuthSession } from "../auth-middleware";
 
 const app = new Hono();
@@ -200,7 +197,7 @@ app.post("/", async (c) => {
     return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
   }
 
-  const live = sharedConsoleHub.describe(parsed.data.liveConsoleId);
+  const live = await consoleRelay.describeConsole(parsed.data.liveConsoleId);
   if (!live) {
     return c.json(
       {
@@ -240,7 +237,7 @@ app.post("/", async (c) => {
     inviteTtlMinutes: parsed.data.inviteTtlMinutes ?? DEFAULT_INVITE_TTL_MINUTES,
   });
 
-  const bound = await sharedConsoleHub.bindShare(parsed.data.liveConsoleId, share, owner);
+  const bound = await consoleRelay.bindShare(parsed.data.liveConsoleId, share, owner);
   if (!bound) {
     // The session closed between `describe` and here.
     await closeSharedConsole(share.id, "ended");
@@ -389,9 +386,9 @@ app.post("/:id/join", async (c) => {
         role: participant.role,
       }),
     });
-    sharedConsoleHub.mark(share.id, `joined: ${participant.userName ?? participant.userId}`);
+    consoleRelay.markShare(share, `joined: ${participant.userName ?? participant.userId}`);
   }
-  await sharedConsoleHub.refresh(share.id);
+  await consoleRelay.refreshShare(share);
 
   return c.json({
     ...(await stateResponse(share)),
@@ -410,7 +407,7 @@ app.post("/:id/leave", async (c) => {
   if (!me) return c.json({ error: "You are not on this shared console." }, 404);
 
   await detachParticipant(me.id, "left");
-  sharedConsoleHub.detach(share.liveConsoleId, me.id, "removed", "You left this shared console.");
+  consoleRelay.detachParticipant(share, me.id, "removed", "You left this shared console.");
   await logAudit({
     organizationId: orgId(c),
     userId: actorId(c),
@@ -419,8 +416,8 @@ app.post("/:id/leave", async (c) => {
     entityId: share.id,
     metadata: shareAuditMetadata(share, { participantId: me.id, wasDriver: me.role === "driver" }),
   });
-  sharedConsoleHub.mark(share.id, `left: ${me.userName ?? me.userId}`);
-  await sharedConsoleHub.refresh(share.id);
+  consoleRelay.markShare(share, `left: ${me.userName ?? me.userId}`);
+  await consoleRelay.refreshShare(share);
   return c.json(await stateResponse(share));
 });
 
@@ -485,11 +482,11 @@ app.post("/:id/handover", async (c) => {
       forced: decision.forced,
     }),
   });
-  sharedConsoleHub.mark(
-    share.id,
+  consoleRelay.markShare(
+    share,
     `keyboard to ${target?.userName ?? target?.userId ?? "unknown"}${decision.forced ? " (forced by sharer)" : ""}`,
   );
-  await sharedConsoleHub.refresh(share.id);
+  await consoleRelay.refreshShare(share);
   return c.json(await stateResponse(share));
 });
 
@@ -512,7 +509,7 @@ app.post("/:id/request-driver", async (c) => {
   });
   if (!decision.ok) return denied(c, decision);
   await requestDriver(decision.participantId);
-  await sharedConsoleHub.refresh(share.id);
+  await consoleRelay.refreshShare(share);
   return c.json(await stateResponse(share));
 });
 
@@ -569,7 +566,7 @@ app.post("/:id/invites", async (c) => {
     metadata: shareAuditMetadata(share, { inviteExpiresAt: invite.expiresAt.toISOString() }),
   });
   const refreshed = (await getSharedConsole(share.id))!;
-  await sharedConsoleHub.refresh(share.id);
+  await consoleRelay.refreshShare(share);
   return c.json({ ...(await stateResponse(refreshed)), inviteToken: invite.token });
 });
 
@@ -593,7 +590,7 @@ app.delete("/:id/invites", async (c) => {
     metadata: shareAuditMetadata(share),
   });
   const refreshed = (await getSharedConsole(share.id))!;
-  await sharedConsoleHub.refresh(share.id);
+  await consoleRelay.refreshShare(share);
   return c.json(await stateResponse(refreshed));
 });
 
@@ -621,8 +618,8 @@ app.delete("/:id/participants/:participantId", async (c) => {
   }
 
   await detachParticipant(target.id, "removed");
-  sharedConsoleHub.detach(
-    share.liveConsoleId,
+  consoleRelay.detachParticipant(
+    share,
     target.id,
     "removed",
     "You were removed from this shared console.",
@@ -639,8 +636,8 @@ app.delete("/:id/participants/:participantId", async (c) => {
       wasDriver: target.role === "driver",
     }),
   });
-  sharedConsoleHub.mark(share.id, `removed: ${target.userName ?? target.userId}`);
-  await sharedConsoleHub.refresh(share.id);
+  consoleRelay.markShare(share, `removed: ${target.userName ?? target.userId}`);
+  await consoleRelay.refreshShare(share);
   return c.json(await stateResponse(share));
 });
 
@@ -663,8 +660,9 @@ app.delete("/:id", async (c) => {
   if (!allowed.ok) return denied(c, allowed);
 
   const closed = await closeSharedConsole(share.id, "revoked", actorId(c));
-  // Immediate on this replica; within one 2s sweep on the other.
-  sharedConsoleHub.revokeLocal(share.id);
+  // Immediate wherever the pty is (through the console relay when that is
+  // another replica); the owner's 2s sweep covers a relay that cannot be reached.
+  consoleRelay.revokeShare(share);
   await logAudit({
     organizationId: orgId(c),
     userId: actorId(c),

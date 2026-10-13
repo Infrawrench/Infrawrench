@@ -515,6 +515,11 @@ Terraform is `infra/terraform/oci.tf`; the VMs' side is `infra/oci/`.
   dies drops out, and so does one whose app fails `/healthz`, because the
   agent stops its connector. The cross-replica relay uses the VMs' private
   IPs (`POD_IP`), port 3000 inside the VCN.
+- **Sessions across the two VMs**: state that lives in one process (a
+  bastion agent's connection, a shared console's pty) is reached from the
+  other VM through the realtime relay, Durable Objects in the web edge Worker
+  (KNOWLEDGE.md, "Realtime relay"), so the tunnel's lack of affinity costs
+  nothing. It needs `APP_URL` and `INTERNAL_RELAY_SECRET` in `app_env`.
 - **github-watcher**: one E2.1.Micro VM (1/8 OCPU, 1 GB, 2 GB swap). The
   micro shape is only offered in AD-2 of us-ashburn-1.
 - **Configuration**: the same as the Lambda's, `app_env` merged with

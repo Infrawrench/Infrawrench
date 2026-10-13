@@ -9,22 +9,19 @@
  *
  * ## Where this runs, and the one thing to know about it
  *
- * The registry is **process memory**, like the bastion dispatcher registry it
- * sits beside. Web runs two replicas, so the joiner's WebSocket has to reach
- * the replica holding the pty. That is what `routingKey` is for: the sharer's
- * browser mints one, puts it in its own `/api/ws?sid=…`, and the ingress
- * consistently hashes `$arg_sid` to a backend (`infra/k8s/web-ws-ingress.yaml`).
- * A joiner is told the same `sid` and lands on the same pod.
+ * The registry is **process memory**: the pty lives in one replica, and so do
+ * the decisions about it. Reaching that replica from another one is the
+ * console relay's job (`relay.ts`, a Durable Object per live console in the
+ * web edge Worker): the owner keeps a host link to it, the routes call through
+ * it when the pty is elsewhere, and a guest whose socket lands on the wrong
+ * replica is bridged through it to a {@link SharedConsoleHub.attach} on the
+ * owner. The `routingKey` the sharer mints (and the ingress's old hashing on
+ * `?sid=`) is now only a hint; nothing depends on it.
  *
- * When that fails anyway: a rolling deploy moved the pod, the annotation is
- * not in effect, somebody is running a single instance behind a round-robin
- * proxy; the joiner gets a typed `console:error` with `code:
- * "console_not_here"` rather than a socket that connects and then shows
- * nothing. The client retries a bounded number of times on a fresh token,
- * which converges quickly across a small replica set, and then says so. This
- * is a real limitation and it is written down rather than papered over; the
- * durable fix is a cross-replica relay, which is the same follow-up the
- * bastion registry is waiting on.
+ * Without the relay (local development, a single-process self-host) there is
+ * one replica and nothing to reach. A guest who still lands somewhere without
+ * the pty gets a typed `console:error` with `code: "console_not_here"`, and
+ * the client retries a bounded number of times.
  *
  * ## What is enforced here
  *

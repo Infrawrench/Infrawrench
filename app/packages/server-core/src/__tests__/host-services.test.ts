@@ -77,8 +77,8 @@ vi.mock("../encryption", () => ({
 }));
 
 // --- bastion ---------------------------------------------------------------
-const getDispatcherFor = vi.fn(() => null as unknown);
-vi.mock("../bastion/registry", () => ({ getDispatcherFor }));
+const resolveDispatcher = vi.fn(async () => null as unknown);
+vi.mock("../bastion/registry", () => ({ resolveDispatcher }));
 vi.mock("../bastion/errors", () => ({
   BastionDisconnectedError: class extends Error {
     constructor(id: string) {
@@ -162,7 +162,7 @@ let hs: typeof import("../host-services");
 beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
-  getDispatcherFor.mockReturnValue(null);
+  resolveDispatcher.mockResolvedValue(null);
   httpsState.opts = {};
   httpState.opts = {};
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -421,7 +421,7 @@ describe("secrets scoped to an account", () => {
 // --- HTTP service ----------------------------------------------------------
 describe("http.request — bastion routing", () => {
   it("throws BastionDisconnectedError when bound but no dispatcher", async () => {
-    getDispatcherFor.mockReturnValue(null);
+    resolveDispatcher.mockResolvedValue(null);
     const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
     await expect(
       out!.http!.request({ url: "https://x", method: "GET", headers: {} }),
@@ -430,7 +430,7 @@ describe("http.request — bastion routing", () => {
 
   it("hands bastion traffic on, recorded, inside a session-handoff scope", async () => {
     const { runInRequestScope, gatewayOnlyHitInScope } = await import("../runtime/request-scope");
-    getDispatcherFor.mockReturnValue({ id: "disp" });
+    resolveDispatcher.mockResolvedValue({ id: "disp" });
     const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
     const hit = await runInRequestScope({ sessionHandoff: true, gatewayOnly: {} }, async () => {
       await expect(
@@ -443,7 +443,7 @@ describe("http.request — bastion routing", () => {
   });
 
   it("routes through undici when a dispatcher is connected", async () => {
-    getDispatcherFor.mockReturnValue({ id: "disp" });
+    resolveDispatcher.mockResolvedValue({ id: "disp" });
     undiciFetch.mockResolvedValueOnce({
       status: 201,
       headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
@@ -461,7 +461,7 @@ describe("http.request — bastion routing", () => {
   });
 
   it("omits the body when none is given (bastion)", async () => {
-    getDispatcherFor.mockReturnValue({ id: "disp" });
+    resolveDispatcher.mockResolvedValue({ id: "disp" });
     undiciFetch.mockResolvedValueOnce({
       status: 200,
       headers: { entries: () => [][Symbol.iterator]() },

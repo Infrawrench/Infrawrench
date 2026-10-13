@@ -21,6 +21,7 @@ import { resolveEffectivePermissions } from "@infrawrench/server-core/permission
 
 import { isMachinePrincipal, type WsPrincipal } from "../ws-auth";
 import { sharedConsoleHub } from "./hub";
+import { bridgeViewer } from "./relay";
 
 function send(ws: WebSocket, frame: Record<string, unknown>): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame));
@@ -96,6 +97,16 @@ export async function handleConsoleAttach(
   });
   if (!verdict.keep) {
     send(ws, { type: "console:error", code: verdict.reason, error: verdict.message });
+    return;
+  }
+
+  // The pty is on another replica: bridge this socket to it through the
+  // console relay. The owner attaches it to its hub; nothing more to do here.
+  if (
+    !sharedConsoleHub.has(share.liveConsoleId) &&
+    (await bridgeViewer(ws, share.liveConsoleId, participant.id))
+  ) {
+    void touchParticipant(participant.id).catch(() => undefined);
     return;
   }
 

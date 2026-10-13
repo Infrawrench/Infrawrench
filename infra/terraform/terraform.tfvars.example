@@ -389,7 +389,20 @@ app_env = {
   # each pod's own cluster IP, injected by the downward API in
   # infra/k8s/web-deployment.yaml, and a single fixed value here would point
   # every replica at the same address.
+  #
+  # The same secret also authenticates Node to the realtime relay (Durable
+  # Objects in the web edge Worker, server-core/src/realtime/protocol.ts):
+  # bastion agents connect there, and shared consoles reach the replica that
+  # owns their pty through it. Node finds the relay at APP_URL; the Worker gets
+  # the secret from this map like every other value. Without it, bastion
+  # agents only work on the replica they dialled and a shared console only on
+  # the replica holding it.
   # INTERNAL_RELAY_SECRET = "..."
+  #
+  # REALTIME_RELAY: OPTIONAL. "off" keeps bastions and shared consoles in
+  # process even with the secret set, for a deployment whose APP_URL does not
+  # front the edge Worker. Unset means on whenever APP_URL and the secret are.
+  # REALTIME_RELAY = "off"
 
   # Egress guard (server-core/src/egress-guard.ts). Both OPTIONAL.
   #

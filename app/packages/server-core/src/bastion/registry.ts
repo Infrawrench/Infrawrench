@@ -1,17 +1,21 @@
 /**
- * In-memory registry of currently-connected bastion agents.
+ * Where plugin HTTP code finds a bastion agent's `Dispatcher`.
  *
- * The web process accepts WS connections from bastion-agent containers; each
- * connection registers itself here so plugin HTTP code can resolve a
- * `Dispatcher` by bastion id. The map is single-process; for multi-instance
- * routing we'd need cross-process lookup (out of scope for v1, but the
- * `Promise<Dispatcher | null>` interface makes the swap local).
+ * Two places, in order: an agent connected to this very process (the Node
+ * endpoint, `web/services/bastion-ws.ts`, which is what local development and
+ * a single-process self-host use), then the realtime relay
+ * (`realtime/protocol.ts`), where production agents connect: a Durable Object
+ * per bastion that every Node runtime can reach, so a bastion-bound account
+ * works from any session gateway replica and from the Lambdas alike.
  */
 
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { accounts, bastionVms } from "../db/schema.js";
 import { BastionAgentConnection } from "./dispatcher.js";
+import { remoteDispatcherFor, updateRemoteAllowlist } from "./remote.js";
+import { realtimeEnabled, realtimeFetch } from "../realtime/client.js";
+import { bastionAllowlistPath, REALTIME_PREFIX } from "../realtime/protocol.js";
 
 export { BastionAgentConnection };
 
@@ -45,9 +49,64 @@ export function getDispatcherFor(bastionId: string): import("undici").Dispatcher
   return conn?.dispatcher ?? null;
 }
 
-/** `true` when an agent is live for this bastion. Used by status endpoints. */
+/**
+ * The dispatcher for `bastionId`: the local agent if it dialled this process,
+ * else the relay's. `null` ⇒ the agent is offline everywhere: callers surface
+ * `BastionDisconnectedError` rather than falling back to direct egress.
+ */
+export async function resolveDispatcher(
+  bastionId: string,
+): Promise<import("undici").Dispatcher | null> {
+  return (
+    getDispatcherFor(bastionId) ??
+    (await remoteDispatcherFor(bastionId, () => computeAllowlist(bastionId)))
+  );
+}
+
+/** `true` when an agent is live for this bastion in this process. */
 export function isBastionConnected(bastionId: string): boolean {
   return connections.has(bastionId);
+}
+
+export interface BastionLiveStatus {
+  connected: boolean;
+  /** Reported by the agent on connect (relay only; the local path writes it to the row). */
+  agentVersion: string | null;
+}
+
+/**
+ * Live status for a set of bastions: connected here, or connected to the
+ * relay. A relay that cannot be asked reports everyone as not connected
+ * rather than failing the caller (a status list).
+ */
+export async function bastionLiveStatuses(ids: string[]): Promise<Map<string, BastionLiveStatus>> {
+  const out = new Map<string, BastionLiveStatus>(
+    ids.map((id) => [id, { connected: connections.has(id), agentVersion: null }]),
+  );
+  const remote = ids.filter((id) => !connections.has(id));
+  if (remote.length === 0 || !realtimeEnabled()) return out;
+  try {
+    const response = await realtimeFetch(`${REALTIME_PREFIX}/bastions/status`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: remote }),
+    });
+    if (!response.ok) throw new Error(`relay answered HTTP ${response.status}`);
+    const statuses = (await response.json()) as Record<
+      string,
+      { connected: boolean; agentVersion: string | null }
+    >;
+    for (const id of remote) {
+      const status = statuses[id];
+      if (status) out.set(id, { connected: status.connected, agentVersion: status.agentVersion });
+    }
+  } catch (err) {
+    console.error(
+      "[bastion] relay status lookup failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return out;
 }
 
 /**
@@ -55,12 +114,24 @@ export function isBastionConnected(bastionId: string): boolean {
  * accounts referencing this bastion change.
  */
 export async function refreshAllowlistFromDb(conn: BastionAgentConnection): Promise<void> {
+  conn.setAllowlist(await computeAllowlist(conn.bastionId));
+}
+
+/** The destination allowlist for a bastion, from the accounts that reference it. */
+export async function computeAllowlist(bastionId: string): Promise<string[]> {
   const rows = await db
     .select({ pluginId: accounts.pluginId })
     .from(accounts)
-    .where(and(eq(accounts.bastionId, conn.bastionId)));
-  const plugins = new Set(rows.map((r) => r.pluginId));
-  conn.setAllowlist(allowlistForPlugins(plugins));
+    .where(and(eq(accounts.bastionId, bastionId)));
+  return allowlistForPlugins(new Set(rows.map((r) => r.pluginId)));
+}
+
+/** Record an agent connect: `status` active and `lastSeenAt` now. */
+export async function markBastionActive(bastionId: string): Promise<void> {
+  await db
+    .update(bastionVms)
+    .set({ status: "active", lastSeenAt: new Date() })
+    .where(eq(bastionVms.id, bastionId));
 }
 
 /**
@@ -369,8 +440,17 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
  */
 export async function refreshAllowlistById(bastionId: string): Promise<void> {
   const conn = connections.get(bastionId);
-  if (!conn) return;
-  await refreshAllowlistFromDb(conn);
+  if (conn) await refreshAllowlistFromDb(conn);
+  if (!realtimeEnabled()) return;
+  const allowlist = await computeAllowlist(bastionId);
+  await updateRemoteAllowlist(bastionId, allowlist);
+  // The relay re-sends hello with it, which is how the agent learns.
+  const response = await realtimeFetch(bastionAllowlistPath(bastionId), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ allowlist }),
+  });
+  if (!response.ok) throw new Error(`relay answered HTTP ${response.status}`);
 }
 
 /**
