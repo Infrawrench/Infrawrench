@@ -38,6 +38,36 @@ const port = parseInt(process.env["PORT"] ?? "3000", 10);
  * set the security headers itself: both server modes route through here, so
  * doing it in the one function covers both.
  */
+
+const UPGRADE_REASONS: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  500: "Internal Server Error",
+};
+
+/**
+ * Refuse a WebSocket upgrade with a complete HTTP response and a graceful
+ * close. A bare status line followed by an immediate destroy is fine for a
+ * browser talking to us directly, but a proxy in front (cloudflared, in front
+ * of the session gateway) reads the reset as the origin failing and answers
+ * 502, so the client never learns its token was refused.
+ */
+function writeUpgradeRejection(socket: Duplex, status: 400 | 401 | 403 | 404 | 500): void {
+  const reason = UPGRADE_REASONS[status] ?? "Error";
+  try {
+    socket.end(
+      `HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Type: text/plain\r\n` +
+        `Content-Length: ${reason.length}\r\n\r\n${reason}`,
+    );
+  } catch {
+    /* already gone */
+  }
+  // Never leave a refused socket open if the peer does not close its side.
+  setTimeout(() => socket.destroy(), 5_000).unref();
+}
+
 function respondHealthz(res: import("node:http").ServerResponse): void {
   applySecurityHeaders(res);
   res.statusCode = 200;
@@ -183,19 +213,15 @@ async function start() {
     void handleUpgrade(request, socket, head).catch((error) => {
       console.error("[ws] upgrade failed:", error);
       try {
-        socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
-        socket.destroy();
+        writeUpgradeRejection(socket, 500);
       } catch {
         /* the socket is already gone, which is why we are here */
       }
     });
   });
 
-  function rejectUpgrade(socket: Duplex, status: 401 | 403): void {
-    socket.write(
-      status === 403 ? "HTTP/1.1 403 Forbidden\r\n\r\n" : "HTTP/1.1 401 Unauthorized\r\n\r\n",
-    );
-    socket.destroy();
+  function rejectUpgrade(socket: Duplex, status: 400 | 401 | 403 | 500): void {
+    writeUpgradeRejection(socket, status);
   }
 
   async function handleUpgrade(
@@ -208,8 +234,7 @@ async function start() {
     if (url.pathname === "/api/bastions/agent") {
       const bastion = await authenticateBastionAgent(request);
       if (!bastion) {
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
+        writeUpgradeRejection(socket, 401);
         return;
       }
       handleBastionAgentUpgrade(request, socket, head, bastion);
@@ -233,8 +258,7 @@ async function start() {
       const host = url.query["host"] as string | undefined;
       const username = url.query["user"] as string | undefined;
       if (!accountId || !resourceId || !sshKeyId || !host || !username) {
-        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-        socket.destroy();
+        writeUpgradeRejection(socket, 400);
         return;
       }
       appsWss.handleUpgrade(request, socket, head, (ws) => {
@@ -252,14 +276,13 @@ async function start() {
     }
 
     if (url.pathname !== "/api/ws") {
-      socket.destroy();
+      writeUpgradeRejection(socket, 404);
       return;
     }
 
     const token = url.query["token"] as string | undefined;
     if (!token) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
+      writeUpgradeRejection(socket, 401);
       return;
     }
 
