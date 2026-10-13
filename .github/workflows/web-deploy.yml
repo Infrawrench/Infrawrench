@@ -221,8 +221,7 @@ jobs:
 
   # The Oracle Cloud VMs (infra/terraform/oci.tf): copy this deploy's images
   # into OCIR under the tags their agents follow; each agent pulls within a
-  # minute and restarts (web-2 three minutes after web-1). After `migrate`,
-  # and before `deploy-edge`, like the Lambda.
+  # minute and restarts (web-2 three minutes after web-1). After `migrate`.
   deploy-oci:
     if: github.ref == 'refs/heads/main' && vars.OCI_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
@@ -242,7 +241,10 @@ jobs:
       - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       # skopeo (preinstalled on the runner) copies registry to registry
-      # without pulling into a local daemon.
+      # without pulling into a local daemon. --multi-arch all: buildx pushes a
+      # manifest list (image plus attestation), and skopeo would otherwise
+      # look in it for the runner's own architecture, which the arm64 web
+      # build does not have.
       - name: Copy images to OCIR
         env:
           OCIR_USERNAME: ${{ secrets.OCIR_USERNAME }}
@@ -250,7 +252,7 @@ jobs:
         run: |
           src_token="$(gcloud auth print-access-token)"
           copy() {
-            skopeo copy --retry-times 3 \
+            skopeo copy --retry-times 3 --multi-arch all \
               --src-creds "oauth2accesstoken:${src_token}" \
               --dest-creds "${OCIR_USERNAME}:${OCIR_TOKEN}" \
               "docker://${REGISTRY}/$1" "docker://${OCIR_REGISTRY}/$2"
@@ -377,13 +379,15 @@ jobs:
   # duplicated in GitHub, so the runtimes can never disagree about a value.
   deploy-edge:
     # `!failure() && !cancelled()` rather than the implicit success(): a
-    # skipped deploy-lambda or deploy-oci (not adopted) must not skip this
-    # job too.
+    # skipped deploy-lambda (the Lambda gateway not adopted) must not skip
+    # this job too. deploy-oci is deliberately not a dependency: the Worker
+    # does not depend on the Oracle VMs' version, and a failed copy to OCIR
+    # must not hold up the edge.
     if: >-
       !failure() && !cancelled() &&
       github.ref == 'refs/heads/main' && vars.EDGE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    needs: [migrate, deploy, deploy-lambda, deploy-oci]
+    needs: [migrate, deploy, deploy-lambda]
     environment: production
     permissions:
       contents: read
