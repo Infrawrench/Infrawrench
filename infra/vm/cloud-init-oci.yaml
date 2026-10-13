@@ -1,5 +1,5 @@
 #cloud-config
-# Bootstrap for the Oracle Cloud VMs (infra/terraform/oci.tf). Deliberately
+# Bootstrap for the Oracle Cloud github-watcher VM (infra/terraform/oci.tf). Deliberately
 # small and stable: everything that changes (the agent, the configuration,
 # the image) is fetched by the agent each minute, because a change to this
 # file only reaches new instances (oci.tf ignores metadata changes).
@@ -13,6 +13,7 @@ write_files:
   - path: /etc/infrawrench/node.env
     permissions: "0600"
     content: |
+      PROVIDER=oci
       ROLE=${role}
       PAR_URL='${par_url}'
       IMAGE='${image}'

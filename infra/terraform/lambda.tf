@@ -613,7 +613,7 @@ resource "aws_iam_role" "lambda_ci" {
   })
 }
 
-# Push to the one repository, swap code on the two functions, and publish the
+# Push to the Lambda repository (and the session gateway's), swap code on the two functions, and publish the
 # web function's versions: point its alias at a new one and delete old ones,
 # which are billed for their snapshots while they exist. Nothing here can
 # change a function's configuration, role or URL, or delete a function.
@@ -641,7 +641,11 @@ resource "aws_iam_role_policy" "lambda_ci" {
           "ecr:PutImage",
           "ecr:UploadLayerPart",
         ]
-        Resource = aws_ecr_repository.lambda[0].arn
+        # The session gateway's repository too (aws-web.tf), when it exists.
+        Resource = concat(
+          [aws_ecr_repository.lambda[0].arn],
+          [for repo in aws_ecr_repository.web : repo.arn],
+        )
       },
       {
         Effect = "Allow"

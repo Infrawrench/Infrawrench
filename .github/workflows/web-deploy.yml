@@ -40,12 +40,19 @@ name: web-deploy
 #                                    (terraform's "<cluster_name>-lambda")
 # Optional repo variables (Oracle Cloud session gateway and github-watcher;
 # see "Oracle Cloud" in infra/README.md):
-#   OCI_DEPLOY_ENABLED             - "true" to copy each deploy's web (arm64)
-#                                    and github-watcher images to OCIR under
-#                                    the tags the VMs' agents follow.
+#   OCI_DEPLOY_ENABLED             - "true" to copy each deploy's
+#                                    github-watcher image to OCIR under the
+#                                    tag the watcher VM's agent follows.
 #   OCIR_REGISTRY                  - terraform output ocir.registry
 #   (secrets OCIR_USERNAME, OCIR_TOKEN in the production environment:
 #   terraform output ocir.username and -raw ocir_token)
+# Optional repo variables (AWS session gateway; see "AWS session gateway" in
+# infra/README.md):
+#   AWS_WEB_DEPLOY_ENABLED         - "true" to copy each deploy's arm64 web
+#                                    image to ECR as `session-arm64`, the tag
+#                                    the instances' agents follow.
+#   AWS_WEB_ECR_REPOSITORY         - terraform output aws_web_ecr_repository
+#   (uses AWS_LAMBDA_CI_ROLE_ARN and AWS_REGION, like deploy-lambda)
 # Optional repo variables:
 #   GKE_DNS_ENDPOINT               - "true" to reach the control plane through
 #                                    its IAM-gated DNS endpoint instead of the
@@ -219,9 +226,9 @@ jobs:
           kubectl -n infrawrench rollout status deployment/poller --timeout=300s
           kubectl -n infrawrench rollout status deployment/github-watcher --timeout=300s
 
-  # The Oracle Cloud VMs (infra/terraform/oci.tf): copy this deploy's images
-  # into OCIR under the tags their agents follow; each agent pulls within a
-  # minute and restarts (web-2 three minutes after web-1). After `migrate`.
+  # The Oracle Cloud github-watcher (infra/terraform/oci.tf): copy this
+  # deploy's image into OCIR under the tag its agent follows; it pulls within
+  # a minute and restarts. After `migrate`.
   deploy-oci:
     if: github.ref == 'refs/heads/main' && vars.OCI_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
@@ -258,7 +265,6 @@ jobs:
               --dest-creds "${OCIR_USERNAME}:${OCIR_TOKEN}" \
               "docker://${REGISTRY}/$1" "docker://${OCIR_REGISTRY}/$2"
           }
-          copy "web:${GITHUB_SHA}-arm64" "web:oci-arm64" arm64
           copy "github-watcher:${GITHUB_SHA}" "github-watcher:oci" amd64
           echo "OCIR now serves ${GITHUB_SHA}; the VMs' agents pick it up within a minute."
 
@@ -291,6 +297,46 @@ jobs:
             while read -r id; do
               oci artifacts container image delete --image-id "$id" --force >/dev/null && echo "pruned $id"
             done
+
+  # The AWS session gateway (infra/terraform/aws-web.tf): copy this deploy's
+  # arm64 web image into ECR as `session-arm64`; each instance's agent pulls
+  # within a minute and restarts, web-2 three minutes after web-1. After
+  # `migrate`, like the Lambda.
+  deploy-aws-web:
+    if: github.ref == 'refs/heads/main' && vars.AWS_WEB_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [build-push, migrate]
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
+      ECR_REPOSITORY: ${{ vars.AWS_WEB_ECR_REPOSITORY }}
+    steps:
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Registry to registry with skopeo, the arm64 image only (buildx pushes
+      # a manifest list with an attestation; the tag the agents pull is one
+      # image).
+      - name: Copy web:${{ github.sha }}-arm64 to ECR
+        run: |
+          skopeo copy --retry-times 3 --override-os linux --override-arch arm64 \
+            --src-creds "oauth2accesstoken:$(gcloud auth print-access-token)" \
+            --dest-creds "AWS:$(aws ecr get-login-password --region "$AWS_REGION")" \
+            "docker://${REGISTRY}/web:${GITHUB_SHA}-arm64" \
+            "docker://${ECR_REPOSITORY}:session-arm64"
+          echo "ECR now serves ${GITHUB_SHA} as session-arm64; the instances pick it up within a minute."
 
   # The AWS Lambda gateway: the web gateway and the poller, one image with
   # two handlers (infra/docker/lambda.Dockerfile). After `migrate` for the

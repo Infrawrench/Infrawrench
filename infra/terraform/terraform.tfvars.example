@@ -473,11 +473,10 @@ app_env = {
 # string from Networking > Tunnels > (tunnel) > Add a replica.
 # cloudflare_tunnel_token = "eyJ..."
 
-# Oracle Cloud session gateway (two Ampere VMs behind a Cloudflare Tunnel)
-# and github-watcher (one micro VM) on the Always Free tier (oci.tf; runbook
-# in infra/README.md, "Oracle Cloud"). OPTIONAL: false creates nothing in OCI.
+# Oracle Cloud github-watcher (one Always Free micro VM; oci.tf, runbook in
+# infra/README.md, "Oracle Cloud"). OPTIONAL: false creates nothing in OCI.
 # Terraform signs with the API key in ~/.oci/config (Console > My profile >
-# Tokens and keys > Add API key); the VMs get the same configuration as the
+# Tokens and keys > Add API key); the VM gets the same configuration as the
 # Lambda functions (app_env merged with lambda_app_env).
 # oci_enabled        = true
 # oci_tenancy_ocid   = "ocid1.tenancy.oc1..aaaa..."   # ~/.oci/config tenancy=
@@ -485,9 +484,14 @@ app_env = {
 # oci_region         = "us-ashburn-1"                 # the tenancy's home region
 # oci_ssh_public_key = "ssh-ed25519 AAAA... "         # OPTIONAL, for debugging
 # oci_admin_cidrs    = ["203.0.113.7/32"]             # OPTIONAL; empty closes SSH
-# Ampere capacity runs out per availability domain; move a node that fails
-# with "Out of host capacity" (changing a created node's domain replaces it).
-# oci_web_availability_domains = { "web-1" = 0, "web-2" = 1 }
-# Token of the Cloudflare Tunnel whose public hostname is app.infrawrench.com
-# -> http://localhost:3000 (not the ClickHouse tunnel above).
-# oci_tunnel_token = "eyJ..."
+
+# AWS session gateway (two t4g.medium instances behind a Cloudflare Tunnel, in
+# the Lambda VPC's private subnets; aws-web.tf, runbook in infra/README.md,
+# "AWS session gateway"). OPTIONAL, and needs lambda_enabled and
+# lambda_vpc_enabled. The instances read app_env from the Lambda's secret.
+# aws_web_enabled       = true
+# aws_web_instance_type = "t4g.medium"   # Graviton: CI builds the arm64 image
+# Token of the Cloudflare Tunnel whose routes are app.infrawrench.com and
+# session-gateway.infrawrench.com -> http://localhost:3000 (not the
+# ClickHouse tunnel above).
+# session_gateway_tunnel_token = "eyJ..."

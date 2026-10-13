@@ -1,0 +1,59 @@
+#cloud-config
+# Bootstrap for the AWS session gateway instances (infra/terraform/aws-web.tf),
+# on Amazon Linux 2023 (arm64), which ships the AWS CLI, python3 and the SSM
+# agent. Deliberately small and stable: everything that changes (the agent,
+# the configuration, the image) is fetched by the agent each minute, because a
+# change to this file only reaches new instances (aws-web.tf ignores
+# user_data changes).
+packages:
+  - docker
+
+write_files:
+  - path: /etc/infrawrench/node.env
+    permissions: "0600"
+    content: |
+      PROVIDER=aws
+      ROLE=web
+      AWS_REGION=${aws_region}
+      APP_ENV_SECRET='${app_env_secret}'
+      RUNTIME_BUCKET='${runtime_bucket}'
+      IMAGE='${image}'
+      REGISTRY_HOST='${registry_host}'
+      DEPLOY_DELAY=${deploy_delay}
+
+  # Fetch the current agent and run it, one run at a time.
+  - path: /usr/local/bin/infrawrench-agent
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      . /etc/infrawrench/node.env
+      mkdir -p /var/lib/infrawrench
+      aws s3 cp --only-show-errors "s3://$${RUNTIME_BUCKET}/agent.sh" /var/lib/infrawrench/agent.sh
+      exec flock -n /run/infrawrench-agent.lock bash /var/lib/infrawrench/agent.sh
+
+  - path: /etc/systemd/system/infrawrench-agent.service
+    content: |
+      [Unit]
+      Description=Infrawrench deploy agent
+      After=docker.service network-online.target
+      Wants=network-online.target
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/infrawrench-agent
+
+  - path: /etc/systemd/system/infrawrench-agent.timer
+    content: |
+      [Unit]
+      Description=Run the Infrawrench deploy agent every minute
+      [Timer]
+      OnBootSec=20s
+      OnUnitActiveSec=60s
+      AccuracySec=5s
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  - [systemctl, enable, --now, docker]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, infrawrench-agent.timer]
