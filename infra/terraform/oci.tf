@@ -69,6 +69,16 @@ variable "oci_web_availability_domains" {
   default     = { "web-1" = 0, "web-2" = 1 }
 }
 
+variable "oci_web_ocpus" {
+  description = <<-EOT
+    OCPUs per web VM. 2 uses the whole Always Free Ampere allowance across the
+    two; 1 is easier to place when capacity is short, and a created VM can be
+    resized in place (it reboots).
+  EOT
+  type        = map(number)
+  default     = { "web-1" = 2, "web-2" = 2 }
+}
+
 variable "oci_ssh_public_key" {
   description = "Public key for the `ubuntu` user on the VMs (debugging only)."
   type        = string
@@ -440,7 +450,7 @@ resource "oci_core_instance" "web" {
   # Two of the Always Free Ampere allowance's 4 OCPUs each. 6 GB each uses
   # half of its 24 GB; the web pods ran in under 1 GB.
   shape_config {
-    ocpus         = 2
+    ocpus         = lookup(var.oci_web_ocpus, each.key, 2)
     memory_in_gbs = 6
   }
 
