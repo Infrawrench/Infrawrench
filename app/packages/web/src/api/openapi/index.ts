@@ -17,6 +17,7 @@ import { registerCostPaths } from "./paths/costs";
 import { registerCostAnomalyFeedbackPaths } from "./paths/cost-anomaly-feedback";
 import { registerCostReportPaths } from "./paths/cost-reports";
 import { registerResourceReportPaths } from "./paths/resource-reports";
+import { registerCostForecastPaths } from "./paths/cost-forecasts";
 import { registerCostCanvasPaths } from "./paths/cost-canvases";
 import { registerKubernetesEfficiencyReportPaths } from "./paths/k8s-efficiency-reports";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
@@ -185,6 +186,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostAnomalyFeedbackPaths(ctx);
   registerCostReportPaths(ctx);
   registerResourceReportPaths(ctx);
+  registerCostForecastPaths(ctx);
   registerCostCanvasPaths(ctx);
   registerKubernetesEfficiencyReportPaths(ctx);
   registerCostReportNotificationPaths(ctx);
@@ -357,6 +359,14 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Named, addressable saved cost graphs. A report owns its config as an org object, so " +
           "dashboards can reference it by id (the `cost_report` widget kind) and it can be run " +
           "by id without the caller reassembling the query.",
+      },
+      {
+        name: "Cost forecasts",
+        description:
+          "Named forecasts on a cost report: the automatic trend forecast, or a driver business " +
+          "metric's forecasted values times the projected unit cost, with scenario models applied " +
+          "in priority order. Every forecast carries a low/expected/high band from the " +
+          "least-squares prediction interval.",
       },
       {
         name: "Cost canvases",

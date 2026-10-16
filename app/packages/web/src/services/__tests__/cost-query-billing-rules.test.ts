@@ -45,7 +45,11 @@ vi.mock("@infrawrench/server-core/cost/scenario-forecast", () => ({
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: vi.fn(async () => ({ displayCurrency: null, rates: [] })),
 }));
-vi.mock("@infrawrench/server-core/cost/forecast", () => ({ forecastDaily: vi.fn(() => []) }));
+vi.mock("@infrawrench/server-core/cost/forecast", () => ({
+  DEFAULT_FORECAST_CONFIDENCE_LEVEL: 80,
+  forecastDaily: vi.fn(() => []),
+  forecastDailyWithBounds: vi.fn(() => []),
+}));
 vi.mock("@infrawrench/server-core/cost/tag-key-settings", () => ({
   getOrgTagKeySettings: vi.fn(async () => ({ hidden: [], preferred: [] })),
 }));

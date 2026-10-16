@@ -144,6 +144,10 @@ Two tools:
 
 To apply one, send `scenarioModelId` alongside `forecast: true` on `POST /costs/query`. The response carries the untouched `forecast` and a `scenario` object with the adjusted `points`, per-adjustment `contributions`, the signed `totalDelta`, any `convertedFrom` currency, and the `outOfScope` labels. Sending `scenarioModelId` without a forecast is a `400`, not a no-op — a caller who asked for assumptions and silently got none back is exactly the failure this feature exists to prevent. See [the OpenAPI spec](../team-and-billing/openapi.md).
 
+## Stacking models in a named forecast
+
+A graph applies one model. To combine several, save them as a **named forecast** on a cost report: pick the models, put them in priority order, and optionally drive the baseline from a business metric's planned values. Each model then adjusts the line the ones before it produced, and the report's Forecasts view compares the result with the automatic forecast. A model a forecast uses cannot be deleted until the forecast stops using it. See [Cost forecasts](./cost-forecasts.md).
+
 ## On mobile
 
 The [mobile app](./mobile-app.md) draws an applied scenario read-only: the second dashed line, the model's name in the legend, and the same caption naming the model and its total effect. Authoring and editing models is deliberately web and desktop only — the editor is a table of dated, scoped, currency-bearing rows, and a phone is the wrong place to get one of those right.

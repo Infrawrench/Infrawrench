@@ -61,9 +61,12 @@ import {
 import {
   alignComparison,
   COMPARISON_KEY,
+  FORECAST_BAND_KEY,
+  FORECAST_HIGH_KEY,
   FORECAST_KEY,
   LABEL_KEY,
   SCENARIO_KEY,
+  forecastBandOf,
   formatBucketLabel,
   formatMoney,
   pivotDimensionAxis,
@@ -480,6 +483,17 @@ function SpendGraphCard({
     ? gt("Scenario: {name}", { name: scenario.modelName })
     : gt("Scenario");
   /**
+   * Whether the trend came with its prediction interval: every projected day
+   * has bounds, or no band is drawn at all (an older server sends none).
+   */
+  const forecastBounded = Boolean(
+    state?.response.forecast?.length &&
+    state.response.forecast.every((p) => p.low !== undefined && p.high !== undefined),
+  );
+  const forecastBandLabel = gt("Forecast range ({level}%)", {
+    level: state?.response.forecastConfidenceLevel ?? 80,
+  });
+  /**
    * The org's billing rules, when this card asked for them.
    *
    * Rendered unconditionally whenever the response carries it, and next to the
@@ -835,7 +849,7 @@ function SpendGraphCard({
     const seriesKeys = pivot.series.map((s) => s.dataKey);
     const overlayKeys = [
       ...(response.comparison ? [COMPARISON_KEY] : []),
-      ...(response.forecast ? [FORECAST_KEY] : []),
+      ...(response.forecast ? [FORECAST_KEY, FORECAST_HIGH_KEY] : []),
       ...(response.scenario ? [SCENARIO_KEY] : []),
     ];
     const extent = rowsExtent(pivot.rows, {
@@ -920,6 +934,16 @@ function SpendGraphCard({
               if (String(name) === COMPARISON_KEY) {
                 const row = (item as { payload?: Record<string, unknown> } | undefined)?.payload;
                 return [previousWithDelta(Number(value), row), gt("Previous period")];
+              }
+              // The band is a range: say both ends rather than one number.
+              if (String(name) === FORECAST_BAND_KEY && Array.isArray(value)) {
+                return [
+                  gt("{low} to {high}", {
+                    low: fmt(Number(value[0])),
+                    high: fmt(Number(value[1])),
+                  }),
+                  forecastBandLabel,
+                ];
               }
               const label =
                 String(name) === COMPARISON_KEY
@@ -1032,6 +1056,25 @@ function SpendGraphCard({
               // Values on a dimension axis are separate things, not moments in
               // a sequence: a dot marks each one's previous figure.
               dot={dimensionAxis ? { r: 2.5, fill: chart.tick } : false}
+            />
+          )}
+          {/*
+            The forecast band: the trend's prediction interval, drawn under
+            the dashed line it brackets. A range area over `[low, high]`, null
+            on observed buckets so it starts where the projection does.
+          */}
+          {forecastBounded && (
+            <Area
+              type="monotone"
+              dataKey={forecastBandOf}
+              name={FORECAST_BAND_KEY}
+              stroke="none"
+              fill={FORECAST_COLOR}
+              fillOpacity={0.15}
+              legendType="none"
+              isAnimationActive={false}
+              connectNulls={false}
+              activeDot={false}
             />
           )}
           {response.forecast && (

@@ -317,6 +317,57 @@ export interface BusinessMetricWriteResult {
 }
 
 /**
+ * A **forecasted** value of a business metric: the plan for a future day, kept
+ * apart from the actuals (`business_metric_forecast_values`, its own table) so
+ * no unit-cost ratio, threshold or coverage figure can ever divide by a
+ * number nobody has measured yet. One value per day, no labels: a forecast
+ * drives a report's projected spend as a whole.
+ */
+export interface BusinessMetricForecastValue {
+  /** UTC day, YYYY-MM-DD. */
+  day: string;
+  value: number;
+  updatedAt: string;
+}
+
+/** One forecasted day to write. Re-sending a day restates it. */
+export interface BusinessMetricForecastValueInput {
+  /** UTC day, YYYY-MM-DD. */
+  date: string;
+  value: number;
+}
+
+/**
+ * The validation of a forecast-value batch, shared by the editors and the
+ * service. Null when every value is usable.
+ */
+export function businessMetricForecastValuesError(
+  values: readonly BusinessMetricForecastValueInput[],
+): string | null {
+  if (values.length === 0) return "Send at least one value.";
+  if (values.length > BUSINESS_METRIC_LIMITS.maxValuesPerCall) {
+    return `At most ${BUSINESS_METRIC_LIMITS.maxValuesPerCall} values per call.`;
+  }
+  const seen = new Set<string>();
+  for (const v of values) {
+    if (typeof v.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v.date)) {
+      return `"${String(v.date)}" is not a YYYY-MM-DD day.`;
+    }
+    const parsed = new Date(`${v.date}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== v.date) {
+      return `"${v.date}" is not a real day.`;
+    }
+    if (typeof v.value !== "number" || !Number.isFinite(v.value)) {
+      return `The value for ${v.date} must be a finite number.`;
+    }
+    if (v.value < 0) return `The value for ${v.date} must not be negative.`;
+    if (seen.has(v.date)) return `${v.date} appears twice in one batch.`;
+    seen.add(v.date);
+  }
+  return null;
+}
+
+/**
  * Bounds the API enforces; clients enforce the same ones locally so a typo
  * fails in the form rather than as a 400 after the round trip.
  */

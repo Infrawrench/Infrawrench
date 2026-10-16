@@ -328,6 +328,22 @@ const BudgetWithStatus = strict({
       "The **unadjusted trend** forecast, whether or not a scenario is applied; so both " +
         "numbers are always comparable.",
     ),
+  forecastLowCents: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe(
+      "Lower end of the 80% prediction interval around `forecastCents` (the trend's, before " +
+        "any scenario), never below the spend already observed. Null when there was too " +
+        "little history to fit. Display only: thresholds are judged on `forecastCents`.",
+    ),
+  forecastHighCents: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe("Upper end of the 80% prediction interval around `forecastCents`."),
   scenarioForecastCents: z
     .number()
     .int()

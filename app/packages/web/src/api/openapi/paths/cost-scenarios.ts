@@ -113,7 +113,7 @@ const CostScenarioModelInput = strict({
 }).openapi("CostScenarioModelInput");
 
 const CostScenarioReferent = strict({
-  kind: z.enum(["budget", "cost_report", "cost_graph_widget"]),
+  kind: z.enum(["budget", "cost_report", "cost_graph_widget", "cost_forecast"]),
   id: Uuid.describe("Budget id, report id, or dashboard-widget id."),
   name: z.string(),
   dashboardId: Uuid.optional().describe("Set for `cost_graph_widget` referents."),

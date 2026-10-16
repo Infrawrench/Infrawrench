@@ -127,6 +127,8 @@ type Budget struct {
 	ActualCents           *int64      `json:"actualCents,omitempty"`
 	RawActualCents        *int64      `json:"rawActualCents,omitempty"`
 	ForecastCents         *int64      `json:"forecastCents,omitempty"`
+	ForecastLowCents      *int64      `json:"forecastLowCents,omitempty"`
+	ForecastHighCents     *int64      `json:"forecastHighCents,omitempty"`
 	ScenarioForecastCents *int64      `json:"scenarioForecastCents,omitempty"`
 	Placements            []Placement `json:"placements,omitempty"`
 	PeriodStart           *string     `json:"periodStart,omitempty"`
@@ -1067,6 +1069,38 @@ type CostAnnotation struct {
 type CostAnnotationBudgetAlert struct {
 	BudgetID string `json:"budgetId"`
 	EventID  string `json:"eventId"`
+}
+
+/* ----------------------------- report forecasts ---------------------------- */
+
+// CostForecastInput is the POST/PUT body for a named forecast on a report.
+//
+// Description and DriverMetricID are explicit nulls rather than omissions: a
+// null clears them, so the PUT is a full replacement. IsDefault is always sent,
+// because on update an absent value keeps the server's current setting, and
+// Terraform has to be able to turn the default off.
+type CostForecastInput struct {
+	Name             string   `json:"name"`
+	Description      *string  `json:"description"`
+	ScenarioModelIDs []string `json:"scenarioModelIds"`
+	DriverMetricID   *string  `json:"driverMetricId"`
+	IsDefault        bool     `json:"isDefault"`
+}
+
+// CostForecast is a named forecast: a baseline (the trend, or a driver
+// metric's forecasted values times the projected unit cost) with scenario
+// models applied in order.
+type CostForecast struct {
+	ID               string   `json:"id"`
+	ReportID         string   `json:"reportId"`
+	Name             string   `json:"name"`
+	Description      *string  `json:"description"`
+	ScenarioModelIDs []string `json:"scenarioModelIds"`
+	DriverMetricID   *string  `json:"driverMetricId"`
+	IsDefault        bool     `json:"isDefault"`
+	CreatedByUserID  *string  `json:"createdByUserId"`
+	CreatedAt        string   `json:"createdAt"`
+	UpdatedAt        string   `json:"updatedAt"`
 }
 
 /* -------------------------- report notifications --------------------------- */

@@ -602,6 +602,12 @@ build a URL. They import under a composite address:
 terraform import infrawrench_cost_report_notification.weekly <report-id>/<notification-id>
 ```
 
+**Report forecasts** are nested under their report the same way:
+
+```sh
+terraform import infrawrench_cost_forecast.plan <report-id>/<forecast-id>
+```
+
 **Dashboard notifications** work the same way, nested under the dashboard:
 
 ```sh
@@ -670,6 +676,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_resource_report`           | by id     | Columns are ids: `core:`, `field:`, `tag:`, `cost:`  |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
+| `infrawrench_cost_forecast`             | composite | `<report-id>/<forecast-id>`; one default per report  |
 | `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |
 | `infrawrench_cost_canvas`               | by id     | `spec_json` holds queries; compared as JSON          |
 | `infrawrench_cost_canvas_notification`  | composite | `<canvas-id>/<notification-id>`; canvas as PDF       |

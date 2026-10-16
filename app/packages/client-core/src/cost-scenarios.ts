@@ -165,7 +165,8 @@ export interface CostScenarioModelInput {
 }
 
 /** What kind of object opted into a scenario model. */
-export type CostScenarioReferentKind = "budget" | "cost_report" | "cost_graph_widget";
+export type CostScenarioReferentKind =
+  "budget" | "cost_report" | "cost_graph_widget" | "cost_forecast";
 
 /**
  * One object still pointing at a scenario model: what a refused DELETE lists.
@@ -661,6 +662,7 @@ export function describeCostScenarioReferents(referents: CostScenarioReferent[])
     budget: "budget",
     cost_report: "report",
     cost_graph_widget: "dashboard graph",
+    cost_forecast: "forecast",
   };
   return referents
     .map((r) => `${label[r.kind]} "${r.name}"${r.dashboardName ? ` on ${r.dashboardName}` : ""}`)

@@ -20,6 +20,7 @@ import { CostAnnotationsSection } from "./CostAnnotationsSection.js";
 import { Modal } from "../components/Modal.js";
 import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
+import { ReportForecastsSection } from "./ReportForecastsSection.js";
 import type { CostReportsClient } from "./types.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 import {
@@ -1304,6 +1305,10 @@ function ReportDetail({
 
       {/* The same notes as a list, where you go to fix a date you can no
           longer see, or move a note between this report and org-wide. */}
+      {/* Named forecasts, side by side with the automatic one; opens on the
+          report's default. Renders nothing without the forecast reads. */}
+      <ReportForecastsSection reportId={report.id} client={client} />
+
       <CostAnnotationsSection reportId={report.id} reportName={report.name} client={client} />
 
       {/* Scheduled sends to Slack/Teams/email; renders nothing when the host

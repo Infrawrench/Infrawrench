@@ -12,13 +12,24 @@
  * so the MCP/chat tools drive exactly the same code path; this file is
  * transport only.
  */
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import {
+  costForecastInputSchema,
+  costForecastRunRequestSchema,
   costReportBulkRequestSchema,
   costReportInputSchema,
   costReportRunOverridesSchema,
 } from "@infrawrench/ui/cost/config";
+import {
+  CostForecastError,
+  CostForecastNameConflictError,
+  createCostForecast,
+  deleteCostForecast,
+  listCostForecasts,
+  runCostReportForecast,
+  updateCostForecast,
+} from "../../services/cost-forecasts";
 import {
   createCostReport,
   getCostReport,
@@ -204,6 +215,151 @@ app.post("/:id/run", async (c) => {
   } catch (e) {
     if (e instanceof CostQueryError) return c.json({ error: e.message }, 400);
     throw e;
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Named forecasts on a report. Same permissions as the report itself
+ * (`costs:read` to list and run, `costs:write` to change), and the same
+ * sharing: a report the caller cannot see has no forecasts to them either.
+ * ------------------------------------------------------------------ */
+
+function forecastError(c: Context, e: unknown) {
+  if (e instanceof CostForecastError) return c.json({ error: e.message }, 400);
+  if (e instanceof CostForecastNameConflictError) return c.json({ error: e.message }, 409);
+  throw e;
+}
+
+/** GET /api/org/:orgId/cost-reports/:id/forecasts: the report's named forecasts. */
+app.get("/:id/forecasts", async (c) => {
+  requirePermission(c, "costs:read");
+  const forecasts = await listCostForecasts(c.get("organizationId"), c.req.param("id"));
+  if (!forecasts) return c.json({ error: "Not found" }, 404);
+  return c.json({ forecasts });
+});
+
+/** POST /api/org/:orgId/cost-reports/:id/forecasts: add a named forecast. */
+app.post("/:id/forecasts", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = costForecastInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid forecast", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const created = await createCostForecast(
+      organizationId,
+      c.req.param("id"),
+      parsed.data,
+      session.userId ?? null,
+    );
+    if (!created) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_forecast.create",
+      entityType: "cost_forecast",
+      entityId: created.id,
+      metadata: {
+        reportId: created.reportId,
+        name: created.name,
+        scenarioModelIds: created.scenarioModelIds,
+        driverMetricId: created.driverMetricId,
+        isDefault: created.isDefault,
+      },
+    });
+    return c.json(created);
+  } catch (e) {
+    return forecastError(c, e);
+  }
+});
+
+/** PUT /api/org/:orgId/cost-reports/:id/forecasts/:forecastId: replace one. */
+app.put("/:id/forecasts/:forecastId", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = costForecastInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid forecast", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const updated = await updateCostForecast(
+      organizationId,
+      c.req.param("id"),
+      c.req.param("forecastId"),
+      parsed.data,
+    );
+    if (!updated) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_forecast.update",
+      entityType: "cost_forecast",
+      entityId: updated.id,
+      metadata: {
+        reportId: updated.reportId,
+        name: updated.name,
+        scenarioModelIds: updated.scenarioModelIds,
+        driverMetricId: updated.driverMetricId,
+        isDefault: updated.isDefault,
+      },
+    });
+    return c.json(updated);
+  } catch (e) {
+    return forecastError(c, e);
+  }
+});
+
+/** DELETE /api/org/:orgId/cost-reports/:id/forecasts/:forecastId */
+app.delete("/:id/forecasts/:forecastId", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const forecastId = c.req.param("forecastId");
+  const result = await deleteCostForecast(organizationId, c.req.param("id"), forecastId);
+  if (!result.deleted) return c.json({ error: "Not found" }, 404);
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "cost_forecast.delete",
+    entityType: "cost_forecast",
+    entityId: forecastId,
+    metadata: { reportId: c.req.param("id"), name: result.name },
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * POST /api/org/:orgId/cost-reports/:id/forecasted-costs: projected spend for
+ * the report's scope, with bounds. A read despite the method (like `/run`).
+ */
+app.post("/:id/forecasted-costs", async (c) => {
+  requirePermission(c, "costs:read");
+  const text = await c.req.text();
+  let body: unknown = {};
+  if (text.trim()) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+  }
+  const parsed = costForecastRunRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const result = await runCostReportForecast(
+      c.get("organizationId"),
+      c.req.param("id"),
+      parsed.data,
+    );
+    if (!result) return c.json({ error: "Not found" }, 404);
+    return c.json(result);
+  } catch (e) {
+    return forecastError(c, e);
   }
 });
 

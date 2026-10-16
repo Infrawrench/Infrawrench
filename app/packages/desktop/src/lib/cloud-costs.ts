@@ -4,6 +4,12 @@
  * store), so these are never called when activeCloudOrgId is unset.
  */
 import type {
+  BusinessMetricForecastValue,
+  BusinessMetricForecastValueInput,
+  CostForecast,
+  CostForecastInput,
+  CostForecastResult,
+  CostForecastRunRequest,
   CarbonEstimate,
   BillingRule,
   BudgetInput,
@@ -866,6 +872,78 @@ export async function writeCloudBusinessMetricValues(
   values: BusinessMetricValueInput[],
 ): Promise<BusinessMetricWriteResult> {
   return invoke("cloud_write_business_metric_values", { orgId, metricId, values });
+}
+
+export async function listCloudBusinessMetricForecastValues(
+  orgId: string,
+  metricId: string,
+): Promise<BusinessMetricForecastValue[]> {
+  return (
+    (await invoke<BusinessMetricForecastValue[]>("cloud_list_business_metric_forecast_values", {
+      orgId,
+      metricId,
+    })) ?? []
+  );
+}
+
+export async function writeCloudBusinessMetricForecastValues(
+  orgId: string,
+  metricId: string,
+  values: BusinessMetricForecastValueInput[],
+): Promise<{ written: number }> {
+  return invoke("cloud_write_business_metric_forecast_values", { orgId, metricId, values });
+}
+
+export async function deleteCloudBusinessMetricForecastValues(
+  orgId: string,
+  metricId: string,
+  range: { from?: string; to?: string },
+): Promise<{ deleted: number }> {
+  return invoke("cloud_delete_business_metric_forecast_values", { orgId, metricId, ...range });
+}
+
+/* ------------------------------------------------------------------ *
+ * Named forecasts on a cost report.
+ * ------------------------------------------------------------------ */
+
+export async function listCloudCostForecasts(
+  orgId: string,
+  reportId: string,
+): Promise<CostForecast[]> {
+  return (await invoke<CostForecast[]>("cloud_list_cost_forecasts", { orgId, reportId })) ?? [];
+}
+
+export async function runCloudCostForecast(
+  orgId: string,
+  reportId: string,
+  request: CostForecastRunRequest,
+): Promise<CostForecastResult> {
+  return invoke("cloud_run_cost_forecast", { orgId, reportId, request });
+}
+
+export async function createCloudCostForecast(
+  orgId: string,
+  reportId: string,
+  input: CostForecastInput,
+): Promise<CostForecast> {
+  return invoke("cloud_create_cost_forecast", { orgId, reportId, input });
+}
+
+export async function updateCloudCostForecast(
+  orgId: string,
+  reportId: string,
+  forecastId: string,
+  input: CostForecastInput,
+): Promise<CostForecast> {
+  return invoke("cloud_update_cost_forecast", { orgId, reportId, forecastId, input });
+}
+
+export async function deleteCloudCostForecast(
+  orgId: string,
+  reportId: string,
+  forecastId: string,
+): Promise<void> {
+  await invoke("cloud_delete_cost_forecast", { orgId, reportId, forecastId });
 }
 
 export async function listCloudBusinessMetricSources(

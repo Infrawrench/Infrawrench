@@ -175,6 +175,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewCostReportFolderResource,
 		NewKubernetesEfficiencyReportResource,
 		NewCostReportNotificationResource,
+		NewCostForecastResource,
 		NewDashboardNotificationResource,
 		NewCostCanvasResource,
 		NewCostCanvasNotificationResource,

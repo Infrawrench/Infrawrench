@@ -6,6 +6,7 @@ import type {
   BusinessMetricSourceOptionsRequest,
   BusinessMetricInput,
   BusinessMetricValueInput,
+  BusinessMetricForecastValueInput,
   CostAlertInput,
   CostAnomalySettings,
   CostsClient,
@@ -84,6 +85,9 @@ import {
   deleteCloudSavingsEvent,
   saveCloudSavingsSettings,
   searchCloudSavingsResources,
+  deleteCloudBusinessMetricForecastValues,
+  listCloudBusinessMetricForecastValues,
+  writeCloudBusinessMetricForecastValues,
   updateCloudSavingsEvent,
 } from "./cloud-costs";
 import type { CostCentre } from "@infrawrench/client-core";
@@ -134,6 +138,14 @@ export function createDesktopCostsClient(): CostsClient {
       listCloudBusinessMetricValues(requireOrgId(), metricId, limit),
     writeBusinessMetricValues: (metricId: string, values: BusinessMetricValueInput[]) =>
       writeCloudBusinessMetricValues(requireOrgId(), metricId, values),
+    listBusinessMetricForecastValues: (metricId: string) =>
+      listCloudBusinessMetricForecastValues(requireOrgId(), metricId),
+    writeBusinessMetricForecastValues: (
+      metricId: string,
+      values: BusinessMetricForecastValueInput[],
+    ) => writeCloudBusinessMetricForecastValues(requireOrgId(), metricId, values),
+    deleteBusinessMetricForecastValues: (metricId: string, range: { from?: string; to?: string }) =>
+      deleteCloudBusinessMetricForecastValues(requireOrgId(), metricId, range),
     // Importers run in the cloud; the desktop configures them exactly as web does.
     listBusinessMetricSources: () => listCloudBusinessMetricSources(requireOrgId()),
     listBusinessMetricSourceOptions: (request: BusinessMetricSourceOptionsRequest) =>

@@ -674,6 +674,58 @@ func (c *Client) DeleteCostAnnotation(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/cost-annotations/"+seg(id))
 }
 
+/* ----------------------------- report forecasts ---------------------------- */
+//
+// Named forecasts hang off a report like its notifications do, so every
+// wrapper takes the report id too and the resource imports as
+// "reportId/forecastId".
+
+func (c *Client) ListCostForecasts(ctx context.Context, reportID string) ([]CostForecast, error) {
+	var envelope struct {
+		Forecasts []CostForecast `json:"forecasts"`
+	}
+	if err := c.Get(ctx, "/cost-reports/"+seg(reportID)+"/forecasts", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Forecasts, nil
+}
+
+// GetCostForecast lists the report's forecasts and filters: there is no
+// single-GET route. A deleted report 404s on the listing, which reads the
+// same as a deleted forecast: it needs recreating.
+func (c *Client) GetCostForecast(ctx context.Context, reportID, id string) (*CostForecast, error) {
+	all, err := c.ListCostForecasts(ctx, reportID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/cost-reports/"+seg(reportID)+"/forecasts", id)
+}
+
+func (c *Client) CreateCostForecast(ctx context.Context, reportID string, in CostForecastInput) (*CostForecast, error) {
+	var out CostForecast
+	if err := c.Post(ctx, "/cost-reports/"+seg(reportID)+"/forecasts", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCostForecast(ctx context.Context, reportID, id string, in CostForecastInput) (*CostForecast, error) {
+	var out CostForecast
+	if err := c.Put(ctx, "/cost-reports/"+seg(reportID)+"/forecasts/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostForecast(ctx context.Context, reportID, id string) error {
+	return c.Delete(ctx, "/cost-reports/"+seg(reportID)+"/forecasts/"+seg(id))
+}
+
 /* -------------------------- report notifications --------------------------- */
 //
 // These hang off a report rather than off the org, so every wrapper takes the

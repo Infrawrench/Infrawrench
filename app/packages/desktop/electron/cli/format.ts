@@ -619,6 +619,9 @@ export interface CliBudgetRow {
   month: string;
   actualCents: number;
   forecastCents: number | null;
+  /** The trend forecast's 80% interval, in cents; absent from older servers. */
+  forecastLowCents?: number | null | undefined;
+  forecastHighCents?: number | null | undefined;
   scenarioForecastCents?: number | null | undefined;
   currentMonthEvents: unknown[];
   measure?: "cost" | "usage" | undefined;

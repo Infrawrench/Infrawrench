@@ -640,6 +640,78 @@ ipcMain.handle(
  * sub-resource of any one report.
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Named forecasts on a report, and the forecasted-costs read. Sub-resources
+ * of a report, so the report id is part of every path.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle(
+  "cloud_list_cost_forecasts",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    const res = await cloudFetch<{ forecasts: unknown[] }>(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/forecasts`,
+    );
+    return res?.forecasts ?? [];
+  },
+);
+
+ipcMain.handle(
+  "cloud_run_cost_forecast",
+  async (
+    _e,
+    { orgId, reportId, request }: { orgId: string; reportId: string; request: unknown },
+  ) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/forecasted-costs`, {
+      method: "POST",
+      body: JSON.stringify(request ?? {}),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_cost_forecast",
+  async (_e, { orgId, reportId, input }: { orgId: string; reportId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/forecasts`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_cost_forecast",
+  async (
+    _e,
+    {
+      orgId,
+      reportId,
+      forecastId,
+      input,
+    }: { orgId: string; reportId: string; forecastId: string; input: unknown },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/forecasts/${encodeURIComponent(forecastId)}`,
+      { method: "PUT", body: JSON.stringify(input) },
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_cost_forecast",
+  async (
+    _e,
+    { orgId, reportId, forecastId }: { orgId: string; reportId: string; forecastId: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/cost-reports/${encodeURIComponent(reportId)}/forecasts/${encodeURIComponent(forecastId)}`,
+      { method: "DELETE" },
+    );
+  },
+);
+
 ipcMain.handle(
   "cloud_list_cost_annotations",
   async (_e, { orgId, reportId }: { orgId: string; reportId?: string }) => {
@@ -1094,6 +1166,47 @@ ipcMain.handle(
       method: "POST",
       body: JSON.stringify({ values }),
     });
+  },
+);
+
+// Forecasted (planned) metric values: a table of their own server-side, so
+// these channels never touch the actuals above.
+ipcMain.handle(
+  "cloud_list_business_metric_forecast_values",
+  async (_e, { orgId, metricId }: { orgId: string; metricId: string }) => {
+    const res = await cloudFetch<{ values: unknown[] }>(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/forecast-values`,
+    );
+    return res?.values ?? [];
+  },
+);
+
+ipcMain.handle(
+  "cloud_write_business_metric_forecast_values",
+  async (_e, { orgId, metricId, values }: { orgId: string; metricId: string; values: unknown }) => {
+    return cloudFetch(orgId, `/business-metrics/${encodeURIComponent(metricId)}/forecast-values`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_business_metric_forecast_values",
+  async (
+    _e,
+    { orgId, metricId, from, to }: { orgId: string; metricId: string; from?: string; to?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return cloudFetch(
+      orgId,
+      `/business-metrics/${encodeURIComponent(metricId)}/forecast-values${qs ? `?${qs}` : ""}`,
+      { method: "DELETE" },
+    );
   },
 );
 

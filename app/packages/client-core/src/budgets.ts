@@ -484,6 +484,22 @@ export interface BudgetProgress {
   active: boolean;
 }
 
+/**
+ * The trend forecast's 80% interval for a spend budget, in major units, or
+ * null when the server sent none (too little history, a usage budget, or a
+ * server that predates bounds). It brackets the **trend** figure: for a budget
+ * that opted into a scenario it is the trend's range, and the card says so.
+ */
+export function budgetForecastRange(
+  budget: BudgetWithStatus,
+): { low: number; high: number } | null {
+  if (budget.measure === "usage") return null;
+  const low = budget.forecastLowCents;
+  const high = budget.forecastHighCents;
+  if (low === null || low === undefined || high === null || high === undefined) return null;
+  return { low: low / 100, high: high / 100 };
+}
+
 export function budgetProgress(budget: BudgetWithStatus): BudgetProgress {
   const measure: BudgetMeasure = budget.measure === "usage" ? "usage" : "cost";
   const active = budget.periodStart !== null;

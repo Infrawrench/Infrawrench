@@ -914,6 +914,14 @@ export interface BudgetWithStatus {
    */
   forecastCents: number | null;
   /**
+   * The 80% prediction interval around `forecastCents` (the trend's, before
+   * any scenario). Null (or absent) when there was too little history for a
+   * fit, or from a server that predates bounds. Display only: thresholds are
+   * judged on the expected figure.
+   */
+  forecastLowCents?: number | null | undefined;
+  forecastHighCents?: number | null | undefined;
+  /**
    * The scenario-adjusted month forecast: set only for a budget that opted
    * into a model, and the number its forecast thresholds are actually judged
    * against. Null (or absent) means the thresholds used `forecastCents`.
@@ -1129,6 +1137,16 @@ export interface CostSeriesPoint {
   amount: number;
 }
 
+/**
+ * A projected bucket: the trend's expected amount plus its prediction
+ * interval (`CostQueryResponse.forecastConfidenceLevel`). `low`/`high` are
+ * absent from servers that predate bounds; draw no band then.
+ */
+export interface CostForecastSeriesPoint extends CostSeriesPoint {
+  low?: number | undefined;
+  high?: number | undefined;
+}
+
 export interface CostQuerySeries {
   /** Group value ("" when ungrouped); "__other__" for the folded remainder. */
   key: string;
@@ -1220,8 +1238,16 @@ export interface CostQueryResponse {
   series: CostQuerySeries[];
   /** Same query shifted back one full period, when requested. */
   comparison?: CostQuerySeries[];
-  /** Projected daily totals beyond the last observed day, when requested. */
-  forecast?: CostSeriesPoint[];
+  /**
+   * Projected daily totals beyond the last observed day, when requested, each
+   * with its prediction interval.
+   */
+  forecast?: CostForecastSeriesPoint[];
+  /**
+   * The two-sided level (percent) of the `low`/`high` on `forecast`. Set with
+   * `forecast`; absent from servers that predate bounds.
+   */
+  forecastConfidenceLevel?: number | undefined;
   /**
    * The same projection with a scenario model applied: set only when the
    * request named one.
@@ -1573,28 +1599,51 @@ export function costBucketStart(day: string, binning: CostBinningId): string {
 
 /** Bucket daily forecast points to match the chart binning. */
 export function binForecast(
-  forecast: CostSeriesPoint[],
+  forecast: CostForecastSeriesPoint[],
   binning: CostBinningId,
   lastActualCumulative?: number,
   cumulative = binning === "cumulative",
-): CostSeriesPoint[] {
+): CostForecastSeriesPoint[] {
   const { bin } = effectiveCostBinning({ binning });
-  let binned = forecast;
+  // Bounds ride along only when every point has them: a band with a hole in it
+  // would be drawn as if the missing day were certain.
+  const bounded =
+    forecast.length > 0 && forecast.every((p) => p.low !== undefined && p.high !== undefined);
+  let binned: CostForecastSeriesPoint[] = forecast.map((p) =>
+    bounded
+      ? { bucket: p.bucket, amount: p.amount, low: p.low!, high: p.high! }
+      : { bucket: p.bucket, amount: p.amount },
+  );
   if (bin !== "daily" && bin !== "hourly") {
-    const map = new Map<string, number>();
-    for (const p of forecast) {
+    // A bin's bounds are the sums of its days' bounds: wider than the bin's
+    // true interval (it assumes every day errs the same way), so a binned band
+    // errs on the side of looking less certain, never more.
+    const map = new Map<string, CostForecastSeriesPoint>();
+    for (const p of binned) {
       const key = costBucketStart(p.bucket, bin);
-      map.set(key, (map.get(key) ?? 0) + p.amount);
+      const acc = map.get(key);
+      if (!acc) {
+        map.set(key, { ...p, bucket: key });
+      } else {
+        acc.amount += p.amount;
+        if (bounded) {
+          acc.low = (acc.low ?? 0) + (p.low ?? 0);
+          acc.high = (acc.high ?? 0) + (p.high ?? 0);
+        }
+      }
     }
-    binned = [...map.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([bucket, amount]) => ({ bucket, amount }));
+    binned = [...map.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1));
   }
   if (!cumulative) return binned;
   let running = lastActualCumulative ?? 0;
+  let runningLow = running;
+  let runningHigh = running;
   return binned.map((p) => {
     running += p.amount;
-    return { bucket: p.bucket, amount: running };
+    if (!bounded) return { bucket: p.bucket, amount: running };
+    runningLow += p.low ?? 0;
+    runningHigh += p.high ?? 0;
+    return { bucket: p.bucket, amount: running, low: runningLow, high: runningHigh };
   });
 }
 
@@ -1666,6 +1715,7 @@ export {
   budgetLimitForWindow,
   budgetPeriodsEqual,
   budgetProgress,
+  budgetForecastRange,
   budgetSubtreeHeight,
   budgetWithStatusToInput,
   buildBudgetTree,

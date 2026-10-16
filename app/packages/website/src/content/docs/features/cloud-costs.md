@@ -535,6 +535,8 @@ Kubernetes clusters have no billing API of their own, so their per-namespace and
 
 Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
 
+Every forecast draws a shaded **range** around its dashed line: the 80% prediction interval of the fit, wider when recent spend is noisy and further out in time. Budgets show the same range beside their projected figure. See [Cost forecasts](./cost-forecasts.md) for how it is calculated, and for named forecasts on a cost report.
+
 The things a trend cannot see are exactly what a **scenario model** is for: known future cost, written down once and overlaid on the projection _beside_ the trend rather than instead of it. See [Scenario models](./scenario-models.md).
 
 The fit follows the graph's [cost basis](#cash-amortized-and-blended), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.

@@ -39,6 +39,8 @@ The report's page draws the chart full width, with the report's name, its descri
 - **Download FOCUS CSV** — the rows behind the chart as a [FOCUS 1.4](./cost-exports.md#focus) file, for a FinOps tool or a spreadsheet. See below.
 - **Delete** — see below.
 
+Below the chart, **Forecasts** compares the automatic forecast with the report's named forecasts (your plans: scenario models stacked in order, optionally driven by a business metric's planned values), each with a low, expected and high range. See [Cost forecasts](./cost-forecasts.md).
+
 ### Download as FOCUS
 
 **Download FOCUS CSV** writes the rows the report selects (its date range as of today, its filters and its saved filter) in the FinOps Open Cost and Usage Specification 1.4 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with billed and effective cost side by side. Grouping, binning and the cost basis do not apply; the file carries both bases and says which charge type each row is. It is the same mapping a [FOCUS scheduled export](./cost-exports.md#focus) writes, so a one-off download and a nightly feed agree.

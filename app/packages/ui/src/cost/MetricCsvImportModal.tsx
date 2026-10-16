@@ -46,12 +46,20 @@ export function MetricCsvImportModal({
   client,
   onClose,
   onChanged,
+  target = "actual",
 }: {
   metric: BusinessMetric;
   client: CostsClient;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  /**
+   * Where the rows go: reported actuals (the default), or the metric's
+   * forecasted values, which have no labels and one value per day (rows for
+   * the same day are summed).
+   */
+  target?: "actual" | "forecast";
 }) {
+  const forecastTarget = target === "forecast";
   const gt = useGT();
   const gtData = useDataString();
   const uid = useId();
@@ -73,22 +81,28 @@ export function MetricCsvImportModal({
 
   // Named label columns need a header to name them; without one they are off.
   const effectiveMapping = useMemo(
-    () => (hasHeader ? mapping : { ...mapping, labelColumns: undefined }),
-    [mapping, hasHeader],
+    () =>
+      forecastTarget
+        ? { date: mapping.date, value: mapping.value }
+        : hasHeader
+          ? mapping
+          : { ...mapping, labelColumns: undefined },
+    [mapping, hasHeader, forecastTarget],
   );
   const result = useMemo(
     () => (rows ? csvRowsToMetricValues(body, effectiveMapping, format, hasHeader ? 2 : 1) : null),
     [rows, body, effectiveMapping, format, hasHeader],
   );
   /** Columns that could be named labels: not the day, value or unnamed label column. */
-  const labelCandidates = header
-    ? header
-        .map((h, column) => ({ column, name: h.trim(), key: csvLabelColumnKey(h) }))
-        .filter(
-          (c) =>
-            c.column !== mapping.date && c.column !== mapping.value && c.column !== mapping.label,
-        )
-    : [];
+  const labelCandidates =
+    header && !forecastTarget
+      ? header
+          .map((h, column) => ({ column, name: h.trim(), key: csvLabelColumnKey(h) }))
+          .filter(
+            (c) =>
+              c.column !== mapping.date && c.column !== mapping.value && c.column !== mapping.label,
+          )
+      : [];
   const checkedLabels = new Set((mapping.labelColumns ?? []).map((c) => c.column));
   const labelLimitReached = checkedLabels.size >= BUSINESS_METRIC_LIMITS.maxLabelsPerValue;
 
@@ -124,6 +138,10 @@ export function MetricCsvImportModal({
   }
 
   async function upload() {
+    if (forecastTarget) {
+      await uploadForecast();
+      return;
+    }
     const write = client.writeBusinessMetricValues;
     if (!write || !result || result.values.length === 0) return;
     setBusy(true);
@@ -138,6 +156,32 @@ export function MetricCsvImportModal({
         setProgress(gt("Written {written} of {total}…", { written, total: result.values.length }));
       }
       setProgress(gt("Done: {written} values written across {days} days.", { written, days }));
+      await onChanged();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Forecast rows: one value per day, so a file with several rows a day is summed. */
+  async function uploadForecast() {
+    const write = client.writeBusinessMetricForecastValues;
+    if (!write || !result || result.values.length === 0) return;
+    const perDay = new Map<string, number>();
+    for (const v of result.values) perDay.set(v.date, (perDay.get(v.date) ?? 0) + v.value);
+    const values = [...perDay.entries()].map(([date, value]) => ({ date, value }));
+    setBusy(true);
+    setError(null);
+    try {
+      const batch = BUSINESS_METRIC_LIMITS.maxValuesPerCall;
+      let written = 0;
+      for (let i = 0; i < values.length; i += batch) {
+        const res = await write(metric.id, values.slice(i, i + batch));
+        written += res.written;
+        setProgress(gt("Written {written} of {total}…", { written, total: values.length }));
+      }
+      setProgress(gt("Done: {written} forecasted days written.", { written }));
       await onChanged();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -168,16 +212,33 @@ export function MetricCsvImportModal({
   );
 
   return (
-    <Modal onClose={onClose} ariaLabel={gt("Upload values for {name}", { name: metric.name })}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={
+        forecastTarget
+          ? gt("Upload forecasted values for {name}", { name: metric.name })
+          : gt("Upload values for {name}", { name: metric.name })
+      }
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[600px] max-h-[88vh] overflow-y-auto p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {gt("Upload a CSV for {name}", { name: metric.name })}
+          {forecastTarget
+            ? gt("Upload forecasted values for {name}", { name: metric.name })
+            : gt("Upload a CSV for {name}", { name: metric.name })}
         </h2>
-        <T>
+        {forecastTarget ? (
           <p className="text-xs text-on-surface-faint mb-4">
-            One row per day (or per day and label). Re-uploading a day replaces it.
+            {gt(
+              "One row per future day with the planned value. Rows for the same day are added together, and re-uploading a day replaces it.",
+            )}
           </p>
-        </T>
+        ) : (
+          <T>
+            <p className="text-xs text-on-surface-faint mb-4">
+              One row per day (or per day and label). Re-uploading a day replaces it.
+            </p>
+          </T>
+        )}
 
         {error !== null && (
           <div role="alert" className="mb-3 text-sm text-danger">
@@ -255,22 +316,24 @@ export function MetricCsvImportModal({
                     false,
                   )}
                 </div>
-                <div>
-                  <label className={labelClass} htmlFor={`${uid}-label`}>
-                    {gt("Label column (optional)")}
-                  </label>
-                  {columnSelect(
-                    `${uid}-label`,
-                    mapping.label,
-                    (v) =>
-                      setMapping((m) =>
-                        v === undefined
-                          ? { date: m.date, value: m.value, labelColumns: m.labelColumns }
-                          : withoutLabelColumn({ ...m, label: v }, v),
-                      ),
-                    true,
-                  )}
-                </div>
+                {!forecastTarget && (
+                  <div>
+                    <label className={labelClass} htmlFor={`${uid}-label`}>
+                      {gt("Label column (optional)")}
+                    </label>
+                    {columnSelect(
+                      `${uid}-label`,
+                      mapping.label,
+                      (v) =>
+                        setMapping((m) =>
+                          v === undefined
+                            ? { date: m.date, value: m.value, labelColumns: m.labelColumns }
+                            : withoutLabelColumn({ ...m, label: v }, v),
+                        ),
+                      true,
+                    )}
+                  </div>
+                )}
               </div>
 
               {labelCandidates.length > 0 && (

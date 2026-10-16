@@ -47,6 +47,18 @@ vi.mock("../../../services/cost-reports-bulk", () => ({
   CostReportBulkError: FakeCostReportBulkError,
 }));
 
+// The forecast routes share this router; their own contract is covered in
+// cost-report-forecasts.test.ts, and the real service reaches the DB client.
+vi.mock("../../../services/cost-forecasts", () => ({
+  CostForecastError: class extends Error {},
+  CostForecastNameConflictError: class extends Error {},
+  createCostForecast: vi.fn(),
+  deleteCostForecast: vi.fn(),
+  listCostForecasts: vi.fn(),
+  runCostReportForecast: vi.fn(),
+  updateCostForecast: vi.fn(),
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),

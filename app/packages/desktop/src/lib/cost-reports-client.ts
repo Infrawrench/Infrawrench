@@ -4,6 +4,8 @@ import { createDesktopSettingsApi } from "./settings-client";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import {
   pdfFileName,
+  type CostForecastInput,
+  type CostForecastRunRequest,
   type CostReportBulkRequest,
   type CostReportFolderInput,
   type CostReportInput,
@@ -32,6 +34,11 @@ import {
   updateCloudCostReport,
   updateCloudCostReportFolder,
   updateCloudReportNotification,
+  createCloudCostForecast,
+  deleteCloudCostForecast,
+  listCloudCostForecasts,
+  runCloudCostForecast,
+  updateCloudCostForecast,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
 import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-api";
@@ -95,6 +102,16 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       deleteCloudReportNotification(requireOrgId(), reportId, notificationId),
     sendReportNotificationNow: (reportId: string, notificationId: string) =>
       sendCloudReportNotificationNow(requireOrgId(), reportId, notificationId),
+    // Named forecasts, through the same cloud channels as the rest of the report.
+    listCostForecasts: (reportId: string) => listCloudCostForecasts(requireOrgId(), reportId),
+    runCostForecast: (reportId: string, request: CostForecastRunRequest) =>
+      runCloudCostForecast(requireOrgId(), reportId, request),
+    createCostForecast: (reportId: string, input: CostForecastInput) =>
+      createCloudCostForecast(requireOrgId(), reportId, input),
+    updateCostForecast: (reportId: string, forecastId: string, input: CostForecastInput) =>
+      updateCloudCostForecast(requireOrgId(), reportId, forecastId, input),
+    deleteCostForecast: (reportId: string, forecastId: string) =>
+      deleteCloudCostForecast(requireOrgId(), reportId, forecastId),
     downloadReportPdf: async (reportId: string, reportName: string) => {
       const bytes = await loadCloudCostReportPdf(requireOrgId(), reportId);
       downloadPdfBytes(bytes, pdfFileName(reportName));

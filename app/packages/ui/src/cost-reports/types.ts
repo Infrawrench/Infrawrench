@@ -1,4 +1,8 @@
 import type {
+  CostForecast,
+  CostForecastInput,
+  CostForecastResult,
+  CostForecastRunRequest,
   CostReport,
   CostReportBulkRequest,
   CostReportBulkResult,
@@ -87,6 +91,20 @@ export interface CostReportsClient extends CostApi {
    * host owns the transport and the download; omit it to hide the button.
    */
   downloadReportPdf?(reportId: string, reportName: string): Promise<void>;
+  /**
+   * Named forecasts on a report (`costs:read` to list and run, `costs:write`
+   * to change). The Forecasts section renders only when the host wires the two
+   * reads, and read-only without the writes.
+   */
+  listCostForecasts?(reportId: string): Promise<CostForecast[]>;
+  runCostForecast?(reportId: string, request: CostForecastRunRequest): Promise<CostForecastResult>;
+  createCostForecast?(reportId: string, input: CostForecastInput): Promise<CostForecast>;
+  updateCostForecast?(
+    reportId: string,
+    forecastId: string,
+    input: CostForecastInput,
+  ): Promise<CostForecast>;
+  deleteCostForecast?(reportId: string, forecastId: string): Promise<void>;
   /** Run the report and deliver it to this schedule's destinations now. */
   sendReportNotificationNow?(
     reportId: string,

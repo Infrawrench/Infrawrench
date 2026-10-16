@@ -166,8 +166,13 @@ export async function cmdBudgets(ctx: CliContext, query = ""): Promise<void> {
         ? `${formatBudgetValue(row, fig.actual)} / ${formatBudgetValue(row, fig.limit)}`
         : formatBudgetValue(row, fig.actual);
     const pct = fig.percent !== null ? `${fig.percent.toFixed(0).padStart(4)}%` : "     ";
+    // The trend's 80% range rides beside the forecast when the server sent one.
+    const band =
+      row.measure !== "usage" && row.forecastLowCents != null && row.forecastHighCents != null
+        ? ` (${formatBudgetValue(row, row.forecastLowCents)}-${formatBudgetValue(row, row.forecastHighCents)})`
+        : "";
     const forecast =
-      fig.forecast !== null ? c.dim(` fc ${formatBudgetValue(row, fig.forecast)}`) : "";
+      fig.forecast !== null ? c.dim(` fc ${formatBudgetValue(row, fig.forecast)}${band}`) : "";
     const flags = [
       row.measure === "usage" ? c.cyan("usage") : null,
       row.rolledUp ? c.dim("Σ children") : null,

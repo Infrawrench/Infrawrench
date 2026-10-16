@@ -628,6 +628,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-reports/{id}": "costs:write",
   "DELETE /cost-reports/{id}": "costs:write",
   "POST /cost-reports/{id}/run": "costs:read",
+  "GET /cost-reports/{id}/forecasts": "costs:read",
+  "POST /cost-reports/{id}/forecasts": "costs:write",
+  "PUT /cost-reports/{id}/forecasts/{forecastId}": "costs:write",
+  "DELETE /cost-reports/{id}/forecasts/{forecastId}": "costs:write",
+  "POST /cost-reports/{id}/forecasted-costs": "costs:read",
   // cost canvases: the report rules, plus chat:write for the routes that open
   // a conversation (checked in the route; the table holds one permission).
   "GET /cost-canvases": "costs:read",
@@ -723,6 +728,9 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /business-metrics/{id}": "costs:write",
   "GET /business-metrics/{id}/values": "costs:read",
   "POST /business-metrics/{id}/values": "costs:write",
+  "GET /business-metrics/{id}/forecast-values": "costs:read",
+  "POST /business-metrics/{id}/forecast-values": "costs:write",
+  "DELETE /business-metrics/{id}/forecast-values": "costs:write",
   "POST /business-metrics/{id}/unit-costs": "costs:read",
   // importers: writes also check costs:write; the map records the stronger
   // permission, since an importer runs a query with an account's credentials.
