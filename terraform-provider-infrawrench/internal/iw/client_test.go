@@ -353,6 +353,38 @@ func TestGetDashboardNotificationListsAndFilters(t *testing.T) {
 	}
 }
 
+// A role default is read from the list of every role. A role whose default
+// was cleared outside Terraform is still listed (with a null dashboard), and
+// must read as gone so the next plan recreates it.
+func TestGetRoleDefaultDashboardTreatsClearedAsNotFound(t *testing.T) {
+	var gotPath string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`[
+			{"roleId":"r1","roleName":"Finance","isSystem":false,"systemKey":null,"dashboardId":"d1"},
+			{"roleId":"r2","roleName":"Member","isSystem":true,"systemKey":"member","dashboardId":null}
+		]`))
+	})
+
+	found, err := client.GetRoleDefaultDashboard(context.Background(), "r1")
+	if err != nil {
+		t.Fatalf("GetRoleDefaultDashboard: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/dashboards/role-defaults") {
+		t.Errorf("path = %q, want the role-defaults list", gotPath)
+	}
+	if found.DashboardID == nil || *found.DashboardID != "d1" {
+		t.Errorf("default = %+v", found)
+	}
+
+	if _, err := client.GetRoleDefaultDashboard(context.Background(), "r2"); !IsNotFound(err) {
+		t.Fatalf("cleared default: expected a synthesised 404, got %v", err)
+	}
+	if _, err := client.GetRoleDefaultDashboard(context.Background(), "gone"); !IsNotFound(err) {
+		t.Fatalf("missing role: expected a synthesised 404, got %v", err)
+	}
+}
+
 /* ------------------------- tagged union marshalling ------------------------ */
 
 // The server's date-range schema is strict: an absolute range carrying a stray

@@ -387,6 +387,47 @@ func (c *Client) ListPermissions(ctx context.Context) ([]string, error) {
 	return envelope.Permissions, nil
 }
 
+/* ------------------------- role default dashboards ------------------------- */
+
+// ListRoleDefaultDashboards returns every role, system and custom, with its
+// default dashboard (null when it has none).
+func (c *Client) ListRoleDefaultDashboards(ctx context.Context) ([]RoleDefaultDashboard, error) {
+	var out []RoleDefaultDashboard
+	err := c.Get(ctx, "/dashboards/role-defaults", &out)
+	return out, err
+}
+
+// GetRoleDefaultDashboard lists and filters: there is no single-GET route. A
+// role that is gone, or one whose default was cleared outside Terraform, is a
+// synthesised 404 so the resource reads as "needs recreating".
+func (c *Client) GetRoleDefaultDashboard(ctx context.Context, roleID string) (*RoleDefaultDashboard, error) {
+	all, err := c.ListRoleDefaultDashboards(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].RoleID == roleID && all[i].DashboardID != nil {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/dashboards/role-defaults", roleID)
+}
+
+func (c *Client) SetRoleDefaultDashboard(ctx context.Context, roleID, dashboardID string) (*RoleDefaultDashboard, error) {
+	var out RoleDefaultDashboard
+	in := SetDefaultDashboardRequest{DashboardID: dashboardID}
+	if err := c.Put(ctx, "/dashboards/role-defaults/"+seg(roleID), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ClearRoleDefaultDashboard returns the role's members to the organization
+// default. The role itself is untouched.
+func (c *Client) ClearRoleDefaultDashboard(ctx context.Context, roleID string) error {
+	return c.Delete(ctx, "/dashboards/role-defaults/"+seg(roleID))
+}
+
 /* --------------------------------- ssh keys -------------------------------- */
 
 func (c *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {

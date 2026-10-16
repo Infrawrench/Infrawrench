@@ -16,7 +16,7 @@ function HomePage() {
   const { orgId } = Route.useParams();
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const [data, setData] = useState<{
-    dashboard: { id: string; name: string };
+    dashboard: { id: string; name: string; isDefault: boolean };
     pins: Array<{
       pinId: string;
       resourceId: string;
@@ -58,7 +58,9 @@ function HomePage() {
     <DashboardView
       dashboardId={data.dashboard.id}
       dashboardName={data.dashboard.name}
-      isHome
+      // The landing dashboard can be a user or role default; only the org
+      // default is protected from deletion.
+      isHome={data.dashboard.isDefault}
       pins={data.pins}
       workflowPins={data.workflowPins}
       widgets={data.widgets}

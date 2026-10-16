@@ -422,6 +422,24 @@ type Role struct {
 	Permissions []string `json:"permissions"`
 }
 
+/* ------------------------- role default dashboards ------------------------- */
+
+// RoleDefaultDashboard is the dashboard members holding a role land on when
+// they have not picked their own. DashboardID is null when the role has none
+// and its members fall through to the organization default.
+type RoleDefaultDashboard struct {
+	RoleID      string  `json:"roleId"`
+	RoleName    string  `json:"roleName"`
+	IsSystem    bool    `json:"isSystem"`
+	SystemKey   *string `json:"systemKey"`
+	DashboardID *string `json:"dashboardId"`
+}
+
+// SetDefaultDashboardRequest is the PUT body for a role's default.
+type SetDefaultDashboardRequest struct {
+	DashboardID string `json:"dashboardId"`
+}
+
 /* --------------------------------- ssh keys -------------------------------- */
 
 // GenerateSSHKeyRequest asks the server to mint a key pair.

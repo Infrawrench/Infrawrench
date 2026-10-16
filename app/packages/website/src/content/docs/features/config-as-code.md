@@ -14,7 +14,7 @@ Everything you configure in Infrawrench that isn't a provider account or a live 
 | `budgets`       | Monthly spend budgets, their filters and alert thresholds                                                                                 |
 | `customGraphs`  | Each [custom graph](./custom-graphs.md)'s name, description and source                                                                    |
 | `workflows`     | Each [workflow](./workflows.md)'s source, trigger, declared metrics, enabled                                                              |
-| `dashboards`    | Every [dashboard](./dashboard.md), its name, and its cards in grid order                                                                  |
+| `dashboards`    | Every [dashboard](./dashboard.md), its name, its cards in grid order, and the roles defaulting to it                                      |
 | `metricAlerts`  | [Metric alert rules](./metric-alerts.md) — selector, condition, cooldown                                                                  |
 | `probes`        | [Synthetic probes](./synthetic-probes.md) — URL, interval, failure threshold                                                              |
 | `slos`          | [SLOs](./slos.md): source (probe key or resource), target, window, alerting                                                               |
@@ -29,6 +29,14 @@ Everything you configure in Infrawrench that isn't a provider account or a live 
 - **Resources.** They belong to the provider, not to Infrawrench. A dashboard's resource pins are carried by provider, type, external id and account _name_ — if the target organization has synced the same resource, the pin lands; if not, that one card is skipped and reported.
 - **Workflow webhook signing secrets.** Write-only by design: the API never returns one, so no document can leak or set one. After importing a git-triggered workflow, set its secret again.
 - **History and throttle state.** Firing history, run logs, cooldown claims, change freezes. Restoring a cooldown claim from a config file would re-open a quiet period and page people twice.
+
+### Role default dashboards
+
+A dashboard's `defaultForRoles` lists the roles whose members [land on it](./dashboard.md#default-dashboards), by role name (case does not matter). Roles themselves are not in the document, so the names have to exist in the target organization; one that doesn't, or a role that can't view dashboards or can't see this one, is skipped and reported. Leaving the field out leaves role defaults as they are, and `[]` clears every role currently defaulting to that dashboard. A role can be named by one dashboard only.
+
+```json
+{ "key": "spend-overview", "name": "Spend overview", "defaultForRoles": ["Finance"], "cards": [] }
+```
 
 ## Keys, not ids
 

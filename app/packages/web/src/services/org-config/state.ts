@@ -60,6 +60,7 @@ import {
   metricAlertRules,
   resources,
   savingsViews,
+  roles,
   slos,
   syntheticProbes,
   workflows,
@@ -105,6 +106,12 @@ export interface OrgConfigState {
   customGraphs: OrgConfigEntity<OrgConfigCustomGraph>[];
   workflows: OrgConfigEntity<OrgConfigWorkflow>[];
   dashboards: OrgConfigEntity<OrgConfigDashboard>[];
+  /**
+   * Every role, for resolving a dashboard's `defaultForRoles` names. Roles
+   * are not a document section (the provider and the Roles page manage them),
+   * only something a dashboard refers to.
+   */
+  roles: Array<typeof roles.$inferSelect>;
   metricAlerts: OrgConfigEntity<OrgConfigMetricAlert>[];
   probes: OrgConfigEntity<OrgConfigProbe>[];
   slos: OrgConfigEntity<OrgConfigSlo>[];
@@ -149,6 +156,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     resourceRows,
     sloRows,
     savingsViewRows,
+    roleRows,
   ] = await Promise.all([
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
@@ -223,7 +231,22 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       .from(savingsViews)
       .where(and(eq(savingsViews.organizationId, organizationId), isNull(savingsViews.deletedAt)))
       .orderBy(asc(savingsViews.createdAt), asc(savingsViews.id)),
+    db
+      .select()
+      .from(roles)
+      .where(eq(roles.organizationId, organizationId))
+      .orderBy(asc(roles.createdAt), asc(roles.id)),
   ]);
+
+  /** Dashboard id → sorted names of the roles that default to it. */
+  const roleNamesByDashboard = new Map<string, string[]>();
+  for (const role of roleRows) {
+    if (!role.defaultDashboardId) continue;
+    const list = roleNamesByDashboard.get(role.defaultDashboardId) ?? [];
+    list.push(role.name);
+    roleNamesByDashboard.set(role.defaultDashboardId, list);
+  }
+  for (const list of roleNamesByDashboard.values()) list.sort();
 
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.displayName]));
   const accountIdByName = new Map<string, string>();
@@ -316,6 +339,11 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       key,
       name: d.name,
       isDefault: d.isDefault,
+      // Only when some role defaults here, so an export without role defaults
+      // reads exactly as it did before they existed.
+      ...(roleNamesByDashboard.has(d.id)
+        ? { defaultForRoles: roleNamesByDashboard.get(d.id) }
+        : {}),
       cards: dashboardCards.get(d.id) ?? [],
     }),
   );
@@ -493,6 +521,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     customGraphs: graphEntities,
     workflows: workflowEntities,
     dashboards: dashboardEntities,
+    roles: roleRows,
     metricAlerts: alertEntities,
     probes: probeEntities,
     slos: sloEntities,

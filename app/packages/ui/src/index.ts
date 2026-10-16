@@ -185,6 +185,11 @@ export type { GlobalTabBarProps } from "./components/GlobalTabBar.js";
 
 export { DashboardCard } from "./components/dashboard/DashboardCard.js";
 export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
+export {
+  DashboardDefaultMenu,
+  type DashboardDefaultClient,
+  type DashboardDefaultMenuProps,
+} from "./components/dashboard/DashboardDefaultMenu.js";
 
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";

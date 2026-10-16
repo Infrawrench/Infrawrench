@@ -22454,5 +22454,21 @@
     "t": "p",
     "i": 1,
     "c": "Spalten: from, to, rate und entweder effective_from (mit optionalem effective_to) oder billing_period als YYYY-MM für einen Monat. Zeilen, die zu einem gespeicherten Paar und Startdatum passen, ersetzen diesen Kurs; sonst wird nichts geändert. Hochgeladene Kurse sind festgelegte Kurse und haben für die abgedeckten Tage Vorrang vor automatischen Kursen."
-  }
+  },
+  "698b986bddd76704": "Das Standard-Dashboard konnte nicht festgelegt werden",
+  "a867d1229d8d6ed5": "Standard der Organisation ({name})",
+  "640d208b2badb468": "Standard der Organisation",
+  "b6d42f77b9710d56": "Standard-Dashboard: {name}",
+  "452ae0b4f5e412cf": "Standard-Dashboard",
+  "e47daf3a1e8013ed": "Standard-Dashboard für {role}",
+  "986df125eb088a5a": "Ein Dashboard, das Sie nicht sehen können",
+  "2e63e7b5a440659b": "Hier landen Sie beim Öffnen der App. Sie haben es ausgewählt.",
+  "7c80619cab6f7d6a": "Hier landen Sie beim Öffnen der App: Es ist der Standard für Ihre Rolle {role}.",
+  "8fc1c0c17f5932e7": "Hier landen Sie beim Öffnen der App: Es ist der Standard der Organisation.",
+  "073e474e701f41dd": "Beim Öffnen der App landen Sie auf {name}.",
+  "de1e046db6c30129": "Ihr eigenes Standard-Dashboard ist nicht mehr für Sie freigegeben und wurde daher übersprungen.",
+  "13c2120ca86adb6d": "Ihr Standard-Dashboard konnte nicht festgelegt werden",
+  "9d5f2a33c1e86464": "Als mein Standard festlegen",
+  "cf2ba394704459d7": "Ihr Standard-Dashboard konnte nicht entfernt werden",
+  "bc8519f41c056ead": "Meinen Standard entfernen"
 }

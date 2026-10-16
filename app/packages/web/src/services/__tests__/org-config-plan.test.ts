@@ -19,6 +19,7 @@ const state = {
   customGraphs: [] as unknown[],
   workflows: [] as unknown[],
   dashboards: [] as unknown[],
+  roles: [] as unknown[],
   metricAlerts: [] as unknown[],
   probes: [] as unknown[],
   slos: [] as unknown[],
@@ -82,6 +83,15 @@ vi.mock("../../db/client", () => ({
   },
 }));
 
+// The sharing half of the role-default check reads grants; here a dashboard
+// named "Restricted" is the one no role can see.
+vi.mock("../default-dashboards", () => ({
+  rolePermissionProblem: (role: { name: string; permissions: string[] }) =>
+    role.permissions.includes("dashboards:read") ? null : `${role.name} lacks dashboards:read`,
+  roleDefaultProblem: async (_org: string, role: { name: string }, dashboardId: string) =>
+    dashboardId === "d-restricted" ? `not shared with the ${role.name} role` : null,
+}));
+
 vi.mock("../entitlements", () => ({
   requirePaidPlan: vi.fn(() => Promise.resolve()),
   PlanRequiredError: class PlanRequiredError extends Error {},
@@ -129,6 +139,7 @@ function reset() {
   state.customGraphs = [];
   state.workflows = [];
   state.dashboards = [];
+  state.roles = [];
   state.metricAlerts = [];
   state.probes = [];
   state.slos = [];
@@ -661,5 +672,78 @@ describe("savings views", () => {
     const replaced = await plan({ savingsViews: [view("new", "Prod waste")] }, "replace");
     expect(replaced.counts.create).toBe(1);
     expect(replaced.counts.delete).toBe(1);
+  });
+});
+
+describe("dashboard role defaults", () => {
+  const role = (id: string, name: string, permissions = ["dashboards:read"]) => ({
+    id,
+    name,
+    isSystem: false,
+    systemKey: null,
+    permissions,
+    defaultDashboardId: null,
+  });
+  const ops = { home: { key: "home", name: "Home", isDefault: true, cards: [] } };
+
+  it("leaves role defaults alone when the field is omitted", async () => {
+    state.dashboards = [
+      {
+        key: "home",
+        id: "d1",
+        config: { ...ops.home, defaultForRoles: ["Finance"] },
+      },
+    ];
+    const result = await plan({ dashboards: [ops.home] });
+    expect(result.changes[0]).toMatchObject({ key: "home", action: "unchanged" });
+  });
+
+  it("updates when the role list changes, matching names case-insensitively", async () => {
+    state.roles = [role("r1", "Finance"), role("r2", "SRE")];
+    state.dashboards = [{ key: "home", id: "d1", config: { ...ops.home } }];
+    const result = await plan({ dashboards: [{ ...ops.home, defaultForRoles: ["finance"] }] });
+    expect(result.changes[0]).toMatchObject({ action: "update", fields: ["defaultForRoles"] });
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it("treats [] as clearing every role that defaults here", async () => {
+    state.roles = [role("r1", "Finance")];
+    state.dashboards = [
+      { key: "home", id: "d1", config: { ...ops.home, defaultForRoles: ["Finance"] } },
+    ];
+    const result = await plan({ dashboards: [{ ...ops.home, defaultForRoles: [] }] });
+    expect(result.changes[0]).toMatchObject({ action: "update", fields: ["defaultForRoles"] });
+  });
+
+  it("reports an unknown role, a role without dashboards:read, and an unshared dashboard", async () => {
+    state.roles = [role("r1", "Finance"), role("r2", "Guests", ["costs:read"])];
+    state.dashboards = [
+      {
+        key: "locked",
+        id: "d-restricted",
+        config: { key: "locked", name: "Locked", isDefault: false, cards: [] },
+      },
+    ];
+    const result = await plan({
+      dashboards: [
+        { key: "locked", name: "Locked", defaultForRoles: ["Finance"] },
+        { key: "fresh", name: "Fresh", defaultForRoles: ["Nobody", "Guests"] },
+      ],
+    });
+    const details = result.unresolved.map((u) => u.detail).join(" | ");
+    expect(details).toMatch(/not shared with the Finance role/);
+    expect(details).toMatch(/"Nobody", which is not a role/);
+    expect(details).toMatch(/Guests lacks dashboards:read/);
+  });
+
+  it("refuses a document that gives one role two default dashboards", () => {
+    expect(() =>
+      parseOrgConfigDocument({
+        dashboards: [
+          { key: "a", name: "A", defaultForRoles: ["Finance"] },
+          { key: "b", name: "B", defaultForRoles: ["finance"] },
+        ],
+      }),
+    ).toThrow(OrgConfigError);
   });
 });

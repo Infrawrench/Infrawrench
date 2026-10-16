@@ -1,4 +1,10 @@
-import type { Dashboard, DashboardCardRef, WorkspaceTabTarget } from "@infrawrench/ui";
+import type {
+  Dashboard,
+  DashboardCardRef,
+  DashboardDefaultClient,
+  WorkspaceTabTarget,
+} from "@infrawrench/ui";
+import type { DefaultDashboardResolution } from "@infrawrench/client-core";
 import type { DashboardWidget } from "@infrawrench/ui/cost";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { invoke } from "./invoke";
@@ -81,6 +87,33 @@ export async function deleteCloudDashboard(orgId: string, id: string): Promise<v
 
 export async function renameCloudDashboard(orgId: string, id: string, name: string): Promise<void> {
   await invoke("cloud_rename_dashboard", { orgId, id, name });
+}
+
+/** Which dashboard this member lands on: their own, else their role's, else the org's. */
+export async function getCloudDefaultDashboard(orgId: string): Promise<DefaultDashboardResolution> {
+  return invoke("cloud_get_default_dashboard", { orgId });
+}
+
+export async function setMyCloudDefaultDashboard(
+  orgId: string,
+  dashboardId: string,
+): Promise<DefaultDashboardResolution> {
+  return invoke("cloud_set_my_default_dashboard", { orgId, dashboardId });
+}
+
+export async function clearMyCloudDefaultDashboard(
+  orgId: string,
+): Promise<DefaultDashboardResolution> {
+  return invoke("cloud_clear_my_default_dashboard", { orgId });
+}
+
+/** The shared header menu's transport, over the three channels above. */
+export function createCloudDashboardDefaultClient(orgId: string): DashboardDefaultClient {
+  return {
+    getDefault: () => getCloudDefaultDashboard(orgId),
+    setMine: (dashboardId) => setMyCloudDefaultDashboard(orgId, dashboardId),
+    clearMine: () => clearMyCloudDefaultDashboard(orgId),
+  };
 }
 
 /**

@@ -264,6 +264,8 @@ func specChecks() []specCheck {
 		{schema: "ObjectAccessGrant", value: ObjectAccessGrant{}},
 		{schema: "ObjectSharing", value: ObjectSharing{}},
 		{schema: "ObjectSharingInput", value: ObjectSharingInput{}},
+		{schema: "RoleDefaultDashboard", value: RoleDefaultDashboard{}},
+		{schema: "SetDefaultDashboardRequest", value: SetDefaultDashboardRequest{}},
 
 		{
 			schema: "AiRequestSource",

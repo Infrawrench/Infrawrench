@@ -12,6 +12,7 @@ import {
   type CostGraphConfig,
   type DashboardCardRef,
   type DashboardWidget,
+  type DefaultDashboardResolution,
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import {
@@ -100,6 +101,27 @@ export default function DashboardScreen() {
     },
     onError: (e) =>
       Alert.alert("Couldn't rename", e instanceof Error ? e.message : "Unknown error"),
+  });
+
+  // Where this member lands (their own default, else their role's, else the
+  // org's), and their own pick, which this screen sets and clears. Role
+  // defaults are an admin setting on web and desktop.
+  const landing = useQuery({
+    queryKey: ["dashboard-default", orgId],
+    queryFn: () => api.org<DefaultDashboardResolution>(orgId, "/dashboards/default"),
+  });
+  const setDefault = useMutation({
+    mutationFn: (mine: boolean) =>
+      api.org<DefaultDashboardResolution>(orgId, "/dashboards/default/me", {
+        method: mine ? "PUT" : "DELETE",
+        ...(mine ? { body: JSON.stringify({ dashboardId }) } : {}),
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(["dashboard-default", orgId], next);
+      void queryClient.invalidateQueries({ queryKey: ["dashboards", orgId] });
+    },
+    onError: (e) =>
+      Alert.alert("Couldn't change your default", e instanceof Error ? e.message : "Unknown error"),
   });
 
   const remove = useMutation({
@@ -197,6 +219,23 @@ export default function DashboardScreen() {
           ) : (
             <>
               <Button label="Edit" variant="secondary" onPress={() => setEditing(true)} />
+              {landing.data ? (
+                landing.data.userDefaultDashboardId === dashboardId ? (
+                  <Button
+                    label="Clear my default"
+                    variant="secondary"
+                    disabled={setDefault.isPending}
+                    onPress={() => setDefault.mutate(false)}
+                  />
+                ) : (
+                  <Button
+                    label="Set as my default"
+                    variant="secondary"
+                    disabled={setDefault.isPending}
+                    onPress={() => setDefault.mutate(true)}
+                  />
+                )
+              ) : null}
               <Button
                 label={pdf.busy ? "Preparing PDF…" : "Share PDF"}
                 variant="secondary"
@@ -211,6 +250,16 @@ export default function DashboardScreen() {
             </>
           )}
         </View>
+
+        {landing.data?.dashboardId === dashboardId ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            {landing.data.source === "user"
+              ? "You land here when you open the app. You chose it."
+              : landing.data.source === "role"
+                ? `You land here when you open the app: the default for your role, ${landing.data.roleDefault?.roleName ?? ""}.`
+                : "You land here when you open the app: the organization default."}
+          </Text>
+        ) : null}
 
         {nameDraft !== null ? (
           <Card>

@@ -54,7 +54,14 @@ export type AccountListItem = Pick<Account, "id" | "pluginId" | "displayName" | 
 export interface Dashboard {
   id: string;
   name: string;
+  /** The organization default (the final fallback; cannot be deleted). */
   isDefault: boolean;
+  /**
+   * The dashboard *this caller* lands on: their own default, else their
+   * role's, else the org default (see `dashboard-defaults.ts`). Only the list
+   * route sets it; absent from older servers and from create responses.
+   */
+  isResolvedDefault?: boolean;
 }
 
 /** A resource pinned onto a dashboard, with its grid placement (`DashboardPin`). */

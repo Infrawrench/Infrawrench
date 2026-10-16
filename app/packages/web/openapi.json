@@ -7097,13 +7097,19 @@
             "type": "string"
           },
           "isDefault": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "The organization default: the final fallback, never deletable."
+          },
+          "isResolvedDefault": {
+            "type": "boolean",
+            "description": "The dashboard the caller lands on: their own default, else their role's, else the organization default. Exactly one listed dashboard has it, unless sharing hides it."
           }
         },
         "required": [
           "id",
           "name",
-          "isDefault"
+          "isDefault",
+          "isResolvedDefault"
         ],
         "additionalProperties": false
       },
@@ -7154,6 +7160,147 @@
           "updatedAt",
           "deletedAt",
           "syncVersion"
+        ],
+        "additionalProperties": false
+      },
+      "DefaultDashboardSource": {
+        "type": "string",
+        "enum": [
+          "user",
+          "role",
+          "org"
+        ],
+        "description": "Which layer the default came from. `user`: the caller's own pick. `role`: the default an admin set for the caller's role. `org`: the organization default."
+      },
+      "DefaultDashboardResolution": {
+        "type": "object",
+        "properties": {
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardName": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/DefaultDashboardSource"
+          },
+          "userDefaultDashboardId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The caller's own pick, whether or not it could be used.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "roleDefault": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "roleId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "roleName": {
+                "type": "string"
+              },
+              "dashboardId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "required": [
+              "roleId",
+              "roleName",
+              "dashboardId"
+            ],
+            "additionalProperties": false,
+            "description": "The role default that applies to the caller. When a member holds several roles, custom roles win over system roles, then owner, admin, member, then role name and id."
+          },
+          "orgDefaultDashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "role"
+              ]
+            },
+            "description": "Layers that were set but passed over because the dashboard is no longer shared with the caller."
+          }
+        },
+        "required": [
+          "dashboardId",
+          "dashboardName",
+          "source",
+          "userDefaultDashboardId",
+          "roleDefault",
+          "orgDefaultDashboardId",
+          "skipped"
+        ],
+        "additionalProperties": false
+      },
+      "SetDefaultDashboardRequest": {
+        "type": "object",
+        "properties": {
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "dashboardId"
+        ],
+        "additionalProperties": false
+      },
+      "RoleDefaultDashboard": {
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "roleName": {
+            "type": "string"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "systemKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dashboardId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Null when the role has no default and its members fall through to the organization default.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "roleId",
+          "roleName",
+          "isSystem",
+          "systemKey",
+          "dashboardId"
         ],
         "additionalProperties": false
       },
@@ -7329,6 +7476,16 @@
         "properties": {
           "dashboard": {
             "$ref": "#/components/schemas/DashboardFull"
+          },
+          "resolution": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DefaultDashboardResolution"
+              },
+              {
+                "description": "Only on `GET /dashboards/default/full`: why this is the caller's default."
+              }
+            ]
           },
           "pins": {
             "type": "array",
@@ -27484,6 +27641,13 @@
           "isDefault": {
             "type": "boolean",
             "default": false
+          },
+          "defaultForRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Role names (case-insensitive) whose members land on this dashboard unless they picked their own. Omitted leaves role defaults untouched; `[]` clears the roles defaulting here. A role may be named by one dashboard only."
           },
           "cards": {
             "type": "array",
@@ -66695,12 +66859,328 @@
         "description": "_Requires permission: `dashboards:write`._"
       }
     },
+    "/api/org/{orgId}/dashboards/default": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Which dashboard the caller lands on, and why",
+        "description": "Resolves the caller's default dashboard: their own default, else the default set for their role, else the organization default (created as `Home` on first read). A layer whose dashboard is no longer shared with the caller is skipped and listed in `skipped`.\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultDashboardResolution"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsDefault",
+        "x-required-permission": "dashboards:read"
+      }
+    },
+    "/api/org/{orgId}/dashboards/default/me": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Set my default dashboard",
+        "description": "Overrides the role and organization defaults for the caller in this organization. The dashboard must be one the caller can open.\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultDashboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The caller's resolution after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultDashboardResolution"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdDashboardsDefaultMe",
+        "x-required-permission": "dashboards:read"
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Clear my default dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's resolution after the change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultDashboardResolution"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDashboardsDefaultMe",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/role-defaults": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List each role's default dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every role, system and custom, with its default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleDefaultDashboard"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsRoleDefaults",
+        "x-required-permission": "team:read",
+        "description": "_Requires permission: `team:read`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/role-defaults/{roleId}": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Set a role's default dashboard",
+        "description": "Members holding the role land on this dashboard unless they picked their own. Refused with 422 when the role lacks `dashboards:read` or the dashboard is not shared with the role (org-wide or by a role grant). Works for system and custom roles. Needs `org:settings:write` (not `team:role:write`), so an API key can manage it.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "roleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultDashboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The role's default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDefaultDashboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdDashboardsRoleDefaultsRoleId",
+        "x-required-permission": "org:settings:write"
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Clear a role's default dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "roleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDashboardsRoleDefaultsRoleId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
     "/api/org/{orgId}/dashboards/default/full": {
       "get": {
         "tags": [
           "Dashboards"
         ],
-        "summary": "Get-or-create the default dashboard with its pins",
+        "summary": "Get the caller's default dashboard with its pins",
+        "description": "The dashboard `GET /dashboards/default` resolves to, with its cards. The organization default is created as `Home` on first read.\n\n_Requires permission: `dashboards:read`._",
         "parameters": [
           {
             "schema": {
@@ -66727,8 +67207,7 @@
           }
         },
         "operationId": "getOrgOrgIdDashboardsDefaultFull",
-        "x-required-permission": "dashboards:read",
-        "description": "_Requires permission: `dashboards:read`._"
+        "x-required-permission": "dashboards:read"
       }
     },
     "/api/org/{orgId}/dashboards/{id}": {

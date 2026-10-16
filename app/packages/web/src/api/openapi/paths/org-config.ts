@@ -144,6 +144,14 @@ const ConfigDashboard = strict({
   key: ConfigKey,
   name: z.string(),
   isDefault: z.boolean().default(false),
+  defaultForRoles: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Role names (case-insensitive) whose members land on this dashboard unless they picked " +
+        "their own. Omitted leaves role defaults untouched; `[]` clears the roles defaulting " +
+        "here. A role may be named by one dashboard only.",
+    ),
   cards: z.array(ConfigDashboardCard).default([]),
 }).openapi("OrgConfigDashboard");
 

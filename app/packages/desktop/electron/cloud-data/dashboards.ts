@@ -3,11 +3,31 @@ import { cloudFetch } from "./shared";
 
 ipcMain.handle("cloud_list_dashboards", async (_e, { orgId }: { orgId: string }) => {
   return (
-    (await cloudFetch<Array<{ id: string; name: string; isDefault: boolean }>>(
-      orgId,
-      "/dashboards",
-    )) ?? []
+    (await cloudFetch<
+      Array<{ id: string; name: string; isDefault: boolean; isResolvedDefault?: boolean }>
+    >(orgId, "/dashboards")) ?? []
   );
+});
+
+// The dashboard this member lands on (user, then role, then org default) and
+// their own "My default dashboard". Role defaults are admin settings and go
+// through the Settings proxy (`cloud-data/settings.ts`).
+ipcMain.handle("cloud_get_default_dashboard", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/dashboards/default");
+});
+
+ipcMain.handle(
+  "cloud_set_my_default_dashboard",
+  async (_e, { orgId, dashboardId }: { orgId: string; dashboardId: string }) => {
+    return cloudFetch(orgId, "/dashboards/default/me", {
+      method: "PUT",
+      body: JSON.stringify({ dashboardId }),
+    });
+  },
+);
+
+ipcMain.handle("cloud_clear_my_default_dashboard", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/dashboards/default/me", { method: "DELETE" });
 });
 
 ipcMain.handle(

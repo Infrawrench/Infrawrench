@@ -50,6 +50,15 @@ export const roles = pgTable(
     systemKey: text("system_key"),
     /** Permission strings; ignored for system roles (resolved from code instead). */
     permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+    /**
+     * The dashboard members holding this role land on when they have not
+     * picked their own (`organization_members.default_dashboard_id`). Null
+     * falls through to the org default (`dashboards.is_default`). Resolution
+     * lives in `web/src/services/default-dashboards.ts`.
+     */
+    defaultDashboardId: text("default_dashboard_id").references(() => dashboards.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -72,6 +81,14 @@ export const organizationMembers = pgTable(
     /** Legacy text role; superseded by roleId. Kept for one release for fallback. */
     role: text("role").notNull().default("member"), // "owner" | "admin" | "member"
     roleId: text("role_id").references(() => roles.id, { onDelete: "set null" }),
+    /**
+     * "My default dashboard": the member's own choice, which beats their
+     * role's default and the org default. Per membership, so the same person
+     * can land somewhere different in each org.
+     */
+    defaultDashboardId: text("default_dashboard_id").references(() => dashboards.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({

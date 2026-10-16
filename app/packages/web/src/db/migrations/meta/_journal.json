@@ -1184,6 +1184,13 @@
       "when": 1792150604270,
       "tag": "0168_cost_export_jobs_and_report_anomaly_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1792150765338,
+      "tag": "0169_role_user_default_dashboards",
+      "breakpoints": true
     }
   ]
 }

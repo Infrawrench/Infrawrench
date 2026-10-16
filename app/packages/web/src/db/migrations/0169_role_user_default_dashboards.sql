@@ -1,0 +1,4 @@
+ALTER TABLE "organization_members" ADD COLUMN "default_dashboard_id" text;--> statement-breakpoint
+ALTER TABLE "roles" ADD COLUMN "default_dashboard_id" text;--> statement-breakpoint
+ALTER TABLE "organization_members" ADD CONSTRAINT "organization_members_default_dashboard_id_dashboards_id_fk" FOREIGN KEY ("default_dashboard_id") REFERENCES "public"."dashboards"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "roles" ADD CONSTRAINT "roles_default_dashboard_id_dashboards_id_fk" FOREIGN KEY ("default_dashboard_id") REFERENCES "public"."dashboards"("id") ON DELETE set null ON UPDATE no action;

@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
   deleteObjectSharing,
   filterVisibleObjects,
@@ -52,6 +52,15 @@ import { requirePermission } from "../../auth/permissions";
 import { nextPinSyncVersion } from "../../services/sync-versions";
 import { logAudit } from "../../services/audit";
 import { DashboardKpiError, evaluateDashboardKpi } from "../../services/dashboard-kpi";
+import {
+  DefaultDashboardError,
+  clearMyDefaultDashboard,
+  clearRoleDefaultDashboard,
+  listRoleDefaultDashboards,
+  resolveDefaultDashboard,
+  setMyDefaultDashboard,
+  setRoleDefaultDashboard,
+} from "../../services/default-dashboards";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -270,13 +279,146 @@ async function visibleWidgets(
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
+  // Which one the caller lands on, so the sidebars can mark it and link it
+  // home. Resolved first: it creates the org default on a brand-new org, and
+  // the list below should then include it.
+  const resolved = await resolveDefaultDashboard(organizationId, c.get("session").userId);
   const rows = await db
     .select({ id: dashboards.id, name: dashboards.name, isDefault: dashboards.isDefault })
     .from(dashboards)
     .where(and(eq(dashboards.organizationId, organizationId), isNull(dashboards.deletedAt)))
     .orderBy(desc(dashboards.isDefault), dashboards.createdAt);
   // Only the dashboards the caller's sharing lets them open.
-  return c.json(await filterVisibleObjects(organizationId, "dashboard", rows, (d) => d.id));
+  const visible = await filterVisibleObjects(organizationId, "dashboard", rows, (d) => d.id);
+  return c.json(visible.map((d) => ({ ...d, isResolvedDefault: d.id === resolved.dashboardId })));
+});
+
+/**
+ * GET /api/dashboards/default: which dashboard the caller lands on, and why.
+ * User default, then role default, then the org default; see
+ * `services/default-dashboards.ts`. Registered before `/:id` so "default" is
+ * not read as an id.
+ */
+app.get("/default", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const organizationId = c.get("organizationId");
+  return c.json(await resolveDefaultDashboard(organizationId, c.get("session").userId));
+});
+
+/** GET /api/dashboards/role-defaults: every role's default dashboard (admin settings). */
+app.get("/role-defaults", async (c) => {
+  requirePermission(c, "team:read");
+  return c.json(await listRoleDefaultDashboards(c.get("organizationId")));
+});
+
+function defaultDashboardErrorResponse(c: Context, e: unknown) {
+  if (e instanceof DefaultDashboardError) return c.json({ error: e.message }, e.status);
+  throw e;
+}
+
+/** Body `{ dashboardId }`, or null when it is missing or not a string. */
+async function readDashboardId(c: Context): Promise<string | null> {
+  const body = await c.req.json<{ dashboardId?: unknown }>().catch(() => null);
+  const id = body?.dashboardId;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/** PUT /api/dashboards/default/me: set "My default dashboard". */
+app.put("/default/me", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const organizationId = c.get("organizationId");
+  const userId = c.get("session").userId;
+  const dashboardId = await readDashboardId(c);
+  if (!dashboardId) return c.json({ error: "dashboardId is required" }, 400);
+  try {
+    const dashboard = await setMyDefaultDashboard(organizationId, userId, dashboardId);
+    void logAudit({
+      organizationId,
+      userId,
+      action: "dashboard.default.user.set",
+      entityType: "dashboard",
+      entityId: dashboard.id,
+      metadata: { name: dashboard.name },
+    });
+  } catch (e) {
+    return defaultDashboardErrorResponse(c, e);
+  }
+  return c.json(await resolveDefaultDashboard(organizationId, userId));
+});
+
+/** DELETE /api/dashboards/default/me: clear "My default dashboard". */
+app.delete("/default/me", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const organizationId = c.get("organizationId");
+  const userId = c.get("session").userId;
+  await clearMyDefaultDashboard(organizationId, userId);
+  void logAudit({
+    organizationId,
+    userId,
+    action: "dashboard.default.user.clear",
+    entityType: "user",
+    entityId: userId,
+  });
+  return c.json(await resolveDefaultDashboard(organizationId, userId));
+});
+
+/**
+ * PUT /api/dashboards/role-defaults/:roleId: the dashboard members with this
+ * role land on when they have not picked their own. Refused (422) unless the
+ * role can view dashboards and the dashboard is shared with the role.
+ *
+ * Gated on `org:settings:write`, not `team:role:write`, and deliberately
+ * outside `/team`: choosing where a role lands grants nobody anything (the
+ * dashboard must already be visible to the role), so it is org configuration
+ * an API key may manage, unlike defining a role (see `api-key-route-policy.ts`).
+ */
+app.put("/role-defaults/:roleId", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const organizationId = c.get("organizationId");
+  const roleId = c.req.param("roleId");
+  const dashboardId = await readDashboardId(c);
+  if (!dashboardId) return c.json({ error: "dashboardId is required" }, 400);
+  try {
+    const { role, dashboard } = await setRoleDefaultDashboard(organizationId, roleId, dashboardId);
+    void logAudit({
+      organizationId,
+      userId: c.get("session").userId,
+      action: "dashboard.default.role.set",
+      entityType: "role",
+      entityId: role.id,
+      metadata: { roleName: role.name, dashboardId: dashboard.id, dashboardName: dashboard.name },
+    });
+    return c.json({
+      roleId: role.id,
+      roleName: role.name,
+      isSystem: role.isSystem,
+      systemKey: role.systemKey,
+      dashboardId: dashboard.id,
+    });
+  } catch (e) {
+    return defaultDashboardErrorResponse(c, e);
+  }
+});
+
+/** DELETE /api/dashboards/role-defaults/:roleId: members fall back to the org default. */
+app.delete("/role-defaults/:roleId", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const organizationId = c.get("organizationId");
+  const roleId = c.req.param("roleId");
+  try {
+    const role = await clearRoleDefaultDashboard(organizationId, roleId);
+    void logAudit({
+      organizationId,
+      userId: c.get("session").userId,
+      action: "dashboard.default.role.clear",
+      entityType: "role",
+      entityId: role.id,
+      metadata: { roleName: role.name },
+    });
+  } catch (e) {
+    return defaultDashboardErrorResponse(c, e);
+  }
+  return c.json({ ok: true });
 });
 
 /** POST /api/dashboards: create a dashboard */
@@ -339,30 +481,24 @@ app.get("/:id", async (c) => {
   return c.json({ dashboard, pins, workflowPins, widgets });
 });
 
-/** GET /api/dashboards/default/full: get-or-create default dashboard with pins */
+/**
+ * GET /api/dashboards/default/full: the caller's default dashboard (user, then
+ * role, then org; the org default is created on first read) with its pins.
+ * `resolution` says which layer it came from.
+ */
 app.get("/default/full", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
 
-  let [defaultDashboard] = await db
+  const resolution = await resolveDefaultDashboard(organizationId, c.get("session").userId);
+  const [defaultDashboard] = await db
     .select()
     .from(dashboards)
     .where(
-      and(
-        eq(dashboards.organizationId, organizationId),
-        eq(dashboards.isDefault, true),
-        isNull(dashboards.deletedAt),
-      ),
+      and(eq(dashboards.organizationId, organizationId), eq(dashboards.id, resolution.dashboardId)),
     )
     .limit(1);
-
-  if (!defaultDashboard) {
-    const [created] = await db
-      .insert(dashboards)
-      .values({ id: uuidv4(), organizationId, name: "Home", isDefault: true })
-      .returning();
-    defaultDashboard = created!;
-  }
+  if (!defaultDashboard) return c.json({ error: "Not found" }, 404);
   await requireObjectAccess(organizationId, "dashboard", defaultDashboard.id, {}, "viewer");
 
   const pins = await db
@@ -388,7 +524,7 @@ app.get("/default/full", async (c) => {
   const workflowPins = await loadWorkflowPins(defaultDashboard.id);
   const widgets = await visibleWidgets(organizationId, await loadWidgets(defaultDashboard.id));
 
-  return c.json({ dashboard: defaultDashboard, pins, workflowPins, widgets });
+  return c.json({ dashboard: defaultDashboard, pins, workflowPins, widgets, resolution });
 });
 
 /** POST /api/dashboards/widgets: add a cost-graph or budget widget. */
