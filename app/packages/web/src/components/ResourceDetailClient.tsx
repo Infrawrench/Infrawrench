@@ -4,6 +4,7 @@ import { useGT } from "gt-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   DetailView,
+  StarButton,
   DraggableChildPill,
   BlastRadiusPanel,
   BlastRadiusSummary,
@@ -1390,6 +1391,13 @@ export function ResourceDetailClient({
               schema={detailSchema}
               resourceId={resourceId}
               pluginLogoSvg={pluginLogoSvg}
+              titleAccessory={
+                <StarButton
+                  starRef={{ kind: "resource", id: resourceId }}
+                  name={detailSchema.title}
+                  hit={{ accountId, pluginId, resourceTypeId }}
+                />
+              }
               costEstimate={costEstimate}
               carbonEstimate={carbonEstimate}
               {...(hasSqlEditor

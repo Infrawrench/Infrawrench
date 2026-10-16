@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Dashboard } from "@infrawrench/client-core";
+import { SEARCH_KIND_LABELS, listStarred, type Dashboard } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { starredItemHref } from "@/lib/starred";
 import { TextField } from "@/components/form";
-import { Button, Card, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
+import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
 import { ProviderIncidentNotice } from "@/components/ProviderIncidentNotice";
 import { colors, spacing } from "@/lib/theme";
 
@@ -41,6 +42,13 @@ export default function OrgDashboards() {
     queryKey: ["dashboards", orgId],
     queryFn: () => api.org<Dashboard[]>(orgId, "/dashboards"),
   });
+
+  // Stars are optional garnish on this screen: a failure leaves the section out.
+  const starred = useQuery({
+    queryKey: ["starred", orgId],
+    queryFn: () => listStarred(api, orgId),
+  });
+  const starredItems = starred.data ?? [];
 
   const create = useMutation({
     mutationFn: (dashboardName: string) =>
@@ -86,8 +94,40 @@ export default function OrgDashboards() {
   };
 
   return (
-    <Screen onRefresh={() => void dashboards.refetch()} refreshing={dashboards.isRefetching}>
+    <Screen
+      onRefresh={() => {
+        void dashboards.refetch();
+        void starred.refetch();
+      }}
+      refreshing={dashboards.isRefetching}
+    >
       <ProviderIncidentNotice />
+
+      {/*
+        The member's stars, the same list Cmd+K opens with on web and desktop.
+        Read-only here: starring happens from a page header or the palette.
+        Kinds the phone has no screen for are listed but not tappable.
+      */}
+      {starredItems.length > 0 && (
+        <>
+          <SectionTitle>Starred</SectionTitle>
+          <Card list>
+            {starredItems.map((item) => {
+              const href = starredItemHref(orgId, item);
+              const kindLabel = SEARCH_KIND_LABELS[item.kind].singular;
+              return (
+                <Row
+                  key={`${item.kind}:${item.id}`}
+                  title={item.displayName}
+                  subtitle={href ? kindLabel : `${kindLabel} · open on web or desktop`}
+                  {...(href ? { onPress: () => router.push(href as never) } : {})}
+                />
+              );
+            })}
+          </Card>
+          <SectionTitle>Dashboards</SectionTitle>
+        </>
+      )}
 
       {list.length === 0 ? (
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>

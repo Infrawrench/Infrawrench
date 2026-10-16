@@ -42,6 +42,7 @@ import {
   type ConversationSummary,
   type SidebarToolDef,
   CloseIcon,
+  usePaletteIntent,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -92,6 +93,11 @@ export function SidebarDashboards() {
   const gt = useGT();
   const [dashboards, setDashboards] = useState<DashboardRow[]>([]);
   const [addingNew, setAddingNew] = useState(false);
+  // "Create dashboard" from the command palette (which expands the sidebar first).
+  usePaletteIntent(
+    (intent) => intent.type === "create" && intent.kind === "dashboard",
+    () => setAddingNew(true),
+  );
   const [newName, setNewName] = useState("");
   const newInputRef = useRef<HTMLInputElement>(null);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);

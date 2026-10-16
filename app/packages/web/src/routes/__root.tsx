@@ -8,6 +8,7 @@ import {
   useUIStore,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
+  useRecordRecentTabs,
   workspaceTabTargetsEqual,
   dispatchResourcesChanged,
   type DraggableResource,
@@ -20,7 +21,7 @@ import { PromptHost } from "@infrawrench/ui/workflows";
 import { WebSidebar } from "@/components/WebSidebar";
 import { ChangeFreezeBanner } from "@/components/ChangeFreezeBanner";
 import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellBanner";
-import { SpotlightSearch } from "@/components/SpotlightSearch";
+import { WebCommandPalette } from "@/components/CommandPalette";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { OrgProviders } from "@/components/OrgProviders";
 import { apiGet, apiPost } from "@/lib/api";
@@ -188,6 +189,9 @@ function AuthenticatedShell() {
   const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
   const orgId = orgIdMatch?.[1] ? decodeURIComponent(orgIdMatch[1]) : null;
   const tabsValidated = tabsValidatedForOrg === orgId;
+  // The palette's Recent list: every tab the viewer lands on in this org,
+  // once tab restore has settled (so a stale restored tab is not recorded).
+  useRecordRecentTabs(tabsValidated ? orgId : null);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -402,8 +406,8 @@ function AuthenticatedShell() {
         </div>
         {/* Renders input requests raised by a running workflow or Infrafile. */}
         <PromptHost />
-        {spotlightOpen && (
-          <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />
+        {spotlightOpen && orgId && (
+          <WebCommandPalette orgId={orgId} onClose={() => setSpotlightOpen(false)} />
         )}
         {tunnelAttach && orgId && (
           <TunnelSshAttachModal

@@ -67,6 +67,21 @@ volume: 403 Forbidden — token is missing the "block_storage:read" scope
 
 The rest of the account still lists. Org accounts ask the cloud to re-sync the account from the provider first and then read the synced copy, so they reflect what exists right now too — if the sync fails (provider outage, rate limit) the CLI prints the last synced copy and says so on stderr. The TUI does the same when you open an account: the synced copy appears instantly, then refreshes in place once the live sync completes.
 
+## Searching and starred items
+
+`search` is the [command palette](./spotlight-search.md)'s index from a terminal. It covers everything you can open in the org, not only resources: workflows, cost reports, dashboards, budgets, SLOs, services, runbooks and more. Results come back best match first, each with the web address that opens it.
+
+```
+infrawrench search checkout                    # every kind you can read
+infrawrench search spend --kind cost_report,dashboard
+infrawrench search db --json                   # kind, id, name and url per hit
+infrawrench starred                            # your starred items in this org
+infrawrench starred add cost_report <id>       # kind and id as search --json prints them
+infrawrench starred remove cost_report <id>
+```
+
+Both are cloud only. The results follow the same rules as the palette: a report that isn't shared with you, or a budget outside your cost visibility, never appears.
+
 ## Exporting to Terraform
 
 ```

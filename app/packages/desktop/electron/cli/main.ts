@@ -118,6 +118,7 @@ import {
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
 import { cmdResourceReports } from "./commands/resource-reports";
+import { cmdSearch, cmdStarred } from "./commands/search";
 import { cmdServices } from "./commands/services";
 import { cmdScorecards } from "./commands/scorecards";
 import { cmdDora } from "./commands/dora";
@@ -455,6 +456,12 @@ COMMANDS
   recordings          recorded SSH sessions: who connected, to what, for how long
   recordings get <id> print the session's asciicast   [-f/--file <path>]
                       (pipe it: infrawrench recordings get <id> | asciinema play -)
+  search <query>      the Cmd+K index: resources, workflows, reports, dashboards, budgets,
+                      SLOs, services, runbooks and more you can open, best match first, each
+                      with its web address   [--kind cost_report,slo,…]
+  starred             your starred items in this org (listed first in Cmd+K)
+  starred add|remove <kind> <id>
+                      star or unstar one (kind and id as "search --json" prints them)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
@@ -522,7 +529,8 @@ FLAGS
   --last / --from / --to   time range for metrics, costs & changes
   --days <n>          whole-day window for costs --anomalies and changes
   --limit <n>         row cap for changes (max 200)
-  --kind <k>          changes filter: created | updated | deleted
+  --kind <k>          changes filter: created | updated | deleted; search: comma-separated
+                      kinds (resource, workflow, cost_report, dashboard, budget, slo, …)
   -b, --against <x>   diff: the second account (-a supplies the first)
   --all               diff: compare ids, addresses & timestamps too; paging: include resolved
   --resource <id>     focus one resource (graph) / filter to it (changes, vulns)
@@ -1295,6 +1303,12 @@ export async function runCli(): Promise<void> {
             groupBy: parsed.range.groupBy,
           });
         }
+        break;
+      case "search":
+        await cmdSearch(ctx, rest.join(" "), parsed.range.kind);
+        break;
+      case "starred":
+        await cmdStarred(ctx, rest);
         break;
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.

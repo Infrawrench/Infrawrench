@@ -6,6 +6,7 @@ import type { CostAnomalyContributorResource, CostsPanelTab } from "@infrawrench
 
 import { Modal } from "../components/Modal.js";
 import { SectionTabs } from "../components/SectionTabs.js";
+import { usePaletteIntent } from "../command-palette/intents.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
@@ -241,6 +242,29 @@ export function CostsPanel({
   const canWrite = Boolean(client.createBudget && client.updateBudget && client.deleteBudget);
   const canPlace = Boolean(client.addBudgetToDashboard && client.removeBudgetPlacement);
 
+  // The command palette opens Costs for objects listed on one of its tabs
+  // (budgets on Overview; saved filters, business metrics and scenario
+  // models on Allocation) and for "Create budget".
+  const [requestedTab, setRequestedTab] = useState<
+    { id: CostsPanelTab; nonce: number } | undefined
+  >(undefined);
+  usePaletteIntent(
+    (intent) =>
+      intent.type === "create"
+        ? intent.kind === "budget"
+        : intent.kind === "budget" ||
+          intent.kind === "saved_cost_filter" ||
+          intent.kind === "business_metric" ||
+          intent.kind === "scenario_model",
+    (intent) => {
+      setRequestedTab({
+        id: intent.kind === "budget" ? "overview" : "allocation",
+        nonce: Date.now(),
+      });
+      if (intent.type === "create" && canWrite) setEditing({ budget: null });
+    },
+  );
+
   const refresh = useCallback(async () => {
     // A failure here has to be visible: an empty budget list and a broken
     // budget list look identical, and one of them means alerts you think you
@@ -340,6 +364,7 @@ export function CostsPanel({
           ariaLabel={gt("Cost views")}
           storageKey="infrawrench-costs-tab"
           initialTab={initialTab}
+          requestedTab={requestedTab}
           tabs={[
             {
               id: "overview",

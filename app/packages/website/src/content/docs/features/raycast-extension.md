@@ -26,6 +26,11 @@ Type to search resources across every connected account, plus your
 A service's pane shows its team, who is on call, its cost, open findings, SLO standing and
 scorecard levels.
 
+The same search also finds the saved objects the [command palette](./spotlight-search.md)
+indexes: cost reports, dashboards, budgets, canvases, SLOs, runbooks, status pages, probes and
+more, each in a section of its own. Opening one takes you to it in the web or desktop app (your
+**Open In** preference), and you only see the ones your API key's owner could open.
+
 <insert [Raycast's Search Resources command with "checkout" typed: a Services section with Checkout (Tier 1), a Resources section below, and the detail pane for an AWS load balancer showing Cost (30 days), Terraform: Managed, Service: Checkout, Posture: No open findings and Vulnerabilities: 1 high] here>
 
 Actions: **Open in Infrawrench** (web or desktop, by preference, with the other one next to it),

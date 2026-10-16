@@ -20,6 +20,7 @@ import { DeliverySchedulesSection } from "../delivery/DeliverySchedulesSection.j
 import type { DeliveryScheduleInput, DeliverySchedulesClient } from "../delivery/types.js";
 import { CostCanvasView } from "./CostCanvasView.js";
 import type { CostCanvasesClient } from "./types.js";
+import { StarButton } from "../command-palette/StarButton.js";
 
 export interface CostCanvasesPanelProps {
   client: CostCanvasesClient;
@@ -506,9 +507,14 @@ function CanvasDetail({
                   {gt("All canvases")}
                 </span>
               </button>
-              <h2 className="mt-1 truncate text-sm font-semibold text-on-surface">
-                {canvas?.name ?? gt("Loading…")}
-              </h2>
+              <div className="mt-1 flex min-w-0 items-center gap-1">
+                <h2 className="truncate text-sm font-semibold text-on-surface">
+                  {canvas?.name ?? gt("Loading…")}
+                </h2>
+                {canvas && (
+                  <StarButton starRef={{ kind: "cost_canvas", id: canvas.id }} name={canvas.name} />
+                )}
+              </div>
               {canvas?.description && (
                 <p className="truncate text-xs text-on-surface-faint mt-0.5">
                   {canvas.description}

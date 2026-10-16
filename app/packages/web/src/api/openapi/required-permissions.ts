@@ -853,8 +853,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /v1/storage/download": "storage:read",
   "POST /v1/sftp/upload": "storage:write",
   "GET /v1/sftp/download": "storage:read",
-  // search
+  // search; `resources:read` without `kinds=` (the original contract). With
+  // `kinds=` each kind is gated by its own list route's permission and a kind
+  // the caller cannot read is skipped, so the handler owns the check.
   "GET /search": "resources:read",
+  // starred items: the caller's own, keyed by their user; membership only.
+  "GET /starred": null,
+  "PUT /starred/{kind}/{objectId}": null,
+  "DELETE /starred/{kind}/{objectId}": null,
   // orphans
   "GET /orphans": "resources:read",
   // savings findings workflow: the finders' own permission to read, and

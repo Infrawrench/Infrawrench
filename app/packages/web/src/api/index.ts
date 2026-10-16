@@ -167,6 +167,7 @@ import { savingsFindingRoutes, savingsViewRoutes } from "./routes/savings-findin
 import { networkFlowRoutes } from "./routes/network-flows.js";
 import { aiAttributionRoutes } from "./routes/ai-attribution.js";
 import { searchRoutes } from "./routes/search";
+import { starredRoutes } from "./routes/starred";
 import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { sshFanoutRoutes } from "./routes/ssh-fanout";
@@ -561,6 +562,7 @@ orgScoped.route("/savings", savingsRoutes);
 orgScoped.route("/network-flows", networkFlowRoutes);
 orgScoped.route("/ai-attribution", aiAttributionRoutes);
 orgScoped.route("/search", searchRoutes);
+orgScoped.route("/starred", starredRoutes);
 orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
 orgScoped.route("/ssh-fanout", sshFanoutRoutes);

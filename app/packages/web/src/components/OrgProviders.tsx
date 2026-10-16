@@ -1,7 +1,8 @@
 import { useMemo, type ReactNode } from "react";
-import { IssueFilingProvider } from "@infrawrench/ui";
+import { IssueFilingProvider, PaletteHostProvider } from "@infrawrench/ui";
 import { PermissionsProvider, usePermissions } from "@/auth/permissions-context";
 import { apiGet, apiPost } from "@/lib/api";
+import { createWebPaletteClient } from "@/lib/palette-client";
 
 /**
  * Every org-scoped React context the authenticated shell provides.
@@ -35,9 +36,20 @@ export function OrgProviders({ orgId, children }: { orgId: string | null; childr
 
   return (
     <PermissionsProvider orgId={orgId}>
-      <IssueFiling orgId={orgId}>{children}</IssueFiling>
+      <PaletteHost orgId={orgId}>
+        <IssueFiling orgId={orgId}>{children}</IssueFiling>
+      </PaletteHost>
     </PermissionsProvider>
   );
+}
+
+/**
+ * The command palette's transport and scope, for the palette itself and for
+ * the star buttons in page headers (which live inside tabs, hence here).
+ */
+function PaletteHost({ orgId, children }: { orgId: string; children: ReactNode }) {
+  const value = useMemo(() => ({ scope: orgId, client: createWebPaletteClient(orgId) }), [orgId]);
+  return <PaletteHostProvider value={value}>{children}</PaletteHostProvider>;
 }
 
 /**

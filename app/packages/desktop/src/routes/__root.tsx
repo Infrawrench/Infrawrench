@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import {
   createRootRoute,
@@ -31,13 +31,18 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
+  PaletteHostProvider,
+  usePaletteIntent,
+  useRecordRecentTabs,
+  type PaletteHostValue,
 } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { PromptHost } from "@infrawrench/ui/workflows";
-import { SpotlightSearch } from "../components/SpotlightSearch";
+import { DesktopCommandPalette } from "../components/CommandPalette";
+import { createDesktopPaletteClient } from "../lib/cloud-palette";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { DeepLinkHost } from "../components/DeepLinkHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
@@ -67,8 +72,6 @@ import {
 } from "../lib/cloud-api";
 import {
   dashboardTabTarget,
-  resourceTabTarget,
-  workflowsTabTarget,
   settingsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
@@ -332,6 +335,22 @@ function RootLayout() {
   useEffect(() => {
     setActiveCloudOrgId(activeOrgId);
   }, [activeOrgId, setActiveCloudOrgId]);
+
+  // The command palette's cloud half (saved objects, stars) exists only with
+  // an org selected; local mode keeps the local index and its own recents.
+  const paletteHost = useMemo<PaletteHostValue>(
+    () =>
+      activeOrgId
+        ? { scope: activeOrgId, client: createDesktopPaletteClient(activeOrgId) }
+        : { scope: "local", client: null },
+    [activeOrgId],
+  );
+  useRecordRecentTabs(tabsValidated ? (activeOrgId ?? "local") : null);
+  // "Connect account" from the palette opens the same modal as the sidebar.
+  usePaletteIntent(
+    (intent) => intent.type === "create" && intent.kind === "account",
+    () => setShowAddAccount(true),
+  );
 
   useEffect(() => {
     startMetricPinger();
@@ -621,288 +640,280 @@ function RootLayout() {
   }
 
   return (
-    <DndShell
-      onPinToDashboard={(r, d) => {
-        void handlePinToDashboard(r, d);
-      }}
-      onPinWorkflowToDashboard={(w, d) => {
-        void handlePinWorkflowToDashboard(w, d);
-      }}
-      onSecretDrop={handleSecretDrop}
-      onResourceAttach={handleResourceAttach}
-      onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
-      onTabDrop={handleTabDrop}
-    >
-      <div className="flex flex-col h-screen bg-surface text-on-surface select-none">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
-        >
-          {gt("Skip to content")}
-        </a>
-        {/* macOS drag region: children must opt out individually. */}
-        <div
-          className="h-8 flex-shrink-0 border-b border-border/50 flex items-center"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div
-            className="flex items-center gap-0.5 pl-20"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    <PaletteHostProvider value={paletteHost}>
+      <DndShell
+        onPinToDashboard={(r, d) => {
+          void handlePinToDashboard(r, d);
+        }}
+        onPinWorkflowToDashboard={(w, d) => {
+          void handlePinWorkflowToDashboard(w, d);
+        }}
+        onSecretDrop={handleSecretDrop}
+        onResourceAttach={handleResourceAttach}
+        onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
+        onTabDrop={handleTabDrop}
+      >
+        <div className="flex flex-col h-screen bg-surface text-on-surface select-none">
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
           >
-            <button
-              type="button"
-              onClick={() => router.history.back()}
-              className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
-              aria-label={gt("Go back")}
+            {gt("Skip to content")}
+          </a>
+          {/* macOS drag region: children must opt out individually. */}
+          <div
+            className="h-8 flex-shrink-0 border-b border-border/50 flex items-center"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          >
+            <div
+              className="flex items-center gap-0.5 pl-20"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-              <ChevronIcon direction="left" size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => router.history.forward()}
-              className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
-              aria-label={gt("Go forward")}
-            >
-              <ChevronIcon direction="right" size={16} />
-            </button>
-          </div>
-        </div>
-
-        {BANNERS.length > 0 && (
-          <div className="flex-shrink-0 flex flex-col">
-            {BANNERS.map((banner) => (
-              <div
-                key={banner.message}
-                className={`px-3 py-1.5 text-xs text-center border-b ${
-                  banner.variant === "warning"
-                    ? "bg-amber-500/10 text-warning border-amber-500/30"
-                    : "bg-blue-500/10 text-info border-blue-500/30"
-                }`}
+              <button
+                type="button"
+                onClick={() => router.history.back()}
+                className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
+                aria-label={gt("Go back")}
               >
-                {banner.message}
-              </div>
-            ))}
+                <ChevronIcon direction="left" size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => router.history.forward()}
+                className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
+                aria-label={gt("Go forward")}
+              >
+                <ChevronIcon direction="right" size={16} />
+              </button>
+            </div>
           </div>
-        )}
 
-        <ProviderIncidentShellBanner />
-
-        <GlobalTabBar
-          tabs={workspaceTabs}
-          activeTabId={activeWorkspaceTabId}
-          onActivate={handleActivateTab}
-          onClose={handleCloseTab}
-          onNew={() => {
-            void handleNewTab();
-          }}
-        />
-
-        <div className="flex flex-1 overflow-hidden">
-          {!sidebarCollapsed && (
-            <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
-              <div className="flex items-center justify-between p-1 border-b border-border">
+          {BANNERS.length > 0 && (
+            <div className="flex-shrink-0 flex flex-col">
+              {BANNERS.map((banner) => (
                 <div
-                  className="flex-1 min-w-0"
-                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                  key={banner.message}
+                  className={`px-3 py-1.5 text-xs text-center border-b ${
+                    banner.variant === "warning"
+                      ? "bg-amber-500/10 text-warning border-amber-500/30"
+                      : "bg-blue-500/10 text-info border-blue-500/30"
+                  }`}
                 >
-                  <OrgSwitcher
-                    orgs={cloudOrgs}
-                    activeOrgId={activeOrgId}
-                    onSwitch={(orgId) => {
-                      void handleSwitchOrg(orgId);
-                    }}
-                    showLocalOption
-                  />
+                  {banner.message}
                 </div>
-                <button
-                  type="button"
-                  onClick={toggleSidebar}
-                  className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
-                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                  aria-label={gt("Collapse sidebar")}
-                >
-                  <PanelLeftCloseIcon />
-                </button>
-              </div>
+              ))}
+            </div>
+          )}
 
-              <div className="flex-1 overflow-y-auto py-2">
-                <SidebarDashboards />
-                <SidebarAccounts refreshKey={accountsVersion} />
-              </div>
+          <ProviderIncidentShellBanner />
 
-              <div className="border-t border-border p-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddAccount(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-                >
-                  <span className="text-base leading-none">+</span>
-                  {gt("Add account")}
-                </button>
-                {/* Org settings are cloud-backed; local-only mode has no org
+          <GlobalTabBar
+            tabs={workspaceTabs}
+            activeTabId={activeWorkspaceTabId}
+            onActivate={handleActivateTab}
+            onClose={handleCloseTab}
+            onNew={() => {
+              void handleNewTab();
+            }}
+          />
+
+          <div className="flex flex-1 overflow-hidden">
+            {!sidebarCollapsed && (
+              <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
+                <div className="flex items-center justify-between p-1 border-b border-border">
+                  <div
+                    className="flex-1 min-w-0"
+                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                  >
+                    <OrgSwitcher
+                      orgs={cloudOrgs}
+                      activeOrgId={activeOrgId}
+                      onSwitch={(orgId) => {
+                        void handleSwitchOrg(orgId);
+                      }}
+                      showLocalOption
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleSidebar}
+                    className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
+                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                    aria-label={gt("Collapse sidebar")}
+                  >
+                    <PanelLeftCloseIcon />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto py-2">
+                  <SidebarDashboards />
+                  <SidebarAccounts refreshKey={accountsVersion} />
+                </div>
+
+                <div className="border-t border-border p-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAccount(true)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    {gt("Add account")}
+                  </button>
+                  {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections
                     the web renders: see DesktopSettingsPanel. */}
-                {activeOrgId && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void navigateToWorkspaceTarget(navigate, settingsTabTarget(), {
-                        label: gt("Settings"),
-                      })
-                    }
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-                  >
-                    <SettingsIcon />
-                    {gt("Settings")}
-                  </button>
-                )}
-                {shellCommandInstalled === false && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleInstallShellCommand();
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-                    title={gt(
-                      "Adds an `infrawrench` command to your PATH so you can use the CLI and TUI from any terminal.",
-                    )}
-                  >
-                    <span className="text-base leading-none font-mono">&gt;_</span>
-                    {gt("Install shell command")}
-                  </button>
-                )}
-                {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void startCloudAuth().then(() => {
-                        const poll = setInterval(() => {
-                          getCloudAuthStatus()
-                            .then((status) => {
-                              if (status.authenticated) {
-                                setCloudAuthenticated(true);
-                                getCloudOrgs().then(setCloudOrgs).catch(console.error);
-                                clearInterval(poll);
-                              }
-                            })
-                            .catch(console.error);
-                        }, 2000);
-                        setTimeout(() => clearInterval(poll), 120_000);
-                      });
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-                  >
-                    <CloudIcon />
-                    {gt("Sign in to cloud")}
-                  </button>
-                )}
-              </div>
-            </aside>
-          )}
+                  {activeOrgId && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigateToWorkspaceTarget(navigate, settingsTabTarget(), {
+                          label: gt("Settings"),
+                        })
+                      }
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                    >
+                      <SettingsIcon />
+                      {gt("Settings")}
+                    </button>
+                  )}
+                  {shellCommandInstalled === false && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleInstallShellCommand();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                      title={gt(
+                        "Adds an `infrawrench` command to your PATH so you can use the CLI and TUI from any terminal.",
+                      )}
+                    >
+                      <span className="text-base leading-none font-mono">&gt;_</span>
+                      {gt("Install shell command")}
+                    </button>
+                  )}
+                  {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void startCloudAuth().then(() => {
+                          const poll = setInterval(() => {
+                            getCloudAuthStatus()
+                              .then((status) => {
+                                if (status.authenticated) {
+                                  setCloudAuthenticated(true);
+                                  getCloudOrgs().then(setCloudOrgs).catch(console.error);
+                                  clearInterval(poll);
+                                }
+                              })
+                              .catch(console.error);
+                          }, 2000);
+                          setTimeout(() => clearInterval(poll), 120_000);
+                        });
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                    >
+                      <CloudIcon />
+                      {gt("Sign in to cloud")}
+                    </button>
+                  )}
+                </div>
+              </aside>
+            )}
 
-          {sidebarCollapsed && (
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
-              aria-label={gt("Expand sidebar")}
-            >
-              <PanelLeftOpenIcon />
-            </button>
-          )}
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
+                aria-label={gt("Expand sidebar")}
+              >
+                <PanelLeftOpenIcon />
+              </button>
+            )}
 
-          <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* Tabs render via WorkspaceTabsViewport: every open tab stays
+            <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              {/* Tabs render via WorkspaceTabsViewport: every open tab stays
                 mounted so SSH PTYs / xterm scrollback / port-forwards
                 survive tab switches. <Outlet/> still renders non-tab routes
                 (index); tab routes' components are no-ops. */}
-            <DesktopWorkspaceTabsViewport />
-            <Outlet />
-          </main>
+              <DesktopWorkspaceTabsViewport />
+              <Outlet />
+            </main>
 
-          {showAddAccount && (
-            <AddAccountModal
-              onClose={() => setShowAddAccount(false)}
-              onAdded={() => bumpAccounts()}
-              orgId={activeOrgId}
-            />
-          )}
+            {showAddAccount && (
+              <AddAccountModal
+                onClose={() => setShowAddAccount(false)}
+                onAdded={() => bumpAccounts()}
+                orgId={activeOrgId}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
-      {spotlightOpen && (
-        <SpotlightSearch
-          mode="navigate"
-          onClose={() => setSpotlightOpen(false)}
-          onNavigate={(result) => {
-            setSpotlightOpen(false);
-            if (result.resourceTypeId === "__workflow__") {
-              void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
-                label: gt("Workflows"),
+        {spotlightOpen && (
+          <DesktopCommandPalette
+            cloudOrgId={activeOrgId}
+            cloudOrgs={cloudOrgs}
+            onSwitchOrg={(orgId) => {
+              void handleSwitchOrg(orgId);
+            }}
+            onClose={() => setSpotlightOpen(false)}
+          />
+        )}
+
+        {showOnboarding && (
+          <Onboarding
+            onSignedIn={(orgs) => {
+              setCloudAuthenticated(true);
+              setCloudOrgs(orgs);
+            }}
+            onSelectOrg={(orgId) => {
+              void handleSwitchOrg(orgId);
+            }}
+            onDone={() => {
+              markOnboardingComplete();
+              setShowOnboarding(false);
+            }}
+          />
+        )}
+
+        <SwipeIndicator gesture={swipeGesture} />
+        <SshHostKeyPromptHost />
+        <PromptHost />
+        <UpdatePromptHost />
+        {/* After tab restore, so a link opened at launch is not overwritten by it. */}
+        {tabsValidated && <DeepLinkHost />}
+        {tunnelAttach && (
+          <TunnelSshAttachModal
+            tunnelName={tunnelAttach.tunnel.displayName}
+            hostName={tunnelAttach.host.displayName}
+            zones={tunnelAttach.zones}
+            sshKeys={tunnelAttach.sshKeys}
+            showSshKeyPicker
+            defaultUsername={tunnelAttach.defaultUsername}
+            onClose={() => setTunnelAttach(null)}
+            onRun={async (params) => {
+              const orgId = useUIStore.getState().activeCloudOrgId;
+              if (!orgId) throw new Error(gt("Not signed in to an organization"));
+              const { cloudTunnelSshAttach } = await import("../lib/cloud-resources");
+              return cloudTunnelSshAttach(orgId, {
+                tunnel: {
+                  accountId: tunnelAttach.tunnel.accountId,
+                  pluginId: tunnelAttach.tunnel.pluginId,
+                  resourceId: tunnelAttach.tunnel.id,
+                },
+                host: {
+                  accountId: tunnelAttach.host.accountId,
+                  pluginId: tunnelAttach.host.pluginId,
+                  resourceTypeId: tunnelAttach.host.resourceTypeId,
+                  resourceId: tunnelAttach.host.id,
+                },
+                ...params,
               });
-            } else {
-              void navigateToWorkspaceTarget(
-                navigate,
-                resourceTabTarget(result.accountId, result.id),
-                { label: result.displayName },
-              );
-            }
-          }}
-        />
-      )}
-
-      {showOnboarding && (
-        <Onboarding
-          onSignedIn={(orgs) => {
-            setCloudAuthenticated(true);
-            setCloudOrgs(orgs);
-          }}
-          onSelectOrg={(orgId) => {
-            void handleSwitchOrg(orgId);
-          }}
-          onDone={() => {
-            markOnboardingComplete();
-            setShowOnboarding(false);
-          }}
-        />
-      )}
-
-      <SwipeIndicator gesture={swipeGesture} />
-      <SshHostKeyPromptHost />
-      <PromptHost />
-      <UpdatePromptHost />
-      {/* After tab restore, so a link opened at launch is not overwritten by it. */}
-      {tabsValidated && <DeepLinkHost />}
-      {tunnelAttach && (
-        <TunnelSshAttachModal
-          tunnelName={tunnelAttach.tunnel.displayName}
-          hostName={tunnelAttach.host.displayName}
-          zones={tunnelAttach.zones}
-          sshKeys={tunnelAttach.sshKeys}
-          showSshKeyPicker
-          defaultUsername={tunnelAttach.defaultUsername}
-          onClose={() => setTunnelAttach(null)}
-          onRun={async (params) => {
-            const orgId = useUIStore.getState().activeCloudOrgId;
-            if (!orgId) throw new Error(gt("Not signed in to an organization"));
-            const { cloudTunnelSshAttach } = await import("../lib/cloud-resources");
-            return cloudTunnelSshAttach(orgId, {
-              tunnel: {
-                accountId: tunnelAttach.tunnel.accountId,
-                pluginId: tunnelAttach.tunnel.pluginId,
-                resourceId: tunnelAttach.tunnel.id,
-              },
-              host: {
-                accountId: tunnelAttach.host.accountId,
-                pluginId: tunnelAttach.host.pluginId,
-                resourceTypeId: tunnelAttach.host.resourceTypeId,
-                resourceId: tunnelAttach.host.id,
-              },
-              ...params,
-            });
-          }}
-        />
-      )}
-    </DndShell>
+            }}
+          />
+        )}
+      </DndShell>
+    </PaletteHostProvider>
   );
 }

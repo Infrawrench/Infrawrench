@@ -1191,6 +1191,13 @@
       "when": 1792150765338,
       "tag": "0169_role_user_default_dashboards",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1792150887091,
+      "tag": "0170_starred_items",
+      "breakpoints": true
     }
   ]
 }

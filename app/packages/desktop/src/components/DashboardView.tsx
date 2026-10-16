@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { ShareDialog } from "@infrawrench/ui";
+import { ShareDialog, StarButton } from "@infrawrench/ui";
 import { createDesktopSharingClient } from "../lib/cost-reports-client";
 import { createDesktopCostCanvasesClient } from "../lib/cost-canvases-client";
 import { CostCanvasWidgetCard } from "@infrawrench/ui/cost-canvases";
@@ -1230,13 +1230,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               className="text-2xl font-semibold bg-transparent border-b border-blue-500 text-on-surface focus:outline-none"
             />
           ) : (
-            <h1
-              className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
-              onDoubleClick={() => setEditingName(true)}
-              title={gt("Double-click to rename")}
-            >
-              {dashboardName}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1
+                className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
+                onDoubleClick={() => setEditingName(true)}
+                title={gt("Double-click to rename")}
+              >
+                {dashboardName}
+              </h1>
+              {/* Cloud mode only: the star button renders nothing locally. */}
+              <StarButton starRef={{ kind: "dashboard", id: dashboardId }} name={dashboardName} />
+            </div>
           )}
         </div>
 

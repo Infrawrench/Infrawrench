@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { DashboardDefaultMenu, IssueIndicator, ShareDialog } from "@infrawrench/ui";
+import { DashboardDefaultMenu, IssueIndicator, ShareDialog, StarButton } from "@infrawrench/ui";
 import { createWebDashboardDefaultClient } from "../lib/dashboard-default-client";
 import { createWebSharingClient } from "../lib/cost-client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -693,6 +693,9 @@ export function DashboardView({
               >
                 {dashboardName}
               </h1>
+              {dashboardId && (
+                <StarButton starRef={{ kind: "dashboard", id: dashboardId }} name={dashboardName} />
+              )}
               <button
                 type="button"
                 onClick={() => setEditingName(true)}

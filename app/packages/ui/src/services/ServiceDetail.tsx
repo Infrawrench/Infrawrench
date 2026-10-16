@@ -27,6 +27,7 @@ import {
   useTierLabel,
 } from "./shared.js";
 import type { ServicesClient } from "./types.js";
+import { StarButton } from "../command-palette/StarButton.js";
 
 export interface ServiceResourceRef {
   accountId: string;
@@ -661,7 +662,10 @@ export function ServiceDetailView({
         </button>
         <div className="mt-1 flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-on-surface">{service.name}</h2>
+            <div className="flex items-center gap-1">
+              <h2 className="text-base font-semibold text-on-surface">{service.name}</h2>
+              <StarButton starRef={{ kind: "service", id: service.id }} name={service.name} />
+            </div>
             <p className="text-xs text-on-surface-faint">
               {tierLabel(service.tier)} · <span className="font-mono">{service.slug}</span>
               {service.ownerTeam ? ` · ${gt("Team {team}", { team: service.ownerTeam })}` : ""}

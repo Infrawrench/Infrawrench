@@ -8,6 +8,8 @@
  * desktop has to refuse rather than open the wrong thing.
  */
 
+import { isSearchObjectKind, type SearchObjectKind } from "./search";
+
 /** The desktop app's registered protocol (`desktop/env*.ts` `PROTOCOL`). */
 export const DESKTOP_PROTOCOL = "infrawrench";
 
@@ -24,7 +26,12 @@ export type DesktopDeepLink =
   | ({ kind: "resource"; orgId: string } & DeepLinkResource)
   | { kind: "incident"; orgId: string; incidentId: string }
   | { kind: "service"; orgId: string; serviceId: string }
-  | { kind: "vulnerabilities"; orgId: string };
+  | { kind: "vulnerabilities"; orgId: string }
+  /**
+   * A saved object from the command palette's index (a cost report, an SLO,
+   * a runbook…), opened through the same kind-to-tab mapping the palette uses.
+   */
+  | { kind: "object"; orgId: string; objectKind: SearchObjectKind; objectId: string };
 
 function trimBase(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -70,6 +77,53 @@ export function webVulnerabilitiesUrl(baseUrl: string, orgId: string): string {
   return `${orgBase(baseUrl, orgId)}/vulnerabilities`;
 }
 
+/**
+ * Where a saved object from the palette's index opens in the web app. Kinds
+ * with a page of their own link to it; kinds that live inside a larger page
+ * (a budget on Costs, a virtual tag in Settings, a probe on Probes) link to
+ * that page, which is where the web palette takes them too.
+ */
+export function webObjectUrl(
+  baseUrl: string,
+  orgId: string,
+  kind: SearchObjectKind,
+  objectId: string,
+): string {
+  const base = orgBase(baseUrl, orgId);
+  const id = encodeURIComponent(objectId);
+  switch (kind) {
+    case "cost_report":
+      return `${base}/cost-reports/${id}`;
+    case "cost_report_folder":
+      return `${base}/cost-reports`;
+    case "dashboard":
+      return `${base}/dashboard/${id}`;
+    case "cost_canvas":
+      return `${base}/cost-canvases/${id}`;
+    case "budget":
+    case "saved_cost_filter":
+    case "business_metric":
+    case "scenario_model":
+      return `${base}/costs`;
+    case "virtual_tag":
+      return `${base}/settings/virtual-tags`;
+    case "slo":
+      return `${base}/slos/${id}`;
+    case "service":
+      return `${base}/services/${id}`;
+    case "runbook":
+      return `${base}/runbooks`;
+    case "status_page":
+      return `${base}/status-pages`;
+    case "probe":
+      return `${base}/probes`;
+    case "log_query":
+      return `${base}/logs`;
+    case "query_monitor":
+      return `${base}/query-monitors`;
+  }
+}
+
 /** `infrawrench://open/<kind>?org=…`: opened by the desktop app. */
 export function desktopDeepLink(link: DesktopDeepLink): string {
   const params = new URLSearchParams({ org: link.orgId });
@@ -87,6 +141,10 @@ export function desktopDeepLink(link: DesktopDeepLink): string {
       params.set("id", link.serviceId);
       break;
     case "vulnerabilities":
+      break;
+    case "object":
+      params.set("type", link.objectKind);
+      params.set("id", link.objectId);
       break;
   }
   return `${DESKTOP_PROTOCOL}://open/${link.kind}?${params.toString()}`;
@@ -125,6 +183,11 @@ export function parseDesktopDeepLink(url: string): DesktopDeepLink | null {
       return { kind: "incident", orgId, incidentId: id };
     case "service":
       return { kind: "service", orgId, serviceId: id };
+    case "object": {
+      const objectKind = q.get("type");
+      if (!isSearchObjectKind(objectKind)) return null;
+      return { kind: "object", orgId, objectKind, objectId: id };
+    }
     default:
       return null;
   }

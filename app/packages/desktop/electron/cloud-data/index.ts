@@ -38,6 +38,7 @@ import "./leases";
 import "./probes";
 import "./slos";
 import "./resource-reports";
+import "./palette";
 import "./services";
 import "./dora";
 import "./incidents";
