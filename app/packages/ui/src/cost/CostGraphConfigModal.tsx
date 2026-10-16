@@ -1,3 +1,4 @@
+import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, msg, useGT, useMessages } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
@@ -333,7 +334,7 @@ export function CostGraphConfigModal({
     const labelFilters = (config.unitCostLabelFilters ?? []).filter((f) => f.values.length > 0);
     const cleaned = {
       ...config,
-      filters: config.filters.filter((f) => f.values.length > 0),
+      filters: config.filters.filter(isCompleteCostFilter),
       // `false` is the absence of the toggle: stored as absent, like every
       // other display option, so an untouched card's config stays byte-stable.
       ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),

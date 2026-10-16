@@ -4,12 +4,18 @@ import { useDataString } from "../i18n/data-strings.js";
 import {
   COST_DIMENSION_LABELS,
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
   COST_QUERY_MAX_LENGTH,
   CostQueryFormatError,
   CostQueryParseError,
+  costFilterMatches,
   formatCostQuery,
+  isCompleteCostFilter,
+  isPatternCostFilterOp,
+  isValuelessCostFilterOp,
   parseCostQuery,
   type CostFilter,
+  type CostFilterOp,
   type SavedCostFilter,
 } from "./config.js";
 import { isKeyedCostDimension, type CostDimensionId } from "@infrawrench/client-core";
@@ -27,11 +33,14 @@ interface FilterRowEditorProps {
   filters: CostFilter[];
   onChange: (filters: CostFilter[]) => void;
   api: CostApi;
-  /**
-   * Dimensions this host cannot accept. The virtual tag rule editor passes
-   * `["virtual_tag"]`: a virtual tag rule may not filter on another one.
-   */
+  /** Dimensions this host cannot accept. */
   excludeDimensions?: readonly CostDimensionId[] | undefined;
+  /**
+   * Virtual tag keys the key picker leaves out. The virtual tag rule editor
+   * passes the tag being edited: a rule may filter on other virtual tags, but
+   * never on its own tag.
+   */
+  excludeVirtualTagKeys?: readonly string[] | undefined;
 }
 
 /**
@@ -61,12 +70,165 @@ function dimensionStatus(
   return { kind: "empty", message: gt("No values in cost data yet") };
 }
 
+/**
+ * The values box for the text operators (`is like`, `contains`, `starts
+ * with`…): typed text rather than picked values, because the point is to
+ * match values the list does not spell exactly. Known values are offered as
+ * suggestions, and the row says which of them the current text matches, using
+ * the same matcher the query's SQL mirrors.
+ */
+function TextValuesInput({
+  op,
+  values,
+  onChange,
+  known,
+}: {
+  op: CostFilterOp;
+  values: string[];
+  onChange: (values: string[]) => void;
+  known: CostDimensionOption[];
+}) {
+  const gt = useGT();
+  const listId = useId();
+  const [draft, setDraft] = useState("");
+
+  const add = (raw: string) => {
+    const value = raw.trim();
+    setDraft("");
+    if (!value || values.includes(value)) return;
+    onChange([...values, value]);
+  };
+
+  const matched =
+    values.length > 0 ? known.filter((o) => costFilterMatches({ op, values }, o.value)) : [];
+
+  return (
+    <div className="min-w-0 flex-1 space-y-1">
+      <div
+        className={`${selectBaseClass} flex flex-wrap items-center gap-1 px-1.5 py-1 focus-within:border-blue-500`}
+      >
+        {values.map((v) => (
+          <span
+            key={v}
+            className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs text-on-surface"
+          >
+            {v}
+            <button
+              type="button"
+              onClick={() => onChange(values.filter((x) => x !== v))}
+              className="text-on-surface-faint hover:text-on-surface-secondary"
+              aria-label={gt("Remove {value}", { value: v })}
+            >
+              <CloseIcon size={10} />
+            </button>
+          </span>
+        ))}
+        <input
+          list={listId}
+          value={draft}
+          aria-label={gt("Filter text")}
+          placeholder={values.length === 0 ? gt("Type a value, then Enter") : ""}
+          className="min-w-24 flex-1 bg-transparent text-xs text-on-surface outline-none"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              add(draft);
+            } else if (e.key === "Backspace" && draft === "" && values.length > 0) {
+              onChange(values.slice(0, -1));
+            }
+          }}
+          onBlur={() => add(draft)}
+        />
+        <datalist id={listId}>
+          {known.slice(0, 200).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </datalist>
+      </div>
+      {values.length > 0 && known.length > 0 && (
+        <p className="text-xs text-on-surface-faint">
+          {matched.length === 0
+            ? gt("Matches none of the values seen in cost data yet.")
+            : gt("Matches {count} known values, e.g. {examples}", {
+                count: matched.length,
+                examples: matched
+                  .slice(0, 3)
+                  .map((o) => o.label)
+                  .join(", "),
+              })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The operator picker's labels, spelled out as literals so the translation
+ * extractor sees them (the client-core label map is the English source for
+ * hosts without translations: mobile and the CLI).
+ */
+function opLabel(op: CostFilterOp, gt: (message: string) => string): string {
+  switch (op) {
+    case "in":
+      return gt("is");
+    case "not_in":
+      return gt("is not");
+    case "flexible_match":
+      return gt("is like");
+    case "contains":
+      return gt("contains");
+    case "not_contains":
+      return gt("does not contain");
+    case "starts_with":
+      return gt("starts with");
+    case "is_set":
+      return gt("is set");
+    case "is_not_set":
+      return gt("is not set");
+  }
+}
+
+/** One sentence per operator, for the picker's tooltip. */
+function opDescription(op: CostFilterOp, gt: (message: string) => string): string {
+  switch (op) {
+    case "in":
+      return gt("Equal to one of the values.");
+    case "not_in":
+      return gt("Equal to none of the values.");
+    case "flexible_match":
+      return gt(
+        "Equal to one of the values once letter case, spaces, underscores and hyphens are ignored, so Prod_Env matches prod-env.",
+      );
+    case "contains":
+      return gt("Contains one of the values, ignoring letter case.");
+    case "not_contains":
+      return gt("Contains none of the values, ignoring letter case.");
+    case "starts_with":
+      return gt("Starts with one of the values, ignoring letter case.");
+    case "is_set":
+      return gt("The tag has a value.");
+    case "is_not_set":
+      return gt("The tag is missing or empty.");
+  }
+}
+
+/** The operators a row may use: IS SET / IS NOT SET only for tags. */
+function opsFor(dimension: CostDimensionId): readonly CostFilterOp[] {
+  return isKeyedCostDimension(dimension)
+    ? COST_FILTER_OPS
+    : COST_FILTER_OPS.filter((op) => !isValuelessCostFilterOp(op));
+}
+
 /** Filter rule rows shared by the graph and budget editors. */
 export function CostFilterRows({
   filters,
   onChange,
   api,
   excludeDimensions,
+  excludeVirtualTagKeys,
 }: FilterRowEditorProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -163,7 +325,10 @@ export function CostFilterRows({
               value={filter.dimension}
               onChange={(e) => {
                 const dimension = e.target.value as CostFilter["dimension"];
-                update(i, { dimension, values: [], tagKey: undefined });
+                // IS SET / IS NOT SET only exist for tags: a row moved off a
+                // tag falls back to "is".
+                const op = opsFor(dimension).includes(filter.op) ? filter.op : "in";
+                update(i, { dimension, op, values: [], tagKey: undefined });
                 if (!isKeyedCostDimension(dimension)) loadOptions(dimension);
               }}
             >
@@ -198,37 +363,58 @@ export function CostFilterRows({
                 <option value="">
                   {virtualTagKeys === null ? gt("Loading…") : gt("Choose a virtual tag")}
                 </option>
-                {mergeSelected(virtualTagKeys ?? [], filter.tagKey ? [filter.tagKey] : []).map(
-                  (o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ),
-                )}
+                {mergeSelected(
+                  (virtualTagKeys ?? []).filter((o) => !excludeVirtualTagKeys?.includes(o.value)),
+                  filter.tagKey ? [filter.tagKey] : [],
+                ).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             )}
             <select
               aria-label={gt("Filter operator")}
-              className={`${selectBaseClass} w-24 flex-shrink-0`}
+              className={`${selectBaseClass} w-32 flex-shrink-0`}
               value={filter.op}
-              onChange={(e) => update(i, { op: e.target.value as CostFilter["op"] })}
+              title={opDescription(filter.op, gt)}
+              onChange={(e) => {
+                const op = e.target.value as CostFilterOp;
+                // A valueless operator drops the values; any other keeps
+                // them, so "is" → "is like" carries the picked values over.
+                update(i, isValuelessCostFilterOp(op) ? { op, values: [] } : { op });
+              }}
             >
-              <option value="in">{gt("is")}</option>
-              <option value="not_in">{gt("is not")}</option>
+              {opsFor(filter.dimension).map((op) => (
+                <option key={op} value={op} title={opDescription(op, gt)}>
+                  {opLabel(op, gt)}
+                </option>
+              ))}
             </select>
-            <MultiSelect
-              className="flex-1"
-              label={gt("Filter values")}
-              placeholder={gt("Any value")}
-              // A saved filter can reference values the current load hasn't
-              // returned (or hasn't finished returning); surface them as
-              // options so they stay selectable rather than silently vanishing.
-              options={mergeSelected(options, filter.values)}
-              value={filter.values}
-              onChange={(values) => update(i, { values })}
-              status={dimensionStatus(optionsState, () => retryOptions(filter), gt)}
-              onOpen={() => retryOptions(filter)}
-            />
+            {isValuelessCostFilterOp(filter.op) ? (
+              <div className="flex-1" />
+            ) : isPatternCostFilterOp(filter.op) ? (
+              <TextValuesInput
+                op={filter.op}
+                values={filter.values}
+                onChange={(values) => update(i, { values })}
+                known={options}
+              />
+            ) : (
+              <MultiSelect
+                className="flex-1"
+                label={gt("Filter values")}
+                placeholder={gt("Any value")}
+                // A saved filter can reference values the current load hasn't
+                // returned (or hasn't finished returning); surface them as
+                // options so they stay selectable rather than silently vanishing.
+                options={mergeSelected(options, filter.values)}
+                value={filter.values}
+                onChange={(values) => update(i, { values })}
+                status={dimensionStatus(optionsState, () => retryOptions(filter), gt)}
+                onOpen={() => retryOptions(filter)}
+              />
+            )}
             <button
               type="button"
               onClick={() => onChange(filters.filter((_, j) => j !== i))}
@@ -324,7 +510,7 @@ function SavedFilterPicker({
   }, [api]);
 
   const applied = savedFilterId ? saved?.find((f) => f.id === savedFilterId) : undefined;
-  const savableRows = filters.filter((f) => f.values.length > 0);
+  const savableRows = filters.filter(isCompleteCostFilter);
 
   const saveRowsAsFilter = async () => {
     if (!api.createSavedFilter) return;
@@ -443,6 +629,7 @@ export function CostFilterEditor({
   savedFilterId,
   onSavedFilterChange,
   excludeDimensions,
+  excludeVirtualTagKeys,
 }: CostFilterEditorProps) {
   const gt = useGT();
   const uid = useId();
@@ -541,6 +728,7 @@ export function CostFilterEditor({
           onChange={onChange}
           api={api}
           excludeDimensions={excludeDimensions}
+          excludeVirtualTagKeys={excludeVirtualTagKeys}
         />
       ) : (
         <div className="space-y-1">
@@ -562,7 +750,11 @@ export function CostFilterEditor({
               Terms joined by AND: <code>= &apos;value&apos;</code>,{" "}
               <code>!= &apos;value&apos;</code>, <code>IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
               <code>NOT IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
-              <code>tag[&apos;owner&apos;] = &apos;platform&apos;</code>.
+              <code>tag[&apos;owner&apos;] = &apos;platform&apos;</code>. Text matches ignore letter
+              case: <code>~= &apos;prod-env&apos;</code> (also ignores spaces, _ and -),{" "}
+              <code>CONTAINS &apos;x&apos;</code>, <code>NOT CONTAINS &apos;x&apos;</code>,{" "}
+              <code>STARTS WITH &apos;x&apos;</code>. For tags:{" "}
+              <code>tag[&apos;owner&apos;] IS SET</code>, <code>IS NOT SET</code>.
             </p>
           </T>
         </div>

@@ -6,6 +6,8 @@ import {
   Uuid,
   IsoDateTime,
   FindingRemediation,
+  CostFilterOperator,
+  CostFilterValues,
 } from "../common";
 import type { BuildContext } from "../context";
 import { AlertEmailRecipients } from "./alert-email";
@@ -66,8 +68,8 @@ export const CostBasis = z
 
 const CostFilter = strict({
   dimension: CostDimension,
-  op: z.enum(["in", "not_in"]),
-  values: z.array(z.string()).min(1),
+  op: CostFilterOperator,
+  values: CostFilterValues,
   tagKey: z.string().optional(),
 }).openapi("CostFilter");
 

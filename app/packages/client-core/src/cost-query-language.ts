@@ -32,9 +32,12 @@
 import {
   COST_DIMENSIONS,
   isKeyedCostDimension,
+  isValuelessCostFilterOp,
   type CostDimensionId,
   type CostFilter,
+  type CostFilterOp,
 } from "./costs";
+import { costFilterOpError } from "./cost-filter-match";
 import { COST_TAG_ALIASES, costTagAliasFor, type CostTagAlias } from "./cost-tag-keys";
 
 /** Every name that can start a term: the dimensions plus the tag aliases. */
@@ -197,10 +200,27 @@ function readString(source: string, start: number): Token {
 /**
  * Characters that start an operator the *structured* filter cannot express.
  * Recognising them explicitly is the whole point: `spend > 100` failing with
- * "unexpected character" tells the user nothing, while naming the four
- * supported operators tells them everything.
+ * "unexpected character" tells the user nothing, while naming the supported
+ * operators tells them everything.
  */
-const UNSUPPORTED_OPERATOR_CHARS = new Set(["<", ">", "~", "%"]);
+const UNSUPPORTED_OPERATOR_CHARS = new Set(["<", ">", "%"]);
+
+/** Every operator spelling, for "expected" lists and error messages. */
+const OPERATOR_SPELLINGS = [
+  "=",
+  "!=",
+  "~=",
+  "IN",
+  "NOT IN",
+  "CONTAINS",
+  "NOT CONTAINS",
+  "STARTS WITH",
+  "IS SET",
+  "IS NOT SET",
+] as const;
+
+const OPERATOR_LIST =
+  "=, !=, ~=, IN, NOT IN, CONTAINS, NOT CONTAINS, STARTS WITH, IS SET and IS NOT SET";
 
 function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
@@ -225,6 +245,20 @@ function tokenize(source: string): Token[] {
       i = j;
       continue;
     }
+    if (ch === "~") {
+      if (source[i + 1] === "=") {
+        tokens.push({ kind: "punct", text: "~=", value: "~=", start: i, end: i + 2 });
+        i += 2;
+        continue;
+      }
+      throw new CostQueryParseError(
+        'Expected "~=" (a flexible match); a lone "~" is not an operator.',
+        source,
+        i,
+        1,
+        ["~="],
+      );
+    }
     if (ch === "!") {
       if (source[i + 1] === "=") {
         tokens.push({ kind: "punct", text: "!=", value: "!=", start: i, end: i + 2 });
@@ -242,11 +276,11 @@ function tokenize(source: string): Token[] {
     }
     if (UNSUPPORTED_OPERATOR_CHARS.has(ch)) {
       throw new CostQueryParseError(
-        `"${ch}" is not supported. Cost filters compare for equality only: =, !=, IN and NOT IN.`,
+        `"${ch}" is not supported. Cost filters compare text, not numbers: ${OPERATOR_LIST}.`,
         source,
         i,
         1,
-        ["=", "!=", "IN", "NOT IN"],
+        OPERATOR_SPELLINGS,
       );
     }
     throw new CostQueryParseError(`Unexpected character "${ch}".`, source, i, 1);
@@ -298,20 +332,25 @@ function suggestDimension(name: string): string | null {
  * The grammar, in full:
  *
  *   query      := ε | term ( AND term )*
- *   term       := dimension operator value
+ *   term       := dimension operator value | dimension IS [NOT] SET
  *   dimension  := IDENT | ("tag" | "virtual_tag") "[" string "]"
  *              |  ("k8s_node_label" | "k8s_pvc_label" | "k8s_pod_label") "[" string "]"
  *   operator   := "=" | "!=" | IN | NOT IN
+ *              |  "~=" | CONTAINS | NOT CONTAINS | STARTS WITH
  *   value      := string                            (for "=" and "!=")
  *              |  "(" string ( "," string )* ")"    (for IN and NOT IN)
+ *              |  string | "(" string ( "," string )* ")"
+ *                                                   (for the text operators)
  *
- * Keywords are case-insensitive; strings are single- or double-quoted.
+ * `IS SET` / `IS NOT SET` take no value and apply to the keyed dimensions
+ * (tags and virtual tags) only. Keywords are case-insensitive; strings are
+ * single- or double-quoted.
  */
 export const COST_QUERY_GRAMMAR = [
   "query     := ε | term (AND term)*",
-  "term      := dimension operator value",
+  "term      := dimension operator value | dimension IS [NOT] SET",
   "dimension := name | tag['key'] | virtual_tag['key'] | k8s_node_label['key'] | k8s_pvc_label['key'] | k8s_pod_label['key']",
-  "operator  := = | != | IN | NOT IN",
+  "operator  := = | != | IN | NOT IN | ~= | CONTAINS | NOT CONTAINS | STARTS WITH",
   "value     := 'text' | ('a', 'b', …)",
 ].join("\n");
 
@@ -336,8 +375,13 @@ export const COST_QUERY_LANGUAGE_SUMMARY =
   "shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team']` and " +
   "`k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` means " +
   "`tag['k8s_pvc_label:app.kubernetes.io/name']` (and `k8s_pod_label['app']` likewise). " +
-  "Keywords are case-insensitive. OR is not supported; the filter is a " +
-  "conjunction, so use IN ('a','b') to accept several values of one dimension.";
+  "Text operators: `tag['env'] ~= 'prod'` " +
+  "(flexible match: equal once letter case, spaces, underscores and hyphens are ignored, so " +
+  "`Prod_Env` matches `prod-env`), `service CONTAINS 'compute'`, `service NOT CONTAINS 'support'` " +
+  "and `resource STARTS WITH 'arn:aws:rds'` (all ignoring letter case; each also takes a list, " +
+  "matching any value). `tag['owner'] IS SET` and `tag['owner'] IS NOT SET` test whether a tag " +
+  "or virtual tag has a value at all. Keywords are case-insensitive. OR is not supported; the " +
+  "filter is a conjunction, so use IN ('a','b') to accept several values of one dimension.";
 
 class Parser {
   private index = 0;
@@ -420,10 +464,25 @@ class Parser {
 
   private parseTerm(): CostFilter {
     const { dimension, tagKey } = this.parseDimension();
+    const opToken = this.peek();
     const { op, values } = this.parseOperatorAndValues();
-    return isKeyedCostDimension(dimension)
+    const filter: CostFilter = isKeyedCostDimension(dimension)
       ? { dimension, op, values, tagKey }
       : { dimension, op, values };
+    // Operator-level rules the structured schema also enforces (IS SET only
+    // on tags, no empty text match), reported here so the text editor can
+    // point at the operator instead of failing later on save.
+    const problem = costFilterOpError(filter);
+    if (problem) {
+      const end = this.tokens[this.index - 1]?.end ?? opToken.end;
+      throw new CostQueryParseError(
+        problem,
+        this.source,
+        opToken.start,
+        Math.max(1, end - opToken.start),
+      );
+    }
+    return filter;
   }
 
   private parseDimension(): { dimension: CostDimensionId; tagKey?: string } {
@@ -496,7 +555,7 @@ class Parser {
     return { dimension: match };
   }
 
-  private parseOperatorAndValues(): { op: CostFilter["op"]; values: string[] } {
+  private parseOperatorAndValues(): { op: CostFilterOp; values: string[] } {
     const token = this.next();
 
     if (token.kind === "punct" && (token.text === "=" || token.text === "!=")) {
@@ -511,41 +570,91 @@ class Parser {
       return { op: token.text === "=" ? "in" : "not_in", values: [value.value] };
     }
 
+    if (token.kind === "punct" && token.text === "~=") {
+      return { op: "flexible_match", values: this.parseValueOrList("~=") };
+    }
+
     if (token.kind === "ident") {
       const keyword = token.value.toLowerCase();
       if (keyword === "in") return { op: "in", values: this.parseValueList() };
+      if (keyword === "contains") {
+        return { op: "contains", values: this.parseValueOrList("CONTAINS") };
+      }
       if (keyword === "not") {
-        const inToken = this.next();
-        if (inToken.kind !== "ident" || inToken.value.toLowerCase() !== "in") {
-          throw this.fail(`Expected IN after NOT, found ${this.describe(inToken)}.`, inToken, [
-            "IN",
+        const next = this.next();
+        const word = next.kind === "ident" ? next.value.toLowerCase() : "";
+        if (word === "in") return { op: "not_in", values: this.parseValueList() };
+        if (word === "contains") {
+          return { op: "not_contains", values: this.parseValueOrList("NOT CONTAINS") };
+        }
+        throw this.fail(`Expected IN or CONTAINS after NOT, found ${this.describe(next)}.`, next, [
+          "IN",
+          "CONTAINS",
+        ]);
+      }
+      if (keyword === "starts") {
+        const next = this.next();
+        if (next.kind !== "ident" || next.value.toLowerCase() !== "with") {
+          throw this.fail(`Expected WITH after STARTS, found ${this.describe(next)}.`, next, [
+            "WITH",
           ]);
         }
-        return { op: "not_in", values: this.parseValueList() };
+        return { op: "starts_with", values: this.parseValueOrList("STARTS WITH") };
       }
-      if (keyword === "like" || keyword === "contains" || keyword === "matches") {
+      if (keyword === "is") {
+        let next = this.next();
+        let negated = false;
+        if (next.kind === "ident" && next.value.toLowerCase() === "not") {
+          negated = true;
+          next = this.next();
+        }
+        if (next.kind !== "ident" || next.value.toLowerCase() !== "set") {
+          throw this.fail(
+            `Expected SET after IS${negated ? " NOT" : ""}, found ${this.describe(next)}. ` +
+              "Write tag['owner'] IS SET or tag['owner'] IS NOT SET.",
+            next,
+            ["SET"],
+          );
+        }
+        return { op: negated ? "is_not_set" : "is_set", values: [] };
+      }
+      if (keyword === "like" || keyword === "matches") {
         throw this.fail(
-          `${token.text.toUpperCase()} is not supported. Cost filters compare for equality only: ` +
-            "=, !=, IN and NOT IN.",
+          `${token.text.toUpperCase()} is not supported. For text matching use ~= (equal ignoring ` +
+            "case, spaces, underscores and hyphens), CONTAINS, NOT CONTAINS or STARTS WITH.",
           token,
-          ["=", "!=", "IN", "NOT IN"],
+          OPERATOR_SPELLINGS,
         );
       }
     }
 
-    throw this.fail(`Expected =, !=, IN or NOT IN, found ${this.describe(token)}.`, token, [
-      "=",
-      "!=",
-      "IN",
-      "NOT IN",
-    ]);
+    throw this.fail(
+      `Expected an operator (${OPERATOR_LIST}), found ${this.describe(token)}.`,
+      token,
+      OPERATOR_SPELLINGS,
+    );
   }
 
-  private parseValueList(): string[] {
+  /** A text operator's operand: one quoted value, or a parenthesised list. */
+  private parseValueOrList(operator: string): string[] {
+    const token = this.peek();
+    if (token.kind === "string") {
+      this.next();
+      return [token.value];
+    }
+    if (token.kind === "punct" && token.text === "(") return this.parseValueList(operator);
+    throw this.fail(
+      `Expected a quoted value or a list after ${operator}, found ${this.describe(token)}. ` +
+        `Write ${operator} 'text' or ${operator} ('a', 'b').`,
+      token,
+    );
+  }
+
+  private parseValueList(operator = "IN"): string[] {
     const open = this.next();
     if (open.kind !== "punct" || open.text !== "(") {
       throw this.fail(
-        `Expected "(" after IN, found ${this.describe(open)}. Write IN ('a', 'b').`,
+        `Expected "(" after ${operator}, found ${this.describe(open)}. Write ${operator} ('a', 'b').`,
         open,
         ["("],
       );
@@ -553,7 +662,7 @@ class Parser {
     const closeImmediately = this.peek();
     if (closeImmediately.kind === "punct" && closeImmediately.text === ")") {
       throw this.fail(
-        "An empty list matches nothing. Give IN at least one value, or drop the term.",
+        `An empty list matches nothing. Give ${operator} at least one value, or drop the term.`,
         closeImmediately,
       );
     }
@@ -628,21 +737,22 @@ function quote(value: string): string {
  * Render a structured filter back to query text.
  *
  * The rendering is canonical: a single value always uses `=` / `!=` and several
- * always use `IN` / `NOT IN`, so `parseCostQuery(formatCostQuery(f))` is `f`
- * exactly, and `formatCostQuery(parseCostQuery(text))` is a normalised form of
- * `text`.
+ * always use `IN` / `NOT IN`; the text operators write one value bare and
+ * several as a list. So `parseCostQuery(formatCostQuery(f))` is `f` exactly,
+ * and `formatCostQuery(parseCostQuery(text))` is a normalised form of `text`.
  *
- * Filters with no values are skipped: an empty `values` is what a freshly
- * added editor row looks like, it expresses nothing, and the editors already
- * drop those before saving. A `tag` filter with no key is the one thing that
- * cannot be rendered at all, and throws.
+ * Filters with no values are skipped (except `IS SET` / `IS NOT SET`, which
+ * never have any): an empty `values` is what a freshly added editor row looks
+ * like, it expresses nothing, and the editors already drop those before
+ * saving. A `tag` filter with no key is the one thing that cannot be rendered
+ * at all, and throws.
  *
  * @throws {CostQueryFormatError} for a tag filter with no key.
  */
 export function formatCostQuery(filters: readonly CostFilter[]): string {
   const terms: string[] = [];
   filters.forEach((filter, index) => {
-    if (filter.values.length === 0) return;
+    if (filter.values.length === 0 && !isValuelessCostFilterOp(filter.op)) return;
     let name: string;
     if (isKeyedCostDimension(filter.dimension)) {
       if (!filter.tagKey) {
@@ -664,12 +774,36 @@ export function formatCostQuery(filters: readonly CostFilter[]): string {
     } else {
       name = filter.dimension;
     }
-    if (filter.values.length === 1) {
-      terms.push(`${name} ${filter.op === "in" ? "=" : "!="} ${quote(filter.values[0]!)}`);
-    } else {
-      const list = filter.values.map(quote).join(", ");
-      terms.push(`${name} ${filter.op === "in" ? "IN" : "NOT IN"} (${list})`);
-    }
+    terms.push(`${name} ${formatOperatorAndValues(filter.op, filter.values)}`);
   });
   return terms.join(" AND ");
+}
+
+/** The text spelling of each text operator (the ones that take a value or a list). */
+const TEXT_OPERATOR_SPELLING: Record<
+  "flexible_match" | "contains" | "not_contains" | "starts_with",
+  string
+> = {
+  flexible_match: "~=",
+  contains: "CONTAINS",
+  not_contains: "NOT CONTAINS",
+  starts_with: "STARTS WITH",
+};
+
+function formatOperatorAndValues(op: CostFilterOp, values: readonly string[]): string {
+  switch (op) {
+    case "is_set":
+      return "IS SET";
+    case "is_not_set":
+      return "IS NOT SET";
+    case "in":
+    case "not_in":
+      if (values.length === 1) return `${op === "in" ? "=" : "!="} ${quote(values[0]!)}`;
+      return `${op === "in" ? "IN" : "NOT IN"} (${values.map(quote).join(", ")})`;
+    default: {
+      const spelling = TEXT_OPERATOR_SPELLING[op];
+      if (values.length === 1) return `${spelling} ${quote(values[0]!)}`;
+      return `${spelling} (${values.map(quote).join(", ")})`;
+    }
+  }
 }

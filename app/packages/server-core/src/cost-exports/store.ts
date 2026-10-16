@@ -22,6 +22,8 @@ import {
   COST_EXPORT_SCHEMAS,
   COST_DIMENSIONS,
   COST_CHARGE_TYPES,
+  costFilterOpError,
+  isCostFilterOp,
   type CostExport,
   type CostExportCadence,
   type CostExportDestination,
@@ -99,9 +101,11 @@ function normalizeQuery(raw: unknown): CostExportQuery {
         (f) =>
           f &&
           (COST_DIMENSIONS as readonly string[]).includes(f.dimension) &&
-          (f.op === "in" || f.op === "not_in") &&
+          isCostFilterOp(f.op) &&
           Array.isArray(f.values) &&
-          f.values.length > 0,
+          // A term that fails its operator's rules is dropped like any other
+          // malformed term; IS SET / IS NOT SET legitimately have no values.
+          costFilterOpError(f) === null,
       )
     : [];
   const chargeTypes = Array.isArray(q.chargeTypes)

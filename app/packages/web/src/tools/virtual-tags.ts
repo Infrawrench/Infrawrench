@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import { virtualTagInputSchema } from "@infrawrench/ui/cost/config";
-import { describeVirtualTagRule } from "@infrawrench/client-core";
+import { VIRTUAL_TAG_LIMITS, describeVirtualTagRule } from "@infrawrench/client-core";
 import {
   VirtualTagError,
   VirtualTagInUseError,
@@ -34,7 +34,9 @@ function toolError(e: unknown) {
 const RULES_HELP =
   "A virtual tag is an ordered rule list; a cost row takes the value of the first rule it " +
   "matches, else `defaultValue` (or stays unset). Each rule has a `query` in the cost query " +
-  "language (empty matches everything; it may not reference another virtual tag), optional " +
+  "language (empty matches everything; it may filter on another virtual tag, as long as " +
+  "that tag has no split rules, the references form no cycle and no chain is more than " +
+  `${VIRTUAL_TAG_LIMITS.maxReferenceDepth} tags deep), optional ` +
   "inclusive `startsOn`/`endsOn` days, and a `kind`: `value` (fixed `value`), `tag` (copy " +
   "the value from the first present provider tag key in `sources`, each with an optional " +
   "`valuePrefix` and its own `query`; `valueTransform` lower/upper case-folds it: this is " +

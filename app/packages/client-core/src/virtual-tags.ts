@@ -23,6 +23,14 @@
  *   optional case fold. `split` divides a matching row across several values
  *   by fixed percentages. `metric_split` divides it in proportion to business
  *   metrics, day by day.
+ * - **Tags can build on tags.** A rule's filter may test another virtual tag
+ *   (`virtual_tag['team'] IN ('payments', 'search')` → business unit
+ *   `commerce`). The references form a dependency graph that must stay
+ *   acyclic and at most {@link VIRTUAL_TAG_LIMITS.maxReferenceDepth} tags
+ *   deep, and a tag another tag filters on must give each row exactly one
+ *   value (no split rules): a rule's filter is a yes/no question per row, and
+ *   a row split 60/40 has no single answer. {@link virtualTagReferenceError}
+ *   checks all of it at save time.
  * - **Time bounds.** Any rule can carry `startsOn`/`endsOn` (inclusive UTC
  *   days), so a reorganisation can be recorded as "until March this was team A,
  *   from April it is team B" without rewriting history.
@@ -112,6 +120,12 @@ export const VIRTUAL_TAG_LIMITS = {
   maxAllocations: 20,
   /** Percent sums are compared to 100 within this tolerance (two decimals). */
   percentTolerance: 0.01,
+  /**
+   * Longest chain of virtual tags filtering on each other, counting both
+   * ends: `unit` → `team` → `owner` is three. Each level nests one more
+   * `multiIf` into every query that reads the outermost tag.
+   */
+  maxReferenceDepth: 5,
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -307,23 +321,17 @@ export function normalizeVirtualTagInput(input: VirtualTagInput): VirtualTagInpu
 }
 
 /**
- * Compile a rule or source filter, refusing what a virtual tag cannot mean.
+ * Compile a rule or source filter.
  *
- * A filter on another virtual tag is refused rather than resolved: tags
- * referencing tags is a dependency graph with cycles to detect and an order to
- * evaluate in, for a use case one tag with more rules already covers.
+ * A filter may reference other virtual tags (`virtual_tag['team'] = 'x'`);
+ * whether those references are acceptable (they exist, do not split, form
+ * no cycle, are not too deep) depends on the org's other tags and is
+ * {@link virtualTagReferenceError}'s job, run where those are known.
  */
 export function compileVirtualTagQuery(query: string | null): CostFilter[] {
   const text = query?.trim() ?? "";
   if (!text) return [];
-  const filters = parseCostQuery(text);
-  if (filters.some((f) => f.dimension === "virtual_tag")) {
-    throw new Error(
-      "A virtual tag rule cannot filter on another virtual tag. Filter on the provider tags, " +
-        "accounts or services the other tag is built from instead.",
-    );
-  }
-  return filters;
+  return parseCostQuery(text);
 }
 
 function queryError(query: string | null, where: string): string | null {
@@ -428,6 +436,15 @@ export function virtualTagRuleError(rule: VirtualTagRule, index: number): string
 
 /** The first thing wrong with a whole input, or null. Run after normalising. */
 export function virtualTagInputError(input: VirtualTagInput): string | null {
+  const own = virtualTagInputShapeError(input);
+  if (own) return own;
+  if (virtualTagDependencies(input.rules).includes(input.key)) {
+    return `A rule of "${input.key}" filters on "${input.key}" itself, which can never be decided.`;
+  }
+  return null;
+}
+
+function virtualTagInputShapeError(input: VirtualTagInput): string | null {
   if (!input.key) return "The key cannot be empty.";
   if (input.key.length > VIRTUAL_TAG_LIMITS.maxKeyLength) {
     return `The key is at most ${VIRTUAL_TAG_LIMITS.maxKeyLength} characters.`;
@@ -506,6 +523,222 @@ export function referencedVirtualTagKeys(
   }
   if (groupBy === "virtual_tag" && groupByTagKey) keys.add(groupByTagKey);
   return [...keys];
+}
+
+/* ------------------------------------------------------------------ *
+ * Tags built on tags: the dependency graph.
+ * ------------------------------------------------------------------ */
+
+/** What the dependency checks need of a tag. */
+export interface VirtualTagGraphNode {
+  key: string;
+  rules: readonly VirtualTagRule[];
+}
+
+function queryVirtualTagKeys(query: string | null, into: Set<string>): void {
+  const text = query?.trim();
+  if (!text) return;
+  let filters: CostFilter[];
+  try {
+    filters = parseCostQuery(text);
+  } catch {
+    // A filter that does not parse references nothing; the rule validation
+    // reports the parse error itself.
+    return;
+  }
+  for (const f of filters) if (f.dimension === "virtual_tag" && f.tagKey) into.add(f.tagKey);
+}
+
+/**
+ * The virtual tag keys a tag's rules filter on (rule filters and per-source
+ * filters), de-duplicated, in first-mention order.
+ */
+export function virtualTagDependencies(rules: readonly VirtualTagRule[]): string[] {
+  const keys = new Set<string>();
+  for (const rule of rules) {
+    queryVirtualTagKeys(rule.query, keys);
+    for (const source of rule.sources) queryVirtualTagKeys(source.query, keys);
+  }
+  return [...keys];
+}
+
+function dependencyMap(nodes: readonly VirtualTagGraphNode[]): Map<string, string[]> {
+  return new Map(nodes.map((n) => [n.key, virtualTagDependencies(n.rules)]));
+}
+
+/** A cycle reachable from `start`, as the keys along it (`[a, b, a]`), or null. */
+function findCycle(start: string, deps: ReadonlyMap<string, readonly string[]>): string[] | null {
+  const path: string[] = [];
+  const onPath = new Set<string>();
+  const done = new Set<string>();
+  const visit = (key: string): string[] | null => {
+    if (onPath.has(key)) return [...path.slice(path.indexOf(key)), key];
+    if (done.has(key)) return null;
+    onPath.add(key);
+    path.push(key);
+    for (const next of deps.get(key) ?? []) {
+      const cycle = visit(next);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    onPath.delete(key);
+    done.add(key);
+    return null;
+  };
+  return visit(start);
+}
+
+/**
+ * The longest chain of references starting at each key, counting both ends
+ * (a tag that filters on nothing is 1). Assumes no cycle; a cycle is cut
+ * where it closes, so this terminates whatever stored data says.
+ */
+function chainLengths(deps: ReadonlyMap<string, readonly string[]>): Map<string, string[]> {
+  const memo = new Map<string, string[]>();
+  const visiting = new Set<string>();
+  const longest = (key: string): string[] => {
+    const known = memo.get(key);
+    if (known) return known;
+    if (visiting.has(key)) return [key];
+    visiting.add(key);
+    let best: string[] = [];
+    for (const next of deps.get(key) ?? []) {
+      if (!deps.has(next)) continue;
+      const chain = longest(next);
+      if (chain.length > best.length) best = chain;
+    }
+    visiting.delete(key);
+    const result = [key, ...best];
+    memo.set(key, result);
+    return result;
+  };
+  for (const key of deps.keys()) longest(key);
+  return memo;
+}
+
+/**
+ * Whether saving `candidate` alongside the org's `others` (every other tag,
+ * by key; the candidate's own stored row left out) keeps the graph sound.
+ * Null when it does, otherwise one sentence naming the problem:
+ *
+ * - a rule filters on a tag that does not exist;
+ * - a rule filters on a tag with split rules (no single value per row), or
+ *   the candidate gains a split rule while another tag filters on it;
+ * - the references form a cycle, named in full (`unit → team → unit`);
+ * - a chain of references is longer than
+ *   {@link VIRTUAL_TAG_LIMITS.maxReferenceDepth}.
+ */
+export function virtualTagReferenceError(
+  candidate: VirtualTagGraphNode,
+  others: readonly VirtualTagGraphNode[],
+): string | null {
+  const nodes = [...others.filter((o) => o.key !== candidate.key), candidate];
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
+  const deps = dependencyMap(nodes);
+  const own = deps.get(candidate.key) ?? [];
+
+  for (const key of own) {
+    if (key === candidate.key) {
+      return `A rule of "${candidate.key}" filters on "${candidate.key}" itself, which can never be decided.`;
+    }
+    const target = byKey.get(key);
+    if (!target) {
+      return `A rule of "${candidate.key}" filters on the virtual tag "${key}", which does not exist.`;
+    }
+    if (virtualTagSplits(target.rules)) {
+      return (
+        `A rule of "${candidate.key}" filters on "${key}", which splits rows between values. ` +
+        "A rule can only filter on a virtual tag that gives each row one value."
+      );
+    }
+  }
+
+  if (virtualTagSplits(candidate.rules)) {
+    const dependent = nodes.find(
+      (n) => n.key !== candidate.key && (deps.get(n.key) ?? []).includes(candidate.key),
+    );
+    if (dependent) {
+      return (
+        `"${dependent.key}" filters on "${candidate.key}", so "${candidate.key}" cannot split ` +
+        "rows between values: a filter needs one value per row. Remove that filter first, or " +
+        "use a fixed value instead of the split."
+      );
+    }
+  }
+
+  const cycle = findCycle(candidate.key, deps);
+  if (cycle) {
+    return (
+      `Virtual tags cannot filter on each other in a loop: ${cycle.join(" → ")}. ` +
+      "Remove one of those references."
+    );
+  }
+
+  const max = VIRTUAL_TAG_LIMITS.maxReferenceDepth;
+  // Every chain through the candidate: the longest one down from it, plus
+  // the longest one leading into it from a tag that (transitively) uses it.
+  const users = new Map<string, string[]>(nodes.map((n) => [n.key, []]));
+  for (const [key, uses] of deps) for (const used of uses) users.get(used)?.push(key);
+  const below = chainLengths(deps).get(candidate.key) ?? [candidate.key];
+  const above = (chainLengths(users).get(candidate.key) ?? [candidate.key]).slice(1).reverse();
+  const chain = [...above, ...below];
+  if (chain.length > max) {
+    return (
+      `Virtual tags can build on each other at most ${max} deep; ${chain.join(" → ")} is ` +
+      `${chain.length}. Filter on the provider tags a deeper tag is built from instead.`
+    );
+  }
+  return null;
+}
+
+/**
+ * Keys in an order where every tag comes after the tags it filters on: the
+ * order to evaluate them in. A key left in a cycle (stored data the save
+ * check never let through) is appended last rather than dropped.
+ */
+export function virtualTagEvaluationOrder(nodes: readonly VirtualTagGraphNode[]): string[] {
+  const deps = dependencyMap(nodes);
+  const order: string[] = [];
+  const placed = new Set<string>();
+  const visiting = new Set<string>();
+  const place = (key: string) => {
+    if (placed.has(key) || visiting.has(key) || !deps.has(key)) return;
+    visiting.add(key);
+    for (const next of deps.get(key) ?? []) place(next);
+    visiting.delete(key);
+    placed.add(key);
+    order.push(key);
+  };
+  for (const node of nodes) place(node.key);
+  return order;
+}
+
+/**
+ * Every tag that filters on `key`, directly or through another tag, with how
+ * many references away it is (1 = filters on `key` itself). What a change to
+ * `key` re-queues for processing, nearest first.
+ */
+export function virtualTagDependents(
+  key: string,
+  nodes: readonly VirtualTagGraphNode[],
+): Array<{ key: string; distance: number }> {
+  const deps = dependencyMap(nodes);
+  const result: Array<{ key: string; distance: number }> = [];
+  const seen = new Set<string>([key]);
+  let frontier = [key];
+  for (let distance = 1; frontier.length > 0; distance += 1) {
+    const next: string[] = [];
+    for (const [candidate, uses] of deps) {
+      if (seen.has(candidate)) continue;
+      if (uses.some((u) => frontier.includes(u))) {
+        seen.add(candidate);
+        next.push(candidate);
+        result.push({ key: candidate, distance });
+      }
+    }
+    frontier = next;
+  }
+  return result;
 }
 
 /* ------------------------------------------------------------------ *

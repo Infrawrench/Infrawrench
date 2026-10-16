@@ -1,3 +1,4 @@
+import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useCallback, useEffect, useId, useState } from "react";
 import { useGT } from "gt-react";
 
@@ -226,7 +227,7 @@ function SavedFilterEditModal({
     const input: SavedCostFilterInput = {
       name: name.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
-      filters: rows.filter((f) => f.values.length > 0),
+      filters: rows.filter(isCompleteCostFilter),
     };
     if (!input.name) {
       setError(gt("A saved filter needs a name."));

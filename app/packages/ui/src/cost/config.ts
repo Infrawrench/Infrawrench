@@ -41,6 +41,8 @@ import {
   COST_CHARGE_TYPES,
   COST_CHART_TYPES,
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  costFilterOpError,
   COST_MEASURES,
   costDisplayProblem,
   COST_QUERY_MAX_LENGTH,
@@ -166,6 +168,15 @@ import {
 
 export {
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  COST_FILTER_OP_LABELS,
+  COST_FILTER_OP_DESCRIPTIONS,
+  costFilterMatches,
+  costFilterOpError,
+  isCompleteCostFilter,
+  isPatternCostFilterOp,
+  isValuelessCostFilterOp,
+  type CostFilterOp,
   // The cost query language: the text front-end for `costFilterSchema`. Kept
   // in client-core so mobile, the CLI and the server share one parser;
   // re-exported here so cost code that already imports from "./config.js" does
@@ -518,13 +529,25 @@ import {
   type ResourceReportTagFilter,
 } from "@infrawrench/client-core";
 
-export const costFilterSchema = z.object({
+const costFilterObjectSchema = z.object({
   dimension: z.enum(COST_DIMENSIONS),
-  op: z.enum(["in", "not_in"]),
-  values: z.array(z.string()).min(1),
+  op: z.enum(COST_FILTER_OPS),
+  /** At least one, except `is_set` / `is_not_set`, which take none. */
+  values: z.array(z.string()),
   /** Required when dimension is "tag" or "virtual_tag" (the virtual tag's key). */
   tagKey: z.string().optional(),
 });
+
+/** The operator rules `costFilterOpError` states, in the words every editor uses. */
+function refineCostFilter(
+  filter: z.infer<typeof costFilterObjectSchema>,
+  ctx: z.RefinementCtx,
+): void {
+  const problem = costFilterOpError(filter);
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["values"] });
+}
+
+export const costFilterSchema = costFilterObjectSchema.superRefine(refineCostFilter);
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
@@ -2029,7 +2052,10 @@ const canvasId = z
   .max(COST_CANVAS_LIMITS.maxBlockIdLength)
   .regex(/^[A-Za-z0-9_-]+$/, "block ids are letters, digits, '-' and '_'");
 const canvasTitle = z.string().min(1).max(COST_CANVAS_LIMITS.maxBlockTitleLength);
-const canvasFilters = z.array(costFilterSchema.strict()).max(20).default([]);
+const canvasFilters = z
+  .array(costFilterObjectSchema.strict().superRefine(refineCostFilter))
+  .max(20)
+  .default([]);
 const canvasRef = z.string().min(1).max(200);
 
 const canvasKpiMetricSchema = z.discriminatedUnion("type", [

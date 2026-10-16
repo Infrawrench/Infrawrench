@@ -44,7 +44,9 @@ const VirtualTagRule = strict({
     .openapi({
       description:
         "Cost-query-language filter a row must match, e.g. `provider = 'aws' AND service = " +
-        "'AmazonRDS'`. Empty matches every row. May not reference another virtual tag.",
+        "'AmazonRDS'`. Empty matches every row. May filter on another virtual tag " +
+        "(`virtual_tag['team'] = 'payments'`) that gives each row one value (no split rules), " +
+        "as long as the references form no cycle and no chain is more than five tags deep.",
     }),
   description: z.string().max(2000).nullable().default(null),
   startsOn: IsoDay.nullable().default(null).openapi({
@@ -247,7 +249,7 @@ export function registerVirtualTagPaths(ctx: BuildContext) {
     tags: ["Virtual Tags"],
     summary: "Delete a virtual tag",
     description:
-      "Refused with a 409 that names every saved filter, budget, report, dashboard card, " +
+      "Refused with a 409 that names every other virtual tag, saved filter, budget, report, dashboard card, " +
       "change alert, allocation rule, cost export or business metric still referencing the " +
       "key: deleting it would make those fail rather than quietly widen to all spend.",
     request: { params: idParam },

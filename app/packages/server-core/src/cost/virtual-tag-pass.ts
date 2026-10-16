@@ -19,6 +19,8 @@
 import { sql } from "drizzle-orm";
 import {
   normalizeVirtualTagInput,
+  virtualTagDependencies,
+  virtualTagEvaluationOrder,
   virtualTagInputError,
   virtualTagMetricIds,
   type VirtualTag,
@@ -29,7 +31,13 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { getOrgCostDayRange, getVirtualTagStats } from "../clickhouse/cost-readers";
-import { VirtualTagError, compileVirtualTagForRange, loadMetricValues } from "./virtual-tags";
+import {
+  VirtualTagError,
+  assertVirtualTagReferencesSound,
+  compileVirtualTagForRange,
+  loadMetricValues,
+  loadVirtualTagDefinitions,
+} from "./virtual-tags";
 
 /** Longer than the worst-case evaluation: three aggregates over the history. */
 export const VIRTUAL_TAG_LEASE_MS = 10 * 60 * 1000;
@@ -111,6 +119,18 @@ export async function evaluateVirtualTag(
   // equal shares, and `metricFallbackDays` is what tells the owner so.
   const metricValues = await loadMetricValues(organizationId, metricIds, from, to);
   const { compiled, metricFallbackDays } = compileVirtualTagForRange(tag, metricValues, from, to);
+  // The tags this one's rules filter on, compiled for the same range (and
+  // their own dependencies in turn): a tag built on tags is evaluated with
+  // the referenced tags' current rules, exactly as every query reads it.
+  const dependencyKeys = virtualTagDependencies(tag.rules);
+  if (dependencyKeys.length > 0) {
+    compiled.dependencies = await loadVirtualTagDefinitions(
+      organizationId,
+      dependencyKeys,
+      from,
+      to,
+    );
+  }
   const rows = await getVirtualTagStats(organizationId, compiled, from, to);
 
   const byCurrency = new Map<string, VirtualTagCurrencyStats>();
@@ -210,6 +230,7 @@ export async function previewVirtualTag(
   const normalized = normalizeVirtualTagInput(input);
   const error = virtualTagInputError(normalized);
   if (error) throw new VirtualTagError(error);
+  await assertVirtualTagReferencesSound(organizationId, normalized);
   return evaluateVirtualTag(
     organizationId,
     { key: normalized.key, defaultValue: normalized.defaultValue ?? null, rules: normalized.rules },
@@ -217,8 +238,32 @@ export async function previewVirtualTag(
   );
 }
 
+/**
+ * Claimed tags grouped by organization, each group in dependency order: a tag
+ * after every claimed tag it filters on. Exported for the tests.
+ */
+export function orderClaimedVirtualTags(claimed: readonly ClaimedTag[]): ClaimedTag[][] {
+  const byOrg = new Map<string, ClaimedTag[]>();
+  for (const tag of claimed) {
+    const group = byOrg.get(tag.organizationId) ?? [];
+    group.push(tag);
+    byOrg.set(tag.organizationId, group);
+  }
+  return [...byOrg.values()].map((group) => {
+    const order = virtualTagEvaluationOrder(group);
+    return [...group].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  });
+}
+
 export async function runVirtualTagPass(opts: { limit?: number } = {}): Promise<void> {
   const claimed = await claimDueVirtualTags(opts.limit ?? VIRTUAL_TAGS_PER_TICK);
   if (claimed.length === 0) return;
-  await Promise.allSettled(claimed.map((tag) => processVirtualTag(tag)));
+  // Organizations in parallel; within one, dependencies before the tags that
+  // filter on them (the requeue after an edit already makes the claim order
+  // nearest-first, and this keeps one claimed batch in that order too).
+  await Promise.allSettled(
+    orderClaimedVirtualTags(claimed).map(async (group) => {
+      for (const tag of group) await processVirtualTag(tag);
+    }),
+  );
 }

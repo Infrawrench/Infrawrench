@@ -1,14 +1,19 @@
 /**
  * The column-level SQL vocabulary every `cost_daily` reader shares: which
- * column a physical dimension reads, the day-range predicate, and IN/NOT IN
- * over a value list.
+ * column a physical dimension reads, the day-range predicate, and the
+ * predicate each filter operator compiles to.
  *
  * Its own leaf (it imports only the schema) so that `cost-readers.ts`,
  * `virtual-tag-sql.ts` and the export row builder can all use one definition
  * without importing each other: virtual tag rules are themselves filters over
  * these columns, and the readers in turn compile virtual tags.
  */
-import type { CostDimensionId, CostFilter } from "@infrawrench/client-core";
+import {
+  foldCostFilterCase,
+  normalizeCostFilterValue,
+  type CostDimensionId,
+  type CostFilterOp,
+} from "@infrawrench/client-core";
 import { and, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { costDaily } from "./schema";
 
@@ -67,14 +72,78 @@ export function dayRange(from: string, to: string): SQL {
 }
 
 /**
- * `expr IN (values)` / `expr NOT IN (values)`, including for the empty list.
- *
- * Drizzle refuses an empty `inArray`, but an empty filter list is reachable from
- * the wire and used to mean "match nothing" (and, negated, "match everything").
- * Spelling those out keeps a saved filter that lost its last value behaving the
- * way it did before, instead of throwing on read.
+ * The ASCII case fold every text operator applies, in SQL: ClickHouse's
+ * `lower()` folds `A-Z` only, which is exactly what `foldCostFilterCase` in
+ * client-core does on the JS side.
  */
-export function membershipCondition(expr: SQL, op: CostFilter["op"], values: string[]): SQL {
-  if (values.length === 0) return op === "in" ? sql`0` : sql`1`;
-  return op === "in" ? inArray(expr, values) : notInArray(expr, values);
+function folded(expr: SQL): SQL {
+  return sql`lower(${expr})`;
+}
+
+/**
+ * The flexible-match form of a column: ASCII case folded, then `[[:space:]_-]`
+ * removed; the SQL twin of client-core's `normalizeCostFilterValue`. The
+ * pattern is a constant (never user input), so it is rendered raw; the values
+ * it is compared with are normalised in JS and bound as escaped literals.
+ */
+export function flexibleMatchExpr(expr: SQL): SQL {
+  return sql`replaceRegexpAll(${folded(expr)}, ${sql.raw("'[[:space:]_-]'")}, '')`;
+}
+
+/** De-duplicated, in first-seen order, so a repeated value is one predicate. */
+function distinct(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * The predicate one filter term compiles to, for every operator.
+ *
+ * - `in` / `not_in`: `expr IN (values)` / `expr NOT IN (values)`, including
+ *   for the empty list. Drizzle refuses an empty `inArray`, but an empty filter
+ *   list is reachable from the wire and used to mean "match nothing" (and,
+ *   negated, "match everything"). Spelling those out keeps a saved filter that
+ *   lost its last value behaving the way it did before, instead of throwing on
+ *   read.
+ * - `flexible_match`: the normalised column `IN` the normalised values.
+ * - `contains` / `not_contains` / `starts_with`: `position` / `startsWith` over
+ *   the folded column against folded values, OR-ed across values (and negated
+ *   as a whole for `not_contains`). An empty value list matches nothing
+ *   (`not_contains`: everything), the convention `in` already follows.
+ * - `is_set` / `is_not_set`: `expr != ''` / `expr = ''`. A missing map key
+ *   reads as `''` in ClickHouse, so "absent" and "empty" are one state, as
+ *   they are everywhere else a tag is read.
+ *
+ * Values only ever reach SQL as escaped literals through Drizzle's binding;
+ * the one raw fragment is the constant normalisation pattern above.
+ */
+export function membershipCondition(expr: SQL, op: CostFilterOp, values: string[]): SQL {
+  switch (op) {
+    case "in":
+    case "not_in":
+      if (values.length === 0) return op === "in" ? sql`0` : sql`1`;
+      return op === "in" ? inArray(expr, values) : notInArray(expr, values);
+    case "flexible_match": {
+      const targets = distinct(values.map(normalizeCostFilterValue));
+      if (targets.length === 0) return sql`0`;
+      return inArray(flexibleMatchExpr(expr), targets);
+    }
+    case "contains":
+    case "not_contains":
+    case "starts_with": {
+      const needles = distinct(values.map(foldCostFilterCase));
+      if (needles.length === 0) return op === "not_contains" ? sql`1` : sql`0`;
+      const column = folded(expr);
+      const hits = needles.map((needle) =>
+        op === "starts_with"
+          ? sql`startsWith(${column}, ${needle})`
+          : sql`position(${column}, ${needle}) > 0`,
+      );
+      const any = hits.length === 1 ? hits[0]! : sql`(${sql.join(hits, sql` OR `)})`;
+      return op === "not_contains" ? sql`NOT (${any})` : any;
+    }
+    case "is_set":
+      return sql`${expr} != ''`;
+    case "is_not_set":
+      return sql`${expr} = ''`;
+  }
 }

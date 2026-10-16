@@ -266,9 +266,100 @@ export function isCostBasis(value: unknown): value is CostBasis {
   return typeof value === "string" && (COST_BASES as readonly string[]).includes(value);
 }
 
+/**
+ * How a filter term compares a row's value with `values`.
+ *
+ * - `in` / `not_in`: exact equality with any listed value.
+ * - `flexible_match`: equality after {@link normalizeCostFilterValue} on both
+ *   sides, so `Prod_Env`, `prod-env` and `prod env` are one value.
+ * - `contains` / `not_contains` / `starts_with`: substring and prefix tests,
+ *   ignoring ASCII letter case, true when any listed value matches.
+ * - `is_set` / `is_not_set`: whether a tag (provider or virtual) has a
+ *   non-empty value at all. These take no values.
+ *
+ * Every operator compiles to one ClickHouse predicate in
+ * `server-core/src/clickhouse/cost-sql.ts`; `cost-filter-match.ts` holds the
+ * same semantics in JS for anything that evaluates a filter outside SQL.
+ */
+export const COST_FILTER_OPS = [
+  "in",
+  "not_in",
+  "flexible_match",
+  "contains",
+  "not_contains",
+  "starts_with",
+  "is_set",
+  "is_not_set",
+] as const;
+export type CostFilterOp = (typeof COST_FILTER_OPS)[number];
+
+/** Short labels for the operator picker ("service is not EC2"). */
+export const COST_FILTER_OP_LABELS: Record<CostFilterOp, string> = {
+  in: "is",
+  not_in: "is not",
+  flexible_match: "is like",
+  contains: "contains",
+  not_contains: "does not contain",
+  starts_with: "starts with",
+  is_set: "is set",
+  is_not_set: "is not set",
+};
+
+/** One sentence per operator, for tooltips, `--help` and the MCP tool docs. */
+export const COST_FILTER_OP_DESCRIPTIONS: Record<CostFilterOp, string> = {
+  in: "Equal to one of the values.",
+  not_in: "Equal to none of the values.",
+  flexible_match:
+    "Equal to one of the values once letter case, spaces, underscores and hyphens are ignored, so Prod_Env matches prod-env.",
+  contains: "Contains one of the values, ignoring letter case.",
+  not_contains: "Contains none of the values, ignoring letter case.",
+  starts_with: "Starts with one of the values, ignoring letter case.",
+  is_set: "The tag has a value.",
+  is_not_set: "The tag is missing or empty.",
+};
+
+/** Operators that take no values: they test whether a tag is present. */
+export const VALUELESS_COST_FILTER_OPS = [
+  "is_set",
+  "is_not_set",
+] as const satisfies readonly CostFilterOp[];
+
+/** Operators whose values are typed text rather than picked from known values. */
+export const PATTERN_COST_FILTER_OPS = [
+  "flexible_match",
+  "contains",
+  "not_contains",
+  "starts_with",
+] as const satisfies readonly CostFilterOp[];
+
+/**
+ * Operators that keep rows *without* a match: a missing tag reads as `''`, so
+ * `tag['team'] != 'a'` keeps untagged spend. Listed so callers that reason
+ * about whether a term can only narrow a positive set (the scenario scope
+ * check) know which ones they cannot reason about that way.
+ */
+export const NEGATED_COST_FILTER_OPS = [
+  "not_in",
+  "not_contains",
+  "is_not_set",
+] as const satisfies readonly CostFilterOp[];
+
+export function isCostFilterOp(value: unknown): value is CostFilterOp {
+  return typeof value === "string" && (COST_FILTER_OPS as readonly string[]).includes(value);
+}
+
+export function isValuelessCostFilterOp(op: CostFilterOp): boolean {
+  return (VALUELESS_COST_FILTER_OPS as readonly string[]).includes(op);
+}
+
+export function isPatternCostFilterOp(op: CostFilterOp): boolean {
+  return (PATTERN_COST_FILTER_OPS as readonly string[]).includes(op);
+}
+
 export interface CostFilter {
   dimension: CostDimensionId;
-  op: "in" | "not_in";
+  op: CostFilterOp;
+  /** Empty for `is_set` / `is_not_set`; at least one value otherwise. */
   values: string[];
   /** Required when dimension is "tag" or "virtual_tag" (the virtual tag's key). */
   tagKey?: string | undefined;

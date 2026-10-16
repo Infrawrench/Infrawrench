@@ -1,4 +1,4 @@
-import { ALERT_SEVERITIES, ALERT_TRIGGERS } from "@infrawrench/client-core";
+import { ALERT_SEVERITIES, ALERT_TRIGGERS, COST_FILTER_OPS } from "@infrawrench/client-core";
 import { z } from "./zod";
 import { ALL_PERMISSIONS } from "@infrawrench/server-core/permissions";
 
@@ -138,6 +138,29 @@ export const AlertTriggerEnum = z
 export const AlertSeverityEnum = z
   .enum(ALERT_SEVERITIES as [string, ...string[]])
   .openapi("AlertSeverity", { description: "Alert severity, ordered info < warning < critical." });
+
+/**
+ * How a cost filter term compares (`COST_FILTER_OPS` in client-core). Shared by
+ * every schema with a cost filter (queries, reports, budgets, change alerts,
+ * saved filters, exports, scenario and metric scopes, config as code), and
+ * registered once here for the same reason as the trigger enum above.
+ */
+export const CostFilterOperator = z.enum(COST_FILTER_OPS).openapi("CostFilterOperator", {
+  description:
+    "`in` / `not_in` compare exactly. `flexible_match` compares after ignoring letter case, " +
+    "whitespace, `_` and `-` (so `Prod_Env` matches `prod-env`). `contains`, `not_contains` and " +
+    "`starts_with` are substring and prefix tests, ignoring letter case. Each matches when any " +
+    "listed value does (`not_in` and `not_contains`: when none does). `is_set` / `is_not_set` " +
+    "test whether a `tag` or `virtual_tag` has a value, and take an empty `values`.",
+});
+
+/** The values of a cost filter term: empty exactly for `is_set` / `is_not_set`. */
+export const CostFilterValues = z
+  .array(z.string())
+  .describe(
+    "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take " +
+      "an empty list. The text operators refuse an empty string.",
+  );
 
 const RemediationPlaceholder = strict({
   name: z.string().openapi({ example: "AWS_PROFILE" }).describe("Shell variable, without the $."),

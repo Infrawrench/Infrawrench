@@ -1,5 +1,12 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, JsonObject } from "../common";
+import {
+  strict,
+  ErrorResponses,
+  OrgIdParam,
+  JsonObject,
+  CostFilterOperator,
+  CostFilterValues,
+} from "../common";
 import type { BuildContext } from "../context";
 import {
   DASHBOARD_WIDGET_KINDS,
@@ -32,8 +39,8 @@ const Section = z.enum(ORG_CONFIG_SECTIONS).openapi("OrgConfigSection");
 
 const CostFilter = strict({
   dimension: z.string(),
-  op: z.enum(["in", "not_in"]),
-  values: z.array(z.string()).min(1),
+  op: CostFilterOperator,
+  values: CostFilterValues,
   tagKey: z.string().optional(),
 }).openapi("OrgConfigCostFilter");
 

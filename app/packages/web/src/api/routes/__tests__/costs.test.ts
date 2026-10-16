@@ -438,6 +438,49 @@ describe("POST /query", () => {
     expect("chargeTypes" in passed).toBe(false);
   });
 
+  it("accepts the text operators and IS SET, structured or as query text", async () => {
+    const filters = [
+      { dimension: "tag", tagKey: "env", op: "flexible_match", values: ["Prod_Env"] },
+      { dimension: "service", op: "not_contains", values: ["support"] },
+      { dimension: "tag", tagKey: "owner", op: "is_set", values: [] },
+    ];
+    const structured = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({ ...validQuery, filters }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(structured.status).toBe(200);
+    expect(mockQueryCosts.mock.calls[0]![1]).toMatchObject({ filters });
+
+    const text = await buildApp().request("/query", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validQuery,
+        query:
+          "tag['env'] ~= 'Prod_Env' AND service NOT CONTAINS 'support' AND tag['owner'] IS SET",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(text.status).toBe(200);
+    expect(mockQueryCosts.mock.calls[1]![1]).toMatchObject({ filters });
+  });
+
+  it("rejects IS SET off a tag, and a valued operator with no values", async () => {
+    for (const filter of [
+      { dimension: "service", op: "is_set", values: [] },
+      { dimension: "service", op: "contains", values: [] },
+      { dimension: "tag", tagKey: "owner", op: "is_not_set", values: ["x"] },
+    ]) {
+      const res = await buildApp().request("/query", {
+        method: "POST",
+        body: JSON.stringify({ ...validQuery, filters: [filter] }),
+        headers: { "Content-Type": "application/json" },
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(mockQueryCosts).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown cost basis", async () => {
     const res = await buildApp().request("/query", {
       method: "POST",

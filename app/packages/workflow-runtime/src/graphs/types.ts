@@ -34,7 +34,15 @@ export interface GraphCostQuery {
   groupByTagKey?: string | undefined;
   filters: Array<{
     dimension: "provider" | "account" | "service" | "region" | "resource" | "tag";
-    op: "in" | "not_in";
+    op:
+      | "in"
+      | "not_in"
+      | "flexible_match"
+      | "contains"
+      | "not_contains"
+      | "starts_with"
+      | "is_set"
+      | "is_not_set";
     values: string[];
     tagKey?: string | undefined;
   }>;

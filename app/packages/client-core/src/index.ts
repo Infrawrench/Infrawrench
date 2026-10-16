@@ -220,6 +220,16 @@ export {
   type CostChargeType,
   type CostBasis,
   type CostFilter,
+  type CostFilterOp,
+  COST_FILTER_OPS,
+  COST_FILTER_OP_LABELS,
+  COST_FILTER_OP_DESCRIPTIONS,
+  VALUELESS_COST_FILTER_OPS,
+  PATTERN_COST_FILTER_OPS,
+  NEGATED_COST_FILTER_OPS,
+  isCostFilterOp,
+  isValuelessCostFilterOp,
+  isPatternCostFilterOp,
   type CostRangePreset,
   type CostDateRange,
   type CostChartType,
@@ -294,6 +304,13 @@ export {
   COST_QUERY_LANGUAGE_SUMMARY,
   COST_QUERY_MAX_LENGTH,
 } from "./cost-query-language";
+export {
+  foldCostFilterCase,
+  normalizeCostFilterValue,
+  costFilterMatches,
+  isCompleteCostFilter,
+  costFilterOpError,
+} from "./cost-filter-match";
 export {
   K8S_NODE_LABEL_TAG_PREFIX,
   K8S_PVC_LABEL_TAG_PREFIX,

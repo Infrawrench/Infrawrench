@@ -146,6 +146,28 @@ func TestCostFilterRoundTrip(t *testing.T) {
 	}
 }
 
+// `is_set` / `is_not_set` carry no values, and the API refuses `null` where it
+// wants `[]`: the empty list must survive the round trip as an empty slice.
+func TestValuelessCostFilterRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	list, diags := costFiltersTo(ctx, []iw.CostFilter{
+		{Dimension: "tag", Op: "is_not_set", Values: []string{}, TagKey: ptr("owner")},
+	})
+	if diags.HasError() {
+		t.Fatalf("costFiltersTo: %v", diags)
+	}
+	back, diags := costFiltersFrom(ctx, list)
+	if diags.HasError() {
+		t.Fatalf("costFiltersFrom: %v", diags)
+	}
+	if len(back) != 1 || back[0].Op != "is_not_set" {
+		t.Fatalf("clause lost: %+v", back)
+	}
+	if back[0].Values == nil || len(back[0].Values) != 0 {
+		t.Errorf("values must be an empty, non-nil slice, got %#v", back[0].Values)
+	}
+}
+
 func TestCostFiltersFromNullListIsEmptyNotNil(t *testing.T) {
 	got, diags := costFiltersFrom(context.Background(), types.ListNull(costFilterObjectType))
 	if diags.HasError() {

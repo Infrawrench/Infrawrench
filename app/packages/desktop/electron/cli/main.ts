@@ -229,7 +229,8 @@ COMMANDS
                       dry-run one rule against a month of real spend: totals without and
                       with it, and the lines it moved   [--customer <name>] [--month YYYY-MM]
   virtual-tags        the org's virtual tags (keys computed from ordered rules, usable as
-                      virtual_tag['key'] in --where and --group-by virtual_tag:<key>) with status
+                      virtual_tag['key'] in --where and --group-by virtual_tag:<key>; a tag's
+                      rules may filter on other virtual tags, up to five deep) with status
   virtual-tags show   one tag in full: rules, processing status, spend each rule claims and the
        <key|id>       share left unmatched
   virtual-tags reprocess <key|id>
@@ -495,9 +496,13 @@ FLAGS
   --where <query>     costs: filter in the cost query language; terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
                       tag['key'] = 'v', k8s_node_label['key'] = 'v', k8s_pvc_label['key'] = 'v'.
-                      Dimensions: provider, account, service, region,
-                      resource, tag, charge_type, commitment. OR is not supported (the filter
-                      is a conjunction); use IN ('a','b') for several values of one dimension
+                      Text matches ignore letter case: ~= 'prod-env' (also ignores spaces,
+                      _ and -, so Prod_Env matches), CONTAINS 'x', NOT CONTAINS 'x',
+                      STARTS WITH 'x' (each also takes a list). Tags: tag['key'] IS SET,
+                      tag['key'] IS NOT SET. Dimensions: provider, account, service, region,
+                      resource, tag, charge_type, commitment, virtual_tag. OR is not
+                      supported (the filter is a conjunction); use IN ('a','b') for several
+                      values of one dimension
   --filter <name|id>  costs: apply a saved cost filter by reference, resolved on the server
                       at query time, so it always means what it means everywhere else; combines
                       with --where by AND

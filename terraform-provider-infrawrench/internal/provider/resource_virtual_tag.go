@@ -193,7 +193,10 @@ func (r *virtualTagResource) Schema(_ context.Context, _ resource.SchemaRequest,
 							Default:  stringdefault.StaticString(""),
 							MarkdownDescription: "Cost query language filter a row must match, up to 4000 " +
 								"characters, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty (the " +
-								"default) matches every row. It may not reference another virtual tag.",
+								"default) matches every row. It may filter on another virtual tag " +
+								"(`virtual_tag['team'] = 'payments'`, e.g. a business unit built from teams) as long " +
+								"as that tag has no split rules, the references form no cycle and no chain is more " +
+								"than five tags deep; the API refuses the rest and names the problem.",
 							Validators: []validator.String{stringvalidator.LengthAtMost(4000)},
 						},
 						"description": schema.StringAttribute{

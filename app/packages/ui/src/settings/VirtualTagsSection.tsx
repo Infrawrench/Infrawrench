@@ -175,8 +175,9 @@ export function VirtualTagsSection() {
         </T>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Use a virtual tag anywhere a tag works. It is computed at report time and never changes
-            collected spend or totals.
+            Use a virtual tag anywhere a tag works, including in another virtual tag&apos;s rules
+            (for example a business unit built from team). It is computed at report time and never
+            changes collected spend or totals.
           </p>
         </T>
       </div>
@@ -545,6 +546,7 @@ function VirtualTagEditor({
                 index={i}
                 count={rules.length}
                 rule={r.rule}
+                tagKey={key.trim()}
                 tagKeys={tagKeys}
                 metrics={metrics}
                 costApi={costApi}
@@ -616,6 +618,7 @@ function RuleEditor({
   index,
   count,
   rule,
+  tagKey,
   tagKeys,
   metrics,
   costApi,
@@ -626,6 +629,8 @@ function RuleEditor({
   index: number;
   count: number;
   rule: VirtualTagRule;
+  /** The key of the tag being edited: its own rules may not filter on it. */
+  tagKey: string;
   tagKeys: string[];
   metrics: BusinessMetric[];
   costApi: CostApi;
@@ -705,7 +710,7 @@ function RuleEditor({
         <CostFilterEditor
           filters={filters}
           api={costApi}
-          excludeDimensions={["virtual_tag"]}
+          excludeVirtualTagKeys={tagKey ? [tagKey] : undefined}
           onChange={(next) => {
             setFilters(next);
             try {

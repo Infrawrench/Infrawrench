@@ -21880,5 +21880,106 @@
   "b81d0292464a933c": "No se pudo cambiar el tamaño de la tarjeta",
   "7f2382f0786bfd3a": "No se pudo duplicar la tarjeta",
   "74ae0ef3da35cadf": "tarjeta",
-  "ea366ea566041377": "flujo de trabajo"
+  "ea366ea566041377": "flujo de trabajo",
+  "9afc8df1ce1206ea": "Quitar {value}",
+  "646570b262206f6d": "Texto del filtro",
+  "c8c97f6abc0f3cc7": "Escribe un valor y pulsa Intro",
+  "f7b59cef7caa32a3": "Todavía no coincide con ninguno de los valores de los datos de costes.",
+  "9aa6ce31e543c579": "Coincide con {count} valores conocidos, p. ej. {examples}",
+  "d4aa14011972b4f6": "Igual a uno de los valores.",
+  "a9c8f2bd3591ef0b": "No es igual a ninguno de los valores.",
+  "a89f77eba1b750c6": "Igual a uno de los valores al ignorar mayúsculas, espacios, guiones bajos y guiones, de modo que Prod_Env coincide con prod-env.",
+  "15b3a24bf7808dc3": "Contiene uno de los valores, sin distinguir mayúsculas.",
+  "33aba61affacaaed": "No contiene ninguno de los valores, sin distinguir mayúsculas.",
+  "bb09d391fa54061c": "Empieza por uno de los valores, sin distinguir mayúsculas.",
+  "4280406a817a0414": "La etiqueta tiene un valor.",
+  "1a59cad8a33b665b": "La etiqueta falta o está vacía.",
+  "33cd2a348a03ed5b": "se parece a",
+  "05ca8007a6b0c810": "empieza por",
+  "7b68f9c1656955ef": "está definida",
+  "1978fced95b08aff": "no está definida",
+  "b21b6e175b47ad04": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Términos unidos por AND: ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "= 'value'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "!= 'value'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "NOT IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "tag['owner'] = 'platform'"
+      },
+      ". Las coincidencias de texto ignoran mayúsculas: ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "~= 'prod-env'"
+      },
+      " (también ignora espacios, _ y -),",
+      " ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": "CONTAINS 'x'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "NOT CONTAINS 'x'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "STARTS WITH 'x'"
+      },
+      ". Para etiquetas:",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "tag['owner'] IS SET"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "IS NOT SET"
+      },
+      "."
+    ]
+  },
+  "684bfde73a875db8": {
+    "t": "p",
+    "i": 1,
+    "c": "Usa una etiqueta virtual en cualquier lugar donde funcione una etiqueta, incluso en las reglas de otra etiqueta virtual (por ejemplo, una unidad de negocio construida a partir del equipo). Se calcula al generar el informe y nunca cambia el gasto recopilado ni los totales."
+  }
 }

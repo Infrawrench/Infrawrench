@@ -21879,5 +21879,106 @@
   "b81d0292464a933c": "Impossible de redimensionner la carte",
   "7f2382f0786bfd3a": "Impossible de dupliquer la carte",
   "74ae0ef3da35cadf": "carte",
-  "ea366ea566041377": "workflow"
+  "ea366ea566041377": "workflow",
+  "9afc8df1ce1206ea": "Retirer {value}",
+  "646570b262206f6d": "Texte du filtre",
+  "c8c97f6abc0f3cc7": "Saisissez une valeur, puis Entrée",
+  "f7b59cef7caa32a3": "Ne correspond encore à aucune des valeurs présentes dans les données de coûts.",
+  "9aa6ce31e543c579": "Correspond à {count} valeurs connues, par ex. {examples}",
+  "d4aa14011972b4f6": "Égal à l’une des valeurs.",
+  "a9c8f2bd3591ef0b": "Égal à aucune des valeurs.",
+  "a89f77eba1b750c6": "Égal à l’une des valeurs une fois la casse, les espaces, les traits de soulignement et les tirets ignorés, de sorte que Prod_Env correspond à prod-env.",
+  "15b3a24bf7808dc3": "Contient l’une des valeurs, sans tenir compte de la casse.",
+  "33aba61affacaaed": "Ne contient aucune des valeurs, sans tenir compte de la casse.",
+  "bb09d391fa54061c": "Commence par l’une des valeurs, sans tenir compte de la casse.",
+  "4280406a817a0414": "Le tag a une valeur.",
+  "1a59cad8a33b665b": "Le tag est absent ou vide.",
+  "33cd2a348a03ed5b": "ressemble à",
+  "05ca8007a6b0c810": "commence par",
+  "7b68f9c1656955ef": "est défini",
+  "1978fced95b08aff": "n’est pas défini",
+  "b21b6e175b47ad04": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Termes joints par ET : ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "= 'value'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "!= 'value'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "NOT IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "tag['owner'] = 'platform'"
+      },
+      ". Les correspondances de texte ignorent la casse : ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "~= 'prod-env'"
+      },
+      " (ignore aussi les espaces, _ et -),",
+      " ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": "CONTAINS 'x'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "NOT CONTAINS 'x'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "STARTS WITH 'x'"
+      },
+      ". Pour les tags :",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "tag['owner'] IS SET"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "IS NOT SET"
+      },
+      "."
+    ]
+  },
+  "684bfde73a875db8": {
+    "t": "p",
+    "i": 1,
+    "c": "Utilisez un tag virtuel partout où un tag fonctionne, y compris dans les règles d’un autre tag virtuel (par exemple une unité métier construite à partir de l’équipe). Il est calculé au moment du rapport et ne modifie jamais les dépenses collectées ni les totaux."
+  }
 }

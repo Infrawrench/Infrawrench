@@ -62,9 +62,14 @@ describe("virtualTagInputError", () => {
     expect(virtualTagInputError(input([rule({ query: "provider >", value: "x" })]))).toMatch(
       /^Rule 1: the filter does not parse/,
     );
+    // Another tag is fine here (the graph check runs where the org's tags are
+    // known); the tag itself never is.
     expect(
       virtualTagInputError(input([rule({ query: "virtual_tag['env'] = 'x'", value: "x" })])),
-    ).toMatch(/cannot filter on another virtual tag/);
+    ).toBeNull();
+    expect(
+      virtualTagInputError(input([rule({ query: "virtual_tag['team'] = 'x'", value: "x" })])),
+    ).toMatch(/filters on "team" itself/);
   });
 
   it("requires split percentages to sum to 100 and dates to be ordered", () => {

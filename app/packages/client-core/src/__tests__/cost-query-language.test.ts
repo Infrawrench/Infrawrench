@@ -7,7 +7,16 @@ import {
   isValidCostQuery,
   parseCostQuery,
 } from "../cost-query-language";
-import { COST_DIMENSIONS, isKeyedCostDimension, type CostFilter } from "../costs";
+import {
+  COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  isKeyedCostDimension,
+  isPatternCostFilterOp,
+  isValuelessCostFilterOp,
+  type CostFilter,
+  type CostFilterOp,
+} from "../costs";
+import { normalizeCostFilterValue } from "../cost-filter-match";
 
 /** Parse and assert it failed, returning the error for inspection. */
 function parseError(source: string): CostQueryParseError {
@@ -205,8 +214,9 @@ describe("parseCostQuery — errors are useful", () => {
   });
 
   it("rejects comparison operators the filter cannot express", () => {
-    expect(parseError("provider > 'aws'").message).toContain("=, !=, IN and NOT IN");
+    expect(parseError("provider > 'aws'").message).toContain("=, !=, ~=, IN, NOT IN");
     expect(parseError("service LIKE 'Amazon%'").message).toContain("LIKE is not supported");
+    expect(parseError("service MATCHES 'Amazon'").message).toContain("CONTAINS");
   });
 
   it("rejects a lone ! as an operator", () => {
@@ -431,15 +441,21 @@ const TAG_KEYS = [
   "k8s_node_label:",
 ];
 
+/** Fragments a text operator accepts: not empty, and not empty once normalised. */
+const PATTERN_FRAGMENTS = VALUE_FRAGMENTS.filter((v) => normalizeCostFilterValue(v) !== "");
+
 function randomFilter(random: () => number): CostFilter {
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
   const dimension = pick(COST_DIMENSIONS);
-  const op = random() < 0.5 ? "in" : "not_in";
-  const count = 1 + Math.floor(random() * 4);
-  const values = Array.from({ length: count }, () => pick(VALUE_FRAGMENTS));
-  return isKeyedCostDimension(dimension)
-    ? { dimension, op, values, tagKey: pick(TAG_KEYS) }
-    : { dimension, op, values };
+  const keyed = isKeyedCostDimension(dimension);
+  // IS SET / IS NOT SET are tag-only, so other dimensions draw from the rest.
+  const op = pick(
+    keyed ? COST_FILTER_OPS : COST_FILTER_OPS.filter((o) => !isValuelessCostFilterOp(o)),
+  );
+  const count = isValuelessCostFilterOp(op) ? 0 : 1 + Math.floor(random() * 4);
+  const fragments = isPatternCostFilterOp(op) ? PATTERN_FRAGMENTS : VALUE_FRAGMENTS;
+  const values = Array.from({ length: count }, () => pick(fragments));
+  return keyed ? { dimension, op, values, tagKey: pick(TAG_KEYS) } : { dimension, op, values };
 }
 
 describe("round trip", () => {
@@ -494,8 +510,12 @@ describe("round trip", () => {
 
   it("survives every dimension × operator × arity combination", () => {
     for (const dimension of COST_DIMENSIONS) {
-      for (const op of ["in", "not_in"] as const) {
-        for (const values of [["one"], ["one", "two"], ["one", "two", "three"]]) {
+      for (const op of COST_FILTER_OPS) {
+        if (isValuelessCostFilterOp(op) && !isKeyedCostDimension(dimension)) continue;
+        const arities = isValuelessCostFilterOp(op)
+          ? [[]]
+          : [["one"], ["one", "two"], ["one", "two", "three"]];
+        for (const values of arities) {
           const filter: CostFilter = isKeyedCostDimension(dimension)
             ? { dimension, op, values, tagKey: "k" }
             : { dimension, op, values };
@@ -511,5 +531,108 @@ describe("documentation constants", () => {
     for (const dimension of COST_DIMENSIONS) {
       expect(COST_QUERY_LANGUAGE_SUMMARY).toContain(dimension);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The text operators: ~=, CONTAINS, NOT CONTAINS, STARTS WITH, IS [NOT] SET.
+ * ------------------------------------------------------------------ */
+
+describe("text operators", () => {
+  const cases: Array<[string, CostFilter, string]> = [
+    [
+      "tag['env'] ~= 'Prod_Env'",
+      { dimension: "tag", op: "flexible_match", values: ["Prod_Env"], tagKey: "env" },
+      "tag['env'] ~= 'Prod_Env'",
+    ],
+    [
+      "tag['env'] ~= ('prod', 'staging')",
+      { dimension: "tag", op: "flexible_match", values: ["prod", "staging"], tagKey: "env" },
+      "tag['env'] ~= ('prod', 'staging')",
+    ],
+    [
+      "service contains 'compute'",
+      { dimension: "service", op: "contains", values: ["compute"] },
+      "service CONTAINS 'compute'",
+    ],
+    [
+      "service NOT CONTAINS ('support', 'tax')",
+      { dimension: "service", op: "not_contains", values: ["support", "tax"] },
+      "service NOT CONTAINS ('support', 'tax')",
+    ],
+    [
+      "resource Starts With 'arn:aws:rds'",
+      { dimension: "resource", op: "starts_with", values: ["arn:aws:rds"] },
+      "resource STARTS WITH 'arn:aws:rds'",
+    ],
+    [
+      "tag['owner'] is set",
+      { dimension: "tag", op: "is_set", values: [], tagKey: "owner" },
+      "tag['owner'] IS SET",
+    ],
+    [
+      "virtual_tag['team'] IS NOT SET",
+      { dimension: "virtual_tag", op: "is_not_set", values: [], tagKey: "team" },
+      "virtual_tag['team'] IS NOT SET",
+    ],
+    [
+      "k8s_node_label['team'] IS NOT SET",
+      { dimension: "tag", op: "is_not_set", values: [], tagKey: "k8s_node_label:team" },
+      "k8s_node_label['team'] IS NOT SET",
+    ],
+  ];
+
+  for (const [text, filter, canonical] of cases) {
+    it(`parses and prints ${text}`, () => {
+      expect(parseCostQuery(text)).toEqual([filter]);
+      expect(formatCostQuery([filter])).toBe(canonical);
+    });
+  }
+
+  it("combines with the equality operators under AND", () => {
+    expect(
+      parseCostQuery("provider = 'aws' AND tag['env'] ~= 'prod' AND tag['owner'] IS NOT SET"),
+    ).toEqual([
+      { dimension: "provider", op: "in", values: ["aws"] },
+      { dimension: "tag", op: "flexible_match", values: ["prod"], tagKey: "env" },
+      { dimension: "tag", op: "is_not_set", values: [], tagKey: "owner" },
+    ]);
+  });
+
+  it("refuses IS SET on a dimension that is not a tag, pointing at the operator", () => {
+    const error = parseError("service IS SET");
+    expect(error.message).toContain("tags and virtual tags only");
+    expect(error.offset).toBe("service ".length);
+    expect(error.length).toBe("IS SET".length);
+  });
+
+  it("refuses an empty text match", () => {
+    expect(parseError("service CONTAINS ''").message).toContain("matches everything");
+    expect(parseError("tag['env'] ~= ' _-'").message).toContain("IS NOT SET");
+  });
+
+  it("explains half-written operators", () => {
+    expect(parseError("service STARTS 'a'").message).toContain("Expected WITH after STARTS");
+    expect(parseError("tag['a'] IS 'x'").message).toContain("Expected SET after IS");
+    expect(parseError("tag['a'] IS NOT 'x'").message).toContain("Expected SET after IS NOT");
+    expect(parseError("service NOT LIKE 'a'").message).toContain("IN or CONTAINS after NOT");
+    expect(parseError("service ~ 'a'").message).toContain('"~="');
+    expect(parseError("service CONTAINS").message).toContain("quoted value or a list");
+    expect(parseError("service CONTAINS ()").message).toContain("Give CONTAINS at least one");
+  });
+
+  it("does not skip a valueless operator when rendering", () => {
+    const filters: CostFilter[] = [
+      { dimension: "provider", op: "in", values: [] },
+      { dimension: "tag", op: "is_set", values: [], tagKey: "owner" },
+    ];
+    expect(formatCostQuery(filters)).toBe("tag['owner'] IS SET");
+  });
+
+  it("covers every operator in COST_FILTER_OPS", () => {
+    const seen = new Set<CostFilterOp>(cases.map(([, f]) => f.op));
+    seen.add("in");
+    seen.add("not_in");
+    expect([...seen].sort()).toEqual([...COST_FILTER_OPS].sort());
   });
 });
