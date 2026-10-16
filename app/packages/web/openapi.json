@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.81.0",
+    "version": "1.82.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -39789,7 +39789,8 @@
           "cost_report",
           "cost_report_folder",
           "dashboard",
-          "cost_canvas"
+          "cost_canvas",
+          "commitment_report"
         ]
       },
       "OrgAccessLevel": {
@@ -40511,6 +40512,708 @@
           "pendingAccountIds",
           "utilizationWindowDays",
           "plannerWindowDays"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportOptions": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "measured",
+                    "inventory_only"
+                  ]
+                }
+              },
+              "required": [
+                "pluginId",
+                "displayName",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "pluginId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "commitments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "commitmentId": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "reservation",
+                    "savings_plan",
+                    "committed_use"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "commitmentId",
+                "accountId",
+                "pluginId",
+                "kind",
+                "description",
+                "state"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "providers",
+          "accounts",
+          "services",
+          "regions",
+          "commitments"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportGranularity": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly",
+          "quarterly"
+        ],
+        "description": "Bucket size. There is no hourly: spend is collected one row per UTC day, so an hourly bucket would put each day's spend at midnight. Weeks start on Monday."
+      },
+      "CommitmentReportGroupBy": {
+        "type": "string",
+        "enum": [
+          "none",
+          "provider",
+          "commitment_type",
+          "commitment",
+          "service",
+          "account",
+          "region"
+        ],
+        "description": "`commitment_type` and `commitment` split the commitment side by holding and put uncovered usage in its own `__on_demand__` group; covered usage the provider did not tie to a commitment (all of AWS, whose Cost Explorer cannot group by commitment) is `__unattributed__`. Under those two, each group's coverage is its share of the bucket's whole usage, so the groups add up. Instance family is not offered: no collector stores it on cost rows."
+      },
+      "CommitmentReportTotals": {
+        "type": "object",
+        "properties": {
+          "covered": {
+            "type": "number",
+            "description": "Amortized usage the selected commitments covered: the used commitment cost."
+          },
+          "coveredAll": {
+            "type": "number",
+            "description": "Amortized usage any commitment covered."
+          },
+          "unused": {
+            "type": "number",
+            "description": "Amortized commitment fees no usage absorbed (only fee rows with a reported amortized amount)."
+          },
+          "uncovered": {
+            "type": "number",
+            "description": "Amortized usage no commitment covered: the on-demand remainder."
+          },
+          "uncoveredEligible": {
+            "type": "number",
+            "description": "Uncovered usage in (provider, service, region) cells with any covered usage in the window."
+          },
+          "coveredOnDemand": {
+            "type": "number",
+            "description": "On-demand equivalent of covered usage, summed over rows whose provider reported one."
+          },
+          "coveredMeasured": {
+            "type": "number",
+            "description": "Amortized amount of those same rows."
+          }
+        },
+        "required": [
+          "covered",
+          "coveredAll",
+          "unused",
+          "uncovered",
+          "uncoveredEligible",
+          "coveredOnDemand",
+          "coveredMeasured"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportMetricValues": {
+        "type": "object",
+        "properties": {
+          "coverage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "covered ÷ (coveredAll + uncovered), or the bucket's usage under a commitment grouping. Null when the denominator is zero."
+          },
+          "eligibleCoverage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "covered ÷ (coveredAll + uncoveredEligible): the upper bound of coverage. Null when the denominator is zero."
+          },
+          "utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "covered ÷ (covered + unused). Null when the denominator is zero."
+          },
+          "effectiveSavingsRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "netSavings ÷ (onDemandEquivalent + uncovered). Null also when netSavings is null. Null when the denominator is zero."
+          },
+          "netSavings": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "(coveredOnDemand − coveredMeasured) − unused. Null when there was covered usage and none of it had a reported on-demand equivalent; covered usage without one counts as saving nothing."
+          },
+          "onDemandRemainder": {
+            "type": "number",
+            "description": "uncovered."
+          },
+          "commitmentCost": {
+            "type": "number",
+            "description": "covered + unused."
+          },
+          "usedCommitmentCost": {
+            "type": "number",
+            "description": "covered."
+          },
+          "unusedCommitmentCost": {
+            "type": "number",
+            "description": "unused."
+          },
+          "onDemandEquivalent": {
+            "type": "number",
+            "description": "coveredOnDemand + (covered − coveredMeasured)."
+          },
+          "savingsMeasuredShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "coveredMeasured ÷ covered: how much of the covered spend the savings figure measured."
+          }
+        },
+        "required": [
+          "coverage",
+          "eligibleCoverage",
+          "utilization",
+          "effectiveSavingsRate",
+          "netSavings",
+          "onDemandRemainder",
+          "commitmentCost",
+          "usedCommitmentCost",
+          "unusedCommitmentCost",
+          "onDemandEquivalent",
+          "savingsMeasuredShare"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CommitmentReportTotals"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/CommitmentReportMetricValues"
+          }
+        },
+        "required": [
+          "bucket",
+          "totals",
+          "metrics"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportSeries": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "groupKey": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportPoint"
+            }
+          },
+          "total": {
+            "type": "object",
+            "properties": {
+              "totals": {
+                "$ref": "#/components/schemas/CommitmentReportTotals"
+              },
+              "metrics": {
+                "$ref": "#/components/schemas/CommitmentReportMetricValues"
+              }
+            },
+            "required": [
+              "totals",
+              "metrics"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "groupKey",
+          "label",
+          "currency",
+          "points",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportProvider": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "inventory_only"
+            ],
+            "description": "`inventory_only`: the provider's holdings are collected but its cost rows do not distinguish covered usage (GCP today), so it is left out of every metric rather than read as 0% covered."
+          },
+          "accountCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pluginId",
+          "displayName",
+          "status",
+          "accountCount"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            }
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportProvider"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "unused_lumped_monthly",
+                "unattributed_commitment_usage",
+                "partial_savings_measurement",
+                "no_measurable_accounts"
+              ]
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "buckets",
+          "series",
+          "overall",
+          "providers",
+          "notices"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportFilters": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Plugin ids: `aws`, `azure`, `gcp`."
+          },
+          "commitmentTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "reservation",
+                "savings_plan",
+                "committed_use"
+              ]
+            },
+            "maxItems": 200
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "maxItems": 200
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "commitmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Provider-native commitment ids, as `GET /commitments/report-options` lists them."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Lists AND-compose; values within a list OR. `commitmentTypes` and `commitmentIds` narrow the commitment side (covered usage and unused fees) only: uncovered usage stays in, because it is the rest of the coverage denominator."
+      },
+      "CommitmentReportMetric": {
+        "type": "string",
+        "enum": [
+          "coverage",
+          "eligibleCoverage",
+          "utilization",
+          "effectiveSavingsRate",
+          "netSavings",
+          "onDemandRemainder",
+          "commitmentCost",
+          "usedCommitmentCost",
+          "unusedCommitmentCost"
+        ],
+        "description": "The metric the chart draws. The table always carries every metric."
+      },
+      "CommitmentReportConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CommitmentReportFilters"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/CommitmentReportMetric"
+          }
+        },
+        "required": [
+          "version",
+          "dateRange",
+          "granularity",
+          "groupBy",
+          "filters",
+          "metric"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/CommitmentReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/CommitmentReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "A report folder (`/cost-report-folders`, shared with cost reports); null is the top level.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportRunResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            }
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportProvider"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "unused_lumped_monthly",
+                "unattributed_commitment_usage",
+                "partial_savings_measurement",
+                "no_measurable_accounts"
+              ]
+            }
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "buckets",
+          "series",
+          "overall",
+          "providers",
+          "notices",
+          "reportId",
+          "name"
         ],
         "additionalProperties": false
       },
@@ -91151,6 +91854,467 @@
           }
         },
         "operationId": "getOrgOrgIdCommitments",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/commitments/report-options": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Picker values for the commitment report editor",
+        "description": "Providers (with whether their cost rows can measure coverage), accounts, the services and regions with usage in the last 180 days, and the commitment inventory. Scoped to what the caller may see.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCommitmentsReportOptions",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/commitments/report-query": {
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Run an unsaved commitment report config",
+        "description": "Coverage, utilization, savings and commitment cost over time, on the amortized basis. See `CommitmentReportMetricValues` for each metric's formula. A read despite the method.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCommitmentsReportQuery",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "List saved commitment reports",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommitmentReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCommitmentsReports",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Create a commitment report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCommitmentsReports",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports/{id}": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Get a commitment report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCommitmentsReportsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Replace a commitment report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCommitmentsReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Delete a commitment report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCommitmentsReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports/{id}/run": {
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "summary": "Run a saved commitment report",
+        "description": "A relative date range resolves against today on every run.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCommitmentsReportsIdRun",
         "x-required-permission": "costs:read"
       }
     },

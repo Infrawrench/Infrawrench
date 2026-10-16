@@ -248,6 +248,36 @@ func (c *Client) DeleteCostReport(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/cost-reports/"+seg(id))
 }
 
+/* ---------------------------- commitment reports --------------------------- */
+
+func (c *Client) GetCommitmentReport(ctx context.Context, id string) (*CommitmentReport, error) {
+	var out CommitmentReport
+	if err := c.Get(ctx, "/commitments/reports/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCommitmentReport(ctx context.Context, in CommitmentReportInput) (*CommitmentReport, error) {
+	var out CommitmentReport
+	if err := c.Post(ctx, "/commitments/reports", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCommitmentReport(ctx context.Context, id string, in CommitmentReportInput) (*CommitmentReport, error) {
+	var out CommitmentReport
+	if err := c.Put(ctx, "/commitments/reports/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCommitmentReport(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/commitments/reports/"+seg(id))
+}
+
 /* --------------------------- cost report folders --------------------------- */
 
 func (c *Client) ListCostReportFolders(ctx context.Context) ([]CostReportFolder, error) {

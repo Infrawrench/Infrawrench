@@ -90,6 +90,11 @@ func specChecks() []specCheck {
 		{schema: "CostReportFolder", value: CostReportFolder{}},
 		{schema: "CostReportFolderInput", value: CostReportFolderInput{}},
 
+		{schema: "CommitmentReport", value: CommitmentReport{}},
+		{schema: "CommitmentReportInput", value: CommitmentReportInput{}},
+		{schema: "CommitmentReportConfig", value: CommitmentReportConfig{}},
+		{schema: "CommitmentReportFilters", value: CommitmentReportFilters{}},
+
 		{schema: "CostAlert", value: CostAlert{}},
 		{schema: "CostAlertInput", value: CostAlertInput{}},
 

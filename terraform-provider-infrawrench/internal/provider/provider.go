@@ -170,6 +170,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewTagKeySettingsResource,
 		NewSavedFilterResource,
 		NewCostReportResource,
+		NewCommitmentReportResource,
 		NewCostReportFolderResource,
 		NewCostReportNotificationResource,
 		NewDashboardNotificationResource,
