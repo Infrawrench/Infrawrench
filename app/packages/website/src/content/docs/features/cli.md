@@ -253,6 +253,16 @@ infrawrench credits
 infrawrench credits --json
 ```
 
+`commitments` prints the [commitments](./commitments.md) inventory, coverage range and savings planner. `commitments reports` lists saved [commitment reports](./commitment-reports.md) and, given a name or id, runs one: coverage, utilization, effective savings rate, net savings, the on-demand remainder and used and unused commitment over time, with a sparkline of the report's chart metric (`--metric` picks another). `--format csv` writes the same CSV the app exports (to stdout, or `--out <file>`). `commitments report` runs an unsaved report from flags: `--last`/`--from`/`--to`, `--bin day|week|month|quarter` (no hourly: spend is stored per day), `--group-by provider|commitment_type|commitment|service|account|region`, `--provider` and `-a`. Needs `costs:read`:
+
+```
+infrawrench commitments
+infrawrench commitments reports
+infrawrench commitments reports "EC2 coverage by account" --metric utilization
+infrawrench commitments reports "EC2 coverage by account" --format csv --out ec2.csv
+infrawrench commitments report --last 180d --bin month --group-by commitment_type --json
+```
+
 `savings` is [realized savings](./realized-savings.md): what resizes, orphan cleanups, sleep schedules, commitments and logged actions actually saved against each resource's own pre-action spend, beside the projection, with a breakdown (`--group-by month|kind|cost-centre|account`) and every action listed. `savings log` records a saving Infrawrench could not see happen (`costs:write`). Needs `costs:read`:
 
 ```
