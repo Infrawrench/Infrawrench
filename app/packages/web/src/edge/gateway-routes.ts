@@ -48,6 +48,11 @@ const SESSION_ROUTES: readonly RegExp[] = [
   // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in
   // with the session gateway's GKE Workload Identity.
   new RegExp(`${ORG}/chat(/|$)`),
+  // Background cost export jobs: creating one kicks the export loop that only
+  // the session gateway runs (`services/cost-export-job-loop.ts`), and a
+  // finished file streams out of Postgres for as long as a large download
+  // takes. Polling a job's status (`/costs/exports/jobs/{id}`) stays on the edge.
+  new RegExp(`${ORG}/costs/exports/jobs(/[^/]+/download)?$`),
   new RegExp(
     `${ORG}/(` +
       [

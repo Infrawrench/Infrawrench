@@ -11,6 +11,7 @@ import type {
 } from "@infrawrench/client-core";
 import { normalizeCurrencyCode } from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
+import { ExchangeRateCsvImport } from "./ExchangeRateCsvImport.js";
 
 /**
  * Currency: the org's display currency and the exchange rates it states.
@@ -345,6 +346,7 @@ export function CurrencySection() {
                 onError={setError}
               />
             )}
+            {canEdit && <ExchangeRateCsvImport onImported={load} />}
           </section>
         </div>
       )}

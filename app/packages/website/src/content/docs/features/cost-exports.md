@@ -273,6 +273,10 @@ Every mutation is written to the [audit log](../team-and-billing/audit-log.md) a
 - Restatement window: 0–90 days.
 - A run writes every period overlapping its window, so a daily export with a 90-day window writes 91 objects per run (or replaces 91 days of rows in a table).
 
+## One-off exports in the background
+
+A scheduled export is a standing feed into your bucket or warehouse. For a single large file you download yourself, use **Export…** on a [cost report](./cost-reports.md#large-exports-in-the-background) instead: the same native and FOCUS layouts, written in the background with progress and kept for 24 hours. Over the API it is `POST /api/org/{orgId}/costs/exports/jobs` with a `reportId` (or an ad-hoc `query` with `from` and `to`) and a `format` of `csv`, `ndjson` or `focus`; poll `GET /api/org/{orgId}/costs/exports/jobs/{jobId}` until `status` is `succeeded`, then fetch `downloadUrl`. It needs only `costs:read`, because the file goes to the person who asked rather than to a destination of their choosing. From the CLI: `infrawrench export --async --format focus --last 365d --wait --out focus.csv`.
+
 ## See also
 
 - [Cost graphs & budgets](./cloud-costs.md) — where the data being exported comes from.

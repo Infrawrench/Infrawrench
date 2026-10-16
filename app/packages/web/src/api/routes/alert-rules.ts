@@ -8,12 +8,10 @@
  * mutes live on `/push/preferences` and need no permission at all.)
  */
 import { Hono } from "hono";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   ALERT_RULE_LIMITS,
-  isAlertEmailAddressAllowed,
   isAlertTrigger,
-  normalizeAlertEmailAddress,
   validateAlertRule,
   type AlertCondition,
   type AlertDestination,
@@ -27,22 +25,21 @@ import {
   replaceAlertRules,
   resolveRoutingRules,
 } from "@infrawrench/server-core/alerts/rules";
-import { getAlertEmailOptions } from "@infrawrench/server-core/alerts/email";
+import {
+  canonicalDestination,
+  destinationShapeError,
+  foreignDestinationError,
+  loadDestinationCatalog,
+  loadOwnedDestinations,
+} from "@infrawrench/server-core/alerts/destinations";
 import {
   acknowledgeAlert,
   cancelAlertDeliveries,
   listAlertDeliveries,
 } from "@infrawrench/server-core/alerts/ack";
-import { listPagingProviders } from "@infrawrench/server-core/paging/providers";
 
 import { db } from "../../db/client";
-import {
-  accounts,
-  msteamsWebhooks,
-  onCallSchedules,
-  slackChannels,
-  slackInstallations,
-} from "../../db/schema";
+import { accounts } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 
@@ -60,68 +57,26 @@ app.get("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
 
-  const [{ rules, usingDefaults }, channels, webhooks, accountRows, rotations, email] =
-    await Promise.all([
-      resolveRoutingRules(organizationId),
-      db
-        .select({
-          id: slackChannels.id,
-          name: slackChannels.channelName,
-          isPrivate: slackChannels.isPrivate,
-        })
-        .from(slackChannels)
-        .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
-        // Disconnected installations are filtered out, exactly as
-        // `resolveSlackChannels` does at delivery time. Offering a channel the
-        // sender can no longer reach would let the editor build a rule that
-        // silently routes nowhere.
-        .where(
-          and(
-            eq(slackChannels.organizationId, organizationId),
-            isNull(slackInstallations.deletedAt),
-          ),
-        ),
-      db
-        .select({ id: msteamsWebhooks.id, label: msteamsWebhooks.label })
-        .from(msteamsWebhooks)
-        .where(eq(msteamsWebhooks.organizationId, organizationId)),
-      db
-        .select({
-          id: accounts.id,
-          displayName: accounts.displayName,
-          pluginId: accounts.pluginId,
-        })
-        .from(accounts)
-        .where(eq(accounts.organizationId, organizationId)),
-      // Live rotations only, matching the reason disconnected Slack installs are
-      // filtered out above: offering a disabled rotation would let the editor
-      // build a rule that resolves to nobody.
-      db
-        .select({ id: onCallSchedules.id, name: onCallSchedules.name })
-        .from(onCallSchedules)
-        .where(
-          and(
-            eq(onCallSchedules.organizationId, organizationId),
-            eq(onCallSchedules.enabled, true),
-          ),
-        )
-        .orderBy(onCallSchedules.name),
-      // Members and the external-address policy, for the email destination
-      // picker. Same reasoning as the lists above: one round trip.
-      getAlertEmailOptions(organizationId),
-    ]);
+  const [{ rules, usingDefaults }, accountRows, catalog] = await Promise.all([
+    resolveRoutingRules(organizationId),
+    db
+      .select({
+        id: accounts.id,
+        displayName: accounts.displayName,
+        pluginId: accounts.pluginId,
+      })
+      .from(accounts)
+      .where(eq(accounts.organizationId, organizationId)),
+    // Channels, webhooks, rotations, members and the address policy: the same
+    // picker data report anomaly alerts use (`server-core/alerts/destinations`).
+    loadDestinationCatalog(organizationId),
+  ]);
 
   const payload: AlertRulesResponse = {
     rules,
     usingDefaults,
-    slackChannels: channels,
-    msTeamsWebhooks: webhooks,
     accounts: accountRows,
-    onCallSchedules: rotations,
-    members: email.members,
-    emailAvailable: email.emailAvailable,
-    emailSettings: email.settings,
-    memberDomains: email.memberDomains,
+    ...catalog,
   };
   return c.json(payload);
 });
@@ -149,18 +104,6 @@ const CONDITION_FIELDS = new Set([
   "text",
 ]);
 
-const DESTINATION_KINDS = new Set([
-  "push",
-  "slack",
-  "msteams",
-  "on-call",
-  "github-issues",
-  "email-member",
-  "email-address",
-  "paging-provider",
-  "provider-on-call",
-]);
-
 /**
  * Structural check before the semantic one.
  *
@@ -183,53 +126,7 @@ const DESTINATION_KINDS = new Set([
  * separate check (`foreignDestination`) because it needs a database round trip.
  */
 function destinationError(dest: AlertDestination | null | undefined, what: string): string | null {
-  if (!dest || typeof dest !== "object" || !DESTINATION_KINDS.has(dest.kind)) {
-    return `Unknown ${what} "${(dest as { kind?: string } | null)?.kind ?? "?"}"`;
-  }
-  if (dest.kind === "slack" && (typeof dest.channelId !== "string" || !dest.channelId)) {
-    return `A Slack ${what} needs a channelId`;
-  }
-  if (dest.kind === "msteams" && (typeof dest.webhookId !== "string" || !dest.webhookId)) {
-    return `A Teams ${what} needs a webhookId`;
-  }
-  if (dest.kind === "on-call" && (typeof dest.scheduleId !== "string" || !dest.scheduleId)) {
-    return `An on-call ${what} needs a scheduleId`;
-  }
-  if (dest.kind === "email-member" && (typeof dest.userId !== "string" || !dest.userId)) {
-    return `A member email ${what} needs a userId`;
-  }
-  if (
-    dest.kind === "email-address" &&
-    (typeof dest.address !== "string" || !normalizeAlertEmailAddress(dest.address))
-  ) {
-    return `An email ${what} needs a valid address`;
-  }
-  if (
-    dest.kind === "paging-provider" &&
-    (typeof dest.accountId !== "string" ||
-      !dest.accountId ||
-      typeof dest.targetId !== "string" ||
-      !dest.targetId)
-  ) {
-    return `A paging provider ${what} needs an accountId and a targetId`;
-  }
-  if (
-    dest.kind === "provider-on-call" &&
-    (typeof dest.accountId !== "string" ||
-      !dest.accountId ||
-      typeof dest.sourceId !== "string" ||
-      !dest.sourceId)
-  ) {
-    return `A provider on-call ${what} needs an accountId and a sourceId`;
-  }
-  return null;
-}
-
-/** Lowercase an extra address so dedupe and the policy check see one spelling. */
-function canonicalDestination(d: AlertDestination): AlertDestination {
-  return d.kind === "email-address"
-    ? { kind: "email-address", address: normalizeAlertEmailAddress(d.address) ?? d.address }
-    : d;
+  return destinationShapeError(dest, what);
 }
 
 function structuralError(rule: RuleBody): string | null {
@@ -293,49 +190,14 @@ app.put("/", async (c) => {
     return c.json({ error: `At most ${ALERT_RULE_LIMITS.maxRulesPerOrg} rules per org` }, 400);
   }
 
-  const [ownChannels, ownWebhooks, ownRules, ownSchedules, emailOptions, pagingAccounts] =
-    await Promise.all([
-      // Live installations only, matching the GET list and `resolveSlackChannels`.
-      // A channel whose install was disconnected is still a row in this org's
-      // table, so ownership alone would accept it, and it would then be dropped
-      // at delivery time, turning a first-match rule into silence.
-      db
-        .select({ id: slackChannels.id })
-        .from(slackChannels)
-        .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
-        .where(
-          and(
-            eq(slackChannels.organizationId, organizationId),
-            isNull(slackInstallations.deletedAt),
-          ),
-        ),
-      db
-        .select({ id: msteamsWebhooks.id })
-        .from(msteamsWebhooks)
-        .where(eq(msteamsWebhooks.organizationId, organizationId)),
-      listAlertRules(organizationId),
-      // Rotations are checked for the same reason channels are: a destination
-      // naming a rotation from another org would be dropped at delivery time,
-      // turning a first-match rule into silence.
-      db
-        .select({ id: onCallSchedules.id })
-        .from(onCallSchedules)
-        .where(eq(onCallSchedules.organizationId, organizationId)),
-      // Email destinations are checked the same way: a member id must be a
-      // current member and an extra address must pass the org's policy, or the
-      // rule would save and then deliver nothing.
-      getAlertEmailOptions(organizationId),
-      // Paging destinations must name one of this org's accounts whose provider
-      // can page (and, for on-call, can say who is on call). The target id itself
-      // is the provider's and is not re-listed here: that would make saving a
-      // rule depend on the provider being reachable.
-      listPagingProviders(organizationId),
-    ]);
-  const pagingById = new Map(pagingAccounts.map((a) => [a.accountId, a]));
-  const memberIds = new Set(emailOptions.members.map((m) => m.userId));
-  const channelIds = new Set(ownChannels.map((r) => r.id));
-  const webhookIds = new Set(ownWebhooks.map((r) => r.id));
-  const scheduleIds = new Set(ownSchedules.map((r) => r.id));
+  // Everything a destination may name, checked below: this org's live Slack
+  // channels, Teams webhooks, rotations, members, allowed addresses and paging
+  // accounts (`server-core/alerts/destinations.ts`, shared with report
+  // anomaly alerts).
+  const [owned, ownRules] = await Promise.all([
+    loadOwnedDestinations(organizationId),
+    listAlertRules(organizationId),
+  ]);
   const ownRuleIds = new Set(ownRules.map((r) => r.id));
 
   // An id the caller did not get from this org's own list is rejected rather
@@ -347,39 +209,7 @@ app.put("/", async (c) => {
     return c.json({ error: `Unknown rule id "${unknownId.id}"` }, 400);
   }
 
-  function foreignDestination(dests: AlertDestination[]): string | null {
-    for (const d of dests) {
-      if (d.kind === "slack" && !channelIds.has(d.channelId)) {
-        return "That Slack channel is not connected to this organization";
-      }
-      if (d.kind === "msteams" && !webhookIds.has(d.webhookId)) {
-        return "That Teams channel is not connected to this organization";
-      }
-      if (d.kind === "on-call" && !scheduleIds.has(d.scheduleId)) {
-        return "That on-call rotation does not belong to this organization";
-      }
-      if (d.kind === "email-member" && !memberIds.has(d.userId)) {
-        return "That person is no longer a member of this organization; remove their email destination";
-      }
-      if (
-        d.kind === "email-address" &&
-        !isAlertEmailAddressAllowed(
-          d.address.toLowerCase(),
-          emailOptions.settings,
-          emailOptions.memberDomains,
-        )
-      ) {
-        return `${d.address} is outside the domains this organization allows for alert email`;
-      }
-      if (d.kind === "paging-provider" && !pagingById.has(d.accountId)) {
-        return "That paging provider account does not belong to this organization";
-      }
-      if (d.kind === "provider-on-call" && !pagingById.get(d.accountId)?.onCallSourceLabel) {
-        return "That account cannot say who is on call";
-      }
-    }
-    return null;
-  }
+  const foreignDestination = (dests: AlertDestination[]) => foreignDestinationError(owned, dests);
 
   const prepared = [];
   for (const [i, rule] of input.entries()) {

@@ -71,6 +71,7 @@ import {
   type CostAnomalySmsMode,
 } from "./anomaly-settings";
 import { pageAboutAnomalies, type AnomalySmsItem } from "./anomaly-sms";
+import { evaluateReportAnomalyAlertsForOrg } from "./report-anomaly-alerts";
 import { isoDay, addDays, daysBetween } from "./dates";
 import { orgAppUrl } from "../app-url";
 import { publishEvent } from "../events/publish";
@@ -749,6 +750,11 @@ export async function detectCostAnomaliesForOrg(
   }
 
   await pageAnomaliesBatch(organizationId, settings.smsAlerts, paged, now);
+
+  // Report-scoped alerts ride the same cadence and rate limit: each judges its
+  // report's filtered total at its own sensitivity and sends to its own
+  // destinations, independently of the org-wide rules above. Never throws.
+  await evaluateReportAnomalyAlertsForOrg(organizationId, now);
 }
 
 /**

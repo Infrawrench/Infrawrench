@@ -31,8 +31,15 @@ import {
   businessMetricInputSchema,
   businessMetricSourceOptionsRequestSchema,
   businessMetricValuesBodySchema,
+  unitCostExportRequestSchema,
   unitCostQueryRequestSchema,
 } from "@infrawrench/ui/cost/config";
+import {
+  unitCostExportFile,
+  unitCostExportFilename,
+  type UnitCostExportFormat,
+  type UnitCostQueryResponse,
+} from "@infrawrench/client-core";
 import {
   BusinessMetricIngestError,
   ingestMetricValues,
@@ -209,6 +216,53 @@ app.post("/usage-unit-costs", async (c) => {
   }
   try {
     return c.json(await runUsageUnitCostQuery(c.get("organizationId"), parsed.data));
+  } catch (e) {
+    if (e instanceof CostQueryError) {
+      return c.json(
+        { error: e.message, ...(e.queryError ? { queryError: e.queryError } : {}) },
+        400,
+      );
+    }
+    throw e;
+  }
+});
+
+/**
+ * The file answer shared by both export routes: the response the JSON route
+ * would have returned, serialised by the same client-core function the card's
+ * download button uses, so a file from the API and a file from the chart are
+ * the same rows.
+ */
+function unitCostFileResponse(
+  response: UnitCostQueryResponse,
+  request: { from: string; to: string; format?: UnitCostExportFormat | undefined },
+): Response {
+  const format = request.format ?? "csv";
+  const file = unitCostExportFile(response, format);
+  return new Response(file.body, {
+    headers: {
+      "Content-Type": file.contentType,
+      "Content-Disposition": `attachment; filename="${unitCostExportFilename(response, request, format)}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/**
+ * POST /api/org/:orgId/business-metrics/usage-unit-costs/export: the usage
+ * unit-cost query as a CSV or NDJSON file. Same body as `/usage-unit-costs`
+ * plus `format`; same permission.
+ */
+app.post("/usage-unit-costs/export", async (c) => {
+  requirePermission(c, "costs:read");
+  const parsed = unitCostExportRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid unit-cost export", issues: parsed.error.issues }, 400);
+  }
+  const { format, ...query } = parsed.data;
+  try {
+    const response = await runUsageUnitCostQuery(c.get("organizationId"), query);
+    return unitCostFileResponse(response, { from: query.from, to: query.to, format });
   } catch (e) {
     if (e instanceof CostQueryError) {
       return c.json(
@@ -608,6 +662,34 @@ app.post("/:id/unit-costs", async (c) => {
 
   try {
     return c.json(await runUnitCostQuery(organizationId, c.req.param("id"), parsed.data));
+  } catch (e) {
+    if (e instanceof BusinessMetricNotFoundError) return c.json({ error: e.message }, 404);
+    if (e instanceof CostQueryError) {
+      return c.json(
+        { error: e.message, ...(e.queryError ? { queryError: e.queryError } : {}) },
+        400,
+      );
+    }
+    throw e;
+  }
+});
+
+/**
+ * POST /api/org/:orgId/business-metrics/:id/unit-costs/export: the same query
+ * as a CSV or NDJSON file, one row per bucket per series (and per label value
+ * when grouped), with the spend and metric value behind every ratio. A gap is
+ * an empty `value` with its reason in `gap`, never a zero.
+ */
+app.post("/:id/unit-costs/export", async (c) => {
+  requirePermission(c, "costs:read");
+  const parsed = unitCostExportRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid unit-cost export", issues: parsed.error.issues }, 400);
+  }
+  const { format, ...query } = parsed.data;
+  try {
+    const response = await runUnitCostQuery(c.get("organizationId"), c.req.param("id"), query);
+    return unitCostFileResponse(response, { from: query.from, to: query.to, format });
   } catch (e) {
     if (e instanceof BusinessMetricNotFoundError) return c.json({ error: e.message }, 404);
     if (e instanceof CostQueryError) {

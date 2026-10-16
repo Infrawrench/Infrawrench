@@ -13,3 +13,4 @@ export {
   CostAnnotationsSection,
   type CostAnnotationsSectionProps,
 } from "./CostAnnotationsSection.js";
+export type { DestinationCatalog } from "../settings/alert-routing/DestinationPicker.js";

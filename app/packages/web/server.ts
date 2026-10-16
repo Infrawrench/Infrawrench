@@ -27,6 +27,7 @@ import {
   startDashboardDeliveryLoop,
   stopDashboardDeliveryLoop,
 } from "./src/services/dashboard-delivery-loop";
+import { startCostExportJobLoop, stopCostExportJobLoop } from "./src/services/cost-export-job-loop";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -562,8 +563,13 @@ async function start() {
   // here (see the module header). SIGTERM drains an in-flight send, bounded at
   // 30s, so a rolling deploy does not cut a delivery off halfway through.
   startDashboardDeliveryLoop();
+  // Background cost export jobs write their files here too: they can run for
+  // minutes, which only this long-lived tier allows (see the module header).
+  startCostExportJobLoop();
   process.once("SIGTERM", () => {
-    void stopDashboardDeliveryLoop().finally(() => process.exit(0));
+    void Promise.allSettled([stopDashboardDeliveryLoop(), stopCostExportJobLoop()]).finally(() =>
+      process.exit(0),
+    );
   });
 }
 

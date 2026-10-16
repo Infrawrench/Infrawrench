@@ -232,6 +232,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // which is exactly what the push summarised.
     case "cost_change":
       return `/org/${data.orgId}/costs?tab=alerts`;
+    // A report's own anomaly alert opens that report: the chart of exactly the
+    // scope that spiked, with the alert's recent findings under it.
+    case "cost_report_anomaly":
+      return `/org/${data.orgId}/cost-reports/${encodeURIComponent(data.reportId)}`;
     // The three efficiency alerts are all "here is a standing condition, go
     // look at it when you can" rather than "what just happened", so they open
     // the Alerts tab of Costs, where the efficiency-alert section lives,
@@ -401,6 +405,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         return null;
       }
       return { type: "cost_change", orgId, alertId, periodKey, groupKey };
+    }
+    case "cost_report_anomaly": {
+      const reportId = data["reportId"];
+      const day = data["day"];
+      if (typeof reportId !== "string" || typeof day !== "string") return null;
+      return { type: "cost_report_anomaly", orgId, reportId, day };
     }
     case "commitment_expiry": {
       const accountId = data["accountId"];

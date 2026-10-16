@@ -64,6 +64,10 @@ import type {
   CostCentre,
   DashboardKpiResult,
   KpiWidgetConfig,
+  CostExportJob,
+  CostExportJobRequest,
+  CostReportAnomalyAlert,
+  CostReportAnomalyAlertInput,
   RealizedSavingsReport,
   RealizedSavingsSettings,
   SavingsEvent,
@@ -71,7 +75,7 @@ import type {
   SavingsEventInput,
 } from "@infrawrench/client-core";
 import { createSharingClient, type SharingClient } from "@infrawrench/ui";
-import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
+import type { CostReportsClient, DestinationCatalog } from "@infrawrench/ui/cost-reports";
 import type {
   BudgetAlertEvent,
   BudgetAlertNoteResult,
@@ -553,6 +557,38 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     listReports: () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
     downloadFocusExport: (req: FocusExportRequest) =>
       apiPostText(`/api/org/${orgId}/costs/focus-export`, req),
+    createExportJob: (req: CostExportJobRequest) =>
+      apiPost<CostExportJob>(`/api/org/${orgId}/costs/exports/jobs`, req),
+    getExportJob: (jobId: string) =>
+      apiGet<CostExportJob>(`/api/org/${orgId}/costs/exports/jobs/${jobId}`),
+    listExportJobs: async () =>
+      (await apiGet<{ jobs: CostExportJob[] }>(`/api/org/${orgId}/costs/exports/jobs`)).jobs,
+    cancelExportJob: (jobId: string) =>
+      apiDelete<CostExportJob>(`/api/org/${orgId}/costs/exports/jobs/${jobId}`),
+    downloadExportJob: async (job: CostExportJob) => {
+      const blob = await apiGetBlob(`/api/org/${orgId}/costs/exports/jobs/${job.id}/download`);
+      downloadBlob(blob, job.fileName);
+    },
+    // The report's own anomaly alert. Read through the org-wide list so "no
+    // alert" is an empty answer rather than a 404 to tell apart from a failure.
+    getReportAnomalyAlert: async (reportId: string) => {
+      const { alerts } = await apiGet<{ alerts: CostReportAnomalyAlert[] }>(
+        `/api/org/${orgId}/cost-report-anomaly-alerts`,
+      );
+      return alerts.find((a) => a.reportId === reportId) ?? null;
+    },
+    listReportAnomalyAlertTargets: (reportId: string) =>
+      apiGet<DestinationCatalog>(
+        `/api/org/${orgId}/cost-reports/${reportId}/anomaly-alert/targets`,
+      ),
+    saveReportAnomalyAlert: (reportId: string, input: CostReportAnomalyAlertInput) =>
+      apiPut<CostReportAnomalyAlert>(
+        `/api/org/${orgId}/cost-reports/${reportId}/anomaly-alert`,
+        input,
+      ),
+    deleteReportAnomalyAlert: async (reportId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}/anomaly-alert`);
+    },
     getReport: (reportId: string) =>
       apiGet<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`),
     createReport: (input: CostReportInput) =>

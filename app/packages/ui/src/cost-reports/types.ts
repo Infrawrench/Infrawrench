@@ -9,6 +9,10 @@ import type {
   CostReportFolder,
   CostReportFolderInput,
   CostReportInput,
+  CostExportJob,
+  CostExportJobRequest,
+  CostReportAnomalyAlert,
+  CostReportAnomalyAlertInput,
   FocusExportRequest,
   ReportDeliveryTargets,
   ReportNotification,
@@ -16,6 +20,7 @@ import type {
   ReportNotificationSendResult,
 } from "@infrawrench/client-core";
 import type { SharingClient } from "../sharing/ShareDialog.js";
+import type { DestinationCatalog } from "../settings/alert-routing/DestinationPicker.js";
 import type { CostApi, CostsPanelDashboard } from "../cost/types.js";
 
 /**
@@ -58,6 +63,35 @@ export interface CostReportsClient extends CostApi {
    * reads; optional so a host without it simply offers no download.
    */
   downloadFocusExport?(req: FocusExportRequest): Promise<string>;
+  /**
+   * Background export jobs (`/costs/exports/jobs`, `costs:read`): queue one,
+   * poll it, list the caller's recent ones, cancel one, and save a finished
+   * file. Optional as a group; without `createExportJob` and `getExportJob`
+   * the report page offers no "Export…" action.
+   */
+  createExportJob?(req: CostExportJobRequest): Promise<CostExportJob>;
+  getExportJob?(jobId: string): Promise<CostExportJob>;
+  listExportJobs?(): Promise<CostExportJob[]>;
+  cancelExportJob?(jobId: string): Promise<CostExportJob>;
+  /** Fetch a succeeded job's file and save it; the host owns transport and save. */
+  downloadExportJob?(job: CostExportJob): Promise<void>;
+  /**
+   * The report's own anomaly alert, or null when it has none (`costs:read`).
+   * Without it the report page shows no Anomaly alert section.
+   */
+  getReportAnomalyAlert?(reportId: string): Promise<CostReportAnomalyAlert | null>;
+  /**
+   * The mutating half (`org:settings:write` server-side, like delivery
+   * schedules) plus the destination catalog the picker needs. Without both
+   * `saveReportAnomalyAlert` and `listReportAnomalyAlertTargets` the section
+   * is read-only.
+   */
+  listReportAnomalyAlertTargets?(reportId: string): Promise<DestinationCatalog>;
+  saveReportAnomalyAlert?(
+    reportId: string,
+    input: CostReportAnomalyAlertInput,
+  ): Promise<CostReportAnomalyAlert>;
+  deleteReportAnomalyAlert?(reportId: string): Promise<void>;
   /** Dashboards a report card can be added to, for the placement picker. */
   listDashboards?(): Promise<CostsPanelDashboard[]>;
   /** Add a `cost_report` card for `reportId` to `dashboardId`. */

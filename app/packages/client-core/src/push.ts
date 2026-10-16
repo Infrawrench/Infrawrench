@@ -76,6 +76,20 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A cost report's own anomaly alert fired: the report's filtered daily
+       * spend spiked against its trailing baseline (see server-core
+       * `cost/report-anomaly-alerts.ts`).
+       *
+       * Target route: the report.
+       */
+      type: "cost_report_anomaly";
+      orgId: string;
+      reportId: string;
+      /** The anomalous day, YYYY-MM-DD (UTC). */
+      day: string;
+    }
+  | {
+      /**
        * A commitment is about to lapse (or already has): see server-core
        * `commitments/expiry-eval.ts`.
        *

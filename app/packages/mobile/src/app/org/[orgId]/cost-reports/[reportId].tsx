@@ -6,6 +6,8 @@ import { useCostReports } from "@/features/cost-reports/useCostReports";
 import { useReportNotifications } from "@/features/cost-reports/useReportNotifications";
 import { useCostForecast } from "@/features/cost-reports/useCostForecast";
 import { ForecastList } from "@/features/cost-reports/ForecastList";
+import { useReportAnomalyAlert } from "@/features/cost-reports/useReportAnomalyAlert";
+import { formatMoney } from "@infrawrench/client-core";
 import { NotificationRow } from "@/features/delivery/NotificationRow";
 import { useSharePdf } from "@/features/pdf/sharePdf";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -36,6 +38,7 @@ export default function CostReportDetailRoute() {
   const reports = useCostReports();
   const notifications = useReportNotifications(reportId);
   const forecast = useCostForecast(reportId);
+  const anomalyAlert = useReportAnomalyAlert(reportId);
   const pdf = useSharePdf();
 
   if (reports.isLoading) return <LoadingView />;
@@ -123,6 +126,37 @@ export default function CostReportDetailRoute() {
         <Card list>
           {(notifications.data ?? []).map((n) => (
             <NotificationRow key={n.id} notification={n} />
+          ))}
+        </Card>
+      )}
+
+      <SectionTitle>Anomaly alert</SectionTitle>
+      {anomalyAlert.isLoading ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Loading…</Text>
+      ) : anomalyAlert.isError ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+          Couldn&rsquo;t load the anomaly alert.
+        </Text>
+      ) : !anomalyAlert.data ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+          No anomaly alert on this report. Alerts are set up on web or desktop.
+        </Text>
+      ) : (
+        <Card list>
+          <Row
+            title={anomalyAlert.data.enabled ? "On" : "Off"}
+            subtitle={`${anomalyAlert.data.sigmas} standard deviations, at least ${(
+              anomalyAlert.data.minDeltaCents / 100
+            ).toLocaleString()} a day over the baseline · ${anomalyAlert.data.destinations.length} destinations`}
+          />
+          {anomalyAlert.data.recent.slice(0, 5).map((f) => (
+            <Row
+              key={f.id}
+              title={`${f.day} · ${formatMoney(f.actual, f.currency)}`}
+              subtitle={`Against ${formatMoney(f.baseline, f.currency)}/day · ${
+                f.notifiedAt ? "sent" : "not sent"
+              }`}
+            />
           ))}
         </Card>
       )}

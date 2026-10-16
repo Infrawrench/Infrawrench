@@ -150,6 +150,13 @@ infrawrench resource-reports "Production compute" --format csv --out prod.csv
 infrawrench resource-reports "Production compute" --json
 ```
 
+`reports anomalies` lists the reports with their own [anomaly alert](./cost-reports.md#anomaly-alerts-for-a-report): on or off, sensitivity, minimum rise, where each sends, and its latest findings with whether each was sent. Name a report to see only its alert. Read-only (alerts are set up on the report page or with Terraform), and `--json` carries everything:
+
+```
+infrawrench reports anomalies
+infrawrench reports anomalies "Platform" --json
+```
+
 `budgets` lists the org's budgets with month-to-date spend, forecast, and how many of this month's alerts nobody has explained yet; `budgets <name|id>` shows one budget's alert history with the note on each firing, and `budgets annotate` [explains a fired alert](./cloud-costs.md#explaining-a-budget-alert) (the latest one unless `--event <id>` names another). The note is posted as a reply in the alert's Slack threads and drawn on the cost charts:
 
 ```
@@ -208,6 +215,19 @@ infrawrench export --format focus --last 7d --json      # { request, rowCount, c
 ```
 
 The CSV is the only thing written to stdout, so a redirect captures a clean file; the row count goes to stderr.
+
+For anything larger, `--async` runs the export as a [background job](./cost-reports.md#large-exports-in-the-background) on the server instead of streaming it through one request: `csv` and `ndjson` write the native columns (a report's group-by as row identity, plus its per-day unit cost when it draws one), `focus` writes FOCUS. Without `--wait` it prints the job and returns; with it, it shows progress on stderr and writes the file when it is ready. Without a report, `--dimensions service,account` sets the row identity of a native file:
+
+```
+infrawrench export --async --format csv "Monthly spend" --wait --out monthly.csv
+infrawrench export --async --format focus --last 365d --wait > focus-year.csv
+infrawrench export --async --format ndjson --last 90d --dimensions service,region --where "provider = 'aws'"
+infrawrench export jobs                       # your recent background exports
+infrawrench export jobs 3f2a91c0 --wait --out monthly.csv   # wait for one (an id prefix works) and download it
+infrawrench export jobs 3f2a91c0 cancel
+```
+
+All of them take `--json`. A finished file is kept for 24 hours.
 
 <insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table] here>
 
@@ -517,9 +537,11 @@ infrawrench currency                      # display currency, automatic rates, E
 infrawrench currency rate EUR 2026-09-30  # which rate that day converts at, its source and date, and why
 infrawrench currency rate GBP USD         # any pair, today
 infrawrench currency feed --currency USD  # every ECB reference rate for today, in USD
+infrawrench currency template > rates.csv # the CSV an upload reads, with one example per row shape
+infrawrench currency import rates.csv     # preview every row, then ask before writing
 ```
 
-`currency rate` applies your organization's own precedence: a stated rate covering the day wins, then the automatic ECB rate if automatic rates are on (carried over weekends and holidays, crossed through EUR). All three take `--json`. Read-only, like billing rules. See [Currency](./cloud-costs.md#currency).
+`currency rate` applies your organization's own precedence: a stated rate covering the day wins, then the automatic ECB rate if automatic rates are on (carried over weekends and holidays, crossed through EUR). All of them take `--json`. Single rates are stated in Settings; `currency import` is the one write, and it always prints the server's preview first: each row as new, replacing a stored rate, unchanged, or an error with its line. It asks before writing; `-y` skips the question (and is required on a non-interactive shell, which otherwise stops at the preview), and a file with errors writes nothing unless you pass `--skip-invalid`. See [Uploading many rates from a CSV](./cloud-costs.md#uploading-many-rates-from-a-csv).
 
 And, if you bill customers for the infrastructure you run for them, the documents themselves:
 

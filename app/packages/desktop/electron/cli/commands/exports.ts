@@ -11,10 +11,19 @@
 // build instead of its output. The import is type-only, so the CLI still ships
 // zero new runtime dependencies.
 import { writeFileSync } from "node:fs";
-import { CliError, orgFetch, orgFetchText, resolveOrg, type CliContext } from "../context";
+import {
+  CliError,
+  orgFetch,
+  orgFetchBytes,
+  orgFetchText,
+  resolveOrg,
+  type CliContext,
+} from "../context";
 import type {
   CostExport,
   CostExportInput,
+  CostExportJob,
+  CostExportJobRequest,
   CostExportRunResult,
   CostExportWarehouseSetup,
   CostExportWarehouseSink,
@@ -520,4 +529,222 @@ export async function cmdExportSetup(ctx: CliContext, query: string): Promise<vo
     println();
     for (const note of setup.notes) println(c.dim(`• ${note}`));
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Background export jobs (`export --async`, `export jobs`)
+ * ------------------------------------------------------------------ */
+
+const JOB_FORMATS = ["csv", "ndjson", "focus"] as const;
+const POLL_MS = 2000;
+
+/** One status line for a job, for stderr while waiting and for `export jobs`. */
+function jobLine(job: CostExportJob): string {
+  const what = job.source.reportName ?? "query";
+  const format = job.format === "focus" ? `FOCUS ${job.focusVersion ?? ""}`.trim() : job.format;
+  const progress = job.status === "running" ? ` ${Math.round(job.progress * 100)}%` : "";
+  const rows = job.rowCount > 0 ? ` · ${job.rowCount.toLocaleString()} rows` : "";
+  return `${job.id.slice(0, 8)} ${job.status}${progress} · ${what} · ${format} · ${job.from} → ${job.to}${rows}`;
+}
+
+/** Poll until the job leaves queued/running, reporting progress on stderr. */
+async function waitForJob(orgId: string, job: CostExportJob): Promise<CostExportJob> {
+  let current = job;
+  let last = "";
+  while (current.status === "queued" || current.status === "running") {
+    const line = jobLine(current);
+    if (line !== last && process.stderr.isTTY) printErr(c.dim(line));
+    last = line;
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    current = await orgFetch<CostExportJob>(
+      orgId,
+      `/costs/exports/jobs/${encodeURIComponent(current.id)}`,
+    );
+  }
+  return current;
+}
+
+/** Save a finished job's file to `out`, or write it to stdout. */
+async function deliverJobFile(
+  orgId: string,
+  job: CostExportJob,
+  out: string | undefined,
+): Promise<void> {
+  const bytes = await orgFetchBytes(
+    orgId,
+    `/costs/exports/jobs/${encodeURIComponent(job.id)}/download`,
+  );
+  if (out) {
+    writeFileSync(out, bytes);
+    printErr(
+      `${c.green("✓")} ${c.bold(out)} ${c.dim(`· ${job.rowCount.toLocaleString()} rows · ${job.from} → ${job.to}`)}`,
+    );
+    return;
+  }
+  process.stdout.write(bytes);
+  if (process.stdout.isTTY) {
+    printErr(c.dim(`Redirect to a file, or pass --out ${job.fileName}.`));
+  }
+}
+
+/** A finished (or failed) job: the file with `--wait`, or what to do next. */
+async function settleJob(
+  ctx: CliContext,
+  orgId: string,
+  job: CostExportJob,
+  flags: { wait: boolean; out?: string | undefined },
+): Promise<void> {
+  const done = flags.wait ? await waitForJob(orgId, job) : job;
+  if (done.status === "succeeded" && flags.wait && (ctx.flags.output !== "json" || flags.out)) {
+    await deliverJobFile(orgId, done, flags.out);
+    if (ctx.flags.output === "json") printJson({ org: orgId, job: done, out: flags.out });
+    return;
+  }
+  if (ctx.flags.output === "json") {
+    printJson({ org: orgId, job: done });
+    if (done.status === "failed") process.exitCode = 1;
+    return;
+  }
+  if (done.status === "failed") {
+    printErr(c.red(`Export failed: ${done.error ?? "unknown error"}`));
+    process.exitCode = 1;
+    return;
+  }
+  println(jobLine(done));
+  if (done.status === "queued" || done.status === "running") {
+    println(
+      c.dim(
+        `Running in the background. \`infrawrench export jobs ${done.id} --wait\` waits and downloads it.`,
+      ),
+    );
+  } else if (done.status === "succeeded") {
+    println(
+      c.dim(
+        `Ready. \`infrawrench export jobs ${done.id} --wait --out ${done.fileName}\` downloads it.`,
+      ),
+    );
+  }
+}
+
+/**
+ * `infrawrench export --async --format csv|ndjson|focus [<report name|id>]`:
+ * queue a background export job on the server, and with `--wait` follow it to
+ * the end and write the file (stdout, or `--out <file>`).
+ *
+ * Takes the same range and filter flags as `export --format focus`. Naming a
+ * report exports that report's scope (its filters, group-by, cost basis and,
+ * for csv/ndjson, its per-day unit cost); explicit range flags override its
+ * range. Without a report, `--where`, `--filter`, `--charge-type` and
+ * `--dimensions service,account` describe the scope.
+ */
+export async function cmdExportJob(
+  ctx: CliContext,
+  range: RangeFlags,
+  reportQuery: string,
+  flags: {
+    format: string | undefined;
+    focusVersion: string | undefined;
+    wait: boolean;
+    out: string | undefined;
+    dimensions: string | undefined;
+  },
+): Promise<void> {
+  requireCloud(ctx);
+  const format = (flags.format ?? "csv") as (typeof JOB_FORMATS)[number];
+  if (!JOB_FORMATS.includes(format)) {
+    throw new CliError(`--format must be one of ${JOB_FORMATS.join(", ")} with --async.`, 2);
+  }
+  if (flags.focusVersion && format !== "focus") {
+    throw new CliError("--focus-version only applies to --format focus.", 2);
+  }
+  const org = await resolveOrg(ctx);
+  const report = reportQuery.trim() ? await resolveReport(org.id, reportQuery.trim()) : null;
+  if (report && (range.where || range.filter)) {
+    throw new CliError(
+      "A report export uses the report's own filters. Drop --where/--filter, or export without naming the report.",
+      2,
+    );
+  }
+  const explicitRange = range.last || range.from || range.to ? resolveDateRange(range) : null;
+
+  let request: CostExportJobRequest;
+  if (report) {
+    request = { reportId: report.id, format, ...(explicitRange ?? {}) };
+  } else {
+    const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
+    const chargeTypes = parseChargeTypes(range.chargeTypes);
+    const dimensions = (flags.dimensions ?? "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean);
+    request = {
+      format,
+      ...(explicitRange ?? resolveDateRange(range)),
+      query: {
+        filters: await parseWhere(range.where),
+        ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
+        ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
+        ...(dimensions.length > 0 ? { dimensions } : {}),
+      },
+    };
+  }
+  if (format === "focus" && flags.focusVersion) {
+    request.focusVersion = flags.focusVersion as FocusVersion;
+  }
+
+  const job = await orgFetch<CostExportJob>(org.id, "/costs/exports/jobs", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  await settleJob(ctx, org.id, job, { wait: flags.wait, out: flags.out });
+}
+
+/**
+ * `infrawrench export jobs [<id> [cancel]] [--wait] [--out <file>]`: your
+ * recent export jobs; one job's status (waiting for it and downloading the
+ * file with `--wait`); or cancelling one. An id prefix from the list works.
+ */
+export async function cmdExportJobs(
+  ctx: CliContext,
+  args: string[],
+  flags: { wait: boolean; out: string | undefined },
+): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const { jobs } = await orgFetch<{ jobs: CostExportJob[] }>(org.id, "/costs/exports/jobs");
+  const [idArg, action] = args;
+  if (!idArg) {
+    if (ctx.flags.output === "json") {
+      printJson({ org: org.id, jobs });
+      return;
+    }
+    if (jobs.length === 0) {
+      println(c.dim("No recent export jobs. Start one with `infrawrench export --async`."));
+      return;
+    }
+    for (const job of jobs) println(jobLine(job));
+    return;
+  }
+  const matches = jobs.filter((j) => j.id === idArg || j.id.startsWith(idArg));
+  if (matches.length !== 1) {
+    throw new CliError(
+      matches.length === 0
+        ? `No export job "${idArg}". Run \`infrawrench export jobs\` to list yours.`
+        : `"${idArg}" matches ${matches.length} jobs; use more of the id.`,
+      2,
+    );
+  }
+  const job = matches[0]!;
+  if (action === "cancel") {
+    const next = await orgFetch<CostExportJob>(
+      org.id,
+      `/costs/exports/jobs/${encodeURIComponent(job.id)}`,
+      { method: "DELETE" },
+    );
+    if (ctx.flags.output === "json") printJson({ org: org.id, job: next });
+    else println(jobLine(next));
+    return;
+  }
+  if (action) throw new CliError(`Unknown action "${action}". Try cancel.`, 2);
+  await settleJob(ctx, org.id, job, flags);
 }

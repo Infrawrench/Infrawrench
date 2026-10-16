@@ -1068,4 +1068,62 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       400: ErrorResponses[400],
     },
   });
+
+  const UnitCostExportRequest = UnitCostQueryRequest.extend({
+    format: z.enum(["csv", "ndjson"]).optional().openapi({
+      description: "File format. Default `csv`.",
+    }),
+  }).openapi("UnitCostExportRequest");
+
+  const exportDescription =
+    "One row per bucket per series (and per label value when grouped), columns in this order: " +
+    "`bucket`, `bucket_days`, `reported_days`, `partial`, `label_key`, `label_value`, " +
+    "`label_other`, `currency`, `mode`, `scale`, `metric_key`, `metric_unit`, `usage_unit`, " +
+    "`cost` (summed spend), `metric_value` (summed denominator, unscaled), `value` (the ratio, " +
+    "already scaled), `absolute_margin`, `gap`. A gap is an **empty** `value` with its reason " +
+    "in `gap`, never 0, and `partial` flags a bucket whose denominator covers only some of its " +
+    "days. Text cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so a spreadsheet " +
+    "does not run them. NDJSON carries the same keys, with `null` for empty.";
+  const exportResponses = {
+    200: {
+      description: "The file",
+      content: {
+        "text/csv": { schema: z.string() },
+        "application/x-ndjson": { schema: z.string() },
+      },
+    },
+    400: ErrorResponses[400],
+  };
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/{id}/unit-costs/export",
+    tags: ["Business metrics"],
+    summary: "Export unit costs or margin as a file",
+    description: `The query \`POST /business-metrics/{id}/unit-costs\` answers, as CSV or NDJSON. ${exportDescription}`,
+    request: {
+      params: idParam(),
+      body: {
+        content: { "application/json": { schema: UnitCostExportRequest } },
+        required: true,
+      },
+    },
+    responses: { ...exportResponses, 404: ErrorResponses[404] },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/business-metrics/usage-unit-costs/export",
+    tags: ["Business metrics"],
+    summary: "Export cost per usage unit as a file",
+    description: `The query \`POST /business-metrics/usage-unit-costs\` answers, as CSV or NDJSON. ${exportDescription}`,
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: UnitCostExportRequest } },
+        required: true,
+      },
+    },
+    responses: exportResponses,
+  });
 }

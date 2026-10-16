@@ -15,6 +15,7 @@ import type {
   CostReportBulkRequest,
   CostReportBulkResult,
   CostReportFolder,
+  CostReportAnomalyAlert,
   CostReportRunOverrides,
   CostReportRunResult,
   ReportNotification,
@@ -613,5 +614,67 @@ export async function cmdRunReport(
         `Shown on ${report.placements.map((p) => p.dashboardName).join(", ")}. Editing this report changes those cards too.`,
       ),
     );
+  }
+}
+
+/**
+ * `infrawrench reports anomalies [<name|id>]`: the reports that watch their
+ * own scope for anomalies, with sensitivity, destinations and the latest
+ * findings. Read-only: an alert names channels and inboxes, so it is set up
+ * on the report page (or with Terraform), next to the destination picker.
+ */
+export async function cmdReportAnomalyAlerts(ctx: CliContext, query: string): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const { alerts } = await orgFetch<{ alerts: CostReportAnomalyAlert[] }>(
+    org.id,
+    "/cost-report-anomaly-alerts",
+  );
+  let shown = alerts;
+  if (query.trim()) {
+    const report = await resolveReport(org.id, query.trim());
+    shown = alerts.filter((a) => a.reportId === report.id);
+  }
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, alerts: shown });
+    return;
+  }
+  if (shown.length === 0) {
+    println(
+      c.dim(
+        query.trim()
+          ? "This report has no anomaly alert. Set one up on the report's page."
+          : "No report has an anomaly alert. Set one up on a report's page.",
+      ),
+    );
+    return;
+  }
+  for (const alert of shown) {
+    const kinds = [...new Set(alert.destinations.map((d) => d.kind))].join(", ") || "none";
+    println(
+      `${c.bold(alert.reportName)} ${alert.enabled ? c.green("on") : c.dim("off")} ${c.dim(
+        `· ${alert.sigmas}σ · floor ${(alert.minDeltaCents / 100).toLocaleString()}/day · to ${kinds}`,
+      )}`,
+    );
+    if (alert.lastError) println(`  ${c.yellow("!")} ${c.dim(alert.lastError)}`);
+    if (alert.recent.length === 0) {
+      println(c.dim("  no anomalies found"));
+    } else {
+      printTable(alert.recent.slice(0, 10), [
+        { header: "day", value: (f) => f.day },
+        {
+          header: "spend",
+          value: (f) => `${f.actual.toFixed(2)} ${f.currency}`,
+          align: "right",
+        },
+        {
+          header: "baseline/day",
+          value: (f) => `${f.baseline.toFixed(2)} ${f.currency}`,
+          align: "right",
+        },
+        { header: "sent", value: (f) => (f.notifiedAt ? "yes" : c.dim("no")) },
+      ]);
+    }
+    println();
   }
 }

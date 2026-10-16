@@ -1092,3 +1092,29 @@ func (c *Client) UpdateNetworkFlowReport(ctx context.Context, id string, in Netw
 func (c *Client) DeleteNetworkFlowReport(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/network-flows/reports/"+seg(id))
 }
+
+/* ------------------------ report anomaly alerts ---------------------------- */
+//
+// One per report, addressed by the report's id. GET answers 404 when the
+// report has no alert (or the report is gone), which is what Read needs to
+// drop it from state.
+
+func (c *Client) GetCostReportAnomalyAlert(ctx context.Context, reportID string) (*CostReportAnomalyAlert, error) {
+	var out CostReportAnomalyAlert
+	if err := c.Get(ctx, "/cost-reports/"+seg(reportID)+"/anomaly-alert", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutCostReportAnomalyAlert(ctx context.Context, reportID string, in CostReportAnomalyAlertInput) (*CostReportAnomalyAlert, error) {
+	var out CostReportAnomalyAlert
+	if err := c.Put(ctx, "/cost-reports/"+seg(reportID)+"/anomaly-alert", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostReportAnomalyAlert(ctx context.Context, reportID string) error {
+	return c.Delete(ctx, "/cost-reports/"+seg(reportID)+"/anomaly-alert")
+}

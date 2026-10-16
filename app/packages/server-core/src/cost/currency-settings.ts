@@ -13,12 +13,18 @@
  * thing ("do not convert") which is what every org that has never opened the
  * form gets, and what makes this feature byte-identically absent by default.
  */
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   EXCHANGE_RATE_BASES,
   EXCHANGE_RATE_LIMITS,
+  countExchangeRateImportActions,
+  exchangeRateKey,
   normalizeCurrencyCode,
+  parseExchangeRateCsv,
+  sameStatedRate,
+  type ExchangeRateImportResult,
+  type ExchangeRateImportRow,
   type ExchangeRate,
   type ExchangeRateBasis,
   type ExchangeRateInput,
@@ -368,4 +374,134 @@ export async function deleteOrgExchangeRate(
     )
     .returning({ id: orgExchangeRates.id });
   return deleted.length > 0;
+}
+
+/**
+ * Apply a CSV upload of stated rates (`POST /currency/rates/import`).
+ *
+ * The file is parsed with the same pure rules the preview uses
+ * (`parseExchangeRateCsv`), then every valid row is classified against the
+ * stored table by its unique key (from, to, effectiveFrom): `create`,
+ * `update` (same key, different rate or end date) or `unchanged`. Upsert
+ * semantics, like the single-rate PUT: re-uploading a corrected file replaces
+ * the rates it names and leaves every other stored rate alone.
+ *
+ * Writes happen only when `dryRun` is false **and** either no row is invalid
+ * or the caller passed `skipInvalid`. They run in one transaction, so an
+ * upload lands whole or not at all, and the table cap is checked against the
+ * rows the upload would add before anything is written.
+ *
+ * Uploaded rows are ordinary stated rates: they rank exactly like a rate typed
+ * into the form, above the automatic feed for the days they cover.
+ */
+export async function importOrgExchangeRates(
+  organizationId: string,
+  request: { csv: string; dryRun?: boolean | undefined; skipInvalid?: boolean | undefined },
+  createdBy: string | null,
+  now = new Date(),
+): Promise<ExchangeRateImportResult> {
+  const parsed = parseExchangeRateCsv(request.csv);
+  if (parsed.fileError) {
+    return {
+      dryRun: true,
+      applied: false,
+      rows: [],
+      counts: countExchangeRateImportActions([]),
+      fileError: parsed.fileError,
+    };
+  }
+
+  const stored = await db
+    .select({
+      fromCurrency: orgExchangeRates.fromCurrency,
+      toCurrency: orgExchangeRates.toCurrency,
+      effectiveFrom: orgExchangeRates.effectiveFrom,
+      rate: orgExchangeRates.rate,
+      effectiveTo: orgExchangeRates.effectiveTo,
+    })
+    .from(orgExchangeRates)
+    .where(eq(orgExchangeRates.organizationId, organizationId));
+  const byKey = new Map(stored.map((r) => [exchangeRateKey(r), r]));
+
+  const rows: ExchangeRateImportRow[] = parsed.rows.map((row) => {
+    if (!row.input) return { line: row.line, action: "error", error: row.error ?? "invalid row" };
+    // The server-side normalizer is the authority; the shared parser already
+    // applied the same rules, so this only fires if the two ever drift.
+    let safe: ReturnType<typeof normalizeInput>;
+    try {
+      safe = normalizeInput(row.input);
+    } catch (e) {
+      return { line: row.line, action: "error", error: (e as Error).message };
+    }
+    const existing = byKey.get(exchangeRateKey(safe));
+    if (!existing) return { line: row.line, action: "create", rate: safe };
+    if (sameStatedRate(existing, safe)) return { line: row.line, action: "unchanged", rate: safe };
+    return {
+      line: row.line,
+      action: "update",
+      rate: safe,
+      previousRate: existing.rate,
+      previousEffectiveTo: existing.effectiveTo ?? null,
+    };
+  });
+  const counts = countExchangeRateImportActions(rows);
+
+  if (stored.length + counts.create > EXCHANGE_RATE_LIMITS.maxRates) {
+    return {
+      dryRun: true,
+      applied: false,
+      rows,
+      counts,
+      fileError:
+        `This upload would add ${counts.create} rates to the ${stored.length} already stored; ` +
+        `an org can hold at most ${EXCHANGE_RATE_LIMITS.maxRates}. Remove rates you no longer ` +
+        "need, or upload fewer.",
+    };
+  }
+
+  const blocked = counts.error > 0 && !request.skipInvalid;
+  if (request.dryRun || blocked) {
+    return { dryRun: true, applied: false, rows, counts, fileError: null };
+  }
+
+  const writes = rows.flatMap((r) =>
+    (r.action === "create" || r.action === "update") && r.rate ? [r.rate] : [],
+  );
+  if (writes.length > 0) {
+    await db.transaction(async (tx) => {
+      // Batches keep each statement's parameter count far below Postgres's
+      // 65,535 limit (seven per row) whatever the upload size.
+      for (let i = 0; i < writes.length; i += 500) {
+        await tx
+          .insert(orgExchangeRates)
+          .values(
+            writes.slice(i, i + 500).map((rate) => ({
+              id: randomUUID(),
+              organizationId,
+              createdBy,
+              fromCurrency: rate.fromCurrency,
+              toCurrency: rate.toCurrency,
+              rate: rate.rate,
+              effectiveFrom: rate.effectiveFrom,
+              effectiveTo: rate.effectiveTo ?? null,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              orgExchangeRates.organizationId,
+              orgExchangeRates.fromCurrency,
+              orgExchangeRates.toCurrency,
+              orgExchangeRates.effectiveFrom,
+            ],
+            set: {
+              rate: sql`excluded.rate`,
+              effectiveTo: sql`excluded.effective_to`,
+              createdBy,
+              updatedAt: now,
+            },
+          });
+      }
+    });
+  }
+  return { dryRun: false, applied: true, rows, counts, fileError: null };
 }

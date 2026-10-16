@@ -72,6 +72,11 @@ import { costReportFolderRoutes } from "./routes/cost-report-folders";
 import { resourceReportRoutes } from "./routes/resource-reports";
 import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
+import { costExportJobRoutes } from "./routes/cost-export-jobs";
+import {
+  costReportAnomalyAlertRoutes,
+  orgReportAnomalyAlertRoutes,
+} from "./routes/cost-report-anomaly-alerts";
 import { costAlertRoutes } from "./routes/cost-alerts";
 import { savedFilterRoutes } from "./routes/saved-filters";
 import { costScenarioRoutes } from "./routes/cost-scenarios";
@@ -429,12 +434,17 @@ orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
 // Anomaly verdicts, suppressions, sensitivity and precision share the prefix.
 orgScoped.route("/costs", costAnomalyFeedbackRoutes);
+// Background export jobs: `/costs/exports/jobs…`.
+orgScoped.route("/costs", costExportJobRoutes);
 orgScoped.route("/cost-reports", costReportRoutes);
 // Delivery schedules share the /cost-reports prefix (their paths are all
 // /:id/notifications…); the org-wide list lives on its own prefix so it can
 // never collide with /cost-reports/:id.
 orgScoped.route("/cost-reports", costReportNotificationRoutes);
 orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
+// A report's own anomaly alert (`/:id/anomaly-alert…`), and the org-wide list.
+orgScoped.route("/cost-reports", costReportAnomalyAlertRoutes);
+orgScoped.route("/cost-report-anomaly-alerts", orgReportAnomalyAlertRoutes);
 // PDF export (`/:id/pdf`) and dashboard delivery schedules (`/:id/notifications…`)
 // share their parents' prefixes the same way; the org-wide schedule list gets
 // its own.

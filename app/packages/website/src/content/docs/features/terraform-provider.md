@@ -426,6 +426,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_resource_report`           | [Resource reports](./resource-reports.md): inventory tables with per-resource cost                   |
 | `infrawrench_cost_report_folder`        | Report folders                                                                                       |
 | `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                              |
+| `infrawrench_cost_report_anomaly_alert` | A report's own [anomaly alert](./cost-reports.md#anomaly-alerts-for-a-report)                        |
 | `infrawrench_cost_forecast`             | [Named forecasts](./cost-forecasts.md) on a report: scenario models and a driver metric              |
 | `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email                |
 | `infrawrench_cost_canvas`               | Cost canvases: report pages of text, KPIs, charts and tables, kept in code once vetted               |

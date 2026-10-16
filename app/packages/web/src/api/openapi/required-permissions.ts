@@ -438,6 +438,8 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /currency": "org:settings:write",
   "PUT /currency/rates": "org:settings:write",
   "DELETE /currency/rates/{rateId}": "org:settings:write",
+  "GET /currency/rates/template": "costs:read",
+  "POST /currency/rates/import": "org:settings:write",
   // cost centres & allocation rules
   // billing rules: the org's own adjustments to collected spend.
   //
@@ -611,6 +613,20 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // costs
   "POST /costs/query": "costs:read",
   "POST /costs/focus-export": "costs:read",
+  // background export jobs: the focus-export download's asynchronous sibling,
+  // each visible to its creator only.
+  "POST /costs/exports/jobs": "costs:read",
+  "GET /costs/exports/jobs": "costs:read",
+  "GET /costs/exports/jobs/{jobId}": "costs:read",
+  "GET /costs/exports/jobs/{jobId}/download": "costs:read",
+  "DELETE /costs/exports/jobs/{jobId}": "costs:read",
+  // report anomaly alerts: reads ride the report; writes are the report
+  // schedules' org:settings:write (destinations include arbitrary email).
+  "GET /cost-reports/{id}/anomaly-alert": "costs:read",
+  "GET /cost-reports/{id}/anomaly-alert/targets": "org:settings:write",
+  "PUT /cost-reports/{id}/anomaly-alert": "org:settings:write",
+  "DELETE /cost-reports/{id}/anomaly-alert": "org:settings:write",
+  "GET /cost-report-anomaly-alerts": "costs:read",
   "GET /costs/dimensions": "costs:read",
   "GET /costs/status": "costs:read",
   "GET /costs/anomalies": "costs:read",
@@ -753,6 +769,8 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /business-metrics/{id}/forecast-values": "costs:write",
   "DELETE /business-metrics/{id}/forecast-values": "costs:write",
   "POST /business-metrics/{id}/unit-costs": "costs:read",
+  "POST /business-metrics/{id}/unit-costs/export": "costs:read",
+  "POST /business-metrics/usage-unit-costs/export": "costs:read",
   // importers: writes also check costs:write; the map records the stronger
   // permission, since an importer runs a query with an account's credentials.
   "GET /business-metrics/importer-sources": "costs:read",

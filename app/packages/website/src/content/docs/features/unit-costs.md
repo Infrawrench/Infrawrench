@@ -244,6 +244,30 @@ Spend is converted to the metric's terms through your organization's own [stated
 - **Unit cost** follows the graph's display currency, exactly like a spend graph. Currencies you have stated no rate for are not dropped — they keep their own series, dividing the same metric on their own, and the caveat line says the series are not comparable to each other.
 - **Margin** always converts to the metric's own currency, because subtracting spend from revenue is only defined in one. Spend in a currency with no rate to it becomes a gap on its own series rather than being quietly folded in or ignored — either of which would overstate margin.
 
+## Export the numbers
+
+Hover a unit-cost card and click the download arrow to save what it draws as **CSV** or **NDJSON**. The file is the chart: the same periods, the same series, nothing re-queried. Each row is one period of one series (one per label value when the card is split by a label), and it carries the arithmetic as well as the answer:
+
+| Column                                    | What it holds                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| `bucket`                                  | The period's first day.                                                                |
+| `bucket_days`, `reported_days`            | Days in the period, and days with a reported metric value.                             |
+| `partial`                                 | `true` when only some of the period's days were reported, so the ratio reads high.     |
+| `label_key`, `label_value`, `label_other` | The label the row is split by, its value, and whether it is the folded "Other" series. |
+| `currency`, `mode`, `scale`               | What the ratio is expressed in and per (`scale` 1000 means per 1,000 units).           |
+| `metric_key`, `metric_unit`, `usage_unit` | The denominator: a business metric, or a provider usage unit.                          |
+| `cost`                                    | Spend summed over the period: the numerator.                                           |
+| `metric_value`                            | The metric (or usage) summed over the period, unscaled: the denominator.               |
+| `value`                                   | The ratio (or margin fraction), already scaled.                                        |
+| `absolute_margin`                         | Margin only: revenue minus spend.                                                      |
+| `gap`                                     | Why `value` is empty, when it is.                                                      |
+
+**A gap is an empty cell, never 0**, with the reason in `gap`, so summing or charting the column in a spreadsheet does not invent cheap periods. Text that starts with `=`, `+`, `-` or `@` (a label value from your own data, say) is prefixed with `'` so a spreadsheet does not run it as a formula.
+
+<insert [A unit-cost card on a dashboard with the download menu open under the arrow button, showing Download CSV and Download NDJSON] here>
+
+The same file comes from the API, `POST /api/org/{orgId}/business-metrics/{id}/unit-costs/export` (or `…/usage-unit-costs/export`) with the unit-cost query plus `"format": "csv"` or `"ndjson"`, and from the CLI with `--format`, below. A [cost report's](./cost-reports.md) CSV export gains per-day unit-cost columns when the report draws a unit cost: see [Large exports](./cost-reports.md#large-exports-in-the-background).
+
 ## From the CLI
 
 The verb is `unit-costs`, not `metrics` — that one already charts a resource's provider metrics.
@@ -287,6 +311,10 @@ infrawrench unit-costs revenue --labels
 # Cost per provider usage unit: list the units, then divide by one.
 infrawrench unit-costs --usage-units
 infrawrench unit-costs --usage-unit GB-Mo --where "service = 'AmazonS3'"
+
+# The series as a file, with the spend and metric value behind each ratio.
+infrawrench unit-costs api-requests --scale 1k --format csv > api-requests.csv
+infrawrench unit-costs revenue --margin --split customer --format ndjson > margin.ndjson
 ```
 
 `--label key=a,b` keeps those values and `--label key!=a` drops them; repeat it for several labels. A `--split` prints one summary row per label value with a trend sparkline; `--json` carries every point.

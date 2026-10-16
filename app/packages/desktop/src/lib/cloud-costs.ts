@@ -4,6 +4,13 @@
  * store), so these are never called when activeCloudOrgId is unset.
  */
 import type {
+  CostExportJob,
+  CostExportJobRequest,
+  CostReportAnomalyAlert,
+  CostReportAnomalyAlertInput,
+} from "@infrawrench/client-core";
+import type { DestinationCatalog } from "@infrawrench/ui/cost-reports";
+import type {
   BusinessMetricForecastValue,
   BusinessMetricForecastValueInput,
   CostForecast,
@@ -674,6 +681,72 @@ export async function sendCloudReportNotificationNow(
 
 export async function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
   return invoke("cloud_cost_report_pdf", { orgId, reportId });
+}
+
+/* Background export jobs (`/costs/exports/jobs`). */
+
+export async function createCloudCostExportJob(
+  orgId: string,
+  request: CostExportJobRequest,
+): Promise<CostExportJob> {
+  return invoke("cloud_cost_export_job_create", { orgId, request });
+}
+
+export async function getCloudCostExportJob(orgId: string, jobId: string): Promise<CostExportJob> {
+  return invoke("cloud_cost_export_job_get", { orgId, jobId });
+}
+
+export async function listCloudCostExportJobs(orgId: string): Promise<CostExportJob[]> {
+  const res = await invoke<{ jobs: CostExportJob[] }>("cloud_cost_export_jobs_list", { orgId });
+  return res.jobs;
+}
+
+export async function cancelCloudCostExportJob(
+  orgId: string,
+  jobId: string,
+): Promise<CostExportJob> {
+  return invoke("cloud_cost_export_job_cancel", { orgId, jobId });
+}
+
+/* A report's own anomaly alert (`/cost-reports/{id}/anomaly-alert`). */
+
+export async function listCloudReportAnomalyAlerts(
+  orgId: string,
+): Promise<CostReportAnomalyAlert[]> {
+  const res = await invoke<{ alerts: CostReportAnomalyAlert[] }>(
+    "cloud_report_anomaly_alerts_list",
+    { orgId },
+  );
+  return res.alerts;
+}
+
+export async function loadCloudReportAnomalyAlertTargets(
+  orgId: string,
+  reportId: string,
+): Promise<DestinationCatalog> {
+  return invoke("cloud_report_anomaly_alert_targets", { orgId, reportId });
+}
+
+export async function saveCloudReportAnomalyAlert(
+  orgId: string,
+  reportId: string,
+  input: CostReportAnomalyAlertInput,
+): Promise<CostReportAnomalyAlert> {
+  return invoke("cloud_report_anomaly_alert_save", { orgId, reportId, input });
+}
+
+export async function deleteCloudReportAnomalyAlert(
+  orgId: string,
+  reportId: string,
+): Promise<void> {
+  await invoke("cloud_report_anomaly_alert_delete", { orgId, reportId });
+}
+
+export async function loadCloudCostExportJobFile(
+  orgId: string,
+  jobId: string,
+): Promise<Uint8Array> {
+  return invoke("cloud_cost_export_job_download", { orgId, jobId });
 }
 
 export async function loadCloudDashboardPdf(

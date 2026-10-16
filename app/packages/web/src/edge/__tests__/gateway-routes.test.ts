@@ -43,6 +43,18 @@ describe("routeRequest", () => {
     }
   });
 
+  it("runs export job creation and downloads on the session gateway, and polls on the edge", () => {
+    expect(routeRequest("POST", "/api/org/org_1/costs/exports/jobs", null)).toMatchObject({
+      tier: "session",
+    });
+    expect(
+      routeRequest("GET", "/api/org/org_1/costs/exports/jobs/job_1/download", null),
+    ).toMatchObject({ tier: "session" });
+    expect(routeRequest("GET", "/api/org/org_1/costs/exports/jobs/job_1", null)).toEqual({
+      target: "edge",
+    });
+  });
+
   it("sends driver-only routes to any Node runtime for every method", () => {
     for (const path of [
       "/api/org/org_1/sql/query",

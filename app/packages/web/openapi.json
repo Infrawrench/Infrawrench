@@ -9006,6 +9006,263 @@
         ],
         "additionalProperties": false
       },
+      "CostExportJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "expired"
+            ],
+            "description": "`queued` until a gateway process claims it, `running` while the file is written, then `succeeded` (download it), `failed` (see `error`), `cancelled`, or `expired` once the file has been deleted, 24 hours after it finished."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson",
+              "focus"
+            ],
+            "description": "`csv` / `ndjson`: Infrawrench's own columns (`day`, the group-by dimension or tag columns, `currency`, `amount`, `usage_amount`, `usage_unit`, `exported_at`, `collection_watermark`), plus per-day unit-cost columns (`unit_cost_metric`, `unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value`, `unit_cost_gap`) when the exported report draws a unit cost. `focus`: the FOCUS layout at full row grain, as CSV."
+          },
+          "focusVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "1.4",
+              "1.3"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "report",
+                  "query"
+                ]
+              },
+              "reportId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reportName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "unitCostMetric": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The metric (or usage unit) whose per-day unit-cost columns the file carries."
+              }
+            },
+            "required": [
+              "kind",
+              "reportId",
+              "reportName",
+              "unitCostMetric"
+            ],
+            "additionalProperties": false
+          },
+          "progress": {
+            "type": "number",
+            "description": "0 to 1: the share of the range written so far."
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "byteCount": {
+            "type": "number",
+            "description": "Uncompressed bytes written so far."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the file is deleted: 24 hours after it finished."
+          },
+          "downloadUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path of `GET /costs/exports/jobs/{jobId}/download` once `succeeded`, else null. Authenticated like every other route."
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "format",
+          "focusVersion",
+          "from",
+          "to",
+          "source",
+          "progress",
+          "rowCount",
+          "byteCount",
+          "error",
+          "fileName",
+          "contentType",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "expiresAt",
+          "downloadUrl"
+        ],
+        "additionalProperties": false
+      },
+      "CostExportJobRequest": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "Export a saved cost report's scope: its filters (with its saved filter expanded), its group-by as the row identity, its cost basis, and its unit cost when it draws one."
+          },
+          "query": {
+            "type": "object",
+            "properties": {
+              "filters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostFilter"
+                }
+              },
+              "query": {
+                "type": "string",
+                "description": "Cost query language text."
+              },
+              "savedFilterId": {
+                "type": "string"
+              },
+              "chargeTypes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostChargeType"
+                }
+              },
+              "costBasis": {
+                "$ref": "#/components/schemas/CostBasis"
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "provider",
+                    "account",
+                    "service",
+                    "region",
+                    "resource",
+                    "charge_type",
+                    "commitment"
+                  ]
+                },
+                "description": "Row identity for the native layouts. Empty: one row per day and currency."
+              },
+              "tagKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Tag keys written as `tag_<key>` columns."
+              },
+              "virtualTagKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Virtual tag keys written as `vtag_<key>` columns."
+              }
+            },
+            "additionalProperties": false,
+            "description": "An ad-hoc scope instead of a saved report."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "ndjson",
+              "focus"
+            ],
+            "description": "`csv` / `ndjson`: Infrawrench's own columns (`day`, the group-by dimension or tag columns, `currency`, `amount`, `usage_amount`, `usage_unit`, `exported_at`, `collection_watermark`), plus per-day unit-cost columns (`unit_cost_metric`, `unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value`, `unit_cost_gap`) when the exported report draws a unit cost. `focus`: the FOCUS layout at full row grain, as CSV."
+          },
+          "focusVersion": {
+            "type": "string",
+            "enum": [
+              "1.4",
+              "1.3"
+            ],
+            "description": "FOCUS version for `format: focus`. Omitted means the latest (`1.4`)."
+          },
+          "from": {
+            "type": "string",
+            "description": "First day, `YYYY-MM-DD`. Required with `query`; a report defaults to its own range."
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day, inclusive."
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "additionalProperties": false
+      },
       "CostDimensionValues": {
         "type": "object",
         "properties": {
@@ -14374,6 +14631,479 @@
         ],
         "additionalProperties": false
       },
+      "AlertDestination": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "push"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "slack"
+                ]
+              },
+              "channelId": {
+                "type": "string",
+                "description": "A slack_channels row id from /slack/status"
+              }
+            },
+            "required": [
+              "kind",
+              "channelId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "msteams"
+                ]
+              },
+              "webhookId": {
+                "type": "string",
+                "description": "An msteams webhook id from /msteams/status"
+              }
+            },
+            "required": [
+              "kind",
+              "webhookId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "on-call"
+                ]
+              },
+              "scheduleId": {
+                "type": "string",
+                "description": "An on-call rotation id from /on-call/schedules"
+              }
+            },
+            "required": [
+              "kind",
+              "scheduleId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "github-issues"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "email-member"
+                ]
+              },
+              "userId": {
+                "type": "string",
+                "description": "An organization member's user id (from `members` in this response, or GET /alert-email). Their current login address is read at send time."
+              }
+            },
+            "required": [
+              "kind",
+              "userId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "paging-provider"
+                ]
+              },
+              "accountId": {
+                "type": "string",
+                "description": "A connected account whose plugin can page (GET /paging-providers)"
+              },
+              "targetId": {
+                "type": "string",
+                "description": "The provider's id for the target (a PagerDuty service, an incident.io alert source), from GET /paging-providers/destinations"
+              }
+            },
+            "required": [
+              "kind",
+              "accountId",
+              "targetId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "provider-on-call"
+                ]
+              },
+              "accountId": {
+                "type": "string",
+                "description": "A connected account whose plugin can say who is on call"
+              },
+              "sourceId": {
+                "type": "string",
+                "description": "A provider schedule or escalation policy id, from GET /paging-providers/destinations"
+              }
+            },
+            "required": [
+              "kind",
+              "accountId",
+              "sourceId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "email-address"
+                ]
+              },
+              "address": {
+                "type": "string",
+                "description": "An extra address. Must pass the organization's external-address policy (GET /alert-email/settings).",
+                "example": "finance@example.com"
+              }
+            },
+            "required": [
+              "kind",
+              "address"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes; an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody (disabled, empty, not yet started) contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates.\n\n`paging-provider` opens an alert on a provider target under a stable dedup key. The alert's own recovery (a probe coming back, a declared incident resolving, a page being cleared) resolves it upstream, an Infrawrench acknowledgement acknowledges it, and an acknowledgement upstream settles the Infrawrench escalation. `provider-on-call` asks the provider who is on call and pushes to the members whose email matches."
+      },
+      "CostReportAnomaly": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string",
+            "description": "The anomalous day, YYYY-MM-DD (UTC)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "actual": {
+            "type": "number",
+            "description": "That day's spend in the report's scope."
+          },
+          "baseline": {
+            "type": "number",
+            "description": "The trailing 28-day mean it was judged against."
+          },
+          "threshold": {
+            "type": "number",
+            "description": "The bar it cleared: mean + sigmas x stddev."
+          },
+          "notifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was delivered; null while undelivered or inside the 7-day cooldown."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "day",
+          "currency",
+          "actual",
+          "baseline",
+          "threshold",
+          "notifiedAt",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportAnomalyAlertInput": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Off keeps the configuration but stops evaluation."
+          },
+          "sigmas": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Standard deviations above the trailing 28-day mean that count as anomalous, 1 to 10. The org-wide default is 3.",
+            "example": 3
+          },
+          "minDeltaCents": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000000,
+            "description": "Least rise over the trailing mean, in cents of the spend's own currency, before a day is reported however many standard deviations it is. 100 to 10,000,000.",
+            "example": 1000
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertDestination"
+            },
+            "maxItems": 20,
+            "description": "Where findings go, in the alert routing vocabulary (`GET …/anomaly-alert/targets` lists what is available). Delivered as given: organization alert rules neither redirect, swallow nor hold them for quiet hours. At least one when `enabled`."
+          }
+        },
+        "required": [
+          "enabled",
+          "sigmas",
+          "minDeltaCents",
+          "destinations"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportAnomalyAlert": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CostReportAnomalyAlertInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reportId": {
+                "type": "string"
+              },
+              "reportName": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastEvaluatedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recent": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostReportAnomaly"
+                },
+                "description": "The latest 20 findings, newest first."
+              }
+            },
+            "required": [
+              "id",
+              "reportId",
+              "reportName",
+              "createdAt",
+              "updatedAt",
+              "lastEvaluatedAt",
+              "lastError",
+              "recent"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CostReportAnomalyAlertTargets": {
+        "type": "object",
+        "properties": {
+          "slackChannels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "isPrivate": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "isPrivate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "msTeamsWebhooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "onCallSchedules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Live on-call rotations, so the editor can offer 'whoever is on call' as a destination. Disabled rotations are omitted for the same reason a disconnected Slack install is: offering one would let the editor build a rule that routes nowhere."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "userId",
+                "name",
+                "email"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Current members, for the email destination picker."
+          },
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment has a mail provider configured."
+          },
+          "emailSettings": {
+            "type": "object",
+            "properties": {
+              "externalPolicy": {
+                "type": "string",
+                "enum": [
+                  "member-domains",
+                  "any"
+                ]
+              },
+              "allowedDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "externalPolicy",
+              "allowedDomains"
+            ],
+            "additionalProperties": false,
+            "description": "The external-address policy an `email-address` destination must pass."
+          },
+          "memberDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Domains the organization's members sign in with: the implicit allowlist."
+          }
+        },
+        "required": [
+          "slackChannels",
+          "msTeamsWebhooks",
+          "onCallSchedules",
+          "members",
+          "emailAvailable",
+          "emailSettings",
+          "memberDomains"
+        ],
+        "additionalProperties": false
+      },
       "DashboardNotification": {
         "type": "object",
         "properties": {
@@ -17705,6 +18435,27 @@
           "mapping"
         ],
         "additionalProperties": false
+      },
+      "UnitCostExportRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/UnitCostQueryRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "csv",
+                  "ndjson"
+                ],
+                "description": "File format. Default `csv`."
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
       },
       "OrphanCostAnnotation": {
         "type": [
@@ -21930,6 +22681,154 @@
           "toCurrency",
           "rate",
           "effectiveFrom"
+        ],
+        "additionalProperties": false
+      },
+      "ExchangeRateImportResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "True when nothing was written."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "True when the rows were written."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "integer",
+                  "description": "Line in the file; the header is line 1."
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "update",
+                    "unchanged",
+                    "error"
+                  ],
+                  "description": "`create`: no stated rate for this pair and effective date yet. `update`: one exists with a different rate or end date, and is replaced. `unchanged`: identical to what is stored. `error`: invalid, with `error` saying why."
+                },
+                "rate": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ExchangeRateInput"
+                    },
+                    {
+                      "description": "The normalized rate; absent on an `error` row."
+                    }
+                  ]
+                },
+                "previousRate": {
+                  "type": "string",
+                  "pattern": "^\\d+(\\.\\d+)?$",
+                  "description": "The stored rate an `update` replaces.",
+                  "example": "1.0850000000"
+                },
+                "previousEffectiveTo": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "example": "2026-07-01"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "line",
+                "action"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "create": {
+                "type": "integer"
+              },
+              "update": {
+                "type": "integer"
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "error": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "create",
+              "update",
+              "unchanged",
+              "error"
+            ],
+            "additionalProperties": false
+          },
+          "fileError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A problem with the file as a whole (a missing column, too many rows, the org's rate cap); `rows` is then empty or unapplied."
+          }
+        },
+        "required": [
+          "dryRun",
+          "applied",
+          "rows",
+          "counts",
+          "fileError"
+        ],
+        "additionalProperties": false
+      },
+      "ExchangeRateImportRefusal": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ExchangeRateImportResult"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ExchangeRateImportRequest": {
+        "type": "object",
+        "properties": {
+          "csv": {
+            "type": "string",
+            "maxLength": 524288,
+            "description": "The file's text, with a header row. Columns (matched by name, case and punctuation insensitive): `from`, `to`, `rate`, and either `effective_from` (+ optional `effective_to`) or `billing_period` (`YYYY-MM`, shorthand for that month's first and last day). Comma, semicolon, tab or pipe delimited. At most 2,000 rows.",
+            "example": "from,to,rate,effective_from,effective_to,billing_period\nEUR,USD,1.08,2026-01-01,,\nJPY,USD,0.0067,,,2026-04\n"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Classify every row and write nothing. The preview the settings page shows."
+          },
+          "skipInvalid": {
+            "type": "boolean",
+            "description": "Write the valid rows even when some rows are invalid. Without it an upload with any invalid row writes nothing."
+          }
+        },
+        "required": [
+          "csv"
         ],
         "additionalProperties": false
       },
@@ -59478,192 +60377,6 @@
         ],
         "description": "One clause of a rule. A rule matches when every condition matches; 'or' is expressed by writing a second rule. A condition on a fact the alert does not carry never matches; in either direction, so `accountId notIn [x]` does not match an alert with no account."
       },
-      "AlertDestination": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "push"
-                ]
-              }
-            },
-            "required": [
-              "kind"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "slack"
-                ]
-              },
-              "channelId": {
-                "type": "string",
-                "description": "A slack_channels row id from /slack/status"
-              }
-            },
-            "required": [
-              "kind",
-              "channelId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "msteams"
-                ]
-              },
-              "webhookId": {
-                "type": "string",
-                "description": "An msteams webhook id from /msteams/status"
-              }
-            },
-            "required": [
-              "kind",
-              "webhookId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "on-call"
-                ]
-              },
-              "scheduleId": {
-                "type": "string",
-                "description": "An on-call rotation id from /on-call/schedules"
-              }
-            },
-            "required": [
-              "kind",
-              "scheduleId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "github-issues"
-                ]
-              }
-            },
-            "required": [
-              "kind"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "email-member"
-                ]
-              },
-              "userId": {
-                "type": "string",
-                "description": "An organization member's user id (from `members` in this response, or GET /alert-email). Their current login address is read at send time."
-              }
-            },
-            "required": [
-              "kind",
-              "userId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "paging-provider"
-                ]
-              },
-              "accountId": {
-                "type": "string",
-                "description": "A connected account whose plugin can page (GET /paging-providers)"
-              },
-              "targetId": {
-                "type": "string",
-                "description": "The provider's id for the target (a PagerDuty service, an incident.io alert source), from GET /paging-providers/destinations"
-              }
-            },
-            "required": [
-              "kind",
-              "accountId",
-              "targetId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "provider-on-call"
-                ]
-              },
-              "accountId": {
-                "type": "string",
-                "description": "A connected account whose plugin can say who is on call"
-              },
-              "sourceId": {
-                "type": "string",
-                "description": "A provider schedule or escalation policy id, from GET /paging-providers/destinations"
-              }
-            },
-            "required": [
-              "kind",
-              "accountId",
-              "sourceId"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "email-address"
-                ]
-              },
-              "address": {
-                "type": "string",
-                "description": "An extra address. Must pass the organization's external-address policy (GET /alert-email/settings).",
-                "example": "finance@example.com"
-              }
-            },
-            "required": [
-              "kind",
-              "address"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes; an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody (disabled, empty, not yet started) contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates.\n\n`paging-provider` opens an alert on a provider target under a stable dedup key. The alert's own recovery (a probe coming back, a declared incident resolving, a page being cleared) resolves it upstream, an Infrawrench acknowledgement acknowledges it, and an acknowledgement upstream settles the Infrawrench escalation. `provider-on-call` asks the provider who is on call and pushes to the members whose email matches."
-      },
       "QuietHours": {
         "type": [
           "object",
@@ -67238,6 +67951,313 @@
         "x-required-permission": "costs:read"
       }
     },
+    "/api/org/{orgId}/costs/exports/jobs": {
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Start a background cost export",
+        "description": "Queues an export of a saved report (`reportId`) or an ad-hoc scope (`query`) as CSV, NDJSON or FOCUS CSV, and answers at once with the job. The file is written on the gateway in the background; poll `GET /costs/exports/jobs/{jobId}` for `progress` and download from `downloadUrl` once `status` is `succeeded`. Up to 731 days per job and 256 MB per file; three queued or running jobs per person. Rows are read inside the caller's cost visibility, and what is exported is fixed when the job is created, so editing the report afterwards does not change the file.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostExportJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExportJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsExportsJobs",
+        "x-required-permission": "costs:read"
+      },
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "List your recent export jobs",
+        "description": "The caller's 20 most recent export jobs, newest first. Jobs are private to their creator.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostExportJob"
+                      }
+                    }
+                  },
+                  "required": [
+                    "jobs"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsExportsJobs",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/exports/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get an export job's status",
+        "description": "Status, progress, row count, error and, once finished, the download path and expiry.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsExportsJobsJobId",
+        "x-required-permission": "costs:read"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Cancel an export job or delete its file",
+        "description": "Cancels a queued or running job (the writer stops at its next chunk), or deletes a finished file before it expires. Answers with the job's new state.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostExportJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostsExportsJobsJobId",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/exports/jobs/{jobId}/download": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Download an export job's file",
+        "description": "The finished file, streamed. 409 while the job is still queued or running (or failed); 410 once the file has expired or been deleted.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone: the file expired or was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsExportsJobsJobIdDownload",
+        "x-required-permission": "costs:read"
+      }
+    },
     "/api/org/{orgId}/costs/dimensions": {
       "get": {
         "tags": [
@@ -72307,6 +73327,295 @@
         "x-required-permission": "costs:read"
       }
     },
+    "/api/org/{orgId}/cost-reports/{id}/anomaly-alert": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Get a report's anomaly alert",
+        "description": "The report's own anomaly alert and its latest findings. The detector judges the report's filtered daily total (its filters and saved filter, per currency) against the trailing 28 days after each cost collection, re-judging the last three days as they fill in, and delivers a day once (then a 7-day cooldown per currency). 404 when the report has none, or when the caller cannot see the report.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The alert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportAnomalyAlert"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdAnomalyAlert",
+        "x-required-permission": "costs:read"
+      },
+      "put": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Create or replace a report's anomaly alert",
+        "description": "One alert per report, replaced whole. Destinations must belong to this organization (a live Slack channel, a Teams webhook, a current member, an address the email policy allows). Requires `org:settings:write`, like report delivery schedules. The alert reads spend with the writer's cost visibility when they are cost-scoped.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportAnomalyAlertInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportAnomalyAlert"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostReportsIdAnomalyAlert",
+        "x-required-permission": "org:settings:write"
+      },
+      "delete": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Delete a report's anomaly alert",
+        "description": "Removes the alert and its findings. The report itself is untouched.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostReportsIdAnomalyAlert",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/anomaly-alert/targets": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List destinations for a report anomaly alert",
+        "description": "The organization's connected Slack channels, Teams webhooks, live on-call rotations, members and external-address policy: what the destination picker offers. Paging provider targets are listed by `GET /paging-providers/destinations`.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Destination catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportAnomalyAlertTargets"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdAnomalyAlertTargets",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/cost-report-anomaly-alerts": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "List report anomaly alerts",
+        "description": "Every report anomaly alert in the organization whose report the caller can see, in report name order, each with its latest findings.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alerts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "alerts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostReportAnomalyAlert"
+                      }
+                    }
+                  },
+                  "required": [
+                    "alerts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportAnomalyAlerts",
+        "x-required-permission": "costs:read"
+      }
+    },
     "/api/org/{orgId}/dashboards/{id}/pdf": {
       "get": {
         "tags": [
@@ -76474,6 +77783,147 @@
         "operationId": "postOrgOrgIdBusinessMetricsUsageUnitCosts"
       }
     },
+    "/api/org/{orgId}/business-metrics/{id}/unit-costs/export": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Export unit costs or margin as a file",
+        "description": "The query `POST /business-metrics/{id}/unit-costs` answers, as CSV or NDJSON. One row per bucket per series (and per label value when grouped), columns in this order: `bucket`, `bucket_days`, `reported_days`, `partial`, `label_key`, `label_value`, `label_other`, `currency`, `mode`, `scale`, `metric_key`, `metric_unit`, `usage_unit`, `cost` (summed spend), `metric_value` (summed denominator, unscaled), `value` (the ratio, already scaled), `absolute_margin`, `gap`. A gap is an **empty** `value` with its reason in `gap`, never 0, and `partial` flags a bucket whose denominator covers only some of its days. Text cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so a spreadsheet does not run them. NDJSON carries the same keys, with `null` for empty.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Metric id or key"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitCostExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsIdUnitCostsExport",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/business-metrics/usage-unit-costs/export": {
+      "post": {
+        "tags": [
+          "Business metrics"
+        ],
+        "summary": "Export cost per usage unit as a file",
+        "description": "The query `POST /business-metrics/usage-unit-costs` answers, as CSV or NDJSON. One row per bucket per series (and per label value when grouped), columns in this order: `bucket`, `bucket_days`, `reported_days`, `partial`, `label_key`, `label_value`, `label_other`, `currency`, `mode`, `scale`, `metric_key`, `metric_unit`, `usage_unit`, `cost` (summed spend), `metric_value` (summed denominator, unscaled), `value` (the ratio, already scaled), `absolute_margin`, `gap`. A gap is an **empty** `value` with its reason in `gap`, never 0, and `partial` flags a bucket whose denominator covers only some of its days. Text cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so a spreadsheet does not run them. NDJSON carries the same keys, with `null` for empty.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitCostExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBusinessMetricsUsageUnitCostsExport",
+        "x-required-permission": "costs:read"
+      }
+    },
     "/api/org/{orgId}/orphans": {
       "get": {
         "tags": [
@@ -78953,6 +80403,98 @@
           }
         },
         "operationId": "putOrgOrgIdCurrencyRates",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/currency/rates/template": {
+      "get": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "CSV template for uploading exchange rates",
+        "description": "The header row `POST /currency/rates/import` reads, plus one example row per shape: an open-ended rate, a bounded override, and a `billing_period` row.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCurrencyRatesTemplate",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/currency/rates/import": {
+      "post": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Upload many exchange rates from a CSV",
+        "description": "Upserts every row on (`fromCurrency`, `toCurrency`, `effectiveFrom`), exactly as the single-rate PUT does, in one transaction. Send `dryRun: true` first to see each row classified (`create`, `update`, `unchanged`, `error` with the reason); an upload with an invalid row writes nothing unless `skipInvalid` is set. Uploaded rates are ordinary stated rates: they win over the automatic feed for the days they cover, and a `billing_period` row (or an `effective_to`) hands the days after it back to the next rate or the feed. Requires `org:settings:write`; applied uploads are audit-logged as `exchange_rate.import`.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeRateImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview, or the applied upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRateImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed body, or a whole-file problem; the body is then the result with `fileError` and `error` set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRateImportRefusal"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCurrencyRatesImport",
         "x-required-permission": "org:settings:write"
       }
     },

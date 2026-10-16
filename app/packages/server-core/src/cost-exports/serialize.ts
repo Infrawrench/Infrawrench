@@ -54,7 +54,7 @@ export function csvCell(value: string | number | undefined): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-function rowValues(
+export function rowValues(
   row: CostExportRow,
   columns: CostExportColumns,
   stamp: ProvenanceStamp,
