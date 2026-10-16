@@ -92,6 +92,7 @@ Rules:
 - Deleting needs owner access, or editor access on an object nobody owns (objects created before sharing existed).
 - Sharing on a folder reaches every report and subfolder inside it. A folder left at the default adds nothing, so making one report "No access" is not undone by the folder it sits in.
 - Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read`, editing `costs:write` or `dashboards:write`.
+- [Saved views over savings findings](../features/savings-findings.md#saved-views) share the same way, with the creator as owner; opening one needs `resources:read`, editing it `resources:write`.
 - Admins and owners hold `sharing:override`, which opens and re-shares everything. That is what keeps an object manageable after its owner leaves.
 - A report card on a dashboard only appears for people who can open the report itself.
 

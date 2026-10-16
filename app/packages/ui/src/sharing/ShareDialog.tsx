@@ -122,7 +122,9 @@ export function ShareDialog({
           ? gt("canvas")
           : target.objectType === "kubernetes_efficiency_report"
             ? gt("efficiency report")
-            : gt("report");
+            : target.objectType === "savings_view"
+              ? gt("view")
+              : gt("report");
 
   const levelLabel = (level: ObjectAccessLevel) =>
     level === "owner" ? gt("Owner") : level === "editor" ? gt("Can edit") : gt("Can view");
@@ -165,7 +167,7 @@ export function ShareDialog({
       ariaLabel={gt("Share {name}", { name: target.name })}
       className="w-full max-w-lg"
     >
-      <div className="p-5 flex flex-col gap-4">
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-5 flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold text-on-surface">
             {gt("Share {name}", { name: target.name })}

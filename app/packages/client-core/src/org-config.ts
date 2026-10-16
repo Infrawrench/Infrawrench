@@ -24,6 +24,12 @@
  * configuration: firing history, cooldown claims, run logs, change freezes.
  */
 import type { SloComparator, SloSliKind, SloWindowDays } from "./slos";
+import type {
+  SavingsFindingKind,
+  SavingsFindingSort,
+  SavingsFindingStatusFilter,
+  SavingsFindingTagFilter,
+} from "./savings-findings";
 import type { CostFilter, DashboardWidgetKind } from "./costs";
 import type { BudgetPeriod } from "./budgets";
 import type { TagPolicy } from "./tag-policy";
@@ -43,6 +49,7 @@ export const ORG_CONFIG_SECTIONS = [
   "costCentres",
   "tagPolicy",
   "alertSettings",
+  "savingsViews",
 ] as const;
 
 export type OrgConfigSection = (typeof ORG_CONFIG_SECTIONS)[number];
@@ -59,6 +66,7 @@ export const ORG_CONFIG_SECTION_LABELS: Record<OrgConfigSection, string> = {
   costCentres: "Cost centres",
   tagPolicy: "Tag policy",
   alertSettings: "Alert settings",
+  savingsViews: "Savings views",
 };
 
 /**
@@ -79,6 +87,7 @@ export const ORG_CONFIG_SECTION_WRITE_PERMISSIONS: Record<OrgConfigSection, stri
   costCentres: "costs:write",
   tagPolicy: "org:settings:write",
   alertSettings: "org:settings:write",
+  savingsViews: "resources:write",
 };
 
 /** The permission each section's reads require, on top of `config:read`. */
@@ -93,6 +102,7 @@ export const ORG_CONFIG_SECTION_READ_PERMISSIONS: Record<OrgConfigSection, strin
   costCentres: "costs:read",
   tagPolicy: "resources:read",
   alertSettings: "org:settings:write",
+  savingsViews: "resources:read",
 };
 
 /* ----------------------------- document shape ----------------------------- */
@@ -280,6 +290,38 @@ export interface OrgConfigSlo {
   enabled: boolean;
 }
 
+/**
+ * A savings view's filter as the document carries it: `SavingsFindingFilter`
+ * with accounts named by display name rather than id, the one field that
+ * could not survive a move between organizations.
+ */
+export interface OrgConfigSavingsViewFilter {
+  kinds?: SavingsFindingKind[] | undefined;
+  pluginIds?: string[] | undefined;
+  /** Account display names; resolved to ids on apply (unknown names are reported). */
+  accounts?: string[] | undefined;
+  regions?: string[] | undefined;
+  tags?: SavingsFindingTagFilter[] | undefined;
+  minMonthlySavings?: number | undefined;
+  detectedFrom?: string | undefined;
+  detectedTo?: string | undefined;
+  search?: string | undefined;
+}
+
+/**
+ * A saved view over the savings findings list. Sharing is not carried (the
+ * document carries no per-object sharing for any section); a view the apply
+ * creates is owned by the applying user.
+ */
+export interface OrgConfigSavingsView {
+  key: string;
+  name: string;
+  description: string | null;
+  status: SavingsFindingStatusFilter;
+  filter: OrgConfigSavingsViewFilter;
+  sort: SavingsFindingSort;
+}
+
 /** An allocation rule, nested under the centre it allocates to. */
 export interface OrgConfigAllocationRule {
   priority: number;
@@ -369,6 +411,7 @@ export interface OrgConfigDocument {
   costCentres?: OrgConfigCostCentre[] | undefined;
   tagPolicy?: TagPolicy | undefined;
   alertSettings?: OrgConfigAlertSettings | undefined;
+  savingsViews?: OrgConfigSavingsView[] | undefined;
 }
 
 /* -------------------------------- plan shape ------------------------------ */

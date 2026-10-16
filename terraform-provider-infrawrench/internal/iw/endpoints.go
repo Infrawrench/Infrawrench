@@ -218,6 +218,36 @@ func (c *Client) DeleteSavedFilter(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/saved-cost-filters/"+seg(id))
 }
 
+/* ------------------------------ savings views ------------------------------ */
+
+func (c *Client) GetSavingsView(ctx context.Context, id string) (*SavingsView, error) {
+	var out SavingsView
+	if err := c.Get(ctx, "/savings-views/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateSavingsView(ctx context.Context, in SavingsViewInput) (*SavingsView, error) {
+	var out SavingsView
+	if err := c.Post(ctx, "/savings-views", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateSavingsView(ctx context.Context, id string, in SavingsViewInput) (*SavingsView, error) {
+	var out SavingsView
+	if err := c.Put(ctx, "/savings-views/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteSavingsView(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/savings-views/"+seg(id))
+}
+
 /* ------------------------------- cost reports ------------------------------ */
 
 func (c *Client) GetCostReport(ctx context.Context, id string) (*CostReport, error) {

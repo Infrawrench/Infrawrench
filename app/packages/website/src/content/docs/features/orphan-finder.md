@@ -6,6 +6,8 @@ sidebar_order: 14
 
 The orphan finder scans the resources Infrawrench has already synced from your connected accounts and flags the ones that are probably costing money for nothing: volumes attached to no server, reserved or elastic IPs assigned to nothing, static IPs sitting unused. Each flagged resource comes with a plain-English reason from the provider plugin that knows what the fields mean.
 
+Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+
 No extra provider API calls are made — the finder runs entirely over data your accounts already list, so opening the page is instant and free.
 
 ## Where to find it

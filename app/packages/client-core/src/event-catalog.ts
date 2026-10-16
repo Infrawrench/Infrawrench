@@ -676,6 +676,42 @@ export const DORA_BAND_CHANGED = defineEventType({
   },
 });
 
+export const SAVINGS_FINDING_STATUS_CHANGED = defineEventType({
+  type: "savings.finding.status_changed",
+  version: 1,
+  label: "Savings finding status changed",
+  description:
+    "A savings finding (orphaned resource, oversized resource, extended support surcharge or unused seat) moved between Ready for review, In progress, Completed and Archived, by a person or because a scan stopped reporting it.",
+  category: "cost",
+  defaultSeverity: "info",
+  carriesCost: true,
+  fields: {
+    key: str("The finding key, `<kind>:<sourceId>`."),
+    kind: str("Which finder reported it.", {
+      enum: ["orphan", "oversized", "extended_support", "seat"],
+    }),
+    title: str("One line describing the finding."),
+    resourceName: str("Resource or seat holder display name."),
+    resourceId: str("Infrawrench resource id; null for seats.", { nullable: true }),
+    pluginId: str("Provider plugin id.", { nullable: true }),
+    previousStatus: str("Status before the change.", {
+      enum: ["ready", "in_progress", "completed", "archived"],
+    }),
+    status: str("Status after the change.", {
+      enum: ["ready", "in_progress", "completed", "archived"],
+    }),
+    resolution: str("For Completed: a person said so, or a scan stopped reporting it.", {
+      enum: ["manual", "resolved"],
+      nullable: true,
+    }),
+    changedByUserId: str("Who changed it; null for automatic changes.", { nullable: true }),
+    note: str("The note recorded with the change.", { nullable: true }),
+    monthlySavings: num("Monthly savings at stake, in `currency`.", { nullable: true }),
+    currency: str("ISO 4217 currency code.", { nullable: true }),
+    detectedAt: time("When this occurrence of the finding was first observed."),
+  },
+});
+
 // --- Subscriptions ---
 
 export type EventDestinationKind = "webhook" | "publish";

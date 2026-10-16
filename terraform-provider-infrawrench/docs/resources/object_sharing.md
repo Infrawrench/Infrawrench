@@ -42,7 +42,7 @@ resource "infrawrench_object_sharing" "board" {
 ### Required
 
 - `object_id` (String) The object's id, e.g. `infrawrench_cost_report.x.id`. Changing it replaces the resource.
-- `object_type` (String) `cost_report`, `cost_report_folder`, `cost_canvas` or `dashboard`. Changing it replaces the resource.
+- `object_type` (String) `cost_report`, `cost_report_folder`, `cost_canvas`, `dashboard` or `savings_view`. Changing it replaces the resource.
 - `org_access` (String) What everyone in the organization can do: `editor`, `viewer` or `none`. `editor` is how an object nobody has shared behaves.
 
 ### Optional

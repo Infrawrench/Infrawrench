@@ -6,6 +6,8 @@ sidebar_order: 15
 
 Per-person licences are billed every month whether anybody uses them or not. A Copilot seat for someone who moved to Cursor, a GitLab member who left in the spring, an Okta user nobody deactivated: each one is small, and together they are often one of the larger lines a team can cut without touching infrastructure.
 
+Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+
 Infrawrench reads the paid seats on your connected accounts once a day and lists, next to the cloud savings findings:
 
 - **Inactive** seats: nobody used the seat for the number of days you choose (30 by default).

@@ -234,6 +234,7 @@
     "./savings/realized": "./src/savings/realized.ts",
     "./savings/settings": "./src/savings/settings.ts",
     "./savings/math": "./src/savings/math.ts",
+    "./savings/findings": "./src/savings/findings.ts",
     "./environments/store": "./src/environments/store.ts",
     "./environments/capture": "./src/environments/capture.ts",
     "./environments/instantiate": "./src/environments/instantiate.ts",

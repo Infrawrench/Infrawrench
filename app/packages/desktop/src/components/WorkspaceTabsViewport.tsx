@@ -44,6 +44,7 @@ import {
   type OrphansClient,
   type RightsizingClient,
   type SeatsClient,
+  type SavingsFindingsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
@@ -60,6 +61,7 @@ import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
 import { createDesktopSeatsClient } from "@/lib/seats-client";
+import { createDesktopSavingsFindingsClient } from "@/lib/savings-findings-client";
 import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
@@ -167,6 +169,12 @@ let seatsClient: SeatsClient | null = null;
 function getSeatsClient(): SeatsClient {
   if (!seatsClient) seatsClient = createDesktopSeatsClient();
   return seatsClient;
+}
+
+let savingsFindingsClient: SavingsFindingsClient | null = null;
+function getSavingsFindingsClient(): SavingsFindingsClient {
+  if (!savingsFindingsClient) savingsFindingsClient = createDesktopSavingsFindingsClient();
+  return savingsFindingsClient;
 }
 
 let rightsizingClient: RightsizingClient | null = null;
@@ -370,6 +378,17 @@ function renderPanel(
           // Cloud-only: the rows live server-side and the cloud poller runs
           // the transitions, so local mode omits the section entirely.
           seats={activeCloudOrgId ? getSeatsClient() : undefined}
+          // Cloud-only: statuses, detected dates and saved views are kept
+          // server-side.
+          findings={activeCloudOrgId ? getSavingsFindingsClient() : undefined}
+          onOpenFindingResource={(f) => {
+            if (!f.resourceId || !f.accountId || !f.pluginId || !f.resourceTypeId) return;
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(f.accountId, f.resourceId, f.pluginId, f.resourceTypeId),
+              ),
+            );
+          }}
           schedules={activeCloudOrgId ? getSchedulesClient() : undefined}
           onOpenScheduledResource={(s) =>
             void navigate(

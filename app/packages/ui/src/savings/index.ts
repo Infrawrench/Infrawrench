@@ -6,6 +6,11 @@ export {
 } from "./ExtendedSupportSection.js";
 export { SeatsSection, type SeatsSectionProps } from "./SeatsSection.js";
 export {
+  SavingsFindingsSection,
+  type SavingsFindingsClient,
+  type SavingsFindingsSectionProps,
+} from "./SavingsFindingsSection.js";
+export {
   OversizedSection,
   describeResizeConfirm,
   type OversizedSectionProps,

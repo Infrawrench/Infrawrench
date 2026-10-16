@@ -92,6 +92,11 @@ import { cmdAgents } from "./commands/agents";
 import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
+import {
+  cmdSavingsFindings,
+  cmdSavingsFindingsSet,
+  cmdSavingsViews,
+} from "./commands/savings-findings";
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
 import { cmdServices } from "./commands/services";
@@ -357,6 +362,13 @@ COMMANDS
   savings             realized savings: what resizes, cleanups, schedules & commitments
                       actually saved vs projected   [--from] [--to] [--group-by month|kind|cost-centre|account]
   savings log "<what>" log a saving by hand   --amount <monthly> [--currency USD] [--from <day>] [--note]
+  savings findings    every savings finding with its status, detected date & summary
+                      [--status open|ready|in_progress|completed|archived|all] [--kind orphan|oversized|
+                      extended_support|seat] [--provider] [-a/--account] [--region] [--tag key[=value]]
+                      [--min-savings <monthly>] [--from/--to <detected day>] [--search] [--view <name>]
+                      [--sort savings|detected|name|status_changed[:asc|desc]]
+  savings findings set <key>... --status <status> [--note "..."]   change findings' status
+  savings views       saved views over the findings list
   hygiene             unused API keys, unreferenced SSH keys & unexercised
                       write permissions   [--days 30|90|180|365]
   agents              agent credentials that can reach this org: who claimed
@@ -1107,7 +1119,16 @@ export async function runCli(): Promise<void> {
         await cmdCommitments(ctx);
         break;
       case "savings":
-        if (rest[0] === "log") {
+        if (rest[0] === "findings" && rest[1] === "set") {
+          await cmdSavingsFindingsSet(ctx, rest.slice(2), {
+            status: parsed.savings.status,
+            note: parsed.savings.note,
+          });
+        } else if (rest[0] === "findings") {
+          await cmdSavingsFindings(ctx, parsed.savings);
+        } else if (rest[0] === "views") {
+          await cmdSavingsViews(ctx);
+        } else if (rest[0] === "log") {
           await cmdSavingsLog(ctx, rest.slice(1).join(" "), {
             amount: parsed.savings.amount,
             currency: parsed.range.currency,

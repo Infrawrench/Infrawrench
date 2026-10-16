@@ -41,6 +41,7 @@ const SECTION_LABELS: Record<OrgConfigSection, string> = {
   costCentres: "cost centres",
   tagPolicy: "tag policy",
   alertSettings: "alert settings",
+  savingsViews: "savings views",
 };
 
 /** The keys of {@link SECTION_LABELS}, which the annotation makes exactly the sections. */

@@ -36,6 +36,7 @@ import {
   validateSloInput,
   normalizeProbeMethod,
   normalizeProbeUrl,
+  normalizeSavingsFindingFilter,
   tallyOrgConfigChanges,
   type OrgConfigApplyMode,
   type OrgConfigApplyResult,
@@ -45,6 +46,7 @@ import {
   type OrgConfigDashboardCard,
   type OrgConfigDocument,
   type OrgConfigPlan,
+  type OrgConfigSavingsView,
   type OrgConfigSection,
   type OrgConfigSlo,
   type OrgConfigUnresolved,
@@ -75,8 +77,10 @@ import {
   orgExpirySettings,
   orgPostureSettings,
   orgExtendedSupportSettings,
+  objectAccessGrants,
   orgTagPolicies,
   resources,
+  savingsViews,
   slos,
   syntheticProbes,
   workflows,
@@ -140,6 +144,7 @@ export async function exportOrgConfig(
     ...(want("costCentres") ? { costCentres: state.costCentres.map((c) => c.config) } : {}),
     ...(want("tagPolicy") ? { tagPolicy: state.tagPolicy } : {}),
     ...(want("alertSettings") ? { alertSettings: state.alertSettings } : {}),
+    ...(want("savingsViews") ? { savingsViews: state.savingsViews.map((v) => v.config) } : {}),
   };
 }
 
@@ -795,6 +800,16 @@ async function buildOrgConfigPlan(
   // --- alert settings ------------------------------------------------------
   planAlertSettings(plan, { organizationId, now, state, incoming: doc.alertSettings });
 
+  // --- savings views -------------------------------------------------------
+  planSavingsViews(plan, {
+    organizationId,
+    mode,
+    now,
+    state,
+    incoming: doc.savingsViews,
+    userId: opts.userId,
+  });
+
   return {
     plan: {
       mode,
@@ -1393,6 +1408,107 @@ interface AlertSettingsArgs {
   now: Date;
   state: OrgConfigState;
   incoming: ParsedOrgConfigDocument["alertSettings"];
+}
+
+/**
+ * Savings views. Names are unique per org case-insensitively (the hand-editing
+ * route refuses a duplicate), so a document that would leave two views sharing
+ * a name fails the plan rather than the transaction. Accounts are named by
+ * display name and resolved here; an unknown name is reported and dropped from
+ * that view's filter (a view only lists findings, so a wider view is a visible
+ * inconvenience, never an alert that stops firing).
+ */
+function planSavingsViews(
+  plan: PlanBuilder,
+  ctx: {
+    organizationId: string;
+    mode: OrgConfigApplyMode;
+    now: Date;
+    state: OrgConfigState;
+    incoming: OrgConfigSavingsView[] | undefined;
+    userId: string | null;
+  },
+): void {
+  const { organizationId, mode, now, state, incoming } = ctx;
+  if (incoming) {
+    const named = new Set(incoming.map((v) => v.key));
+    const names = [
+      ...incoming.map((v) => v.name),
+      ...(mode === "replace"
+        ? []
+        : state.savingsViews.filter((e) => !named.has(e.key)).map((e) => e.config.name)),
+    ].map((n) => n.toLowerCase());
+    const dupe = names.find((n, i) => names.indexOf(n) !== i);
+    if (dupe !== undefined) {
+      throw new OrgConfigError(
+        `Two savings views would be named "${dupe}"; view names must be unique.`,
+      );
+    }
+  }
+
+  const row = (entry: OrgConfigSavingsView) => {
+    const { accounts, ...rest } = entry.filter;
+    const accountIds = (accounts ?? []).flatMap((name) => {
+      const id = state.accountIdByName.get(name.toLowerCase());
+      if (!id) {
+        plan.miss(
+          "savingsViews",
+          entry.key,
+          `account "${name}" is not connected; dropped from the filter`,
+        );
+        return [];
+      }
+      return [id];
+    });
+    return {
+      name: entry.name.trim(),
+      description: entry.description?.trim() || null,
+      status: entry.status,
+      filter: normalizeSavingsFindingFilter({
+        ...rest,
+        ...(accountIds.length > 0 ? { accountIds } : {}),
+      }),
+      sort: entry.sort,
+    };
+  };
+
+  planCollection(plan, "savingsViews", mode, state.savingsViews, incoming, {
+    create: (id, entry) => {
+      const values = row(entry);
+      return async (tx) => {
+        await tx.insert(savingsViews).values({
+          id,
+          organizationId,
+          ...values,
+          createdByUserId: ctx.userId,
+        });
+      };
+    },
+    update: (id, entry) => {
+      const values = row(entry);
+      return async (tx) => {
+        await tx
+          .update(savingsViews)
+          .set({ ...values, updatedAt: now })
+          .where(eq(savingsViews.id, id));
+      };
+    },
+    remove: (entity) => async (tx) => {
+      await tx
+        .update(savingsViews)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(eq(savingsViews.id, entity.id));
+      await tx
+        .delete(objectAccessGrants)
+        .where(
+          and(
+            eq(objectAccessGrants.organizationId, organizationId),
+            eq(objectAccessGrants.objectType, "savings_view"),
+            eq(objectAccessGrants.objectId, entity.id),
+          ),
+        );
+    },
+  });
 }
 
 /**

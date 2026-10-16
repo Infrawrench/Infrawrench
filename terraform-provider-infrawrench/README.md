@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 76 resources and 8 data
+accounts and access control, and alert delivery. 77 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -665,6 +665,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_tag_policy`                | by org id | Org singleton; destroy resets to unenforced          |
 | `infrawrench_tag_key_settings`          | by org id | Org singleton; destroy clears both lists             |
 | `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |
+| `infrawrench_savings_view`              | by id     | A saved view over the savings findings list          |
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
@@ -729,19 +730,19 @@ secret store that consumes it rather than into an output.
 
 ### Accounts and access
 
-| Resource                            | Import                               | Notes                                                                              |
-| ----------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                        |
-| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                            |
-| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                                |
-| `infrawrench_jit_access_policy`     | by id                                | Policies only; requests and grants are runtime objects, closed to API keys         |
-| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                           |
-| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder, canvas or dashboard; destroy resets it |
-| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                         |
-| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                          |
-| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                               |
-| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                                |
-| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                                      |
+| Resource                            | Import                               | Notes                                                                                            |
+| ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                                      |
+| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                                          |
+| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                                              |
+| `infrawrench_jit_access_policy`     | by id                                | Policies only; requests and grants are runtime objects, closed to API keys                       |
+| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                                         |
+| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder, canvas, savings view or dashboard; destroy resets it |
+| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                                       |
+| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                                        |
+| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                                             |
+| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                                              |
+| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                                                    |
 
 ### Alert delivery
 

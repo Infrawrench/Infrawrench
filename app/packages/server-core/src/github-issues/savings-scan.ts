@@ -2,8 +2,11 @@
  * The savings scan: a poller pass that turns the recomputed-on-read orphan
  * and rightsizing feeds into events with a beginning and an end.
  *
- * Every six hours per org it computes both feeds, compares them with what it
- * saw last time (`savings_finding_states`), and:
+ * Every six hours per org it computes every savings finder (orphans and
+ * right-sizing, which alert, plus extended support and seats, which are
+ * tracked for the findings workflow only), records them through
+ * `savings/findings.ts` (`savings_finding_states`: detected dates, and the
+ * automatic Completed when a finding goes away), and:
  *
  * - raises one `savingsFindings` alert per **new** finding, carrying the
  *   finding so a `github-issues` routing destination can file it
@@ -21,21 +24,36 @@
  * Claimed with the same conditional upsert the daily alert radars use, so N
  * poller replicas scan an org once per window. Never throws.
  */
-import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 import {
   remediationCommandLines,
+  type ExtendedSupportListResponse,
   type FindingRemediation,
   type GithubIssueSourceKind,
   type OrphanListResponse,
   type RightsizingListResponse,
+  type SavingsFindingKind,
+  type SeatListResponse,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { accounts, savingsFindingScans, savingsFindingStates } from "../db/schema.js";
+import { accounts, savingsFindingScans } from "../db/schema.js";
 import { routeAlert } from "../alerts/route.js";
 import { orgAppUrl } from "../app-url.js";
+import { listExtendedSupport } from "../extended-support/feed.js";
 import { listOrphans } from "../savings/orphans.js";
 import { listRightsizing } from "../savings/rightsizing.js";
+import {
+  clearFindingAlertPending,
+  listAlertPendingFindings,
+  loadResourceContexts,
+  observeExtendedSupport,
+  observeOrphans,
+  observeOversized,
+  observeSeats,
+  recordFindingObservations,
+} from "../savings/findings.js";
+import { listSeats } from "../seats/feed.js";
 import {
   formatMoney,
   reopenResolvedLinks,
@@ -219,87 +237,69 @@ async function scanOrg(
   now: Date,
 ): Promise<SavingsScanOutcome> {
   const appUrl = orgAppUrl(organizationId, "savings");
-  const kinds: ScannedFinding["sourceKind"][] = [];
+  const scanned = new Set<SavingsFindingKind>();
   const current: ScannedFinding[] = [];
+  let orphans: OrphanListResponse | null = null;
+  let oversized: RightsizingListResponse | null = null;
+  let extended: ExtendedSupportListResponse | null = null;
+  let seats: SeatListResponse | null = null;
 
   try {
-    current.push(...orphanFindings(await listOrphans(organizationId), appUrl));
-    kinds.push("orphan");
+    orphans = await listOrphans(organizationId);
+    current.push(...orphanFindings(orphans, appUrl));
+    scanned.add("orphan");
   } catch (err) {
     console.error(`[savings-scan] orphan scan for org ${organizationId} failed:`, err);
   }
   try {
-    current.push(...oversizedFindings(await listRightsizing(organizationId), appUrl));
-    kinds.push("oversized");
+    oversized = await listRightsizing(organizationId);
+    current.push(...oversizedFindings(oversized, appUrl));
+    scanned.add("oversized");
   } catch (err) {
     console.error(`[savings-scan] rightsizing scan for org ${organizationId} failed:`, err);
   }
-  if (kinds.length === 0) return { status: "failed", error: "both feeds failed" };
-
-  const known = await db
-    .select({
-      sourceKind: savingsFindingStates.sourceKind,
-      sourceId: savingsFindingStates.sourceId,
-    })
-    .from(savingsFindingStates)
-    .where(
-      and(
-        eq(savingsFindingStates.organizationId, organizationId),
-        inArray(savingsFindingStates.sourceKind, kinds),
-      ),
-    );
-  const key = (k: string, id: string) => `${k}\x00${id}`;
-  const knownKeys = new Set(known.map((k) => key(k.sourceKind, k.sourceId)));
-  const currentKeys = new Set(current.map((f) => key(f.sourceKind, f.sourceId)));
-
-  const fresh = current.filter((f) => !knownKeys.has(key(f.sourceKind, f.sourceId)));
-  const gone = known.filter((k) => !currentKeys.has(key(k.sourceKind, k.sourceId)));
-
-  // Record what exists now.
-  for (let i = 0; i < current.length; i += 500) {
-    const chunk = current.slice(i, i + 500);
-    await db
-      .insert(savingsFindingStates)
-      .values(
-        chunk.map((f) => ({
-          organizationId,
-          sourceKind: f.sourceKind,
-          sourceId: f.sourceId,
-          firstSeenAt: now,
-          lastSeenAt: now,
-        })),
-      )
-      .onConflictDoUpdate({
-        target: [
-          savingsFindingStates.organizationId,
-          savingsFindingStates.sourceKind,
-          savingsFindingStates.sourceId,
-        ],
-        set: { lastSeenAt: now },
-      });
+  // The workflow-only finders: tracked for detected dates and automatic
+  // completion, never alerted from here (extended support has its own alert
+  // pass, and seats are a weekly digest line).
+  try {
+    extended = await listExtendedSupport(organizationId);
+    scanned.add("extended_support");
+  } catch (err) {
+    console.error(`[savings-scan] extended support scan for org ${organizationId} failed:`, err);
   }
+  try {
+    seats = await listSeats(organizationId, { unscoped: true, withoutRemediation: true });
+    scanned.add("seat");
+  } catch (err) {
+    console.error(`[savings-scan] seat scan for org ${organizationId} failed:`, err);
+  }
+  if (scanned.size === 0) return { status: "failed", error: "every feed failed" };
 
-  // Forget, and resolve, what went away.
+  const contexts = await loadResourceContexts(organizationId, [
+    ...(orphans?.accounts.flatMap((g) => g.resources.map((r) => r.id)) ?? []),
+    ...(oversized?.accounts.flatMap((g) => g.resources.map((r) => r.id)) ?? []),
+    ...(extended?.findings.map((f) => f.resourceId) ?? []),
+  ]);
+  const ctx = (id: string) => contexts.get(id);
+  const plan = await recordFindingObservations(
+    organizationId,
+    [
+      ...(orphans ? observeOrphans(orphans, ctx) : []),
+      ...(oversized ? observeOversized(oversized, ctx) : []),
+      ...(extended ? observeExtendedSupport(extended, ctx) : []),
+      ...(seats ? observeSeats(seats) : []),
+    ],
+    { scannedKinds: scanned, concludeAbsence: true, now, url: appUrl },
+  );
+
+  // Resolve the GitHub issues of what went away.
   let resolved = 0;
+  const gone = plan.gone.filter((g) => g.kind === "orphan" || g.kind === "oversized");
   if (gone.length > 0) {
-    for (const kind of kinds) {
-      const ids = gone.filter((g) => g.sourceKind === kind).map((g) => g.sourceId);
-      for (let i = 0; i < ids.length; i += 500) {
-        await db
-          .delete(savingsFindingStates)
-          .where(
-            and(
-              eq(savingsFindingStates.organizationId, organizationId),
-              eq(savingsFindingStates.sourceKind, kind),
-              inArray(savingsFindingStates.sourceId, ids.slice(i, i + 500)),
-            ),
-          );
-      }
-    }
     const r = await resolveFindingIssues(
       organizationId,
       gone.map((g) => ({
-        sourceKind: g.sourceKind as GithubIssueSourceKind,
+        sourceKind: g.kind as GithubIssueSourceKind,
         sourceId: g.sourceId,
       })),
       "the resource was resized, removed or is in use again.",
@@ -311,7 +311,16 @@ async function scanOrg(
     current.map((f) => ({ sourceKind: f.sourceKind, sourceId: f.sourceId })),
   ).catch((err: unknown) => console.warn("[savings-scan] reopen failed:", err));
 
+  // The workflow-only kinds never alert, so nothing of theirs stays pending.
+  await clearFindingAlertPending(
+    organizationId,
+    plan.fresh.filter((f) => f.kind === "extended_support" || f.kind === "seat"),
+  );
+
+  const alertable = [...scanned].filter((k) => k === "orphan" || k === "oversized");
+  const pending = await listAlertPendingFindings(organizationId, alertable);
   if (!baselined) {
+    await clearFindingAlertPending(organizationId, pending);
     await db
       .update(savingsFindingScans)
       .set({ baselinedAt: now, updatedAt: now })
@@ -319,24 +328,16 @@ async function scanOrg(
     return { status: "baselined", raised: 0, resolved };
   }
 
-  // Biggest money first, so the cap drops the cheap ones.
+  // Pending = never raised: new this pass, first observed by a read, or held
+  // back by last pass's cap. Biggest money first, so the cap drops the cheap
+  // ones; the rest stay pending for the next scan.
+  const pendingKeys = new Set(pending.map((p) => `${p.kind}\x00${p.sourceId}`));
+  const fresh = current.filter((f) => pendingKeys.has(`${f.sourceKind}\x00${f.sourceId}`));
   const ordered = [...fresh].sort((a, b) => (b.monthly?.amount ?? 0) - (a.monthly?.amount ?? 0));
   const raise = ordered.slice(0, MAX_NEW_FINDING_ALERTS);
-  // Findings over the cap are forgotten again so the next scan raises them.
-  const deferred = ordered.slice(MAX_NEW_FINDING_ALERTS);
-  for (const f of deferred) {
-    await db
-      .delete(savingsFindingStates)
-      .where(
-        and(
-          eq(savingsFindingStates.organizationId, organizationId),
-          eq(savingsFindingStates.sourceKind, f.sourceKind),
-          eq(savingsFindingStates.sourceId, f.sourceId),
-        ),
-      );
-  }
 
   let raised = 0;
+  const done: { kind: SavingsFindingKind; sourceId: string }[] = [];
   for (const f of raise) {
     try {
       await routeAlert({
@@ -368,7 +369,11 @@ async function scanOrg(
     } catch (err) {
       console.error(`[savings-scan] alert for ${f.sourceId} failed:`, err);
     }
+    // Attempted counts as raised either way, the behaviour before the
+    // workflow existed: a failing destination must not re-alert every scan.
+    done.push({ kind: f.sourceKind, sourceId: f.sourceId });
   }
+  await clearFindingAlertPending(organizationId, done);
   return { status: "scanned", raised, resolved };
 }
 

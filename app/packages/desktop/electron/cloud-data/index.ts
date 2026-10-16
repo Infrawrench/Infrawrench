@@ -12,6 +12,7 @@ import "./orphans";
 import "./rightsizing";
 import "./extended-support";
 import "./seats";
+import "./savings-findings";
 import "./expiring";
 import "./quotas";
 import "./price-catalog";
