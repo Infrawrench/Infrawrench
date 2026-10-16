@@ -961,6 +961,8 @@ export * from "./commitments";
 export * from "./realized-savings";
 // Status lifecycle, detected dates and saved views over every savings finder.
 export * from "./savings-findings";
+// KPI and text dashboard widgets, and the resizable grid's layout rules.
+export * from "./dashboard-widgets";
 export * from "./network-flows";
 export * from "./ai-attribution";
 export * from "./iac";

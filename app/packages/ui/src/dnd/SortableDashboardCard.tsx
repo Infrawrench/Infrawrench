@@ -13,16 +13,27 @@ export interface SortableDashboardCardProps {
    * graph) has to live here rather than on the card itself.
    */
   className?: string | undefined;
+  /** Inline grid placement (a card's column and row span) for the wrapper. */
+  style?: React.CSSProperties | undefined;
   children: React.ReactNode;
 }
 
-export function SortableDashboardCard({ id, className, children }: SortableDashboardCardProps) {
+export function SortableDashboardCard({
+  id,
+  className,
+  style: placement,
+  children,
+}: SortableDashboardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `dashboard-card:${id}`,
   });
 
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    ...placement,
+    // Translate only: cards span different numbers of tracks, and the
+    // sorting strategy's scale component would stretch a small card's
+    // content to a big neighbour's box mid-drag.
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
     cursor: "grab",

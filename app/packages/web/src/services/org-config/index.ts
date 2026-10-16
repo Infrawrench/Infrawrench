@@ -1209,6 +1209,19 @@ function resolveCards(
       }
       config["budgetId"] = budgetId;
     }
+    const kpiSource = config["source"] as Record<string, unknown> | undefined;
+    if (card.widgetKind === "kpi" && kpiSource?.["kind"] === "budget") {
+      const budgetId = card.budgetKey ? args.budgetIdByKey.get(card.budgetKey) : undefined;
+      if (!budgetId) {
+        plan.miss(
+          "dashboards",
+          dashboard.key,
+          `KPI card names budget "${card.budgetKey ?? "(none)"}", which is not in this document or this organization`,
+        );
+        continue;
+      }
+      config["source"] = { ...kpiSource, budgetId };
+    }
     if (card.widgetKind === "custom_graph") {
       const graphId = card.graphKey ? args.graphIdByKey.get(card.graphKey) : undefined;
       if (!graphId) {

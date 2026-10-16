@@ -371,6 +371,53 @@ describe("cross-section references", () => {
     expect(result.counts.create).toBe(1);
   });
 
+  it("resolves a budget KPI card's budget key, and drops one nothing satisfies", async () => {
+    const kpi = (budgetKey: string) => ({
+      kind: "widget",
+      widgetKind: "kpi",
+      title: "Headroom",
+      budgetKey,
+      config: {
+        version: 1,
+        source: { kind: "budget", measure: "remaining" },
+        comparePreviousPeriod: true,
+      },
+    });
+    const ok = await plan({
+      budgets: [budget("spend", "Cloud spend")],
+      dashboards: [{ key: "home", name: "Home", cards: [kpi("spend")] }],
+    });
+    expect(ok.unresolved).toEqual([]);
+
+    const missing = await plan({
+      dashboards: [{ key: "home", name: "Home", cards: [kpi("nope")] }],
+    });
+    expect(missing.unresolved[0]?.detail).toMatch(/KPI card names budget "nope"/);
+  });
+
+  it("carries a text card through as written", async () => {
+    const result = await plan({
+      dashboards: [
+        {
+          key: "home",
+          name: "Home",
+          cards: [
+            {
+              kind: "widget",
+              widgetKind: "text",
+              title: "Read me",
+              config: { version: 1, markdown: "# Hello" },
+              width: 3,
+              height: 2,
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.unresolved).toEqual([]);
+    expect(result.counts.create).toBe(1);
+  });
+
   it("rejects a widget config the hand-editing route would have rejected", async () => {
     await expect(
       plan({

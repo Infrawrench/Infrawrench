@@ -540,6 +540,28 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "cloud_duplicate_widget",
+  async (_e, { orgId, widgetId }: { orgId: string; widgetId: string }) => {
+    return cloudFetch(orgId, `/dashboards/widgets/${encodeURIComponent(widgetId)}/duplicate`, {
+      method: "POST",
+      body: "{}",
+    });
+  },
+);
+
+// A KPI card's figure. The config is re-serialised here so the renderer can
+// only ever reach this one read route with it.
+ipcMain.handle(
+  "cloud_evaluate_dashboard_kpi",
+  async (_e, { orgId, config }: { orgId: string; config: unknown }) => {
+    return cloudFetch(orgId, "/dashboards/kpi", {
+      method: "POST",
+      body: JSON.stringify({ config }),
+    });
+  },
+);
+
+ipcMain.handle(
   "cloud_delete_widget",
   async (_e, { orgId, widgetId }: { orgId: string; widgetId: string }) => {
     return cloudFetch(orgId, `/dashboards/widgets/${encodeURIComponent(widgetId)}`, {

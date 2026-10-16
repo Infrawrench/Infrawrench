@@ -6,6 +6,9 @@ const mockInsert = vi.fn();
 const mockSelect = vi.fn();
 const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
+const mockTransaction = vi.fn();
+const mockEvaluateKpi = vi.fn();
+const mockLogAudit = vi.fn();
 
 vi.mock("@/services/object-sharing", () => ({
   // Sharing is covered by its own suite; here every object is visible.
@@ -27,8 +30,28 @@ vi.mock("@/db/client", () => ({
     select: (...args: unknown[]) => mockSelect(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
+    transaction: (...args: unknown[]) => mockTransaction(...args),
   },
 }));
+
+vi.mock("@/services/audit", () => ({
+  logAudit: (...args: unknown[]) => mockLogAudit(...args),
+}));
+
+vi.mock("@/services/dashboard-kpi", () => {
+  class DashboardKpiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number = 400,
+    ) {
+      super(message);
+    }
+  }
+  return {
+    DashboardKpiError,
+    evaluateDashboardKpi: (...args: unknown[]) => mockEvaluateKpi(...args),
+  };
+});
 
 vi.mock("uuid", () => ({ v4: () => "dash-uuid-1" }));
 
@@ -64,7 +87,9 @@ vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
 
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
 
-const buildApp = () => buildTestApp(dashboardRoutes);
+const { DashboardKpiError } = await import("@/services/dashboard-kpi");
+
+const buildApp = (permissions?: string[]) => buildTestApp(dashboardRoutes, permissions);
 
 /** Builds a drizzle-style chained query mock: select().from().where().orderBy().limit() */
 function chainMock(result: unknown) {
@@ -475,6 +500,264 @@ describe("Dashboard routes", () => {
       expect(new Set(body.validTabIds)).toEqual(
         new Set(["agents", "costs", "workflows", "deployments", "chat"]),
       );
+    });
+  });
+});
+
+describe("Dashboard widgets: KPI, duplicate, spans", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const kpiConfig = {
+    version: 1,
+    source: { kind: "cost_report", reportId: "r1", measure: "cost", aggregation: "sum" },
+    comparePreviousPeriod: true,
+  };
+
+  describe("POST /kpi", () => {
+    it("answers a KPI config through the evaluator", async () => {
+      mockEvaluateKpi.mockResolvedValue({ value: 120, unit: "money", currency: "USD" });
+      const res = await buildApp().request("/kpi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: kpiConfig }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ value: 120 });
+      expect(mockEvaluateKpi).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ source: expect.objectContaining({ reportId: "r1" }) }),
+        expect.objectContaining({ granted: ["*"] }),
+      );
+    });
+
+    it("refuses a config the cross-field rules reject", async () => {
+      const res = await buildApp().request("/kpi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            ...kpiConfig,
+            source: { kind: "budget", budgetId: "b1", measure: "actual" },
+            dateRange: { kind: "relative", preset: "30d" },
+          },
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/budget's own period/);
+      expect(mockEvaluateKpi).not.toHaveBeenCalled();
+    });
+
+    it("needs costs:read, and budgets:read for a budget", async () => {
+      const noCosts = await buildApp(["dashboards:read"]).request("/kpi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: kpiConfig }),
+      });
+      expect(noCosts.status).toBe(403);
+
+      const noBudgets = await buildApp(["dashboards:read", "costs:read"]).request("/kpi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: { ...kpiConfig, source: { kind: "budget", budgetId: "b1", measure: "actual" } },
+        }),
+      });
+      expect(noBudgets.status).toBe(403);
+      expect(mockEvaluateKpi).not.toHaveBeenCalled();
+    });
+
+    it("maps an unanswerable config to its status", async () => {
+      mockEvaluateKpi.mockRejectedValue(
+        new DashboardKpiError("This saved report was deleted", 404),
+      );
+      const res = await buildApp().request("/kpi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: kpiConfig }),
+      });
+      expect(res.status).toBe(404);
+      expect((await res.json()).error).toMatch(/deleted/);
+    });
+  });
+
+  describe("POST /widgets", () => {
+    /** Dashboard lookup, then the three max(gridX) reads. */
+    function dashboardThenMax(max: number) {
+      mockSelect.mockReturnValueOnce(chainMock([{ id: "d1" }])).mockReturnValue({
+        from: () => ({ where: vi.fn().mockResolvedValue([{ value: max }]) }),
+      });
+    }
+
+    it("starts a KPI card single width and a text card double width", async () => {
+      const captured: Array<Record<string, unknown>> = [];
+      mockInsert.mockReturnValue({
+        values: (v: Record<string, unknown>) => {
+          captured.push(v);
+          return { returning: vi.fn().mockResolvedValue([{ id: "w-new", ...v }]) };
+        },
+      });
+
+      const app = buildApp();
+      dashboardThenMax(4);
+      const kpi = await app.request("/widgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dashboardId: "d1",
+          kind: "kpi",
+          config: {
+            version: 1,
+            source: { kind: "commitments", measure: "coverage" },
+            comparePreviousPeriod: true,
+          },
+        }),
+      });
+      expect(kpi.status).toBe(200);
+      expect(captured[0]).toMatchObject({ kind: "kpi", gridW: 1, gridH: 1, gridX: 5 });
+
+      dashboardThenMax(4);
+      const text = await app.request("/widgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dashboardId: "d1",
+          kind: "text",
+          config: { version: 1, markdown: "# Notes" },
+        }),
+      });
+      expect(text.status).toBe(200);
+      expect(captured[1]).toMatchObject({ kind: "text", gridW: 2, gridH: 1 });
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "dashboard_widget.create" }),
+      );
+    });
+
+    it("refuses markdown past the limit", async () => {
+      mockSelect.mockReturnValueOnce(chainMock([{ id: "d1" }]));
+      const res = await buildApp().request("/widgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dashboardId: "d1",
+          kind: "text",
+          config: { version: 1, markdown: "x".repeat(20_001) },
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PATCH /widgets/:id spans", () => {
+    const widgetRow = {
+      id: "w1",
+      organizationId: "org-1",
+      dashboardId: "d1",
+      kind: "cost_graph",
+      title: "Spend",
+      config: {},
+      gridX: 0,
+      gridY: 0,
+      gridW: 2,
+      gridH: 1,
+    };
+
+    it("stores a resize without auditing it", async () => {
+      mockSelect.mockReturnValue(chainMock([widgetRow]));
+      const sets: Array<Record<string, unknown>> = [];
+      mockUpdate.mockReturnValue({
+        set: (v: Record<string, unknown>) => {
+          sets.push(v);
+          return {
+            where: () => ({ returning: vi.fn().mockResolvedValue([{ ...widgetRow, ...v }]) }),
+          };
+        },
+      });
+      const res = await buildApp().request("/widgets/w1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gridW: 3, gridH: 2 }),
+      });
+      expect(res.status).toBe(200);
+      expect(sets[0]).toMatchObject({ gridW: 3, gridH: 2 });
+      expect(mockLogAudit).not.toHaveBeenCalled();
+    });
+
+    it("refuses a span outside 1..12", async () => {
+      mockSelect.mockReturnValue(chainMock([widgetRow]));
+      for (const body of [{ gridW: 0 }, { gridH: 13 }, { gridW: 1.5 }]) {
+        const res = await buildApp().request("/widgets/w1", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(400);
+      }
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /widgets/:id/duplicate", () => {
+    it("inserts the copy right after the original and shifts the cards behind it", async () => {
+      const original = {
+        id: "w1",
+        organizationId: "org-1",
+        dashboardId: "d1",
+        kind: "text",
+        title: "Notes",
+        config: { version: 1, markdown: "hi" },
+        gridX: 3,
+        gridY: 0,
+        gridW: 4,
+        gridH: 2,
+      };
+      mockSelect.mockReturnValueOnce(chainMock([original])).mockReturnValueOnce({
+        from: () => ({ where: vi.fn().mockResolvedValue([{ title: "Notes" }]) }),
+      });
+      const shifts: Array<Record<string, unknown>> = [];
+      const inserted: Array<Record<string, unknown>> = [];
+      mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+        fn({
+          update: () => ({
+            set: (v: Record<string, unknown>) => {
+              shifts.push(v);
+              return { where: vi.fn().mockResolvedValue(undefined) };
+            },
+          }),
+          insert: () => ({
+            values: (v: Record<string, unknown>) => {
+              inserted.push(v);
+              return { returning: vi.fn().mockResolvedValue([{ ...v, id: "w2" }]) };
+            },
+          }),
+        }),
+      );
+
+      const res = await buildApp().request("/widgets/w1/duplicate", { method: "POST" });
+      expect(res.status).toBe(200);
+      // All three card tables move along, so the copy's slot is free.
+      expect(shifts).toHaveLength(3);
+      expect(shifts[0]).toHaveProperty("syncVersion");
+      expect(inserted[0]).toMatchObject({
+        kind: "text",
+        title: "Copy of Notes",
+        config: { version: 1, markdown: "hi" },
+        gridX: 4,
+        gridW: 4,
+        gridH: 2,
+      });
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "dashboard_widget.duplicate" }),
+      );
+    });
+
+    it("returns 404 for a widget that does not exist", async () => {
+      mockSelect.mockReturnValueOnce(chainMock([]));
+      const res = await buildApp().request("/widgets/nope/duplicate", { method: "POST" });
+      expect(res.status).toBe(404);
+      expect(mockTransaction).not.toHaveBeenCalled();
     });
   });
 });

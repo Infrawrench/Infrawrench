@@ -330,6 +330,26 @@ export async function getBudgetWithStatus(
   return toBudgetWithStatus(resolver, budget, placements.get(budget.id) ?? []);
 }
 
+/**
+ * A budget's status as it stood at `asOf`: the period covering that day,
+ * measured up to it. Null when the budget is not visible to the caller.
+ *
+ * The dashboard KPI card uses it to put this period beside the same point of
+ * the previous one (and beside how the previous one ended). It builds its own
+ * resolver over the caller's visible budgets for the same reason
+ * {@link getBudgetWithStatus} does: a parent is the sum of the children the
+ * caller can see, at that instant.
+ */
+export async function budgetStatusAsOf(
+  organizationId: string,
+  budgetId: string,
+  asOf: Date,
+): Promise<BudgetPeriodStatus | null> {
+  const rows = await loadVisibleBudgets(organizationId);
+  if (!rows.some((b) => b.id === budgetId)) return null;
+  return new BudgetStatusResolver(organizationId, rows, asOf).status(budgetId);
+}
+
 export async function createBudget(
   organizationId: string,
   input: BudgetInput,

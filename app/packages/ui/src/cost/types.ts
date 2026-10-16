@@ -32,6 +32,8 @@ import type {
   UntaggedSpendReport,
   CostCentre,
   RealizedSavingsReport,
+  KpiWidgetConfig,
+  DashboardKpiResult,
   RealizedSavingsSettings,
   SavingsEvent,
   SavingsEventAnnotationInput,
@@ -197,6 +199,13 @@ export interface CostApi {
    * panel. Optional on the usual rule: unwired, neither renders.
    */
   getRealizedSavings?(range?: { from?: string; to?: string }): Promise<RealizedSavingsReport>;
+  /**
+   * Answer a `kpi` dashboard card (`POST /dashboards/kpi`). On the base
+   * `CostApi` because the card and its editor's preview render wherever a
+   * cost card does. Optional on the usual rule: unwired, the card says KPIs
+   * are measured in the cloud and the add menu leaves the entry out.
+   */
+  evaluateDashboardKpi?(config: KpiWidgetConfig): Promise<DashboardKpiResult>;
 }
 
 /** One hit in the manual-entry resource picker. */

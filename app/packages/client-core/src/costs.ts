@@ -22,6 +22,7 @@ import type { BudgetAlertNote } from "./budget-alert-notes";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
 import type { CostCanvasWidgetConfig } from "./cost-canvases";
 import type { RealizedSavingsWidgetConfig } from "./realized-savings";
+import type { KpiWidgetConfig, TextWidgetConfig } from "./dashboard-widgets";
 // Type-only, and deliberately one-way at runtime: `cost-scenarios.ts` is the
 // module that knows what a scenario *is*, this one only knows that a query can
 // carry one and a response can come back with one.
@@ -688,7 +689,8 @@ export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
  * `cost_graph` stores its whole config inline (a one-off card); `cost_report`
  * points at a saved `cost_reports` row by id, so editing the report updates
  * every dashboard showing it. Both are kept: naming and filing a report should
- * not be the price of putting one chart on one dashboard.
+ * not be the price of putting one chart on one dashboard. `kpi` and `text`
+ * are described in `dashboard-widgets.ts`.
  */
 export const DASHBOARD_WIDGET_KINDS = [
   "cost_graph",
@@ -697,6 +699,8 @@ export const DASHBOARD_WIDGET_KINDS = [
   "custom_graph",
   "cost_canvas",
   "realized_savings",
+  "kpi",
+  "text",
 ] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 
@@ -712,7 +716,9 @@ export interface DashboardWidget {
     | BudgetWidgetConfig
     | CustomGraphWidgetConfig
     | CostCanvasWidgetConfig
-    | RealizedSavingsWidgetConfig;
+    | RealizedSavingsWidgetConfig
+    | KpiWidgetConfig
+    | TextWidgetConfig;
   gridX: number;
   gridY: number;
   gridW: number;

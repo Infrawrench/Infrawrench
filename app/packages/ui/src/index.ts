@@ -274,6 +274,8 @@ export type { FirestoreDocumentBrowserProps } from "./components/FirestoreDocume
 export { PromptNoSqlCommandModal } from "./components/PromptNoSqlCommandModal.js";
 export type { PromptNoSqlCommandModalProps } from "./components/PromptNoSqlCommandModal.js";
 export { DashboardAddMenu } from "./components/DashboardAddMenu.js";
+// KPI and text cards, and the resizable grid both dashboard views lay out.
+export * from "./dashboard-widgets/index.js";
 
 export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";
@@ -657,11 +659,13 @@ export {
   ChevronIcon,
   CloseIcon,
   CloudIcon,
+  CopyIcon,
   DownloadIcon,
   ExternalLinkIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   RefreshIcon,
+  ResizeIcon,
   SettingsIcon,
   UploadIcon,
   WarningIcon,

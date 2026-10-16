@@ -15,6 +15,7 @@ import {
   loadCloudCarbonEstimate,
   loadCloudCostStatus,
   loadCloudRealizedSavings,
+  evaluateCloudDashboardKpi,
   queryCloudCosts,
   queryCloudUnitCosts,
   queryCloudUsageUnitCosts,
@@ -122,5 +123,7 @@ export function createDesktopCostApi(): CostApi {
     // dashboard card renders through it as well as the Costs panel. `async`
     // so local mode rejects rather than throwing synchronously.
     getRealizedSavings: async (range) => loadCloudRealizedSavings(requireCloudOrgId(), range),
+    // KPI cards and their editor's preview, cloud mode only like every card.
+    evaluateDashboardKpi: async (config) => evaluateCloudDashboardKpi(requireCloudOrgId(), config),
   };
 }

@@ -171,6 +171,27 @@ export function CloseIcon(props: ChromeIconProps) {
   );
 }
 
+/** Duplicate or copy (Lucide `copy`). */
+export function CopyIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </StrokeIcon>
+  );
+}
+
+/** Resize from a corner (Lucide `move-diagonal-2`). */
+export function ResizeIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M19 13v6h-6" />
+      <path d="M5 11V5h6" />
+      <path d="m5 5 14 14" />
+    </StrokeIcon>
+  );
+}
+
 /** Something needs attention (Lucide `triangle-alert`). */
 export function WarningIcon(props: ChromeIconProps) {
   return (

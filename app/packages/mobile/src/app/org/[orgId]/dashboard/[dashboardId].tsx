@@ -244,6 +244,8 @@ export default function DashboardScreen() {
                   onReorder: (order) => void edit.reorder(order).catch(() => {}),
                   onRemove: confirmRemove,
                   onEditWidget: (widget) => setSheet({ kind: "configure", widget }),
+                  onDuplicateWidget: (widget) =>
+                    void edit.duplicateWidget(widget.id).catch(() => {}),
                 }
               : null
           }

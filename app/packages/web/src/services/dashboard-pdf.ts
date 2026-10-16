@@ -54,6 +54,14 @@ import {
   realizedSavingsRows,
   realizedSavingsWidgetRange,
   type RealizedSavingsWidgetConfig,
+  formatDashboardKpiChange,
+  formatDashboardKpiChangePercent,
+  formatDashboardKpiValue,
+  kpiChangeTone,
+  kpiMeasureSummaryText,
+  markdownToPlainLines,
+  type KpiWidgetConfig,
+  type TextWidgetConfig,
 } from "@infrawrench/client-core";
 import { getRealizedSavingsReport } from "@infrawrench/server-core/savings/realized";
 import {
@@ -88,6 +96,7 @@ import { runUnitCostQuery, runUsageUnitCostQuery } from "./unit-cost-query";
 import { getBudgetWithStatus } from "./budgets";
 import { getCostReport } from "./cost-reports";
 import { renderOrgCustomGraph } from "./custom-graphs";
+import { evaluateDashboardKpi } from "./dashboard-kpi";
 
 /** Options shared by both documents. */
 export interface PdfRenderOptions {
@@ -537,6 +546,80 @@ async function realizedSavingsCard(
   };
 }
 
+/**
+ * A KPI card on paper: one stats tile with the change underneath, answered by
+ * the evaluator the live card uses. Rendered with the document's own access
+ * (a schedule is full access; a download already needed `costs:read`).
+ */
+export async function kpiCard(
+  organizationId: string,
+  title: string,
+  config: KpiWidgetConfig,
+  now: Date,
+): Promise<CardRender> {
+  const result = await evaluateDashboardKpi(organizationId, config, { granted: null, now });
+  const label = title || kpiMeasureSummaryText(config);
+  const value = formatDashboardKpiValue(result);
+  const change = config.comparePreviousPeriod ? formatDashboardKpiChange(result) : null;
+  const percent = formatDashboardKpiChangePercent(result.changePercent);
+  const tone = kpiChangeTone(result);
+  const window =
+    result.from && result.to
+      ? result.from === result.to
+        ? result.from
+        : `${result.from} to ${result.to}`
+      : null;
+  const caption = [
+    result.limit !== undefined && result.limit !== null
+      ? `of ${formatDashboardKpiValue({ ...result, value: result.limit })}`
+      : null,
+    change ? `${change}${percent ? ` (${percent})` : ""} vs previous period` : null,
+  ]
+    .filter((p): p is string => p !== null)
+    .join(", ");
+  return {
+    section: {
+      title: label,
+      subtitle: [result.sourceName, title ? kpiMeasureSummaryText(config) : null, window]
+        .filter(Boolean)
+        .join(" · "),
+      blocks: [
+        {
+          kind: "stats",
+          items: [
+            {
+              label: kpiMeasureSummaryText(config),
+              value,
+              ...(caption ? { caption } : {}),
+              ...(tone === "good" ? { tone: "good" as const } : {}),
+              ...(tone === "bad" ? { tone: "bad" as const } : {}),
+            },
+          ],
+        },
+        ...(result.note
+          ? [{ kind: "text" as const, text: result.note, tone: "muted" as const }]
+          : []),
+      ],
+    },
+    highlight: `${label}: ${value}${change ? ` (${change})` : ""}`,
+  };
+}
+
+/** A text card on paper: its markdown as plain paragraphs, links spelled out. */
+export function textCard(title: string, config: TextWidgetConfig): CardRender {
+  const lines = markdownToPlainLines(config.markdown);
+  return {
+    section: {
+      title: title || "Notes",
+      blocks:
+        lines.length > 0
+          ? lines.map((text) => ({ kind: "text" as const, text }))
+          : [{ kind: "text" as const, text: "No text.", tone: "muted" as const }],
+    },
+    highlight: null,
+  };
+}
+
 export async function budgetCard(
   organizationId: string,
   title: string,
@@ -934,7 +1017,8 @@ async function widgetCard(
     widget.kind === "cost_report" ||
     widget.kind === "budget" ||
     widget.kind === "cost_canvas" ||
-    widget.kind === "realized_savings";
+    widget.kind === "realized_savings" ||
+    widget.kind === "kpi";
   if (costKind && !canReadCosts) {
     return {
       section: {
@@ -1019,6 +1103,10 @@ async function widgetCard(
         highlight: built.highlights[0] ?? null,
       };
     }
+    case "kpi":
+      return kpiCard(organizationId, widget.title, widget.config as KpiWidgetConfig, now);
+    case "text":
+      return textCard(widget.title, widget.config as TextWidgetConfig);
     case "realized_savings":
       return realizedSavingsCard(
         organizationId,

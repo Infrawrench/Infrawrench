@@ -150,6 +150,17 @@ export function useDashboardEditing(dashboardId: string) {
       [api, orgId, run, refresh],
     ),
 
+    /** Copy a card in place; the server opens the slot right after the original. */
+    duplicateWidget: useCallback(
+      async (widgetId: string) => {
+        await run("Couldn't duplicate", () =>
+          post(`/dashboards/widgets/${encodeURIComponent(widgetId)}/duplicate`, {}),
+        );
+        refresh();
+      },
+      [post, run, refresh],
+    ),
+
     addCustomGraphCard: useCallback(
       async (graphId: string, title: string) => {
         await run("Couldn't add the graph", () =>

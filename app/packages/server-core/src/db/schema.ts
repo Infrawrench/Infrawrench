@@ -350,7 +350,7 @@ export const dashboardWidgets = pgTable(
     dashboardId: text("dashboard_id")
       .notNull()
       .references(() => dashboards.id, { onDelete: "cascade" }),
-    /** "cost_graph" | "cost_report" | "budget" | "custom_graph" */
+    /** One of `DASHBOARD_WIDGET_KINDS` (client-core): cost_graph, budget, kpi, text, ... */
     kind: text("kind").notNull(),
     title: text("title").notNull().default(""),
     config: jsonb("config").notNull(),

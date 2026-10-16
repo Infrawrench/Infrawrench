@@ -38,7 +38,7 @@ Every entity in the document is addressed by a **key** — a slug derived from i
 - A key it has is **updated** — including when the name changed. Renaming an entity while keeping its key is a rename, not a delete-and-recreate.
 - A key the document doesn't mention is left alone, unless you ask for replace mode.
 
-Cross-references work the same way. A budget card on a dashboard names the budget's key; a workflow with a budget trigger names the budget's key. Both are resolved against the document (and the target organization) at import time.
+Cross-references work the same way. A budget card on a dashboard names the budget's key, and so does a [KPI card](./dashboard.md#kpi-cards) over a budget; a workflow with a budget trigger names the budget's key. Both are resolved against the document (and the target organization) at import time.
 
 ## Export
 

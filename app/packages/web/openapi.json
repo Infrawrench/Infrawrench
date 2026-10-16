@@ -7225,9 +7225,11 @@
           "budget",
           "custom_graph",
           "cost_canvas",
-          "realized_savings"
+          "realized_savings",
+          "kpi",
+          "text"
         ],
-        "description": "`cost_graph` stores its whole config inline; a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it. `cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way. `realized_savings` shows the org's realized savings report; its config is only a view choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36)."
+        "description": "`cost_graph` stores its whole config inline; a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it. `cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way. `realized_savings` shows the org's realized savings report; its config is only a view choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36). `kpi` is one figure with a period-over-period change (see `KpiWidgetConfig`; answered by `POST /dashboards/kpi`). `text` is markdown (`{version: 1, markdown}`, up to 20,000 characters), rendered without raw HTML."
       },
       "DashboardWidget": {
         "type": "object",
@@ -7430,13 +7432,331 @@
           },
           "gridW": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 1,
+            "maximum": 12
           },
           "gridH": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 1,
+            "maximum": 12
           }
         },
+        "additionalProperties": false
+      },
+      "DashboardKpiResult": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "money",
+              "money_per_unit",
+              "percent",
+              "count",
+              "quantity"
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "perUnit": {
+            "type": "string"
+          },
+          "previous": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "change": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "changePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "upIsGood": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "previousFrom": {
+            "type": "string"
+          },
+          "previousTo": {
+            "type": "string"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "limit": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "previous",
+          "change",
+          "changePercent",
+          "upIsGood"
+        ],
+        "additionalProperties": false
+      },
+      "KpiWidgetSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cost_report"
+                ]
+              },
+              "reportId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "measure": {
+                "type": "string",
+                "enum": [
+                  "cost",
+                  "usage",
+                  "count",
+                  "unit_cost",
+                  "business_metric"
+                ]
+              },
+              "aggregation": {
+                "type": "string",
+                "enum": [
+                  "sum",
+                  "daily_average"
+                ]
+              },
+              "usageUnit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "kind",
+              "reportId",
+              "measure",
+              "aggregation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "budget"
+                ]
+              },
+              "budgetId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "measure": {
+                "type": "string",
+                "enum": [
+                  "actual",
+                  "forecast",
+                  "remaining",
+                  "percent_used"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "budgetId",
+              "measure"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "commitments"
+                ]
+              },
+              "measure": {
+                "type": "string",
+                "enum": [
+                  "coverage",
+                  "utilization",
+                  "savings"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "measure"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "realized_savings"
+                ]
+              },
+              "eventKind": {
+                "type": "string",
+                "enum": [
+                  "rightsizing",
+                  "orphan_deletion",
+                  "sleep_schedule",
+                  "commitment",
+                  "saas_seat",
+                  "manual"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "Where a KPI's figure comes from. A saved report brings its filters, saved filter, cost basis and billing-rule choice; `unit_cost` and `business_metric` need a report with a business metric attached, `count` a report grouped by a dimension. A budget follows its own period. Commitment coverage and utilization are read over the commitments service's trailing window; `savings` is the realized savings of kind `commitment`."
+      },
+      "CostDateRange": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "relative"
+                ]
+              },
+              "preset": {
+                "type": "string",
+                "enum": [
+                  "7d",
+                  "30d",
+                  "90d",
+                  "mtd",
+                  "last_month",
+                  "qtd",
+                  "ytd",
+                  "6m",
+                  "12m"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "preset"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "absolute"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              }
+            },
+            "required": [
+              "kind",
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "The window. Absent follows the source (a report's own range, the last 30 days for savings); refused for a budget and for commitment coverage and utilization."
+      },
+      "KpiWidgetConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/KpiWidgetSource"
+          },
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "comparePreviousPeriod": {
+            "type": "boolean"
+          },
+          "upIsGood": {
+            "type": "boolean",
+            "description": "Which direction the change badge colours as good; absent derives it."
+          }
+        },
+        "required": [
+          "version",
+          "source",
+          "comparePreviousPeriod"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardKpiRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/KpiWidgetConfig"
+          }
+        },
+        "required": [
+          "config"
+        ],
         "additionalProperties": false
       },
       "PinRequest": {
@@ -9843,68 +10163,6 @@
         ],
         "additionalProperties": false
       },
-      "CostDateRange": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "relative"
-                ]
-              },
-              "preset": {
-                "type": "string",
-                "enum": [
-                  "7d",
-                  "30d",
-                  "90d",
-                  "mtd",
-                  "last_month",
-                  "qtd",
-                  "ytd",
-                  "6m",
-                  "12m"
-                ]
-              }
-            },
-            "required": [
-              "kind",
-              "preset"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "absolute"
-                ]
-              },
-              "from": {
-                "type": "string",
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                "example": "2026-07-01"
-              },
-              "to": {
-                "type": "string",
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                "example": "2026-07-01"
-              }
-            },
-            "required": [
-              "kind",
-              "from",
-              "to"
-            ],
-            "additionalProperties": false
-          }
-        ],
-        "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
-      },
       "CostReportFilter": {
         "type": "object",
         "properties": {
@@ -9973,7 +10231,14 @@
             "$ref": "#/components/schemas/CostBinning"
           },
           "dateRange": {
-            "$ref": "#/components/schemas/CostDateRange"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              {
+                "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+              }
+            ]
           },
           "groupBy": {
             "type": "string",
@@ -10679,7 +10944,14 @@
             "$ref": "#/components/schemas/ResourceReportSort"
           },
           "costRange": {
-            "$ref": "#/components/schemas/CostDateRange"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              {
+                "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+              }
+            ]
           },
           "costBasis": {
             "$ref": "#/components/schemas/CostBasis"
@@ -11265,7 +11537,14 @@
                 ]
               },
               "dateRange": {
-                "$ref": "#/components/schemas/CostDateRange"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CostDateRange"
+                  },
+                  {
+                    "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+                  }
+                ]
               },
               "filters": {
                 "type": "array",
@@ -11309,7 +11588,14 @@
                 "description": "A business metric id (see /business-metrics)."
               },
               "dateRange": {
-                "$ref": "#/components/schemas/CostDateRange"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CostDateRange"
+                  },
+                  {
+                    "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+                  }
+                ]
               },
               "filters": {
                 "type": "array",
@@ -11408,7 +11694,14 @@
         "type": "object",
         "properties": {
           "dateRange": {
-            "$ref": "#/components/schemas/CostDateRange"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              {
+                "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+              }
+            ]
           },
           "binning": {
             "type": "string",
@@ -12341,7 +12634,14 @@
             ]
           },
           "dateRange": {
-            "$ref": "#/components/schemas/CostDateRange"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              {
+                "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+              }
+            ]
           },
           "granularity": {
             "type": "string",
@@ -23909,7 +24209,9 @@
                   "budget",
                   "custom_graph",
                   "cost_canvas",
-                  "realized_savings"
+                  "realized_savings",
+                  "kpi",
+                  "text"
                 ]
               },
               "title": {
@@ -62741,7 +63043,7 @@
         "tags": [
           "Dashboards"
         ],
-        "summary": "Add a cost-graph or budget widget to a dashboard",
+        "summary": "Add a widget (cost graph, report, budget, KPI, text, ...) to a dashboard",
         "parameters": [
           {
             "schema": {
@@ -62924,6 +63226,146 @@
           }
         },
         "operationId": "deleteOrgOrgIdDashboardsWidgetsWidgetId"
+      }
+    },
+    "/api/org/{orgId}/dashboards/widgets/{widgetId}/duplicate": {
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Copy a widget in place",
+        "description": "Inserts a copy with the same kind, config and size directly after the original, moving every card behind it one slot along. A copy of a budget or report card is a second view onto the same budget or report. Audit-logged.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "widgetId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The copy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardWidgetFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsWidgetsWidgetIdDuplicate"
+      }
+    },
+    "/api/org/{orgId}/dashboards/kpi": {
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Evaluate a KPI widget config",
+        "description": "Answers one KPI config: a saved card posts its own, an editor posts one to preview it. Needs `costs:read`, plus `budgets:read` for a budget source; figures are measured inside the caller's cost visibility scope.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardKpiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The figure and its comparison",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardKpiResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsKpi"
       }
     },
     "/api/org/{orgId}/dashboards/pin": {

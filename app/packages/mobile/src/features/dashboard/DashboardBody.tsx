@@ -10,7 +10,9 @@ import {
   type CostGraphConfig,
   type CostReportWidgetConfig,
   type CustomGraphWidgetConfig,
+  type KpiWidgetConfig,
   type RealizedSavingsWidgetConfig,
+  type TextWidgetConfig,
   type DashboardCardRef,
   type DashboardWidget,
 } from "@infrawrench/client-core";
@@ -22,6 +24,8 @@ import { BudgetCard } from "./BudgetCard";
 import { CostGraphCard } from "./CostGraphCard";
 import { CustomGraphCard } from "./CustomGraphCard";
 import { RealizedSavingsCard } from "./RealizedSavingsCard";
+import { KpiCard } from "./KpiCard";
+import { TextCard } from "./TextCard";
 import { useCostReportsById } from "@/features/cost-reports/useCostReports";
 import { useBudgets } from "./useBudgets";
 import { useCostStatus } from "./useCostStatus";
@@ -92,6 +96,7 @@ export function invalidateDashboardQueries(client: QueryClient): void {
     "cost-status",
     "cost-query",
     "custom-graph-render",
+    "dashboard-kpi",
   ]) {
     void client.invalidateQueries({ queryKey: [key] });
   }
@@ -107,6 +112,8 @@ export interface DashboardEditing {
   onRemove: (card: DashboardCardRef) => void;
   /** Only widgets are configurable; a pin has nothing to edit. */
   onEditWidget: (widget: DashboardWidget) => void;
+  /** Copy a widget in place. Optional so a screen without it renders no button. */
+  onDuplicateWidget?: ((widget: DashboardWidget) => void) | undefined;
   busy: boolean;
 }
 
@@ -160,9 +167,9 @@ export function DashboardBody({
   // reports load once for the whole dashboard rather than once per card.
   const reports = useCostReportsById(widgets.some((w) => w.kind === "cost_report"));
 
-  // Both widget kinds read collected spend, so any widget at all is reason
-  // enough to pull the per-account state and let the notice decide.
-  const costStatus = useCostStatus(widgets.length > 0);
+  // Cost widgets read collected spend, so any of them is reason enough to
+  // pull the per-account state and let the notice decide. A text card is not.
+  const costStatus = useCostStatus(widgets.some((w) => w.kind !== "text"));
 
   const cards = orderDashboardCards([
     ...pins.map((pin) => ({
@@ -239,7 +246,11 @@ export function DashboardBody({
           // it, so it happens on the report's own page, not on one card.
           widgets.find((w) => w.id === ref.id)?.kind !== "cost_report" &&
           // Same for a canvas card: the canvas is edited on its own page.
-          widgets.find((w) => w.id === ref.id)?.kind !== "cost_canvas" ? (
+          widgets.find((w) => w.id === ref.id)?.kind !== "cost_canvas" &&
+          // KPI and text cards are read-only here: their editors (source
+          // pickers, a markdown preview) live on web and desktop.
+          widgets.find((w) => w.id === ref.id)?.kind !== "kpi" &&
+          widgets.find((w) => w.id === ref.id)?.kind !== "text" ? (
             <Button
               label="Configure"
               variant="secondary"
@@ -247,6 +258,17 @@ export function DashboardBody({
               onPress={() => {
                 const target = widgets.find((w) => w.id === ref.id);
                 if (target) editing.onEditWidget(target);
+              }}
+            />
+          ) : null}
+          {ref.kind === "widget" && editing.onDuplicateWidget ? (
+            <Button
+              label="Duplicate"
+              variant="secondary"
+              disabled={editing.busy}
+              onPress={() => {
+                const target = widgets.find((w) => w.id === ref.id);
+                if (target) editing.onDuplicateWidget?.(target);
               }}
             />
           ) : null}
@@ -361,6 +383,30 @@ export function DashboardBody({
             index,
             widgetRef,
             <CanvasWidgetCard key={widget.id} config={widget.config as CostCanvasWidgetConfig} />,
+          );
+        }
+
+        if (widget.kind === "kpi") {
+          return withControls(
+            index,
+            widgetRef,
+            <KpiCard
+              key={widget.id}
+              title={widget.title}
+              config={widget.config as KpiWidgetConfig}
+            />,
+          );
+        }
+
+        if (widget.kind === "text") {
+          return withControls(
+            index,
+            widgetRef,
+            <TextCard
+              key={widget.id}
+              title={widget.title}
+              config={widget.config as TextWidgetConfig}
+            />,
           );
         }
 
