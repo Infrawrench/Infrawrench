@@ -7,6 +7,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { FileIssueModal } from "./FileIssueModal.js";
+import { IssueStatusBadge } from "./IssueStatusBadge.js";
 import { useIssueFiling } from "./host.js";
 
 export interface FileIssueButtonProps {
@@ -63,48 +64,66 @@ export function FileIssueButton({
   // then came back) offers filing again, which the server turns into a new
   // issue rather than a comment on the closed one.
   const github = links.github?.state === "open" ? links.github : undefined;
-  if (links.jira || links.linear || github) {
-    return (
-      <span className="inline-flex items-center gap-2">
+  // A closed one is still shown, with its status, beside the offer to file
+  // again: "it was fixed and came back" is worth seeing.
+  const closedGithub = links.github && !github ? links.github : undefined;
+  const shownGithub = github ?? closedGithub;
+  const badges =
+    links.jira || links.linear || shownGithub ? (
+      <>
         {links.jira && (
-          <button
-            type="button"
-            onClick={() => filing.openExternal(links.jira!.issueUrl)}
-            title={`Filed in Jira as ${links.jira.issueKey}`}
-            className={className ?? badgeClass}
-          >
-            {links.jira.issueKey}
-          </button>
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => filing.openExternal(links.jira!.issueUrl)}
+              title={gt("Filed in Jira as {key}", { key: links.jira.issueKey })}
+              className={className ?? badgeClass}
+            >
+              {links.jira.issueKey}
+            </button>
+            <IssueStatusBadge link={links.jira} />
+          </span>
         )}
         {links.linear && (
-          <button
-            type="button"
-            onClick={() => filing.openExternal(links.linear!.issueUrl)}
-            title={`Filed in Linear as ${links.linear.issueIdentifier}`}
-            className={className ?? badgeClass}
-          >
-            {links.linear.issueIdentifier}
-          </button>
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => filing.openExternal(links.linear!.issueUrl)}
+              title={gt("Filed in Linear as {key}", { key: links.linear.issueIdentifier })}
+              className={className ?? badgeClass}
+            >
+              {links.linear.issueIdentifier}
+            </button>
+            <IssueStatusBadge link={links.linear} />
+          </span>
         )}
-        {github && (
-          <button
-            type="button"
-            onClick={() => filing.openExternal(github.issueUrl)}
-            title={gt("Filed in GitHub as {repo}#{number}", {
-              repo: github.repo,
-              number: github.issueNumber,
-            })}
-            className={className ?? badgeClass}
-          >
-            #{github.issueNumber}
-          </button>
+        {shownGithub && (
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => filing.openExternal(shownGithub.issueUrl)}
+              title={gt("Filed in GitHub as {repo}#{number}", {
+                repo: shownGithub.repo,
+                number: shownGithub.issueNumber,
+              })}
+              className={className ?? badgeClass}
+            >
+              #{shownGithub.issueNumber}
+            </button>
+            <IssueStatusBadge link={shownGithub} />
+          </span>
         )}
-      </span>
-    );
+      </>
+    ) : null;
+
+  if (links.jira || links.linear || github) {
+    return <span className="inline-flex flex-wrap items-center gap-2">{badges}</span>;
   }
 
   const trackers = filing.filableTrackers;
-  if (trackers.length === 0) return null;
+  if (trackers.length === 0) {
+    return badges ? <span className="inline-flex items-center gap-2">{badges}</span> : null;
+  }
 
   const label =
     trackers.length > 1
@@ -117,6 +136,7 @@ export function FileIssueButton({
 
   return (
     <>
+      {badges && <span className="mr-2 inline-flex items-center gap-2">{badges}</span>}
       <button
         type="button"
         onClick={() => setOpen(true)}

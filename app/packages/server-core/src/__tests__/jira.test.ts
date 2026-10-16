@@ -391,6 +391,13 @@ describe("getJiraIntegration", () => {
         tokenHint: "…a7f2",
         defaultProjectKey: "OPS",
         defaultIssueTypeId: "10004",
+        acknowledgeOnDone: true,
+        webhookToken: "tok",
+        webhookMode: "manual",
+        webhookRemoteId: null,
+        encryptedWebhookSecret: "WCT",
+        webhookSecretIv: "WIV",
+        webhookLastDeliveryAt: null,
         createdByUserId: null,
         createdAt: "2026-07-01 00:00:00.000",
         updatedAt: "2026-08-01 00:00:00.000",
@@ -406,6 +413,9 @@ describe("getJiraIntegration", () => {
       tokenHint: "…a7f2",
       defaultProjectKey: "OPS",
       defaultIssueTypeId: "10004",
+      acknowledgeOnDone: true,
+      // No APP_URL in tests, so no receiver URL can be built; the mode still shows.
+      webhook: { mode: "manual", url: null, lastDeliveryAt: null },
       updatedAt: "2026-08-01T00:00:00.000Z",
     });
     expect(JSON.stringify(record)).not.toContain("CT");

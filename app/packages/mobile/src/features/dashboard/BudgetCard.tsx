@@ -13,6 +13,8 @@ import {
   type BudgetWithStatus,
 } from "@infrawrench/client-core";
 import { Card } from "@/components/ui";
+import { FiledIssueLinks } from "@/features/issue-filing/FiledIssueLinks";
+import { useIssueLinks } from "@/features/issue-filing/useIssueFiling";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /** Formats a value in the budget's own unit: money, or a usage quantity. */
@@ -70,6 +72,13 @@ export function BudgetCard({
   const range = budgetForecastRange(budget);
   const fired = budget.currentMonthEvents.length > 0;
   const notes = currentMonthBudgetNotes(budget);
+  // Firings filed as issues (from web, desktop, or a routing rule), each with
+  // the issue's live status. Read-only here, like the notes.
+  const { linksFor } = useIssueLinks();
+  const filed = budget.currentMonthEvents.flatMap((event) => {
+    const links = linksFor("budget_alert", event.id);
+    return links.jira || links.linear || links.github ? [{ event, links }] : [];
+  });
 
   const barColor =
     actualPct >= 100 ? colors.danger : actualPct >= 80 ? colors.warning : colors.success;
@@ -165,6 +174,16 @@ export function BudgetCard({
                 {note.notedAt.slice(0, 10)})
               </Text>
             </Text>
+          ))}
+        </View>
+      )}
+      {filed.length > 0 && (
+        <View style={styles.notes}>
+          {filed.map(({ event, links }) => (
+            <View key={event.id} style={styles.filedRow}>
+              <Text style={styles.noteLabel}>{event.thresholdPercent}%:</Text>
+              <FiledIssueLinks links={links} />
+            </View>
           ))}
         </View>
       )}
@@ -289,5 +308,6 @@ const styles = StyleSheet.create({
   childName: { color: colors.textMuted, fontSize: 11, flexShrink: 1 },
   note: { color: colors.textMuted, fontSize: 12 },
   noteLabel: { color: colors.textFaint },
+  filedRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
   noteBy: { color: colors.textFaint, fontSize: 11 },
 });

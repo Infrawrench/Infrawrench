@@ -11,6 +11,9 @@ import {
 } from "./config.js";
 import type { BudgetWithStatus } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
+import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
+import { useIssueFiling } from "../issue-filing/host.js";
+import { budgetAlertIssueFacts } from "@infrawrench/client-core";
 
 type FiredEvent = BudgetWithStatus["currentMonthEvents"][number];
 
@@ -77,6 +80,17 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }
   const forecastPct = progress.forecastPercent;
   const range = budgetForecastRange(budget);
   const fired = budget.currentMonthEvents.length > 0;
+  // A firing can be filed as an issue wherever a filing provider is mounted
+  // (the Costs panel and dashboards alike); the button hides itself when no
+  // tracker is connected, so the list only opens up for it when one is.
+  const filing = useIssueFiling();
+  const canFile = (filing?.filableTrackers.length ?? 0) > 0;
+  const hasFiledFirings =
+    filing !== null &&
+    budget.currentMonthEvents.some((e) => {
+      const l = filing.linksFor("budget_alert", e.id);
+      return Boolean(l.jira || l.linear || l.github);
+    });
 
   const barColor =
     actualPct >= 100 ? "bg-red-500" : actualPct >= 80 ? "bg-amber-500" : "bg-emerald-500";
@@ -248,47 +262,140 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }
         {/* This month's firings, each with its note (or the way to add one).
             On the card itself rather than behind the badge's tooltip: "did it
             fire" and "do we know why" are read together. */}
-        {fired && (onExplain || budget.currentMonthEvents.some((e) => e.note)) && (
-          <ul className="flex flex-col gap-1.5 border-t border-border pt-2 text-[11px]">
-            {budget.currentMonthEvents.map((e) => (
-              <li key={e.id} className="flex flex-col gap-0.5">
-                <div className="flex items-center justify-between gap-2 text-on-surface-faint">
-                  <span>
-                    {gt("{type} {percent}% on {day}", {
-                      type: e.thresholdType === "actual" ? gt("Actual") : gt("Forecast"),
-                      percent: e.thresholdPercent,
-                      day: shortDay(e.triggeredAt),
-                    })}
-                  </span>
-                  {onExplain && (
-                    <button
-                      type="button"
-                      onClick={() => onExplain(e)}
-                      className="shrink-0 underline hover:text-on-surface-secondary"
-                    >
-                      {e.note ? gt("Edit note") : gt("Explain")}
-                    </button>
-                  )}
-                </div>
-                {e.note && (
-                  <p className="text-on-surface-secondary">
-                    <span className="break-words">{e.note.text}</span>{" "}
-                    <span className="text-on-surface-faint">
-                      {e.note.notedByName
-                        ? gt("({name}, {day})", {
-                            name: e.note.notedByName,
-                            day: shortDay(e.note.notedAt),
-                          })
-                        : gt("({day})", { day: shortDay(e.note.notedAt) })}
+        {fired &&
+          (onExplain ||
+            canFile ||
+            hasFiledFirings ||
+            budget.currentMonthEvents.some((e) => e.note)) && (
+            <ul className="flex flex-col gap-1.5 border-t border-border pt-2 text-[11px]">
+              {budget.currentMonthEvents.map((e) => (
+                <li key={e.id} className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between gap-2 text-on-surface-faint">
+                    <span>
+                      {gt("{type} {percent}% on {day}", {
+                        type: e.thresholdType === "actual" ? gt("Actual") : gt("Forecast"),
+                        percent: e.thresholdPercent,
+                        day: shortDay(e.triggeredAt),
+                      })}
                     </span>
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                    <span className="flex shrink-0 items-center gap-2">
+                      <BudgetAlertFileIssue budget={budget} event={e} />
+                      {onExplain && (
+                        <button
+                          type="button"
+                          onClick={() => onExplain(e)}
+                          className="shrink-0 underline hover:text-on-surface-secondary"
+                        >
+                          {e.note ? gt("Edit note") : gt("Explain")}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {e.note && (
+                    <p className="text-on-surface-secondary">
+                      <span className="break-words">{e.note.text}</span>{" "}
+                      <span className="text-on-surface-faint">
+                        {e.note.notedByName
+                          ? gt("({name}, {day})", {
+                              name: e.note.notedByName,
+                              day: shortDay(e.note.notedAt),
+                            })
+                          : gt("({day})", { day: shortDay(e.note.notedAt) })}
+                      </span>
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
       </div>
     </div>
+  );
+}
+
+/**
+ * "File an issue" for one firing, with the draft written in the reader's
+ * language from the shared facts (`budgetAlertIssueFacts`), so the issue says
+ * the same thing whichever surface filed it. Renders nothing without a
+ * connected tracker; shows the filed issue and its live status once filed.
+ */
+function BudgetAlertFileIssue({ budget, event }: { budget: BudgetWithStatus; event: FiredEvent }) {
+  const gt = useGT();
+  const f = budgetAlertIssueFacts(budget, event);
+  const notes: string[] = [];
+  if (f.rolledUpChildren !== null) {
+    notes.push(
+      gt(
+        "This budget is the sum of {count} child budgets; the child budgets show where the spend is.",
+        { count: f.rolledUpChildren },
+      ),
+    );
+  }
+  if (f.scenarioName) {
+    notes.push(
+      gt("The forecast includes the scenario “{scenario}”.", { scenario: f.scenarioName }),
+    );
+  }
+  if (f.firingNote) notes.push(gt("Note on this alert: {note}", { note: f.firingNote }));
+  return (
+    <FileIssueButton
+      sourceKind="budget_alert"
+      sourceId={event.id}
+      className="text-[11px] underline hover:text-on-surface-secondary whitespace-nowrap"
+      draft={{
+        title: f.forecastThreshold
+          ? gt("“{budget}” is forecast to reach {percent}% of its budget ({period})", {
+              budget: f.budgetName,
+              percent: f.thresholdPercent,
+              period: f.period,
+            })
+          : gt("“{budget}” passed {percent}% of its budget ({period})", {
+              budget: f.budgetName,
+              percent: f.thresholdPercent,
+              period: f.period,
+            }),
+        details: [
+          { label: gt("Budget"), value: f.budgetName },
+          { label: gt("Period"), value: f.period },
+          {
+            label: gt("Threshold"),
+            value: f.forecastThreshold
+              ? gt("Forecast {percent}%", { percent: f.thresholdPercent })
+              : gt("Actual {percent}%", { percent: f.thresholdPercent }),
+          },
+          { label: gt("Fired"), value: f.firedDay },
+          {
+            label: gt("Spend so far"),
+            value:
+              f.limit !== null
+                ? gt("{spent} of {limit} ({percent}%)", {
+                    spent: f.spent,
+                    limit: f.limit,
+                    percent: f.spentPercent ?? 0,
+                  })
+                : f.spent,
+          },
+          {
+            label: gt("Forecast for the period"),
+            value:
+              f.forecast === null
+                ? null
+                : f.forecastPercent !== null
+                  ? gt("{forecast} ({percent}% of the limit)", {
+                      forecast: f.forecast,
+                      percent: f.forecastPercent,
+                    })
+                  : f.forecast,
+          },
+          { label: gt("Scope"), value: f.scope ?? gt("All spend") },
+          {
+            label: gt("Measured on"),
+            value: f.adjustedSpend ? gt("Spend with billing rules applied") : null,
+          },
+        ],
+        ...(notes.length > 0 ? { note: notes.join("\n\n") } : {}),
+      }}
+    />
   );
 }
 

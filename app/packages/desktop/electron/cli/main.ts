@@ -81,6 +81,7 @@ import { cmdIdleRules } from "./commands/idle-rules";
 import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
+import { cmdIssues } from "./commands/issues";
 import { cmdPrCheck } from "./commands/pr-check";
 import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdSeats } from "./commands/seats";
@@ -344,6 +345,8 @@ COMMANDS
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)
+  issues              findings filed to Jira, Linear and GitHub with each issue's live status
+                      and assignee, unfinished first   [jira|linear|github] (cloud only)
   pr-check            the pull request check (monthly cost change, blast radius, warnings) for
                       the local working tree vs a base, or for an open pull request; posts
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
@@ -1145,6 +1148,9 @@ export async function runCli(): Promise<void> {
         break;
       case "prices":
         await cmdPrices(ctx, rest[0] ?? "", rest.slice(1), parsed.prices, parsed.range);
+        break;
+      case "issues":
+        await cmdIssues(ctx, rest[0]);
         break;
       case "github-issues":
         if (rest[0] === "settings") await cmdGithubIssueSettings(ctx);

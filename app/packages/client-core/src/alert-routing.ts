@@ -497,7 +497,8 @@ export type AlertDestination =
   /**
    * File the alert's finding as a GitHub issue, in the repository the org's
    * GitHub issue settings route it to (`/github-issues`). Only alerts that
-   * carry a finding (savings findings, anomalies, idle commitments) can be
+   * carry a finding (savings findings, anomalies, idle commitments, budget
+   * alerts on non-private budgets) can be
    * filed; for any other trigger this destination is skipped and counts as
    * neither attempted nor failed. Dedupe is by finding fingerprint, so a
    * re-raised finding comments on its open issue instead of opening another.

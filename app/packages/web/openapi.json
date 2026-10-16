@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.81.0",
+    "version": "1.82.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3673,6 +3673,174 @@
         ],
         "additionalProperties": false,
         "description": "A savings finding (orphaned resource, oversized resource, extended support surcharge or unused seat) moved between Ready for review, In progress, Completed and Archived, by a person or because a scan stopped reporting it."
+      },
+      "EventData_issue_status_changed_v1": {
+        "type": "object",
+        "properties": {
+          "tracker": {
+            "type": "string",
+            "enum": [
+              "jira",
+              "linear",
+              "github"
+            ],
+            "description": "Where the issue lives."
+          },
+          "issue": {
+            "type": "string",
+            "description": "The issue's handle: a Jira key, a Linear identifier, or owner/repo#number."
+          },
+          "issueUrl": {
+            "type": "string",
+            "description": "The issue in the tracker."
+          },
+          "sourceKind": {
+            "type": "string",
+            "description": "The kind of finding the issue was filed from, e.g. cost_anomaly."
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "The finding's own id."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's status name now."
+          },
+          "statusCategory": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "todo",
+              "in_progress",
+              "done",
+              "canceled"
+            ],
+            "description": "Tracker-neutral progress now."
+          },
+          "previousStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The status name before."
+          },
+          "previousStatusCategory": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "todo",
+              "in_progress",
+              "done",
+              "canceled"
+            ],
+            "description": "Tracker-neutral progress before."
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who the issue is assigned to now."
+          }
+        },
+        "required": [
+          "tracker",
+          "issue",
+          "issueUrl",
+          "sourceKind",
+          "sourceId",
+          "status",
+          "statusCategory",
+          "previousStatus",
+          "previousStatusCategory",
+          "assignee"
+        ],
+        "description": "`data` of a `issue.status_changed` event, version 1. An issue filed from a finding moved to a different status in Jira, Linear or GitHub. The first status Infrawrench learns for an issue is a baseline and raises nothing."
+      },
+      "Event_issue_status_changed_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "issue.status_changed"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_issue_status_changed_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "An issue filed from a finding moved to a different status in Jira, Linear or GitHub. The first status Infrawrench learns for an issue is a baseline and raises nothing."
       },
       "EventData_secret_leaked_v1": {
         "type": "object",
@@ -61969,6 +62137,43 @@
         ],
         "additionalProperties": false
       },
+      "IssueWebhookState": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "registered",
+              "manual"
+            ],
+            "description": "`registered`: created in the tracker by Infrawrench. `manual`: created by a person with the URL and secret from here. Null: no webhook; statuses come from the poll."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The receiver URL the tracker posts to."
+          },
+          "lastDeliveryAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the last correctly signed delivery arrived."
+          }
+        },
+        "required": [
+          "mode",
+          "url",
+          "lastDeliveryAt"
+        ],
+        "additionalProperties": false
+      },
       "JiraIntegration": {
         "type": [
           "object",
@@ -62002,6 +62207,13 @@
             ],
             "example": "10004"
           },
+          "acknowledgeOnDone": {
+            "type": "boolean",
+            "description": "When an issue filed for a cost anomaly moves to done, record the anomaly as explained."
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/IssueWebhookState"
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
@@ -62013,6 +62225,8 @@
           "tokenHint",
           "defaultProjectKey",
           "defaultIssueTypeId",
+          "acknowledgeOnDone",
+          "webhook",
           "updatedAt"
         ],
         "additionalProperties": false
@@ -62052,6 +62266,10 @@
               "null"
             ],
             "maxLength": 64
+          },
+          "acknowledgeOnDone": {
+            "type": "boolean",
+            "description": "Omit to keep the stored value (off on first connect)."
           }
         },
         "required": [
@@ -62177,9 +62395,23 @@
           "posture_finding",
           "expiring",
           "probe",
-          "extended_support"
+          "extended_support",
+          "budget_alert"
         ],
         "description": "Which detector produced the finding the issue was filed from."
+      },
+      "IssueStatusCategory": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "todo",
+          "in_progress",
+          "done",
+          "canceled"
+        ],
+        "description": "Tracker-neutral progress. Jira's status category, Linear's workflow state type, and GitHub's state and close reason all map onto these four."
       },
       "JiraIssueLink": {
         "type": "object",
@@ -62201,6 +62433,40 @@
             "type": "string",
             "example": "https://acme.atlassian.net/browse/OPS-412"
           },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's own status name, e.g. `In Progress`, `Backlog`, `Closed`.",
+            "example": "In Progress"
+          },
+          "statusCategory": {
+            "$ref": "#/components/schemas/IssueStatusCategory"
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assignee display name (Jira, Linear) or login (GitHub)."
+          },
+          "issueUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the issue last changed, as the tracker reports it."
+          },
+          "statusSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When Infrawrench last learned the status, by webhook or poll."
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -62218,6 +62484,11 @@
           "sourceId",
           "issueKey",
           "issueUrl",
+          "status",
+          "statusCategory",
+          "assignee",
+          "issueUpdatedAt",
+          "statusSyncedAt",
           "createdByUserId",
           "createdAt"
         ],
@@ -62310,6 +62581,57 @@
         ],
         "additionalProperties": false
       },
+      "IssueWebhookSetupResult": {
+        "type": "object",
+        "properties": {
+          "webhook": {
+            "$ref": "#/components/schemas/IssueWebhookState"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Jira manual mode only: the signing secret to paste into Jira's webhook form. Returned this once; it is stored encrypted and never read back."
+          },
+          "fallbackReason": {
+            "type": "string",
+            "description": "Why automatic registration fell back to manual."
+          }
+        },
+        "required": [
+          "webhook"
+        ],
+        "additionalProperties": false
+      },
+      "JiraWebhookInput": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "manual"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "IssueStatusRefreshResult": {
+        "type": "object",
+        "properties": {
+          "checked": {
+            "type": "integer",
+            "description": "Links the tracker was asked about."
+          },
+          "changed": {
+            "type": "integer",
+            "description": "Links whose status, assignee or time moved."
+          }
+        },
+        "required": [
+          "checked",
+          "changed"
+        ],
+        "additionalProperties": false
+      },
       "LinearIntegration": {
         "type": [
           "object",
@@ -62328,6 +62650,13 @@
             ],
             "description": "Team the file-issue window preselects. A Linear team id, not a team key."
           },
+          "acknowledgeOnDone": {
+            "type": "boolean",
+            "description": "When an issue filed for a cost anomaly moves to done, record the anomaly as explained."
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/IssueWebhookState"
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
@@ -62336,6 +62665,8 @@
         "required": [
           "keyHint",
           "defaultTeamId",
+          "acknowledgeOnDone",
+          "webhook",
           "updatedAt"
         ],
         "additionalProperties": false
@@ -62355,6 +62686,10 @@
               "null"
             ],
             "maxLength": 64
+          },
+          "acknowledgeOnDone": {
+            "type": "boolean",
+            "description": "Omit to keep the stored value (off on first connect)."
           }
         },
         "additionalProperties": false
@@ -62435,7 +62770,8 @@
           "posture_finding",
           "expiring",
           "probe",
-          "extended_support"
+          "extended_support",
+          "budget_alert"
         ],
         "description": "Which detector produced the finding the issue was filed from."
       },
@@ -62459,6 +62795,40 @@
             "type": "string",
             "example": "https://linear.app/acme/issue/ENG-123"
           },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's own status name, e.g. `In Progress`, `Backlog`, `Closed`.",
+            "example": "In Progress"
+          },
+          "statusCategory": {
+            "$ref": "#/components/schemas/IssueStatusCategory"
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assignee display name (Jira, Linear) or login (GitHub)."
+          },
+          "issueUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the issue last changed, as the tracker reports it."
+          },
+          "statusSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When Infrawrench last learned the status, by webhook or poll."
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -62476,6 +62846,11 @@
           "sourceId",
           "issueIdentifier",
           "issueUrl",
+          "status",
+          "statusCategory",
+          "assignee",
+          "issueUpdatedAt",
+          "statusSyncedAt",
           "createdByUserId",
           "createdAt"
         ],
@@ -62565,6 +62940,46 @@
           "title"
         ],
         "additionalProperties": false
+      },
+      "LinearWebhookInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "auto"
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "manual"
+                ]
+              },
+              "signingSecret": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": [
+              "mode",
+              "signingSecret"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "GithubInstallationAccess": {
         "type": "object",
@@ -62898,6 +63313,9 @@
               "$ref": "#/components/schemas/GithubIacSource"
             }
           },
+          "acknowledgeOnDone": {
+            "type": "boolean"
+          },
           "updatedAt": {
             "type": [
               "string",
@@ -62915,6 +63333,7 @@
           "resolveAction",
           "pullRequestsEnabled",
           "iacSources",
+          "acknowledgeOnDone",
           "updatedAt"
         ],
         "additionalProperties": false
@@ -62933,12 +63352,25 @@
           },
           "settings": {
             "$ref": "#/components/schemas/GithubIssueSettings"
+          },
+          "webhookConfigured": {
+            "type": "boolean",
+            "description": "Whether the server verifies GitHub App webhooks (`GITHUB_APP_WEBHOOK_SECRET` is set), which makes issue status live rather than polled."
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The URL the GitHub App's webhook points at; null when the server has no APP_URL."
           }
         },
         "required": [
           "appConfigured",
           "installations",
-          "settings"
+          "settings",
+          "webhookConfigured",
+          "webhookUrl"
         ],
         "additionalProperties": false
       },
@@ -62991,6 +63423,10 @@
               "$ref": "#/components/schemas/GithubIacSourceInput"
             },
             "maxItems": 20
+          },
+          "acknowledgeOnDone": {
+            "type": "boolean",
+            "description": "When an issue filed for a cost anomaly is closed as completed, record the anomaly as explained. Omit to keep the stored value."
           }
         },
         "required": [
@@ -63135,6 +63571,7 @@
           "expiring",
           "probe",
           "extended_support",
+          "budget_alert",
           "commitment_idle"
         ],
         "description": "Which detector produced the finding the issue was filed from."
@@ -63189,6 +63626,40 @@
               "null"
             ]
           },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tracker's own status name, e.g. `In Progress`, `Backlog`, `Closed`.",
+            "example": "In Progress"
+          },
+          "statusCategory": {
+            "$ref": "#/components/schemas/IssueStatusCategory"
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assignee display name (Jira, Linear) or login (GitHub)."
+          },
+          "issueUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the issue last changed, as the tracker reports it."
+          },
+          "statusSyncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When Infrawrench last learned the status, by webhook or poll."
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -63220,6 +63691,11 @@
           "autoFiled",
           "pullRequestNumber",
           "pullRequestUrl",
+          "status",
+          "statusCategory",
+          "assignee",
+          "issueUpdatedAt",
+          "statusSyncedAt",
           "createdByUserId",
           "createdAt",
           "resolvedAt"
@@ -117774,6 +118250,209 @@
         "description": "_Requires permission: `jira:read`._"
       }
     },
+    "/api/org/{orgId}/jira/webhook": {
+      "post": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Set up the issue status webhook",
+        "description": "`auto` (the default) registers a webhook in Jira for `jira:issue_updated` and `jira:issue_deleted` through the stored account, which Jira allows for administrators only. When Jira refuses, the reply falls back to manual and carries the URL and a one-time `secret` for an administrator to paste into Jira's webhook form. `manual` skips the attempt. Replaces any webhook set up before.\n\n_Requires permission: `jira:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JiraWebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The webhook as it now stands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueWebhookSetupResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Jira refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJiraWebhook",
+        "x-required-permission": "jira:write"
+      },
+      "delete": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Remove the issue status webhook",
+        "description": "Deletes the webhook in Jira when Infrawrench registered it. Statuses keep refreshing through the poll.\n\n_Requires permission: `jira:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Jira refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdJiraWebhook",
+        "x-required-permission": "jira:write"
+      }
+    },
+    "/api/org/{orgId}/jira/links/refresh": {
+      "post": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Refresh the status of filed Jira issues now",
+        "description": "Reads up to 200 of the org's filed issues from Jira (least recently checked first) instead of waiting for a webhook or the poll.\n\n_Requires permission: `jira:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many were checked and changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueStatusRefreshResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Jira refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdJiraLinksRefresh",
+        "x-required-permission": "jira:read"
+      }
+    },
     "/api/org/{orgId}/linear": {
       "get": {
         "tags": [
@@ -118192,6 +118871,264 @@
         "operationId": "getOrgOrgIdLinearLinks",
         "x-required-permission": "linear:read",
         "description": "_Requires permission: `linear:read`._"
+      }
+    },
+    "/api/org/{orgId}/linear/webhook": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Set up the issue status webhook",
+        "description": "`auto` creates a webhook in Linear for `Issue` events on all public teams, signed with a secret Infrawrench generates (Linear allows this for workspace admins only). `manual` records a webhook somebody created in Linear's settings at the URL from `POST /linear/webhook/url`, with the signing secret Linear showed them. Replaces any webhook set up before.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinearWebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The webhook as it now stands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueWebhookSetupResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Linear refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLinearWebhook",
+        "x-required-permission": "linear:write"
+      },
+      "delete": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Remove the issue status webhook",
+        "description": "Deletes the webhook in Linear when Infrawrench created it. Statuses keep refreshing through the poll.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Linear refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdLinearWebhook",
+        "x-required-permission": "linear:write"
+      }
+    },
+    "/api/org/{orgId}/linear/webhook/url": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Get the receiver URL for a hand-made Linear webhook",
+        "description": "Linear shows a webhook's signing secret only after it exists, so the URL comes first; record the secret afterwards with `POST /linear/webhook` in `manual` mode.\n\n_Requires permission: `linear:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The URL to paste into Linear",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLinearWebhookUrl",
+        "x-required-permission": "linear:write"
+      }
+    },
+    "/api/org/{orgId}/linear/links/refresh": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Refresh the status of filed Linear issues now",
+        "description": "Reads up to 200 of the org's filed issues from Linear (least recently checked first) instead of waiting for a webhook or the poll.\n\n_Requires permission: `linear:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many were checked and changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueStatusRefreshResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Linear refused or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdLinearLinksRefresh",
+        "x-required-permission": "linear:read"
       }
     },
     "/api/org/{orgId}/github-issues": {
@@ -118789,6 +119726,81 @@
         "description": "_Requires permission: `github-issues:read`._"
       }
     },
+    "/api/org/{orgId}/github-issues/links/refresh": {
+      "post": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Refresh the status of filed GitHub issues now",
+        "description": "Reads up to 200 of the org's filed issues from GitHub (least recently checked first) instead of waiting for the App's webhook or the poll. An issue GitHub no longer has is recorded as deleted.\n\n_Requires permission: `github-issues:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How many were checked and changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueStatusRefreshResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The GitHub App installation needs a permission an owner has not approved yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub refused the request or was unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdGithubIssuesLinksRefresh",
+        "x-required-permission": "github-issues:read"
+      }
+    },
     "/api/org/{orgId}/github-issues/pull-requests/preview": {
       "post": {
         "tags": [
@@ -118957,6 +119969,104 @@
         },
         "operationId": "postOrgOrgIdGithubIssuesPullRequests",
         "x-required-permission": "github-issues:write"
+      }
+    },
+    "/api/issue-webhooks/jira/{token}": {
+      "post": {
+        "tags": [
+          "Jira"
+        ],
+        "summary": "Inbound Jira webhook for issue status",
+        "description": "Called by Jira, not by clients. The token in the path picks the organization; `X-Hub-Signature: sha256=<hex>`, an HMAC of the raw body with the stored secret, authenticates the delivery. Handles `jira:issue_updated` and `jira:issue_deleted`.",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Applied"
+          },
+          "401": {
+            "description": "The signature did not verify"
+          },
+          "404": {
+            "description": "Unknown token, or (GitHub) no webhook secret configured on the server"
+          },
+          "500": {
+            "description": "Processing failed; the tracker retries"
+          }
+        },
+        "operationId": "postIssueWebhooksJiraToken"
+      }
+    },
+    "/api/issue-webhooks/linear/{token}": {
+      "post": {
+        "tags": [
+          "Linear"
+        ],
+        "summary": "Inbound Linear webhook for issue status",
+        "description": "Called by Linear, not by clients. The token in the path picks the organization; `Linear-Signature` (hex HMAC-SHA256 of the raw body) authenticates the delivery, and `webhookTimestamp` must be within a minute. Handles `Issue` create, update and remove.",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Applied"
+          },
+          "401": {
+            "description": "The signature did not verify"
+          },
+          "404": {
+            "description": "Unknown token, or (GitHub) no webhook secret configured on the server"
+          },
+          "500": {
+            "description": "Processing failed; the tracker retries"
+          }
+        },
+        "operationId": "postIssueWebhooksLinearToken"
+      }
+    },
+    "/api/issue-webhooks/github": {
+      "post": {
+        "tags": [
+          "GitHub issues"
+        ],
+        "summary": "Inbound GitHub App webhook for issue status",
+        "description": "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues and `ping` is acknowledged. Every other event is ignored.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ping acknowledged"
+          },
+          "202": {
+            "description": "Applied"
+          },
+          "401": {
+            "description": "The signature did not verify"
+          },
+          "404": {
+            "description": "Unknown token, or (GitHub) no webhook secret configured on the server"
+          },
+          "500": {
+            "description": "Processing failed; the tracker retries"
+          }
+        },
+        "operationId": "postIssueWebhooksGithub"
       }
     },
     "/api/org/{orgId}/pr-checks": {
@@ -120225,6 +121335,29 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Event_savings_finding_status_changed_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "issue.status_changed": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Filed issue status changed",
+        "description": "An issue filed from a finding moved to a different status in Jira, Linear or GitHub. The first status Infrawrench learns for an issue is a baseline and raises nothing.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_issue_status_changed_v1"
               }
             }
           }

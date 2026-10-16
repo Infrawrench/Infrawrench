@@ -1,5 +1,6 @@
 import type { CloudFetch } from "./fetch";
 import { JIRA_SOURCE_KINDS } from "./jira";
+import type { IssueStatusFields, IssueStatusRefreshResult } from "./issue-status";
 
 /**
  * GitHub issues (and pull requests) for findings, through the org's existing
@@ -59,6 +60,8 @@ export function githubSourceKindLabel(kind: GithubIssueSourceKind): string {
       return "Idle commitment";
     case "extended_support":
       return "Extended support";
+    case "budget_alert":
+      return "Budget alert";
   }
 }
 
@@ -120,6 +123,12 @@ export interface GithubIssueSettings {
   /** Allow members with `github-issues:write` to open IaC pull requests. */
   pullRequestsEnabled: boolean;
   iacSources: GithubIacSource[];
+  /**
+   * When an issue filed for a cost anomaly is closed as completed, record the
+   * anomaly as explained. Optional on input (omitted keeps the stored value)
+   * and for a client a release ahead of its server.
+   */
+  acknowledgeOnDone?: boolean | undefined;
   updatedAt: string | null;
 }
 
@@ -164,6 +173,14 @@ export interface GithubIssuesStatus {
   appConfigured: boolean;
   installations: GithubInstallationAccess[];
   settings: GithubIssueSettings;
+  /**
+   * Whether the server verifies GitHub App webhooks (`GITHUB_APP_WEBHOOK_SECRET`
+   * is set), which is what makes issue status live rather than polled.
+   * Optional for a client a release ahead of its server.
+   */
+  webhookConfigured?: boolean | undefined;
+  /** The URL the GitHub App's webhook must point at. */
+  webhookUrl?: string | null | undefined;
 }
 
 export interface GithubLabel {
@@ -177,7 +194,7 @@ export interface GithubAssignee {
   avatarUrl: string | null;
 }
 
-export interface GithubIssueLink {
+export interface GithubIssueLink extends IssueStatusFields {
   id: string;
   sourceKind: GithubIssueSourceKind;
   sourceId: string;
@@ -347,6 +364,16 @@ export async function fetchGithubIssueLinks(
   );
 }
 
+/** Ask GitHub for the current status of the org's filed issues now. */
+export async function refreshGithubIssueStatuses(
+  api: CloudFetch,
+  orgId: string,
+): Promise<IssueStatusRefreshResult | null> {
+  return api.org<IssueStatusRefreshResult>(orgId, "/github-issues/links/refresh", {
+    method: "POST",
+  });
+}
+
 export async function previewGithubPullRequest(
   api: CloudFetch,
   orgId: string,
@@ -446,6 +473,7 @@ export function defaultGithubIssueSettings(): GithubIssueSettings {
     resolveAction: "comment",
     pullRequestsEnabled: false,
     iacSources: [],
+    acknowledgeOnDone: false,
     updatedAt: null,
   };
 }

@@ -1,6 +1,12 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import {
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
+  IssueWebhookState,
+  issueStatusFields,
+} from "./issue-status";
 
 /**
  * The detectors a filed issue can come from: the same six as Jira. Kept in
@@ -16,6 +22,7 @@ const LinearSourceKind = z
     "expiring",
     "probe",
     "extended_support",
+    "budget_alert",
   ])
   .openapi("LinearSourceKind", {
     description: "Which detector produced the finding the issue was filed from.",
@@ -30,6 +37,11 @@ const LinearIntegration = strict({
   defaultTeamId: z.string().nullable().openapi({
     description: "Team the file-issue window preselects. A Linear team id, not a team key.",
   }),
+  acknowledgeOnDone: z.boolean().openapi({
+    description:
+      "When an issue filed for a cost anomaly moves to done, record the anomaly as explained.",
+  }),
+  webhook: IssueWebhookState,
   updatedAt: IsoDateTime,
 }).openapi("LinearIntegration");
 
@@ -45,6 +57,9 @@ const LinearIntegrationInput = strict({
         "key; required on first connect.",
     }),
   defaultTeamId: z.string().max(64).nullish(),
+  acknowledgeOnDone: z.boolean().optional().openapi({
+    description: "Omit to keep the stored value (off on first connect).",
+  }),
 }).openapi("LinearIntegrationInput");
 
 const LinearVerifyInput = strict({
@@ -79,6 +94,7 @@ const LinearIssueLink = strict({
   sourceId: z.string(),
   issueIdentifier: z.string().openapi({ example: "ENG-123" }),
   issueUrl: z.string().openapi({ example: "https://linear.app/acme/issue/ENG-123" }),
+  ...issueStatusFields,
   createdByUserId: z.string().nullable(),
   createdAt: IsoDateTime,
 }).openapi("LinearIssueLink");
@@ -262,6 +278,94 @@ export function registerLinearPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.array(LinearIssueLink) } },
       },
       400: ErrorResponses[400],
+    },
+  });
+
+  const linearUnhappy = {
+    description: "Linear refused or was unreachable",
+    content: { "application/json": { schema: strict({ error: z.string() }) } },
+  };
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/linear/webhook",
+    tags: ["Linear"],
+    summary: "Set up the issue status webhook",
+    description:
+      "`auto` creates a webhook in Linear for `Issue` events on all public teams, signed with a secret Infrawrench generates (Linear allows this for workspace admins only). `manual` records a webhook somebody created in Linear's settings at the URL from `POST /linear/webhook/url`, with the signing secret Linear showed them. Replaces any webhook set up before.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: z
+              .discriminatedUnion("mode", [
+                strict({ mode: z.literal("auto") }),
+                strict({ mode: z.literal("manual"), signingSecret: z.string().min(1).max(512) }),
+              ])
+              .openapi("LinearWebhookInput"),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The webhook as it now stands",
+        content: { "application/json": { schema: IssueWebhookSetupResult } },
+      },
+      400: ErrorResponses[400],
+      502: linearUnhappy,
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/linear/webhook/url",
+    tags: ["Linear"],
+    summary: "Get the receiver URL for a hand-made Linear webhook",
+    description:
+      "Linear shows a webhook's signing secret only after it exists, so the URL comes first; record the secret afterwards with `POST /linear/webhook` in `manual` mode.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "The URL to paste into Linear",
+        content: { "application/json": { schema: strict({ url: z.string() }) } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/linear/webhook",
+    tags: ["Linear"],
+    summary: "Remove the issue status webhook",
+    description:
+      "Deletes the webhook in Linear when Infrawrench created it. Statuses keep refreshing through the poll.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: { description: "Removed", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+      502: linearUnhappy,
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/linear/links/refresh",
+    tags: ["Linear"],
+    summary: "Refresh the status of filed Linear issues now",
+    description:
+      "Reads up to 200 of the org's filed issues from Linear (least recently checked first) instead of waiting for a webhook or the poll.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "How many were checked and changed",
+        content: { "application/json": { schema: IssueStatusRefreshResult } },
+      },
+      400: ErrorResponses[400],
+      502: linearUnhappy,
     },
   });
 }

@@ -49,6 +49,13 @@ const STORED_ROW = {
   apiKeyIv: "IV",
   keyHint: "…a7f2",
   defaultTeamId: "team-1",
+  acknowledgeOnDone: false,
+  webhookToken: null,
+  webhookMode: null,
+  webhookRemoteId: null,
+  encryptedWebhookSecret: null,
+  webhookSecretIv: null,
+  webhookLastDeliveryAt: null,
   createdByUserId: null,
   createdAt: "2026-08-01T00:00:00.000",
   updatedAt: "2026-08-01T00:00:00.000",
@@ -290,6 +297,8 @@ describe("getLinearIntegration", () => {
     expect(record).toEqual({
       keyHint: "…a7f2",
       defaultTeamId: "team-1",
+      acknowledgeOnDone: false,
+      webhook: { mode: null, url: null, lastDeliveryAt: null },
       updatedAt: "2026-08-01T00:00:00.000Z",
     });
     expect(JSON.stringify(record)).not.toContain("CT");

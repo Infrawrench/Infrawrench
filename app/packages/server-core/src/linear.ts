@@ -49,11 +49,18 @@
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import type { LinearIssueLink, LinearTeam } from "@infrawrench/client-core";
+import {
+  isIssueStatusCategory,
+  type IssueWebhookState,
+  type LinearIssueLink,
+  type LinearTeam,
+} from "@infrawrench/client-core";
 
+import { appPath } from "./app-url";
 import { db } from "./db/client";
 import { linearIntegrations, linearIssueLinks } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
+import { linearReadingFromIssue, type LinearIssueReading } from "./issue-status/readings";
 
 /**
  * The one place Linear is reachable. GraphQL endpoint per
@@ -99,6 +106,7 @@ export const LINEAR_SOURCE_KINDS = [
   "expiring",
   "probe",
   "extended_support",
+  "budget_alert",
 ] as const;
 
 export type LinearSourceKind = (typeof LINEAR_SOURCE_KINDS)[number];
@@ -246,6 +254,8 @@ export interface LinearIntegrationRecord {
   keyHint: string;
   /** Team the "File in Linear" modal preselects. */
   defaultTeamId: string | null;
+  acknowledgeOnDone: boolean;
+  webhook: IssueWebhookState;
   updatedAt: string;
 }
 
@@ -254,10 +264,23 @@ function keyHintFor(apiKey: string): string {
   return `…${apiKey.slice(-4)}`;
 }
 
+/** The receiver URL for a webhook token, or null when the server has no `APP_URL`. */
+export function linearWebhookUrl(token: string): string | null {
+  return appPath(`/api/issue-webhooks/linear/${encodeURIComponent(token)}`);
+}
+
 function toIntegrationRecord(row: typeof linearIntegrations.$inferSelect): LinearIntegrationRecord {
+  const mode =
+    row.webhookMode === "registered" || row.webhookMode === "manual" ? row.webhookMode : null;
   return {
     keyHint: row.keyHint,
     defaultTeamId: row.defaultTeamId,
+    acknowledgeOnDone: row.acknowledgeOnDone,
+    webhook: {
+      mode,
+      url: mode && row.webhookToken ? linearWebhookUrl(row.webhookToken) : null,
+      lastDeliveryAt: row.webhookLastDeliveryAt ? row.webhookLastDeliveryAt.toISOString() : null,
+    },
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -337,6 +360,8 @@ export interface SetLinearIntegrationArgs {
    */
   apiKey?: string | undefined;
   defaultTeamId?: string | null | undefined;
+  /** Omitted keeps the stored value (off on first connect). */
+  acknowledgeOnDone?: boolean | undefined;
 }
 
 /**
@@ -372,6 +397,7 @@ export async function setLinearIntegration(
       ? { encryptedApiKey: enc.ciphertext, apiKeyIv: enc.iv, keyHint: keyHintFor(apiKey) }
       : {}),
     defaultTeamId: args.defaultTeamId?.trim() || null,
+    ...(args.acknowledgeOnDone !== undefined ? { acknowledgeOnDone: args.acknowledgeOnDone } : {}),
     updatedAt: now,
   };
 
@@ -396,6 +422,10 @@ export async function setLinearIntegration(
 
 /** Remove the org's integration. Returns false when there was nothing to remove. */
 export async function deleteLinearIntegration(organizationId: string): Promise<boolean> {
+  // Best effort, as for Jira: the key may be why the org is disconnecting.
+  await removeLinearWebhook(organizationId).catch((err: unknown) =>
+    console.warn("[linear] could not remove the status webhook while disconnecting:", err),
+  );
   const deleted = await db
     .delete(linearIntegrations)
     .where(eq(linearIntegrations.organizationId, organizationId))
@@ -548,10 +578,17 @@ function toLinkRecord(row: typeof linearIssueLinks.$inferSelect): LinearIssueLin
     sourceId: row.sourceId,
     issueIdentifier: row.issueIdentifier,
     issueUrl: row.issueUrl,
+    status: row.status,
+    statusCategory: isIssueStatusCategory(row.statusCategory) ? row.statusCategory : null,
+    assignee: row.assignee,
+    issueUpdatedAt: row.issueUpdatedAt ? row.issueUpdatedAt.toISOString() : null,
+    statusSyncedAt: row.statusSyncedAt ? row.statusSyncedAt.toISOString() : null,
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+export { toLinkRecord as toLinearLinkRecord };
 
 export interface RecordLinearIssueLinkArgs {
   organizationId: string;
@@ -560,6 +597,8 @@ export interface RecordLinearIssueLinkArgs {
   sourceId: string;
   issueIdentifier: string;
   issueUrl: string;
+  /** Linear's UUID, which survives a move to another team. */
+  issueId?: string | null | undefined;
 }
 
 /**
@@ -584,6 +623,7 @@ export async function recordLinearIssueLink(
       sourceId: args.sourceId,
       issueIdentifier: args.issueIdentifier,
       issueUrl: args.issueUrl,
+      issueId: args.issueId || null,
       createdByUserId: args.userId ?? null,
     })
     .onConflictDoUpdate({
@@ -637,4 +677,304 @@ export async function listLinearIssueLinks(
     console.error("[linear] failed to list issue links for org", organizationId, err);
     return [];
   }
+}
+
+// --- Live status ---
+
+const ISSUE_STATUS_FIELDS =
+  "id identifier url updatedAt state { name type } assignee { name displayName }";
+
+/** Linear pages connections at 250; 100 keeps each query's complexity modest. */
+const STATUS_PAGE = 100;
+
+/** An issue to ask Linear about: by UUID when the link has one, else by identifier. */
+export interface LinearIssueRef {
+  issueId: string | null;
+  identifier: string;
+}
+
+/**
+ * Current status of a set of issues. Links that know their UUID are read in
+ * batches through `issues(filter: { id: { in: [...] } })`; older links that
+ * only know an identifier are read one at a time with `issue(id:)`, which
+ * accepts either form, and the reading carries the UUID back so the next sync
+ * batches them too. An issue Linear cannot find is absent from the result.
+ *
+ * Throws {@link LinearApiError} for auth and transport failures; a single
+ * missing identifier is not a failure.
+ */
+export async function fetchLinearIssueReadings(
+  organizationId: string,
+  refs: readonly LinearIssueRef[],
+): Promise<LinearIssueReading[]> {
+  if (refs.length === 0) return [];
+  const apiKey = await requireLinearApiKey(organizationId);
+  const readings: LinearIssueReading[] = [];
+
+  const ids = [...new Set(refs.flatMap((r) => (r.issueId ? [r.issueId] : [])))];
+  for (let i = 0; i < ids.length; i += STATUS_PAGE) {
+    const page = ids.slice(i, i + STATUS_PAGE);
+    const data = await linearGraphql<{ issues?: { nodes?: unknown[] } }>(
+      apiKey,
+      `query IssueStatuses($ids: [ID!], $first: Int) {
+        issues(filter: { id: { in: $ids } }, first: $first, includeArchived: true) { nodes { ${ISSUE_STATUS_FIELDS} } }
+      }`,
+      { ids: page, first: page.length },
+    );
+    for (const node of data.issues?.nodes ?? []) {
+      const reading = linearReadingFromIssue(node);
+      if (reading) readings.push(reading);
+    }
+  }
+
+  for (const ref of refs) {
+    if (ref.issueId) continue;
+    try {
+      const data = await linearGraphql<{ issue?: unknown }>(
+        apiKey,
+        `query IssueStatus($id: String!) { issue(id: $id) { ${ISSUE_STATUS_FIELDS} } }`,
+        { id: ref.identifier },
+      );
+      const reading = linearReadingFromIssue(data.issue);
+      if (reading) readings.push(reading);
+    } catch (err) {
+      // "Entity not found" for a deleted issue arrives as a GraphQL error on
+      // an otherwise healthy request; only an auth or transport failure should
+      // stop the batch.
+      if (err instanceof LinearApiError && (err.status === 401 || err.status === 403)) throw err;
+      if (err instanceof LinearApiError && err.status === null) throw err;
+    }
+  }
+  return readings;
+}
+
+/** One issue's current status by UUID or identifier; null when Linear cannot find it. */
+export async function fetchLinearIssueReading(
+  organizationId: string,
+  idOrIdentifier: string,
+): Promise<LinearIssueReading | null> {
+  const [reading] = await fetchLinearIssueReadings(organizationId, [
+    { issueId: null, identifier: idOrIdentifier },
+  ]);
+  return reading ?? null;
+}
+
+export interface LinearWebhookSecretRecord {
+  organizationId: string;
+  secret: string;
+}
+
+/** Resolve a receiver URL's token to its org and signing secret; null when unknown. */
+export async function findLinearWebhookByToken(
+  token: string,
+): Promise<LinearWebhookSecretRecord | null> {
+  if (!token || token.length > 128) return null;
+  const [row] = await db
+    .select({
+      organizationId: linearIntegrations.organizationId,
+      encryptedWebhookSecret: linearIntegrations.encryptedWebhookSecret,
+      webhookSecretIv: linearIntegrations.webhookSecretIv,
+    })
+    .from(linearIntegrations)
+    .where(eq(linearIntegrations.webhookToken, token))
+    .limit(1);
+  if (!row?.encryptedWebhookSecret || !row.webhookSecretIv) return null;
+  try {
+    const secret = await decrypt(
+      row.encryptedWebhookSecret,
+      row.webhookSecretIv,
+      buildAad("linear", row.organizationId, "webhookSecret"),
+    );
+    return { organizationId: row.organizationId, secret };
+  } catch (err) {
+    console.error("[linear] failed to decrypt webhook secret for org", row.organizationId, err);
+    return null;
+  }
+}
+
+/** Stamp a verified delivery. Never throws. */
+export async function touchLinearWebhookDelivery(organizationId: string): Promise<void> {
+  await db
+    .update(linearIntegrations)
+    .set({ webhookLastDeliveryAt: new Date() })
+    .where(eq(linearIntegrations.organizationId, organizationId))
+    .catch((err: unknown) => console.warn("[linear] webhook delivery stamp failed:", err));
+}
+
+/** Whether the org wants an anomaly explained when its Linear issue is done. Ambient. */
+export async function linearAcknowledgesOnDone(organizationId: string): Promise<boolean> {
+  const integration = await getLinearIntegration(organizationId);
+  return integration?.acknowledgeOnDone ?? false;
+}
+
+export interface SetupLinearWebhookResult {
+  integration: LinearIntegrationRecord;
+  fallbackReason?: string | undefined;
+}
+
+function randomToken(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+}
+
+/**
+ * Set up the status webhook.
+ *
+ * `auto` creates it with `webhookCreate` for `Issue` events on all public
+ * teams, passing our own `secret` (an optional `WebhookCreateInput` field) so
+ * deliveries are signed with a key Linear never had to show anyone. Linear
+ * lets only workspace admins create webhooks; a refusal is reported with what
+ * to do instead (create it in Linear's settings and paste the signing secret
+ * here, which is `manual`).
+ *
+ * `manual` records a webhook a person made in Linear: Linear generates the
+ * signing secret there, so it has to be pasted back.
+ */
+export async function setupLinearWebhook(
+  organizationId: string,
+  args: { mode: "auto" } | { mode: "manual"; signingSecret: string },
+): Promise<SetupLinearWebhookResult> {
+  const apiKey = await requireLinearApiKey(organizationId);
+  const [current] = await db
+    .select({ token: linearIntegrations.webhookToken, mode: linearIntegrations.webhookMode })
+    .from(linearIntegrations)
+    .where(eq(linearIntegrations.organizationId, organizationId))
+    .limit(1);
+  // A manual setup keeps the token its URL was reserved under (see
+  // `reserveLinearWebhookUrl`): that is the URL already pasted into Linear.
+  const reserved = current?.token && !current.mode ? current.token : null;
+  const token = args.mode === "manual" && reserved ? reserved : randomToken();
+  const url = linearWebhookUrl(token);
+  if (!url) {
+    throw new LinearApiError(
+      "This Infrawrench server has no APP_URL configured, so Linear has no address to send status changes to.",
+    );
+  }
+  if (current?.mode) {
+    await removeLinearWebhook(organizationId).catch((err: unknown) =>
+      console.warn("[linear] could not remove the previous status webhook:", err),
+    );
+  }
+  let secret: string;
+  let remoteId: string | null = null;
+  if (args.mode === "manual") {
+    secret = args.signingSecret.trim();
+    if (!secret) throw new LinearApiError("Paste the signing secret Linear shows for the webhook.");
+  } else {
+    secret = randomToken();
+    try {
+      const data = await linearGraphql<{
+        webhookCreate?: { success?: boolean; webhook?: { id?: string } };
+      }>(
+        apiKey,
+        `mutation WebhookCreate($input: WebhookCreateInput!) {
+          webhookCreate(input: $input) { success webhook { id } }
+        }`,
+        {
+          input: {
+            url,
+            label: "Infrawrench issue status",
+            resourceTypes: ["Issue"],
+            allPublicTeams: true,
+            secret,
+          },
+        },
+      );
+      remoteId = data.webhookCreate?.webhook?.id ?? null;
+      if (!data.webhookCreate?.success || !remoteId) {
+        throw new LinearApiError("Linear did not create the webhook");
+      }
+    } catch (err) {
+      if (err instanceof LinearApiError && err.status !== null) {
+        throw new LinearApiError(
+          `${err.message}. Linear lets only workspace admins create webhooks: an admin can create one under Settings > API > Webhooks with the URL below, then paste its signing secret here.`,
+          err.status,
+        );
+      }
+      throw err;
+    }
+  }
+
+  const enc = await encrypt(secret, buildAad("linear", organizationId, "webhookSecret"));
+  const [row] = await db
+    .update(linearIntegrations)
+    .set({
+      webhookToken: token,
+      webhookMode: remoteId ? "registered" : "manual",
+      webhookRemoteId: remoteId,
+      encryptedWebhookSecret: enc.ciphertext,
+      webhookSecretIv: enc.iv,
+      webhookLastDeliveryAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(linearIntegrations.organizationId, organizationId))
+    .returning();
+  if (!row) throw new LinearApiError("Linear is not connected for this organization.");
+  return { integration: toIntegrationRecord(row) };
+}
+
+/**
+ * The receiver URL a manual setup should paste into Linear, minted before the
+ * secret exists (Linear shows the secret only after the webhook is created).
+ * Stores the token alone; the webhook stays inactive until
+ * {@link setupLinearWebhook} records the secret under the same token.
+ */
+export async function reserveLinearWebhookUrl(organizationId: string): Promise<string> {
+  const [row] = await db
+    .select({ token: linearIntegrations.webhookToken, mode: linearIntegrations.webhookMode })
+    .from(linearIntegrations)
+    .where(eq(linearIntegrations.organizationId, organizationId))
+    .limit(1);
+  if (!row) throw new LinearApiError("Linear is not connected for this organization.");
+  const token = row.token && !row.mode ? row.token : randomToken();
+  if (token !== row.token) {
+    await db
+      .update(linearIntegrations)
+      .set({ webhookToken: token })
+      .where(eq(linearIntegrations.organizationId, organizationId));
+  }
+  const url = linearWebhookUrl(token);
+  if (!url) {
+    throw new LinearApiError(
+      "This Infrawrench server has no APP_URL configured, so Linear has no address to send status changes to.",
+    );
+  }
+  return url;
+}
+
+/** Forget the status webhook, deleting it in Linear when we created it. */
+export async function removeLinearWebhook(organizationId: string): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(linearIntegrations)
+    .where(eq(linearIntegrations.organizationId, organizationId))
+    .limit(1);
+  if (!row?.webhookMode) return false;
+  if (row.webhookMode === "registered" && row.webhookRemoteId) {
+    const apiKey = await loadLinearApiKey(organizationId);
+    if (apiKey) {
+      try {
+        await linearGraphql(
+          apiKey,
+          `mutation WebhookDelete($id: String!) { webhookDelete(id: $id) { success } }`,
+          { id: row.webhookRemoteId },
+        );
+      } catch (err) {
+        // Already deleted in Linear is fine; anything else is worth reporting.
+        if (!(err instanceof LinearApiError && /not found/i.test(err.message))) throw err;
+      }
+    }
+  }
+  await db
+    .update(linearIntegrations)
+    .set({
+      webhookToken: null,
+      webhookMode: null,
+      webhookRemoteId: null,
+      encryptedWebhookSecret: null,
+      webhookSecretIv: null,
+      webhookLastDeliveryAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(linearIntegrations.organizationId, organizationId));
+  return true;
 }

@@ -33,6 +33,8 @@ export async function cmdGithubIssues(ctx: CliContext): Promise<void> {
   const columns: Column<GithubIssueLink>[] = [
     { header: "issue", value: (l) => `${l.repo}#${l.issueNumber}` },
     { header: "state", value: (l) => (l.state === "open" ? c.green("open") : c.dim("closed")) },
+    { header: "status", value: (l) => l.status ?? c.dim("-") },
+    { header: "assignee", value: (l) => l.assignee ?? c.dim("-") },
     { header: "finding", value: (l) => l.sourceKind.replace(/_/g, " ") },
     { header: "by", value: (l) => (l.autoFiled ? c.dim("rule") : "person") },
     { header: "pr", value: (l) => (l.pullRequestNumber ? `#${l.pullRequestNumber}` : c.dim("—")) },

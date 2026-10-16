@@ -444,7 +444,9 @@ func specChecks() []specCheck {
 			value:  GithubIssuesStatus{},
 			// What each GitHub App installation has accepted. GitHub-side state
 			// an owner approves on GitHub, not configuration Terraform can write.
-			ignored: []string{"installations"},
+			// Whether the server verifies the GitHub App webhook, and its URL:
+			// deployment state set by whoever runs the server, not by an org.
+			ignored: []string{"installations", "webhookConfigured", "webhookUrl"},
 		},
 
 		{

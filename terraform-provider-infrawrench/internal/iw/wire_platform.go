@@ -1374,30 +1374,48 @@ type JiraIntegrationInput struct {
 	APIToken           *string `json:"apiToken,omitempty"`
 	DefaultProjectKey  *string `json:"defaultProjectKey"`
 	DefaultIssueTypeID *string `json:"defaultIssueTypeId"`
+	// AcknowledgeOnDone is a pointer with omitempty: nil (an older
+	// caller) keeps the stored value, which is what the route does too.
+	AcknowledgeOnDone *bool `json:"acknowledgeOnDone,omitempty"`
+}
+
+// IssueWebhookState is the live-status webhook on a Jira or Linear
+// connection. Decoded for completeness and never managed: setting one up can
+// show a one-time secret to paste into the tracker, which has no place in
+// Terraform state.
+type IssueWebhookState struct {
+	Mode           *string `json:"mode"`
+	URL            *string `json:"url"`
+	LastDeliveryAt *string `json:"lastDeliveryAt"`
 }
 
 // JiraIntegration is the stored connection. TokenHint is the redacted echo of
 // the API token; the token itself is never returned.
 type JiraIntegration struct {
-	SiteURL            string  `json:"siteUrl"`
-	AccountEmail       string  `json:"accountEmail"`
-	TokenHint          string  `json:"tokenHint"`
-	DefaultProjectKey  *string `json:"defaultProjectKey"`
-	DefaultIssueTypeID *string `json:"defaultIssueTypeId"`
-	UpdatedAt          string  `json:"updatedAt"`
+	SiteURL            string             `json:"siteUrl"`
+	AccountEmail       string             `json:"accountEmail"`
+	TokenHint          string             `json:"tokenHint"`
+	DefaultProjectKey  *string            `json:"defaultProjectKey"`
+	DefaultIssueTypeID *string            `json:"defaultIssueTypeId"`
+	AcknowledgeOnDone  bool               `json:"acknowledgeOnDone"`
+	Webhook            *IssueWebhookState `json:"webhook"`
+	UpdatedAt          string             `json:"updatedAt"`
 }
 
 // LinearIntegrationInput is the PUT body. Same write-only rule as Jira's token.
 type LinearIntegrationInput struct {
-	APIKey        *string `json:"apiKey,omitempty"`
-	DefaultTeamID *string `json:"defaultTeamId"`
+	APIKey            *string `json:"apiKey,omitempty"`
+	DefaultTeamID     *string `json:"defaultTeamId"`
+	AcknowledgeOnDone *bool   `json:"acknowledgeOnDone,omitempty"`
 }
 
 // LinearIntegration is the stored connection.
 type LinearIntegration struct {
-	KeyHint       string  `json:"keyHint"`
-	DefaultTeamID *string `json:"defaultTeamId"`
-	UpdatedAt     string  `json:"updatedAt"`
+	KeyHint           string             `json:"keyHint"`
+	DefaultTeamID     *string            `json:"defaultTeamId"`
+	AcknowledgeOnDone bool               `json:"acknowledgeOnDone"`
+	Webhook           *IssueWebhookState `json:"webhook"`
+	UpdatedAt         string             `json:"updatedAt"`
 }
 
 /* ------------------------------ GitHub issues ------------------------------ */
@@ -1481,6 +1499,7 @@ type GithubIssueSettingsInput struct {
 	ResolveAction       string             `json:"resolveAction"`
 	PullRequestsEnabled bool               `json:"pullRequestsEnabled"`
 	IacSources          []GithubIacSource  `json:"iacSources"`
+	AcknowledgeOnDone   *bool              `json:"acknowledgeOnDone,omitempty"`
 }
 
 // GithubIssueSettings is the stored org singleton.
@@ -1493,6 +1512,7 @@ type GithubIssueSettings struct {
 	ResolveAction       string             `json:"resolveAction"`
 	PullRequestsEnabled bool               `json:"pullRequestsEnabled"`
 	IacSources          []GithubIacSource  `json:"iacSources"`
+	AcknowledgeOnDone   bool               `json:"acknowledgeOnDone"`
 	UpdatedAt           *string            `json:"updatedAt"`
 }
 
@@ -1516,8 +1536,11 @@ func DefaultGithubIssueSettings() GithubIssueSettingsInput {
 		ResolveAction:       "comment",
 		PullRequestsEnabled: false,
 		IacSources:          []GithubIacSource{},
+		AcknowledgeOnDone:   boolRef(false),
 	}
 }
+
+func boolRef(v bool) *bool { return &v }
 
 /* ---------------------------- workflow schedules --------------------------- */
 

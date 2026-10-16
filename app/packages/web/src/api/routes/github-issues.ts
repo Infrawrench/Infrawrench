@@ -49,6 +49,8 @@ import {
   openIacPullRequest,
   previewIacPullRequest,
 } from "@infrawrench/server-core/github-issues/pull-request";
+import { appPath } from "@infrawrench/server-core/app-url";
+import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -102,7 +104,15 @@ app.get("/", async (c) => {
     getGithubIssueSettings(organizationId),
     listInstallationAccess(organizationId),
   ]);
-  return c.json({ appConfigured: isGithubAppConfigured(), installations, settings });
+  return c.json({
+    appConfigured: isGithubAppConfigured(),
+    installations,
+    settings,
+    // Live status comes from the App's `issues` webhook when the server can
+    // verify it; the poll keeps statuses current either way.
+    webhookConfigured: Boolean(process.env["GITHUB_APP_WEBHOOK_SECRET"]),
+    webhookUrl: appPath("/api/issue-webhooks/github"),
+  });
 });
 
 /** PUT /settings: replace the whole document. */
@@ -132,6 +142,7 @@ app.put("/settings", async (c) => {
         routes: saved.routes.length,
         pullRequestsEnabled: saved.pullRequestsEnabled,
         iacSources: saved.iacSources.length,
+        acknowledgeOnDone: saved.acknowledgeOnDone ?? false,
       },
     });
     return c.json(saved);
@@ -250,6 +261,19 @@ app.get("/links", async (c) => {
       sourceIds: parsed.data.sourceId,
     }),
   );
+});
+
+/**
+ * POST /links/refresh: read the status of the org's filed issues from GitHub
+ * now, instead of waiting for the poll or a webhook.
+ */
+app.post("/links/refresh", async (c) => {
+  requirePermission(c, "github-issues:read");
+  try {
+    return c.json(await refreshOrgIssueStatuses(c.get("organizationId"), "github"));
+  } catch (err) {
+    return failure(c, err);
+  }
 });
 
 /** POST /pull-requests/preview: what the PR would change, or why not. */

@@ -55,6 +55,7 @@ type githubIssueSettingsResourceModel struct {
 	Assignees             types.List   `tfsdk:"assignees"`
 	ResolveAction         types.String `tfsdk:"resolve_action"`
 	PullRequestsEnabled   types.Bool   `tfsdk:"pull_requests_enabled"`
+	AcknowledgeOnDone     types.Bool   `tfsdk:"acknowledge_on_done"`
 	UpdatedAt             types.String `tfsdk:"updated_at"`
 	Route                 types.List   `tfsdk:"route"`
 	IacSource             types.List   `tfsdk:"iac_source"`
@@ -231,6 +232,16 @@ func (r *githubIssueSettingsResource) Schema(_ context.Context, _ resource.Schem
 				MarkdownDescription: "Lets holders of `github-issues:write` open pull requests that edit " +
 					"Terraform for IaC-managed findings, against the repositories mapped by `iac_source`. " +
 					"Pull requests are never merged automatically.",
+			},
+			"acknowledge_on_done": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				MarkdownDescription: "When an issue filed for a cost anomaly is closed as completed on GitHub, " +
+					"record the anomaly as explained (\"Resolved in GitHub as acme/infra#12 (Closed)\"), which " +
+					"also draws that note on every cost chart covering the anomaly's day. Issues closed as not " +
+					"planned do not count, and only anomalies nobody has explained yet are touched. Defaults " +
+					"to `false`.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
@@ -534,6 +545,7 @@ func githubIssueSettingsInputFrom(ctx context.Context, m githubIssueSettingsReso
 		Enabled:             m.Enabled.ValueBool(),
 		ResolveAction:       m.ResolveAction.ValueString(),
 		PullRequestsEnabled: m.PullRequestsEnabled.ValueBool(),
+		AcknowledgeOnDone:   boolPtr(m.AcknowledgeOnDone),
 		Routes:              []iw.GithubIssueRoute{},
 		IacSources:          []iw.GithubIacSource{},
 	}
@@ -614,6 +626,7 @@ func githubIssueSettingsStateFrom(ctx context.Context, orgID string, s *iw.Githu
 		DefaultRepository:     types.StringNull(),
 		ResolveAction:         types.StringValue(s.ResolveAction),
 		PullRequestsEnabled:   types.BoolValue(s.PullRequestsEnabled),
+		AcknowledgeOnDone:     types.BoolValue(s.AcknowledgeOnDone),
 		UpdatedAt:             stringValue(s.UpdatedAt),
 	}
 	if s.DefaultRepo != nil {

@@ -4457,6 +4457,27 @@ export const jiraIntegrations = pgTable("jira_integrations", {
   defaultProjectKey: text("default_project_key"),
   /** Issue type id the modal preselects within {@link defaultProjectKey}. */
   defaultIssueTypeId: text("default_issue_type_id"),
+  /**
+   * When an issue filed for a cost anomaly moves to done, record the anomaly
+   * as explained. Off by default: it writes a note on every cost chart.
+   */
+  acknowledgeOnDone: boolean("acknowledge_on_done").notNull().default(false),
+  /**
+   * Live-status webhook (see `server-core/issue-status`). `webhook_token` is
+   * the unguessable path segment of the receiver URL (it identifies the org;
+   * the HMAC secret authenticates the delivery). `webhook_mode` is
+   * `registered` when we created the webhook in Jira (its id is
+   * `webhook_remote_id`, so disconnecting can delete it) and `manual` when an
+   * admin pasted our URL and secret into Jira themselves. All null: no webhook,
+   * statuses come from the poll.
+   */
+  webhookToken: text("webhook_token").unique("jira_integrations_webhook_token_unique"),
+  webhookMode: text("webhook_mode"),
+  webhookRemoteId: text("webhook_remote_id"),
+  /** AES-256-GCM encrypted signing secret. AAD: `jira:<orgId>:webhookSecret`. */
+  encryptedWebhookSecret: text("encrypted_webhook_secret"),
+  webhookSecretIv: text("webhook_secret_iv"),
+  webhookLastDeliveryAt: timestamp("webhook_last_delivery_at"),
   createdByUserId: text("created_by_user_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -4496,6 +4517,23 @@ export const jiraIssueLinks = pgTable(
      * rather than derived so the link still resolves after the org points the
      * integration at a different site. */
     issueUrl: text("issue_url").notNull(),
+    /**
+     * Jira's numeric issue id. Keys change when an issue moves project; the id
+     * does not, so the status sync matches on it when known. Null on links
+     * filed before status sync, which match on the key instead.
+     */
+    issueId: text("issue_id"),
+    /**
+     * Live status (`server-core/issue-status`): the status name, its
+     * tracker-neutral category (`todo` | `in_progress` | `done` | `canceled`),
+     * the assignee's display name, when the issue last changed in Jira, and
+     * when we last learned any of it. All null until the first sync.
+     */
+    status: text("status"),
+    statusCategory: text("status_category"),
+    assignee: text("assignee"),
+    issueUpdatedAt: timestamp("issue_updated_at"),
+    statusSyncedAt: timestamp("status_synced_at"),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -4508,9 +4546,17 @@ export const jiraIssueLinks = pgTable(
     ),
     /** Backs the batch `GET /links?sourceKind=&sourceId=` a list view calls once. */
     orgKindIdx: index("jira_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
+    /** A webhook names the issue by key; this finds its links. */
+    orgIssueKeyIdx: index("jira_issue_links_org_issue_key_idx").on(t.organizationId, t.issueKey),
+    /** The poll claims the links it has gone longest without checking. */
+    statusSyncedIdx: index("jira_issue_links_status_synced_idx").on(t.statusSyncedAt),
     sourceKindValid: check(
       "jira_issue_links_source_kind_valid",
-      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support')`,
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support', 'budget_alert')`,
+    ),
+    statusCategoryValid: check(
+      "jira_issue_links_status_category_valid",
+      sql`${t.statusCategory} IS NULL OR ${t.statusCategory} IN ('todo', 'in_progress', 'done', 'canceled')`,
     ),
   }),
 );
@@ -4552,6 +4598,21 @@ export const linearIntegrations = pgTable("linear_integrations", {
    * picked from the API's team list.
    */
   defaultTeamId: text("default_team_id"),
+  /** As `jira_integrations.acknowledge_on_done`. */
+  acknowledgeOnDone: boolean("acknowledge_on_done").notNull().default(false),
+  /**
+   * Live-status webhook, as on `jira_integrations`. `registered` means we
+   * created it with `webhookCreate` (id in `webhook_remote_id`); `manual` means
+   * someone created it in Linear's settings and pasted Linear's signing secret
+   * here.
+   */
+  webhookToken: text("webhook_token").unique("linear_integrations_webhook_token_unique"),
+  webhookMode: text("webhook_mode"),
+  webhookRemoteId: text("webhook_remote_id"),
+  /** AES-256-GCM encrypted signing secret. AAD: `linear:<orgId>:webhookSecret`. */
+  encryptedWebhookSecret: text("encrypted_webhook_secret"),
+  webhookSecretIv: text("webhook_secret_iv"),
+  webhookLastDeliveryAt: timestamp("webhook_last_delivery_at"),
   createdByUserId: text("created_by_user_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -4588,6 +4649,17 @@ export const linearIssueLinks = pgTable(
     /** Issue URL as Linear returned it. Stored rather than derived: the URL
      * embeds the workspace slug, which this table does not otherwise know. */
     issueUrl: text("issue_url").notNull(),
+    /**
+     * Linear's issue id (UUID). Identifiers change when an issue moves team;
+     * the id does not. Null on links filed before status sync.
+     */
+    issueId: text("issue_id"),
+    /** Live status, as on `jira_issue_links`. */
+    status: text("status"),
+    statusCategory: text("status_category"),
+    assignee: text("assignee"),
+    issueUpdatedAt: timestamp("issue_updated_at"),
+    statusSyncedAt: timestamp("status_synced_at"),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -4600,9 +4672,19 @@ export const linearIssueLinks = pgTable(
     ),
     /** Backs the batch `GET /links?sourceKind=&sourceId=` a list view calls once. */
     orgKindIdx: index("linear_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
+    /** A webhook names the issue by identifier; this finds its links. */
+    orgIdentifierIdx: index("linear_issue_links_org_identifier_idx").on(
+      t.organizationId,
+      t.issueIdentifier,
+    ),
+    statusSyncedIdx: index("linear_issue_links_status_synced_idx").on(t.statusSyncedAt),
     sourceKindValid: check(
       "linear_issue_links_source_kind_valid",
-      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support')`,
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support', 'budget_alert')`,
+    ),
+    statusCategoryValid: check(
+      "linear_issue_links_status_category_valid",
+      sql`${t.statusCategory} IS NULL OR ${t.statusCategory} IN ('todo', 'in_progress', 'done', 'canceled')`,
     ),
   }),
 );

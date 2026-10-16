@@ -1,6 +1,12 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import {
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
+  IssueWebhookState,
+  issueStatusFields,
+} from "./issue-status";
 
 /**
  * The detectors a filed issue can come from. Kept in step with
@@ -16,6 +22,7 @@ const JiraSourceKind = z
     "expiring",
     "probe",
     "extended_support",
+    "budget_alert",
   ])
   .openapi("JiraSourceKind", {
     description: "Which detector produced the finding the issue was filed from.",
@@ -31,6 +38,11 @@ const JiraIntegration = strict({
   }),
   defaultProjectKey: z.string().nullable().openapi({ example: "OPS" }),
   defaultIssueTypeId: z.string().nullable().openapi({ example: "10004" }),
+  acknowledgeOnDone: z.boolean().openapi({
+    description:
+      "When an issue filed for a cost anomaly moves to done, record the anomaly as explained.",
+  }),
+  webhook: IssueWebhookState,
   updatedAt: IsoDateTime,
 }).openapi("JiraIntegration");
 
@@ -54,6 +66,9 @@ const JiraIntegrationInput = strict({
   }),
   defaultProjectKey: z.string().max(64).nullish(),
   defaultIssueTypeId: z.string().max(64).nullish(),
+  acknowledgeOnDone: z.boolean().optional().openapi({
+    description: "Omit to keep the stored value (off on first connect).",
+  }),
 }).openapi("JiraIntegrationInput");
 
 const JiraVerifyInput = strict({
@@ -94,6 +109,7 @@ const JiraIssueLink = strict({
   sourceId: z.string(),
   issueKey: z.string().openapi({ example: "OPS-412" }),
   issueUrl: z.string().openapi({ example: "https://acme.atlassian.net/browse/OPS-412" }),
+  ...issueStatusFields,
   createdByUserId: z.string().nullable(),
   createdAt: IsoDateTime,
 }).openapi("JiraIssueLink");
@@ -295,6 +311,74 @@ export function registerJiraPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.array(JiraIssueLink) } },
       },
       400: ErrorResponses[400],
+    },
+  });
+
+  const jiraUnhappy = {
+    description: "Jira refused or was unreachable",
+    content: { "application/json": { schema: strict({ error: z.string() }) } },
+  };
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/jira/webhook",
+    tags: ["Jira"],
+    summary: "Set up the issue status webhook",
+    description:
+      "`auto` (the default) registers a webhook in Jira for `jira:issue_updated` and `jira:issue_deleted` through the stored account, which Jira allows for administrators only. When Jira refuses, the reply falls back to manual and carries the URL and a one-time `secret` for an administrator to paste into Jira's webhook form. `manual` skips the attempt. Replaces any webhook set up before.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({ mode: z.enum(["auto", "manual"]).optional() }).openapi(
+              "JiraWebhookInput",
+            ),
+          },
+        },
+        required: false,
+      },
+    },
+    responses: {
+      200: {
+        description: "The webhook as it now stands",
+        content: { "application/json": { schema: IssueWebhookSetupResult } },
+      },
+      400: ErrorResponses[400],
+      502: jiraUnhappy,
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/jira/webhook",
+    tags: ["Jira"],
+    summary: "Remove the issue status webhook",
+    description:
+      "Deletes the webhook in Jira when Infrawrench registered it. Statuses keep refreshing through the poll.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: { description: "Removed", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+      502: jiraUnhappy,
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/jira/links/refresh",
+    tags: ["Jira"],
+    summary: "Refresh the status of filed Jira issues now",
+    description:
+      "Reads up to 200 of the org's filed issues from Jira (least recently checked first) instead of waiting for a webhook or the poll.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "How many were checked and changed",
+        content: { "application/json": { schema: IssueStatusRefreshResult } },
+      },
+      400: ErrorResponses[400],
+      502: jiraUnhappy,
     },
   });
 }

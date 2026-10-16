@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
@@ -29,6 +30,7 @@ type jiraIntegrationResourceModel struct {
 	APIToken           types.String `tfsdk:"api_token"`
 	DefaultProjectKey  types.String `tfsdk:"default_project_key"`
 	DefaultIssueTypeID types.String `tfsdk:"default_issue_type_id"`
+	AcknowledgeOnDone  types.Bool   `tfsdk:"acknowledge_on_done"`
 	TokenHint          types.String `tfsdk:"token_hint"`
 }
 
@@ -72,6 +74,15 @@ func (r *jiraIntegrationResource) Schema(_ context.Context, _ resource.SchemaReq
 				Optional: true,
 				MarkdownDescription: "Issue type the file-issue window preselects. A numeric Jira issue-type id, " +
 					"not a name.",
+			},
+			"acknowledge_on_done": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				MarkdownDescription: "When an issue filed for a cost anomaly moves to a done status in Jira, " +
+					"record the anomaly as explained (\"Resolved in Jira as OPS-412 (Done)\"), which also draws " +
+					"that note on every cost chart covering the anomaly's day. Only anomalies nobody has " +
+					"explained yet are touched. Defaults to `false`.",
 			},
 
 			"token_hint": schema.StringAttribute{
@@ -148,6 +159,7 @@ func (r *jiraIntegrationResource) write(ctx context.Context, plan jiraIntegratio
 		APIToken:           stringPtr(plan.APIToken),
 		DefaultProjectKey:  stringPtr(plan.DefaultProjectKey),
 		DefaultIssueTypeID: stringPtr(plan.DefaultIssueTypeID),
+		AcknowledgeOnDone:  boolPtr(plan.AcknowledgeOnDone),
 	})
 	if err != nil {
 		diags.AddError("Unable to write the Jira integration", err.Error())
@@ -167,6 +179,7 @@ func jiraStateFrom(orgID string, remote *iw.JiraIntegration, prior jiraIntegrati
 		APIToken:           prior.APIToken,
 		DefaultProjectKey:  stringValue(remote.DefaultProjectKey),
 		DefaultIssueTypeID: stringValue(remote.DefaultIssueTypeID),
+		AcknowledgeOnDone:  types.BoolValue(remote.AcknowledgeOnDone),
 		TokenHint:          types.StringValue(remote.TokenHint),
 	}
 }

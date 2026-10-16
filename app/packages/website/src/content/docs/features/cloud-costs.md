@@ -443,6 +443,14 @@ The person who reads a budget alert usually knows why it fired within minutes ("
 
 From the terminal, `infrawrench budgets` lists every budget with how many of this month's alerts are still unexplained, `infrawrench budgets "Prod"` shows one budget's alert history with each note, and `infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"` explains the latest firing (`--event <id>` picks another; `--json` on all three). In chat and MCP the tool is `annotate_budget_alert`; event ids come from `get_budget`.
 
+### Filing a budget alert as an issue
+
+When an overspend needs somebody to act on it rather than explain it, file the firing as an issue. With [Jira](./jira.md), [Linear](./linear.md) or [GitHub issues](./github-issues.md) connected, each threshold that fired this month has **File an issue** (or **File in Jira**, **File in Linear**, **File in GitHub** when only one is connected) next to **Explain** on the budget card, on the Costs panel and on dashboards alike. The issue opens prefilled with what the tracker's reader needs and has no budget card beside them: the budget, the period, which threshold fired (actual or forecast) and when, spend so far against the limit, the forecast for the period, the budget's scope, whether billing rules apply, and any note already written on the firing. It goes through the same project, team and repository pickers as every other finding.
+
+Once filed, the firing shows the issue key and its [live status](./jira.md#live-status) instead of the offer, so whoever looks at the budget next sees that the overspend is being worked on, and by whom. The mobile app shows the same issue and status on the budget card. A [routing rule](./alert-routing.md) with the GitHub issues destination can also file budget alerts automatically, one issue per firing; private budgets are never filed that way, since their spend would land in a repository the whole team reads.
+
+<insert [Costs panel budget card with a fired "Actual 100% on Oct 14" threshold showing a filed Jira key OPS-418 with a blue "In Progress" status, next to the Explain link] here>
+
 Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 
 ## The Costs panel

@@ -1198,6 +1198,13 @@
       "when": 1792150887091,
       "tag": "0170_starred_items",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1792151025876,
+      "tag": "0171_issue_status_sync",
+      "breakpoints": true
     }
   ]
 }

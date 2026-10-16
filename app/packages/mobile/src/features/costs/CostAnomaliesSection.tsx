@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import {
   COST_ANOMALY_DIMENSION_LABELS,
@@ -19,6 +18,7 @@ import {
 import { Card, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { FileIssueSheet } from "@/features/issue-filing/FileIssueSheet";
+import { FiledIssueLinks } from "@/features/issue-filing/FiledIssueLinks";
 import { useFilableTrackers, useIssueLinks } from "@/features/issue-filing/useIssueFiling";
 import { useOrgPermissions } from "@/lib/permissions";
 import { colors, radii, spacing } from "@/lib/theme";
@@ -307,32 +307,9 @@ function AnomalyRow({
             nothing, rather than a control that can only fail. Same three
             states as the web button. */}
         {links.jira || links.linear || links.github ? (
-          <View style={styles.linkRow}>
-            {links.jira && (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => void Linking.openURL(links.jira!.issueUrl)}
-              >
-                <Text style={styles.issueLink}>{links.jira.issueKey}</Text>
-              </Pressable>
-            )}
-            {links.linear && (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => void Linking.openURL(links.linear!.issueUrl)}
-              >
-                <Text style={styles.issueLink}>{links.linear.issueIdentifier}</Text>
-              </Pressable>
-            )}
-            {links.github && (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => void Linking.openURL(links.github!.issueUrl)}
-              >
-                <Text style={styles.issueLink}>#{links.github.issueNumber}</Text>
-              </Pressable>
-            )}
-          </View>
+          // Each link carries its issue's live status (To do / In Progress /
+          // Done and the assignee), kept current by the server.
+          <FiledIssueLinks links={links} />
         ) : trackers.length > 0 ? (
           // An unexpected verdict says "this is a real problem", which is
           // exactly when filing it is the next step: the offer gets louder.
@@ -473,8 +450,6 @@ const styles = StyleSheet.create({
   driver: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   driverName: { color: colors.text, fontWeight: "600" },
   driverLink: { color: colors.accent, fontWeight: "600" },
-  linkRow: { flexDirection: "row", gap: spacing.sm },
-  issueLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
   issueAction: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   amount: { color: colors.text, fontSize: 15, fontWeight: "600" },
   delta: { fontSize: 12, fontWeight: "500" },

@@ -25,6 +25,7 @@ An organization **singleton** — one connection per organization. `terraform de
 
 ### Optional
 
+- `acknowledge_on_done` (Boolean) When an issue filed for a cost anomaly moves to a done status in Jira, record the anomaly as explained ("Resolved in Jira as OPS-412 (Done)"), which also draws that note on every cost chart covering the anomaly's day. Only anomalies nobody has explained yet are touched. Defaults to `false`.
 - `api_token` (String, Sensitive) API token from id.atlassian.com. **Required on first connect**; omit it afterwards to keep the stored token, which is what lets you change the default project without having the credential to hand.
 
 Write-only: no route returns it, so the provider cannot detect drift on its value. Compare `token_hint` if you need to check which token is stored.

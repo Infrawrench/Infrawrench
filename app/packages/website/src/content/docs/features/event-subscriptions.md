@@ -68,6 +68,7 @@ Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.findi
 | `scorecard.level_changed`        | A service moves up or down a level on a scorecard                                   | warning when it drops, info when it rises                             |
 | `dora.band_changed`              | A [DORA metric](./dora-metrics.md) for production changes performance band          | warning when it worsens, info when it improves                        |
 | `savings.finding.status_changed` | A [savings finding](./savings-findings.md) changes status, by hand or automatically | info                                                                  |
+| `issue.status_changed`           | An issue filed from a finding moves to another status in Jira, Linear or GitHub     | info                                                                  |
 
 Posture findings ride the daily posture scan, so they need posture alerts turned on under **Notifications → Alerts & digest**; sync failures follow the paging threshold set under **SMS & voice**.
 
@@ -78,6 +79,8 @@ Vulnerability events ride the hourly vulnerability alert scan, so they follow it
 `service.changed` carries `action` (`created`, `updated` or `deleted`), the service's id, slug, name, tier and owning team, and `changedFields`: the edited fields, or `members` when resources were added or removed. `scorecard.level_changed` carries the scorecard, the service, `direction` (`up` or `down`), the level before and after (null for no level), the score and the failing checks. A service's first evaluation on a scorecard is never sent, and a manual **Evaluate now** that moves a level sends one like the hourly evaluation does.
 
 `dora.band_changed` is checked a few times a day for organizations with deploys: the 30 complete days ending at midnight UTC are compared with the 30 ending a day earlier, using your [DORA settings](./dora-metrics.md) for what counts as production. Each metric that moved band sends one event per day with the band before and after, `direction` (`improved` or `worsened`), both values and the window. A metric with nothing to measure on either side (no restores in the window, say) is not a change.
+
+`issue.status_changed` follows the [live status](./jira.md#live-status) of issues filed to Jira, Linear and [GitHub](./github-issues.md#live-status): `tracker`, the issue's handle (`OPS-412`, `ENG-123`, `acme/infra#12`) and URL, the finding it was filed from (`sourceKind`, `sourceId`), the status and tracker-neutral category (`todo`, `in_progress`, `done`, `canceled`) before and after, and the assignee. The first status Infrawrench learns for an issue is a baseline and sends nothing, and a change is sent once however many times the tracker repeats it.
 
 The full schema of every event's `data` is in the [API reference](../team-and-billing/openapi.md) under **Webhooks**, and the live catalog with JSON Schemas is at `GET /api/org/{orgId}/event-subscriptions/catalog`.
 

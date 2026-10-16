@@ -303,4 +303,59 @@
 // (`/compliance`), DORA delivery metrics (`/dora`), SaaS seats (`/seats`),
 // the `services`, `vulnerabilities`, `compliance` and `delivery` members of
 // the workspace `TabTarget` enum, and the new push payloads. All additive.
-export const API_VERSION = "1.81.0";
+// 1.82.0: the cost reporting and FinOps workflow pass, one bump for the stack.
+// - Kubernetes efficiency reports (`/k8s-efficiency-reports` CRUD, `query`,
+//   `options`, `values`, `{id}/run`, `{id}/export`).
+// - Savings findings workflow: `GET /savings/findings`,
+//   `POST /savings/findings/status`, `/savings-views` CRUD, the
+//   `savings.finding.status_changed` event type, and `savingsViews` in the org
+//   config document.
+// - Resource reports (`/resource-reports` CRUD, `/options`, `/tag-values`,
+//   `/query`, `/csv`, `/folders`, `/{id}/rows`, `/{id}/csv`).
+// - Dashboard KPI and text widgets (`kpi` and `text` in `DashboardWidgetKind`,
+//   `POST /dashboards/kpi`), `POST /dashboards/widgets/{widgetId}/duplicate`,
+//   and widget spans validated as 1-12 on `PATCH /dashboards/widgets/{widgetId}`
+//   (a `gridW`/`gridH` of 0 or over 12 was accepted and never drawn).
+// - `CostFilterOperator` gains `flexible_match`, `contains`, `not_contains`,
+//   `starts_with`, `is_set` and `is_not_set` on every cost filter; virtual tag
+//   rules may filter on other virtual tags.
+// - Cost chart axes: `xAxis`, `xAxisTagKey` and `segmentByDate` on cost queries,
+//   saved graph configs and report run overrides, `comparisonStyle` on saved
+//   configs, and the `xAxis` block on `CostQueryResponse`.
+// - `contributors` on `CostAnomaly` and the driver fields plus `contributors`
+//   on the `cost.anomaly.detected` event payload.
+// - Forecast bounds (`low`/`high` on forecast points, `forecastConfidenceLevel`,
+//   `forecastLowCents`/`forecastHighCents` on budgets), named forecasts
+//   (`/cost-reports/{id}/forecasts` CRUD, `POST /cost-reports/{id}/forecasted-costs`),
+//   `/business-metrics/{id}/forecast-values`, and the `cost_forecast` scenario
+//   referent kind.
+// - Idle findings (`/idle-findings` overview, settings and re-scan) and the
+//   optional `idle` and `estimate` members of `OrphanedResource`.
+// - Saved network flow reports (`/network-flows/report-options`,
+//   `/network-flows/report-query`, `/network-flows/reports` CRUD and `{id}/run`).
+// - Billing profiles (`/billing-profiles` CRUD, `billingProfileId` on managed
+//   accounts, `billing` on invoices, the `tax` invoice line kind),
+//   `GET /invoices/{id}/pdf`, `GET /managed-accounts/unassigned` and
+//   `POST /managed-accounts/assignments[/preview]`.
+// - Exchange-rate CSV upload (`POST /currency/rates/import`,
+//   `GET /currency/rates/template`), unit-cost exports, async cost export jobs
+//   (`/costs/exports/jobs`), and per-report anomaly alerts
+//   (`/cost-reports/{id}/anomaly-alert`, `GET /cost-report-anomaly-alerts`).
+// - Default dashboards: `GET /dashboards/default`, `PUT|DELETE
+//   /dashboards/default/me`, `GET /dashboards/role-defaults`,
+//   `PUT|DELETE /dashboards/role-defaults/{roleId}`, `isResolvedDefault`,
+//   `resolution` on `/dashboards/default/full`, and `defaultForRoles` in config
+//   as code.
+// - The command palette: an opt-in `kinds` parameter and an optional `kind` on
+//   every hit of `GET /search`, and per-member stars at `GET /starred` and
+//   `PUT|DELETE /starred/{kind}/{objectId}`.
+// - Live issue status: status fields on the Jira, Linear and GitHub issue
+//   links, `acknowledgeOnDone` and `webhook` settings, `/jira/webhook`,
+//   `/linear/webhook[/url]`, `/{jira,linear,github-issues}/links/refresh`, the
+//   public `/api/issue-webhooks/*` receivers, `budget_alert` on the source-kind
+//   enums, and the `issue.status_changed` event type.
+// - New `ShareableObjectType` members `kubernetes_efficiency_report`,
+//   `savings_view`, `resource_report` and `network_flow_report`, and new
+//   workspace `TabTarget` members `k8s-efficiency` and `resource-reports`.
+// All additive apart from the widget span bound.
+export const API_VERSION = "1.82.0";

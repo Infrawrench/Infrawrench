@@ -1021,6 +1021,36 @@ export async function evaluateBudgetsForOrg(
             facts: usage
               ? { key: budget.name }
               : { amountCents: observed, currency: budget.currency, key: budget.name },
+            // What a `github-issues` routing destination files: one issue per
+            // firing. Never for a private budget, whose spend must not land in
+            // a repository the whole team reads.
+            ...(budget.visibilityUserId
+              ? {}
+              : {
+                  finding: {
+                    sourceKind: "budget_alert" as const,
+                    sourceId: inserted.id,
+                    title: `"${budget.name}" ${
+                      threshold.type === "forecast" ? "is forecast to reach" : "passed"
+                    } ${threshold.percent}% of its budget (${period})`,
+                    details: [
+                      { label: "Budget", value: budget.name },
+                      { label: "Period", value: period },
+                      {
+                        label: "Threshold",
+                        value: `${threshold.type === "forecast" ? "Forecast" : "Actual"} ${threshold.percent}%`,
+                      },
+                      {
+                        label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`,
+                        value: `${fmt(observed)} of ${fmt(limit)}`,
+                      },
+                      ...(caveats.length > 0
+                        ? [{ label: "Notes", value: caveats.join("; ") }]
+                        : []),
+                    ],
+                    appUrl: url,
+                  },
+                }),
             // Tracked so a note added to this firing later can follow it: as a
             // reply in each Slack message's thread, and as a follow-up to the
             // same Teams webhooks (see `budget_alert_events.slack_messages`).
