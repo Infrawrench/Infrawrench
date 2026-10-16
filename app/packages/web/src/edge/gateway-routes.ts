@@ -80,6 +80,10 @@ const NODE_ROUTES: readonly RegExp[] = [
   // web Worker does not carry, and a provider retries a failed delivery
   // rather than replaying it somewhere else.
   /^\/api\/paging-webhooks\//,
+  // (Issue-status webhooks, `/api/issue-webhooks/*`, are deliberately absent:
+  // their signature check is host code, the work is Postgres plus the
+  // tracker's own API, and Linear counts a delivery failed after five
+  // seconds, which a Lambda cold start would spend.)
   // Slack slash commands and button actions answer Slack at once and do the
   // work afterwards (through `keepAlive`), often through plugin code; a
   // gateway-only miss there happens after the response and cannot be replayed.

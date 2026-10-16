@@ -184,6 +184,7 @@ import { leakedSecretRoutes } from "./routes/leaked-secrets";
 import { jiraRoutes } from "./routes/jira";
 import { linearRoutes } from "./routes/linear";
 import { githubIssuesRoutes } from "./routes/github-issues";
+import { issueWebhookRoutes } from "./routes/issue-webhooks";
 import { prChecksRoutes } from "./routes/pr-checks";
 import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
@@ -251,6 +252,9 @@ api.route("/api", alertEmailPublicRoutes);
 // Inbound paging-provider webhooks (no session; the provider's signature,
 // verified with the stored secret, is the authentication).
 api.route("/api", pagingWebhookRoutes);
+// Inbound tracker webhooks for live issue status (no session; the tracker's
+// HMAC signature over the raw body is the authentication).
+api.route("/api", issueWebhookRoutes);
 api.route("/.well-known", wellKnownRoutes);
 // `auth.md` at the domain root: the agent-registration skill document the
 // `agent_auth` discovery block points at.

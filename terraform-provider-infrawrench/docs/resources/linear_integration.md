@@ -20,6 +20,7 @@ An organization **singleton**. `terraform destroy` disconnects it, which drops t
 
 ### Optional
 
+- `acknowledge_on_done` (Boolean) When an issue filed for a cost anomaly moves to a completed state in Linear, record the anomaly as explained ("Resolved in Linear as ENG-123 (Done)"), which also draws that note on every cost chart covering the anomaly's day. Only anomalies nobody has explained yet are touched. Defaults to `false`.
 - `api_key` (String, Sensitive) Personal API key from Linear → Settings → Security & access. **Required on first connect**; omit it afterwards to keep the stored key.
 
 Write-only: no route returns it, so the provider cannot detect drift on its value. Compare `key_hint` if you need to check which key is stored.

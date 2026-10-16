@@ -27,10 +27,13 @@ import {
   listJiraIssueTypes,
   listJiraProjects,
   recordJiraIssueLink,
+  removeJiraWebhook,
   setJiraIntegration,
+  setupJiraWebhook,
   verifyJiraCredentials,
   verifyStoredJiraCredentials,
 } from "@infrawrench/server-core/jira";
+import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -73,6 +76,8 @@ const integrationBody = z.object({
   apiToken: z.string().min(1).max(1024).optional(),
   defaultProjectKey: z.string().max(64).nullish(),
   defaultIssueTypeId: z.string().max(64).nullish(),
+  /** Omitted ⇒ keep the stored value. */
+  acknowledgeOnDone: z.boolean().optional(),
 });
 
 /**
@@ -107,6 +112,7 @@ app.put("/", async (c) => {
       apiToken: parsed.data.apiToken,
       defaultProjectKey: parsed.data.defaultProjectKey,
       defaultIssueTypeId: parsed.data.defaultIssueTypeId,
+      acknowledgeOnDone: parsed.data.acknowledgeOnDone,
     });
 
     void logAudit({
@@ -122,6 +128,7 @@ app.put("/", async (c) => {
         accountEmail: integration.accountEmail,
         tokenChanged: parsed.data.apiToken !== undefined,
         defaultProjectKey: integration.defaultProjectKey,
+        acknowledgeOnDone: integration.acknowledgeOnDone,
       },
     });
     return c.json(integration);
@@ -261,6 +268,7 @@ app.post("/issues", async (c) => {
       sourceId: body.sourceId,
       issueKey: issue.key,
       issueUrl: issue.url,
+      issueId: issue.id,
     });
 
     void logAudit({
@@ -311,6 +319,82 @@ app.get("/links", async (c) => {
       sourceIds: parsed.data.sourceId,
     }),
   );
+});
+
+// --- Live status ---
+
+const webhookBody = z.object({ mode: z.enum(["auto", "manual"]).default("auto") });
+
+/**
+ * POST /api/org/:orgId/jira/webhook: set up the live-status webhook.
+ *
+ * `auto` registers it in Jira through the stored account (Jira admins only);
+ * when Jira refuses, the reply falls back to manual and carries the URL and a
+ * one-time secret for an admin to paste into Jira. The secret is never
+ * returned again, so the response is the only place it appears.
+ */
+app.post("/webhook", async (c) => {
+  requirePermission(c, "jira:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = webhookBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid webhook request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const result = await setupJiraWebhook(organizationId, parsed.data.mode);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "jira.webhook.configure",
+      entityType: "jira_integration",
+      entityId: organizationId,
+      // Never the secret.
+      metadata: { mode: result.integration.webhook.mode, requested: parsed.data.mode },
+    });
+    return c.json({
+      webhook: result.integration.webhook,
+      ...(result.secret ? { secret: result.secret } : {}),
+      ...(result.fallbackReason ? { fallbackReason: result.fallbackReason } : {}),
+    });
+  } catch (err) {
+    return jiraFailure(c, err);
+  }
+});
+
+/** DELETE /api/org/:orgId/jira/webhook: stop live status (the poll carries on). */
+app.delete("/webhook", async (c) => {
+  requirePermission(c, "jira:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  try {
+    const removed = await removeJiraWebhook(organizationId);
+    if (!removed) return c.json({ error: "No status webhook is set up" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "jira.webhook.delete",
+      entityType: "jira_integration",
+      entityId: organizationId,
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return jiraFailure(c, err);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/jira/links/refresh: read the status of the org's filed
+ * issues from Jira now. `jira:read`: it changes nothing but our copy of what
+ * Jira already shows anyone who can open the issues.
+ */
+app.post("/links/refresh", async (c) => {
+  requirePermission(c, "jira:read");
+  try {
+    return c.json(await refreshOrgIssueStatuses(c.get("organizationId"), "jira"));
+  } catch (err) {
+    return jiraFailure(c, err);
+  }
 });
 
 export { app as jiraRoutes };

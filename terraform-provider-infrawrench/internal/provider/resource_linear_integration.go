@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
@@ -23,10 +24,11 @@ func NewLinearIntegrationResource() resource.Resource { return &linearIntegratio
 type linearIntegrationResource struct{ client *iw.Client }
 
 type linearIntegrationResourceModel struct {
-	ID            types.String `tfsdk:"id"`
-	APIKey        types.String `tfsdk:"api_key"`
-	DefaultTeamID types.String `tfsdk:"default_team_id"`
-	KeyHint       types.String `tfsdk:"key_hint"`
+	ID                types.String `tfsdk:"id"`
+	APIKey            types.String `tfsdk:"api_key"`
+	DefaultTeamID     types.String `tfsdk:"default_team_id"`
+	AcknowledgeOnDone types.Bool   `tfsdk:"acknowledge_on_done"`
+	KeyHint           types.String `tfsdk:"key_hint"`
 }
 
 func (r *linearIntegrationResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -53,6 +55,15 @@ func (r *linearIntegrationResource) Schema(_ context.Context, _ resource.SchemaR
 				Optional: true,
 				MarkdownDescription: "Team the file-issue window preselects. A Linear team **id**, not a team " +
 					"key like `ENG`.",
+			},
+			"acknowledge_on_done": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+				MarkdownDescription: "When an issue filed for a cost anomaly moves to a completed state in " +
+					"Linear, record the anomaly as explained (\"Resolved in Linear as ENG-123 (Done)\"), which " +
+					"also draws that note on every cost chart covering the anomaly's day. Only anomalies nobody " +
+					"has explained yet are touched. Defaults to `false`.",
 			},
 
 			"key_hint": schema.StringAttribute{
@@ -118,8 +129,9 @@ func (r *linearIntegrationResource) ImportState(ctx context.Context, _ resource.
 
 func (r *linearIntegrationResource) write(ctx context.Context, plan linearIntegrationResourceModel, diags *diagnostics, state *tfState) {
 	saved, err := r.client.PutLinearIntegration(ctx, iw.LinearIntegrationInput{
-		APIKey:        stringPtr(plan.APIKey),
-		DefaultTeamID: stringPtr(plan.DefaultTeamID),
+		APIKey:            stringPtr(plan.APIKey),
+		DefaultTeamID:     stringPtr(plan.DefaultTeamID),
+		AcknowledgeOnDone: boolPtr(plan.AcknowledgeOnDone),
 	})
 	if err != nil {
 		diags.AddError("Unable to write the Linear integration", err.Error())
@@ -133,9 +145,10 @@ func (r *linearIntegrationResource) write(ctx context.Context, plan linearIntegr
 // write-only, and refreshing must not drop it out of state.
 func linearStateFrom(orgID string, remote *iw.LinearIntegration, prior linearIntegrationResourceModel) linearIntegrationResourceModel {
 	return linearIntegrationResourceModel{
-		ID:            types.StringValue(orgID),
-		APIKey:        prior.APIKey,
-		DefaultTeamID: stringValue(remote.DefaultTeamID),
-		KeyHint:       types.StringValue(remote.KeyHint),
+		ID:                types.StringValue(orgID),
+		APIKey:            prior.APIKey,
+		DefaultTeamID:     stringValue(remote.DefaultTeamID),
+		AcknowledgeOnDone: types.BoolValue(remote.AcknowledgeOnDone),
+		KeyHint:           types.StringValue(remote.KeyHint),
 	}
 }

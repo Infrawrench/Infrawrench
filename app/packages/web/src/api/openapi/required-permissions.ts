@@ -557,6 +557,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /jira/projects/{key}/issue-types": "jira:read",
   "POST /jira/issues": "jira:write",
   "GET /jira/links": "jira:read",
+  // live issue status: setting up the webhook is configuration (write);
+  // refreshing only re-reads what the tracker already shows (read).
+  "POST /jira/webhook": "jira:write",
+  "DELETE /jira/webhook": "jira:write",
+  "POST /jira/links/refresh": "jira:read",
   // linear; the same split as jira, for the same reasons: read covers the
   // redacted connection, the team picker, and the finding→issue links; write
   // covers configuring the API key and filing.
@@ -567,6 +572,10 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /linear/teams": "linear:read",
   "POST /linear/issues": "linear:write",
   "GET /linear/links": "linear:read",
+  "POST /linear/webhook": "linear:write",
+  "POST /linear/webhook/url": "linear:write",
+  "DELETE /linear/webhook": "linear:write",
+  "POST /linear/links/refresh": "linear:read",
   // github issues; reads take read, filing and pull requests take write, and
   // the settings document (which holds the pull-request switch) takes
   // org:settings:write.
@@ -578,6 +587,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /github-issues/branches": "github-issues:read",
   "POST /github-issues/issues": "github-issues:write",
   "GET /github-issues/links": "github-issues:read",
+  "POST /github-issues/links/refresh": "github-issues:read",
   "POST /github-issues/pull-requests/preview": "github-issues:write",
   "POST /github-issues/pull-requests": "github-issues:write",
   // pull request checks

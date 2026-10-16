@@ -1,5 +1,11 @@
 import type { CloudFetch } from "./fetch";
 import type { JiraSourceKind } from "./jira";
+import type {
+  IssueStatusFields,
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
+  IssueWebhookState,
+} from "./issue-status";
 
 /**
  * Linear issue tracking for findings. Server contract: org-scoped
@@ -30,6 +36,13 @@ export interface LinearIntegration {
   keyHint: string;
   /** Team the file-issue window preselects. A team id (UUID), never typed by hand. */
   defaultTeamId: string | null;
+  /**
+   * When an issue filed for a cost anomaly moves to done, record the anomaly
+   * as explained. Optional for a client a release ahead of its server.
+   */
+  acknowledgeOnDone?: boolean | undefined;
+  /** The live-status webhook; absent on servers that predate status sync. */
+  webhook?: IssueWebhookState | undefined;
   updatedAt: string;
 }
 
@@ -40,7 +53,7 @@ export interface LinearTeam {
   name: string;
 }
 
-export interface LinearIssueLink {
+export interface LinearIssueLink extends IssueStatusFields {
   id: string;
   sourceKind: LinearSourceKind;
   sourceId: string;
@@ -65,6 +78,8 @@ export interface SaveLinearIntegrationArgs {
    */
   apiKey?: string;
   defaultTeamId?: string | null;
+  /** Omit to keep the stored value. */
+  acknowledgeOnDone?: boolean;
 }
 
 export interface CreateLinearIssueArgs {
@@ -157,6 +172,48 @@ export async function fetchLinearIssueLinks(
   return (
     (await api.org<LinearIssueLink[]>(orgId, `/linear/links${query ? `?${query}` : ""}`)) ?? []
   );
+}
+
+/**
+ * Set up the live-status webhook. With no secret it is created in Linear
+ * through the stored key (`webhookCreate`, which Linear allows workspace
+ * admins only). With `signingSecret` it records a webhook the person created
+ * in Linear's settings themselves, pasting the signing secret Linear showed.
+ */
+export async function setupLinearWebhook(
+  api: CloudFetch,
+  orgId: string,
+  args: { mode: "auto" } | { mode: "manual"; signingSecret: string } = { mode: "auto" },
+): Promise<IssueWebhookSetupResult | null> {
+  return api.org<IssueWebhookSetupResult>(orgId, "/linear/webhook", {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+/**
+ * The receiver URL for a webhook created by hand in Linear's settings. Comes
+ * first because Linear shows the signing secret only after the webhook exists.
+ */
+export async function reserveLinearWebhookUrl(
+  api: CloudFetch,
+  orgId: string,
+): Promise<string | null> {
+  const res = await api.org<{ url: string }>(orgId, "/linear/webhook/url", { method: "POST" });
+  return res?.url ?? null;
+}
+
+/** Remove the live-status webhook (and delete it in Linear when we created it). */
+export async function removeLinearWebhook(api: CloudFetch, orgId: string): Promise<void> {
+  await api.org(orgId, "/linear/webhook", { method: "DELETE" });
+}
+
+/** Ask Linear for the current status of the org's filed issues now. */
+export async function refreshLinearIssueStatuses(
+  api: CloudFetch,
+  orgId: string,
+): Promise<IssueStatusRefreshResult | null> {
+  return api.org<IssueStatusRefreshResult>(orgId, "/linear/links/refresh", { method: "POST" });
 }
 
 // --- Pure helpers ---

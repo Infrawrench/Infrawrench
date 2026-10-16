@@ -62,11 +62,19 @@
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import type { JiraIssueLink, JiraIssueType, JiraProject } from "@infrawrench/client-core";
+import {
+  isIssueStatusCategory,
+  type IssueWebhookState,
+  type JiraIssueLink,
+  type JiraIssueType,
+  type JiraProject,
+} from "@infrawrench/client-core";
 
+import { appPath } from "./app-url";
 import { db } from "./db/client";
 import { jiraIntegrations, jiraIssueLinks } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
+import { jiraReadingFromIssue, type JiraIssueReading } from "./issue-status/readings";
 
 /** Abort Jira requests after 15s so a hung site can't stall a settings page. */
 const JIRA_REQUEST_TIMEOUT_MS = 15_000;
@@ -119,6 +127,7 @@ export const JIRA_SOURCE_KINDS = [
   "expiring",
   "probe",
   "extended_support",
+  "budget_alert",
 ] as const;
 
 export type JiraSourceKind = (typeof JIRA_SOURCE_KINDS)[number];
@@ -426,9 +435,11 @@ async function jiraFetch<T>(
     throw new JiraApiError(describeJiraError(res.status, body), res.status);
   }
 
-  // 204s (none of ours today, but DELETEs answer this way) have no body.
+  // 204s (webhook DELETEs answer this way) have no body, and some 200s are
+  // empty too, which `res.json()` would throw on.
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // --- Storage ---
@@ -445,6 +456,8 @@ export interface JiraIntegrationRecord {
   tokenHint: string;
   defaultProjectKey: string | null;
   defaultIssueTypeId: string | null;
+  acknowledgeOnDone: boolean;
+  webhook: IssueWebhookState;
   updatedAt: string;
 }
 
@@ -453,13 +466,26 @@ function tokenHintFor(apiToken: string): string {
   return `…${apiToken.slice(-4)}`;
 }
 
+/** The receiver URL for a webhook token, or null when the server has no `APP_URL`. */
+export function jiraWebhookUrl(token: string): string | null {
+  return appPath(`/api/issue-webhooks/jira/${encodeURIComponent(token)}`);
+}
+
 function toIntegrationRecord(row: typeof jiraIntegrations.$inferSelect): JiraIntegrationRecord {
+  const mode =
+    row.webhookMode === "registered" || row.webhookMode === "manual" ? row.webhookMode : null;
   return {
     siteUrl: row.siteUrl,
     accountEmail: row.accountEmail,
     tokenHint: row.tokenHint,
     defaultProjectKey: row.defaultProjectKey,
     defaultIssueTypeId: row.defaultIssueTypeId,
+    acknowledgeOnDone: row.acknowledgeOnDone,
+    webhook: {
+      mode,
+      url: mode && row.webhookToken ? jiraWebhookUrl(row.webhookToken) : null,
+      lastDeliveryAt: row.webhookLastDeliveryAt ? row.webhookLastDeliveryAt.toISOString() : null,
+    },
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -547,6 +573,8 @@ export interface SetJiraIntegrationArgs {
   apiToken?: string | undefined;
   defaultProjectKey?: string | null | undefined;
   defaultIssueTypeId?: string | null | undefined;
+  /** Omitted keeps the stored value (off on first connect). */
+  acknowledgeOnDone?: boolean | undefined;
 }
 
 /**
@@ -589,6 +617,7 @@ export async function setJiraIntegration(
       : {}),
     defaultProjectKey: args.defaultProjectKey?.trim() || null,
     defaultIssueTypeId: args.defaultIssueTypeId?.trim() || null,
+    ...(args.acknowledgeOnDone !== undefined ? { acknowledgeOnDone: args.acknowledgeOnDone } : {}),
     updatedAt: now,
   };
 
@@ -613,6 +642,12 @@ export async function setJiraIntegration(
 
 /** Remove the org's integration. Returns false when there was nothing to remove. */
 export async function deleteJiraIntegration(organizationId: string): Promise<boolean> {
+  // A webhook we registered would otherwise keep posting to a receiver that
+  // now answers 404 for it. Best effort: the credentials may be the reason the
+  // org is disconnecting.
+  await removeJiraWebhook(organizationId).catch((err: unknown) =>
+    console.warn("[jira] could not remove the status webhook while disconnecting:", err),
+  );
   const deleted = await db
     .delete(jiraIntegrations)
     .where(eq(jiraIntegrations.organizationId, organizationId))
@@ -784,17 +819,24 @@ export async function createJiraIssue(args: CreateJiraIssueArgs): Promise<Create
 
 export type { JiraIssueLink };
 
-function toLinkRecord(row: typeof jiraIssueLinks.$inferSelect): JiraIssueLink {
+export function toJiraLinkRecord(row: typeof jiraIssueLinks.$inferSelect): JiraIssueLink {
   return {
     id: row.id,
     sourceKind: row.sourceKind as JiraSourceKind,
     sourceId: row.sourceId,
     issueKey: row.issueKey,
     issueUrl: row.issueUrl,
+    status: row.status,
+    statusCategory: isIssueStatusCategory(row.statusCategory) ? row.statusCategory : null,
+    assignee: row.assignee,
+    issueUpdatedAt: row.issueUpdatedAt ? row.issueUpdatedAt.toISOString() : null,
+    statusSyncedAt: row.statusSyncedAt ? row.statusSyncedAt.toISOString() : null,
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+const toLinkRecord = toJiraLinkRecord;
 
 export interface RecordJiraIssueLinkArgs {
   organizationId: string;
@@ -803,6 +845,8 @@ export interface RecordJiraIssueLinkArgs {
   sourceId: string;
   issueKey: string;
   issueUrl: string;
+  /** Jira's numeric id, which survives a move to another project. */
+  issueId?: string | null | undefined;
 }
 
 /**
@@ -825,6 +869,7 @@ export async function recordJiraIssueLink(args: RecordJiraIssueLinkArgs): Promis
       sourceId: args.sourceId,
       issueKey: args.issueKey,
       issueUrl: args.issueUrl,
+      issueId: args.issueId || null,
       createdByUserId: args.userId ?? null,
     })
     .onConflictDoUpdate({
@@ -878,4 +923,232 @@ export async function listJiraIssueLinks(
     console.error("[jira] failed to list issue links for org", organizationId, err);
     return [];
   }
+}
+
+// --- Live status ---
+
+/** Jira serves up to 100 issues per bulkfetch when fields are named explicitly. */
+const BULKFETCH_PAGE = 100;
+
+/**
+ * Current status of up to any number of issues, by id or key, through
+ * `POST /rest/api/3/issue/bulkfetch` in pages of 100. Issues Jira cannot find
+ * (deleted, or invisible to the account) are simply absent from the result;
+ * the caller decides what absence means. A moved issue comes back under its
+ * new key with its old id, which is why links match on the id when they have
+ * one.
+ *
+ * Throws {@link JiraApiError}: the poll logs and moves on, the refresh route
+ * reports it.
+ */
+export async function fetchJiraIssueReadings(
+  organizationId: string,
+  idsOrKeys: readonly string[],
+): Promise<JiraIssueReading[]> {
+  if (idsOrKeys.length === 0) return [];
+  const creds = await requireJiraCredentials(organizationId);
+  const readings: JiraIssueReading[] = [];
+  for (let i = 0; i < idsOrKeys.length; i += BULKFETCH_PAGE) {
+    const page = idsOrKeys.slice(i, i + BULKFETCH_PAGE);
+    const res = await jiraFetch<{ issues?: unknown[] }>(creds, "/rest/api/3/issue/bulkfetch", {
+      method: "POST",
+      body: { issueIdsOrKeys: page, fields: ["status", "assignee", "updated"] },
+    });
+    for (const issue of res.issues ?? []) {
+      const reading = jiraReadingFromIssue(issue);
+      if (reading) readings.push(reading);
+    }
+  }
+  return readings;
+}
+
+/** The webhook as stored, with the secret decrypted. Internal to status sync. */
+export interface JiraWebhookSecretRecord {
+  organizationId: string;
+  secret: string;
+}
+
+/**
+ * Resolve a receiver URL's token to its org and signing secret. Null for an
+ * unknown token or an undecryptable secret (logged): the receiver answers 404
+ * either way, so a guessed token learns nothing.
+ */
+export async function findJiraWebhookByToken(
+  token: string,
+): Promise<JiraWebhookSecretRecord | null> {
+  if (!token || token.length > 128) return null;
+  const [row] = await db
+    .select({
+      organizationId: jiraIntegrations.organizationId,
+      encryptedWebhookSecret: jiraIntegrations.encryptedWebhookSecret,
+      webhookSecretIv: jiraIntegrations.webhookSecretIv,
+    })
+    .from(jiraIntegrations)
+    .where(eq(jiraIntegrations.webhookToken, token))
+    .limit(1);
+  if (!row?.encryptedWebhookSecret || !row.webhookSecretIv) return null;
+  try {
+    const secret = await decrypt(
+      row.encryptedWebhookSecret,
+      row.webhookSecretIv,
+      buildAad("jira", row.organizationId, "webhookSecret"),
+    );
+    return { organizationId: row.organizationId, secret };
+  } catch (err) {
+    console.error("[jira] failed to decrypt webhook secret for org", row.organizationId, err);
+    return null;
+  }
+}
+
+/** Stamp a verified delivery, so settings can show the webhook is alive. Never throws. */
+export async function touchJiraWebhookDelivery(organizationId: string): Promise<void> {
+  await db
+    .update(jiraIntegrations)
+    .set({ webhookLastDeliveryAt: new Date() })
+    .where(eq(jiraIntegrations.organizationId, organizationId))
+    .catch((err: unknown) => console.warn("[jira] webhook delivery stamp failed:", err));
+}
+
+/** Whether the org wants an anomaly explained when its Jira issue is done. Ambient. */
+export async function jiraAcknowledgesOnDone(organizationId: string): Promise<boolean> {
+  const integration = await getJiraIntegration(organizationId);
+  return integration?.acknowledgeOnDone ?? false;
+}
+
+export interface SetupJiraWebhookResult {
+  integration: JiraIntegrationRecord;
+  /** Present in manual mode only: shown once, to paste into Jira. */
+  secret?: string | undefined;
+  fallbackReason?: string | undefined;
+}
+
+/** A fresh token and secret: 32 random bytes each, URL-safe. */
+function freshWebhookSecrets(): { token: string; secret: string } {
+  const bytes = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+  return { token: bytes(), secret: bytes() };
+}
+
+/**
+ * Set up the status webhook.
+ *
+ * `auto` registers it through `POST /rest/webhooks/1.0/webhook` (the admin
+ * webhook API; basic auth works, and Jira requires the account to be a Jira
+ * administrator) for `jira:issue_updated` and `jira:issue_deleted`, with our
+ * secret so every delivery is signed. No JQL filter: our labels can be removed
+ * by anyone, and a filter that silently stopped matching would freeze statuses
+ * with no error anywhere. The receiver ignores issues it has no link for with
+ * one indexed lookup.
+ *
+ * When Jira refuses (401/403, the account is not an admin) the result falls
+ * back to manual, carrying the URL and the secret for an admin to paste into
+ * Jira's own webhook form. `manual` skips the attempt.
+ *
+ * Replacing an existing webhook deletes the one we registered before, so
+ * repeated clicks never leave a trail of duplicates posting to dead tokens.
+ */
+export async function setupJiraWebhook(
+  organizationId: string,
+  mode: "auto" | "manual",
+): Promise<SetupJiraWebhookResult> {
+  const creds = await requireJiraCredentials(organizationId);
+  const { token, secret } = freshWebhookSecrets();
+  const url = jiraWebhookUrl(token);
+  if (!url) {
+    throw new JiraApiError(
+      "This Infrawrench server has no APP_URL configured, so Jira has no address to send status changes to.",
+    );
+  }
+
+  await removeJiraWebhook(organizationId).catch((err: unknown) =>
+    console.warn("[jira] could not remove the previous status webhook:", err),
+  );
+
+  let remoteId: string | null = null;
+  let fallbackReason: string | undefined;
+  if (mode === "auto") {
+    try {
+      const created = await jiraFetch<{ self?: string }>(creds, "/rest/webhooks/1.0/webhook", {
+        method: "POST",
+        body: {
+          name: "Infrawrench issue status",
+          description: "Keeps the status of issues filed from Infrawrench up to date.",
+          url,
+          events: ["jira:issue_updated", "jira:issue_deleted"],
+          excludeBody: false,
+          secret,
+        },
+      });
+      remoteId = created.self?.split("/").pop() || null;
+      if (!remoteId) throw new JiraApiError("Jira created the webhook but returned no id");
+    } catch (err) {
+      if (err instanceof JiraApiError && (err.status === 401 || err.status === 403)) {
+        fallbackReason =
+          "Jira only lets administrators create webhooks through the API. Ask a Jira admin to add it under Settings > System > Webhooks.";
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const enc = await encrypt(secret, buildAad("jira", organizationId, "webhookSecret"));
+  const [row] = await db
+    .update(jiraIntegrations)
+    .set({
+      webhookToken: token,
+      webhookMode: remoteId ? "registered" : "manual",
+      webhookRemoteId: remoteId,
+      encryptedWebhookSecret: enc.ciphertext,
+      webhookSecretIv: enc.iv,
+      webhookLastDeliveryAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(jiraIntegrations.organizationId, organizationId))
+    .returning();
+  if (!row) throw new JiraApiError("Jira is not connected for this organization.");
+  return {
+    integration: toIntegrationRecord(row),
+    ...(remoteId ? {} : { secret }),
+    ...(fallbackReason ? { fallbackReason } : {}),
+  };
+}
+
+/**
+ * Forget the status webhook, deleting it in Jira when we registered it. A
+ * 404 there (an admin already deleted it) is success. Returns false when
+ * there was none.
+ */
+export async function removeJiraWebhook(organizationId: string): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(jiraIntegrations)
+    .where(eq(jiraIntegrations.organizationId, organizationId))
+    .limit(1);
+  if (!row?.webhookMode) return false;
+  if (row.webhookMode === "registered" && row.webhookRemoteId) {
+    const creds = await loadJiraCredentials(organizationId);
+    if (creds) {
+      try {
+        await jiraFetch(
+          creds,
+          `/rest/webhooks/1.0/webhook/${encodeURIComponent(row.webhookRemoteId)}`,
+          { method: "DELETE" },
+        );
+      } catch (err) {
+        if (!(err instanceof JiraApiError && err.status === 404)) throw err;
+      }
+    }
+  }
+  await db
+    .update(jiraIntegrations)
+    .set({
+      webhookToken: null,
+      webhookMode: null,
+      webhookRemoteId: null,
+      encryptedWebhookSecret: null,
+      webhookSecretIv: null,
+      webhookLastDeliveryAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(jiraIntegrations.organizationId, organizationId));
+  return true;
 }

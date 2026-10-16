@@ -28,6 +28,9 @@ const mockListIssueTypes = vi.fn();
 const mockCreateIssue = vi.fn();
 const mockRecordLink = vi.fn();
 const mockListLinks = vi.fn();
+const mockSetupWebhook = vi.fn();
+const mockRemoveWebhook = vi.fn();
+const mockRefresh = vi.fn();
 
 /** The real error class: the route branches on `instanceof` and on `status`. */
 class JiraApiError extends Error {
@@ -59,6 +62,12 @@ vi.mock("@infrawrench/server-core/jira", () => ({
   createJiraIssue: (...a: unknown[]) => mockCreateIssue(...a),
   recordJiraIssueLink: (...a: unknown[]) => mockRecordLink(...a),
   listJiraIssueLinks: (...a: unknown[]) => mockListLinks(...a),
+  setupJiraWebhook: (...a: unknown[]) => mockSetupWebhook(...a),
+  removeJiraWebhook: (...a: unknown[]) => mockRemoveWebhook(...a),
+}));
+
+vi.mock("@infrawrench/server-core/issue-status/sync", () => ({
+  refreshOrgIssueStatuses: (...a: unknown[]) => mockRefresh(...a),
 }));
 
 const mockLogAudit = vi.fn();
@@ -400,5 +409,57 @@ describe("GET /links", () => {
   it("rejects a caller without jira:read", async () => {
     const res = await buildAppWithPermissions(["costs:read"]).request("/links");
     expect(res.status).toBe(403);
+  });
+});
+
+describe("live status", () => {
+  const WEBHOOK = {
+    mode: "manual",
+    url: "https://app.example/api/issue-webhooks/jira/t",
+    lastDeliveryAt: null,
+  };
+
+  it("returns the one-time secret when Jira refused automatic registration", async () => {
+    mockSetupWebhook.mockResolvedValue({
+      integration: { ...INTEGRATION, webhook: WEBHOOK },
+      secret: "one-time-secret",
+      fallbackReason: "Jira only lets administrators create webhooks through the API.",
+    });
+    const res = await writer().request("/webhook", json({ mode: "auto" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      webhook: WEBHOOK,
+      secret: "one-time-secret",
+      fallbackReason: "Jira only lets administrators create webhooks through the API.",
+    });
+    expect(mockSetupWebhook).toHaveBeenCalledWith("org-1", "auto");
+    // The audit entry records the mode, never the secret.
+    expect(JSON.stringify(mockLogAudit.mock.calls)).not.toContain("one-time-secret");
+  });
+
+  it("keeps webhook setup to jira:write", async () => {
+    const res = await reader().request("/webhook", json({ mode: "auto" }));
+    expect(res.status).toBe(403);
+    expect(mockSetupWebhook).not.toHaveBeenCalled();
+  });
+
+  it("removes the webhook, 404 when there is none", async () => {
+    mockRemoveWebhook.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect((await writer().request("/webhook", { method: "DELETE" })).status).toBe(200);
+    expect((await writer().request("/webhook", { method: "DELETE" })).status).toBe(404);
+  });
+
+  it("lets a reader refresh statuses, and maps a Jira refusal to 502", async () => {
+    mockRefresh.mockResolvedValueOnce({ checked: 3, changed: 1 });
+    const ok = await reader().request("/links/refresh", { method: "POST" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ checked: 3, changed: 1 });
+    expect(mockRefresh).toHaveBeenCalledWith("org-1", "jira");
+
+    mockRefresh.mockRejectedValueOnce(
+      new JiraApiError("Jira rejected the credentials (401).", 401),
+    );
+    const failed = await reader().request("/links/refresh", { method: "POST" });
+    expect(failed.status).toBe(502);
   });
 });

@@ -23,6 +23,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
   extractRecordTags,
   githubSourceKindLabel,
+  isIssueStatusCategory,
   resolveGithubIssueRoute,
   type GithubIssueLink,
   type GithubIssueRouteResolution,
@@ -170,8 +171,13 @@ export function buildGithubIssueBody(finding: GithubFinding, ctx: IssueBodyConte
   return out.join("\n").slice(0, 60_000);
 }
 
-function toLink(row: typeof githubIssueLinks.$inferSelect): GithubIssueLink {
+export function toLink(row: typeof githubIssueLinks.$inferSelect): GithubIssueLink {
   return {
+    status: row.status,
+    statusCategory: isIssueStatusCategory(row.statusCategory) ? row.statusCategory : null,
+    assignee: row.assignee,
+    issueUpdatedAt: row.issueUpdatedAt ? row.issueUpdatedAt.toISOString() : null,
+    statusSyncedAt: row.statusSyncedAt ? row.statusSyncedAt.toISOString() : null,
     id: row.id,
     sourceKind: row.sourceKind as GithubIssueSourceKind,
     sourceId: row.sourceId,
@@ -421,6 +427,11 @@ async function insertLink(
       issueUrl: issue.url,
       autoFiled: options.autoFiled,
       createdByUserId: options.userId,
+      // Both paths here land on an open issue (a new one, or the open one the
+      // marker search found), so the first reading is known without asking.
+      status: "Open",
+      statusCategory: "todo",
+      statusSyncedAt: new Date(),
     })
     .onConflictDoNothing()
     .returning();

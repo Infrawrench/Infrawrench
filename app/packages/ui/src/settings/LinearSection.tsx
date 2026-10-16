@@ -6,7 +6,9 @@ import type {
   LinearTeam,
   LinearVerifyResult,
 } from "@infrawrench/client-core";
+import { IssueStatusBadge } from "../issue-filing/IssueStatusBadge.js";
 import { useSettingsHost } from "./host.js";
+import { IssueStatusSyncPanel } from "./IssueStatusSyncPanel.js";
 
 /**
  * Connect the org to a Linear workspace, and show what has been filed there.
@@ -28,6 +30,7 @@ export function LinearSection() {
   /** Blank means "keep the stored key": the stored one is never shown. */
   const [apiKey, setApiKey] = useState("");
   const [defaultTeamId, setDefaultTeamId] = useState("");
+  const [acknowledgeOnDone, setAcknowledgeOnDone] = useState(false);
 
   const [teams, setTeams] = useState<LinearTeam[]>([]);
   const [links, setLinks] = useState<LinearIssueLink[]>([]);
@@ -47,6 +50,7 @@ export function LinearSection() {
       setIntegration(res.integration);
       if (res.integration) {
         setDefaultTeamId(res.integration.defaultTeamId ?? "");
+        setAcknowledgeOnDone(res.integration.acknowledgeOnDone ?? false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to load the Linear connection"));
@@ -62,15 +66,19 @@ export function LinearSection() {
   // The picker and the filed list only mean anything once a connection exists.
   // Both failures are swallowed: a Linear outage must not stop the user editing
   // and re-saving the key, which is the most likely fix for it.
+  const connected = integration !== null;
+  const loadLinks = useCallback(() => {
+    api.get<LinearIssueLink[]>(`/api/org/${orgId}/linear/links`).then(setLinks, () => {});
+  }, [api, orgId]);
   useEffect(() => {
-    if (!integration) {
+    if (!connected) {
       setTeams([]);
       setLinks([]);
       return;
     }
     api.get<LinearTeam[]>(`/api/org/${orgId}/linear/teams`).then(setTeams, () => {});
-    api.get<LinearIssueLink[]>(`/api/org/${orgId}/linear/links`).then(setLinks, () => {});
-  }, [api, orgId, integration]);
+    loadLinks();
+  }, [api, orgId, connected, loadLinks]);
 
   async function save() {
     setSaving(true);
@@ -82,6 +90,7 @@ export function LinearSection() {
         // "unchanged", which is what a blank field means here.
         ...(apiKey ? { apiKey } : {}),
         defaultTeamId: defaultTeamId || null,
+        acknowledgeOnDone,
       });
       setIntegration(saved);
       setApiKey("");
@@ -119,6 +128,7 @@ export function LinearSection() {
       setIntegration(null);
       setApiKey("");
       setDefaultTeamId("");
+      setAcknowledgeOnDone(false);
       setNotice(gt("Linear disconnected."));
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to disconnect Linear"));
@@ -228,6 +238,24 @@ export function LinearSection() {
             </div>
           </section>
 
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={acknowledgeOnDone}
+              disabled={!canWrite}
+              onChange={(e) => setAcknowledgeOnDone(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              {gt("Mark a cost anomaly explained when its Linear issue is done")}
+              <span className="block text-xs text-on-surface-muted">
+                {gt(
+                  "Records “Resolved in Linear as ENG-123 (Done)” on the anomaly and as a note on the cost charts, only for anomalies nobody has explained yet. Takes effect when you save.",
+                )}
+              </span>
+            </span>
+          </label>
+
           {canWrite && (
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -258,6 +286,17 @@ export function LinearSection() {
             </div>
           )}
 
+          <IssueStatusSyncPanel
+            tracker="linear"
+            connected={connected}
+            webhook={integration?.webhook ?? null}
+            canConfigure={canWrite}
+            onWebhookChange={(webhook) =>
+              setIntegration((prev) => (prev ? { ...prev, webhook } : prev))
+            }
+            onRefreshed={loadLinks}
+          />
+
           <section className="space-y-3">
             <h2 className="text-sm font-semibold">{gt("Filed issues")}</h2>
             {!integration ? (
@@ -282,6 +321,7 @@ export function LinearSection() {
                     >
                       {link.issueIdentifier}
                     </button>
+                    <IssueStatusBadge link={link} />
                     <span className="text-xs text-on-surface-muted">
                       {link.sourceKind.replace(/_/g, " ")}
                     </span>

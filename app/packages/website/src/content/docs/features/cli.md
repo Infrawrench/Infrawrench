@@ -672,7 +672,9 @@ infrawrench webhooks test "Security feed"  # send infrawrench.test now
 infrawrench webhooks deliveries --json     # the last 50 deliveries, every subscription
 ```
 
-Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
+`infrawrench issues` lists every finding filed as an issue in [Jira](./jira.md), [Linear](./linear.md) or [GitHub](./github-issues.md), with each issue's [live status](./jira.md#live-status), status category and assignee, unfinished first; `infrawrench issues jira` (or `linear`, `github`) narrows it to one tracker, and `--json` returns `{ org, issues: [{ tracker, issue, url, sourceKind, sourceId, status, statusCategory, assignee, issueUpdatedAt, statusSyncedAt, filedAt }] }`. A tracker you cannot read is skipped rather than failing the list.
+
+Findings filed as [GitHub issues](./github-issues.md) are listed by `infrawrench github-issues` (open first, with status, assignee and any pull request), and `infrawrench github-issues settings` prints the repository routing, the Terraform sources and whether each GitHub App installation has approved the permissions filing needs. Both take `--json`.
 
 `infrawrench pr-check` runs the [pull request check](./pr-checks.md) without posting anything: on the local working tree against the merge base with the default branch (`--base <ref>` for another one, uncommitted edits included), or on an open pull request with `--repo owner/name --pr <n>`. It prints the monthly cost change, blast radius and warnings per Terraform resource; `--json` returns the full report. Needs `iac:read`.
 

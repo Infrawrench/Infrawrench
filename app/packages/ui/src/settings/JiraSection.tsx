@@ -8,7 +8,9 @@ import type {
   JiraVerifyResult,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
+import { IssueStatusBadge } from "../issue-filing/IssueStatusBadge.js";
 import { useSettingsHost } from "./host.js";
+import { IssueStatusSyncPanel } from "./IssueStatusSyncPanel.js";
 
 /**
  * Connect the org to a Jira Cloud site, and show what has been filed there.
@@ -31,6 +33,7 @@ export function JiraSection() {
   const [apiToken, setApiToken] = useState("");
   const [defaultProjectKey, setDefaultProjectKey] = useState("");
   const [defaultIssueTypeId, setDefaultIssueTypeId] = useState("");
+  const [acknowledgeOnDone, setAcknowledgeOnDone] = useState(false);
 
   const [projects, setProjects] = useState<JiraProject[]>([]);
   const [issueTypes, setIssueTypes] = useState<JiraIssueType[]>([]);
@@ -52,6 +55,7 @@ export function JiraSection() {
         setAccountEmail(res.integration.accountEmail);
         setDefaultProjectKey(res.integration.defaultProjectKey ?? "");
         setDefaultIssueTypeId(res.integration.defaultIssueTypeId ?? "");
+        setAcknowledgeOnDone(res.integration.acknowledgeOnDone ?? false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to load the Jira connection"));
@@ -67,15 +71,19 @@ export function JiraSection() {
   // Pickers and the filed list only mean anything once a connection exists.
   // Both failures are swallowed: a Jira outage must not stop the user editing
   // and re-saving credentials, which is the most likely fix for it.
+  const connected = integration !== null;
+  const loadLinks = useCallback(() => {
+    api.get<JiraIssueLink[]>(`/api/org/${orgId}/jira/links`).then(setLinks, () => {});
+  }, [api, orgId]);
   useEffect(() => {
-    if (!integration) {
+    if (!connected) {
       setProjects([]);
       setLinks([]);
       return;
     }
     api.get<JiraProject[]>(`/api/org/${orgId}/jira/projects`).then(setProjects, () => {});
-    api.get<JiraIssueLink[]>(`/api/org/${orgId}/jira/links`).then(setLinks, () => {});
-  }, [api, orgId, integration]);
+    loadLinks();
+  }, [api, orgId, connected, loadLinks]);
 
   useEffect(() => {
     if (!integration || !defaultProjectKey) {
@@ -102,6 +110,7 @@ export function JiraSection() {
         ...(apiToken ? { apiToken } : {}),
         defaultProjectKey: defaultProjectKey || null,
         defaultIssueTypeId: defaultIssueTypeId || null,
+        acknowledgeOnDone,
       });
       setIntegration(saved);
       setApiToken("");
@@ -140,6 +149,7 @@ export function JiraSection() {
       setApiToken("");
       setDefaultProjectKey("");
       setDefaultIssueTypeId("");
+      setAcknowledgeOnDone(false);
       setNotice(gt("Jira disconnected."));
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to disconnect Jira"));
@@ -306,6 +316,24 @@ export function JiraSection() {
             </div>
           </section>
 
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={acknowledgeOnDone}
+              disabled={!canWrite}
+              onChange={(e) => setAcknowledgeOnDone(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              {gt("Mark a cost anomaly explained when its Jira issue is done")}
+              <span className="block text-xs text-on-surface-muted">
+                {gt(
+                  "Records “Resolved in Jira as OPS-412 (Done)” on the anomaly and as a note on the cost charts, only for anomalies nobody has explained yet. Takes effect when you save.",
+                )}
+              </span>
+            </span>
+          </label>
+
           {canWrite && (
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -335,6 +363,17 @@ export function JiraSection() {
               )}
             </div>
           )}
+
+          <IssueStatusSyncPanel
+            tracker="jira"
+            connected={connected}
+            webhook={integration?.webhook ?? null}
+            canConfigure={canWrite}
+            onWebhookChange={(webhook) =>
+              setIntegration((prev) => (prev ? { ...prev, webhook } : prev))
+            }
+            onRefreshed={loadLinks}
+          />
 
           <FiledIssuesList
             connected={integration !== null}
@@ -387,6 +426,7 @@ function FiledIssuesList({
               >
                 {link.issueKey}
               </button>
+              <IssueStatusBadge link={link} />
               <span className="text-xs text-on-surface-muted">
                 {gtData(link.sourceKind.replace(/_/g, " "))}
               </span>

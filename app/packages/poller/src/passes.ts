@@ -38,6 +38,10 @@ import {
 } from "@infrawrench/server-core/vulnerabilities/kev";
 import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
 import { runExtendedSupportAlerts } from "@infrawrench/server-core/extended-support/alerts";
+import {
+  ISSUE_STATUS_PASS_INTERVAL_MS,
+  runIssueStatusPass,
+} from "@infrawrench/server-core/issue-status/pass";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runTrialExpiryPass } from "@infrawrench/server-core/trials/pass";
@@ -571,6 +575,20 @@ export const PASSES: readonly Pass[] = [
     name: "savings-scan",
     runtime: "edge",
     run: guarded("[poller] savings scan tick failed:", () => runSavingsFindingScan({ limit: 3 })),
+  },
+
+  // Issue status: the poll behind live status for issues filed to Jira,
+  // Linear and GitHub (webhooks update most links sooner; this catches every
+  // org without one and every delivery that never came). Claims due links
+  // with FOR UPDATE SKIP LOCKED, so replicas split the work. Edge: Postgres
+  // plus the trackers' own HTTPS APIs (api.linear.app, api.github.com, and
+  // Jira sites held to the *.atlassian.net allowlist), no plugin code.
+  {
+    kind: "periodic",
+    name: "issue-status",
+    runtime: "edge",
+    minIntervalMs: ISSUE_STATUS_PASS_INTERVAL_MS,
+    run: guarded("[issue-status] poll tick failed:", () => runIssueStatusPass()),
   },
 
   // Extended-support alerts: the same claim engine on a seven-day window

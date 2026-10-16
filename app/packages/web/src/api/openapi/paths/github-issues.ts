@@ -2,6 +2,7 @@ import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 import { GITHUB_ISSUE_LIMITS, GITHUB_ISSUE_SOURCE_KINDS } from "@infrawrench/client-core";
+import { IssueStatusRefreshResult, issueStatusFields } from "./issue-status";
 
 /**
  * GitHub issue filing for findings, through the org's GitHub App
@@ -105,6 +106,10 @@ export const GithubIssueSettingsInput = strict({
       "Allow holders of `github-issues:write` to open pull requests editing Terraform for IaC-managed findings. Never auto-merged.",
   }),
   iacSources: z.array(GithubIacSourceInput).max(L.maxIacSources),
+  acknowledgeOnDone: z.boolean().optional().openapi({
+    description:
+      "When an issue filed for a cost anomaly is closed as completed, record the anomaly as explained. Omit to keep the stored value.",
+  }),
 }).openapi("GithubIssueSettingsInput");
 
 const GithubIssueSettings = strict({
@@ -116,6 +121,7 @@ const GithubIssueSettings = strict({
   resolveAction: ResolveAction,
   pullRequestsEnabled: z.boolean(),
   iacSources: z.array(GithubIacSource),
+  acknowledgeOnDone: z.boolean(),
   updatedAt: IsoDateTime.nullable(),
 }).openapi("GithubIssueSettings");
 
@@ -141,6 +147,13 @@ const GithubIssuesStatus = strict({
   appConfigured: z.boolean(),
   installations: z.array(GithubInstallationAccess),
   settings: GithubIssueSettings,
+  webhookConfigured: z.boolean().openapi({
+    description:
+      "Whether the server verifies GitHub App webhooks (`GITHUB_APP_WEBHOOK_SECRET` is set), which makes issue status live rather than polled.",
+  }),
+  webhookUrl: z.string().nullable().openapi({
+    description: "The URL the GitHub App's webhook points at; null when the server has no APP_URL.",
+  }),
 }).openapi("GithubIssuesStatus");
 
 export const RepoQuery = strict({
@@ -174,6 +187,7 @@ const GithubIssueLink = strict({
   autoFiled: z.boolean(),
   pullRequestNumber: z.number().int().nullable(),
   pullRequestUrl: z.string().nullable(),
+  ...issueStatusFields,
   createdByUserId: z.string().nullable(),
   createdAt: IsoDateTime,
   resolvedAt: IsoDateTime.nullable(),
@@ -422,6 +436,25 @@ export function registerGithubIssuesPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.array(GithubIssueLink) } },
       },
       400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/github-issues/links/refresh",
+    tags,
+    summary: "Refresh the status of filed GitHub issues now",
+    description:
+      "Reads up to 200 of the org's filed issues from GitHub (least recently checked first) instead of waiting for the App's webhook or the poll. An issue GitHub no longer has is recorded as deleted.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "How many were checked and changed",
+        content: { "application/json": { schema: IssueStatusRefreshResult } },
+      },
+      400: ErrorResponses[400],
+      409: permissionResponse,
+      502: githubFailure,
     },
   });
 

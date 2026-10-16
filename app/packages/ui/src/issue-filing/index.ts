@@ -8,6 +8,7 @@ export {
   type IssueTracker,
 } from "./host.js";
 export { FileIssueButton, type FileIssueButtonProps } from "./FileIssueButton.js";
+export { IssueStatusBadge } from "./IssueStatusBadge.js";
 export { FileIssueModal, type FileIssueModalProps } from "./FileIssueModal.js";
 export { OpenPullRequestButton, type OpenPullRequestButtonProps } from "./OpenPullRequestButton.js";
 export {

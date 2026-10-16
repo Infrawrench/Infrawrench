@@ -28,10 +28,14 @@ import {
   listLinearIssueLinks,
   listLinearTeams,
   recordLinearIssueLink,
+  removeLinearWebhook,
+  reserveLinearWebhookUrl,
   setLinearIntegration,
+  setupLinearWebhook,
   verifyLinearCredentials,
   verifyStoredLinearCredentials,
 } from "@infrawrench/server-core/linear";
+import { refreshOrgIssueStatuses } from "@infrawrench/server-core/issue-status/sync";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -71,6 +75,8 @@ const integrationBody = z.object({
   /** Omitted ⇒ keep the stored key. Required only on first connect. */
   apiKey: z.string().min(1).max(1024).optional(),
   defaultTeamId: z.string().max(64).nullish(),
+  /** Omitted ⇒ keep the stored value. */
+  acknowledgeOnDone: z.boolean().optional(),
 });
 
 /**
@@ -103,6 +109,7 @@ app.put("/", async (c) => {
       userId: session.userId,
       apiKey: parsed.data.apiKey,
       defaultTeamId: parsed.data.defaultTeamId,
+      acknowledgeOnDone: parsed.data.acknowledgeOnDone,
     });
 
     void logAudit({
@@ -116,6 +123,7 @@ app.put("/", async (c) => {
       metadata: {
         keyChanged: parsed.data.apiKey !== undefined,
         defaultTeamId: integration.defaultTeamId,
+        acknowledgeOnDone: integration.acknowledgeOnDone,
       },
     });
     return c.json(integration);
@@ -243,6 +251,7 @@ app.post("/issues", async (c) => {
       sourceId: body.sourceId,
       issueIdentifier: issue.identifier,
       issueUrl: issue.url,
+      issueId: issue.id,
     });
 
     void logAudit({
@@ -293,6 +302,90 @@ app.get("/links", async (c) => {
       sourceIds: parsed.data.sourceId,
     }),
   );
+});
+
+// --- Live status ---
+
+const webhookBody = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("auto") }),
+  z.object({ mode: z.literal("manual"), signingSecret: z.string().min(1).max(512) }),
+]);
+
+/**
+ * POST /api/org/:orgId/linear/webhook: set up the live-status webhook.
+ *
+ * `auto` creates it in Linear with our own signing secret (`webhookCreate`,
+ * workspace admins only). `manual` records one somebody created in Linear's
+ * settings at the URL from `POST /webhook/url`, with the signing secret Linear
+ * showed them.
+ */
+app.post("/webhook", async (c) => {
+  requirePermission(c, "linear:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = webhookBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid webhook request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const result = await setupLinearWebhook(organizationId, parsed.data);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "linear.webhook.configure",
+      entityType: "linear_integration",
+      entityId: organizationId,
+      metadata: { mode: result.integration.webhook.mode },
+    });
+    return c.json({ webhook: result.integration.webhook });
+  } catch (err) {
+    return linearFailure(c, err);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/linear/webhook/url: the receiver URL to paste into
+ * Linear when creating the webhook by hand. Linear only shows the signing
+ * secret once the webhook exists, so the URL has to come first.
+ */
+app.post("/webhook/url", async (c) => {
+  requirePermission(c, "linear:write");
+  try {
+    return c.json({ url: await reserveLinearWebhookUrl(c.get("organizationId")) });
+  } catch (err) {
+    return linearFailure(c, err);
+  }
+});
+
+/** DELETE /api/org/:orgId/linear/webhook: stop live status (the poll carries on). */
+app.delete("/webhook", async (c) => {
+  requirePermission(c, "linear:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  try {
+    const removed = await removeLinearWebhook(organizationId);
+    if (!removed) return c.json({ error: "No status webhook is set up" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "linear.webhook.delete",
+      entityType: "linear_integration",
+      entityId: organizationId,
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return linearFailure(c, err);
+  }
+});
+
+/** POST /api/org/:orgId/linear/links/refresh: read the org's issue statuses from Linear now. */
+app.post("/links/refresh", async (c) => {
+  requirePermission(c, "linear:read");
+  try {
+    return c.json(await refreshOrgIssueStatuses(c.get("organizationId"), "linear"));
+  } catch (err) {
+    return linearFailure(c, err);
+  }
 });
 
 export { app as linearRoutes };

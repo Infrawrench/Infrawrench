@@ -1,4 +1,10 @@
 import type { CloudFetch } from "./fetch";
+import type {
+  IssueStatusFields,
+  IssueStatusRefreshResult,
+  IssueWebhookSetupResult,
+  IssueWebhookState,
+} from "./issue-status";
 import { remediationIssueText, type FindingRemediation } from "./remediation";
 
 /**
@@ -32,6 +38,7 @@ export const JIRA_SOURCE_KINDS = [
   "expiring",
   "probe",
   "extended_support",
+  "budget_alert",
 ] as const;
 
 export type JiraSourceKind = (typeof JIRA_SOURCE_KINDS)[number];
@@ -53,6 +60,8 @@ export function jiraSourceKindLabel(kind: JiraSourceKind): string {
       return "Failed probe";
     case "extended_support":
       return "Extended support";
+    case "budget_alert":
+      return "Budget alert";
   }
 }
 
@@ -70,6 +79,14 @@ export interface JiraIntegration {
   defaultProjectKey: string | null;
   /** Issue type the modal preselects within the default project. */
   defaultIssueTypeId: string | null;
+  /**
+   * When an issue filed for a cost anomaly moves to done, record the anomaly
+   * as explained ("Resolved in Jira as OPS-412"). Optional for a client a
+   * release ahead of its server; absent reads as off.
+   */
+  acknowledgeOnDone?: boolean | undefined;
+  /** The live-status webhook; absent on servers that predate status sync. */
+  webhook?: IssueWebhookState | undefined;
   updatedAt: string;
 }
 
@@ -86,7 +103,7 @@ export interface JiraIssueType {
   description: string | null;
 }
 
-export interface JiraIssueLink {
+export interface JiraIssueLink extends IssueStatusFields {
   id: string;
   sourceKind: JiraSourceKind;
   sourceId: string;
@@ -115,6 +132,8 @@ export interface SaveJiraIntegrationArgs {
   apiToken?: string;
   defaultProjectKey?: string | null;
   defaultIssueTypeId?: string | null;
+  /** Omit to keep the stored value. */
+  acknowledgeOnDone?: boolean;
 }
 
 export interface CreateJiraIssueArgs {
@@ -220,6 +239,36 @@ export async function fetchJiraIssueLinks(
   for (const id of filter.sourceIds ?? []) params.append("sourceId", id);
   const query = params.toString();
   return (await api.org<JiraIssueLink[]>(orgId, `/jira/links${query ? `?${query}` : ""}`)) ?? [];
+}
+
+/**
+ * Set up the live-status webhook. `auto` registers it in Jira through the
+ * stored account, which needs Jira admin rights; when Jira refuses, the reply
+ * falls back to manual and carries the URL and a one-time secret to paste into
+ * Jira's own webhook form. `manual` skips the attempt.
+ */
+export async function setupJiraWebhook(
+  api: CloudFetch,
+  orgId: string,
+  mode: "auto" | "manual" = "auto",
+): Promise<IssueWebhookSetupResult | null> {
+  return api.org<IssueWebhookSetupResult>(orgId, "/jira/webhook", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+/** Remove the live-status webhook (and deregister it in Jira when we registered it). */
+export async function removeJiraWebhook(api: CloudFetch, orgId: string): Promise<void> {
+  await api.org(orgId, "/jira/webhook", { method: "DELETE" });
+}
+
+/** Ask Jira for the current status of the org's filed issues now, instead of waiting for the poll. */
+export async function refreshJiraIssueStatuses(
+  api: CloudFetch,
+  orgId: string,
+): Promise<IssueStatusRefreshResult | null> {
+  return api.org<IssueStatusRefreshResult>(orgId, "/jira/links/refresh", { method: "POST" });
 }
 
 // --- Pure helpers ---

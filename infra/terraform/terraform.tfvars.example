@@ -136,6 +136,13 @@ app_env = {
   # "Request user authorization (OAuth) during installation" unchecked.
   GITHUB_APP_CLIENT_ID     = "Iv23..."
   GITHUB_APP_CLIENT_SECRET = "..."
+  # Optional: the app's webhook secret, for live status on filed GitHub issues.
+  # On the app's settings page tick Webhook > Active, set the Webhook URL to
+  # <APP_URL>/api/issue-webhooks/github, set the same random secret there and
+  # here, and subscribe to the "Issues" event. Without it the receiver answers
+  # 404 and statuses refresh through the poller instead (every 30 minutes per
+  # open issue).
+  # GITHUB_APP_WEBHOOK_SECRET = "..."
 
   # Optional: comma-separated emails allowed on /api/admin + the /admin page
   # (grant/revoke complimentary orgs). Omit to disable the admin surface.

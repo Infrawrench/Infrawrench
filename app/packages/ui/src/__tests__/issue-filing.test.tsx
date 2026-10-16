@@ -200,4 +200,25 @@ describe("FileIssueButton", () => {
     expect(await screen.findByText("OPS-412")).toBeTruthy();
     expect(screen.queryByText("File an issue")).toBeNull();
   });
+
+  it("shows each filed issue's live status, with the assignee in the tooltip", async () => {
+    renderButton({
+      jira: JIRA_INTEGRATION,
+      linear: LINEAR_INTEGRATION,
+      jiraLinks: [
+        jiraLink({ status: "In Review", statusCategory: "in_progress", assignee: "Sam" }),
+      ],
+      linearLinks: [linearLink({ status: null, statusCategory: "done" })],
+    });
+    const status = await screen.findByText("In Review");
+    expect(status.getAttribute("title")).toContain("Assigned to Sam");
+    // No status name from the tracker: the category's own label stands in.
+    expect(screen.getByText("Done")).toBeTruthy();
+  });
+
+  it("shows no status before the first sync", async () => {
+    renderButton({ jira: JIRA_INTEGRATION, jiraLinks: [jiraLink()] });
+    expect(await screen.findByText("OPS-412")).toBeTruthy();
+    expect(screen.queryByText("To do")).toBeNull();
+  });
 });

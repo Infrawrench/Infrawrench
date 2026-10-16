@@ -98,6 +98,7 @@ resource "infrawrench_alert_routing" "org" {
 
 ### Optional
 
+- `acknowledge_on_done` (Boolean) When an issue filed for a cost anomaly is closed as completed on GitHub, record the anomaly as explained ("Resolved in GitHub as acme/infra#12 (Closed)"), which also draws that note on every cost chart covering the anomaly's day. Issues closed as not planned do not count, and only anomalies nobody has explained yet are touched. Defaults to `false`.
 - `assignees` (List of String) GitHub logins every filed issue is assigned to, up to 10, each 1-39 characters. A route with assignees of its own replaces these.
 - `default_installation_id` (Number) The GitHub App installation that reaches `default_repository`, as listed by `/github/repos`. Set both or neither.
 - `default_repository` (String) Where a finding goes when no `route` matches it, as `owner/name`. Omit it (and `default_installation_id`) for no default, which is only legal while `enabled` is false.

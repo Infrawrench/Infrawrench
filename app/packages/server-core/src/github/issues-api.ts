@@ -187,6 +187,23 @@ export async function getIssue(
   return body ? toIssueRef(body) : null;
 }
 
+/**
+ * The raw issue object, for the status sync (`state`, `state_reason`,
+ * `assignees`, `updated_at`). Null when it no longer exists. Needs only
+ * `issues: read`.
+ */
+export async function getIssueRaw(
+  installationId: number,
+  repo: string,
+  issueNumber: number,
+): Promise<Record<string, unknown> | null> {
+  return call<Record<string, unknown>>(
+    { installationId, what: "read the issue's status", permission: "issues" },
+    `${repoPath(repo)}/issues/${issueNumber}`,
+    { allow404: true },
+  );
+}
+
 export async function commentOnIssue(
   installationId: number,
   repo: string,

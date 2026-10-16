@@ -45,6 +45,7 @@ function toRecord(row: typeof githubIssueSettings.$inferSelect): GithubIssueSett
     resolveAction: (row.resolveAction as GithubResolveAction) ?? "comment",
     pullRequestsEnabled: row.pullRequestsEnabled,
     iacSources: row.iacSources ?? [],
+    acknowledgeOnDone: row.acknowledgeOnDone,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -136,6 +137,12 @@ export async function setGithubIssueSettings(
       baseBranch: s.baseBranch?.trim() ? s.baseBranch.trim() : null,
       directory: s.directory.trim().replace(/^\/+|\/+$/g, ""),
     })),
+    // Optional in a whole-document PUT: clients written before the field
+    // existed (older desktop builds, the Terraform provider before it) send
+    // the rest of the document and must not switch it off.
+    ...(input.acknowledgeOnDone !== undefined
+      ? { acknowledgeOnDone: input.acknowledgeOnDone }
+      : {}),
     updatedAt: now,
   };
 

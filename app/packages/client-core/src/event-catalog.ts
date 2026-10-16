@@ -730,6 +730,36 @@ export const SAVINGS_FINDING_STATUS_CHANGED = defineEventType({
   },
 });
 
+const ISSUE_STATUS_CATEGORY_ENUM = ["todo", "in_progress", "done", "canceled"] as const;
+
+export const ISSUE_STATUS_CHANGED = defineEventType({
+  type: "issue.status_changed",
+  version: 1,
+  label: "Filed issue status changed",
+  description:
+    "An issue filed from a finding moved to a different status in Jira, Linear or GitHub. The first status Infrawrench learns for an issue is a baseline and raises nothing.",
+  category: "operations",
+  defaultSeverity: "info",
+  fields: {
+    tracker: str("Where the issue lives.", { enum: ["jira", "linear", "github"] }),
+    issue: str("The issue's handle: a Jira key, a Linear identifier, or owner/repo#number."),
+    issueUrl: str("The issue in the tracker."),
+    sourceKind: str("The kind of finding the issue was filed from, e.g. cost_anomaly."),
+    sourceId: str("The finding's own id."),
+    status: str("The tracker's status name now.", { nullable: true }),
+    statusCategory: str("Tracker-neutral progress now.", {
+      enum: ISSUE_STATUS_CATEGORY_ENUM,
+      nullable: true,
+    }),
+    previousStatus: str("The status name before.", { nullable: true }),
+    previousStatusCategory: str("Tracker-neutral progress before.", {
+      enum: ISSUE_STATUS_CATEGORY_ENUM,
+      nullable: true,
+    }),
+    assignee: str("Who the issue is assigned to now.", { nullable: true }),
+  },
+});
+
 // --- Subscriptions ---
 
 export type EventDestinationKind = "webhook" | "publish";

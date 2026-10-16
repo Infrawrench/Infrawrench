@@ -43,6 +43,11 @@ export const githubIssueSettings = pgTable(
     resolveAction: text("resolve_action").notNull().default("comment"),
     pullRequestsEnabled: boolean("pull_requests_enabled").notNull().default(false),
     iacSources: jsonb("iac_sources").$type<GithubIacSource[]>().notNull().default([]),
+    /**
+     * When an issue filed for a cost anomaly is closed as completed, record the
+     * anomaly as explained. Off by default: it writes a note on every chart.
+     */
+    acknowledgeOnDone: boolean("acknowledge_on_done").notNull().default(false),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -83,6 +88,17 @@ export const githubIssueLinks = pgTable(
     autoFiled: boolean("auto_filed").notNull().default(false),
     pullRequestNumber: integer("pull_request_number"),
     pullRequestUrl: text("pull_request_url"),
+    /**
+     * Live status (`server-core/issue-status`). `state` above stays the filing
+     * lifecycle (an open link is what a refile comments on); these are what
+     * the issue looks like on GitHub: `Open` / `Closed` / `Closed as not
+     * planned`, its category, the first assignee's login, and timestamps.
+     */
+    status: text("status"),
+    statusCategory: text("status_category"),
+    assignee: text("assignee"),
+    issueUpdatedAt: timestamp("issue_updated_at"),
+    statusSyncedAt: timestamp("status_synced_at"),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -93,10 +109,17 @@ export const githubIssueLinks = pgTable(
       .on(t.organizationId, t.fingerprint)
       .where(sql`${t.state} = 'open'`),
     orgKindIdx: index("github_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
+    /** An `issues` webhook names the issue by installation, repository and number. */
+    issueIdx: index("github_issue_links_issue_idx").on(t.installationId, t.repo, t.issueNumber),
+    statusSyncedIdx: index("github_issue_links_status_synced_idx").on(t.statusSyncedAt),
     stateValid: check("github_issue_links_state_valid", sql`${t.state} IN ('open', 'closed')`),
     sourceKindValid: check(
       "github_issue_links_source_kind_valid",
-      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'commitment_idle')`,
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support', 'budget_alert', 'commitment_idle')`,
+    ),
+    statusCategoryValid: check(
+      "github_issue_links_status_category_valid",
+      sql`${t.statusCategory} IS NULL OR ${t.statusCategory} IN ('todo', 'in_progress', 'done', 'canceled')`,
     ),
   }),
 );

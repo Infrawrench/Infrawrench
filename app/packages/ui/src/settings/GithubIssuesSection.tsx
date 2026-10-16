@@ -15,6 +15,8 @@ import {
   type IacStateSummary,
 } from "@infrawrench/client-core";
 
+import { IssueStatusBadge } from "../issue-filing/IssueStatusBadge.js";
+import { IssueStatusSyncPanel } from "./IssueStatusSyncPanel.js";
 import {
   GithubAssigneesPicker,
   GithubLabelsPicker,
@@ -66,6 +68,7 @@ export function GithubIssuesSection() {
   const [routes, setRoutes] = useState<RouteDraft[]>([]);
   const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
   const [sources, setSources] = useState<SourceDraft[]>([]);
+  const [acknowledgeOnDone, setAcknowledgeOnDone] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,6 +84,7 @@ export function GithubIssuesSection() {
     setRoutes(s.routes.map((r) => ({ ...r, key: nextKey() })));
     setPullRequestsEnabled(s.pullRequestsEnabled);
     setSources(s.iacSources.map((x) => ({ ...x, key: nextKey() })));
+    setAcknowledgeOnDone(s.acknowledgeOnDone ?? false);
   }, []);
 
   const load = useCallback(async () => {
@@ -96,17 +100,21 @@ export function GithubIssuesSection() {
     }
   }, [api, orgId, apply, gt]);
 
+  const loadLinks = useCallback(() => {
+    api.get<GithubIssueLink[]>(`/api/org/${orgId}/github-issues/links`).then(setLinks, () => {});
+  }, [api, orgId]);
+
   useEffect(() => {
     void load();
     // Pickers and the filed list fail soft: a missing permission on one of
     // them must not stop the rest of the page.
-    api.get<GithubIssueLink[]>(`/api/org/${orgId}/github-issues/links`).then(setLinks, () => {});
+    loadLinks();
     api.get<CostCentre[]>(`/api/org/${orgId}/cost-centres`).then(setCostCentres, () => {});
     api.get<{ states: IacStateSummary[] }>(`/api/org/${orgId}/iac/states`).then(
       (r) => setIacStates(r.states),
       () => {},
     );
-  }, [api, orgId, load]);
+  }, [api, orgId, load, loadLinks]);
 
   /** One option per IaC state scope (an account, or the org-wide state). */
   const scopes = useMemo(() => {
@@ -145,6 +153,7 @@ export function GithubIssuesSection() {
       assignees,
       resolveAction,
       pullRequestsEnabled,
+      acknowledgeOnDone,
       routes: routes.map(({ key: _key, ...r }) => r),
       iacSources: sources.map(({ key: _key, ...x }) => x),
     };
@@ -566,6 +575,24 @@ export function GithubIssuesSection() {
             )}
           </section>
 
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={acknowledgeOnDone}
+              disabled={!canWrite}
+              onChange={(e) => setAcknowledgeOnDone(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              {gt("Mark a cost anomaly explained when its GitHub issue is closed as completed")}
+              <span className="block text-xs text-on-surface-muted">
+                {gt(
+                  "Records “Resolved in GitHub as acme/infra#12 (Closed)” on the anomaly and as a note on the cost charts, only for anomalies nobody has explained yet. Issues closed as not planned do not count.",
+                )}
+              </span>
+            </span>
+          </label>
+
           {canWrite && (
             <button
               type="button"
@@ -576,6 +603,17 @@ export function GithubIssuesSection() {
               {saving ? gt("Saving…") : gt("Save changes")}
             </button>
           )}
+
+          <IssueStatusSyncPanel
+            tracker="github"
+            connected={Boolean(status?.appConfigured)}
+            githubWebhook={{
+              configured: Boolean(status?.webhookConfigured),
+              url: status?.webhookUrl ?? null,
+            }}
+            canConfigure={false}
+            onRefreshed={loadLinks}
+          />
 
           <section className={cardClass}>
             <h2 className="text-sm font-semibold">{gt("Filed issues")}</h2>
@@ -592,10 +630,12 @@ export function GithubIssuesSection() {
                     >
                       {l.repo}#{l.issueNumber}
                     </button>
-                    <span className="text-xs text-on-surface-muted">
-                      {l.state === "open" ? gt("open") : gt("closed")}
-                      {l.autoFiled ? ` · ${gt("filed by a routing rule")}` : ""}
-                    </span>
+                    <IssueStatusBadge link={l} />
+                    {l.autoFiled && (
+                      <span className="text-xs text-on-surface-muted">
+                        {gt("filed by a routing rule")}
+                      </span>
+                    )}
                     {l.pullRequestUrl && (
                       <button
                         type="button"

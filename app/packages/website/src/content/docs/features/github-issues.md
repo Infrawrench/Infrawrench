@@ -14,7 +14,7 @@ GitHub sits beside [Jira](./jira.md) and [Linear](./linear.md). With more than o
 
 ## What can be filed
 
-From a row's file link: orphaned and idle resources, oversized machines, cost anomalies, and the posture, expiry and probe findings that Jira and Linear also take. Through [alert routing](#filing-new-findings-automatically): new orphaned and oversized resources, cost anomalies, and idle commitments.
+From a row's file link: orphaned and idle resources, oversized machines, cost anomalies, [budget alerts](./cloud-costs.md#filing-a-budget-alert-as-an-issue), and the posture, expiry and probe findings that Jira and Linear also take. Through [alert routing](#filing-new-findings-automatically): new orphaned and oversized resources, cost anomalies, idle commitments, and budget alerts (except on private budgets, whose spend must not land in a shared repository).
 
 Each issue's body carries the evidence as a table (resource, type, account, provider id, sizes, utilization, spend), the monthly cost, the detector's reason, remediation commands when the finding has them, a note when Terraform manages the resource (so the fix goes into the code rather than the console), and a link back to Infrawrench.
 
@@ -55,6 +55,31 @@ When a finding goes away, Infrawrench acts on its issue as you chose in settings
 - **Orphaned and oversized resources** are rescanned every six hours. A resource that was deleted, resized, or is in use again resolves its issue.
 - **Cost anomalies** resolve when someone [explains them](./cost-anomaly-alerts.md).
 - Idle commitments are not resolved automatically: next month's repeat comments on the same issue.
+
+## Live status
+
+Every filed issue number is followed by the issue's state on GitHub: **Open**, **Closed**, or **Closed as not planned**, with the first assignee and the last change when you hover it. Rows, the settings page's filed list, the mobile app and `infrawrench issues` all show it.
+
+<insert [A Savings row showing a filed "#42" link followed by a green dot and "Closed", next to the File in GitHub link offering to file again] here>
+
+Statuses arrive two ways:
+
+- **The GitHub App's webhook**, when the server has one: issue events (closed, reopened, assigned, transferred, deleted) update the status within seconds.
+- **A periodic check** in every case: every 30 minutes for open issues, daily for closed ones, for issues filed in the last year. **Refresh statuses** under **Settings → GitHub Issues → Live status** asks GitHub about up to 200 issues right now.
+
+A closed issue still counts as resolved for [one issue per finding](#one-issue-per-finding): the row shows it with its status and offers to file again. Reopening it on GitHub makes it the finding's open issue again, unless the finding has been filed since. A transferred issue is followed to its new repository.
+
+Turn on **Mark a cost anomaly explained when its GitHub issue is closed as completed** to record "Resolved in GitHub as acme/infra#12 (Closed)" on the anomaly (and as a note on the cost charts) when its issue is closed as completed. Issues closed as not planned do not count, and anomalies somebody already explained are left alone. Status changes can also be sent to your own systems as an [`issue.status_changed` event](./event-subscriptions.md).
+
+### Turning on the webhook (self-hosting)
+
+On Infrawrench Cloud the app's webhook is already on. If you run your own server, on your GitHub App's settings page:
+
+1. Tick **Webhook → Active** and set the **Webhook URL** to `<your APP_URL>/api/issue-webhooks/github`.
+2. Generate a random secret, put it in **Webhook secret**, and set the same value as `GITHUB_APP_WEBHOOK_SECRET` on the server.
+3. Under **Permissions & events → Subscribe to events**, tick **Issues**. The app already has the Issues permission it needs.
+
+Without the secret the receiver stays closed and statuses come from the periodic check alone. Settings → GitHub Issues says which of the two your server is using.
 
 ## Filing new findings automatically
 
@@ -100,10 +125,11 @@ The repository mapping here is also what [pull request checks](./pr-checks.md) u
 ## From the CLI, MCP and Terraform
 
 ```bash
-infrawrench github-issues            # filed findings, open first, with any pull request
+infrawrench github-issues            # filed findings, open first, with status, assignee and any pull request
+infrawrench issues github            # the same issues in the cross-tracker listing, unfinished first
 infrawrench github-issues settings   # routing, Terraform sources and each installation's permissions
 ```
 
 Both take `--json`. The [MCP server](./mcp.md) exposes `get_github_issue_settings`, `list_github_issue_links`, `file_github_issue`, `preview_iac_pull_request` and `open_iac_pull_request`. The settings document is the `infrawrench_github_issue_settings` resource in the [Terraform provider](./terraform-provider.md), and the routing destination is `github-issues` in `infrawrench_alert_routing`.
 
-The mobile app shows filed issue numbers and can file a finding into its routed repository; settings and pull requests stay on the web and desktop apps.
+The mobile app shows filed issue numbers with their live status and can file a finding into its routed repository; settings and pull requests stay on the web and desktop apps.
