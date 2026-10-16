@@ -65,6 +65,7 @@ const ShareableObjectType = z
     "savings_view",
     "resource_report",
     "network_flow_report",
+    "commitment_report",
   ])
   .openapi("ShareableObjectType");
 const AccessLevel = z.enum(["owner", "editor", "viewer"]).openapi("ObjectAccessLevel");

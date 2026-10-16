@@ -1,6 +1,6 @@
 /**
  * Per-object sharing (`/api/org/:orgId/sharing/:objectType/:objectId`) for
- * cost reports, report folders and dashboards. See
+ * cost reports, commitment reports, report folders, canvases and dashboards. See
  * `services/object-sharing.ts` for the model.
  *
  * Reading the document needs viewer on the object plus the object family's
@@ -43,6 +43,7 @@ const READ_PERMISSION: Record<ShareableObjectType, string> = {
   kubernetes_efficiency_report: "costs:read",
   resource_report: "resources:read",
   network_flow_report: "costs:read",
+  commitment_report: "costs:read",
   dashboard: "dashboards:read",
   savings_view: "resources:read",
 };
@@ -53,6 +54,7 @@ const WRITE_PERMISSION: Record<ShareableObjectType, string> = {
   kubernetes_efficiency_report: "costs:write",
   resource_report: "resources:write",
   network_flow_report: "costs:write",
+  commitment_report: "costs:write",
   dashboard: "dashboards:write",
   savings_view: "resources:write",
 };

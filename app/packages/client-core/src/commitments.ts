@@ -163,3 +163,35 @@ export async function fetchCommitments(
 ): Promise<CommitmentsFeed | null> {
   return api.org<CommitmentsFeed>(orgId, "/commitments");
 }
+
+/**
+ * A holding within this many days of its term end reads as "expiring soon"
+ * in the inventory. Sixty is the earliest commitment-expiry alert horizon
+ * (60/30/7 days), so the badge appears when the first alert does.
+ */
+export const COMMITMENT_EXPIRING_SOON_DAYS = 60;
+
+/**
+ * Whole days from `now` until the holding's term end (0 on the last day,
+ * negative once past), or null when the provider reported no end date.
+ */
+export function commitmentDaysUntilEnd(
+  holding: Pick<CommitmentHolding, "endDate">,
+  now = new Date(),
+): number | null {
+  if (!holding.endDate) return null;
+  const end = Date.parse(holding.endDate);
+  if (Number.isNaN(end)) return null;
+  return Math.floor((end - now.valueOf()) / 86_400_000);
+}
+
+/** An active holding whose term ends within {@link COMMITMENT_EXPIRING_SOON_DAYS}. */
+export function isCommitmentExpiringSoon(
+  holding: Pick<CommitmentHolding, "endDate" | "state">,
+  now = new Date(),
+  days = COMMITMENT_EXPIRING_SOON_DAYS,
+): boolean {
+  if (holding.state !== "active") return false;
+  const left = commitmentDaysUntilEnd(holding, now);
+  return left !== null && left >= 0 && left <= days;
+}

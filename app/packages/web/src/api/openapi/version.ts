@@ -389,4 +389,8 @@
 // and Google Cloud Compute Engine (`gcp`), with their pay-as-you-go, spot,
 // reservation, savings plan and committed use prices; the instance pricing
 // descriptions say so. Additive.
-export const API_VERSION = "1.89.0";
+// 1.90.0: commitment reports. `GET /commitments/report-options`, `POST
+// /commitments/report-query`, `GET|POST /commitments/reports`, `GET|PUT|DELETE
+// /commitments/reports/{id}`, `POST /commitments/reports/{id}/run`, and
+// `commitment_report` in the `ShareableObjectType` enum. Additive.
+export const API_VERSION = "1.90.0";
