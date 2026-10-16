@@ -1,6 +1,6 @@
 /**
- * Per-object sharing for cost reports, Kubernetes efficiency reports, report
- * folders, canvases, dashboards and saved savings views.
+ * Per-object sharing for cost reports, Kubernetes efficiency reports, resource
+ * reports, report folders, canvases, dashboards and saved savings views.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -54,6 +54,7 @@ import {
   kubernetesEfficiencyReports,
   objectAccessGrants,
   organizationMembers,
+  resourceReports,
   roles,
   savingsViews,
   users,
@@ -75,13 +76,16 @@ function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
     type === "cost_report" ||
     type === "cost_canvas" ||
     type === "kubernetes_efficiency_report" ||
-    type === "savings_view"
+    type === "savings_view" ||
+    type === "resource_report"
   );
 }
 
 /** Report types filed in the report-folder tree (by `folder_id`). */
 function isFiledReport(type: ShareableObjectType): boolean {
-  return type === "cost_report" || type === "kubernetes_efficiency_report";
+  return (
+    type === "cost_report" || type === "kubernetes_efficiency_report" || type === "resource_report"
+  );
 }
 
 /** Types that sit in the report-folder tree and inherit its explicit sharing. */
@@ -369,6 +373,21 @@ export async function loadObjectMeta(
       })
       .from(costReports)
       .where(and(eq(costReports.id, objectId), eq(costReports.organizationId, organizationId)))
+      .limit(1);
+    return row && !row.deletedAt ? row : null;
+  }
+  if (type === "resource_report") {
+    const [row] = await db
+      .select({
+        name: resourceReports.name,
+        createdByUserId: resourceReports.createdByUserId,
+        folderId: resourceReports.folderId,
+        deletedAt: resourceReports.deletedAt,
+      })
+      .from(resourceReports)
+      .where(
+        and(eq(resourceReports.id, objectId), eq(resourceReports.organizationId, organizationId)),
+      )
       .limit(1);
     return row && !row.deletedAt ? row : null;
   }

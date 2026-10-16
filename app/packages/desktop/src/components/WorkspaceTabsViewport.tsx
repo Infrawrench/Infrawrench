@@ -93,6 +93,7 @@ import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopPriceCatalogPanel } from "@/components/DesktopPriceCatalogPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopSlosPanel } from "@/components/DesktopSlosPanel";
+import { DesktopResourceReportsPanel } from "@/components/DesktopResourceReportsPanel";
 import { DesktopServicesPanel } from "@/components/DesktopServicesPanel";
 import { DesktopDeliveryPanel } from "@/components/DesktopDeliveryPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
@@ -786,6 +787,8 @@ function renderPanel(
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":
       return <DesktopSlosPanel sloId={t.sloId} />;
+    case "resource-reports":
+      return <DesktopResourceReportsPanel reportId={t.reportId} />;
     case "services":
       return <DesktopServicesPanel serviceId={t.serviceId} view={t.view} />;
     case "delivery":

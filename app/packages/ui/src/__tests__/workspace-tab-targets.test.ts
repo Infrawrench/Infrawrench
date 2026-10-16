@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -323,6 +324,40 @@ describe("cost-reports tab identity", () => {
 
   it("is never equal to another kind", () => {
     expect(workspaceTabTargetsEqual(costReportsTabTarget(), { kind: "costs" })).toBe(false);
+  });
+});
+
+describe("resource-reports tab identity", () => {
+  it("omits reportId for the list view", () => {
+    expect(resourceReportsTabTarget()).toEqual({ kind: "resource-reports" });
+    expect(resourceReportsTabTarget("r1")).toEqual({ kind: "resource-reports", reportId: "r1" });
+  });
+
+  it("uses one tab id whatever report is open", () => {
+    expect(getWorkspaceTabId(resourceReportsTabTarget())).toBe("resource-reports");
+    expect(getWorkspaceTabId(resourceReportsTabTarget("r1"))).toBe("resource-reports");
+  });
+
+  it("has a fallback title", () => {
+    expect(getWorkspaceTabFallbackTitle(resourceReportsTabTarget())).toBe("Resource reports");
+  });
+
+  it("compares the report so the route sync retargets the open tab", () => {
+    expect(
+      workspaceTabTargetsEqual(resourceReportsTabTarget("r1"), resourceReportsTabTarget("r1")),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(resourceReportsTabTarget("r1"), resourceReportsTabTarget("r2")),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual(resourceReportsTabTarget(), resourceReportsTabTarget("r1")),
+    ).toBe(false);
+  });
+
+  it("is never equal to a cost reports tab on the same report", () => {
+    expect(
+      workspaceTabTargetsEqual(resourceReportsTabTarget("r1"), costReportsTabTarget("r1")),
+    ).toBe(false);
   });
 });
 

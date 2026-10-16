@@ -7,6 +7,11 @@ export type WorkspaceTabTarget =
   | { kind: "agents" }
   | { kind: "costs" }
   | { kind: "cost-reports"; reportId?: string }
+  /**
+   * Resource reports: saved inventory tables with cost. Single-instance like
+   * Cost reports; `reportId` is remembered state (which report is open).
+   */
+  | { kind: "resource-reports"; reportId?: string }
   /** Cost canvases: reports built from a description. `canvasId` is remembered state. */
   | { kind: "cost-canvases"; canvasId?: string }
   | { kind: "k8s-efficiency"; reportId?: string }
@@ -158,6 +163,9 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       // Not keyed by report: opening a second report should retarget the open
       // Cost reports tab rather than pile up a tab per report.
       return "cost-reports";
+    case "resource-reports":
+      // Same as Cost reports: one tab, the open report is remembered state.
+      return "resource-reports";
     case "cost-canvases":
       // One Canvases tab whose open canvas is remembered state, like Reports.
       return "cost-canvases";
@@ -275,6 +283,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Costs";
     case "cost-reports":
       return "Reports";
+    case "resource-reports":
+      return "Resource reports";
     case "cost-canvases":
       return "Canvases";
     case "k8s-efficiency":
@@ -415,6 +425,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // The deployments/settings trick: one tab by id, but comparing the report
       // is what makes the route sync record which report the tab is on, so
       // reactivating it restores that report rather than the bare list.
+      return a.reportId === (b as { reportId?: string }).reportId;
+    case "resource-reports":
+      // The Cost reports trick: compare the report so the route sync records
+      // which one the tab is on and reactivation restores it.
       return a.reportId === (b as { reportId?: string }).reportId;
     case "cost-canvases":
       // The same trick as Cost reports: compare the canvas so the route sync

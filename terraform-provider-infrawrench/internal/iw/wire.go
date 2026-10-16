@@ -436,6 +436,76 @@ type KubernetesEfficiencyReport struct {
 	UpdatedAt       string                     `json:"updatedAt"`
 }
 
+/* ----------------------------- resource reports ---------------------------- */
+
+// ResourceReportTypeRef names one resource type with its plugin, since type
+// ids repeat across plugins.
+type ResourceReportTypeRef struct {
+	PluginID       string `json:"pluginId"`
+	ResourceTypeID string `json:"resourceTypeId"`
+}
+
+// ResourceReportTagFilter is one tag condition: provider tags, or virtual tags
+// read from the resource's own cost rows.
+type ResourceReportTagFilter struct {
+	Source string   `json:"source"`
+	Key    string   `json:"key"`
+	Op     string   `json:"op"`
+	Values []string `json:"values"`
+}
+
+// ResourceReportFilters is what a report selects. Every list is sent as `[]`
+// rather than null: the server's schema is strict and has no "absent" list.
+type ResourceReportFilters struct {
+	PluginIDs     []string                  `json:"pluginIds"`
+	AccountIDs    []string                  `json:"accountIds"`
+	ResourceTypes []ResourceReportTypeRef   `json:"resourceTypes"`
+	Regions       []string                  `json:"regions"`
+	Statuses      []string                  `json:"statuses"`
+	Tags          []ResourceReportTagFilter `json:"tags"`
+	NameContains  *string                   `json:"nameContains"`
+	CreatedFrom   *string                   `json:"createdFrom"`
+	CreatedTo     *string                   `json:"createdTo"`
+}
+
+// ResourceReportSort is the saved sort; null on the wire sorts by name.
+type ResourceReportSort struct {
+	Column    string `json:"column"`
+	Direction string `json:"direction"`
+}
+
+// ResourceReportConfig is a report's saved definition.
+type ResourceReportConfig struct {
+	Version   int64                 `json:"version"`
+	Filters   ResourceReportFilters `json:"filters"`
+	Columns   []string              `json:"columns"`
+	Sort      *ResourceReportSort   `json:"sort"`
+	CostRange CostDateRange         `json:"costRange"`
+	CostBasis string                `json:"costBasis"`
+	PageSize  int64                 `json:"pageSize"`
+}
+
+// ResourceReportInput is the POST/PUT body. `folderId` is always sent, null
+// meaning "top level", so clearing the attribute really moves the report.
+type ResourceReportInput struct {
+	Name        string               `json:"name"`
+	Description *string              `json:"description,omitempty"`
+	Config      ResourceReportConfig `json:"config"`
+	FolderID    *string              `json:"folderId"`
+}
+
+// ResourceReport is a saved inventory report.
+type ResourceReport struct {
+	ID              string               `json:"id"`
+	Name            string               `json:"name"`
+	Description     *string              `json:"description"`
+	Config          ResourceReportConfig `json:"config"`
+	FolderID        *string              `json:"folderId"`
+	CreatedByUserID *string              `json:"createdByUserId"`
+	CreatedAt       string               `json:"createdAt"`
+	UpdatedAt       string               `json:"updatedAt"`
+}
+
 /* --------------------------- cost report folders --------------------------- */
 
 // CostReportFolderInput is the POST/PUT body.

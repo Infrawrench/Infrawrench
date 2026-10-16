@@ -220,7 +220,14 @@ export async function fetchAccountResources(
   );
 }
 
-const STATUS_FIELD_KEYS = ["status", "state", "phase", "lifecycleState", "provisioningState"];
+/** Field keys a resource's status is read from, first non-empty wins. */
+export const RESOURCE_STATUS_FIELD_KEYS = [
+  "status",
+  "state",
+  "phase",
+  "lifecycleState",
+  "provisioningState",
+] as const;
 
 /**
  * A best-effort one-word status from a resource's stored fields (`running`,
@@ -229,7 +236,7 @@ const STATUS_FIELD_KEYS = ["status", "state", "phase", "lifecycleState", "provis
  */
 export function resourceStatusFromFields(fields: Record<string, unknown> | null): string | null {
   if (!fields) return null;
-  for (const key of STATUS_FIELD_KEYS) {
+  for (const key of RESOURCE_STATUS_FIELD_KEYS) {
     const v = fields[key];
     if (typeof v === "string" && v.trim() !== "" && v.length <= 40) return v.trim();
   }

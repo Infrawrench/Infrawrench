@@ -139,6 +139,11 @@ export default function CostsScreen() {
               onPress={() => router.push(`/org/${orgId}/cost-reports`)}
             />
             <Row
+              title="Resource reports"
+              subtitle="Saved tables of your resources with what each one costs"
+              onPress={() => router.push(`/org/${orgId}/resource-reports`)}
+            />
+            <Row
               title="Canvases"
               subtitle="Reports built from a description, refreshed on open"
               onPress={() => router.push(`/org/${orgId}/cost-canvases`)}

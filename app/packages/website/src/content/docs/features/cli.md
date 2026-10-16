@@ -138,6 +138,15 @@ infrawrench reports move "Monthly spend" folder:"Finance / Old" --folder Archive
 infrawrench reports delete "Old draft" -y --json
 ```
 
+`resource-reports` lists the org's saved [resource reports](./resource-reports.md), inventory tables of synced resources with per-resource cost. Running one by name prints a page of its rows with every column it shows (tags, metadata and cost included). `--limit` sets the page size (up to 500) and `--offset` pages on; `--sort <column>` with optional `--desc` overrides the saved sort for this run, using column ids such as `core:name`, `tag:team` or `cost:mtd`. `--format csv` writes every row (up to 50,000) to `--out <path>` or to stdout, and `--json` prints the rows with their resolved columns and cost windows:
+
+```bash
+infrawrench resource-reports
+infrawrench resource-reports "Production compute" --limit 100 --sort cost:mtd --desc
+infrawrench resource-reports "Production compute" --format csv --out prod.csv
+infrawrench resource-reports "Production compute" --json
+```
+
 `budgets` lists the org's budgets with month-to-date spend, forecast, and how many of this month's alerts nobody has explained yet; `budgets <name|id>` shows one budget's alert history with the note on each firing, and `budgets annotate` [explains a fired alert](./cloud-costs.md#explaining-a-budget-alert) (the latest one unless `--event <id>` names another). The note is posted as a reply in the alert's Slack threads and drawn on the cost charts:
 
 ```

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
@@ -95,6 +96,12 @@ func sizeAtMost(maximum int) validator.List {
 // lists and the allowed-domain list, where order carries no meaning.
 func setSizeAtMost(maximum int) validator.Set {
 	return setvalidator.SizeAtMost(maximum)
+}
+
+// listValueStringsMatch checks every string in a list against a pattern, for
+// lists whose elements have a grammar (the resource report's column ids).
+func listValueStringsMatch(re *regexp.Regexp, message string) validator.List {
+	return listvalidator.ValueStringsAre(stringvalidator.RegexMatches(re, message))
 }
 
 // elementsLengthBetween bounds the length of every string in a list, for the

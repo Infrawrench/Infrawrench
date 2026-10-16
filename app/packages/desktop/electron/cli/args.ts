@@ -26,6 +26,8 @@ export interface RangeFlags {
   days?: number | undefined;
   /** Row cap for listings (`changes`): maps to the endpoint's `pageSize`. */
   limit?: number | undefined;
+  /** Rows to skip (`resource-reports <name>`): the page offset. */
+  offset?: number | undefined;
   /** `changes` filter: created | updated | deleted. */
   kind?: string | undefined;
   /** Resource id to filter/focus on (`changes`, `graph`). */
@@ -459,6 +461,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         type: { type: "string" },
         days: { type: "string" },
         limit: { type: "string" },
+        offset: { type: "string" },
         kind: { type: "string" },
         resource: { type: "string" },
         // `moment` half-window (± around the timestamp).
@@ -738,6 +741,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       type: str("type"),
       days: positiveInt("days"),
       limit: positiveInt("limit"),
+      offset: boundedInt("offset", 0, 100_000_000),
       kind: str("kind"),
       resource: str("resource"),
       window: str("window"),

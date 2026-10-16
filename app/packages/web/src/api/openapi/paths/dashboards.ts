@@ -194,6 +194,7 @@ const TabTarget = strict({
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
     "cost-reports",
+    "resource-reports",
     "cost-canvases",
     "k8s-efficiency",
     "invoices",

@@ -155,6 +155,7 @@ export default function OrgLayout() {
       <Tabs.Screen name="delivery" options={{ href: null, title: "Delivery" }} />
       <Tabs.Screen name="log-workspaces" options={{ href: null, title: "Log workspace" }} />
       <Tabs.Screen name="cost-reports" options={{ href: null, title: "Cost reports" }} />
+      <Tabs.Screen name="resource-reports" options={{ href: null, title: "Resource reports" }} />
       <Tabs.Screen name="cost-canvases" options={{ href: null, title: "Canvases" }} />
       <Tabs.Screen name="k8s-efficiency" options={{ href: null, title: "Kubernetes efficiency" }} />
     </Tabs>

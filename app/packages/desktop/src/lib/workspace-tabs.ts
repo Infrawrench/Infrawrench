@@ -6,6 +6,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -57,6 +58,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -151,6 +153,14 @@ export function getWorkspaceNavigateArgs(
     case "cost-reports":
       return {
         to: "/cost-reports",
+        search: target.reportId ? { report: target.reportId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    // Resource reports: the Cost reports shape, `?report=<id>` (always pass
+    // `search` so going back to the list clears it).
+    case "resource-reports":
+      return {
+        to: "/resource-reports",
         search: target.reportId ? { report: target.reportId } : {},
         ...(replace ? { replace: true } : {}),
       };
@@ -403,6 +413,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "cost-reports") {
     const params = new URLSearchParams(search ?? "");
     return costReportsTabTarget(params.get("report") ?? undefined);
+  }
+  if (segments[0] === "resource-reports") {
+    const params = new URLSearchParams(search ?? "");
+    return resourceReportsTabTarget(params.get("report") ?? undefined);
   }
   if (segments[0] === "cost-canvases") {
     const params = new URLSearchParams(search ?? "");
