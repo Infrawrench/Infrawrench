@@ -167,6 +167,19 @@ export interface ExportFlags {
   out?: string | undefined;
   /** `--focus-version 1.4|1.3`: validated by the command; the latest when omitted. */
   focusVersion?: string | undefined;
+  /**
+   * `--async`: run `export --format csv|ndjson|focus` as a background export
+   * job on the server instead of streaming it in this request.
+   */
+  async: boolean;
+  /** `--wait`: with `--async` (or `export jobs <id>`), poll until done and download. */
+  wait: boolean;
+  /** `--report <name|id>`: export a saved cost report's scope rather than `costs` flags. */
+  report?: string | undefined;
+  /** `--skip-invalid`: `currency import` writes the valid rows of a file with errors. */
+  skipInvalid: boolean;
+  /** `-y/--yes`: `currency import` applies after the preview without asking. */
+  yes: boolean;
 }
 
 // The per-command flag interfaces below live here, with the parser that fills
@@ -340,6 +353,8 @@ export interface UnitCostFlags {
   listLabels: boolean;
   /** `unit-costs --usage-units`: list the usage units the org's cost rows carry. */
   listUsageUnits: boolean;
+  /** `unit-costs <key> --format csv|ndjson`: the series as a file on stdout. */
+  format?: string | undefined;
 }
 
 /**
@@ -579,6 +594,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         out: { type: "string" },
         // `export --format focus`: which FOCUS version to write.
         "focus-version": { type: "string" },
+        // `export --async [--wait] [--report <name>]`: a background export job.
+        async: { type: "boolean", default: false },
+        wait: { type: "boolean", default: false },
+        report: { type: "string" },
+        // `currency import <file> --skip-invalid`.
+        "skip-invalid": { type: "boolean", default: false },
         sections: { type: "string" },
         prune: { type: "boolean", default: false },
         // `exports create` (a warehouse export). `--plugin`, `--account` and
@@ -797,6 +818,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       format: str("format"),
       out: str("out") ?? str("file"),
       focusVersion: str("focus-version"),
+      async: values.async === true,
+      wait: values.wait === true,
+      report: str("report"),
+      skipInvalid: values["skip-invalid"] === true,
+      yes: values.yes === true,
     },
     diff: {
       against: str("against"),
@@ -948,6 +974,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       usageUnit: str("usage-unit"),
       listLabels: values.labels === true,
       listUsageUnits: values["usage-units"] === true,
+      format: str("format"),
     },
   };
 }

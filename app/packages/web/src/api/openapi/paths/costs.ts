@@ -992,6 +992,216 @@ export function registerCostPaths(ctx: BuildContext) {
     },
   });
 
+  const CostExportJobFormat = z.enum(["csv", "ndjson", "focus"]).openapi({
+    description:
+      "`csv` / `ndjson`: Infrawrench's own columns (`day`, the group-by dimension or tag " +
+      "columns, `currency`, `amount`, `usage_amount`, `usage_unit`, `exported_at`, " +
+      "`collection_watermark`), plus per-day unit-cost columns (`unit_cost_metric`, " +
+      "`unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value`, " +
+      "`unit_cost_gap`) when the exported report draws a unit cost. `focus`: the FOCUS layout " +
+      "at full row grain, as CSV.",
+  });
+  const CostExportJobStatus = z
+    .enum(["queued", "running", "succeeded", "failed", "cancelled", "expired"])
+    .openapi({
+      description:
+        "`queued` until a gateway process claims it, `running` while the file is written, then " +
+        "`succeeded` (download it), `failed` (see `error`), `cancelled`, or `expired` once the " +
+        "file has been deleted, 24 hours after it finished.",
+    });
+
+  const CostExportJobRequest = strict({
+    reportId: z
+      .string()
+      .optional()
+      .openapi({
+        description:
+          "Export a saved cost report's scope: its filters (with its saved filter expanded), its " +
+          "group-by as the row identity, its cost basis, and its unit cost when it draws one.",
+      }),
+    query: strict({
+      filters: z.array(CostFilter).optional(),
+      query: z.string().optional().openapi({ description: "Cost query language text." }),
+      savedFilterId: z.string().optional(),
+      chargeTypes: z.array(CostChargeType).optional(),
+      costBasis: CostBasis.optional(),
+      dimensions: z
+        .array(
+          z.enum([
+            "provider",
+            "account",
+            "service",
+            "region",
+            "resource",
+            "charge_type",
+            "commitment",
+          ]),
+        )
+        .optional()
+        .openapi({
+          description: "Row identity for the native layouts. Empty: one row per day and currency.",
+        }),
+      tagKeys: z
+        .array(z.string())
+        .optional()
+        .openapi({ description: "Tag keys written as `tag_<key>` columns." }),
+      virtualTagKeys: z
+        .array(z.string())
+        .optional()
+        .openapi({ description: "Virtual tag keys written as `vtag_<key>` columns." }),
+    })
+      .optional()
+      .openapi({ description: "An ad-hoc scope instead of a saved report." }),
+    format: CostExportJobFormat,
+    focusVersion: z.enum(["1.4", "1.3"]).optional().openapi({
+      description: "FOCUS version for `format: focus`. Omitted means the latest (`1.4`).",
+    }),
+    from: z.string().optional().openapi({
+      description:
+        "First day, `YYYY-MM-DD`. Required with `query`; a report defaults to its own range.",
+    }),
+    to: z.string().optional().openapi({ description: "Last day, inclusive." }),
+  }).openapi("CostExportJobRequest");
+
+  const CostExportJob = strict({
+    id: z.string(),
+    status: CostExportJobStatus,
+    format: CostExportJobFormat,
+    focusVersion: z.enum(["1.4", "1.3"]).nullable(),
+    from: z.string(),
+    to: z.string(),
+    source: strict({
+      kind: z.enum(["report", "query"]),
+      reportId: z.string().nullable(),
+      reportName: z.string().nullable(),
+      unitCostMetric: z.string().nullable().openapi({
+        description: "The metric (or usage unit) whose per-day unit-cost columns the file carries.",
+      }),
+    }),
+    progress: z.number().openapi({ description: "0 to 1: the share of the range written so far." }),
+    rowCount: z.number().int(),
+    byteCount: z.number().openapi({ description: "Uncompressed bytes written so far." }),
+    error: z.string().nullable(),
+    fileName: z.string(),
+    contentType: z.string(),
+    createdAt: IsoDateTime,
+    startedAt: IsoDateTime.nullable(),
+    finishedAt: IsoDateTime.nullable(),
+    expiresAt: IsoDateTime.nullable().openapi({
+      description: "When the file is deleted: 24 hours after it finished.",
+    }),
+    downloadUrl: z
+      .string()
+      .nullable()
+      .openapi({
+        description:
+          "Path of `GET /costs/exports/jobs/{jobId}/download` once `succeeded`, else null. " +
+          "Authenticated like every other route.",
+      }),
+  }).openapi("CostExportJob");
+
+  const jobIdParam = OrgIdParam.extend({
+    jobId: z.string().openapi({ param: { name: "jobId", in: "path" } }),
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/costs/exports/jobs",
+    tags: ["Costs"],
+    summary: "Start a background cost export",
+    description:
+      "Queues an export of a saved report (`reportId`) or an ad-hoc scope (`query`) as CSV, " +
+      "NDJSON or FOCUS CSV, and answers at once with the job. The file is written on the " +
+      "gateway in the background; poll `GET /costs/exports/jobs/{jobId}` for `progress` and " +
+      "download from `downloadUrl` once `status` is `succeeded`. Up to 731 days per job and " +
+      "256 MB per file; three queued or running jobs per person. Rows are read inside the " +
+      "caller's cost visibility, and what is exported is fixed when the job is created, so " +
+      "editing the report afterwards does not change the file.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostExportJobRequest } }, required: true },
+    },
+    responses: {
+      202: { description: "Queued", content: { "application/json": { schema: CostExportJob } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+      409: ErrorResponses[409],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/exports/jobs",
+    tags: ["Costs"],
+    summary: "List your recent export jobs",
+    description:
+      "The caller's 20 most recent export jobs, newest first. Jobs are private to their creator.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Jobs",
+        content: { "application/json": { schema: strict({ jobs: z.array(CostExportJob) }) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/exports/jobs/{jobId}",
+    tags: ["Costs"],
+    summary: "Get an export job's status",
+    description:
+      "Status, progress, row count, error and, once finished, the download path and expiry.",
+    request: { params: jobIdParam },
+    responses: {
+      200: { description: "The job", content: { "application/json": { schema: CostExportJob } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/costs/exports/jobs/{jobId}/download",
+    tags: ["Costs"],
+    summary: "Download an export job's file",
+    description:
+      "The finished file, streamed. 409 while the job is still queued or running (or failed); " +
+      "410 once the file has expired or been deleted.",
+    request: { params: jobIdParam },
+    responses: {
+      200: {
+        description: "The file",
+        content: {
+          "text/csv": { schema: z.string() },
+          "application/x-ndjson": { schema: z.string() },
+        },
+      },
+      404: ErrorResponses[404],
+      409: ErrorResponses[409],
+      410: {
+        description: "Gone: the file expired or was deleted",
+        content: {
+          "application/json": { schema: ErrorResponses[404].content["application/json"].schema },
+        },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/costs/exports/jobs/{jobId}",
+    tags: ["Costs"],
+    summary: "Cancel an export job or delete its file",
+    description:
+      "Cancels a queued or running job (the writer stops at its next chunk), or deletes a " +
+      "finished file before it expires. Answers with the job's new state.",
+    request: { params: jobIdParam },
+    responses: {
+      200: { description: "The job", content: { "application/json": { schema: CostExportJob } } },
+      404: ErrorResponses[404],
+    },
+  });
+
   registry.registerPath({
     method: "get",
     path: "/api/org/{orgId}/costs/dimensions",

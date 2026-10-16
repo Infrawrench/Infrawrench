@@ -39,6 +39,8 @@ import {
   parseItemKey,
   type BulkDragState,
 } from "./CostReportBulk.js";
+import { ReportExportJobs } from "./ReportExportJobs.js";
+import { ReportAnomalyAlertSection } from "./ReportAnomalyAlertSection.js";
 
 /**
  * Hand generated text to the browser's own download path. Works unchanged in
@@ -1220,6 +1222,7 @@ function ReportDetail({
               {exporting ? gt("Preparing FOCUS CSV…") : gt("Download FOCUS CSV")}
             </button>
           )}
+          <ReportExportJobs client={client} report={report} />
           {onShare && (
             <button
               type="button"
@@ -1314,6 +1317,10 @@ function ReportDetail({
       {/* Scheduled sends to Slack/Teams/email; renders nothing when the host
           provides no notifications client (e.g. a surface without them). */}
       <ReportDeliverySection reportId={report.id} client={client} />
+
+      {/* The report's own anomaly alert: its scope, its sensitivity, its
+          destinations. Renders nothing without a host client for it. */}
+      <ReportAnomalyAlertSection reportId={report.id} client={client} />
     </section>
   );
 }

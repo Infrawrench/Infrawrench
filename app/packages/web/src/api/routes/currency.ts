@@ -1,9 +1,18 @@
 import { Hono } from "hono";
-import { currencySettingsSchema, exchangeRateInputSchema } from "@infrawrench/ui/cost/config";
+import {
+  EXCHANGE_RATE_CSV_TEMPLATE,
+  EXCHANGE_RATE_CSV_TEMPLATE_FILENAME,
+} from "@infrawrench/client-core";
+import {
+  currencySettingsSchema,
+  exchangeRateImportRequestSchema,
+  exchangeRateInputSchema,
+} from "@infrawrench/ui/cost/config";
 import {
   CurrencySettingsError,
   deleteOrgExchangeRate,
   getOrgCurrencyConfig,
+  importOrgExchangeRates,
   lookupOrgExchangeRate,
   setOrgCurrencySettings,
   upsertOrgExchangeRate,
@@ -183,6 +192,76 @@ app.put("/rates", async (c) => {
     if (e instanceof CurrencySettingsError) return c.json({ error: e.message }, 400);
     throw e;
   }
+});
+
+/**
+ * GET /api/org/:orgId/currency/rates/template: the CSV template an upload
+ * reads, with one example row per shape. The settings page builds the same
+ * file locally from the client-core constant; this serves the CLI and anyone
+ * scripting against the API.
+ */
+app.get("/rates/template", (c) => {
+  requirePermission(c, "costs:read");
+  return new Response(EXCHANGE_RATE_CSV_TEMPLATE, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${EXCHANGE_RATE_CSV_TEMPLATE_FILENAME}"`,
+    },
+  });
+});
+
+/**
+ * POST /api/org/:orgId/currency/rates/import: many stated rates from a CSV.
+ *
+ * Preview first: `dryRun: true` classifies every row (create, update,
+ * unchanged, error with the reason) and writes nothing; the same body without
+ * it applies. An upload with an invalid row writes nothing unless the caller
+ * passes `skipInvalid`, so a file is never half-applied by accident. A
+ * whole-file problem (missing column, too many rows, table cap) is a 400 with
+ * the result as the body, so a client can show the same message either way.
+ *
+ * Same permission and audit stance as the single-rate PUT: an upload restates
+ * history exactly as a typed rate does, just more of it.
+ */
+app.post("/rates/import", async (c) => {
+  requirePermission(c, "org:settings:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+
+  const parsed = exchangeRateImportRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid exchange rate upload", issues: parsed.error.issues }, 400);
+  }
+
+  const result = await importOrgExchangeRates(organizationId, parsed.data, session.userId);
+  if (result.fileError) return c.json({ ...result, error: result.fileError }, 400);
+  if (result.applied && result.counts.create + result.counts.update > 0) {
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "exchange_rate.import",
+      entityType: "exchange_rate",
+      entityId: organizationId,
+      metadata: {
+        created: result.counts.create,
+        updated: result.counts.update,
+        unchanged: result.counts.unchanged,
+        skippedInvalid: result.counts.error,
+        // The pairs touched, not every row: enough to find the upload in the
+        // log without copying a 2,000-row file into it.
+        pairs: [
+          ...new Set(
+            result.rows.flatMap((r) =>
+              (r.action === "create" || r.action === "update") && r.rate
+                ? [`${r.rate.fromCurrency}>${r.rate.toCurrency}`]
+                : [],
+            ),
+          ),
+        ].slice(0, 50),
+      },
+    });
+  }
+  return c.json(result);
 });
 
 /** DELETE /api/org/:orgId/currency/rates/:rateId: drop one stated rate. */

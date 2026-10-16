@@ -608,6 +608,12 @@ terraform import infrawrench_cost_report_notification.weekly <report-id>/<notifi
 terraform import infrawrench_cost_forecast.plan <report-id>/<forecast-id>
 ```
 
+**Report anomaly alerts** are one per report and import by the report's id:
+
+```sh
+terraform import infrawrench_cost_report_anomaly_alert.platform <report-id>
+```
+
 **Dashboard notifications** work the same way, nested under the dashboard:
 
 ```sh
@@ -677,6 +683,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_cost_forecast`             | composite | `<report-id>/<forecast-id>`; one default per report  |
+| `infrawrench_cost_report_anomaly_alert` | by report | One per report; import by the report's id            |
 | `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |
 | `infrawrench_cost_canvas`               | by id     | `spec_json` holds queries; compared as JSON          |
 | `infrawrench_cost_canvas_notification`  | composite | `<canvas-id>/<notification-id>`; canvas as PDF       |

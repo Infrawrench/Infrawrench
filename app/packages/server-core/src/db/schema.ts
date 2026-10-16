@@ -4940,6 +4940,109 @@ export const costExports = pgTable(
 );
 
 /**
+ * Ad-hoc export jobs: one large download, produced in the background and
+ * fetched when ready. The scheduled `cost_exports` above ship to somebody's
+ * bucket on a cadence; a job is one person's one file, kept for a day.
+ *
+ * The job row is the status the client polls, and the claim: `status` plus
+ * `lease_until` follow the export pass's lease protocol, so any number of
+ * gateway processes can run the loop and a job is worked by exactly one. A
+ * process that dies mid-run leaves the lease to lapse and the next claim
+ * restarts the job from scratch (its chunks are deleted first).
+ */
+export const costExportJobs = pgTable(
+  "cost_export_jobs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Who asked. Only they can see, poll or download the job. */
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * The principal the rows are read as: `{userId, apiKeyId,
+     * agentRegistrationId}`. The job runs outside the request, so the caller's
+     * cost visibility is re-resolved from this at run time; a scoped member's
+     * export can never contain more than their graphs show.
+     */
+    principal: jsonb("principal").notNull(),
+    /**
+     * What to export, resolved at creation (filters already expanded from a
+     * saved filter or report config), so a later edit to the report does not
+     * change a file that is already being written. See `CostExportJobSource`.
+     */
+    source: jsonb("source").notNull(),
+    /** `csv` | `ndjson` (native columns) | `focus` (FOCUS CSV). */
+    format: text("format").notNull(),
+    /** FOCUS version when `format` is `focus`. */
+    focusVersion: text("focus_version"),
+    fromDay: text("from_day").notNull(),
+    toDay: text("to_day").notNull(),
+    /** `queued` | `running` | `succeeded` | `failed` | `cancelled` | `expired`. */
+    status: text("status").notNull().default("queued"),
+    /** 0..1, from the newest day written over the requested range. */
+    progress: doublePrecision("progress").notNull().default(0),
+    rowCount: integer("row_count").notNull().default(0),
+    /** Uncompressed bytes written so far. */
+    byteCount: doublePrecision("byte_count").notNull().default(0),
+    chunkCount: integer("chunk_count").notNull().default(0),
+    error: text("error"),
+    fileName: text("file_name").notNull(),
+    contentType: text("content_type").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    /** While running: the claim. A lapsed lease makes the job claimable again. */
+    leaseUntil: timestamp("lease_until"),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    /** When the file is deleted. Set on success, a day after `finishedAt`. */
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgUserIdx: index("cost_export_jobs_org_user_idx").on(
+      t.organizationId,
+      t.createdByUserId,
+      t.createdAt,
+    ),
+    claimIdx: index("cost_export_jobs_claim_idx").on(t.status, t.leaseUntil),
+    expiryIdx: index("cost_export_jobs_expiry_idx").on(t.expiresAt),
+  }),
+);
+
+/**
+ * An export job's file, in order: base64(gzip(bytes)) per chunk, the session
+ * recordings' storage shape (`ssh_session_recording_chunks`) for the same
+ * reason. The app keeps its own files in Postgres rather than in a bucket of
+ * its own, a job file lives for a day, and appending immutable chunks lets the
+ * writer stream without ever holding the whole file.
+ */
+export const costExportJobChunks = pgTable(
+  "cost_export_job_chunks",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => costExportJobs.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** 0-based position in the file. */
+    seq: integer("seq").notNull(),
+    /** base64(gzip(the chunk's bytes)). */
+    payload: text("payload").notNull(),
+    /** Uncompressed length. */
+    byteLength: integer("byte_length").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    jobSeqUnique: uniqueIndex("cost_export_job_chunks_job_seq_unique").on(t.jobId, t.seq),
+  }),
+);
+
+/**
  * Scheduled delivery of a saved cost report to Slack, Teams and email: one row
  * per schedule, several schedules per report.
  *
@@ -5106,6 +5209,82 @@ export const reportNotifications = pgTable(
     dayOfMonthRange: check(
       "report_notifications_day_of_month_range",
       sql`${t.sendDayOfMonth} >= 1 AND ${t.sendDayOfMonth} <= 31`,
+    ),
+  }),
+);
+
+/**
+ * Anomaly alerts scoped to one cost report: the report's filtered daily total
+ * judged against its own trailing baseline, delivered to destinations chosen
+ * on the alert. One per report. See `client-core/cost-report-anomaly-alerts.ts`
+ * for why this exists beside the org-wide anomaly rules rather than inside them.
+ */
+export const costReportAnomalyAlerts = pgTable(
+  "cost_report_anomaly_alerts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    costReportId: text("cost_report_id")
+      .notNull()
+      .references(() => costReports.id, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    sigmas: doublePrecision("sigmas").notNull().default(3),
+    /** Least rise over the baseline mean, in cents of the series' currency. */
+    minDeltaCents: integer("min_delta_cents").notNull().default(1000),
+    /** The alert routing destination vocabulary; delivered as one pinned leg. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /**
+     * The cost-scoped creator whose visibility the detector applies, exactly as
+     * on `report_notifications` (see that column for why there is no FK).
+     */
+    visibilityUserId: text("visibility_user_id"),
+    createdByUserId: text("created_by_user_id"),
+    lastEvaluatedAt: timestamp("last_evaluated_at"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    reportUnique: uniqueIndex("cost_report_anomaly_alerts_report_unique").on(t.costReportId),
+    orgIdx: index("cost_report_anomaly_alerts_org_idx").on(t.organizationId),
+    sigmasRange: check(
+      "cost_report_anomaly_alerts_sigmas_range",
+      sql`${t.sigmas} >= 1 AND ${t.sigmas} <= 10`,
+    ),
+  }),
+);
+
+/**
+ * What a report anomaly alert found: one row per (alert, day, currency). The
+ * unique index plus `notified_at` is the same deliver-once arrangement as
+ * `cost_anomalies`: a re-judged day refreshes its amounts, and only a row with
+ * no `notified_at` is a candidate to send.
+ */
+export const costReportAnomalies = pgTable(
+  "cost_report_anomalies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    alertId: text("alert_id")
+      .notNull()
+      .references(() => costReportAnomalyAlerts.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    currency: text("currency").notNull(),
+    actualAmount: doublePrecision("actual_amount").notNull(),
+    baselineAmount: doublePrecision("baseline_amount").notNull(),
+    thresholdAmount: doublePrecision("threshold_amount").notNull(),
+    notifiedAt: timestamp("notified_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    alertDayUnique: uniqueIndex("cost_report_anomalies_alert_day_unique").on(
+      t.alertId,
+      t.day,
+      t.currency,
     ),
   }),
 );

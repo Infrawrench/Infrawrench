@@ -12,7 +12,7 @@ import type { BuildContext } from "../context";
  * night, and page the secondary channel if nobody acknowledges".
  */
 
-const AlertDestination = z
+export const AlertDestination = z
   .discriminatedUnion("kind", [
     strict({ kind: z.literal("push") }),
     strict({
@@ -181,7 +181,7 @@ const AlertRuleInput = strict({
   escalation: EscalationPolicy.nullable().optional(),
 }).openapi("AlertRuleInput");
 
-const AlertRulesResponse = strict({
+export const AlertRulesResponse = strict({
   rules: z.array(AlertRule),
   usingDefaults: z.boolean().openapi({
     description:

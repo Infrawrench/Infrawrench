@@ -9,11 +9,23 @@ import {
   type CostReportBulkRequest,
   type CostReportFolderInput,
   type CostReportInput,
+  type CostExportJob,
+  type CostExportJobRequest,
+  type CostReportAnomalyAlertInput,
   type FocusExportRequest,
   type ReportNotificationInput,
 } from "@infrawrench/client-core";
-import { downloadPdfBytes } from "@infrawrench/ui";
+import { downloadBlob, downloadPdfBytes } from "@infrawrench/ui";
 import {
+  cancelCloudCostExportJob,
+  createCloudCostExportJob,
+  deleteCloudReportAnomalyAlert,
+  listCloudReportAnomalyAlerts,
+  loadCloudReportAnomalyAlertTargets,
+  saveCloudReportAnomalyAlert,
+  getCloudCostExportJob,
+  listCloudCostExportJobs,
+  loadCloudCostExportJobFile,
   loadCloudCostReportPdf,
   bulkUpdateCloudCostReports,
   createCloudCostReport,
@@ -59,6 +71,26 @@ export function createDesktopCostReportsClient(): CostReportsClient {
     sharing: createDesktopSharingClient(),
     listReports: () => listCloudCostReports(requireOrgId()),
     downloadFocusExport: (req: FocusExportRequest) => downloadCloudFocusExport(requireOrgId(), req),
+    createExportJob: (req: CostExportJobRequest) => createCloudCostExportJob(requireOrgId(), req),
+    getExportJob: (jobId: string) => getCloudCostExportJob(requireOrgId(), jobId),
+    listExportJobs: () => listCloudCostExportJobs(requireOrgId()),
+    cancelExportJob: (jobId: string) => cancelCloudCostExportJob(requireOrgId(), jobId),
+    downloadExportJob: async (job: CostExportJob) => {
+      const bytes = await loadCloudCostExportJobFile(requireOrgId(), job.id);
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type: job.contentType }), job.fileName);
+    },
+    // The report's own anomaly alert, read through the org-wide list (web does
+    // the same) so "none" is an empty answer rather than a 404.
+    getReportAnomalyAlert: async (reportId: string) => {
+      const alerts = await listCloudReportAnomalyAlerts(requireOrgId());
+      return alerts.find((a) => a.reportId === reportId) ?? null;
+    },
+    listReportAnomalyAlertTargets: (reportId: string) =>
+      loadCloudReportAnomalyAlertTargets(requireOrgId(), reportId),
+    saveReportAnomalyAlert: (reportId: string, input: CostReportAnomalyAlertInput) =>
+      saveCloudReportAnomalyAlert(requireOrgId(), reportId, input),
+    deleteReportAnomalyAlert: (reportId: string) =>
+      deleteCloudReportAnomalyAlert(requireOrgId(), reportId),
     getReport: (reportId: string) => getCloudCostReport(requireOrgId(), reportId),
     createReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),
     updateReport: (reportId: string, input: CostReportInput) =>

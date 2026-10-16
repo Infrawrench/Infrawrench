@@ -138,7 +138,7 @@ export function costScopeRouteDenial(method: string, pathname: string): string |
 }
 
 /** The principal on a Hono context, in the shape the resolver takes. */
-function contextPrincipal(c: Context): CostVisibilityPrincipal {
+export function contextPrincipal(c: Context): CostVisibilityPrincipal {
   const apiKey = c.get("apiKey") as
     { id: string; agentRegistrationId?: string | undefined } | undefined;
   return {

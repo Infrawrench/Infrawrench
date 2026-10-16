@@ -116,6 +116,74 @@ const ExchangeRateInput = strict({
   }),
 }).openapi("ExchangeRateInput");
 
+const ExchangeRateImportRequest = strict({
+  csv: z
+    .string()
+    .max(512 * 1024)
+    .openapi({
+      description:
+        "The file's text, with a header row. Columns (matched by name, case and punctuation " +
+        "insensitive): `from`, `to`, `rate`, and either `effective_from` (+ optional " +
+        "`effective_to`) or `billing_period` (`YYYY-MM`, shorthand for that month's first and " +
+        "last day). Comma, semicolon, tab or pipe delimited. At most 2,000 rows.",
+      example:
+        "from,to,rate,effective_from,effective_to,billing_period\nEUR,USD,1.08,2026-01-01,,\nJPY,USD,0.0067,,,2026-04\n",
+    }),
+  dryRun: z.boolean().optional().openapi({
+    description: "Classify every row and write nothing. The preview the settings page shows.",
+  }),
+  skipInvalid: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "Write the valid rows even when some rows are invalid. Without it an upload with any " +
+        "invalid row writes nothing.",
+    }),
+}).openapi("ExchangeRateImportRequest");
+
+const ExchangeRateImportAction = z.enum(["create", "update", "unchanged", "error"]).openapi({
+  description:
+    "`create`: no stated rate for this pair and effective date yet. `update`: one exists with a " +
+    "different rate or end date, and is replaced. `unchanged`: identical to what is stored. " +
+    "`error`: invalid, with `error` saying why.",
+});
+
+const ExchangeRateImportCounts = strict({
+  create: z.number().int(),
+  update: z.number().int(),
+  unchanged: z.number().int(),
+  error: z.number().int(),
+});
+
+const ExchangeRateImportResult = strict({
+  dryRun: z.boolean().openapi({ description: "True when nothing was written." }),
+  applied: z.boolean().openapi({ description: "True when the rows were written." }),
+  rows: z.array(
+    strict({
+      line: z.number().int().openapi({ description: "Line in the file; the header is line 1." }),
+      action: ExchangeRateImportAction,
+      rate: ExchangeRateInput.optional().openapi({
+        description: "The normalized rate; absent on an `error` row.",
+      }),
+      previousRate: RateDecimal.optional().openapi({
+        description: "The stored rate an `update` replaces.",
+      }),
+      previousEffectiveTo: IsoDate.nullable().optional(),
+      error: z.string().optional(),
+    }),
+  ),
+  counts: ExchangeRateImportCounts,
+  fileError: z
+    .string()
+    .nullable()
+    .openapi({
+      description:
+        "A problem with the file as a whole (a missing column, too many rows, the org's rate cap); " +
+        "`rows` is then empty or unapplied.",
+    }),
+}).openapi("ExchangeRateImportResult");
+
 const CurrencyConfig = strict({
   displayCurrency: CurrencyCode.nullable(),
   autoRates: z.boolean(),
@@ -313,6 +381,64 @@ export function registerCurrencyPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Saved", content: { "application/json": { schema: ExchangeRate } } },
       400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/currency/rates/template",
+    tags: ["Currency"],
+    summary: "CSV template for uploading exchange rates",
+    description:
+      "The header row `POST /currency/rates/import` reads, plus one example row per shape: an " +
+      "open-ended rate, a bounded override, and a `billing_period` row.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "The template",
+        content: { "text/csv": { schema: z.string() } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/currency/rates/import",
+    tags: ["Currency"],
+    summary: "Upload many exchange rates from a CSV",
+    description:
+      "Upserts every row on (`fromCurrency`, `toCurrency`, `effectiveFrom`), exactly as the " +
+      "single-rate PUT does, in one transaction. Send `dryRun: true` first to see each row " +
+      "classified (`create`, `update`, `unchanged`, `error` with the reason); an upload with an " +
+      "invalid row writes nothing unless `skipInvalid` is set. Uploaded rates are ordinary " +
+      "stated rates: they win over the automatic feed for the days they cover, and a " +
+      "`billing_period` row (or an `effective_to`) hands the days after it back to the next " +
+      "rate or the feed. Requires `org:settings:write`; applied uploads are audit-logged as " +
+      "`exchange_rate.import`.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: ExchangeRateImportRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The preview, or the applied upload",
+        content: { "application/json": { schema: ExchangeRateImportResult } },
+      },
+      400: {
+        description:
+          "A malformed body, or a whole-file problem; the body is then the result with " +
+          "`fileError` and `error` set.",
+        content: {
+          "application/json": {
+            schema: ExchangeRateImportResult.extend({ error: z.string() }).openapi(
+              "ExchangeRateImportRefusal",
+            ),
+          },
+        },
+      },
     },
   });
 

@@ -159,6 +159,9 @@ func specChecks() []specCheck {
 		{schema: "ReportNotificationInput", value: ReportNotificationInput{}},
 		{schema: "DashboardNotification", value: DashboardNotification{}},
 		{schema: "DashboardNotificationInput", value: DashboardNotificationInput{}},
+		{schema: "CostReportAnomalyAlert", value: CostReportAnomalyAlert{}},
+		{schema: "CostReportAnomalyAlertInput", value: CostReportAnomalyAlertInput{}},
+		{schema: "CostReportAnomaly", value: CostReportAnomalyFinding{}},
 
 		// CostCanvasSpec and its block union are not checked: the provider
 		// carries the spec as raw JSON end to end, so there is no Go struct

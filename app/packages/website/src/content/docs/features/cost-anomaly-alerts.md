@@ -310,6 +310,10 @@ Slack and Teams messages carry a "View in Infrawrench" button that opens the Cos
 
 <insert [Slack anomaly alert showing the Expected and Unexpected buttons, and the in-channel reply "Astrid marked the Amazon EC2 on 2026-10-01 anomaly as expected"] here>
 
+### Alerts for one report's scope
+
+Organization-wide detection judges providers and services. To watch a narrower slice (one team's accounts, a tag, a cost centre) at its own sensitivity and send it to its own channel, set up an [anomaly alert on a cost report](./cost-reports.md#anomaly-alerts-for-a-report). It runs alongside this detection, after the same cost collection, and alert routing rules do not change where it goes.
+
 ## Paging by SMS
 
 Anomalies can also text your on-call list through the org's Twilio credentials. It is **off by

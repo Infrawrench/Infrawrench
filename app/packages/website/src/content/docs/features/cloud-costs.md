@@ -328,6 +328,33 @@ The Currency page also shows the feed's latest publication and, if the last dail
 
 Stating or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Reading the table only needs `costs:read`: anyone who can see a converted total needs to be able to see what produced it.
 
+### Uploading many rates from a CSV
+
+If your finance system already produces a rate table (a month-end close per currency, say), upload it instead of typing each row. Under the rate table on the Currency page, **Download template** gives you a file with the right header and one example of each row shape, and **Upload CSV…** reads yours.
+
+The file needs a header row. Columns are matched by name, ignoring case, spaces and underscores, so `From Currency` and `from_currency` both work, and columns it doesn't recognise are ignored:
+
+| Column           | Meaning                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `from`           | The currency spend is in, e.g. `EUR`.                                                            |
+| `to`             | The currency to convert into, normally your display currency.                                    |
+| `rate`           | Multiply an amount in `from` by this to get `to`. A comma decimal (`1,0850`) is accepted.        |
+| `effective_from` | The first day the rate applies, `YYYY-MM-DD`.                                                    |
+| `effective_to`   | Optional last day, `YYYY-MM-DD`. Leave it empty for open-ended.                                  |
+| `billing_period` | Instead of the two dates: `YYYY-MM`, meaning exactly that month, from its first to its last day. |
+
+Each row needs either `effective_from` or `billing_period`, not both. Comma, semicolon and tab separated files all work, up to 2,000 rows.
+
+Nothing is written when you pick the file. Infrawrench first shows every row with what it would do: **New** (no rate for that pair and start date yet), **Replaces** (one exists with a different rate or end date, shown next to it), **Unchanged**, or **Error** with the reason and the line number. Two rows for the same pair and start date in one file are an error on the second. Then **Import** writes the new and replaced rows in one go, and every other rate you already have is left alone, so re-uploading a corrected file is safe.
+
+If any row has an error, the upload writes nothing unless you tick **Skip the rows with errors**. A half-applied file is never something you chose by accident.
+
+**Uploaded rates rank exactly like rates you type.** They are stated rates, so they win over automatic exchange rates for every day they cover. A `billing_period` row (or one with an `effective_to`) covers only its own days: the day after, conversion goes back to the next stated rate, or to the automatic rate if that is on. That is usually what a month-end close means, and it stops a stale close rate from carrying forward for months.
+
+<insert [Settings → Currency page with an uploaded CSV previewed under the rate table: a summary line reading 12 new, 2 replace a stored rate, 0 unchanged, 1 with errors, the per-row table with one Error row naming its line, and the Skip the rows with errors checkbox next to the Import button] here>
+
+From a terminal, `infrawrench currency template > rates.csv` writes the template, and `infrawrench currency import rates.csv` prints the same preview and asks before writing (`-y` to skip the question, `--skip-invalid` to import the valid rows of a file with errors). Over the API it is `POST /api/org/{orgId}/currency/rates/import` with `{"csv": "...", "dryRun": true}` for the preview, then the same body without `dryRun`. An applied upload needs the org settings permission and is recorded in the audit log as one `exchange_rate.import` entry with the counts and the currency pairs it touched.
+
 ### Converted numbers always say they are converted
 
 A total that quietly mixes currencies is worse than two totals, so every surface that shows a converted figure labels it: the graph card's footnote, a notice above the Costs panel, the weekly digest, scheduled report deliveries, dashboard PDFs, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were folded in and, for each, **where the rate came from and its date**: your stated rates with their effective dates, or the ECB reference rates with the range of publication dates used. Hovering a bar or point on a cost graph names the rate behind that bucket, its source and its date. Invoice CSVs carry `rate_source` and `rate_effective_from` columns for every line.

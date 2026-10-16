@@ -24,6 +24,73 @@ ipcMain.handle(
   },
 );
 
+// Background export jobs (`/costs/exports/jobs`): queue, poll, list, cancel,
+// and fetch the finished file as bytes for the renderer's download path. The
+// job id is the only path input, encoded, so the renderer cannot steer these
+// at another route.
+ipcMain.handle(
+  "cloud_cost_export_job_create",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetch(orgId, "/costs/exports/jobs", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+);
+ipcMain.handle(
+  "cloud_cost_export_job_get",
+  async (_e, { orgId, jobId }: { orgId: string; jobId: string }) => {
+    return cloudFetch(orgId, `/costs/exports/jobs/${encodeURIComponent(jobId)}`);
+  },
+);
+ipcMain.handle("cloud_cost_export_jobs_list", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/costs/exports/jobs");
+});
+ipcMain.handle(
+  "cloud_cost_export_job_cancel",
+  async (_e, { orgId, jobId }: { orgId: string; jobId: string }) => {
+    return cloudFetch(orgId, `/costs/exports/jobs/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+    });
+  },
+);
+ipcMain.handle(
+  "cloud_cost_export_job_download",
+  async (_e, { orgId, jobId }: { orgId: string; jobId: string }) => {
+    return cloudFetchBytes(orgId, `/costs/exports/jobs/${encodeURIComponent(jobId)}/download`);
+  },
+);
+
+// A report's own anomaly alert: the org-wide list (the report page picks its
+// own), the destination catalog, and the replace/delete writes. The report id
+// is encoded, so the renderer cannot steer these at another route.
+ipcMain.handle("cloud_report_anomaly_alerts_list", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/cost-report-anomaly-alerts");
+});
+ipcMain.handle(
+  "cloud_report_anomaly_alert_targets",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/anomaly-alert/targets`);
+  },
+);
+ipcMain.handle(
+  "cloud_report_anomaly_alert_save",
+  async (_e, { orgId, reportId, input }: { orgId: string; reportId: string; input: unknown }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/anomaly-alert`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+ipcMain.handle(
+  "cloud_report_anomaly_alert_delete",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}/anomaly-alert`, {
+      method: "DELETE",
+    });
+  },
+);
+
 ipcMain.handle(
   "cloud_costs_dimensions",
   async (

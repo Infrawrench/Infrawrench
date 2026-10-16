@@ -16,7 +16,7 @@
  * dims it. A CLI that printed `$0.00` for an unmeasured day would be believed
  * exactly as readily as a chart that drew a zero.
  */
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import { CliError, orgFetch, orgFetchText, resolveOrg, type CliContext } from "../context";
 import type {
   BusinessMetric,
   BusinessMetricLabelSummary,
@@ -274,13 +274,33 @@ export async function cmdUnitCosts(
   if (flags.split) request.groupByLabel = flags.split;
   if (flags.usageUnit) request.usageUnit = flags.usageUnit;
 
-  const response = await orgFetch<UnitCostQueryResponse>(
-    org.id,
+  const path =
     mode === "usage_unit_cost"
       ? "/business-metrics/usage-unit-costs"
-      : `/business-metrics/${encodeURIComponent(metric!)}/unit-costs`,
-    { method: "POST", body: JSON.stringify(request) },
-  );
+      : `/business-metrics/${encodeURIComponent(metric!)}/unit-costs`;
+
+  // `--format csv|ndjson`: the server's export of the same query, verbatim on
+  // stdout, so `> unit-costs.csv` captures a clean file. One row per bucket per
+  // series with the spend and metric value behind each ratio; a gap is an
+  // empty value, never 0.
+  if (flags.format !== undefined) {
+    if (flags.format !== "csv" && flags.format !== "ndjson") {
+      throw new CliError(`--format must be csv or ndjson (got "${flags.format}").`, 2);
+    }
+    process.stdout.write(
+      await orgFetchText(org.id, `${path}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...request, format: flags.format }),
+      }),
+    );
+    return;
+  }
+
+  const response = await orgFetch<UnitCostQueryResponse>(org.id, path, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 
   if (ctx.flags.output === "json") {
     // The resolved inputs first, then the response; the response's own

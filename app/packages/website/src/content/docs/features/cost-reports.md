@@ -37,6 +37,7 @@ The report's page draws the chart full width, with the report's name, its descri
 - **Duplicate** — copy the config under a new name, so a variant does not mean editing the shared original.
 - **Dashboards** — add or remove its cards, one per dashboard.
 - **Download FOCUS CSV** — the rows behind the chart as a [FOCUS 1.4](./cost-exports.md#focus) file, for a FinOps tool or a spreadsheet. See below.
+- **Export…**: a larger file written in the background, as CSV, NDJSON or FOCUS, with progress while it runs. See [Large exports in the background](#large-exports-in-the-background).
 - **Delete** — see below.
 
 Below the chart, **Forecasts** compares the automatic forecast with the report's named forecasts (your plans: scenario models stacked in order, optionally driven by a business metric's planned values), each with a low, expected and high range. See [Cost forecasts](./cost-forecasts.md).
@@ -48,6 +49,23 @@ Below the chart, **Forecasts** compares the automatic forecast with the report's
 One download spans at most 366 days. For anything longer, or for a recurring feed, set up a scheduled export.
 
 <insert [A cost report's detail page with the "Download FOCUS CSV" link highlighted in the header row, beside Dashboards and Rename] here>
+
+### Large exports in the background
+
+**Download FOCUS CSV** has to finish inside one download. For a long range, or a full year of per-resource FOCUS rows, use **Export…** instead: Infrawrench writes the file on its servers in the background and you collect it when it is ready.
+
+Pick a format and a range (it starts at the report's own range) and click **Start export**:
+
+- **CSV** or **NDJSON, report columns**: one row per day, per value of the report's group-by (service, account, a tag…) and per currency, with `amount`, `usage_amount` and `usage_unit`, plus `exported_at` and `collection_watermark` (the newest day every account has reported; rows after it may still change). The report's filters and cost basis apply.
+- **FOCUS 1.4** or **1.3 CSV**: the same layout as the download above, every resource every day.
+
+**When the report draws a unit cost**, the CSV and NDJSON files gain six columns: `unit_cost_metric`, `unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value` and `unit_cost_gap`. They hold each **day's** unit cost across the whole report, so they repeat on every row of the same day; dividing one service's slice by the whole business metric would be a number nobody asked for. A day without a metric value has an empty `unit_cost_value` and the reason in `unit_cost_gap`, never a zero. See [Unit costs](./unit-costs.md#export-the-numbers).
+
+The dialog shows the export's progress, and you can close it: the report's header keeps a short status ("Export 45%") and says **Export ready** with a **Download** link when the file is done. **Your recent exports** in the dialog lists the last few with their status, so a file that finished while you were elsewhere is still one click away. Files are kept for 24 hours, then deleted; a running export can be cancelled from the same list.
+
+What the file contains is fixed when you start it: editing the report afterwards does not change an export already running. The rows are read with your own [cost visibility](../team-and-billing/cost-visibility.md), the same as your charts. Each export spans at most 731 days and 256 MB, and you can have three running at once.
+
+<insert [The Export dialog on a cost report: the format picker set to CSV, report columns, the date range, and Your recent exports listing one export at 45% with a progress bar and one Ready with a Download link] here>
 
 ![A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-detail.png)
 
@@ -127,6 +145,24 @@ Viewing a report's schedules needs `costs:read`; creating, editing, deleting, an
 
 Click a bar, a slice, a legend entry or a value in the table to narrow the report to it and break it down one level further (provider, then service, then region, then resource). Breadcrumbs under the title step back up. The report itself never changes; **Save as new report** keeps the drilled view as a report of its own, in the same folder. See [Chart axes, comparison & drill-down](./cost-chart-axes.md#drill-down).
 
+## Anomaly alerts for a report
+
+[Anomaly detection](./cost-anomaly-alerts.md) watches the whole organization, one provider and one service at a time, and routes what it finds through the org's alert rules. A team that owns a report scoped to its own accounts, tags or cost centre usually wants something narrower: to hear when **their** slice spikes, in **their** channel, at a bar they chose. The **Anomaly alert** section on a report's page does that.
+
+Click **Set up**, then choose:
+
+- **Sensitivity**: how many standard deviations above the report's own trailing 28-day average a day has to be. Lower is more sensitive; the organization-wide default is 3.
+- **Minimum rise per day**: how far above the average a day must be, however unusual it is, in the spend's own currency. It keeps a quiet report from paging over a few dollars.
+- **Send to**: the same destination picker as [alert routing](./alert-routing.md): Slack channels, Teams webhooks, mobile push, whoever is on call on a rotation, members by email or an extra address, GitHub issues, or a paging provider.
+
+<insert [A report's page with the Anomaly alert section in edit mode: sensitivity 2.5, minimum rise 50, and the destination picker with a Slack channel and an email address selected] here>
+
+What it watches is the report's **total**: its filters and saved filter, per currency, with grouping and display options ignored. Editing the report's filters moves the alert with it. It runs after each cost collection, re-judges the last three days as late data arrives, sends a day once, and then stays quiet about that report and currency for seven days, the same rules as organization-wide detection.
+
+It runs **beside** the organization's anomaly alerts, not instead of them. Alert routing rules don't redirect, swallow or hold these messages for quiet hours: whoever set up the alert chose where it goes. A push opens the report on the phone, and the section lists the latest findings (the day, the spend against its baseline, and whether it was sent).
+
+Viewing a report's alert needs `costs:read` and access to the report; setting it up, changing it or deleting it needs `org:settings:write`, like delivery schedules, because it is standing permission to send this scope's spend somewhere. If a member restricted by [cost visibility](../team-and-billing/cost-visibility.md) sets one up, it only ever sees what they can see. Changes land in the audit log. `infrawrench reports anomalies [<report>]` lists alerts and their findings from a terminal, and the Terraform resource is `infrawrench_cost_report_anomaly_alert`.
+
 ## Annotations
 
 A step change in a spend chart explains itself for about a fortnight. After that nobody remembers whether it was a migration, a launch, or a price change — and the answer, if it exists anywhere, is in a Slack thread.
@@ -188,6 +224,9 @@ infrawrench reports "Monthly spend" --x-axis service             # one bar per s
 infrawrench reports move "Monthly spend" "Weekly spend" folder:"Finance / Old" --folder Archive
 infrawrench reports move "Monthly spend" --folder top    # back to the top level
 infrawrench reports delete "Old draft" folder:Scratch -y  # asks first without -y
+infrawrench export --async --format csv "Monthly spend" --wait --out monthly.csv   # a background export of the report
+infrawrench export jobs                 # your recent background exports and their status
+infrawrench reports anomalies "Platform"  # a report's anomaly alert and its latest findings
 ```
 
 `--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour`, `--cumulative` and `--x-axis <dimension>|date` change how this one run is measured, binned and laid out without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
@@ -208,7 +247,7 @@ Reads need `costs:read` and writes need `costs:write`; see [roles & permissions]
 
 The [mobile app](./mobile-app.md) lists your saved reports, grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path, and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too, honouring the saved display options: a table report draws as rows, a donut as a ring with its total, a report with a dimension on its X axis as numbered bars with the values listed underneath, and a usage or count report prints quantities and counts rather than money.
 
-Creating or editing a delivery schedule stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses — org-egress decisions that belong next to the pickers that make them safe.
+A report's [anomaly alert](#anomaly-alerts-for-a-report) shows there too, read-only, with its latest findings; a push about one opens the report. Creating or editing a delivery schedule or an anomaly alert stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses: org-egress decisions that belong next to the pickers that make them safe.
 
 Annotation markers are drawn on the phone's charts too, with the note text a tap away. Writing one stays on web and desktop with everything else: a note's scope choice can change what every chart in the org shows, and that is not a decision to make on a bus.
 

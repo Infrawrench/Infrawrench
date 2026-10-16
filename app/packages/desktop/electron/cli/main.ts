@@ -33,6 +33,7 @@ import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import {
   cmdDeleteReports,
   cmdMoveReports,
+  cmdReportAnomalyAlerts,
   cmdReports,
   cmdRunReport,
   cmdSendReport,
@@ -44,6 +45,8 @@ import { pdfFlags } from "./pdf-export";
 import {
   cmdCreateWarehouseExport,
   cmdExportFocus,
+  cmdExportJob,
+  cmdExportJobs,
   cmdExports,
   cmdExportSetup,
   cmdExportWarehouses,
@@ -59,7 +62,13 @@ import {
   TAG_KEYS_ACTIONS,
   type TagKeysAction,
 } from "./commands/tag-keys";
-import { cmdCurrency, cmdCurrencyFeed, cmdCurrencyRate } from "./commands/currency";
+import {
+  cmdCurrency,
+  cmdCurrencyFeed,
+  cmdCurrencyImport,
+  cmdCurrencyRate,
+  cmdCurrencyTemplate,
+} from "./commands/currency";
 import {
   cmdInvoice,
   cmdInvoiceCustomers,
@@ -150,6 +159,13 @@ COMMANDS
                       [--where …] [--filter <name|id>] [--charge-type …] [--focus-version 1.3];
                       a report brings its
                       own range and filters, range flags override the range
+  export --async --format csv|ndjson|focus [<report n|id>]
+                      a background export job on the server, for ranges and files too big for one
+                      download (up to 731 days); a report exports its scope, group-by and per-day
+                      unit cost   [--wait  follow it and write the file to stdout or --out]
+                      [--dimensions service,account  rows per dimension, without a report]
+  export jobs [<id> [cancel]]
+                      your recent export jobs; one job's status (--wait downloads it); cancel one
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
@@ -201,6 +217,9 @@ COMMANDS
                       (one-off view of the report; nothing is saved)
                       [--format pdf [--out <path>]  save the rendered PDF instead]
   reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
+  reports anomalies [<n|id>]
+                      reports that watch their own scope for anomalies: sensitivity, floor,
+                      destinations and the latest findings (set up on the report page)
   canvas list         cost canvases: reports the chat agent built from a description
   canvas show <n|id>  one canvas's definition (blocks, placements, prompt)
                       [--format pdf [--out <path>]  save the rendered canvas as a PDF]
@@ -261,7 +280,11 @@ COMMANDS
                       (stated or ECB) and date, and why
   currency feed [YYYY-MM-DD]
                       the ECB reference rates for a day   [--currency USD  express them in USD]
-  invoices            invoices raised against managed accounts (customers), newest first; a
+  currency import <file.csv>
+                      upload many stated rates; previews every row (new, replaces, unchanged,
+                      error) and asks before writing   [--skip-invalid] [-y]
+  currency template   the CSV template an import reads, on stdout
+  invoices           invoices raised against managed accounts (customers), newest first; a
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
                       cost centres whose spend is theirs
@@ -290,6 +313,9 @@ COMMANDS
                       [--currency USD] [--where "…"] [--margin  revenue metrics only]
                       [--mode unit|margin|raw] [--scale 1|100|1k|1m|1b]
                       [--label customer=acme,globex] [--label plan!=free] [--split customer]
+                      [--format csv|ndjson  the series as a file on stdout: one row per bucket
+                      per series with the spend and metric value behind each ratio; also works
+                      with --usage-unit]
   unit-costs <key> --labels
                       the metric's labels, their values, and which cost dimension each maps to
   unit-costs --usage-units
@@ -511,7 +537,8 @@ FLAGS
   --service <x>       vulns: only findings running on a resource of this service (id, slug or name)
   --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
   --gaps              compliance: only controls without evidence, with the reasons why
-  --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
+  --format <fmt>      export format: terraform (default) or focus (csv, ndjson or focus with --async);
+                      pdf for reports/dashboards <name|id>; csv or ndjson for unit-costs <key>;
                       costs push: json (default), csv or focus; network-reports <name|id>: csv
                       or pairs-csv
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
@@ -586,7 +613,11 @@ FLAGS
   --user <name>       ssh-fanout, apps: username override for VM hosts
   --launch <app-id>   apps: open this application in the desktop app
   --snippet <name>    ssh-fanout: run a saved command instead of a literal one
-  -y, --yes           skip the confirmation (ssh-fanout's "Run on N hosts?", config apply's plan)
+  -y, --yes           skip the confirmation (ssh-fanout's "Run on N hosts?", config apply's plan,
+                      currency import's preview)
+  --skip-invalid      currency import: write the valid rows of a file that has invalid ones
+  --async             export: queue a background export job instead of streaming the file
+  --wait              export --async / export jobs <id>: poll until the file is ready, then write it
   --concurrency <n>   ssh-fanout: simultaneous connections (default 8, max 16)
   --no-color          disable ANSI colors
   -v, --version       app version
@@ -726,6 +757,25 @@ export async function runCli(): Promise<void> {
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
         break;
       case "export":
+        // Background export jobs: `export jobs …` manages them, and `--async`
+        // queues one instead of streaming the file in this request.
+        if (rest[0] === "jobs") {
+          await cmdExportJobs(ctx, rest.slice(1), {
+            wait: parsed.exportFlags.wait,
+            out: parsed.exportFlags.out,
+          });
+          break;
+        }
+        if (parsed.exportFlags.async) {
+          await cmdExportJob(ctx, parsed.range, rest.join(" "), {
+            format: parsed.exportFlags.format,
+            focusVersion: parsed.exportFlags.focusVersion,
+            wait: parsed.exportFlags.wait,
+            out: parsed.exportFlags.out,
+            dimensions: parsed.exports.dimensions,
+          });
+          break;
+        }
         // `--format focus` is cost data, not inventory: it shares the verb
         // because both write a file in someone else's format, but takes the
         // `costs` flags rather than `--account`.
@@ -825,6 +875,11 @@ export async function runCli(): Promise<void> {
         // spaces), unlike the run form, which joins the words into one name.
         if (rest[0] === "move") {
           await cmdMoveReports(ctx, rest.slice(1), parsed.bulk.folder);
+          break;
+        }
+        // Read-only: alerts are set up on the report page or with Terraform.
+        if (rest[0] === "anomalies") {
+          await cmdReportAnomalyAlerts(ctx, rest.slice(1).join(" "));
           break;
         }
         if (rest[0] === "delete") {
@@ -939,8 +994,9 @@ export async function runCli(): Promise<void> {
       // reports about itself and rides `org:settings:write`; that is a
       // considered act with a form and an audit entry behind it, not something
       // to make one flag away in a shell.
-      // Read-only on purpose, like billing rules: stating a rate restates every
-      // converted total the org reports and rides `org:settings:write`.
+      // No single-rate writes, like billing rules: stating a rate restates
+      // every converted total the org reports and rides `org:settings:write`.
+      // `import` is the exception, and always previews every row first.
       case "currency":
         if (rest[0] === "rate") {
           await cmdCurrencyRate(ctx, rest.slice(1));
@@ -950,8 +1006,22 @@ export async function runCli(): Promise<void> {
           await cmdCurrencyFeed(ctx, rest.slice(1), parsed.range.currency);
           break;
         }
+        if (rest[0] === "import") {
+          await cmdCurrencyImport(ctx, rest.slice(1), {
+            skipInvalid: parsed.exportFlags.skipInvalid,
+            yes: parsed.exportFlags.yes,
+          });
+          break;
+        }
+        if (rest[0] === "template") {
+          await cmdCurrencyTemplate(ctx);
+          break;
+        }
         if (rest.length > 0) {
-          throw new CliError(`Unknown currency subcommand "${rest[0]}". Try rate or feed.`, 2);
+          throw new CliError(
+            `Unknown currency subcommand "${rest[0]}". Try rate, feed, import or template.`,
+            2,
+          );
         }
         await cmdCurrency(ctx);
         break;

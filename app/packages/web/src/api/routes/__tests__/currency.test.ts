@@ -11,6 +11,7 @@ const mockFeedStatus = vi.fn();
 const mockFeedSnapshot = vi.fn();
 const mockUpsertRate = vi.fn();
 const mockDeleteRate = vi.fn();
+const mockImportRates = vi.fn();
 
 /**
  * `CurrencySettingsError` is the module's own class, and the route branches on
@@ -28,6 +29,7 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   lookupOrgExchangeRate: (...args: unknown[]) => mockLookup(...args),
   upsertOrgExchangeRate: (...args: unknown[]) => mockUpsertRate(...args),
   deleteOrgExchangeRate: (...args: unknown[]) => mockDeleteRate(...args),
+  importOrgExchangeRates: (...args: unknown[]) => mockImportRates(...args),
 }));
 
 vi.mock("@infrawrench/server-core/cost/fx-feed-store", () => ({
@@ -354,5 +356,92 @@ describe("DELETE /currency/rates/:rateId", () => {
     const res = await buildApp().request("/rates/rate-9", { method: "DELETE" });
     expect(res.status).toBe(404);
     expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /currency/rates/import", () => {
+  const post = (body: unknown) => ({
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+  const applied = {
+    dryRun: false,
+    applied: true,
+    fileError: null,
+    counts: { create: 1, update: 1, unchanged: 0, error: 0 },
+    rows: [
+      {
+        line: 2,
+        action: "create",
+        rate: { fromCurrency: "EUR", toCurrency: "USD", rate: "1.08", effectiveFrom: "2026-01-01" },
+      },
+      {
+        line: 3,
+        action: "update",
+        rate: { fromCurrency: "GBP", toCurrency: "USD", rate: "1.27", effectiveFrom: "2026-01-01" },
+        previousRate: "1.2600000000",
+      },
+    ],
+  };
+
+  it("rejects without org:settings:write", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request(
+      "/rates/import",
+      post({ csv: "from,to,rate,effective_from\n" }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockImportRates).not.toHaveBeenCalled();
+  });
+
+  it("passes the CSV, the dry-run flag and the caller through", async () => {
+    mockImportRates.mockResolvedValue({ ...applied, dryRun: true, applied: false });
+    const res = await buildApp().request(
+      "/rates/import",
+      post({ csv: "x", dryRun: true, skipInvalid: false }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockImportRates).toHaveBeenCalledWith(
+      "org-1",
+      { csv: "x", dryRun: true, skipInvalid: false },
+      "user-1",
+    );
+    // A preview writes nothing, so it audits nothing.
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("audit-logs an applied upload with its counts and pairs", async () => {
+    mockImportRates.mockResolvedValue(applied);
+    const res = await buildApp().request("/rates/import", post({ csv: "x" }));
+    expect(res.status).toBe(200);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "exchange_rate.import",
+        metadata: expect.objectContaining({
+          created: 1,
+          updated: 1,
+          pairs: ["EUR>USD", "GBP>USD"],
+        }),
+      }),
+    );
+  });
+
+  it("answers a whole-file problem with a 400 carrying the result", async () => {
+    mockImportRates.mockResolvedValue({
+      dryRun: true,
+      applied: false,
+      rows: [],
+      counts: { create: 0, update: 0, unchanged: 0, error: 0 },
+      fileError: "Missing column: rate.",
+    });
+    const res = await buildApp().request("/rates/import", post({ csv: "from,to\n" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Missing column: rate.", rows: [] });
+  });
+
+  it("rejects a body without csv", async () => {
+    const res = await buildApp().request("/rates/import", post({ dryRun: true }));
+    expect(res.status).toBe(400);
+    expect(mockImportRates).not.toHaveBeenCalled();
   });
 });

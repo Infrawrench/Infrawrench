@@ -1508,3 +1508,43 @@ type NetworkFlowReport struct {
 	CreatedAt       string                  `json:"createdAt"`
 	UpdatedAt       string                  `json:"updatedAt"`
 }
+
+// CostReportAnomalyAlertInput is the PUT body for a report's own anomaly alert:
+// a whole replace, one alert per report. Destinations use the alert routing
+// vocabulary (AlertDestination).
+type CostReportAnomalyAlertInput struct {
+	Enabled       bool               `json:"enabled"`
+	Sigmas        float64            `json:"sigmas"`
+	MinDeltaCents int64              `json:"minDeltaCents"`
+	Destinations  []AlertDestination `json:"destinations"`
+}
+
+// CostReportAnomalyAlert is a report's stored anomaly alert. Recent findings
+// are decoded so the wire drift test sees them, but no attribute surfaces
+// them: they are observations, not configuration.
+type CostReportAnomalyAlert struct {
+	ID              string                     `json:"id"`
+	ReportID        string                     `json:"reportId"`
+	ReportName      string                     `json:"reportName"`
+	Enabled         bool                       `json:"enabled"`
+	Sigmas          float64                    `json:"sigmas"`
+	MinDeltaCents   int64                      `json:"minDeltaCents"`
+	Destinations    []AlertDestination         `json:"destinations"`
+	CreatedAt       string                     `json:"createdAt"`
+	UpdatedAt       string                     `json:"updatedAt"`
+	LastEvaluatedAt *string                    `json:"lastEvaluatedAt"`
+	LastError       *string                    `json:"lastError"`
+	Recent          []CostReportAnomalyFinding `json:"recent"`
+}
+
+// CostReportAnomalyFinding is one day a report's scope spiked.
+type CostReportAnomalyFinding struct {
+	ID         string  `json:"id"`
+	Day        string  `json:"day"`
+	Currency   string  `json:"currency"`
+	Actual     float64 `json:"actual"`
+	Baseline   float64 `json:"baseline"`
+	Threshold  float64 `json:"threshold"`
+	NotifiedAt *string `json:"notifiedAt"`
+	CreatedAt  string  `json:"createdAt"`
+}

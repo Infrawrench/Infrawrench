@@ -29,6 +29,12 @@ import {
 } from "./config.js";
 import type { CostApi } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
+import {
+  unitCostExportFile,
+  unitCostExportFilename,
+  type UnitCostExportFormat,
+} from "@infrawrench/client-core";
+import { downloadBlob } from "../delivery/download.js";
 
 /**
  * The unit-cost half of {@link CostGraphCard}: spend divided by a business
@@ -63,6 +69,9 @@ export interface UnitCostCardProps {
 /** One recharts row: `s{i}` per series (null for a gap, never 0), `c{i}` spend. */
 type ChartRow = { bucket: string } & Record<string, number | null | string>;
 
+type UnitCostCardError =
+  { kind: "no_usage_unit" } | { kind: "no_query" } | { kind: "failed"; message: string | null };
+
 /** At most this many series are drawn; the rest stay in the headline count. */
 const MAX_DRAWN_SERIES = 10;
 
@@ -79,8 +88,12 @@ export function UnitCostCard({
   const chart = useChartTheme();
   const resolvedEditLabel = editLabel ?? gt("Edit widget");
   const [response, setResponse] = useState<UnitCostQueryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // What went wrong, not its words: translating inside the query effect would
+  // put `gt` in its deps, and a fresh `gt` per render re-ran the query on every
+  // response, forever.
+  const [error, setError] = useState<UnitCostCardError | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const usageMode = config.unitCostMode === "usage_unit_cost";
   const metricId = config.unitCostMetricId ?? "";
@@ -98,13 +111,7 @@ export function UnitCostCard({
         : null;
     if (!run) {
       setLoading(false);
-      setError(
-        usageMode && !config.unitCostUsageUnit
-          ? gt("Choose a usage unit for this card.")
-          : gt(
-              "This card needs a business metric, and this app build can't query one. Open it on the web app.",
-            ),
-      );
+      setError({ kind: usageMode && !config.unitCostUsageUnit ? "no_usage_unit" : "no_query" });
       return;
     }
     let cancelled = false;
@@ -115,7 +122,8 @@ export function UnitCostCard({
         if (!cancelled) setResponse(next);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load unit costs"));
+        if (!cancelled)
+          setError({ kind: "failed", message: e instanceof Error ? e.message : null });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -123,7 +131,17 @@ export function UnitCostCard({
     return () => {
       cancelled = true;
     };
-  }, [runMetric, runUsage, usageMode, metricId, request, config.unitCostUsageUnit, gt]);
+  }, [runMetric, runUsage, usageMode, metricId, request, config.unitCostUsageUnit]);
+
+  const errorText = !error
+    ? null
+    : error.kind === "no_usage_unit"
+      ? gt("Choose a usage unit for this card.")
+      : error.kind === "no_query"
+        ? gt(
+            "This card needs a business metric, and this app build can't query one. Open it on the web app.",
+          )
+        : (error.message ?? gt("Failed to load unit costs"));
 
   const mode = response?.mode ?? config.unitCostMode ?? "unit_cost";
   const scale = response?.scale ?? 1;
@@ -342,6 +360,22 @@ export function UnitCostCard({
     );
   };
 
+  /**
+   * Save the drawn response as a file. Client-side on purpose: the rows are
+   * the ones on screen, serialised by the same client-core function the
+   * export API uses, so no second query (or desktop IPC channel) is needed and
+   * the file cannot disagree with the chart.
+   */
+  const download = (format: UnitCostExportFormat) => {
+    if (!response) return;
+    const file = unitCostExportFile(response, format);
+    downloadBlob(
+      new Blob([file.body], { type: file.contentType }),
+      unitCostExportFilename(response, request, format),
+    );
+    setExportOpen(false);
+  };
+
   const gapSummary = useMemo(() => {
     if (!response) return null;
     const reasons = new Set(
@@ -364,6 +398,44 @@ export function UnitCostCard({
           >
             ✎
           </button>
+        )}
+        {response && series.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen((open) => !open)}
+              title={gt("Download unit costs")}
+              aria-label={gt("Download unit costs")}
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
+            >
+              ⤓
+            </button>
+            {exportOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-6 z-20 min-w-[9rem] rounded-lg border border-border bg-surface-raised shadow-lg py-1 text-xs"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => download("csv")}
+                  className="block w-full text-left px-3 py-1.5 hover:bg-surface-overlay text-on-surface-secondary"
+                >
+                  {gt("Download CSV")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => download("ndjson")}
+                  className="block w-full text-left px-3 py-1.5 hover:bg-surface-overlay text-on-surface-secondary"
+                >
+                  {gt("Download NDJSON")}
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {onRemove && (
           <button
@@ -434,7 +506,7 @@ export function UnitCostCard({
             role="alert"
             className="flex-1 flex items-center justify-center text-sm text-danger px-4 text-center"
           >
-            {error}
+            {errorText}
           </div>
         ) : (
           renderChart()

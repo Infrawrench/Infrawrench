@@ -57,7 +57,9 @@ import {
   type CostAnnotationInput,
   CURRENCY_CODE_PATTERN,
   EXCHANGE_RATE_LIMITS,
+  EXCHANGE_RATE_CSV_LIMITS,
   type ExchangeRateInput,
+  type ExchangeRateImportRequest,
   type OrgCurrencySettingsInput,
   EXCHANGE_RATE_BASES,
   type BudgetInput,
@@ -118,6 +120,8 @@ import {
   type BusinessMetricValueInput,
   type UnitCostQueryRequest,
   type UnitCostThreshold,
+  UNIT_COST_EXPORT_FORMATS,
+  type UnitCostExportRequest,
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,
   type ManagedInvoiceUpdate,
@@ -156,7 +160,11 @@ import {
   type VirtualTagRule,
   type VirtualTagSource,
 } from "@infrawrench/client-core";
-import { FOCUS_VERSIONS } from "@infrawrench/client-core";
+import {
+  FOCUS_VERSIONS,
+  COST_EXPORT_JOB_FORMATS,
+  type CostExportJobRequest,
+} from "@infrawrench/client-core";
 import { BILLING_PROFILE_LIMITS } from "@infrawrench/client-core";
 import {
   COST_ANOMALY_FEEDBACK_LIMITS,
@@ -1475,6 +1483,31 @@ export const focusExportRequestSchema = costQueryRequestSchema
   })
   .extend({ version: z.enum(FOCUS_VERSIONS).optional() });
 
+/**
+ * `POST /costs/exports/jobs`. Shape only; the cross-field rules (exactly one of
+ * `reportId` and `query`, a range with `query`, the span cap) are the
+ * service's, so they come back as one readable 400 rather than a zod issue.
+ */
+export const costExportJobRequestSchema = z.object({
+  reportId: z.string().min(1).optional(),
+  query: z
+    .object({
+      filters: z.array(costFilterSchema).max(50).optional(),
+      query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
+      savedFilterId: z.string().min(1).optional(),
+      chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
+      costBasis: z.enum(COST_BASES).optional(),
+      dimensions: z.array(z.string().min(1).max(40)).max(8).optional(),
+      tagKeys: z.array(z.string().min(1).max(256)).max(20).optional(),
+      virtualTagKeys: z.array(z.string().min(1).max(256)).max(20).optional(),
+    })
+    .optional(),
+  format: z.enum(COST_EXPORT_JOB_FORMATS),
+  focusVersion: z.enum(FOCUS_VERSIONS).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+
 /* ------------------------------------------------------------------ *
  * Billing rules: POST/PUT /billing-rules.
  * ------------------------------------------------------------------ */
@@ -1768,6 +1801,13 @@ export const exchangeRateInputSchema = z.object({
   effectiveTo: isoDate.nullable().optional(),
 });
 
+/** `POST /currency/rates/import`: a CSV of stated rates. Rows are validated server-side. */
+export const exchangeRateImportRequestSchema = z.object({
+  csv: z.string().max(EXCHANGE_RATE_CSV_LIMITS.maxChars),
+  dryRun: z.boolean().optional(),
+  skipInvalid: z.boolean().optional(),
+});
+
 /**
  * Compile-time proof that each schema still parses to exactly the shared type.
  * Drift here is a type error at build time rather than a runtime surprise on a
@@ -1801,6 +1841,8 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
   Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettingsInput>,
   Exact<z.infer<typeof exchangeRateInputSchema>, ExchangeRateInput>,
+  Exact<z.infer<typeof exchangeRateImportRequestSchema>, ExchangeRateImportRequest>,
+  Exact<z.infer<typeof costExportJobRequestSchema>, CostExportJobRequest>,
   Exact<z.infer<typeof savedCostFilterInputSchema>, SavedCostFilterInput>,
   Exact<z.infer<typeof costScenarioAdjustmentSchema>, CostScenarioAdjustment>,
   Exact<z.infer<typeof costScenarioModelInputSchema>, CostScenarioModelInput>,
@@ -1939,6 +1981,11 @@ export const unitCostQueryRequestSchema = z.object({
   displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
 });
 
+/** `POST …/unit-costs/export`: the same query, plus the file format. */
+export const unitCostExportRequestSchema = unitCostQueryRequestSchema.extend({
+  format: z.enum(UNIT_COST_EXPORT_FORMATS).optional(),
+});
+
 /** Plugin-defined source parameters: a bounded string map, checked against the form server-side. */
 const businessMetricSourceParamsSchema = z
   .record(
@@ -1999,6 +2046,7 @@ export type SchemasMatchBusinessMetricContract = [
   Exact<z.infer<typeof businessMetricInputSchema>, BusinessMetricInput>,
   Exact<z.infer<typeof businessMetricValueInputSchema>, BusinessMetricValueInput>,
   Exact<z.infer<typeof unitCostQueryRequestSchema>, UnitCostQueryRequest>,
+  Exact<z.infer<typeof unitCostExportRequestSchema>, UnitCostExportRequest>,
   Exact<z.infer<typeof businessMetricImporterInputSchema>, BusinessMetricImporterInput>,
   Exact<z.infer<typeof businessMetricImportRunRequestSchema>, BusinessMetricImportRunRequest>,
   Exact<
