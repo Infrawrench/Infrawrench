@@ -606,8 +606,11 @@ export async function networkingCreateResource(
       "2015-12-01",
       params,
     );
+    // `parseXml` unwraps only the response root; the created group sits under
+    // `CreateTargetGroupResult`, and reading it off the root lost the ARN.
+    const result = (data["CreateTargetGroupResult"] ?? data) as Record<string, unknown>;
     const tgs = ensureArray(
-      (data["TargetGroups"] as Record<string, unknown> | undefined)?.["member"],
+      (result["TargetGroups"] as Record<string, unknown> | undefined)?.["member"],
     ) as Record<string, unknown>[];
     const tg = tgs[0] ?? {};
     const name = fields["name"] ?? "";
@@ -657,8 +660,10 @@ export async function networkingCreateResource(
       "2015-12-01",
       params,
     );
+    // Nested under the Result element, like `CreateTargetGroup` above.
+    const result = (data["CreateLoadBalancerResult"] ?? data) as Record<string, unknown>;
     const lbs = ensureArray(
-      (data["LoadBalancers"] as Record<string, unknown> | undefined)?.["member"],
+      (result["LoadBalancers"] as Record<string, unknown> | undefined)?.["member"],
     ) as Record<string, unknown>[];
     const lb = lbs[0] ?? {};
     const name = fields["name"] ?? "";

@@ -412,24 +412,110 @@ describe("networking listers", () => {
 });
 
 describe("compute extended listers", () => {
-  it("listAutoScalingGroups", async () => {
+  // Recorded shape: the DescribeAutoScalingGroups sample response from the
+  // EC2 Auto Scaling API Reference, run through the real `parseXml`. The
+  // groups sit under the Result element, which the lister used to skip.
+  const asgPage = (
+    name: string,
+    launchTemplate: string,
+    nextToken: string,
+  ) => `<?xml version="1.0"?>
+<DescribeAutoScalingGroupsResponse xmlns="https://autoscaling.amazonaws.com/doc/2011-01-01/">
+  <DescribeAutoScalingGroupsResult>
+    <AutoScalingGroups>
+      <member>
+        <AutoScalingGroupName>${name}</AutoScalingGroupName>
+        <AutoScalingGroupARN>arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:12345678-1234-1234-1234-123456789012:autoScalingGroupName/${name}</AutoScalingGroupARN>
+        ${launchTemplate}
+        <MixedInstancesPolicy />
+        <MinSize>2</MinSize>
+        <MaxSize>10</MaxSize>
+        <DesiredCapacity>2</DesiredCapacity>
+        <DefaultCooldown>300</DefaultCooldown>
+        <AvailabilityZones>
+          <member>us-east-1a</member>
+          <member>us-east-1b</member>
+        </AvailabilityZones>
+        <LoadBalancerNames />
+        <TargetGroupARNs />
+        <HealthCheckType>ELB</HealthCheckType>
+        <HealthCheckGracePeriod>300</HealthCheckGracePeriod>
+        <Instances>
+          <member>
+            <ProtectedFromScaleIn>false</ProtectedFromScaleIn>
+            <AvailabilityZone>us-east-1c</AvailabilityZone>
+            <InstanceId>i-1234567890abcdef0</InstanceId>
+            <InstanceType>t3.micro</InstanceType>
+            <HealthStatus>Healthy</HealthStatus>
+            <LifecycleState>InService</LifecycleState>
+          </member>
+        </Instances>
+        <CreatedTime>2023-05-06T17:47:15.107Z</CreatedTime>
+        <SuspendedProcesses />
+        <VPCZoneIdentifier>subnet-057fa0918fEXAMPLE,subnet-610acd08EXAMPLE</VPCZoneIdentifier>
+        <EnabledMetrics />
+        <Status />
+      </member>
+    </AutoScalingGroups>
+    ${nextToken ? `<NextToken>${nextToken}</NextToken>` : ""}
+  </DescribeAutoScalingGroupsResult>
+  <ResponseMetadata>
+    <RequestId>7c6e177f-f082-11e1-ac58-3714bEXAMPLE</RequestId>
+  </ResponseMetadata>
+</DescribeAutoScalingGroupsResponse>`;
+
+  it("listAutoScalingGroups reads groups under the Result element", async () => {
     const ctx = makeCtx({
-      ec2Query: () => ({
-        AutoScalingGroups: {
-          member: {
-            AutoScalingGroupName: "asg1",
-            MinSize: 1,
-            MaxSize: 3,
-            AvailabilityZones: { member: ["us-east-1a"] },
-            Instances: { member: [{}, {}] },
-            LaunchTemplate: { LaunchTemplateName: "lt", Version: "1" },
-          },
-        },
-      }),
+      ec2Query: () =>
+        parseXml(asgPage("my-asg", "<LaunchConfigurationName>my-lc</LaunchConfigurationName>", "")),
     });
     const out = await listAutoScalingGroups(ctx, "acct");
-    expect(out[0]!.fields.instanceCount).toBe(2);
-    expect(out[0]!.fields.launchTemplate).toBe("lt@1");
+    expect(out).toHaveLength(1);
+    expect(out[0]!.externalId).toBe("my-asg");
+    expect(out[0]!.fields).toMatchObject({
+      name: "my-asg",
+      minSize: 2,
+      maxSize: 10,
+      desiredCapacity: 2,
+      healthCheckType: "ELB",
+      availabilityZones: "us-east-1a, us-east-1b",
+      instanceCount: 1,
+      launchTemplate: "",
+      subnetIds: "subnet-057fa0918fEXAMPLE, subnet-610acd08EXAMPLE",
+      targetGroupArns: "",
+    });
+    expect(out[0]!.resolvedOutputs.autoScalingGroupArn).toContain("autoScalingGroupName/my-asg");
+    expect(out[0]!.createdAt).toBe("2023-05-06T17:47:15.107Z");
+  });
+
+  it("listAutoScalingGroups follows NextToken from the Result element", async () => {
+    let n = 0;
+    const ctx = makeCtx({
+      ec2Query: () => {
+        n += 1;
+        return parseXml(
+          n === 1
+            ? asgPage(
+                "web",
+                "<LaunchTemplate><LaunchTemplateName>web-lt</LaunchTemplateName><Version>3</Version></LaunchTemplate>",
+                "token-2",
+              )
+            : asgPage("batch", "<LaunchTemplate />", ""),
+        );
+      },
+    });
+    const out = await listAutoScalingGroups(ctx, "acct");
+    expect(out.map((g) => g.externalId)).toEqual(["web", "batch"]);
+    expect(out[0]!.fields.launchTemplate).toBe("web-lt@3");
+    const calls = vi.mocked(ctx.ec2Query).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.slice(0, 3)).toEqual([
+      "autoscaling",
+      "DescribeAutoScalingGroups",
+      "2011-01-01",
+    ]);
+    expect(calls[0]![3]).not.toHaveProperty("NextToken");
+    expect(calls[1]![3]).toMatchObject({ NextToken: "token-2" });
   });
   it("listAppRunnerServices", async () => {
     const ctx = makeCtx({
@@ -561,22 +647,101 @@ describe("messaging extended listers", () => {
 });
 
 describe("database extended listers", () => {
-  it("listRedshiftClusters builds connection string", async () => {
-    const ctx = makeCtx({
-      ec2Query: () => ({
-        Clusters: {
-          member: {
-            ClusterIdentifier: "c",
-            MasterUsername: "admin",
-            DBName: "dev",
-            Endpoint: { Address: "h", Port: 5439 },
-          },
-        },
-      }),
+  // Recorded shape: the DescribeClusters sample response from the Amazon
+  // Redshift API Reference. Clusters sit under the Result element and each
+  // list item is a `<Cluster>`, not a `<member>`; the lister used to miss both.
+  const redshiftPage = (id: string, marker: string) => `<?xml version="1.0"?>
+<DescribeClustersResponse xmlns="http://redshift.amazonaws.com/doc/2012-12-01/">
+  <DescribeClustersResult>
+    <Clusters>
+      <Cluster>
+        <AllowVersionUpgrade>true</AllowVersionUpgrade>
+        <ClusterIdentifier>${id}</ClusterIdentifier>
+        <NumberOfNodes>1</NumberOfNodes>
+        <AvailabilityZone>us-east-2f</AvailabilityZone>
+        <ClusterVersion>1.0</ClusterVersion>
+        <ClusterAvailabilityStatus>Available</ClusterAvailabilityStatus>
+        <Endpoint>
+          <Port>5439</Port>
+          <Address>${id}.cmeaswqeuae.us-east-2.redshift.amazonaws.com</Address>
+        </Endpoint>
+        <VpcId>vpc-a1abc1a1</VpcId>
+        <PubliclyAccessible>false</PubliclyAccessible>
+        <ClusterCreateTime>2019-12-23T23:21:27.977Z</ClusterCreateTime>
+        <MasterUsername>adminuser</MasterUsername>
+        <DBName>dev</DBName>
+        <IamRoles/>
+        <ClusterSecurityGroups/>
+        <NodeType>dc2.large</NodeType>
+        <ClusterSubnetGroupName>default</ClusterSubnetGroupName>
+        <Tags/>
+        <VpcSecurityGroups>
+          <VpcSecurityGroup>
+            <VpcSecurityGroupId>sg-a1a123ab</VpcSecurityGroupId>
+            <Status>active</Status>
+          </VpcSecurityGroup>
+        </VpcSecurityGroups>
+        <Encrypted>false</Encrypted>
+        <ClusterNodes>
+          <member>
+            <PrivateIPAddress>172.31.64.51</PrivateIPAddress>
+            <NodeRole>SHARED</NodeRole>
+            <PublicIPAddress>54.162.164.238</PublicIPAddress>
+          </member>
+        </ClusterNodes>
+        <PendingModifiedValues/>
+        <ClusterStatus>available</ClusterStatus>
+      </Cluster>
+    </Clusters>
+    ${marker ? `<Marker>${marker}</Marker>` : ""}
+  </DescribeClustersResult>
+  <ResponseMetadata>
+    <RequestId>e47f901c-283e-11ea-8397-219d1980588b</RequestId>
+  </ResponseMetadata>
+</DescribeClustersResponse>`;
+
+  it("listRedshiftClusters reads <Cluster> items under the Result element", async () => {
+    const ctx = makeCtx({ ec2Query: () => parseXml(redshiftPage("mycluster", "")) });
+    const out = await listRedshiftClusters(ctx, "acct");
+    expect(out).toHaveLength(1);
+    expect(out[0]!.externalId).toBe("mycluster");
+    expect(out[0]!.fields).toMatchObject({
+      clusterIdentifier: "mycluster",
+      nodeType: "dc2.large",
+      status: "available",
+      numberOfNodes: 1,
+      dbName: "dev",
+      availabilityZone: "us-east-2f",
+      encrypted: false,
+      publiclyAccessible: false,
+      vpcId: "vpc-a1abc1a1",
+      securityGroupIds: "sg-a1a123ab",
     });
-    expect(
-      (await listRedshiftClusters(ctx, "acct"))[0]!.resolvedOutputs.connectionString,
-    ).toContain("postgresql://admin@h:5439");
+    expect(out[0]!.resolvedOutputs).toMatchObject({
+      endpoint: "mycluster.cmeaswqeuae.us-east-2.redshift.amazonaws.com",
+      port: "5439",
+      masterUsername: "adminuser",
+      connectionString:
+        "postgresql://adminuser@mycluster.cmeaswqeuae.us-east-2.redshift.amazonaws.com:5439/dev",
+    });
+    expect(out[0]!.createdAt).toBe("2019-12-23T23:21:27.977Z");
+  });
+
+  it("listRedshiftClusters follows Marker from the Result element", async () => {
+    let n = 0;
+    const ctx = makeCtx({
+      ec2Query: () => {
+        n += 1;
+        return parseXml(n === 1 ? redshiftPage("first", "marker-2") : redshiftPage("second", ""));
+      },
+    });
+    const out = await listRedshiftClusters(ctx, "acct");
+    expect(out.map((c) => c.externalId)).toEqual(["first", "second"]);
+    const calls = vi.mocked(ctx.ec2Query).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.slice(0, 3)).toEqual(["redshift", "DescribeClusters", "2012-12-01"]);
+    expect(calls[0]![3]).not.toHaveProperty("Marker");
+    expect(calls[1]![3]).toMatchObject({ Marker: "marker-2" });
   });
   it("listRDSClusters aurora-postgresql connection string", async () => {
     const ctx = makeCtx({

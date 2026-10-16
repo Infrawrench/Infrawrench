@@ -7,14 +7,28 @@ export async function listRedshiftClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "redshift",
-    "DescribeClusters",
-    "2012-12-01",
-  );
-  const clusters = ensureArray(
-    (data["Clusters"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  // Two shape mistakes kept every cluster out of the list: `parseXml` unwraps
+  // only the response root, so `Clusters` sits under `DescribeClustersResult`,
+  // and Redshift names its list items `<Cluster>`, not `<member>`. The call
+  // pages at 100 with `Marker` on the Result element.
+  const clusters: Record<string, unknown>[] = [];
+  let marker: string | undefined;
+  for (let page = 0; page < 50; page += 1) {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "redshift",
+      "DescribeClusters",
+      "2012-12-01",
+      { MaxRecords: "100", ...(marker ? { Marker: marker } : {}) },
+    );
+    const result = (data["DescribeClustersResult"] ?? data) as Record<string, unknown>;
+    clusters.push(
+      ...(ensureArray(
+        (result["Clusters"] as Record<string, unknown> | undefined)?.["Cluster"],
+      ) as Record<string, unknown>[]),
+    );
+    marker = result["Marker"] ? String(result["Marker"]) : undefined;
+    if (!marker) break;
+  }
 
   return clusters.map((c) => {
     const clusterId = String(c["ClusterIdentifier"] ?? "");
