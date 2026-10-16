@@ -1,20 +1,37 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
-import { joinIds, type ListerContext } from "../resource-listers.js";
+import { describeEc2Items, joinIds, type ListerContext } from "../resource-listers.js";
+import { collectPages, tokenParam } from "../paginate.js";
+
+/**
+ * Every page of an ELBv2 Describe action. `PageSize` is 1-400; the request
+ * token is `Marker` but the response names it `NextMarker`, and both the list
+ * and the token sit under `<Action>Result` (`parseXml` unwraps only the root).
+ */
+function describeElbv2(
+  ctx: ListerContext,
+  action: string,
+  listKey: string,
+): Promise<Record<string, unknown>[]> {
+  return collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "elasticloadbalancing",
+      action,
+      "2015-12-01",
+      { PageSize: "400", ...tokenParam("Marker", marker) },
+    );
+    const result = (data[`${action}Result`] ?? data) as Record<string, unknown>;
+    return {
+      items: ensureArray(
+        (result[listKey] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: result["NextMarker"],
+    };
+  });
+}
 
 export async function listALBs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "elasticloadbalancing",
-    "DescribeLoadBalancers",
-    "2015-12-01",
-  );
-  // `parseXml` unwraps only the response root, so a real Query response still
-  // nests the list under `DescribeLoadBalancersResult`; reading `LoadBalancers`
-  // off the root found nothing and no ELBv2 load balancer was ever listed.
-  const result = (data["DescribeLoadBalancersResult"] ?? data) as Record<string, unknown>;
-  const lbs = ensureArray(
-    (result["LoadBalancers"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  const lbs = await describeElbv2(ctx, "DescribeLoadBalancers", "LoadBalancers");
 
   return lbs.map((lb) => {
     const name = String(lb["LoadBalancerName"] ?? "");
@@ -151,16 +168,7 @@ export async function listTargetGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "elasticloadbalancing",
-    "DescribeTargetGroups",
-    "2015-12-01",
-  );
-  // Nested under the Result element, like `DescribeLoadBalancers` above.
-  const result = (data["DescribeTargetGroupsResult"] ?? data) as Record<string, unknown>;
-  const tgs = ensureArray(
-    (result["TargetGroups"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  const tgs = await describeElbv2(ctx, "DescribeTargetGroups", "TargetGroups");
 
   return tgs.map((tg) => {
     const name = String(tg["TargetGroupName"] ?? "");
@@ -202,10 +210,7 @@ export async function listSecurityGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeSecurityGroups");
-  const groups = ensureArray(
-    (data["securityGroupInfo"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const groups = await describeEc2Items(ctx, "DescribeSecurityGroups", "securityGroupInfo", 1000);
 
   return groups.map((sg) => {
     const groupId = String(sg["groupId"] ?? "");
@@ -244,10 +249,7 @@ export async function listSubnets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeSubnets");
-  const subnets = ensureArray(
-    (data["subnetSet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const subnets = await describeEc2Items(ctx, "DescribeSubnets", "subnetSet", 1000);
 
   return subnets.map((sub) => {
     const subnetId = String(sub["subnetId"] ?? "");
@@ -288,10 +290,8 @@ export async function listRouteTables(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeRouteTables");
-  const routeTables = ensureArray(
-    (data["routeTableSet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  // DescribeRouteTables is the odd one out: MaxResults tops out at 100.
+  const routeTables = await describeEc2Items(ctx, "DescribeRouteTables", "routeTableSet", 100);
 
   return routeTables.map((rt) => {
     const routeTableId = String(rt["routeTableId"] ?? "");
@@ -346,10 +346,7 @@ export async function listNATGateways(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeNatGateways");
-  const gateways = ensureArray(
-    (data["natGatewaySet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const gateways = await describeEc2Items(ctx, "DescribeNatGateways", "natGatewaySet", 1000);
 
   return gateways.map((nat) => {
     const natGatewayId = String(nat["natGatewayId"] ?? "");
@@ -429,10 +426,12 @@ export async function listInternetGateways(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeInternetGateways");
-  const gateways = ensureArray(
-    (data["internetGatewaySet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const gateways = await describeEc2Items(
+    ctx,
+    "DescribeInternetGateways",
+    "internetGatewaySet",
+    1000,
+  );
 
   return gateways.map((igw) => {
     const igwId = String(igw["internetGatewayId"] ?? "");

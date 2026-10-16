@@ -1,16 +1,27 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import { joinIds, type ListerContext } from "../resource-listers.js";
+import { collectPages, tokenParam } from "../paginate.js";
 
 export async function listIAMRoles(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>("iam", "ListRoles", "2010-05-08");
-  const listResult = data["ListRolesResult"] as Record<string, unknown> | undefined;
-  const roles = ensureArray(
-    (listResult?.["Roles"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  // IAM pages with Marker/MaxItems and can return a short page while
+  // `IsTruncated` is still true, so the walk keys off that flag.
+  const roles = await collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>("iam", "ListRoles", "2010-05-08", {
+      MaxItems: "1000",
+      ...tokenParam("Marker", marker),
+    });
+    const listResult = data["ListRolesResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (listResult?.["Roles"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: listResult?.["IsTruncated"] === "true" ? listResult["Marker"] : undefined,
+    };
+  });
   return roles.map((r) => {
     const roleName = String(r["RoleName"] ?? "");
     return {
@@ -42,10 +53,16 @@ export async function listACMCertificates(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{
-    CertificateSummaryList?: Record<string, unknown>[];
-  }>("acm", "CertificateManager.ListCertificates", {});
-  const certs = data.CertificateSummaryList ?? [];
+  const certs = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{
+      CertificateSummaryList?: Record<string, unknown>[];
+      NextToken?: string;
+    }>("acm", "CertificateManager.ListCertificates", {
+      MaxItems: 1000,
+      ...tokenParam("NextToken", nextToken),
+    });
+    return { items: data.CertificateSummaryList ?? [], next: data.NextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const cert of certs) {
@@ -120,10 +137,17 @@ export async function listWAFWebACLs(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{
-    WebACLs?: Record<string, unknown>[];
-  }>("wafv2", "AWSWAF_20190729.ListWebACLs", { Scope: "REGIONAL", Limit: 100 });
-  const acls = data.WebACLs ?? [];
+  const acls = await collectPages(async (nextMarker) => {
+    const data = await ctx.json<{
+      WebACLs?: Record<string, unknown>[];
+      NextMarker?: string;
+    }>("wafv2", "AWSWAF_20190729.ListWebACLs", {
+      Scope: "REGIONAL",
+      Limit: 100,
+      ...tokenParam("NextMarker", nextMarker),
+    });
+    return { items: data.WebACLs ?? [], next: data.NextMarker };
+  });
   const results: ResourceInstance[] = [];
 
   for (const acl of acls) {
@@ -194,12 +218,15 @@ export async function listSSMParameters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ Parameters?: Record<string, unknown>[] }>(
-    "ssm",
-    "AmazonSSM.DescribeParameters",
-    {},
-  );
-  const params = data.Parameters ?? [];
+  // A page can be empty and still carry a NextToken; 50 is the most a page holds.
+  const params = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{ Parameters?: Record<string, unknown>[]; NextToken?: string }>(
+      "ssm",
+      "AmazonSSM.DescribeParameters",
+      { MaxResults: 50, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: data.Parameters ?? [], next: data.NextToken };
+  });
   return params.map((p) => {
     const name = String(p["Name"] ?? "");
     return {
@@ -233,10 +260,16 @@ export async function listCognitoUserPools(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const listData = await ctx.json<{
-    UserPools?: Array<Record<string, unknown>>;
-  }>("cognito-idp", "AWSCognitoIdentityProviderService.ListUserPools", { MaxResults: 60 });
-  const pools = listData.UserPools ?? [];
+  const pools = await collectPages(async (nextToken) => {
+    const listData = await ctx.json<{
+      UserPools?: Array<Record<string, unknown>>;
+      NextToken?: string;
+    }>("cognito-idp", "AWSCognitoIdentityProviderService.ListUserPools", {
+      MaxResults: 60,
+      ...tokenParam("NextToken", nextToken),
+    });
+    return { items: listData.UserPools ?? [], next: listData.NextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const pool of pools) {

@@ -1,25 +1,33 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import type { ListerContext } from "../resource-listers.js";
+import { collectPages, queryString, tokenParam } from "../paginate.js";
 
 export async function listCodeBuildProjects(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const listData = await ctx.json<{ projects?: string[] }>(
-    "codebuild",
-    "CodeBuild_20161006.ListProjects",
-    {},
-  );
-  const projectNames = listData.projects ?? [];
+  // ListProjects has no page-size parameter (fixed pages of 100).
+  const projectNames = await collectPages(async (nextToken) => {
+    const listData = await ctx.json<{ projects?: string[]; nextToken?: string | null }>(
+      "codebuild",
+      "CodeBuild_20161006.ListProjects",
+      tokenParam("nextToken", nextToken),
+    );
+    return { items: listData.projects ?? [], next: listData.nextToken };
+  });
   if (projectNames.length === 0) return [];
 
-  const data = await ctx.json<{ projects?: Record<string, unknown>[] }>(
-    "codebuild",
-    "CodeBuild_20161006.BatchGetProjects",
-    { names: projectNames },
-  );
-  const projects = data.projects ?? [];
+  // BatchGetProjects takes at most 100 names per call.
+  const projects: Record<string, unknown>[] = [];
+  for (let i = 0; i < projectNames.length; i += 100) {
+    const data = await ctx.json<{ projects?: Record<string, unknown>[] }>(
+      "codebuild",
+      "CodeBuild_20161006.BatchGetProjects",
+      { names: projectNames.slice(i, i + 100) },
+    );
+    projects.push(...(data.projects ?? []));
+  }
 
   return projects.map((p) => {
     const name = String(p["name"] ?? "");
@@ -62,10 +70,16 @@ export async function listCodePipelines(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{
-    pipelines?: Record<string, unknown>[];
-  }>("codepipeline", "CodePipeline_20150709.ListPipelines", {});
-  const pipelines = data.pipelines ?? [];
+  const pipelines = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{
+      pipelines?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("codepipeline", "CodePipeline_20150709.ListPipelines", {
+      maxResults: 1000,
+      ...tokenParam("nextToken", nextToken),
+    });
+    return { items: data.pipelines ?? [], next: data.nextToken };
+  });
 
   return pipelines.map((p) => {
     const name = String(p["name"] ?? "");
@@ -99,15 +113,22 @@ export async function listCloudFormationStacks(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "cloudformation",
-    "DescribeStacks",
-    "2010-05-15",
-  );
-  const result = data["DescribeStacksResult"] as Record<string, unknown> | undefined;
-  const stacks = ensureArray(
-    (result?.["Stacks"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  // DescribeStacks has no page-size parameter; it pages by response size.
+  const stacks = await collectPages(async (nextToken) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "cloudformation",
+      "DescribeStacks",
+      "2010-05-15",
+      tokenParam("NextToken", nextToken),
+    );
+    const result = data["DescribeStacksResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["Stacks"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: result?.["NextToken"],
+    };
+  });
   return stacks.map((s) => {
     const stackName = String(s["StackName"] ?? "");
     return {
@@ -144,10 +165,16 @@ export async function listGlueDatabases(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{
-    DatabaseList?: Record<string, unknown>[];
-  }>("glue", "AWSGlue.GetDatabases", {});
-  const databases = data.DatabaseList ?? [];
+  const databases = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{
+      DatabaseList?: Record<string, unknown>[];
+      NextToken?: string | null;
+    }>("glue", "AWSGlue.GetDatabases", {
+      MaxResults: 100,
+      ...tokenParam("NextToken", nextToken),
+    });
+    return { items: data.DatabaseList ?? [], next: data.NextToken };
+  });
 
   return databases.map((db) => {
     const name = String(db["Name"] ?? "");
@@ -178,15 +205,21 @@ export async function listAPIGateways(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    Items?: Record<string, unknown>[];
-  }>("apigateway", "/v2/apis");
-  const apis = data.Items ?? [];
+  // API Gateway v2's REST API is camelCase on the wire (`items`, `apiId`,
+  // ...); reading the PascalCase SDK names found nothing. The docs give no
+  // range for maxResults, so the walk just follows `nextToken`.
+  const apis = await collectPages(async (nextToken) => {
+    const data = await ctx.jsonGet<{
+      items?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("apigateway", `/v2/apis${queryString({ nextToken })}`);
+    return { items: data.items ?? [], next: data.nextToken };
+  });
 
   return apis.map((api) => {
-    const name = String(api["Name"] ?? "");
-    const apiId = String(api["ApiId"] ?? "");
-    const routeCount = Number(api["RouteSelectionExpression"] ? 1 : 0);
+    const name = String(api["name"] ?? "");
+    const apiId = String(api["apiId"] ?? "");
+    const routeCount = Number(api["routeSelectionExpression"] ? 1 : 0);
 
     return {
       id: ctx.id(accountId, "api-gateway", apiId),
@@ -198,18 +231,18 @@ export async function listAPIGateways(
         name,
         apiId,
         region: ctx.region,
-        protocolType: String(api["ProtocolType"] ?? "HTTP"),
-        description: String(api["Description"] ?? ""),
+        protocolType: String(api["protocolType"] ?? "HTTP"),
+        description: String(api["description"] ?? ""),
         routeCount,
-        createdDate: String(api["CreatedDate"] ?? ""),
+        createdDate: String(api["createdDate"] ?? ""),
       },
       resolvedOutputs: {
-        apiEndpoint: String(api["ApiEndpoint"] ?? ""),
+        apiEndpoint: String(api["apiEndpoint"] ?? ""),
         apiId,
       },
       secretStates: [],
       externalId: apiId,
-      createdAt: String(api["CreatedDate"] ?? ctx.now()),
+      createdAt: String(api["createdDate"] ?? ctx.now()),
       updatedAt: ctx.now(),
     };
   });

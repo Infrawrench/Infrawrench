@@ -2,6 +2,33 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import { joinIds, rdsSecurityGroupIds, type ListerContext } from "../resource-listers.js";
 import { openSearchNormalizedUnits } from "../extended-support.js";
+import { collectPages, queryString, tokenParam } from "../paginate.js";
+
+/**
+ * Every page of an RDS-control-plane `DescribeDBClusters` (RDS, Neptune and
+ * DocumentDB all answer it): `MaxRecords` 20-100, `Marker` in the Result.
+ */
+function describeDBClusters(
+  ctx: ListerContext,
+  service: string,
+  params: Record<string, string> = {},
+): Promise<Record<string, unknown>[]> {
+  return collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      service,
+      "DescribeDBClusters",
+      "2014-10-31",
+      { ...params, MaxRecords: "100", ...tokenParam("Marker", marker) },
+    );
+    const result = data["DescribeDBClustersResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["DBClusters"] as Record<string, unknown> | undefined)?.["DBCluster"],
+      ) as Record<string, unknown>[],
+      next: result?.["Marker"],
+    };
+  });
+}
 
 export async function listRedshiftClusters(
   ctx: ListerContext,
@@ -78,15 +105,7 @@ export async function listRDSClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "rds",
-    "DescribeDBClusters",
-    "2014-10-31",
-  );
-  const result = data["DescribeDBClustersResult"] as Record<string, unknown> | undefined;
-  const clusters = ensureArray(
-    (result?.["DBClusters"] as Record<string, unknown> | undefined)?.["DBCluster"],
-  ) as Record<string, unknown>[];
+  const clusters = await describeDBClusters(ctx, "rds");
   return clusters.map((c) => {
     const clusterId = String(c["DBClusterIdentifier"] ?? "");
     const membersContainer = c["DBClusterMembers"] as Record<string, unknown> | undefined;
@@ -210,19 +229,10 @@ export async function listNeptuneClusters(
   // shares the DescribeDBClusters action (and control plane) with RDS, so
   // the RDS host is the one that actually works: do not "fix" this back to
   // a neptune.* host.
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "neptune",
-    "DescribeDBClusters",
-    "2014-10-31",
-    {
-      "Filters.Filter.1.Name": "engine",
-      "Filters.Filter.1.Values.Value.1": "neptune",
-    },
-  );
-  const result = data["DescribeDBClustersResult"] as Record<string, unknown> | undefined;
-  const clusters = ensureArray(
-    (result?.["DBClusters"] as Record<string, unknown> | undefined)?.["DBCluster"],
-  ) as Record<string, unknown>[];
+  const clusters = await describeDBClusters(ctx, "neptune", {
+    "Filters.Filter.1.Name": "engine",
+    "Filters.Filter.1.Values.Value.1": "neptune",
+  });
   return clusters
     .filter((c) => String(c["Engine"] ?? "") === "neptune")
     .map((c) => {
@@ -274,19 +284,10 @@ export async function listDocumentDBClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "rds",
-    "DescribeDBClusters",
-    "2014-10-31",
-    {
-      "Filters.Filter.1.Name": "engine",
-      "Filters.Filter.1.Values.Value.1": "docdb",
-    },
-  );
-  const result = data["DescribeDBClustersResult"] as Record<string, unknown> | undefined;
-  const clusters = ensureArray(
-    (result?.["DBClusters"] as Record<string, unknown> | undefined)?.["DBCluster"],
-  ) as Record<string, unknown>[];
+  const clusters = await describeDBClusters(ctx, "rds", {
+    "Filters.Filter.1.Name": "engine",
+    "Filters.Filter.1.Values.Value.1": "docdb",
+  });
   return clusters
     .filter((c) => String(c["Engine"] ?? "") === "docdb")
     .map((c) => {
@@ -342,10 +343,17 @@ export async function listEFSFileSystems(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    FileSystems?: Record<string, unknown>[];
-  }>("elasticfilesystem", "/2015-02-01/file-systems");
-  const fileSystems = data.FileSystems ?? [];
+  // DescribeFileSystems pages at 100 by default; `NextMarker` names the next page.
+  const fileSystems = await collectPages(async (marker) => {
+    const data = await ctx.jsonGet<{
+      FileSystems?: Record<string, unknown>[];
+      NextMarker?: string | null;
+    }>(
+      "elasticfilesystem",
+      `/2015-02-01/file-systems${queryString({ MaxItems: 100, Marker: marker })}`,
+    );
+    return { items: data.FileSystems ?? [], next: data.NextMarker };
+  });
 
   return fileSystems.map((fs) => {
     const fsId = String(fs["FileSystemId"] ?? "");
@@ -400,15 +408,21 @@ export async function listDBSubnetGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "rds",
-    "DescribeDBSubnetGroups",
-    "2014-10-31",
-  );
-  const result = data["DescribeDBSubnetGroupsResult"] as Record<string, unknown> | undefined;
-  const groups = ensureArray(
-    (result?.["DBSubnetGroups"] as Record<string, unknown> | undefined)?.["DBSubnetGroup"],
-  ) as Record<string, unknown>[];
+  const groups = await collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "rds",
+      "DescribeDBSubnetGroups",
+      "2014-10-31",
+      { MaxRecords: "100", ...tokenParam("Marker", marker) },
+    );
+    const result = data["DescribeDBSubnetGroupsResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["DBSubnetGroups"] as Record<string, unknown> | undefined)?.["DBSubnetGroup"],
+      ) as Record<string, unknown>[],
+      next: result?.["Marker"],
+    };
+  });
 
   return groups.map((g) => {
     const name = String(g["DBSubnetGroupName"] ?? "");

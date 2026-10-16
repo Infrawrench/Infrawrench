@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import type { ListerContext } from "../resource-listers.js";
+import { collectPages, queryString, tokenParam } from "../paginate.js";
 
 export async function listCloudWatchAlarms(
   ctx: ListerContext,
@@ -8,15 +9,21 @@ export async function listCloudWatchAlarms(
 ): Promise<ResourceInstance[]> {
   // CloudWatch (signing name `monitoring`) speaks the AWS Query protocol,
   // not JSON-RPC. The JSON form returns 404 from the endpoint.
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "monitoring",
-    "DescribeAlarms",
-    "2010-08-01",
-  );
-  const result = data["DescribeAlarmsResult"] as Record<string, unknown> | undefined;
-  const metricAlarms = ensureArray(
-    (result?.["MetricAlarms"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  const metricAlarms = await collectPages(async (nextToken) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "monitoring",
+      "DescribeAlarms",
+      "2010-08-01",
+      { MaxRecords: "100", ...tokenParam("NextToken", nextToken) },
+    );
+    const result = data["DescribeAlarmsResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["MetricAlarms"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: result?.["NextToken"],
+    };
+  });
 
   return metricAlarms.map((a) => {
     const alarmName = String(a["AlarmName"] ?? "");
@@ -74,12 +81,15 @@ export async function listCloudWatchLogGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ logGroups?: Record<string, unknown>[] }>(
-    "logs",
-    "Logs_20140328.DescribeLogGroups",
-    {},
-  );
-  const logGroups = data.logGroups ?? [];
+  // DescribeLogGroups caps a page at 50.
+  const logGroups = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{ logGroups?: Record<string, unknown>[]; nextToken?: string }>(
+      "logs",
+      "Logs_20140328.DescribeLogGroups",
+      { limit: 50, ...tokenParam("nextToken", nextToken) },
+    );
+    return { items: data.logGroups ?? [], next: data.nextToken };
+  });
 
   return logGroups.map((lg) => {
     const logGroupName = String(lg["logGroupName"] ?? "");
@@ -153,10 +163,14 @@ export async function listBackupVaults(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.restJson<{
-    BackupVaultList?: Array<Record<string, unknown>>;
-  }>("backup", "/backup-vaults", {}, "GET");
-  const vaults = data.BackupVaultList ?? [];
+  // Query params are camelCase, the response is PascalCase (`NextToken`).
+  const vaults = await collectPages(async (nextToken) => {
+    const data = await ctx.restJson<{
+      BackupVaultList?: Array<Record<string, unknown>>;
+      NextToken?: string | null;
+    }>("backup", `/backup-vaults${queryString({ maxResults: 1000, nextToken })}`, {}, "GET");
+    return { items: data.BackupVaultList ?? [], next: data.NextToken };
+  });
   return vaults.map((v) => {
     const vaultName = String(v["BackupVaultName"] ?? "");
     return {

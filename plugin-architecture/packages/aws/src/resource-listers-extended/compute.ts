@@ -2,6 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import { joinIds, type ListerContext } from "../resource-listers.js";
 import { fetchSigned } from "../signed-request.js";
+import { collectPages, tokenParam } from "../paginate.js";
 
 export async function listAutoScalingGroups(
   ctx: ListerContext,
@@ -83,10 +84,17 @@ export async function listAppRunnerServices(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{
-    ServiceSummaryList?: Record<string, unknown>[];
-  }>("apprunner", "AppRunner.ListServices", {});
-  const services = data.ServiceSummaryList ?? [];
+  // App Runner caps a page at 20.
+  const services = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{
+      ServiceSummaryList?: Record<string, unknown>[];
+      NextToken?: string | null;
+    }>("apprunner", "AppRunner.ListServices", {
+      MaxResults: 20,
+      ...tokenParam("NextToken", nextToken),
+    });
+    return { items: data.ServiceSummaryList ?? [], next: data.NextToken };
+  });
 
   return services.map((svc) => {
     const serviceName = String(svc["ServiceName"] ?? "");
@@ -122,12 +130,16 @@ export async function listBatchJobQueues(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   // AWS Batch is REST-JSON over /v1/*: JSON-RPC at `/` returns 404.
-  const data = await ctx.restJson<{ jobQueues?: Record<string, unknown>[] }>(
-    "batch",
-    "/v1/describejobqueues",
-    {},
-  );
-  const queues = data.jobQueues ?? [];
+  const queues = await collectPages(async (nextToken) => {
+    const data = await ctx.restJson<{
+      jobQueues?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("batch", "/v1/describejobqueues", {
+      maxResults: 100,
+      ...tokenParam("nextToken", nextToken),
+    });
+    return { items: data.jobQueues ?? [], next: data.nextToken };
+  });
 
   return queues.map((q) => {
     const name = String(q["jobQueueName"] ?? "");
@@ -160,12 +172,15 @@ export async function listSageMakerEndpoints(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ Endpoints?: Record<string, unknown>[] }>(
-    "sagemaker",
-    "SageMaker.ListEndpoints",
-    {},
-  );
-  const endpoints = data.Endpoints ?? [];
+  // ListEndpoints defaults to 10 a page; 100 is the most it allows.
+  const endpoints = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{ Endpoints?: Record<string, unknown>[]; NextToken?: string }>(
+      "sagemaker",
+      "SageMaker.ListEndpoints",
+      { MaxResults: 100, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: data.Endpoints ?? [], next: data.NextToken };
+  });
 
   return endpoints.map((ep) => {
     const name = String(ep["EndpointName"] ?? "");
