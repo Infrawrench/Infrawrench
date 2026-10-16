@@ -206,7 +206,7 @@ function printResult(
   printTable(rows, columns);
   println(
     c.dim(
-      "Amortized basis. — means nothing to measure, not zero. --json or --format csv for every metric.",
+      "Amortized basis. A dash means nothing to measure, not zero. --json or --format csv for every metric.",
     ),
   );
 }

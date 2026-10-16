@@ -356,7 +356,7 @@ describe("parseCliArgs: costs forecast", () => {
   });
 });
 
-describe("parseCliArgs — commitments reports", () => {
+describe("parseCliArgs: commitments reports", () => {
   it("carries --metric, --bin, --group-by and the csv export flags through", () => {
     const parsed = parseCliArgs([
       "commitments",
