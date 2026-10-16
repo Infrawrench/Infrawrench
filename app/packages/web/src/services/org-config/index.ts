@@ -24,6 +24,10 @@
  *
  * A plan is also the dry run: `POST /config/plan` runs steps 1–2 and stops.
  */
+import {
+  IdleSettingsError,
+  validateIdleSettingsPatch,
+} from "@infrawrench/server-core/idle/settings";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -38,6 +42,7 @@ import {
   normalizeProbeUrl,
   normalizeSavingsFindingFilter,
   tallyOrgConfigChanges,
+  type IdleRuleOverride,
   type OrgConfigApplyMode,
   type OrgConfigApplyResult,
   type OrgConfigBudget,
@@ -78,6 +83,8 @@ import {
   orgPostureSettings,
   orgExtendedSupportSettings,
   objectAccessGrants,
+  orgIdleFindingSettings,
+  accountIdlePolls,
   orgTagPolicies,
   resources,
   savingsViews,
@@ -1676,6 +1683,43 @@ function planAlertSettings(plan: PlanBuilder, args: AlertSettingsArgs): void {
           });
       },
     );
+  }
+
+  if (incoming.idleFindings) {
+    // Drop absent keys so the stored overrides (and the plan's diff against
+    // them) only ever hold what the document actually set.
+    const rules: Record<string, IdleRuleOverride> = {};
+    for (const [key, rule] of Object.entries(incoming.idleFindings.rules)) {
+      rules[key] = {
+        ...(rule.enabled !== undefined ? { enabled: rule.enabled } : {}),
+        ...(rule.thresholds !== undefined ? { thresholds: rule.thresholds } : {}),
+      };
+    }
+    const next = {
+      enabled: incoming.idleFindings.enabled,
+      lookbackDays: incoming.idleFindings.lookbackDays,
+      rules,
+    };
+    try {
+      validateIdleSettingsPatch(next, state.idleRules);
+    } catch (e) {
+      if (e instanceof IdleSettingsError) throw new OrgConfigError(`Idle rules: ${e.message}`);
+      throw e;
+    }
+    singleton("idleFindings", "Idle rules", next, current.idleFindings, async (tx) => {
+      await tx
+        .insert(orgIdleFindingSettings)
+        .values({ organizationId, ...next })
+        .onConflictDoUpdate({
+          target: orgIdleFindingSettings.organizationId,
+          set: { ...next, updatedAt: now },
+        });
+      // New thresholds or window: every account is due for a fresh read.
+      await tx
+        .update(accountIdlePolls)
+        .set({ nextPollAt: now })
+        .where(eq(accountIdlePolls.organizationId, organizationId));
+    });
   }
 
   if (incoming.digest) {

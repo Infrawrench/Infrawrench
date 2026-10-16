@@ -579,6 +579,9 @@ export async function listRDSInstances(
         subnetIds: joinIds(subnets.map((s) => s["SubnetIdentifier"])),
         securityGroupIds: rdsSecurityGroupIds(db),
         dbClusterIdentifier: String(db["DBClusterIdentifier"] ?? ""),
+        // Read by the idle rule: a database younger than the lookback window
+        // has not had the chance to be used yet.
+        createdTime: String(db["InstanceCreateTime"] ?? ""),
       },
       resolvedOutputs: {
         endpoint: host,
@@ -818,6 +821,9 @@ export async function listDynamoDBTables(
         (t["BillingModeSummary"] as Record<string, unknown> | undefined)?.["BillingMode"] ??
           "PROVISIONED",
       );
+      // Table-level provisioned capacity (an on-demand table reports 0s), for
+      // the idle rule's utilisation and the on-demand comparison.
+      const throughput = t["ProvisionedThroughput"] as Record<string, unknown> | undefined;
       // Stash schema + indexes as JSON so the detail renderer can show a
       // "Schema & indexes" tab without re-calling DescribeTable. The leading
       // underscore marks the field as internal: render-resource.ts strips
@@ -842,6 +848,9 @@ export async function listDynamoDBTables(
           itemCount: Number(t["ItemCount"] ?? 0),
           sizeBytes: Number(t["TableSizeBytes"] ?? 0),
           billingMode,
+          provisionedReadCapacityUnits: Number(throughput?.["ReadCapacityUnits"] ?? 0),
+          provisionedWriteCapacityUnits: Number(throughput?.["WriteCapacityUnits"] ?? 0),
+          createdTime: String(t["CreationDateTime"] ?? ""),
           partitionKey,
           ...(sortKey ? { sortKey } : {}),
           _indexesJson: JSON.stringify(indexesPayload),
@@ -902,6 +911,9 @@ export async function listElastiCacheClusters(
         status: String(c["CacheClusterStatus"] ?? ""),
         availabilityZone: String(c["PreferredAvailabilityZone"] ?? ""),
         securityGroupIds: joinIds(securityGroups.map((g) => g["SecurityGroupId"])),
+        // A member of a replication group is removed with the group, not alone.
+        replicationGroupId: String(c["ReplicationGroupId"] ?? ""),
+        createdTime: String(c["CacheClusterCreateTime"] ?? ""),
       },
       resolvedOutputs: {
         endpoint: String(endpoint?.["Address"] ?? ""),

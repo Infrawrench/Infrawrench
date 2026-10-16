@@ -40,6 +40,13 @@ const METRICS_PERMISSIONS: PreflightPermission[] = [
   { id: "logging.logEntries.list", label: "Read Cloud Logging entries" },
 ];
 
+const IDLE_FINDING_PERMISSIONS: PreflightPermission[] = [
+  {
+    id: "monitoring.timeSeries.list",
+    label: "Read GKE and Cloud NAT metrics over the idle rules' lookback window",
+  },
+];
+
 const COSTS_PERMISSIONS: PreflightPermission[] = [
   { id: "bigquery.jobs.create", label: "Run BigQuery queries (billing export)" },
   { id: "bigquery.tables.getData", label: "Read the billing export table" },
@@ -61,6 +68,13 @@ export const gcpPreflight: PreflightDeclaration = {
       description:
         "Cloud Monitoring time series and Cloud Logging entries for resource Metrics and Logs tabs.",
       requiredPermissions: METRICS_PERMISSIONS,
+    },
+    {
+      id: "idle-findings",
+      label: "Idle resource findings",
+      description:
+        "A daily Cloud Monitoring read that flags GKE clusters with no workloads and Cloud NAT gateways with no traffic.",
+      requiredPermissions: IDLE_FINDING_PERMISSIONS,
     },
     {
       id: "costs",
@@ -155,6 +169,7 @@ const TEMPLATE_PERMISSIONS: Record<string, string[]> = {
     "workflows.workflows.list",
   ],
   metrics: METRICS_PERMISSIONS.map((p) => p.id),
+  "idle-findings": IDLE_FINDING_PERMISSIONS.map((p) => p.id),
   costs: COSTS_PERMISSIONS.map((p) => p.id),
 };
 

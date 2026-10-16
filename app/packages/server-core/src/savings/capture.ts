@@ -41,6 +41,7 @@ import { getPlugin } from "../plugin-loader";
 import type { PriorResourceSnapshot, ResourceChangeEvent } from "../resource-changes";
 import type { ScheduleRecord } from "../schedules/store";
 import { endOpenScheduleSavings, recordSavingsEvent, resumeScheduleSaving } from "./events";
+import { findIdleFindingForResource } from "../idle/feed";
 
 /** Trailing days of billing a deletion's projection is quoted from. */
 export const DELETION_COST_WINDOW_DAYS = 30;
@@ -289,20 +290,26 @@ export interface DeletionCapture {
 }
 
 /**
- * Deleting a resource the orphan finder would have flagged is a saving worth
- * all of what it cost. A deletion of anything else is not recorded: removing
- * something in use is a change, not an optimization, and counting it would
- * credit teardown as savings.
+ * Deleting a resource the orphan finder would have flagged, or one a
+ * metric-based idle rule currently flags, is a saving worth all of what it
+ * cost. A deletion of anything else is not recorded: removing something in
+ * use is a change, not an optimization, and counting it would credit teardown
+ * as savings.
  */
 export async function captureDeletionSaving(input: DeletionCapture): Promise<void> {
   try {
     const loaded = await getPlugin(input.pluginId);
     const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === input.resourceTypeId);
-    if (!typeDef?.orphanRule) return;
 
     const row = await loadResourceRow(input.organizationId, input.resourceId);
     const fields = asFields(input.fields ?? row?.fieldsJson);
-    const reason = evaluateOrphanRule(typeDef.orphanRule, fields);
+    let reason = typeDef?.orphanRule ? evaluateOrphanRule(typeDef.orphanRule, fields) : null;
+    // The idle verdict outlives the resource row until the next collection,
+    // which is what lets a deletion be matched to it here.
+    const idle = reason
+      ? null
+      : await findIdleFindingForResource(input.organizationId, input.resourceId);
+    if (idle) reason = idle.reason;
     if (!reason) return;
 
     const today = isoDay(input.now ?? new Date());
@@ -315,11 +322,14 @@ export async function captureDeletionSaving(input: DeletionCapture): Promise<voi
     );
     const estimated = billed
       ? null
-      : await estimateMonthly(
+      : ((await estimateMonthly(
           input.ctx ?? (await loadCtx(input.accountId, input.organizationId)),
           input.resourceTypeId,
           fields,
-        );
+        )) ??
+        (idle?.estimate
+          ? { monthly: idle.estimate.monthlyAmount, currency: idle.estimate.currency }
+          : null));
     const perDay =
       billed?.perDay ?? (estimated ? estimated.monthly / AVERAGE_DAYS_PER_MONTH : null);
     const currency = billed?.currency ?? estimated?.currency ?? null;

@@ -8,12 +8,18 @@ import {
 import { parseXml } from "../xml.js";
 
 describe("awsPreflight declaration", () => {
-  it("declares the four capabilities with provider-native permission ids", () => {
+  it("declares the five capabilities with provider-native permission ids", () => {
     expect(awsPreflight.capabilities.map((c) => c.id)).toEqual([
       "resources",
       "metrics",
       "costs",
+      "idle-findings",
       "ai-request-logs",
+    ]);
+    const idle = awsPreflight.capabilities.find((c) => c.id === "idle-findings")!;
+    expect(idle.requiredPermissions.map((p) => p.id)).toEqual([
+      "cloudwatch:GetMetricData",
+      "pricing:GetProducts",
     ]);
     const costs = awsPreflight.capabilities.find((c) => c.id === "costs")!;
     expect(costs.requiredPermissions.map((p) => p.id)).toEqual([

@@ -31,6 +31,7 @@ The add-account form (and **Check credentials** on the account page) tests the s
 
 - **Resource inventory** — a representative sample of the list permissions the plugin uses: `compute.instances.list`, `storage.buckets.list`, `container.clusters.list`, `cloudsql.instances.list`, `run.services.list`, `pubsub.topics.list`, `bigquery.datasets.get`, `secretmanager.secrets.list`.
 - **Metrics & dashboards** — `monitoring.timeSeries.list` for the Metrics tabs and `logging.logEntries.list` for the Logs tabs.
+- **[Idle resource findings](../features/idle-resources.md)**: `monitoring.timeSeries.list`, for the daily read that flags idle GKE clusters and Cloud NAT gateways.
 - **Cost reporting** — `bigquery.jobs.create` and `bigquery.tables.getData`, plus the **Billing export table** field must be set; the checklist points at the [billing export setup](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) when it isn't.
 
 The generator emits a custom role definition in YAML — create it with `gcloud iam roles create infrawrench --project=YOUR_PROJECT --file=role.yaml` and grant it to the service account instead of the broad Viewer role. Cost reporting additionally needs the role (or **BigQuery Data Viewer**) on the billing export dataset itself.
@@ -114,6 +115,15 @@ The **Metrics** tab reads Cloud Monitoring and the **Logs** tab reads Cloud Logg
 | Cloud Armor policy                   |                                                                                                                                                                                | Requests the policy evaluated on its load balancers |
 
 Charts only appear for series Cloud Monitoring has data for; a service with no traffic in the window shows fewer charts. The service account needs **Monitoring Viewer** (`roles/monitoring.viewer`) for metrics and **Logs Viewer** (`roles/logging.viewer`) for logs.
+
+## Idle resource findings
+
+Once a day the cloud poller reads Cloud Monitoring for every synced GKE cluster and Cloud NAT gateway and adds the idle ones to [Potential savings](../features/idle-resources.md):
+
+- **GKE clusters**: container CPU (`kubernetes.io/container/cpu/core_usage_time`) grouped by namespace, ignoring the namespaces GKE manages (`kube-system`, `kube-public`, `kube-node-lease`, `gke-*`, `gmp-*`), and the nodes' average allocatable CPU (`kubernetes.io/node/cpu/allocatable_utilization`). A cluster is idle when no other namespace ran a container, or when its nodes averaged under 2% CPU. A Standard cluster with system metrics turned off has nothing to read and is never flagged. The estimate is the $0.10 cluster-hour management fee plus the first node pool's nodes and boot disks at list price; one zonal or Autopilot cluster per billing account is covered by the free-tier credit. The fix is `gcloud container clusters delete`.
+- **Cloud NAT gateways**: `router.googleapis.com/nat/allocated_ports` proves VMs are assigned, and `nat/sent_bytes_count` shows whether they used it. Cloud NAT bills per assigned VM and per NAT IP, and the VM count is not a metric, so these findings carry no estimate. The fix is `gcloud compute routers nats delete`.
+
+Forwarding rules are not judged: no single Cloud Monitoring metric covers every load balancer type. Unused static IPs are already flagged by the [orphan finder](../features/orphan-finder.md).
 
 ## Terraform export
 

@@ -23,6 +23,7 @@ import {
 } from "./metrics/db-metrics.js";
 import {
   albMetrics,
+  classicElbMetrics,
   targetGroupMetrics,
   cloudFrontDistributionMetrics,
   apiGatewayMetrics,
@@ -187,6 +188,8 @@ export async function fetchMetricSeries(
       return lambdaFunctionMetrics(ctx, resource);
     case "alb":
       return albMetrics(ctx, resource);
+    case "classic-elb":
+      return classicElbMetrics(ctx, resource);
     case "dynamodb-table":
       return dynamoDbTableMetrics(ctx, resource);
     case "sqs-queue":

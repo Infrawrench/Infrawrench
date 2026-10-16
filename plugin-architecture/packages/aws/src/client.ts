@@ -26,6 +26,8 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
   QuotaUsage,
+  IdleFindingRecord,
+  IdleScanRequest,
   VulnerabilityFinding,
   PriceCatalogRequest,
   PriceCatalogResult,
@@ -75,6 +77,7 @@ import {
   listRoute53HostedZones,
   listRoute53RecordSets,
   listALBs,
+  listClassicELBs,
   listTargetGroups,
   listAutoScalingGroups,
   listIAMRoles,
@@ -165,6 +168,7 @@ import {
   type AwsGetDefaultServiceQuotaResponse,
   type AwsListServiceQuotasResponse,
 } from "./quotas.js";
+import { fetchAwsIdleFindings } from "./idle-findings.js";
 import {
   fetchAwsVulnerabilityFindings,
   type InspectorListFindingsResponse,
@@ -387,6 +391,7 @@ export class AWSClient implements PluginClient {
     "route53-hosted-zone": listRoute53HostedZones,
     "route53-record-set": listRoute53RecordSets,
     alb: listALBs,
+    "classic-elb": listClassicELBs,
     "target-group": listTargetGroups,
     "auto-scaling-group": listAutoScalingGroups,
     "iam-role": listIAMRoles,
@@ -789,6 +794,16 @@ export class AWSClient implements PluginClient {
         const text = await res.text();
         return (text ? JSON.parse(text) : {}) as InspectorListFindingsResponse;
       },
+    });
+  }
+
+  async fetchIdleFindings(
+    _accountId: string,
+    request: IdleScanRequest,
+  ): Promise<IdleFindingRecord[]> {
+    return fetchAwsIdleFindings(request, {
+      credsFor: (region) => this.credsFor(region),
+      homeRegion: this.creds.region,
     });
   }
 

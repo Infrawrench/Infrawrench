@@ -20,6 +20,7 @@ export { IAMUserResourceType } from "./resources/iam-user.js";
 export { Route53HostedZoneResourceType } from "./resources/route53-hosted-zone.js";
 export { Route53RecordSetResourceType } from "./resources/route53-record-set.js";
 export { ALBResourceType } from "./resources/alb.js";
+export { ClassicELBResourceType } from "./resources/classic-elb.js";
 export { TargetGroupResourceType } from "./resources/target-group.js";
 export { AutoScalingGroupResourceType } from "./resources/auto-scaling-group.js";
 export { IAMRoleResourceType } from "./resources/iam-role.js";

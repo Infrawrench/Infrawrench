@@ -8,8 +8,12 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
     "DescribeLoadBalancers",
     "2015-12-01",
   );
+  // `parseXml` unwraps only the response root, so a real Query response still
+  // nests the list under `DescribeLoadBalancersResult`; reading `LoadBalancers`
+  // off the root found nothing and no ELBv2 load balancer was ever listed.
+  const result = (data["DescribeLoadBalancersResult"] ?? data) as Record<string, unknown>;
   const lbs = ensureArray(
-    (data["LoadBalancers"] as Record<string, unknown> | undefined)?.["member"],
+    (result["LoadBalancers"] as Record<string, unknown> | undefined)?.["member"],
   ) as Record<string, unknown>[];
 
   return lbs.map((lb) => {
@@ -43,6 +47,9 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
         ipAddressType: String(lb["IpAddressType"] ?? ""),
         subnetIds,
         securityGroupIds,
+        // Read by the idle rule: a balancer younger than the lookback window
+        // has not had the chance to take traffic.
+        createdTime: String(lb["CreatedTime"] ?? ""),
       },
       resolvedOutputs: {
         dnsName: String(lb["DNSName"] ?? ""),
@@ -57,6 +64,89 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
   });
 }
 
+/**
+ * Classic Load Balancers (ELB API 2012-06-01). `DescribeLoadBalancers` pages
+ * with `Marker`/`NextMarker`; at most 400 per page.
+ */
+export async function listClassicELBs(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const out: ResourceInstance[] = [];
+  let marker: string | undefined;
+  for (let page = 0; page < 50; page += 1) {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "elasticloadbalancing",
+      "DescribeLoadBalancers",
+      "2012-06-01",
+      { PageSize: "400", ...(marker ? { Marker: marker } : {}) },
+    );
+    const result = (data["DescribeLoadBalancersResult"] ?? data) as Record<string, unknown>;
+    const lbs = ensureArray(
+      (result["LoadBalancerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
+    ) as Record<string, unknown>[];
+    for (const lb of lbs) {
+      const name = String(lb["LoadBalancerName"] ?? "");
+      if (!name) continue;
+      const instances = ensureArray(
+        (lb["Instances"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[];
+      const listeners = (
+        ensureArray(
+          (lb["ListenerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
+        ) as Record<string, unknown>[]
+      )
+        .map((d) => d["Listener"] as Record<string, unknown> | undefined)
+        .filter((l): l is Record<string, unknown> => Boolean(l))
+        .map(
+          (l) =>
+            `${String(l["Protocol"] ?? "")}:${String(l["LoadBalancerPort"] ?? "")}` +
+            ` → ${String(l["InstanceProtocol"] ?? "")}:${String(l["InstancePort"] ?? "")}`,
+        )
+        .join(", ");
+      out.push({
+        id: ctx.id(accountId, "classic-elb", name),
+        pluginId: "aws",
+        resourceTypeId: "classic-elb",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          region: ctx.region,
+          scheme: String(lb["Scheme"] ?? ""),
+          vpcId: String(lb["VPCId"] ?? ""),
+          availabilityZones: joinIds(
+            ensureArray(
+              (lb["AvailabilityZones"] as Record<string, unknown> | undefined)?.["member"],
+            ),
+          ),
+          subnetIds: joinIds(
+            ensureArray((lb["Subnets"] as Record<string, unknown> | undefined)?.["member"]),
+          ),
+          securityGroupIds: joinIds(
+            ensureArray((lb["SecurityGroups"] as Record<string, unknown> | undefined)?.["member"]),
+          ),
+          instanceCount: instances.length,
+          listeners,
+          createdTime: String(lb["CreatedTime"] ?? ""),
+        },
+        resolvedOutputs: {
+          dnsName: String(lb["DNSName"] ?? ""),
+          canonicalHostedZoneId: String(lb["CanonicalHostedZoneNameID"] ?? ""),
+        },
+        secretStates: [],
+        externalId: name,
+        createdAt: String(lb["CreatedTime"] ?? ctx.now()),
+        updatedAt: ctx.now(),
+      });
+    }
+    const next = String(result["NextMarker"] ?? "");
+    if (!next) break;
+    marker = next;
+  }
+  return out;
+}
+
 export async function listTargetGroups(
   ctx: ListerContext,
   accountId: string,
@@ -66,8 +156,10 @@ export async function listTargetGroups(
     "DescribeTargetGroups",
     "2015-12-01",
   );
+  // Nested under the Result element, like `DescribeLoadBalancers` above.
+  const result = (data["DescribeTargetGroupsResult"] ?? data) as Record<string, unknown>;
   const tgs = ensureArray(
-    (data["TargetGroups"] as Record<string, unknown> | undefined)?.["member"],
+    (result["TargetGroups"] as Record<string, unknown> | undefined)?.["member"],
   ) as Record<string, unknown>[];
 
   return tgs.map((tg) => {
@@ -281,6 +373,11 @@ export async function listNATGateways(
         connectivityType: String(nat["connectivityType"] ?? "public"),
         publicIp: addr ? String(addr["publicIp"] ?? "") : "",
         privateIp: addr ? String(addr["privateIp"] ?? "") : "",
+        // `regional` NAT gateways publish their metrics per AZ (with an
+        // AvailabilityZone dimension) and bill a different hour.
+        availabilityMode: String(nat["availabilityMode"] ?? "zonal"),
+        allocationId: addr ? String(addr["allocationId"] ?? "") : "",
+        createdTime: String(nat["createTime"] ?? ""),
       },
       resolvedOutputs: { natGatewayId },
       secretStates: [],

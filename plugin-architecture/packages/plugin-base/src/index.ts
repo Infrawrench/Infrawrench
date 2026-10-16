@@ -113,6 +113,29 @@ export type {
 } from "./extended-support.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
 export type {
+  IdleEvidenceStatistic,
+  IdleFindingAction,
+  IdleFindingRecord,
+  IdleFindingsCapabilityDeclaration,
+  IdleMetricEvidence,
+  IdleRuleDeclaration,
+  IdleRuleRequest,
+  IdleSavingsEstimate,
+  IdleScanRequest,
+  IdleScanResource,
+  IdleThresholdDeclaration,
+  IdleValueUnit,
+} from "./idle-findings.js";
+export {
+  clampIdleLookbackDays,
+  IDLE_LOOKBACK_LIMITS,
+  IdleFindingAccessError,
+  idleAtMost,
+  idleRuleKey,
+  normalizeIdleFindings,
+  resolveIdleThresholds,
+} from "./idle-findings.js";
+export type {
   RunningImageDeclaration,
   VulnerabilityArtifact,
   VulnerabilityArtifactKind,
@@ -408,6 +431,7 @@ export type {
   OrphanedResource,
   OrphanAccountGroup,
   OrphanListResponse,
+  OrphanIdleDetail,
   OrphanScanResourceType,
   OrphanScanPlugin,
   OrphanScanAccount,

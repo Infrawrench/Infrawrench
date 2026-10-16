@@ -9,6 +9,7 @@ import {
   listRoute53RecordSets,
   listRoute53HealthChecks,
   listALBs,
+  listClassicELBs,
   listTargetGroups,
   listSecurityGroups,
   listSubnets,
@@ -252,6 +253,71 @@ describe("networking listers", () => {
     });
     expect((await listALBs(ctx, "acct"))[0]!.fields.name).toBe("lb1");
   });
+  it("listALBs reads a real Query response, nested under the Result element", async () => {
+    const xml = `<?xml version="1.0"?>
+<DescribeLoadBalancersResponse xmlns="http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/">
+  <DescribeLoadBalancersResult>
+    <LoadBalancers>
+      <member>
+        <LoadBalancerName>web</LoadBalancerName>
+        <LoadBalancerArn>arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/web/50dc6c495c0c9188</LoadBalancerArn>
+        <Type>application</Type>
+        <State><Code>active</Code></State>
+        <CreatedTime>2024-01-02T03:04:05.000Z</CreatedTime>
+      </member>
+    </LoadBalancers>
+  </DescribeLoadBalancersResult>
+  <ResponseMetadata><RequestId>x</RequestId></ResponseMetadata>
+</DescribeLoadBalancersResponse>`;
+    const ctx = makeCtx({ ec2Query: () => parseXml(xml) });
+    const [lb] = await listALBs(ctx, "acct");
+    expect(lb!.fields).toMatchObject({ name: "web", createdTime: "2024-01-02T03:04:05.000Z" });
+    expect(lb!.resolvedOutputs["loadBalancerArn"]).toContain("loadbalancer/app/web/");
+  });
+
+  it("listClassicELBs pages through Classic Load Balancers", async () => {
+    const page = (name: string, next: string) => `<?xml version="1.0"?>
+<DescribeLoadBalancersResponse>
+  <DescribeLoadBalancersResult>
+    <LoadBalancerDescriptions>
+      <member>
+        <LoadBalancerName>${name}</LoadBalancerName>
+        <DNSName>${name}.elb.amazonaws.com</DNSName>
+        <Scheme>internet-facing</Scheme>
+        <VPCId>vpc-1</VPCId>
+        <CreatedTime>2023-05-01T00:00:00Z</CreatedTime>
+        <Instances><member><InstanceId>i-1</InstanceId></member></Instances>
+        <ListenerDescriptions><member><Listener><Protocol>HTTP</Protocol><LoadBalancerPort>80</LoadBalancerPort><InstanceProtocol>HTTP</InstanceProtocol><InstancePort>8080</InstancePort></Listener></member></ListenerDescriptions>
+        <AvailabilityZones><member>us-east-1a</member></AvailabilityZones>
+      </member>
+    </LoadBalancerDescriptions>
+    ${next ? `<NextMarker>${next}</NextMarker>` : ""}
+  </DescribeLoadBalancersResult>
+</DescribeLoadBalancersResponse>`;
+    let n = 0;
+    const ctx = makeCtx({
+      ec2Query: () => {
+        n += 1;
+        return parseXml(n === 1 ? page("one", "m2") : page("two", ""));
+      },
+    });
+    const lbs = await listClassicELBs(ctx, "acct");
+    expect(lbs.map((l) => l.externalId)).toEqual(["one", "two"]);
+    const calls = vi.mocked(ctx.ec2Query).mock.calls;
+    expect(calls[0]!.slice(0, 3)).toEqual([
+      "elasticloadbalancing",
+      "DescribeLoadBalancers",
+      "2012-06-01",
+    ]);
+    expect(calls[1]![3]).toMatchObject({ Marker: "m2" });
+    expect(lbs[0]!.fields).toMatchObject({
+      instanceCount: 1,
+      listeners: "HTTP:80 → HTTP:8080",
+      availabilityZones: "us-east-1a",
+      createdTime: "2023-05-01T00:00:00Z",
+    });
+  });
+
   it("listTargetGroups", async () => {
     const ctx = makeCtx({
       ec2Query: () => ({ TargetGroups: { member: { TargetGroupName: "tg1", Port: 80 } } }),

@@ -25,6 +25,19 @@ const state = {
   costCentres: [] as unknown[],
   savingsViews: [] as unknown[],
   tagPolicy: { requiredTags: [] as unknown[], enforceOnCreate: false },
+  idleRules: new Map([
+    [
+      "aws:nat-gateway",
+      {
+        pluginId: "aws",
+        rule: {
+          thresholds: [
+            { key: "maxBytesOut", label: "Bytes", unit: "bytes", default: 1, min: 0, max: 100 },
+          ],
+        },
+      },
+    ],
+  ]),
   alertSettings: {
     costAnomaly: { sigmas: 3, minDeltaCents: 1000, newSourceMinCents: 2500, smsAlerts: "off" },
     drift: {
@@ -37,6 +50,7 @@ const state = {
     },
     expiry: { enabled: true, leadDays: 60 },
     posture: { enabled: true },
+    idleFindings: { enabled: true, lookbackDays: 14, rules: {} as Record<string, unknown> },
     digest: {
       enabled: false,
       timezone: "UTC",
@@ -466,6 +480,46 @@ describe("alert settings", () => {
         },
       }),
     ).rejects.toThrow(/empty scope would mean every account/);
+  });
+
+  it("plans idle rule overrides and refuses unknown rules or out-of-range thresholds", async () => {
+    const unchanged = await plan({
+      alertSettings: { idleFindings: { enabled: true, lookbackDays: 14, rules: {} } },
+    });
+    expect(unchanged.changes).toEqual([
+      { section: "alertSettings", key: "idleFindings", name: "Idle rules", action: "unchanged" },
+    ]);
+    const updated = await plan({
+      alertSettings: {
+        idleFindings: {
+          enabled: true,
+          lookbackDays: 21,
+          rules: { "aws:nat-gateway": { thresholds: { maxBytesOut: 50 } } },
+        },
+      },
+    });
+    expect(updated.changes[0]).toMatchObject({
+      action: "update",
+      fields: ["lookbackDays", "rules"],
+    });
+    await expect(
+      plan({
+        alertSettings: {
+          idleFindings: { enabled: true, lookbackDays: 14, rules: { "aws:nope": {} } },
+        },
+      }),
+    ).rejects.toThrow(/Idle rules: Unknown idle rule/);
+    await expect(
+      plan({
+        alertSettings: {
+          idleFindings: {
+            enabled: true,
+            lookbackDays: 14,
+            rules: { "aws:nat-gateway": { thresholds: { maxBytesOut: 500 } } },
+          },
+        },
+      }),
+    ).rejects.toThrow(/from 0 to 100/);
   });
 
   it("refuses an unknown digest timezone", async () => {

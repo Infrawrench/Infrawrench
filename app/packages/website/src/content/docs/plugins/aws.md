@@ -12,7 +12,7 @@ The AWS plugin covers the services most teams live in day to day.
 - **Kubernetes** — EKS clusters (links to the [Kubernetes plugin](./kubernetes.md) for pod-level access).
 - **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, DocumentDB, Neptune, Redshift, DynamoDB, ElastiCache node-based clusters (Valkey / Redis OSS / Memcached), ElastiCache Serverless caches, OpenSearch Service domains, DB subnet groups.
 - **Storage** — S3 buckets, EBS volumes, EFS file systems.
-- **Networking** — VPC, Subnets, Security Groups, Internet / NAT Gateways, Elastic IPs, Load Balancers, API Gateway, CloudFront.
+- **Networking** — VPC, Subnets, Security Groups, Internet / NAT Gateways, Elastic IPs, Load Balancers (Application, Network, Gateway and Classic), API Gateway, CloudFront.
 - **Messaging** — SQS, SNS.
 - **Secrets & identity** — Secrets Manager, IAM users / roles / policies, KMS keys.
 - **CI/CD** — CodeBuild, CodePipeline, Step Functions, Glue, CloudFormation stacks.
@@ -37,9 +37,25 @@ The add-account form (and **Check credentials** on the account page) probes what
 - **Resource inventory** — read-only Describe/List access, checked via a representative sample: `ec2:DescribeInstances`, `s3:ListAllMyBuckets`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, `dynamodb:ListTables`.
 - **Metrics & dashboards** — `cloudwatch:GetMetricStatistics`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, plus `logs:FilterLogEvents` and `logs:DescribeLogStreams` for the Logs tabs.
 - **Cost reporting** — `ce:GetCostAndUsage`, plus `ce:GetReservationUtilization` for the [blended basis](#blended-commitment-discounts) on reservation-covered usage. These are **not** part of `ReadOnlyAccess`-style infra policies, so it's the check that most often comes back ✗.
+- **[Idle resource findings](../features/idle-resources.md)**: `cloudwatch:GetMetricData` for the daily metrics read, and `pricing:GetProducts` to price what a finding saves.
 - **[Cost estimates](../features/cost-estimates.md)** — `pricing:GetProducts`, for the live per-region prices behind the create form's estimate, the size picker's price chips and the resource page's monthly figure. Also outside typical read-only policies. Without it nothing breaks; AWS resources simply quote no estimate.
 
 The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission) and asks `iam:SimulatePrincipalPolicy` for an exact per-permission verdict; when the key isn't allowed to call the simulator it falls back to one cheap sample read per capability. The generator produces an IAM policy JSON document scoped to the capabilities you tick — attach it as an inline policy on the IAM user whose keys you pasted. It also grants `iam:SimulatePrincipalPolicy` so later preflights stay exact.
+
+## Idle resource findings
+
+Once a day the cloud poller reads CloudWatch for every synced NAT gateway, load balancer, ElastiCache cluster, provisioned DynamoDB table and running RDS instance, and flags the ones that did no work over the lookback window (14 days by default). See [Idle resource findings](../features/idle-resources.md) for the rules, their thresholds and where the findings appear. Per resource type:
+
+| Type                  | Metrics read                                                                                                    | Fix offered                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| NAT gateway           | `BytesOutToDestination`, `ActiveConnectionCount`, `BytesInFromSource` (per zone for regional NAT gateways)      | Delete it, wait, release its Elastic IP                   |
+| Application / Network | `RequestCount` or `NewFlowCount`, `ProcessedBytes`, `ConsumedLCUs`, `HealthyHostCount` across its target groups | Delete it (target groups are left)                        |
+| Classic               | `RequestCount`, `HealthyHostCount`                                                                              | Delete it                                                 |
+| ElastiCache cluster   | `CurrConnections` per node, `GetTypeCmds` + `SetTypeCmds` (Memcached: `CmdGet` + `CmdSet`)                      | Delete it with a final snapshot, or its replication group |
+| DynamoDB table        | `ConsumedRead/WriteCapacityUnits` against `ProvisionedRead/WriteCapacityUnits`                                  | Switch it to on-demand                                    |
+| RDS instance          | `DatabaseConnections`                                                                                           | Stop it with a snapshot (Aurora: stop the cluster)        |
+
+Each read is one `GetMetricData` batch per region at a one-day period, billed to the account at CloudWatch's metric-request rate. Estimates use the Price List API for the resource's region: NAT gateway hours, load balancer hours, node hours, and for a table the provisioned-capacity cost minus what the same usage costs on demand. A Gateway Load Balancer is not judged.
 
 ## Notable flows
 

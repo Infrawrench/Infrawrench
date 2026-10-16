@@ -91,6 +91,7 @@ import { pollAccountCommitments } from "./commitment-poll";
 import { pollAccountQuotas } from "./quota-poll";
 import { pollAccountVulnerabilities } from "./vulnerability-poll";
 import { pollAccountSeats } from "./seat-poll";
+import { pollAccountIdleFindings } from "./idle-poll";
 import {
   claimDueAccounts,
   claimDueCommitmentAccounts,
@@ -99,6 +100,7 @@ import {
   claimDueQuotaAccounts,
   claimDueVulnerabilityAccounts,
   claimDueSeatAccounts,
+  claimDueIdleAccounts,
   claimDueWorkflows,
   ACCOUNT_LEASE_MS,
   COST_LEASE_MS,
@@ -155,7 +157,8 @@ export interface PeriodicPass {
 
 export type Pass = AccountPass | PeriodicPass;
 
-type Capability = "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats";
+type Capability =
+  "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats" | "idleFindings";
 const capablePluginIds = new Map<Capability, Promise<string[]>>();
 
 /** Plugin ids whose manifest declares `capability`; resolved once per process. */
@@ -425,6 +428,22 @@ export const PASSES: readonly Pass[] = [
     claimFailureLabel: "[seats] seat tick failed:",
     claim: async (scope) => claimDueSeatAccounts(COST_LIMIT, await pluginsWith("seats"), scope),
     run: (row) => pollAccountSeats(row),
+  },
+
+  // Metric-based idle findings (daily cadence per account). Its own pass for
+  // the quota reason: the evidence comes from the provider's metric store, not
+  // its billing or resource APIs, and every read is billed to the customer,
+  // so it must be separately throttled and separately switchable off (the
+  // org's settings stop it). Account passes run on both runtimes; a plugin
+  // whose client cannot run on the edge hands off to the gateway.
+  {
+    kind: "accounts",
+    name: "idle",
+    leaseMs: COST_LEASE_MS,
+    claimFailureLabel: "[idle] idle tick failed:",
+    claim: async (scope) =>
+      claimDueIdleAccounts(COST_LIMIT, await pluginsWith("idleFindings"), scope),
+    run: (row) => pollAccountIdleFindings(row),
   },
 
   // Network flow attribution (daily cadence per account, opt-in per org).

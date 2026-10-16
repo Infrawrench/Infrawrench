@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { GCP_IDLE_FINDINGS } from "./idle-findings.js";
 import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -153,6 +154,10 @@ const manifest: PluginManifest = {
     label: "Quotas",
     increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
   },
+  // Metric-based idle findings (idle GKE clusters, Cloud NAT gateways) read
+  // from Cloud Monitoring once a day. Needs monitoring.timeSeries.list: the
+  // `idle-findings` preflight capability. See `idle-findings.ts`.
+  idleFindings: GCP_IDLE_FINDINGS,
   // Artifact Analysis vulnerability occurrences via
   // containeranalysis.projects.occurrences.list (kind="VULNERABILITY"). Needs
   // containeranalysis.occurrences.list (roles/containeranalysis.occurrences.viewer;

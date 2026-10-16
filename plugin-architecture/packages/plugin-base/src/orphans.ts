@@ -15,6 +15,11 @@
  * by hosts that have billing data (see `costBasis`).
  */
 import { evaluateOrphanRule, type OrphanRule } from "./resource.js";
+import type {
+  IdleFindingAction,
+  IdleMetricEvidence,
+  IdleSavingsEstimate,
+} from "./idle-findings.js";
 import {
   resolveRemediationCommands,
   type FindingRemediation,
@@ -94,6 +99,43 @@ export interface OrphanedResource {
    * host sets it, with empty `commands` when the plugin has none.
    */
   remediation?: FindingRemediation;
+  /**
+   * Present when a metric-based idle rule (`manifest.idleFindings`) flagged
+   * the row rather than the type's `orphanRule`: the rule, the evidence it
+   * judged and when. Absent on every orphan-rule row and on local-mode scans.
+   */
+  idle?: OrphanIdleDetail;
+  /**
+   * Monthly figure at the provider's published list price, for rows a plugin
+   * could price. Surfaces show it, labelled as an estimate, only when `cost`
+   * (real billed spend for the resource) is null.
+   */
+  estimate?: IdleSavingsEstimate | null;
+}
+
+/** Why an idle rule flagged a row; see {@link OrphanedResource.idle}. */
+export interface OrphanIdleDetail {
+  /** The plugin's rule id (`nat-gateway`). */
+  ruleId: string;
+  /** Globally unique `pluginId:ruleId`, the key the org's settings use. */
+  ruleKey: string;
+  /** "Idle NAT gateway". */
+  ruleLabel: string;
+  /** What acting on it means; only `remove` is offered as a removal pull request. */
+  action: IdleFindingAction;
+  /** Days of metrics the verdict covers. */
+  lookbackDays: number;
+  evidence: IdleMetricEvidence[];
+  /** First collection that flagged it (ISO). */
+  detectedAt: string;
+  /** Latest collection that confirmed it (ISO). */
+  evaluatedAt: string;
+  /**
+   * False when the subject is not a synced resource (a Datadog custom
+   * metric): `id` is then a finding id, there is no detail page to open and
+   * nothing for a pull request to remove.
+   */
+  hasResource: boolean;
 }
 
 export interface OrphanAccountGroup {

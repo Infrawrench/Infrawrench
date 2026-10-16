@@ -10,7 +10,7 @@ A savings finding tells you what is wasteful: an unattached volume, a machine tw
 
 Open **Costs** and look for **Remediate** on a row in any of these sections:
 
-- **[Potential savings](./orphan-finder.md)**: commands that clean up an orphaned or idle resource.
+- **[Potential savings](./orphan-finder.md)**: commands that clean up an orphaned or idle resource. For an [idle resource finding](./idle-resources.md) the command follows the fix the rule names: delete the NAT gateway or load balancer, switch a provisioned DynamoDB table to on-demand, stop an unused database, or (for a Datadog custom metric, which no API can delete) check what still uses it.
 - **[Oversized](./right-sizing.md)**: the resize, step by step, next to the one-click **Apply resize** button.
 - **[Sleep schedules](./sleep-schedules.md)**: the stop and start commands, for when the schedule is paused and you want to do it by hand, or want the same window in your own cron.
 - **Efficiency alerts** (idle commitments): the provider's commands for inspecting the commitment and acting on it, as far as the provider allows.
@@ -42,7 +42,7 @@ A few rules hold for every provider:
 If you've uploaded a Terraform state on the [IaC page](./iac-reconciliation.md) and it says a flagged resource is managed by Terraform, the panel puts a Terraform hint first. Running the CLI commands against a managed resource works, but the next `terraform apply` puts it back.
 
 - **For a resize**, the hint names the block (for example `aws_instance.api`) and the attribute to change, such as `instance_type = "m5.large"`, then gives the `terraform plan -target=…` to review. The attribute comes from the same mapping that [eject to Terraform](./terraform-export.md) uses, so the two always agree.
-- **For an orphan**, it gives `terraform plan -destroy -target=…` as a preview, and recommends deleting the block from your configuration so the code stays the source of truth.
+- **For an orphan**, it gives `terraform plan -destroy -target=…` as a preview, and recommends deleting the block from your configuration so the code stays the source of truth. An idle finding gets the same hint only when its fix is removal; a table that should change billing mode or a database that should be stopped does not.
 
 The hint uses the newest state uploaded for the resource's own account, or else the newest one uploaded for the whole organization, never another account's. With no state uploaded, there is simply no hint.
 

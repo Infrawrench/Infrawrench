@@ -30,6 +30,7 @@ import { registerSavedFilterPaths } from "./paths/saved-filters";
 import { registerCostScenarioPaths } from "./paths/cost-scenarios";
 import { registerBusinessMetricPaths } from "./paths/business-metrics";
 import { registerOrphanPaths } from "./paths/orphans";
+import { registerIdleFindingPaths } from "./paths/idle-findings";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerExtendedSupportPaths } from "./paths/extended-support";
@@ -199,6 +200,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostScenarioPaths(ctx);
   registerBusinessMetricPaths(ctx);
   registerOrphanPaths(ctx);
+  registerIdleFindingPaths(ctx);
   registerRightsizingPaths(ctx);
   registerExtendedSupportPaths(ctx);
   registerSeatPaths(ctx);

@@ -7,8 +7,15 @@ vi.mock("../auth.js", () => ({
 }));
 
 describe("gcpPreflight declaration", () => {
-  it("declares resources/metrics/costs with GCP permission strings", () => {
-    expect(gcpPreflight.capabilities.map((c) => c.id)).toEqual(["resources", "metrics", "costs"]);
+  it("declares resources/metrics/idle-findings/costs with GCP permission strings", () => {
+    expect(gcpPreflight.capabilities.map((c) => c.id)).toEqual([
+      "resources",
+      "metrics",
+      "idle-findings",
+      "costs",
+    ]);
+    const idle = gcpPreflight.capabilities.find((c) => c.id === "idle-findings")!;
+    expect(idle.requiredPermissions.map((p) => p.id)).toEqual(["monitoring.timeSeries.list"]);
     const resources = gcpPreflight.capabilities.find((c) => c.id === "resources")!;
     expect(resources.essential).toBe(true);
     expect(resources.requiredPermissions.map((p) => p.id)).toContain("compute.instances.list");

@@ -76,7 +76,9 @@ function cmd(
 export function awsRemediationCommands(finding: RemediationFinding): RemediationCommand[] {
   switch (finding.kind) {
     case "orphan":
-      return orphanCommands(finding.resource);
+      return finding.idleRuleId
+        ? idleCommands(finding.idleRuleId, finding.resource)
+        : orphanCommands(finding.resource);
     case "oversized":
       return oversizedCommands(finding.resource, finding.targetSize, finding.region);
     case "sleep-schedule":
@@ -101,6 +103,187 @@ function orphanCommands(resource: RemediationResource): RemediationCommand[] {
     default:
       return [];
   }
+}
+
+// ─── Idle (metric-based) findings ───────────────────────────────────────────
+//
+// One generator per rule in `idle-findings.ts`. CLI references (verified 2026-10):
+// https://docs.aws.amazon.com/cli/latest/reference/ec2/delete-nat-gateway.html
+// https://docs.aws.amazon.com/cli/latest/reference/ec2/wait/nat-gateway-deleted.html
+// https://docs.aws.amazon.com/cli/latest/reference/elbv2/delete-load-balancer.html
+// https://docs.aws.amazon.com/cli/latest/reference/elb/delete-load-balancer.html
+// https://docs.aws.amazon.com/cli/latest/reference/elasticache/delete-cache-cluster.html
+// https://docs.aws.amazon.com/cli/latest/reference/elasticache/delete-replication-group.html
+// https://docs.aws.amazon.com/cli/latest/reference/dynamodb/update-table.html
+// https://docs.aws.amazon.com/cli/latest/reference/rds/stop-db-instance.html
+
+function idleCommands(ruleId: string, resource: RemediationResource): RemediationCommand[] {
+  switch (ruleId) {
+    case "nat-gateway":
+      return idleNatGateway(resource);
+    case "load-balancer":
+      return idleElbv2(resource);
+    case "classic-load-balancer":
+      return idleClassicElb(resource);
+    case "elasticache-cluster":
+      return idleElastiCache(resource);
+    case "dynamodb-provisioned":
+      return idleDynamoDb(resource);
+    case "rds-instance":
+      return idleRds(resource);
+    default:
+      return [];
+  }
+}
+
+function idleNatGateway(resource: RemediationResource): RemediationCommand[] {
+  const id = remediationId(resource, "natGatewayId");
+  const region = regionOf(resource);
+  if (!id.startsWith("nat-") || !region) return [];
+  const commands = [
+    cmd(
+      aws("ec2", "delete-nat-gateway", [`--nat-gateway-id ${shellQuote(id)}`], region),
+      "Deletes the NAT gateway and stops its hourly charge. Check no route table still points at it first.",
+      true,
+    ),
+  ];
+  const allocationId = remediationField(resource, "allocationId");
+  if (allocationId.startsWith("eipalloc-")) {
+    commands.push(
+      cmd(
+        aws("ec2 wait", "nat-gateway-deleted", [`--nat-gateway-ids ${shellQuote(id)}`], region),
+        "Waits until the gateway is gone, which frees its Elastic IP.",
+      ),
+      cmd(
+        aws("ec2", "release-address", [`--allocation-id ${shellQuote(allocationId)}`], region),
+        "Releases the gateway's Elastic IP, which keeps billing as an idle public IPv4 address otherwise.",
+        true,
+      ),
+    );
+  }
+  return commands;
+}
+
+function idleElbv2(resource: RemediationResource): RemediationCommand[] {
+  const arn = remediationField(resource, "loadBalancerArn");
+  const region = regionOf(resource);
+  if (!arn.startsWith("arn:") || !region) return [];
+  const quoted = shellQuote(arn);
+  return [
+    cmd(
+      aws("elbv2", "describe-target-groups", [`--load-balancer-arn ${quoted}`], region),
+      "Lists the target groups behind it, to confirm nothing still depends on it.",
+    ),
+    cmd(
+      aws("elbv2", "delete-load-balancer", [`--load-balancer-arn ${quoted}`], region),
+      "Deletes the load balancer and its listeners. Target groups and targets are left in place.",
+      true,
+    ),
+  ];
+}
+
+function idleClassicElb(resource: RemediationResource): RemediationCommand[] {
+  const name = remediationId(resource, "name");
+  const region = regionOf(resource);
+  if (!name || !region) return [];
+  return [
+    cmd(
+      aws("elb", "delete-load-balancer", [`--load-balancer-name ${shellQuote(name)}`], region),
+      "Deletes the Classic Load Balancer. Registered instances keep running.",
+      true,
+    ),
+  ];
+}
+
+function idleElastiCache(resource: RemediationResource): RemediationCommand[] {
+  const clusterId = remediationId(resource, "clusterId");
+  const region = regionOf(resource);
+  if (!clusterId || !region) return [];
+  const memcached = remediationField(resource, "engine").toLowerCase() === "memcached";
+  const group = remediationField(resource, "replicationGroupId");
+  const snapshot = `${clusterId}-final-${remediationDateStamp()}`.slice(0, 255);
+  // Memcached has no snapshots; Valkey/Redis OSS members go with their group,
+  // which is also where the final snapshot is taken.
+  if (group) {
+    return [
+      cmd(
+        aws(
+          "elasticache",
+          "delete-replication-group",
+          [
+            `--replication-group-id ${shellQuote(group)}`,
+            `--final-snapshot-identifier ${shellQuote(`${group}-final-${remediationDateStamp()}`)}`,
+          ],
+          region,
+        ),
+        "Deletes the replication group this cluster belongs to, after a final snapshot.",
+        true,
+      ),
+    ];
+  }
+  return [
+    cmd(
+      aws(
+        "elasticache",
+        "delete-cache-cluster",
+        [
+          `--cache-cluster-id ${shellQuote(clusterId)}`,
+          ...(memcached ? [] : [`--final-snapshot-identifier ${shellQuote(snapshot)}`]),
+        ],
+        region,
+      ),
+      memcached
+        ? "Deletes the cluster. Memcached keeps no data to snapshot."
+        : "Takes a final snapshot, then deletes the cluster.",
+      true,
+    ),
+  ];
+}
+
+function idleDynamoDb(resource: RemediationResource): RemediationCommand[] {
+  const table = remediationId(resource, "tableName");
+  const region = regionOf(resource);
+  if (!table || !region) return [];
+  return [
+    cmd(
+      aws(
+        "dynamodb",
+        "update-table",
+        [`--table-name ${shellQuote(table)}`, "--billing-mode PAY_PER_REQUEST"],
+        region,
+      ),
+      "Switches the table to on-demand, so it bills per request instead of for idle capacity. Remove any auto scaling policy on it afterwards.",
+    ),
+  ];
+}
+
+function idleRds(resource: RemediationResource): RemediationCommand[] {
+  const id = remediationId(resource, "dbInstanceId");
+  const region = regionOf(resource);
+  if (!id || !region) return [];
+  const cluster = remediationField(resource, "dbClusterIdentifier");
+  if (cluster) {
+    return [
+      cmd(
+        aws("rds", "stop-db-cluster", [`--db-cluster-identifier ${shellQuote(cluster)}`], region),
+        "Stops the Aurora cluster this instance belongs to. AWS starts it again after 7 days.",
+      ),
+    ];
+  }
+  return [
+    cmd(
+      aws(
+        "rds",
+        "stop-db-instance",
+        [
+          `--db-instance-identifier ${shellQuote(id)}`,
+          `--db-snapshot-identifier ${shellQuote(`${id}-pre-stop-${remediationDateStamp()}`)}`,
+        ],
+        region,
+      ),
+      "Snapshots, then stops the instance; storage keeps billing. AWS starts it again after 7 days, so delete it if it is truly unused.",
+    ),
+  ];
 }
 
 /** Snapshot names go into a shorthand tag value, so keep them to safe characters. */

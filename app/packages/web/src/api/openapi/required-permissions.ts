@@ -821,6 +821,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /savings-views/{id}": "resources:read",
   "PUT /savings-views/{id}": "resources:write",
   "DELETE /savings-views/{id}": "resources:write",
+  // idle-rule tuning: the overview explains the findings it reads beside;
+  // settings and a re-scan decide what the whole org's savings list says
+  "GET /idle-findings": "resources:read",
+  "GET /idle-findings/settings": "org:settings:write",
+  "PUT /idle-findings/settings": "org:settings:write",
+  "POST /idle-findings/rescan": "org:settings:write",
   // right-sizing: the list is derived from the org's resource set like
   // orphans; prices are provider catalog rates, not the org's billing data
   "GET /rightsizing": "resources:read",

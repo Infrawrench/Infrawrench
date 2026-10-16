@@ -41,6 +41,8 @@ import { getDriftAlertSettings } from "@infrawrench/server-core/drift/settings";
 import { getExpirySettings } from "@infrawrench/server-core/expiry/settings";
 import { getPostureSettings } from "@infrawrench/server-core/posture/settings";
 import { getExtendedSupportSettings } from "@infrawrench/server-core/extended-support/settings";
+import { declaredIdleRules, getOrgIdleSettings } from "@infrawrench/server-core/idle/settings";
+import type { IdleRuleDeclaration } from "@infrawrench/plugin-base";
 import { getOrgDigestSettings } from "@infrawrench/server-core/digest/weekly";
 import { listDigestEmailRecipients } from "@infrawrench/server-core/digest/recipients";
 import { db } from "../../db/client";
@@ -110,6 +112,8 @@ export interface OrgConfigState {
   savingsViews: OrgConfigEntity<OrgConfigSavingsView>[];
   tagPolicy: TagPolicy;
   alertSettings: OrgConfigAlertSettingsResolved;
+  /** Every declared idle rule by `pluginId:ruleId`: what `alertSettings.idleFindings` is checked against. */
+  idleRules: ReadonlyMap<string, { pluginId: string; rule: IdleRuleDeclaration }>;
 }
 
 /** Assign document keys across a collection, in the order given. */
@@ -456,17 +460,29 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     },
   );
 
-  const [tagPolicy, costAnomaly, drift, expiry, posture, extendedSupport, digest, recipients] =
-    await Promise.all([
-      getOrgTagPolicy(organizationId),
-      getOrgAnomalySettings(organizationId),
-      getDriftAlertSettings(organizationId),
-      getExpirySettings(organizationId),
-      getPostureSettings(organizationId),
-      getExtendedSupportSettings(organizationId),
-      getOrgDigestSettings(organizationId),
-      listDigestEmailRecipients(organizationId),
-    ]);
+  const [
+    tagPolicy,
+    costAnomaly,
+    drift,
+    expiry,
+    posture,
+    extendedSupport,
+    idleFindings,
+    idleRules,
+    digest,
+    recipients,
+  ] = await Promise.all([
+    getOrgTagPolicy(organizationId),
+    getOrgAnomalySettings(organizationId),
+    getDriftAlertSettings(organizationId),
+    getExpirySettings(organizationId),
+    getPostureSettings(organizationId),
+    getExtendedSupportSettings(organizationId),
+    getOrgIdleSettings(organizationId),
+    declaredIdleRules(),
+    getOrgDigestSettings(organizationId),
+    listDigestEmailRecipients(organizationId),
+  ]);
 
   return {
     accountNameById,
@@ -483,6 +499,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     costCentres: centreEntities,
     savingsViews: savingsViewEntities,
     tagPolicy,
+    idleRules,
     alertSettings: {
       costAnomaly: {
         sigmas: costAnomaly.sigmas,
@@ -505,6 +522,11 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       expiry: { enabled: expiry.enabled, leadDays: expiry.leadDays },
       posture: { enabled: posture.enabled },
       extendedSupport: { enabled: extendedSupport.enabled, leadDays: extendedSupport.leadDays },
+      idleFindings: {
+        enabled: idleFindings.enabled,
+        lookbackDays: idleFindings.lookbackDays,
+        rules: idleFindings.rules,
+      },
       digest: {
         enabled: digest.enabled,
         timezone: digest.timezone,

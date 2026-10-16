@@ -20,6 +20,31 @@ export type {
  */
 export interface OrphansClient {
   listOrphans(): Promise<OrphanListResponse>;
+  /**
+   * Tuning for the metric-based idle rules. Optional: a host that cannot
+   * reach the cloud (local mode) leaves it off and the section hides the
+   * "Idle rules" control.
+   */
+  idleFindings?: IdleFindingsClient | undefined;
+}
+
+export type {
+  IdleAccountStatus,
+  IdleFindingSettings,
+  IdleFindingsOverview,
+  IdleRuleView,
+} from "@infrawrench/client-core";
+
+import type { IdleFindingSettings, IdleFindingsOverview } from "@infrawrench/client-core";
+
+/**
+ * Host-injected access to `/idle-findings`. `save` and `rescan` must reject
+ * with the server's message (a 400 bound, a 403) so the modal can show it.
+ */
+export interface IdleFindingsClient {
+  overview(): Promise<IdleFindingsOverview>;
+  save(settings: IdleFindingSettings): Promise<IdleFindingSettings>;
+  rescan(): Promise<void>;
 }
 
 export type {

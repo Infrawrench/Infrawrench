@@ -77,6 +77,7 @@ import {
   type DigestRealizedSavings,
   type DigestDelivery,
   type DigestSeats,
+  type DigestIdleFindings,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -87,6 +88,7 @@ import { getRealizedSavingsReport } from "../savings/realized";
 import { getDoraReport } from "../dora/load";
 import { getDoraSettings } from "../dora/settings";
 import { listSeats } from "../seats/feed";
+import { summarizeIdleFindings } from "../idle/feed";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -321,7 +323,23 @@ export async function buildWeeklyDigest(
     realizedSavings: await buildRealizedSavings(organizationId, window),
     delivery: await buildDelivery(organizationId, window),
     seats: await buildSeats(organizationId),
+    idleFindings: await buildIdleFindings(organizationId),
   });
+}
+
+/**
+ * The idle resources line: the stored metric-rule verdicts, org-wide, at list
+ * price. Never the reason a digest fails to send.
+ */
+async function buildIdleFindings(organizationId: string): Promise<DigestIdleFindings | null> {
+  try {
+    const summary = await summarizeIdleFindings(organizationId);
+    if (summary.findings === 0) return null;
+    return summary;
+  } catch (err) {
+    console.error(`[digest] idle findings for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 /**

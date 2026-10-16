@@ -1165,6 +1165,29 @@ type ExtendedSupportSettings struct {
 	LastNotifiedAt *string `json:"lastNotifiedAt"`
 }
 
+// IdleRuleOverride is what an organization changed about one metric-based
+// idle rule; absent fields keep the rule's declared default.
+type IdleRuleOverride struct {
+	Enabled    *bool              `json:"enabled,omitempty"`
+	Thresholds map[string]float64 `json:"thresholds,omitempty"`
+}
+
+// IdleFindingSettingsUpdate is the PUT body for the idle rules. Rules, when
+// sent, replaces the whole overrides map.
+type IdleFindingSettingsUpdate struct {
+	Enabled      *bool                       `json:"enabled,omitempty"`
+	LookbackDays *int64                      `json:"lookbackDays,omitempty"`
+	Rules        map[string]IdleRuleOverride `json:"rules"`
+}
+
+// IdleFindingSettings is the org singleton tuning the metric-based idle rules
+// behind Potential savings, keyed by `pluginId:ruleId`.
+type IdleFindingSettings struct {
+	Enabled      bool                        `json:"enabled"`
+	LookbackDays int64                       `json:"lookbackDays"`
+	Rules        map[string]IdleRuleOverride `json:"rules"`
+}
+
 // PostureAlertSettingsUpdate is the PUT body for posture-check notifications.
 type PostureAlertSettingsUpdate struct {
 	Enabled *bool `json:"enabled,omitempty"`

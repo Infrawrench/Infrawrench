@@ -7,6 +7,7 @@ export {
 } from "./resource-listers-extended/dns.js";
 export {
   listALBs,
+  listClassicELBs,
   listTargetGroups,
   listSecurityGroups,
   listSubnets,

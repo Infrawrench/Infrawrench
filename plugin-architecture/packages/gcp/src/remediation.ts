@@ -174,6 +174,42 @@ function commitmentCommands(
   ];
 }
 
+// Idle (metric-based) findings. References (verified 2026-10):
+// https://cloud.google.com/sdk/gcloud/reference/container/clusters/delete
+// https://cloud.google.com/sdk/gcloud/reference/compute/routers/nats/delete
+function idleCommands(ruleId: string, resource: RemediationResource): RemediationCommand[] {
+  if (ruleId === "gke-cluster") {
+    const name = remediationField(resource, "name");
+    const location = remediationField(resource, "location");
+    if (!name || !location) return [];
+    const target = { placeholders: [GCP_PROJECT_PLACEHOLDER] };
+    return [
+      cmd(
+        target,
+        `gcloud container clusters delete ${shellQuote(name)} --location ${shellQuote(location)} --project ${PROJECT_VAR}`,
+        "Deletes the cluster, its node pools and their boot disks. Persistent volumes and load balancers created from it are left in place.",
+        true,
+      ),
+    ];
+  }
+  if (ruleId === "cloud-nat") {
+    const name = remediationField(resource, "name");
+    const router = remediationField(resource, "router");
+    const region = remediationField(resource, "region");
+    if (!name || !router || !region) return [];
+    const target = { placeholders: [GCP_PROJECT_PLACEHOLDER] };
+    return [
+      cmd(
+        target,
+        `gcloud compute routers nats delete ${shellQuote(name)} --router ${shellQuote(router)} --region ${shellQuote(region)} --project ${PROJECT_VAR}`,
+        "Deletes the NAT configuration from its Cloud Router. Release any reserved NAT IP addresses afterwards.",
+        true,
+      ),
+    ];
+  }
+  return [];
+}
+
 export function gcpRemediationCommands(finding: RemediationFinding): RemediationCommand[] {
   switch (finding.kind) {
     case "oversized":
@@ -185,6 +221,7 @@ export function gcpRemediationCommands(finding: RemediationFinding): Remediation
         ? instanceSleep(finding.resource)
         : [];
     case "orphan":
+      if (finding.idleRuleId) return idleCommands(finding.idleRuleId, finding.resource);
       switch (finding.resource.resourceTypeId) {
         case "gce-disk":
           return diskDelete(finding.resource);

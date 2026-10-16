@@ -369,6 +369,20 @@ export interface OrgConfigAlertSettings {
   expiry?: { enabled: boolean; leadDays: number } | undefined;
   posture?: { enabled: boolean } | undefined;
   extendedSupport?: { enabled: boolean; leadDays: number } | undefined;
+  /** Metric-based idle rules: overrides keyed by `pluginId:ruleId`. */
+  idleFindings?:
+    | {
+        enabled: boolean;
+        lookbackDays: number;
+        rules: Record<
+          string,
+          {
+            enabled?: boolean | undefined;
+            thresholds?: Record<string, number> | undefined;
+          }
+        >;
+      }
+    | undefined;
   digest?:
     | {
         enabled: boolean;

@@ -221,6 +221,14 @@ export interface PluginManifest {
    */
   quotas?: QuotaCapabilityDeclaration;
   /**
+   * If present, this plugin can judge resources idle from their metrics (a
+   * NAT gateway nothing routes through, a load balancer with no requests) via
+   * `fetchIdleFindings`, and the host schedules a daily collection pass whose
+   * results join the orphan feed. The declared rules are what the org's
+   * settings tune. See `idle-findings.ts`.
+   */
+  idleFindings?: IdleFindingsCapabilityDeclaration;
+  /**
    * If present, this plugin can read the provider's own vulnerability scan
    * results (CVEs in images, functions, hosts or repositories) via
    * `listVulnerabilityFindings`, and the host schedules a low-frequency
@@ -661,6 +669,21 @@ export interface PluginClient {
    * can stop retrying on a tight loop and show the fix.
    */
   fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
+  /**
+   * Judge the account's resources against the enabled idle rules over the
+   * requested window. Only called when the manifest declares `idleFindings`,
+   * from a daily background pass, with the org's resolved thresholds and the
+   * account's stored rows of every enabled rule's types.
+   *
+   * The host *replaces* the account's stored findings with what this returns,
+   * so throw rather than return a short list when part of the read failed (a
+   * region refused): a partial answer reads as resources having become busy.
+   * A resource whose metrics simply have no data is skipped, not thrown on.
+   *
+   * Throw {@link IdleFindingAccessError} when the credential cannot read the
+   * metrics, so the host shows the fix rather than an empty list.
+   */
+  fetchIdleFindings?(accountId: string, request: IdleScanRequest): Promise<IdleFindingRecord[]>;
   /**
    * Read the provider scanner's current open vulnerability findings for this
    * account. Only called when the manifest declares `vulnerabilities`, on a
@@ -1494,6 +1517,11 @@ import type {
 } from "./ai-requests.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+import type {
+  IdleFindingRecord,
+  IdleFindingsCapabilityDeclaration,
+  IdleScanRequest,
+} from "./idle-findings.js";
 import type {
   VulnerabilityCapabilityDeclaration,
   VulnerabilityFinding,
