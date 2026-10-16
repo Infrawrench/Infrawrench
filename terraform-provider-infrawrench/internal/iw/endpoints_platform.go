@@ -951,6 +951,22 @@ func (c *Client) PutExtendedSupportSettings(ctx context.Context, in ExtendedSupp
 	return &out, nil
 }
 
+func (c *Client) GetIdleFindingSettings(ctx context.Context) (*IdleFindingSettings, error) {
+	var out IdleFindingSettings
+	if err := c.Get(ctx, "/idle-findings/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutIdleFindingSettings(ctx context.Context, in IdleFindingSettingsUpdate) (*IdleFindingSettings, error) {
+	var out IdleFindingSettings
+	if err := c.Put(ctx, "/idle-findings/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetPostureAlertSettings(ctx context.Context) (*PostureAlertSettings, error) {
 	var out PostureAlertSettings
 	if err := c.Get(ctx, "/posture/settings", &out); err != nil {

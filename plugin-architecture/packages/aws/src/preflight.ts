@@ -60,6 +60,14 @@ const COSTS_PERMISSIONS: PreflightPermission[] = [
   },
 ];
 
+const IDLE_FINDING_PERMISSIONS: PreflightPermission[] = [
+  {
+    id: "cloudwatch:GetMetricData",
+    label: "Read a resource's metrics over the idle rules' lookback window",
+  },
+  { id: "pricing:GetProducts", label: "Price what an idle resource costs at list price" },
+];
+
 const AI_REQUEST_LOG_PERMISSIONS: PreflightPermission[] = [
   {
     id: "bedrock:GetModelInvocationLoggingConfiguration",
@@ -91,6 +99,13 @@ export const awsPreflight: PreflightDeclaration = {
       label: "Cost reporting",
       description: "Daily spend via Cost Explorer. Not part of typical read-only infra policies.",
       requiredPermissions: COSTS_PERMISSIONS,
+    },
+    {
+      id: "idle-findings",
+      label: "Idle resource findings",
+      description:
+        "A daily CloudWatch read that flags idle NAT gateways, load balancers, ElastiCache clusters, over-provisioned DynamoDB tables and unused RDS instances, priced from the AWS Price List.",
+      requiredPermissions: IDLE_FINDING_PERMISSIONS,
     },
     {
       id: "ai-request-logs",
@@ -186,6 +201,7 @@ const TEMPLATE_ACTIONS: Record<string, string[]> = {
   ],
   metrics: METRICS_PERMISSIONS.map((p) => p.id),
   costs: COSTS_PERMISSIONS.map((p) => p.id),
+  "idle-findings": IDLE_FINDING_PERMISSIONS.map((p) => p.id),
   "ai-request-logs": [
     ...AI_REQUEST_LOG_PERMISSIONS.map((p) => p.id),
     "logs:StopQuery",
@@ -326,6 +342,21 @@ async function probeCapability(creds: AwsCredentials, capabilityId: string): Pro
     });
     return;
   }
+  if (capabilityId === "idle-findings") {
+    // One metric for five minutes: the smallest GetMetricData there is.
+    const end = new Date();
+    const start = new Date(end.getTime() - 5 * 60 * 1000);
+    await queryPostCall(creds, "monitoring", "GetMetricData", "2010-08-01", {
+      StartTime: start.toISOString(),
+      EndTime: end.toISOString(),
+      "MetricDataQueries.member.1.Id": "probe",
+      "MetricDataQueries.member.1.MetricStat.Metric.Namespace": "AWS/EC2",
+      "MetricDataQueries.member.1.MetricStat.Metric.MetricName": "CPUUtilization",
+      "MetricDataQueries.member.1.MetricStat.Period": "300",
+      "MetricDataQueries.member.1.MetricStat.Stat": "Average",
+    });
+    return;
+  }
   // costs: the smallest possible GetCostAndUsage (CE bills ~$0.01/request,
   // only paid on this fallback path).
   const now = new Date();
@@ -357,6 +388,7 @@ const PROBE_PERMISSION: Record<string, PreflightPermission> = {
   resources: RESOURCES_PERMISSIONS[0]!,
   metrics: METRICS_PERMISSIONS[2]!,
   costs: COSTS_PERMISSIONS[0]!,
+  "idle-findings": IDLE_FINDING_PERMISSIONS[0]!,
 };
 
 function missingCheck(

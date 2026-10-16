@@ -133,6 +133,19 @@ export interface DigestSeats {
   monthly: number | null;
 }
 
+/**
+ * Resources a metric-based idle rule flagged (see `idle/feed.ts`): a NAT
+ * gateway with no traffic, a load balancer with no requests. Point-in-time,
+ * like the seat count. The figure is list price, and the line says so.
+ * Omitted when nothing is flagged.
+ */
+export interface DigestIdleFindings {
+  findings: number;
+  /** List-price total in the primary currency (the largest); null when none is priced. */
+  currency: string | null;
+  monthly: number | null;
+}
+
 export interface DigestInput {
   window: DigestWindow;
   /** Daily costs from `prevWeekStart` through `weekEnd`, grouped by provider. */
@@ -203,6 +216,8 @@ export interface DigestInput {
   delivery?: DigestDelivery | null;
   /** Seat findings, when there are any. */
   seats?: DigestSeats | null;
+  /** Idle-rule findings, when there are any. */
+  idleFindings?: DigestIdleFindings | null;
 }
 
 /**
@@ -274,6 +289,8 @@ export interface WeeklyDigest {
   delivery: DigestDelivery | null;
   /** Seat findings, when there are any. */
   seats: DigestSeats | null;
+  /** Idle-rule findings, when there are any. */
+  idleFindings: DigestIdleFindings | null;
 }
 
 const MAX_MOVERS = 3;
@@ -537,6 +554,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     realizedSavings: input.realizedSavings ?? null,
     delivery: input.delivery ?? null,
     seats: input.seats && input.seats.findings > 0 ? input.seats : null,
+    idleFindings: input.idleFindings && input.idleFindings.findings > 0 ? input.idleFindings : null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
 }
@@ -761,6 +779,8 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
   if (costMoverLine) lines.push(costMoverLine);
   const seatsLine = seatsSegments(digest.seats);
   if (seatsLine) lines.push(seatsLine);
+  const idleLine = idleFindingsSegments(digest.idleFindings);
+  if (idleLine) lines.push(idleLine);
   const savingsLine = realizedSavingsSegments(digest.realizedSavings);
   if (savingsLine) lines.push(savingsLine);
   const deliveryLine = deliverySegments(digest.delivery);
@@ -780,6 +800,22 @@ function seatsSegments(seats: DigestSeats | null): DigestLine | null {
   return [
     { text: "Seats", bold: true },
     { text: `: ${parts.join(", ")}${saving}`, bold: false },
+  ];
+}
+
+/** The idle resources line: how many the metric rules flagged, and their list price a month. */
+export function idleFindingsSegments(idle: DigestIdleFindings | null): DigestLine | null {
+  if (!idle || idle.findings === 0) return null;
+  const saving =
+    idle.monthly !== null && idle.currency && idle.monthly > 0
+      ? `, about ${formatAmount(idle.monthly, idle.currency)}/mo at list price`
+      : "";
+  return [
+    { text: "Idle resources", bold: true },
+    {
+      text: `: ${pluralize(idle.findings, "resource")} flagged from metrics${saving}`,
+      bold: false,
+    },
   ];
 }
 

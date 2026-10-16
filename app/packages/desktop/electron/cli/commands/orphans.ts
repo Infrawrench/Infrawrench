@@ -20,7 +20,8 @@ import { listLocalOrphans } from "../../local-orphans";
 import type { OrphanListResponse } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
-import { c, formatMoney, printJson, println, printTable, type Column } from "../output";
+import { describeIdleEvidence } from "../format";
+import { c, formatMoney, printJson, println, printTable, safe, type Column } from "../output";
 import { printRemediation } from "../remediation";
 
 type FlaggedResource = OrphanListResponse["accounts"][number]["resources"][number];
@@ -92,7 +93,14 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
   if (showCost) {
     columns.push({
       header: `cost (${response.costWindowDays}d)`,
-      value: (r) => (r.cost ? formatMoney(r.cost.amount, r.cost.currency) : c.dim("—")),
+      // An idle rule's list-price estimate stands in when no billing row
+      // matched, marked so it never reads as the bill.
+      value: (r) =>
+        r.cost
+          ? formatMoney(r.cost.amount, r.cost.currency)
+          : r.estimate
+            ? `${formatMoney(r.estimate.monthlyAmount, r.estimate.currency)}${c.dim("/mo est.")}`
+            : c.dim("—"),
       align: "right",
     });
   }
@@ -101,6 +109,22 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
     println();
     println(`${c.bold(group.accountName)} ${c.dim(`· ${group.pluginName}`)}`);
     printTable(group.resources, columns);
+  }
+
+  // Metric evidence behind every idle row, so the claim can be checked
+  // before anything is deleted.
+  const idleRows = response.accounts.flatMap((g) => g.resources).filter((r) => r.idle);
+  if (idleRows.length > 0) {
+    println();
+    println(c.bold("Idle evidence"));
+    for (const r of idleRows) {
+      const idle = r.idle!;
+      println(
+        `  ${safe(r.displayName)} ${c.dim(`· ${safe(idle.ruleLabel)} · ${idle.lookbackDays} days · since ${idle.detectedAt.slice(0, 10)}`)}`,
+      );
+      for (const e of idle.evidence) println(`    ${safe(describeIdleEvidence(e))}`);
+      if (!r.cost && r.estimate?.note) println(c.dim(`    estimate: ${safe(r.estimate.note)}`));
+    }
   }
 
   printRemediation(response.accounts.flatMap((g) => g.resources));
@@ -118,7 +142,7 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
   println(
     c.dim(
       showCost
-        ? "Cost figures are best-effort per-resource billing matches; most providers don't report them. Confirm a resource is unused before deleting it."
+        ? "Cost figures are best-effort per-resource billing matches; most providers don't report them. Figures marked est. are list prices for the resource's configuration. Confirm a resource is unused before deleting it."
         : "Spend is collected by Infrawrench Cloud, so a local scan has no cost column. The flags never depend on billing data. Confirm a resource is unused before deleting it.",
     ),
   );

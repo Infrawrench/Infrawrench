@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { formatMoney, type OrphanedResource } from "@infrawrench/client-core";
+import { formatIdleValue, formatMoney, type OrphanedResource } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
@@ -10,8 +10,10 @@ import { useOrphans } from "./useOrphans";
 /**
  * "Potential savings": the native counterpart to `SavingsSection` on web and
  * desktop. Resources a provider plugin's orphan heuristic flagged (unattached
- * volumes, unassigned IPs), grouped by account, each with the plugin's reason
- * and, where the org collects per-resource billing rows, trailing spend.
+ * volumes, unassigned IPs) or a metric-based idle rule flagged (with its
+ * evidence), grouped by account, each with the plugin's reason and, where the
+ * org collects per-resource billing rows, trailing spend (else a list-price
+ * estimate). Read-only: tuning the idle rules is a web and desktop form.
  *
  * It sits on the Costs tab under the month-to-date chart and budgets rather
  * than on a tab of its own, exactly as on the other two surfaces: spend and
@@ -79,7 +81,8 @@ export function SavingsSection() {
                     showCost={showCost}
                     showOwner={showOwner}
                     costWindowDays={data.costWindowDays}
-                    onPress={() => openResource(r)}
+                    // A custom-metric finding has no resource screen to open.
+                    onPress={r.idle && !r.idle.hasResource ? undefined : () => openResource(r)}
                   />
                   <RemediationCommands remediation={r.remediation} />
                 </View>
@@ -96,6 +99,9 @@ export function SavingsSection() {
             : "No cost figures here; flags don't depend on billing data."}{" "}
           {showOwner && data.unownedCount > 0
             ? `${data.unownedCount} of ${data.totalCount} have no recorded owner. `
+            : ""}
+          {data.accounts.some((g) => g.resources.some((r) => !r.cost && r.estimate))
+            ? "Figures marked est. are the provider's list price for the configuration, not your bill. "
             : ""}
           Confirm a resource really is unused before deleting it.
         </Text>
@@ -115,14 +121,19 @@ function OrphanRow({
   showCost: boolean;
   showOwner: boolean;
   costWindowDays: number;
-  onPress: () => void;
+  onPress: (() => void) | undefined;
 }) {
   // A resource with no matching billing rows shows nothing rather than a zero:
   // "no per-resource cost rows for this" is not "this is free".
   const cost = showCost ? resource.cost : null;
+  // An idle rule's list-price estimate stands in when billing matched
+  // nothing, marked "est." so it never reads as the bill.
+  const estimate = showCost && !cost ? (resource.estimate ?? null) : null;
+  const idle = resource.idle;
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={onPress ? "button" : "text"}
+      disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
@@ -133,6 +144,21 @@ function OrphanRow({
         <Text style={styles.subtitle} numberOfLines={2}>
           {resource.resourceTypeName} · {resource.reason}
         </Text>
+        {idle && (
+          // The metric evidence behind the flag, so it can be checked before
+          // anyone acts on it.
+          <Text style={styles.evidence} numberOfLines={4}>
+            {idle.ruleLabel} · {idle.lookbackDays} days
+            {idle.evidence.map(
+              (e) =>
+                `\n${e.label}: ${formatIdleValue(e.value, e.unit)}${
+                  e.threshold === undefined || e.threshold === null
+                    ? ""
+                    : ` (flags at ${e.comparison === "atLeast" ? "≥" : "≤"} ${formatIdleValue(e.threshold, e.unit)})`
+                }`,
+            )}
+          </Text>
+        )}
         {showOwner && (
           // "Unowned" is rendered rather than omitted: it is the finding, and a
           // missing line on a phone reads as "not loaded" rather than "nobody
@@ -148,6 +174,12 @@ function OrphanRow({
         <View style={styles.costCell}>
           <Text style={styles.cost}>{formatMoney(cost.amount, cost.currency)}</Text>
           <Text style={styles.costWindow}>/ {costWindowDays}d</Text>
+        </View>
+      )}
+      {estimate && (
+        <View style={styles.costCell}>
+          <Text style={styles.cost}>{formatMoney(estimate.monthlyAmount, estimate.currency)}</Text>
+          <Text style={styles.costWindow}>/ mo est.</Text>
         </View>
       )}
     </Pressable>
@@ -166,6 +198,7 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textMuted, fontSize: 12 },
   owner: { color: colors.textMuted, fontSize: 12 },
   unowned: { color: colors.textFaint, fontSize: 12, fontStyle: "italic" },
+  evidence: { color: colors.textFaint, fontSize: 11 },
   costCell: { alignItems: "flex-end" },
   cost: { color: colors.text, fontSize: 14, fontWeight: "500" },
   costWindow: { color: colors.textFaint, fontSize: 11 },

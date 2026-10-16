@@ -13,7 +13,7 @@ sidebar_order: 2
 - **Caches** — Azure Cache for Redis and its successor, Azure Managed Redis.
 - **AI** — Azure AI Foundry, Azure OpenAI and Azure AI services accounts, with their model deployments.
 - **Storage** — Storage accounts (Blob, File, Queue, Table).
-- **Networking** — VNets, Subnets, NSGs, Load Balancers, Public IPs.
+- **Networking** — VNets, Subnets, NSGs, Load Balancers, NAT gateways, Application gateways, Public IPs.
 - **Security** — Key Vault (keys, secrets, certificates).
 
 ## Credentials
@@ -99,6 +99,16 @@ Every resource type except resource groups, networking plumbing (VNets, subnets,
 - **Log Analytics workspaces**: ingestion volume and time, query count, failed queries and query availability.
 
 Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance it is the tail of the selected container's output with timestamps, read through the ARM `containers/logs` operation; Azure keeps those logs only while the group is running.
+
+## Idle resource findings
+
+Once a day the cloud poller reads Azure Monitor (at a one-day interval) for every synced load balancer, NAT gateway and application gateway and adds the idle ones to [Potential savings](../features/idle-resources.md). It needs `Microsoft.Insights/metrics/read`, which the Reader and Monitoring Reader roles carry:
+
+- **Load balancers**: Standard SKU with at least one rule (a balancer with no rules bills nothing), judged on `ByteCount`, with `VipAvailability` proving the read reached it. Priced from the Retail Prices API: the first five rules as one hourly meter, each further rule another.
+- **NAT gateways**: one attached to no subnet is flagged straight away, since it bills by the hour either way; otherwise judged on `ByteCount`, with `DatapathAvailability` as the proof and `TotalConnectionCount` as context. Priced at the gateway's hourly meter.
+- **Application gateways**: running v2 gateways, judged on `TotalRequests` and `HealthyHostCount`, with `CapacityUnits` as the proof. Priced at the tier's fixed hourly cost in the gateway's region; reserved capacity units are on top.
+
+The remediation commands are `az network lb delete`, `az network nat gateway delete`, and `az network application-gateway stop` (then `delete`). Azure has no credential check in Infrawrench yet, so the missing-permission message appears on the Idle rules form instead.
 
 ## Tips & limits
 

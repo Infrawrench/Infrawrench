@@ -43,11 +43,18 @@ To keep an account read-only, or as narrow as you like, use a **scoped applicati
 | Hosts                   | `hosts_read`                                                                    |
 | Host and monitor charts | `timeseries_query`                                                              |
 | Business metric import  | `metrics_read`, `timeseries_query`                                              |
+| Unused custom metrics   | `metrics_read`                                                                  |
 | Users                   | `user_access_read`, plus `user_access_manage` to disable                        |
 | API keys                | `api_keys_read`, plus `api_keys_delete` to revoke                               |
 | Application keys        | `org_app_keys_read`, plus `org_app_keys_write` to revoke                        |
 
 A scope narrows a key; it cannot grant more than its owner's role has. A type the key cannot read simply lists empty rather than failing the whole account.
+
+## Unused custom metrics
+
+Once a day the cloud poller lists the custom metrics that reported in the last day but that nobody queried in 30 days (Datadog's own query tracking, `filter[queried]`), drops the ones a dashboard, monitor, notebook or SLO uses (`filter[related_assets]`), and adds the rest to [Potential savings](../features/idle-resources.md) as **Unused custom metric** findings, largest indexed volume first (up to 100 per organization). Each shows how many series it indexes and ingests, and an estimate at Datadog's list price of $5 per 100 custom metrics a month; metrics inside your plan's included allotment save nothing, so read it as the most removing one could save. Both the 30 days (1 to 180) and the minimum number of indexed series are thresholds in **Idle rules**.
+
+The remediation commands are two read-only `curl` calls (what uses the metric, and its volumes). A custom metric cannot be deleted through the API: it stops billing when whatever submits it stops, or you narrow its tags in **Metrics Summary** with Metrics without Limits.
 
 ## Cost graphs
 

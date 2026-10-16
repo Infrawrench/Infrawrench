@@ -8,6 +8,8 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { DEFAULT_SITE_ID, SITE_REGIONS } from "./sites.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { datadogTerraformExport } from "./terraform.js";
+import { DATADOG_IDLE_FINDINGS } from "./idle-findings.js";
+import { datadogRemediationCommands } from "./remediation.js";
 
 const manifest: PluginManifest = {
   id: "datadog",
@@ -92,6 +94,10 @@ const manifest: PluginManifest = {
   // importer's local days. Needs metrics_read (pickers) and timeseries_query.
   businessMetricSource: DATADOG_BUSINESS_METRIC_SOURCE,
   statusFeed,
+  // Unused custom metrics: two reads of `GET /api/v2/metrics` a day (needs
+  // metrics_read, the `custom-metrics` preflight capability). See
+  // `idle-findings.ts`.
+  idleFindings: DATADOG_IDLE_FINDINGS,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
 };
 
@@ -102,4 +108,5 @@ export const plugin: Plugin = {
   parseStatusFeed,
   policyTemplate: datadogPolicyTemplate,
   terraformExport: datadogTerraformExport,
+  remediationCommands: datadogRemediationCommands,
 };

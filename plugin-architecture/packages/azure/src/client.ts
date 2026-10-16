@@ -47,7 +47,10 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
   VulnerabilityFinding,
+  IdleFindingRecord,
+  IdleScanRequest,
 } from "@infrawrench/plugin-base";
+import { azureMonitorReader, fetchAzureIdleFindings, retailPriceReader } from "./idle-findings.js";
 import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
@@ -477,6 +480,17 @@ export class AzureClient implements PluginClient {
   ): Promise<DashboardStat[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     return buildAzureDashboardStats(resource);
+  }
+
+  async fetchIdleFindings(
+    _accountId: string,
+    request: IdleScanRequest,
+  ): Promise<IdleFindingRecord[]> {
+    return fetchAzureIdleFindings(request, {
+      subscriptionId: this.creds.subscriptionId,
+      read: azureMonitorReader((url) => this.get(url)),
+      prices: retailPriceReader(this.http),
+    });
   }
 
   async fetchMetricSeries(

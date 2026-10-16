@@ -1,13 +1,18 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import {
+  describeIdleEvidence,
+  formatIdleValue,
   formatMoney,
   formatTicketRef,
+  orphanMonthlyFigure,
+  type IdleMetricEvidence,
   type ResourceOwnerAnnotation,
 } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { OpenPullRequestButton } from "../issue-filing/OpenPullRequestButton.js";
 import { RemediateToggle, RemediationPanel } from "./RemediationPanel.js";
+import { IdleRulesModal } from "./IdleRulesModal.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
@@ -54,6 +59,49 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
   );
 }
 
+/**
+ * The metric evidence behind an idle row, one reading per line: the label,
+ * the value over the window, and the threshold it was judged against. Shown
+ * so the reader can check the claim before acting on it.
+ */
+function IdleEvidence({
+  evidence,
+  lookbackDays,
+  detectedAt,
+}: {
+  evidence: IdleMetricEvidence[];
+  lookbackDays: number;
+  detectedAt: string;
+}) {
+  const gt = useGT();
+  const gtData = useDataString();
+  return (
+    <span className="mt-1 block text-xs text-on-surface-faint">
+      {evidence.map((e) => (
+        <span key={`${e.metric}-${e.statistic}`} className="block" title={e.metric}>
+          {e.threshold === undefined || e.threshold === null
+            ? gt("{label}: {value}", {
+                label: gtData(e.label),
+                value: formatIdleValue(e.value, e.unit),
+              })
+            : gt("{label}: {value} (flags at {op} {threshold})", {
+                label: gtData(e.label),
+                value: formatIdleValue(e.value, e.unit),
+                op: e.comparison === "atLeast" ? "≥" : "≤",
+                threshold: formatIdleValue(e.threshold, e.unit),
+              })}
+        </span>
+      ))}
+      <span className="block">
+        {gt("Over the last {days} days · flagged since {date}", {
+          days: lookbackDays,
+          date: new Date(detectedAt).toLocaleDateString(),
+        })}
+      </span>
+    </span>
+  );
+}
+
 export interface SavingsSectionProps {
   /**
    * Org-scoped data access. The Costs panel that hosts this section is mounted
@@ -68,6 +116,8 @@ export interface SavingsSectionProps {
    * `pluginId:accountId:externalId` and so can't be split on naively.
    */
   onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
+  /** Open a help link outside the app shell (desktop); the idle rules modal uses it. */
+  onOpenExternal?: ((url: string) => void) | undefined;
 }
 
 /**
@@ -81,10 +131,11 @@ export interface SavingsSectionProps {
  * spending, and what of it is wasted"), and a separate tab made them go looking
  * for it.
  */
-export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) {
+export function SavingsSection({ client, onOpenResource, onOpenExternal }: SavingsSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
   const [data, setData] = useState<OrphanListResponse | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Rows whose Remediate panel is expanded. */
   const [openRemediation, setOpenRemediation] = useState<ReadonlySet<string>>(new Set());
@@ -135,14 +186,33 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
-        >
-          {gt("Refresh")}
-        </button>
+        <span className="flex shrink-0 gap-2">
+          {client.idleFindings && (
+            <button
+              type="button"
+              onClick={() => setRulesOpen(true)}
+              className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+            >
+              {gt("Idle rules")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
+          >
+            {gt("Refresh")}
+          </button>
+        </span>
       </div>
+      {rulesOpen && client.idleFindings && (
+        <IdleRulesModal
+          client={client.idleFindings}
+          onClose={() => setRulesOpen(false)}
+          onChanged={() => void refresh()}
+          onOpenExternal={onOpenExternal}
+        />
+      )}
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
@@ -198,7 +268,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                         {/* The name is the navigation control, not the row: a
                           <tr> has no role a screen reader announces as
                           activatable. */}
-                        {onOpenResource ? (
+                        {onOpenResource && (!r.idle || r.idle.hasResource) ? (
                           <button
                             type="button"
                             onClick={() => onOpenResource(r, group.accountId)}
@@ -216,7 +286,19 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                         </span>
                       </td>
                       <td className="px-3 py-2.5 w-full text-on-surface-secondary">
+                        {r.idle && (
+                          <span className="mr-2 rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">
+                            {gtData(r.idle.ruleLabel)}
+                          </span>
+                        )}
                         {gtData(r.reason)}
+                        {r.idle && (
+                          <IdleEvidence
+                            evidence={r.idle.evidence}
+                            lookbackDays={r.idle.lookbackDays}
+                            detectedAt={r.idle.detectedAt}
+                          />
+                        )}
                       </td>
                       {showOwner && (
                         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -232,6 +314,21 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                                 {gt("/ {days}d", { days: data.costWindowDays })}
                               </span>
                             </>
+                          ) : r.estimate ? (
+                            <span
+                              title={
+                                r.estimate.note
+                                  ? gt("Published list price for this configuration. {note}", {
+                                      note: r.estimate.note,
+                                    })
+                                  : gt("Published list price for this configuration.")
+                              }
+                            >
+                              {formatMoney(r.estimate.monthlyAmount, r.estimate.currency)}
+                              <span className="ml-1 text-xs text-on-surface-faint">
+                                {gt("/ mo est.")}
+                              </span>
+                            </span>
                           ) : (
                             <span className="text-on-surface-faint">—</span>
                           )}
@@ -244,29 +341,38 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                             open={openRemediation.has(r.id)}
                             onToggle={() => toggleRemediation(r.id)}
                           />
-                          <OpenPullRequestButton
-                            sourceKind="orphan"
-                            sourceId={r.id}
-                            resourceId={r.id}
-                            change={{ kind: "remove" }}
-                          />
+                          {/* A removal pull request only for what removal fixes: an
+                            idle table wants a billing-mode change, and a custom
+                            metric has no Terraform block. */}
+                          {(!r.idle || (r.idle.hasResource && r.idle.action === "remove")) && (
+                            <OpenPullRequestButton
+                              sourceKind="orphan"
+                              sourceId={r.id}
+                              resourceId={r.id}
+                              change={{ kind: "remove" }}
+                            />
+                          )}
                           <FileIssueButton
                             sourceKind="orphan"
                             sourceId={r.id}
-                            resourceId={r.id}
-                            monthlyCost={
-                              r.cost
-                                ? {
-                                    amount: (r.cost.amount * 30) / data.costWindowDays,
-                                    currency: r.cost.currency,
-                                  }
-                                : undefined
-                            }
+                            resourceId={!r.idle || r.idle.hasResource ? r.id : undefined}
+                            monthlyCost={(() => {
+                              const figure = orphanMonthlyFigure(r, data.costWindowDays);
+                              return figure
+                                ? { amount: figure.amount, currency: figure.currency }
+                                : undefined;
+                            })()}
                             draft={{
-                              title: gt("{name} ({type}) looks orphaned", {
-                                name: r.displayName,
-                                type: gtData(r.resourceTypeName),
-                              }),
+                              title: r.idle
+                                ? gt("{name} ({type}): {rule}", {
+                                    name: r.displayName,
+                                    type: gtData(r.resourceTypeName),
+                                    rule: gtData(r.idle.ruleLabel),
+                                  })
+                                : gt("{name} ({type}) looks orphaned", {
+                                    name: r.displayName,
+                                    type: gtData(r.resourceTypeName),
+                                  }),
                               details: [
                                 { label: gt("Resource"), value: r.displayName },
                                 { label: gt("Type"), value: gtData(r.resourceTypeName) },
@@ -279,7 +385,26 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                                     ? formatMoney(r.cost.amount, r.cost.currency)
                                     : undefined,
                                 },
+                                {
+                                  label: gt("List price / month"),
+                                  value:
+                                    !r.cost && r.estimate
+                                      ? formatMoney(r.estimate.monthlyAmount, r.estimate.currency)
+                                      : undefined,
+                                },
                                 { label: gt("Last synced"), value: r.lastSyncedAt },
+                                ...(r.idle
+                                  ? [
+                                      {
+                                        label: gt("Lookback"),
+                                        value: gt("{days} days", { days: r.idle.lookbackDays }),
+                                      },
+                                      ...r.idle.evidence.map((e) => ({
+                                        label: gt("Evidence"),
+                                        value: describeIdleEvidence(e),
+                                      })),
+                                    ]
+                                  : []),
                               ],
                               note: r.reason,
                               remediation: r.remediation,
@@ -350,6 +475,13 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
               </>
             </T>
           )}{" "}
+          {data.accounts.some((g) => g.resources.some((r) => !r.cost && r.estimate)) && (
+            <>
+              {gt(
+                "Figures marked est. are the provider's published list price for the resource's configuration, not your bill.",
+              )}{" "}
+            </>
+          )}
           {gt("Confirm a resource really is unused before deleting it.")}
         </p>
       )}

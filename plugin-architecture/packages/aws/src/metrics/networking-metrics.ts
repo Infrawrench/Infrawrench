@@ -20,6 +20,10 @@ export async function albMetrics(
   const dim = arn.split(":loadbalancer/").pop() ?? "";
   if (!dim) return [];
   const dims = [{ Name: "LoadBalancer", Value: dim }];
+  // Network load balancers publish under their own namespace with flow
+  // metrics, not requests; querying them under AWS/ApplicationELB returned
+  // nothing. The dimension value (`net/name/id`) is the same ARN slice.
+  if (String(resource.fields["type"] ?? "") === "network") return nlbMetrics(ctx, dims);
   const [
     reqs,
     active,
@@ -67,6 +71,84 @@ export async function albMetrics(
     results.push({ ...targetConnErr, label: "Target Conn Errors" });
   if (consumedLcus && consumedLcus.points.length > 0)
     results.push({ ...consumedLcus, label: "Consumed LCUs" });
+  return results;
+}
+
+/**
+ * Network Load Balancer series. Verified against
+ * https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-cloudwatch-metrics.html
+ * (`ActiveFlowCount`, `NewFlowCount`, `ProcessedBytes`, `ConsumedLCUs` are
+ * always reported; the TCP resets only when non-zero).
+ */
+async function nlbMetrics(
+  ctx: MetricsContext,
+  dims: Array<{ Name: string; Value: string }>,
+): Promise<MetricSeries[]> {
+  const ns = "AWS/NetworkELB";
+  const [active, newFlows, bytes, lcus, clientResets, elbResets, targetResets] = await Promise.all([
+    ctx.fetchCw(ns, "ActiveFlowCount", dims, "Average").catch(() => null),
+    ctx.fetchCw(ns, "NewFlowCount", dims, "Sum").catch(() => null),
+    ctx.fetchCw(ns, "ProcessedBytes", dims, "Sum").catch(() => null),
+    ctx.fetchCw(ns, "ConsumedLCUs", dims).catch(() => null),
+    ctx.fetchCw(ns, "TCP_Client_Reset_Count", dims, "Sum").catch(() => null),
+    ctx.fetchCw(ns, "TCP_ELB_Reset_Count", dims, "Sum").catch(() => null),
+    ctx.fetchCw(ns, "TCP_Target_Reset_Count", dims, "Sum").catch(() => null),
+  ]);
+  const results: MetricSeries[] = [];
+  if (active && active.points.length > 0) results.push({ ...active, label: "Active Flows" });
+  if (newFlows && newFlows.points.length > 0) results.push({ ...newFlows, label: "New Flows" });
+  if (bytes && bytes.points.length > 0)
+    results.push({ ...bytes, label: "Processed Bytes", unit: "bytes" });
+  if (lcus && lcus.points.length > 0) results.push({ ...lcus, label: "Consumed LCUs" });
+  if (clientResets && clientResets.points.length > 0)
+    results.push({ ...clientResets, label: "TCP Resets (client)" });
+  if (elbResets && elbResets.points.length > 0)
+    results.push({ ...elbResets, label: "TCP Resets (load balancer)" });
+  if (targetResets && targetResets.points.length > 0)
+    results.push({ ...targetResets, label: "TCP Resets (target)" });
+  return results;
+}
+
+/**
+ * Classic Load Balancer series. Verified against
+ * https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/elb-cloudwatch-metrics.html
+ * The dimension is `LoadBalancerName` (the name, not an ARN); request and
+ * error counts are only published when non-zero.
+ */
+export async function classicElbMetrics(
+  ctx: MetricsContext,
+  resource: ResourceInstance,
+): Promise<MetricSeries[]> {
+  const name = String(resource.fields["name"] ?? resource.externalId ?? "");
+  if (!name) return [];
+  const ns = "AWS/ELB";
+  const dims = [{ Name: "LoadBalancerName", Value: name }];
+  const [reqs, latency, healthy, unhealthy, backend5xx, elb5xx, surge, spill, backendErr] =
+    await Promise.all([
+      ctx.fetchCw(ns, "RequestCount", dims, "Sum").catch(() => null),
+      ctx.fetchCw(ns, "Latency", dims, "Average").catch(() => null),
+      ctx.fetchCw(ns, "HealthyHostCount", dims, "Average").catch(() => null),
+      ctx.fetchCw(ns, "UnHealthyHostCount", dims, "Average").catch(() => null),
+      ctx.fetchCw(ns, "HTTPCode_Backend_5XX", dims, "Sum").catch(() => null),
+      ctx.fetchCw(ns, "HTTPCode_ELB_5XX", dims, "Sum").catch(() => null),
+      ctx.fetchCw(ns, "SurgeQueueLength", dims, "Maximum").catch(() => null),
+      ctx.fetchCw(ns, "SpilloverCount", dims, "Sum").catch(() => null),
+      ctx.fetchCw(ns, "BackendConnectionErrors", dims, "Sum").catch(() => null),
+    ]);
+  const results: MetricSeries[] = [];
+  if (reqs && reqs.points.length > 0) results.push({ ...reqs, label: "Requests" });
+  if (latency && latency.points.length > 0)
+    results.push({ ...latency, label: "Latency", unit: "s" });
+  if (healthy && healthy.points.length > 0) results.push({ ...healthy, label: "Healthy Hosts" });
+  if (unhealthy && unhealthy.points.length > 0)
+    results.push({ ...unhealthy, label: "Unhealthy Hosts" });
+  if (backend5xx && backend5xx.points.length > 0)
+    results.push({ ...backend5xx, label: "5xx Errors (backend)" });
+  if (elb5xx && elb5xx.points.length > 0) results.push({ ...elb5xx, label: "5xx Errors (ELB)" });
+  if (surge && surge.points.length > 0) results.push({ ...surge, label: "Surge Queue Length" });
+  if (spill && spill.points.length > 0) results.push({ ...spill, label: "Spillover" });
+  if (backendErr && backendErr.points.length > 0)
+    results.push({ ...backendErr, label: "Backend Conn Errors" });
   return results;
 }
 

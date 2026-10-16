@@ -25,6 +25,8 @@ import type {
   CostEstimateLineItem,
   CommitmentRecord,
   QuotaUsage,
+  IdleFindingRecord,
+  IdleScanRequest,
   VulnerabilityFinding,
   CostFetchRange,
   CostRow,
@@ -185,6 +187,7 @@ import {
   updateMemorystoreValkey,
 } from "./cloud-run-job-handlers.js";
 import { VERTEX_GEMINI_MODELS } from "./resources/vertex-gemini-model.js";
+import { fetchGcpIdleFindings, monitoringReader } from "./idle-findings.js";
 
 /**
  * Vertex AI location used for the Gemini chat playground. The `global`
@@ -1204,6 +1207,16 @@ export class GcpClient implements PluginClient {
 
   checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
     return checkGcpJitAccess(this.jitCtx, spec);
+  }
+
+  async fetchIdleFindings(
+    _accountId: string,
+    request: IdleScanRequest,
+  ): Promise<IdleFindingRecord[]> {
+    return fetchGcpIdleFindings(request, {
+      read: monitoringReader(this.project, (url) => this.get(url)),
+      estimateCost: (typeId, fields) => this.estimateCost(typeId, fields),
+    });
   }
 
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {

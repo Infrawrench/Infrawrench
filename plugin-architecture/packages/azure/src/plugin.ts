@@ -5,6 +5,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { azureTerraformExport } from "./terraform.js";
 import { azureRemediationCommands } from "./remediation.js";
+import { AZURE_IDLE_FINDINGS } from "./idle-findings.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
@@ -149,6 +150,11 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   priceCatalog,
+  // Metric-based idle findings (load balancers, NAT gateways, application
+  // gateways) read from Azure Monitor once a day and priced from the Retail
+  // Prices API. Needs Microsoft.Insights/metrics/read (Monitoring Reader or
+  // Reader on the subscription). See `idle-findings.ts`.
+  idleFindings: AZURE_IDLE_FINDINGS,
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: AZURE_TRANSFER_RATES,

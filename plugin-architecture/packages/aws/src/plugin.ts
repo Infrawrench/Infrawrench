@@ -3,6 +3,7 @@ import { AWS_FOCUS } from "./focus-services.js";
 import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
+import { AWS_IDLE_FINDINGS } from "./idle-findings.js";
 import { awsTerraformExport } from "./terraform.js";
 import { awsRemediationCommands } from "./remediation.js";
 import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
@@ -30,6 +31,7 @@ import { IAMUserResourceType } from "./resources/iam-user.js";
 import { Route53HostedZoneResourceType } from "./resources/route53-hosted-zone.js";
 import { Route53RecordSetResourceType } from "./resources/route53-record-set.js";
 import { ALBResourceType } from "./resources/alb.js";
+import { ClassicELBResourceType } from "./resources/classic-elb.js";
 import { TargetGroupResourceType } from "./resources/target-group.js";
 import { AutoScalingGroupResourceType } from "./resources/auto-scaling-group.js";
 import { IAMRoleResourceType } from "./resources/iam-role.js";
@@ -175,6 +177,11 @@ const manifest: PluginManifest = {
     partial: true,
     requiresElevatedCredential: true,
   },
+  // Metric-based idle findings: one CloudWatch GetMetricData batch per region
+  // a day, priced from the Price List API. Needs cloudwatch:GetMetricData
+  // (and pricing:GetProducts for the estimates): the `idle-findings`
+  // preflight capability. See `idle-findings.ts`.
+  idleFindings: AWS_IDLE_FINDINGS,
   // Active Amazon Inspector package findings (ECR images, Lambda functions,
   // EC2 instances) in every enabled region. Needs inspector2:ListFindings and
   // Inspector activated in the regions used: surfaced in the plugin docs.
@@ -249,6 +256,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   RouteTableResourceType,
   SecurityGroupResourceType,
   ALBResourceType,
+  ClassicELBResourceType,
   TargetGroupResourceType,
   NATGatewayResourceType,
   ElasticIPResourceType,

@@ -23,6 +23,7 @@ import {
   DRIFT_ALERT_LIMITS,
   EXPIRY_ALERT_LIMITS,
   EXTENDED_SUPPORT_LIMITS,
+  IDLE_FINDING_LIMITS,
   METRIC_ALERT_LIMITS,
   PROBE_LIMITS,
   SLO_LIMITS,
@@ -384,6 +385,31 @@ const alertSettingsSchema = z
           .int()
           .min(EXTENDED_SUPPORT_LIMITS.leadDays.min)
           .max(EXTENDED_SUPPORT_LIMITS.leadDays.max),
+      })
+      .strict()
+      .optional(),
+    // Metric-based idle rules: the same bounds `PUT /idle-findings/settings`
+    // enforces; unknown rule and threshold keys are rejected at apply time,
+    // against the loaded plugins' declarations.
+    idleFindings: z
+      .object({
+        enabled: z.boolean(),
+        lookbackDays: z
+          .number()
+          .int()
+          .min(IDLE_FINDING_LIMITS.minLookbackDays)
+          .max(IDLE_FINDING_LIMITS.maxLookbackDays),
+        rules: z
+          .record(
+            z.string().min(3).max(130),
+            z
+              .object({
+                enabled: z.boolean().optional(),
+                thresholds: z.record(z.string().min(1).max(64), z.number().finite()).optional(),
+              })
+              .strict(),
+          )
+          .default({}),
       })
       .strict()
       .optional(),

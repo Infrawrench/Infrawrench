@@ -210,6 +210,43 @@ export const pluginManifestSchema = z.object({
       requiresElevatedCredential: z.boolean().optional(),
     })
     .optional(),
+  idleFindings: z
+    .object({
+      rules: z
+        .array(
+          z.object({
+            id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+            label: z.string().min(1),
+            description: z.string().min(1),
+            resourceTypeIds: z.array(z.string().min(1)),
+            action: z.enum(["remove", "reconfigure", "stop"]),
+            thresholds: z
+              .array(
+                z
+                  .object({
+                    key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,63}$/),
+                    label: z.string().min(1),
+                    description: z.string().optional(),
+                    unit: z.enum(["count", "bytes", "percent", "days"]),
+                    default: z.number().finite(),
+                    min: z.number().finite(),
+                    max: z.number().finite(),
+                  })
+                  .refine((t) => t.min <= t.default && t.default <= t.max, {
+                    message: "idle threshold default must sit within [min, max]",
+                  }),
+              )
+              .refine((list) => new Set(list.map((t) => t.key)).size === list.length, {
+                message: "idle threshold keys must be unique within a rule",
+              }),
+          }),
+        )
+        .min(1)
+        .refine((list) => new Set(list.map((r) => r.id)).size === list.length, {
+          message: "idle rule ids must be unique",
+        }),
+    })
+    .optional(),
   vulnerabilities: z
     .object({
       label: z.string().min(1),

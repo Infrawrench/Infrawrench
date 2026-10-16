@@ -528,6 +528,32 @@ describe("formatting", () => {
     expect(body).toContain("*Seats*: 4 paid seats to review, 3 inactive, $157.00/mo to save");
   });
 
+  it("reports idle-rule findings at list price", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({ idleFindings: { findings: 3, currency: "USD", monthly: 98.55 } }),
+      ),
+    );
+    expect(body).toContain(
+      "*Idle resources*: 3 resources flagged from metrics, about $98.55/mo at list price",
+    );
+  });
+
+  it("omits the idle line when nothing is flagged and the figure when nothing is priced", () => {
+    expect(
+      formatDigestSlackBody(
+        composeWeeklyDigest(
+          input({ idleFindings: { findings: 0, currency: null, monthly: null } }),
+        ),
+      ),
+    ).not.toContain("Idle resources");
+    const unpriced = formatDigestSlackBody(
+      composeWeeklyDigest(input({ idleFindings: { findings: 1, currency: null, monthly: null } })),
+    );
+    expect(unpriced).toContain("*Idle resources*: 1 resource flagged from metrics");
+    expect(unpriced).not.toContain("at list price");
+  });
+
   it("omits the seats line when there is nothing to act on", () => {
     const body = formatDigestSlackBody(
       composeWeeklyDigest(

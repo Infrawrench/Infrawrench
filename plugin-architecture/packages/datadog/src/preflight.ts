@@ -164,6 +164,17 @@ const PROBES: CapabilityProbe[] = [
   },
   {
     capability: {
+      id: "custom-metrics",
+      label: "Unused custom metrics",
+      description:
+        "Lists custom metrics nobody queries and no dashboard, monitor, notebook or SLO uses, with their indexed volume.",
+      requiredPermissions: [perm("metrics_read", "Metrics Read")],
+    },
+    path: "/api/v2/metrics",
+    query: { "page[size]": 1, "window[seconds]": 3600 },
+  },
+  {
+    capability: {
       id: "api-keys",
       label: "API keys",
       requiredPermissions: [

@@ -947,6 +947,8 @@ export * from "./msp-pricing";
 export * from "./cost-anomaly-feedback";
 export * from "./cost-anomaly-contributors";
 export * from "./orphans";
+// Metric-based idle rules: settings, catalog and evidence formatting.
+export * from "./idle-findings";
 // CO2e beside the cost, with its assumptions on the response.
 export * from "./carbon-factors";
 export * from "./carbon";

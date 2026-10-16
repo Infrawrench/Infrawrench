@@ -160,11 +160,20 @@ async function plan(organizationId: string, args: GithubPullRequestArgs): Promis
     const orphans = await listOrphans(organizationId, { includeCosts: true });
     const flagged = orphans.accounts.flatMap((g) => g.resources).find((r) => r.id === row.id);
     if (!flagged) return refuse("This resource is no longer flagged as orphaned.");
+    // An idle finding whose fix is a configuration change (a provisioned
+    // table to on-demand) or a stop is never a removal pull request.
+    if (flagged.idle && flagged.idle.action !== "remove") {
+      return refuse("This finding is fixed by changing the resource, not by removing it.");
+    }
     recommendationNote =
-      `Remove the orphaned resource. Infrawrench flagged it because: ${flagged.reason}` +
+      (flagged.idle
+        ? `Remove the idle resource (${flagged.idle.ruleLabel.toLowerCase()}, judged over ${flagged.idle.lookbackDays} days). Infrawrench flagged it because: ${flagged.reason}`
+        : `Remove the orphaned resource. Infrawrench flagged it because: ${flagged.reason}`) +
       (flagged.cost
         ? ` It cost ${flagged.cost.amount.toFixed(2)} ${flagged.cost.currency} over the last ${orphans.costWindowDays} days.`
-        : "");
+        : flagged.estimate
+          ? ` At list price it costs about ${flagged.estimate.monthlyAmount.toFixed(2)} ${flagged.estimate.currency} a month (estimate).`
+          : "");
   }
 
   // Managed by Terraform, at a plain root-module address?

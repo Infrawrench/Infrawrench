@@ -304,6 +304,47 @@ function commitmentCommands(
     : savingsPlanCommands(parsed.order, parsed.child, commitment.scope);
 }
 
+// Idle (metric-based) findings. References (verified 2026-10):
+// https://learn.microsoft.com/cli/azure/network/lb#az-network-lb-delete
+// https://learn.microsoft.com/cli/azure/network/nat/gateway#az-network-nat-gateway-delete
+// https://learn.microsoft.com/cli/azure/network/application-gateway#az-network-application-gateway-stop
+function idleCommands(ruleId: string, resource: RemediationResource): RemediationCommand[] {
+  const t = target(resource);
+  if (!t) return [];
+  switch (ruleId) {
+    case "load-balancer":
+      return [
+        az(
+          `az network lb delete ${t.args} ${SUB}`,
+          "Deletes the load balancer and its rules. Backend VMs and public IPs are left in place.",
+          true,
+        ),
+      ];
+    case "nat-gateway":
+      return [
+        az(
+          `az network nat gateway delete ${t.args} ${SUB}`,
+          "Deletes the NAT gateway. Detach it from any subnet first; its public IPs keep billing until deleted.",
+          true,
+        ),
+      ];
+    case "app-gateway":
+      return [
+        az(
+          `az network application-gateway stop ${t.args} ${SUB}`,
+          "Stops the gateway, which stops its billing and keeps its configuration.",
+        ),
+        az(
+          `az network application-gateway delete ${t.args} ${SUB}`,
+          "Deletes the gateway outright once nothing needs it.",
+          true,
+        ),
+      ];
+    default:
+      return [];
+  }
+}
+
 export function azureRemediationCommands(finding: RemediationFinding): RemediationCommand[] {
   switch (finding.kind) {
     case "oversized":
@@ -313,6 +354,7 @@ export function azureRemediationCommands(finding: RemediationFinding): Remediati
     case "sleep-schedule":
       return sleepCommands(finding.resource);
     case "orphan":
+      if (finding.idleRuleId) return idleCommands(finding.idleRuleId, finding.resource);
       return finding.resource.resourceTypeId === "azure-app-service-plan"
         ? appServicePlanDelete(finding.resource)
         : [];

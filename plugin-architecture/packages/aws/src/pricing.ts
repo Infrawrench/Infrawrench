@@ -24,6 +24,7 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** `PriceList` entries arrive as JSON-encoded strings; this is their parsed shape. */
 interface PriceListEntry {
+  product?: { attributes?: Record<string, string> };
   terms?: {
     OnDemand?: Record<
       string,
@@ -54,7 +55,11 @@ export function clearEc2PriceCache(): void {
  * match is skipped, which is what keeps an hourly query from picking up a
  * per-request or per-GB dimension off the same SKU.
  */
-function parseOnDemandUsd(priceList: readonly string[], unitPattern: RegExp): number | null {
+function parseOnDemandUsd(
+  priceList: readonly string[],
+  unitPattern: RegExp,
+  accept?: (attributes: Record<string, string>) => boolean,
+): number | null {
   let best: number | null = null;
   for (const raw of priceList) {
     let entry: PriceListEntry;
@@ -63,6 +68,10 @@ function parseOnDemandUsd(priceList: readonly string[], unitPattern: RegExp): nu
     } catch {
       continue;
     }
+    // Some products share every filterable attribute with a sibling that is
+    // priced differently (an extended-support node hour, a trust-store hour);
+    // `accept` is where a caller rules those out by usage type.
+    if (accept && !accept(entry.product?.attributes ?? {})) continue;
     for (const term of Object.values(entry.terms?.OnDemand ?? {})) {
       for (const dim of Object.values(term.priceDimensions ?? {})) {
         if (dim.unit !== undefined && !unitPattern.test(dim.unit)) continue;
@@ -146,6 +155,7 @@ async function fetchRateUsd(
   serviceCode: string,
   filters: PriceFilter[],
   unitPattern: RegExp,
+  accept?: (attributes: Record<string, string>) => boolean,
 ): Promise<number | null> {
   const cached = priceCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.usd;
@@ -158,7 +168,7 @@ async function fetchRateUsd(
       FormatVersion: "aws_v1",
       MaxResults: 100,
     });
-    usd = parseOnDemandUsd(response.PriceList ?? [], unitPattern);
+    usd = parseOnDemandUsd(response.PriceList ?? [], unitPattern, accept);
   } catch {
     // Missing pricing permission or a transient failure: quote nothing
     // rather than something wrong; don't cache so a retry can succeed.
@@ -309,4 +319,153 @@ export async function fetchRdsStorageGbMonthPrice(
     ],
     GB_MONTH_UNIT,
   );
+}
+
+/** An exact `Hrs` unit: rules out `Gbps-hrs`, `LCU-Hrs` and the like on the same product. */
+const EXACT_HOURS_UNIT = /^hrs$/i;
+
+/** A usage type, region prefix stripped (`EU-NatGateway-Hours` → `NatGateway-Hours`). */
+function usageTypeOf(attributes: Record<string, string>): string {
+  const raw = attributes["usagetype"] ?? "";
+  const dash = raw.indexOf("-");
+  // Region prefixes are upper-case letters and digits (`USE1`, `EU`, `APN1`).
+  return dash > 0 && /^[A-Z0-9]+$/.test(raw.slice(0, dash)) ? raw.slice(dash + 1) : raw;
+}
+
+/**
+ * Hourly USD rate of one NAT gateway in a region. Zonal and regional NAT
+ * gateways are separate products (`NatGateway-Hours` vs
+ * `RegionalNatGateway-Hours`), told apart by the `operation` attribute.
+ */
+export async function fetchNatGatewayHourlyUsd(
+  credentials: AwsCredentials,
+  regionCode: string,
+  regional: boolean,
+): Promise<number | null> {
+  const operation = regional ? "RegionalNatGateway" : "NatGateway";
+  return fetchRateUsd(
+    credentials,
+    `nat ${regionCode} ${operation}`,
+    "AmazonEC2",
+    [
+      termMatch("regionCode", regionCode),
+      termMatch("productFamily", "NAT Gateway"),
+      termMatch("operation", operation),
+    ],
+    EXACT_HOURS_UNIT,
+    (a) => usageTypeOf(a) === `${operation}-Hours`,
+  );
+}
+
+const ELB_PRODUCT_FAMILY = {
+  application: "Load Balancer-Application",
+  network: "Load Balancer-Network",
+  classic: "Load Balancer",
+} as const;
+
+/**
+ * Hourly USD rate of one load balancer of a kind in a region: the fixed
+ * `LoadBalancerUsage` hour, not capacity units (an idle balancer consumes
+ * next to none) and never the trust-store or Outposts hour that share the
+ * product family.
+ */
+export async function fetchLoadBalancerHourlyUsd(
+  credentials: AwsCredentials,
+  regionCode: string,
+  kind: keyof typeof ELB_PRODUCT_FAMILY,
+): Promise<number | null> {
+  return fetchRateUsd(
+    credentials,
+    `elb ${regionCode} ${kind}`,
+    "AWSELB",
+    [
+      termMatch("regionCode", regionCode),
+      termMatch("productFamily", ELB_PRODUCT_FAMILY[kind]),
+      termMatch("locationType", "AWS Region"),
+    ],
+    EXACT_HOURS_UNIT,
+    (a) => usageTypeOf(a) === "LoadBalancerUsage",
+  );
+}
+
+/** The Price List's `cacheEngine` spelling for an ElastiCache engine id. */
+const CACHE_ENGINE: Record<string, string> = {
+  redis: "Redis",
+  valkey: "Valkey",
+  memcached: "Memcached",
+};
+
+/**
+ * Hourly USD rate of one ElastiCache node. The extended-support surcharge
+ * SKUs share the instance type and engine attributes, so only the plain
+ * `NodeUsage:<type>` usage type is accepted.
+ */
+export async function fetchElastiCacheNodeHourlyUsd(
+  credentials: AwsCredentials,
+  regionCode: string,
+  nodeType: string,
+  engine: string,
+): Promise<number | null> {
+  const cacheEngine = CACHE_ENGINE[engine.toLowerCase()];
+  if (!cacheEngine || !nodeType) return null;
+  return fetchRateUsd(
+    credentials,
+    `elasticache ${regionCode} ${nodeType} ${cacheEngine}`,
+    "AmazonElastiCache",
+    [
+      termMatch("regionCode", regionCode),
+      termMatch("productFamily", "Cache Instance"),
+      termMatch("instanceType", nodeType),
+      termMatch("cacheEngine", cacheEngine),
+    ],
+    EXACT_HOURS_UNIT,
+    (a) => usageTypeOf(a) === `NodeUsage:${nodeType}`,
+  );
+}
+
+export interface DynamoDbRates {
+  /** Provisioned read capacity, per RCU-hour (beyond the free tier). */
+  readCapacityHour: number;
+  writeCapacityHour: number;
+  /** On-demand, per request unit. */
+  readRequestUnit: number;
+  writeRequestUnit: number;
+}
+
+/**
+ * DynamoDB Standard-class rates in a region: provisioned capacity per
+ * unit-hour and on-demand per request unit. The `group` attribute separates
+ * Standard (`DDB-ReadUnits`) from Standard-IA (`DDB-ReadUnitsIA`); the
+ * cheapest positive rate skips the free-tier rows. Null when any of the four
+ * cannot be read, so a comparison is never half-priced.
+ */
+export async function fetchDynamoDbRates(
+  credentials: AwsCredentials,
+  regionCode: string,
+): Promise<DynamoDbRates | null> {
+  const rate = (family: string, group: string, unit: RegExp) =>
+    fetchRateUsd(
+      credentials,
+      `dynamodb ${regionCode} ${family} ${group}`,
+      "AmazonDynamoDB",
+      [
+        termMatch("regionCode", regionCode),
+        termMatch("productFamily", family),
+        termMatch("group", group),
+      ],
+      unit,
+    );
+  const [rcu, wcu, rru, wru] = await Promise.all([
+    rate("Provisioned IOPS", "DDB-ReadUnits", /^ReadCapacityUnit-Hrs$/i),
+    rate("Provisioned IOPS", "DDB-WriteUnits", /^WriteCapacityUnit-Hrs$/i),
+    rate("Amazon DynamoDB PayPerRequest Throughput", "DDB-ReadUnits", /^ReadRequestUnits$/i),
+    rate("Amazon DynamoDB PayPerRequest Throughput", "DDB-WriteUnits", /^WriteRequestUnits$/i),
+  ]);
+  if (rcu === null || wcu === null || rru === null || wru === null) return null;
+  return {
+    readCapacityHour: rcu,
+    writeCapacityHour: wcu,
+    readRequestUnit: rru,
+    writeRequestUnit: wru,
+  };
 }

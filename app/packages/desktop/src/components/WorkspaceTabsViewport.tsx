@@ -149,7 +149,14 @@ function getInvoicesClient(): InvoicesClient {
 }
 
 let orphansClient: OrphansClient | null = null;
-function getOrphansClient(): OrphansClient {
+let cloudOrphansClient: OrphansClient | null = null;
+/** Cloud mode adds the idle-rule tuning; local mode has no poller to tune. */
+function getOrphansClient(cloud: boolean): OrphansClient {
+  if (cloud) {
+    if (!cloudOrphansClient)
+      cloudOrphansClient = createDesktopOrphansClient({ withIdleRules: true });
+    return cloudOrphansClient;
+  }
   if (!orphansClient) orphansClient = createDesktopOrphansClient();
   return orphansClient;
 }
@@ -353,7 +360,7 @@ function renderPanel(
           // machine's workspace (without cost annotation) rather than
           // dropping the section. The client picks the store: see
           // lib/orphans-client.ts.
-          orphans={getOrphansClient()}
+          orphans={getOrphansClient(Boolean(activeCloudOrgId))}
           // Cloud-only: the percentiles live in the cloud metrics warehouse
           // and the size catalogs need the org's credentials, so local mode
           // omits the section entirely (the schedules rule).

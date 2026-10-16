@@ -61,6 +61,8 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
 
+Some waste only shows in a resource's metrics: a NAT gateway nothing routes through, a load balancer with no requests, a cache with no connections, a provisioned DynamoDB table using a sliver of its capacity, a custom metric nobody queries. [Idle resource findings](./idle-resources.md) read those metrics once a day and add what they flag to the same list, each row with the metric evidence and a list-price estimate where no billing row matched.
+
 > **Freshness.** The finder reads the last synced state of each resource. If you detached a volume a minute ago, it appears after the next account sync — open the account page or wait for the background poller.
 
 ## Who owns each flagged resource

@@ -506,7 +506,13 @@ export function CostsPanel({
                       onOpenResource={onOpenFindingResource}
                     />
                   )}
-                  {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
+                  {orphans && (
+                    <SavingsSection
+                      client={orphans}
+                      onOpenResource={onOpenResource}
+                      onOpenExternal={onOpenExternal}
+                    />
+                  )}
                   {rightsizing && (
                     <OversizedSection
                       client={rightsizing}

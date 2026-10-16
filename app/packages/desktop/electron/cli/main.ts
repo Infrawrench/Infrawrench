@@ -62,6 +62,7 @@ import {
 import { cmdCurrency, cmdCurrencyFeed, cmdCurrencyRate } from "./commands/currency";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
+import { cmdIdleRules } from "./commands/idle-rules";
 import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
@@ -283,9 +284,14 @@ COMMANDS
                       the usage units your cost rows carry (GB-Mo, Hrs, Requests…)
   unit-costs --usage-unit <unit>
                       cost per provider usage unit, no business metric needed [--scale 1m]
-  orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
-                      and ready-to-run remediation commands (--local scans this machine's
-                      workspace; no cost column without the cloud)
+  orphans             likely-wasted resources (unattached volumes, idle IPs, and idle NAT
+                      gateways, load balancers, caches and tables flagged from their metrics)
+                      with reasons, evidence, cost or list-price estimate and ready-to-run
+                      remediation commands (--local scans this machine's workspace; no cost
+                      column and no metric-based findings without the cloud)
+  idle-rules          the metric-based idle rules, the org's thresholds and lookback, and each
+                      account's last collection or error (cloud only)
+  idle-rules rescan   make every account due for an idle collection now
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
                       recommended smaller size, monthly saving and resize commands (cloud only)
   prices search [q]   providers' list prices, filtered and sorted by monthly price (cloud only)
@@ -1027,6 +1033,9 @@ export async function runCli(): Promise<void> {
         break;
       case "orphans":
         await cmdOrphans(ctx);
+        break;
+      case "idle-rules":
+        await cmdIdleRules(ctx, rest[0]);
         break;
       case "oversized":
         await cmdOversized(ctx);

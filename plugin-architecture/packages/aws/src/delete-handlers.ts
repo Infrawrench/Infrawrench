@@ -252,6 +252,11 @@ export async function deleteResource(
       });
       break;
     }
+    case "classic-elb":
+      await ec2QueryCall(creds, "elasticloadbalancing", "DeleteLoadBalancer", "2012-06-01", {
+        LoadBalancerName: externalId,
+      });
+      break;
     case "target-group": {
       const tgArn = String(resource.resolvedOutputs["targetGroupArn"] ?? "");
       await ec2QueryCall(creds, "elasticloadbalancing", "DeleteTargetGroup", "2015-12-01", {

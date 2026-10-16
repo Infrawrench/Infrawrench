@@ -135,8 +135,15 @@ export type RemediationFinding =
       /** Orphan / idle resource ("Potential savings"). */
       kind: "orphan";
       resource: RemediationResource;
-      /** The plugin's own `orphanRule.reason`. */
+      /** The plugin's own `orphanRule.reason`, or the idle finding's reason. */
       reason: string;
+      /**
+       * Set when the finding came from a metric-based idle rule
+       * (`manifest.idleFindings`) rather than the type's `orphanRule`: the
+       * rule id, so a generator can tell "delete the load balancer" from
+       * "switch the table to on-demand".
+       */
+      idleRuleId?: string;
     }
   | {
       /** Right-sizing ("Oversized"). */

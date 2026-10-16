@@ -1397,3 +1397,43 @@ export function formatKevFreshness(kevUpdatedAt: string | null, now: number = Da
   const text = `CISA KEV catalog updated ${formatAgo(kevUpdatedAt, now)}`;
   return !Number.isNaN(ms) && now - ms > 3 * 86_400_000 ? c.yellow(`${text} (stale)`) : c.dim(text);
 }
+
+/**
+ * One idle-evidence value, a local re-derivation of client-core's
+ * `formatIdleValue` (the CLI keeps its client-core imports type-only): bytes in
+ * decimal units, grouped counts, percentages with up to two decimals, and
+ * "no data" rather than a zero for a missing reading.
+ */
+export function formatIdleValue(value: number | null, unit: string): string {
+  if (value === null || !Number.isFinite(value)) return "no data";
+  if (unit === "bytes") {
+    const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+    let v = value;
+    let i = 0;
+    while (Math.abs(v) >= 1000 && i < units.length - 1) {
+      v /= 1000;
+      i += 1;
+    }
+    return `${v.toFixed(i === 0 || v >= 100 ? 0 : 1)} ${units[i]}`;
+  }
+  if (unit === "percent") return `${Number(value.toFixed(2))}%`;
+  if (unit === "days") return `${Math.round(value)} d`;
+  return Math.abs(value) >= 1000
+    ? Math.round(value).toLocaleString("en-US")
+    : String(Number(value.toFixed(2)));
+}
+
+/** One evidence line; mirrors client-core's `describeIdleEvidence`. */
+export function describeIdleEvidence(e: {
+  metric: string;
+  label: string;
+  statistic: string;
+  value: number | null;
+  unit: string;
+  threshold?: number | null | undefined;
+  comparison?: "atMost" | "atLeast" | undefined;
+}): string {
+  const head = `${e.label} (${e.metric}, ${e.statistic}): ${formatIdleValue(e.value, e.unit)}`;
+  if (e.threshold === undefined || e.threshold === null) return head;
+  return `${head}, flags at ${e.comparison === "atLeast" ? "≥" : "≤"} ${formatIdleValue(e.threshold, e.unit)}`;
+}

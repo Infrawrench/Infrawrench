@@ -89,6 +89,16 @@ for (const plugin of BUNDLED_PLUGINS) {
     add(kind.description);
     add(kind.locationLabel);
   }
+  // Idle rules: the label, description and threshold labels are rendered
+  // through useDataString on Potential savings and in the Idle rules form.
+  for (const rule of manifest.idleFindings?.rules ?? []) {
+    add(rule.label);
+    add(rule.description);
+    for (const threshold of rule.thresholds) {
+      add(threshold.label);
+      add(threshold.description);
+    }
+  }
   for (const type of plugin.resourceTypes) {
     add(type.displayName);
     add(type.pluralDisplayName);

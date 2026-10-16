@@ -16,7 +16,7 @@ import (
 // is the reminder that adding a resource also means adding a row to the
 // README's table and to the docs page, neither of which any test can check.
 const (
-	wantResources   = 80
+	wantResources   = 81
 	wantDataSources = 8
 )
 

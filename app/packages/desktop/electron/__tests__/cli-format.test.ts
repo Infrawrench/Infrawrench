@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  describeIdleEvidence,
+  formatIdleValue,
   githubRepoFromRemote,
   parseNameStatusZ,
   anomalyDeltaPercent,
@@ -979,5 +981,28 @@ describe("leaked credentials helpers", () => {
       "not one Infrawrench holds",
     );
     expect(leakRotateRefusal({ ...leak, status: "dismissed" })).toContain("leaks reopen 01234567");
+  });
+});
+
+describe("idle evidence formatting (mirrors client-core)", () => {
+  it("formats values by unit and says no data for a missing reading", () => {
+    expect(formatIdleValue(1_500_000, "bytes")).toBe("1.5 MB");
+    expect(formatIdleValue(0.4, "percent")).toBe("0.4%");
+    expect(formatIdleValue(12_345, "count")).toBe("12,345");
+    expect(formatIdleValue(null, "bytes")).toBe("no data");
+  });
+
+  it("describes a reading with its threshold", () => {
+    expect(
+      describeIdleEvidence({
+        metric: "RequestCount",
+        label: "Requests",
+        statistic: "sum",
+        value: 3,
+        unit: "count",
+        threshold: 100,
+        comparison: "atMost",
+      }),
+    ).toBe("Requests (RequestCount, sum): 3, flags at ≤ 100");
   });
 });

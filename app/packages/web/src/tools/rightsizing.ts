@@ -55,8 +55,14 @@ export function rightsizingTools(): ToolDefinition[] {
         "Likely-wasted resources (unattached volumes, unassigned IPs, load balancers with no " +
         "targets, idle seats and similar), grouped by account, each with the plugin's reason " +
         "and recorded owner. Classified from already-synced state by each resource type's " +
-        "declarative rule: no provider API calls. Spend annotations are omitted here; use " +
-        "query_costs for money." +
+        "declarative rule, plus rows a metric-based idle rule flagged on the daily collection " +
+        "(NAT gateways and load balancers with no traffic, caches with no connections, " +
+        "over-provisioned tables, empty clusters, unused custom metrics): those carry `idle` " +
+        "with the metric evidence and lookback window, and `estimate` (a list-price monthly " +
+        "figure). When `idle.hasResource` is false the `id` is a finding id, not a resource id, " +
+        "so never pass it to a resource tool; when `idle.action` is not `remove` the fix is a " +
+        "change, not a deletion. No provider API calls. Spend annotations are omitted here; " +
+        "use query_costs for money." +
         REMEDIATION_NOTE,
       inputSchema: {},
       risk: "read",

@@ -8,6 +8,8 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  IdleFindingRecord,
+  IdleScanRequest,
   MetricSeries,
   PluginClient,
   PreflightResult,
@@ -61,6 +63,7 @@ import {
   usageSeries,
 } from "./metrics.js";
 import { verifyDatadogCredentials } from "./preflight.js";
+import { datadogMetricListFetch, fetchDatadogIdleFindings } from "./idle-findings.js";
 import {
   ATTRIBUTION_KEY,
   COST_SUMMARY_KEY,
@@ -552,6 +555,16 @@ export class DatadogClient implements PluginClient {
 
   async verifyCredentials(): Promise<PreflightResult> {
     return verifyDatadogCredentials(this.ctx);
+  }
+
+  async fetchIdleFindings(
+    _accountId: string,
+    request: IdleScanRequest,
+  ): Promise<IdleFindingRecord[]> {
+    return fetchDatadogIdleFindings(request, {
+      fetchPage: datadogMetricListFetch(this.ctx),
+      apiUrl: this.ctx.site.apiUrl,
+    });
   }
 
   // -------------------------------------------------------------------------

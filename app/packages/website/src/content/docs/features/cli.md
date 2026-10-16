@@ -368,6 +368,13 @@ infrawrench ownership sam            # filter by resource, owner or purpose
 infrawrench ownership --json
 ```
 
+`idle-rules` lists the [idle resource](./idle-resources.md) rules your providers declare, with the organization's thresholds and lookback window, and each account's last metrics read and error; `idle-rules rescan` makes every account due for a fresh read. The idle findings themselves print with `orphans`, which adds an **Idle evidence** section naming each metric, its value over the window and the threshold. Cloud-only; `--json` on both:
+
+```
+infrawrench idle-rules
+infrawrench idle-rules rescan
+```
+
 `oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel, or by running the [remediation commands](./remediation-commands.md) printed under the table (`orphans` and `schedules` print theirs the same way, and `--json` carries them as `remediation` on every row):
 
 ```

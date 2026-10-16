@@ -26,6 +26,8 @@
  */
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import {
+  describeIdleEvidence,
+  orphanMonthlyFigure,
   remediationCommandLines,
   type ExtendedSupportListResponse,
   type FindingRemediation,
@@ -76,6 +78,8 @@ export interface ScannedFinding {
   body: string;
   /** Monthly money at stake; null when unpriced. */
   monthly: { amount: number; currency: string } | null;
+  /** Flagged by a metric-based idle rule rather than an orphan rule. */
+  idle?: boolean;
   finding: GithubFinding;
 }
 
@@ -84,10 +88,17 @@ export function orphanFindings(feed: OrphanListResponse, appUrl: string | null):
   const out: ScannedFinding[] = [];
   for (const group of feed.accounts) {
     for (const r of group.resources) {
-      const monthly = r.cost
-        ? { amount: (r.cost.amount * 30) / feed.costWindowDays, currency: r.cost.currency }
-        : null;
-      const title = `${r.displayName} (${r.resourceTypeName}) looks orphaned`;
+      // Billed spend when the cost data matched the resource, else an idle
+      // rule's list-price estimate (labelled as one in the body), else none.
+      const figure = orphanMonthlyFigure(r, feed.costWindowDays);
+      const monthly = figure ? { amount: figure.amount, currency: figure.currency } : null;
+      const estimated = figure?.basis === "list-price";
+      const title = r.idle
+        ? `${r.displayName} (${r.resourceTypeName}): ${r.idle.ruleLabel.toLowerCase()}`
+        : `${r.displayName} (${r.resourceTypeName}) looks orphaned`;
+      const evidence = r.idle
+        ? r.idle.evidence.map((e) => ({ label: "Evidence", value: describeIdleEvidence(e) }))
+        : [];
       out.push({
         sourceKind: "orphan",
         sourceId: r.id,
@@ -95,13 +106,20 @@ export function orphanFindings(feed: OrphanListResponse, appUrl: string | null):
         pluginId: group.pluginId,
         resourceTypeId: r.resourceTypeId,
         title,
-        body: `${r.reason}${monthly ? ` About ${formatMoney(monthly.amount, monthly.currency)}/month.` : ""}`,
+        body: `${r.reason}${
+          monthly
+            ? ` About ${formatMoney(monthly.amount, monthly.currency)}/month${estimated ? " at list price (estimate)" : ""}.`
+            : ""
+        }`,
         monthly,
+        ...(r.idle ? { idle: true } : {}),
         finding: {
           sourceKind: "orphan",
           sourceId: r.id,
           title,
-          resourceId: r.id,
+          // A custom-metric finding has no resource row: routing on resource
+          // facts (owner, tags) has nothing to read, so it is not offered one.
+          ...(r.idle && !r.idle.hasResource ? {} : { resourceId: r.id }),
           details: [
             { label: "Resource", value: r.displayName },
             { label: "Type", value: r.resourceTypeName },
@@ -109,6 +127,16 @@ export function orphanFindings(feed: OrphanListResponse, appUrl: string | null):
             { label: "Account", value: group.accountName },
             { label: "Provider id", value: r.externalId },
             { label: "Last synced", value: r.lastSyncedAt },
+            ...(r.idle
+              ? [
+                  { label: "Idle rule", value: r.idle.ruleLabel },
+                  { label: "Lookback", value: `${r.idle.lookbackDays} days` },
+                  ...evidence,
+                ]
+              : []),
+            ...(estimated
+              ? [{ label: "Saving basis", value: "Published list price (estimate)" }]
+              : []),
           ],
           note: r.reason,
           ...(monthly ? { monthlyCost: monthly } : {}),
@@ -343,9 +371,17 @@ async function scanOrg(
       await routeAlert({
         organizationId,
         trigger: "savingsFindings",
-        title: f.sourceKind === "orphan" ? `Orphaned: ${f.title}` : f.title,
+        title: f.idle
+          ? `Idle: ${f.title}`
+          : f.sourceKind === "orphan"
+            ? `Orphaned: ${f.title}`
+            : f.title,
         body: f.body,
-        context: f.sourceKind === "orphan" ? "Savings · orphaned" : "Savings · oversized",
+        context: f.idle
+          ? "Savings · idle"
+          : f.sourceKind === "orphan"
+            ? "Savings · orphaned"
+            : "Savings · oversized",
         url: appUrl,
         pushData: {
           type: "savings_finding",

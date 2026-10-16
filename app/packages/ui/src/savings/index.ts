@@ -1,5 +1,6 @@
 export * from "./types.js";
 export { SavingsSection, type SavingsSectionProps } from "./SavingsSection.js";
+export { IdleRulesModal, type IdleRulesModalProps } from "./IdleRulesModal.js";
 export {
   ExtendedSupportSection,
   type ExtendedSupportSectionProps,

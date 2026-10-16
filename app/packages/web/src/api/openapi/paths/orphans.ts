@@ -20,8 +20,68 @@ export function registerOrphanPaths(ctx: BuildContext) {
     purpose: z.string().nullable(),
   }).openapi("ResourceOwnerAnnotation");
 
+  const IdleMetricEvidence = strict({
+    metric: z
+      .string()
+      .describe("Provider metric name.")
+      .openapi({ example: "BytesOutToDestination" }),
+    label: z.string().openapi({ example: "Bytes sent to the internet" }),
+    statistic: z.enum(["sum", "max", "average", "min", "count"]),
+    value: z
+      .number()
+      .nullable()
+      .describe(
+        "The aggregate over the whole lookback window; null when the provider had no data.",
+      ),
+    unit: z.enum(["count", "bytes", "percent", "days"]),
+    threshold: z
+      .number()
+      .nullable()
+      .optional()
+      .describe("The bound this reading was judged against, when it was a deciding reading."),
+    comparison: z
+      .enum(["atMost", "atLeast"])
+      .optional()
+      .describe("`atMost`: the value at or under the threshold is the idle side."),
+  }).openapi("IdleMetricEvidence");
+
+  const IdleSavingsEstimate = strict({
+    monthlyAmount: z.number().describe("Monthly figure at the provider's published rate."),
+    currency: z.string().openapi({ example: "USD" }),
+    basis: z.enum(["list-price"]),
+    note: z.string().optional().describe("Caveat shown beside the figure."),
+  }).openapi("IdleSavingsEstimate");
+
+  const OrphanIdleDetail = strict({
+    ruleId: z.string().openapi({ example: "nat-gateway" }),
+    ruleKey: z.string().describe("`pluginId:ruleId`, the key the settings use.").openapi({
+      example: "aws:nat-gateway",
+    }),
+    ruleLabel: z.string().openapi({ example: "Idle NAT gateway" }),
+    action: z
+      .enum(["remove", "reconfigure", "stop"])
+      .describe(
+        "What acting on it means. Only `remove` findings are offered as a removal pull request.",
+      ),
+    lookbackDays: z.number().int(),
+    evidence: z.array(IdleMetricEvidence),
+    detectedAt: IsoDateTime.describe("First collection that flagged it."),
+    evaluatedAt: IsoDateTime.describe("Latest collection that confirmed it."),
+    hasResource: z
+      .boolean()
+      .describe(
+        "False when the subject is not a synced resource (a custom metric): `id` is then a " +
+          "finding id, not a resource id.",
+      ),
+  }).openapi("OrphanIdleDetail");
+
   const OrphanedResource = strict({
-    id: z.string().describe("Infrawrench resource id."),
+    id: z
+      .string()
+      .describe(
+        "Infrawrench resource id; for an idle finding whose `idle.hasResource` is false, a " +
+          "finding id prefixed `idle:`.",
+      ),
     pluginId: enums.PluginId,
     resourceTypeId: z.string(),
     resourceTypeName: z.string().openapi({ example: "EBS Volume" }),
@@ -45,6 +105,16 @@ export function registerOrphanPaths(ctx: BuildContext) {
     remediation: FindingRemediation.optional().describe(
       "Ready-to-run commands to clean this resource up (snapshot first where it applies).",
     ),
+    idle: OrphanIdleDetail.optional().describe(
+      "Present when a metric-based idle rule flagged the row rather than the type's " +
+        "orphan rule: the rule, the metric evidence and the lookback window.",
+    ),
+    estimate: IdleSavingsEstimate.nullable()
+      .optional()
+      .describe(
+        "Monthly figure at the provider's published list price, for idle rows a plugin could " +
+          "price. An estimate: show it only when `cost` (billed spend) is null.",
+      ),
   }).openapi("OrphanedResource");
 
   const OrphanAccountGroup = strict({
@@ -75,9 +145,12 @@ export function registerOrphanPaths(ctx: BuildContext) {
       "Scans the organization's already-synced resources against each plugin's declarative " +
       "orphan heuristics (unattached volumes, unassigned floating/elastic IPs, reserved-but-" +
       "unused static IPs) and returns the matches grouped by account, each with the plugin's " +
-      "reason. Purely a read over stored state: no provider API calls are made, so results " +
-      "reflect the last sync. Where the org's collected cost data has per-resource rows, " +
-      "matches are annotated with trailing spend.",
+      "reason. Rows flagged by a metric-based idle rule (a NAT gateway with no traffic, a load " +
+      "balancer with no requests) carry `idle` with the evidence; those verdicts come from a " +
+      "daily collection, tuned under `/idle-findings`. Purely a read over stored state: no " +
+      "provider API calls are made. Where the org's collected cost data has per-resource rows, " +
+      "matches are annotated with trailing spend; idle rows a plugin could price also carry a " +
+      "list-price `estimate`.",
     request: { params: OrgIdParam },
     responses: {
       200: {

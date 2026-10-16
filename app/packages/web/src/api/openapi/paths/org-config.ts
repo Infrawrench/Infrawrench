@@ -242,6 +242,19 @@ const ConfigAlertSettings = strict({
   }).optional(),
   expiry: strict({ enabled: z.boolean(), leadDays: z.number().int() }).optional(),
   posture: strict({ enabled: z.boolean() }).optional(),
+  idleFindings: strict({
+    enabled: z.boolean(),
+    lookbackDays: z.number().int().min(7).max(42),
+    rules: z
+      .record(
+        z.string(),
+        strict({
+          enabled: z.boolean().optional(),
+          thresholds: z.record(z.string(), z.number()).optional(),
+        }),
+      )
+      .openapi({ description: "Idle rule overrides keyed by `pluginId:ruleId`." }),
+  }).optional(),
   digest: strict({
     enabled: z.boolean(),
     timezone: z.string(),

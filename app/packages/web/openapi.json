@@ -6005,6 +6005,7 @@
           "check",
           "check-group",
           "cks-cluster",
+          "classic-elb",
           "client-key",
           "cloud",
           "cloud-armor-policy",
@@ -17773,12 +17774,171 @@
         "additionalProperties": false,
         "description": "Who owns this resource, or null when nobody has claimed it. Present only when the owner can be named: a resource carrying a purpose but no owner reads as null, because the question this answers is who to tell."
       },
+      "IdleMetricEvidence": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "description": "Provider metric name.",
+            "example": "BytesOutToDestination"
+          },
+          "label": {
+            "type": "string",
+            "example": "Bytes sent to the internet"
+          },
+          "statistic": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "max",
+              "average",
+              "min",
+              "count"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The aggregate over the whole lookback window; null when the provider had no data."
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "count",
+              "bytes",
+              "percent",
+              "days"
+            ]
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The bound this reading was judged against, when it was a deciding reading."
+          },
+          "comparison": {
+            "type": "string",
+            "enum": [
+              "atMost",
+              "atLeast"
+            ],
+            "description": "`atMost`: the value at or under the threshold is the idle side."
+          }
+        },
+        "required": [
+          "metric",
+          "label",
+          "statistic",
+          "value",
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "OrphanIdleDetail": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "type": "string",
+            "example": "nat-gateway"
+          },
+          "ruleKey": {
+            "type": "string",
+            "description": "`pluginId:ruleId`, the key the settings use.",
+            "example": "aws:nat-gateway"
+          },
+          "ruleLabel": {
+            "type": "string",
+            "example": "Idle NAT gateway"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "remove",
+              "reconfigure",
+              "stop"
+            ],
+            "description": "What acting on it means. Only `remove` findings are offered as a removal pull request."
+          },
+          "lookbackDays": {
+            "type": "integer"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdleMetricEvidence"
+            }
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First collection that flagged it."
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Latest collection that confirmed it."
+          },
+          "hasResource": {
+            "type": "boolean",
+            "description": "False when the subject is not a synced resource (a custom metric): `id` is then a finding id, not a resource id."
+          }
+        },
+        "required": [
+          "ruleId",
+          "ruleKey",
+          "ruleLabel",
+          "action",
+          "lookbackDays",
+          "evidence",
+          "detectedAt",
+          "evaluatedAt",
+          "hasResource"
+        ],
+        "additionalProperties": false,
+        "description": "Present when a metric-based idle rule flagged the row rather than the type's orphan rule: the rule, the metric evidence and the lookback window."
+      },
+      "IdleSavingsEstimate": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "monthlyAmount": {
+            "type": "number",
+            "description": "Monthly figure at the provider's published rate."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "list-price"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "Caveat shown beside the figure."
+          }
+        },
+        "required": [
+          "monthlyAmount",
+          "currency",
+          "basis"
+        ],
+        "additionalProperties": false,
+        "description": "Monthly figure at the provider's published list price, for idle rows a plugin could price. An estimate: show it only when `cost` (billed spend) is null."
+      },
       "OrphanedResource": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Infrawrench resource id."
+            "description": "Infrawrench resource id; for an idle finding whose `idle.hasResource` is false, a finding id prefixed `idle:`."
           },
           "pluginId": {
             "$ref": "#/components/schemas/PluginId"
@@ -17828,6 +17988,12 @@
                 "description": "Ready-to-run commands to clean this resource up (snapshot first where it applies)."
               }
             ]
+          },
+          "idle": {
+            "$ref": "#/components/schemas/OrphanIdleDetail"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/IdleSavingsEstimate"
           }
         },
         "required": [
@@ -17911,6 +18077,278 @@
           "costWindowDays",
           "generatedAt"
         ],
+        "additionalProperties": false
+      },
+      "IdleRuleOverride": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "False switches the rule off for the organization."
+          },
+          "thresholds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Threshold overrides by key; each must sit within the rule's declared range."
+          }
+        },
+        "additionalProperties": false
+      },
+      "IdleFindingSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master switch: off stops collection and hides every idle row."
+          },
+          "lookbackDays": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 42,
+            "description": "Days of metrics each rule judges over, 7 to 42. Ships as 14."
+          },
+          "rules": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IdleRuleOverride"
+            },
+            "description": "Overrides keyed by `pluginId:ruleId`. A rule absent here runs enabled with its declared defaults."
+          }
+        },
+        "required": [
+          "enabled",
+          "lookbackDays",
+          "rules"
+        ],
+        "additionalProperties": false
+      },
+      "IdleRuleThresholdView": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "count",
+              "bytes",
+              "percent",
+              "days"
+            ]
+          },
+          "default": {
+            "type": "number"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "value": {
+            "type": "number",
+            "description": "The effective value after the organization's override."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "unit",
+          "default",
+          "min",
+          "max",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "IdleRuleView": {
+        "type": "object",
+        "properties": {
+          "ruleKey": {
+            "type": "string",
+            "example": "aws:nat-gateway"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "example": "Idle NAT gateway"
+          },
+          "description": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "remove",
+              "reconfigure",
+              "stop"
+            ]
+          },
+          "resourceTypeNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdleRuleThresholdView"
+            }
+          }
+        },
+        "required": [
+          "ruleKey",
+          "pluginId",
+          "pluginName",
+          "ruleId",
+          "label",
+          "description",
+          "action",
+          "resourceTypeNames",
+          "enabled",
+          "thresholds"
+        ],
+        "additionalProperties": false
+      },
+      "IdleAccountStatus": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "lastPolledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "nextPollAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last collection failure; null after a success."
+          },
+          "helpLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "helpUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "https link to the fix for a permission gap."
+          },
+          "findingCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "lastPolledAt",
+          "nextPollAt",
+          "lastError",
+          "helpLabel",
+          "helpUrl",
+          "findingCount"
+        ],
+        "additionalProperties": false
+      },
+      "IdleFindingsOverview": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/IdleFindingSettings"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdleRuleView"
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdleAccountStatus"
+            }
+          }
+        },
+        "required": [
+          "settings",
+          "rules",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "IdleFindingSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "lookbackDays": {
+            "type": "integer",
+            "minimum": 7,
+            "maximum": 42
+          },
+          "rules": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IdleRuleOverride"
+            },
+            "description": "Replaces the whole overrides map when sent."
+          }
+        },
         "additionalProperties": false
       },
       "OversizedSizeSummary": {
@@ -25586,6 +26024,44 @@
             },
             "required": [
               "enabled"
+            ],
+            "additionalProperties": false
+          },
+          "idleFindings": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "lookbackDays": {
+                "type": "integer",
+                "minimum": 7,
+                "maximum": 42
+              },
+              "rules": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "thresholds": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "Idle rule overrides keyed by `pluginId:ruleId`."
+              }
+            },
+            "required": [
+              "enabled",
+              "lookbackDays",
+              "rules"
             ],
             "additionalProperties": false
           },
@@ -74138,7 +74614,7 @@
           "Orphans"
         ],
         "summary": "List likely-orphaned and idle resources",
-        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics (unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs) and returns the matches grouped by account, each with the plugin's reason. Purely a read over stored state: no provider API calls are made, so results reflect the last sync. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend.\n\n_Requires permission: `resources:read`._",
+        "description": "Scans the organization's already-synced resources against each plugin's declarative orphan heuristics (unattached volumes, unassigned floating/elastic IPs, reserved-but-unused static IPs) and returns the matches grouped by account, each with the plugin's reason. Rows flagged by a metric-based idle rule (a NAT gateway with no traffic, a load balancer with no requests) carry `idle` with the evidence; those verdicts come from a daily collection, tuned under `/idle-findings`. Purely a read over stored state: no provider API calls are made. Where the org's collected cost data has per-resource rows, matches are annotated with trailing spend; idle rows a plugin could price also carry a list-price `estimate`.\n\n_Requires permission: `resources:read`._",
         "parameters": [
           {
             "schema": {
@@ -74166,6 +74642,179 @@
         },
         "operationId": "getOrgOrgIdOrphans",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/idle-findings": {
+      "get": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Idle rules, their settings and collection status",
+        "description": "Every metric-based idle rule the loaded plugins declare (idle NAT gateways, load balancers, caches, provisioned tables, clusters, unused custom metrics), with the organization's effective thresholds, plus each account's last collection and error. The findings themselves are rows of `GET /orphans` with `idle` set.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings, rule catalog and per-account status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdleFindingsOverview"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIdleFindings",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/idle-findings/settings": {
+      "get": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Get the organization's idle-rule settings",
+        "description": "An organization that never saved reads the shipped defaults (enabled, 14 days).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Idle-rule settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdleFindingSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIdleFindingsSettings",
+        "x-required-permission": "org:settings:write"
+      },
+      "put": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Update the idle-rule settings",
+        "description": "Every field is optional. `lookbackDays` must be a whole number from 7 to 42; an unknown rule or threshold key, or a threshold outside its declared range, is rejected rather than clamped. Any change makes every account due for a fresh collection.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdleFindingSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdleFindingSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdIdleFindingsSettings",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/idle-findings/rescan": {
+      "post": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Re-scan idle rules now",
+        "description": "Makes every account due for an idle collection on the next poller tick. The reads are billed to the organization's own cloud accounts (CloudWatch GetMetricData and the like).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIdleFindingsRescan",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/rightsizing": {
