@@ -315,3 +315,29 @@ describe("parseCliArgs: leaks", () => {
     });
   });
 });
+
+describe("parseCliArgs — commitments reports", () => {
+  it("carries --metric, --bin, --group-by and the csv export flags through", () => {
+    const parsed = parseCliArgs([
+      "commitments",
+      "reports",
+      "Coverage",
+      "--metric",
+      "utilization",
+      "--bin",
+      "month",
+      "--group-by",
+      "service",
+      "--format",
+      "csv",
+      "--out",
+      "report.csv",
+    ]);
+    expect(parsed.positionals).toEqual(["commitments", "reports", "Coverage"]);
+    expect(parsed.range.metric).toBe("utilization");
+    expect(parsed.range.bin).toBe("month");
+    expect(parsed.range.groupBy).toBe("service");
+    expect(parsed.exportFlags.format).toBe("csv");
+    expect(parsed.exportFlags.out).toBe("report.csv");
+  });
+});

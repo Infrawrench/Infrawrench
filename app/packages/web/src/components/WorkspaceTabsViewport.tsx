@@ -23,6 +23,8 @@ import { WebDeploymentsPanel } from "./WebDeploymentsPanel";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
+import { createWebCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { createWebInvoicesClient } from "@/lib/invoices-client";
 import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -200,6 +202,16 @@ function getCostsClient(orgId: string): CostsClient {
   return client;
 }
 
+const commitmentReportsClients = new Map<string, CommitmentReportsClient>();
+function getCommitmentReportsClient(orgId: string): CommitmentReportsClient {
+  let client = commitmentReportsClients.get(orgId);
+  if (!client) {
+    client = createWebCommitmentReportsClient(orgId);
+    commitmentReportsClients.set(orgId, client);
+  }
+  return client;
+}
+
 const costReportsClients = new Map<string, CostReportsClient>();
 function getCostReportsClient(orgId: string): CostReportsClient {
   let client = costReportsClients.get(orgId);
@@ -345,6 +357,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // resources.
           key={orgId}
           client={getCostsClient(orgId)}
+          commitmentReports={getCommitmentReportsClient(orgId)}
           onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))

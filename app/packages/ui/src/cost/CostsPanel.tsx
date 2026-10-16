@@ -13,6 +13,8 @@ import { ExtendedSupportSection } from "../savings/ExtendedSupportSection.js";
 import { SeatsSection } from "../savings/SeatsSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
+import { CommitmentReportsSection } from "../commitment-reports/CommitmentReportsSection.js";
+import type { CommitmentReportsClient } from "../commitment-reports/types.js";
 import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
 import { NetworkFlowSection } from "./NetworkFlowSection.js";
 import { KubernetesNetworkSection } from "./KubernetesNetworkSection.js";
@@ -139,6 +141,11 @@ export interface CostsPanelProps {
   onOpenExternal?: ((url: string) => void) | undefined;
   /** Tab to open on instead of the remembered one. */
   initialTab?: CostsPanelTab | undefined;
+  /**
+   * Saved commitment reports, on the Commitments tab. Cloud-only: desktop
+   * leaves it off in local mode and the section is left out.
+   */
+  commitmentReports?: CommitmentReportsClient | undefined;
 }
 
 /**
@@ -170,6 +177,7 @@ export function CostsPanel({
   onOpenScheduledResource,
   onOpenExternal,
   initialTab,
+  commitmentReports,
 }: CostsPanelProps) {
   const uid = useId();
   const gt = useGT();
@@ -508,6 +516,9 @@ export function CostsPanel({
                     {...(onOpenExternal ? { onOpenExternal } : {})}
                   />
                   <CommitmentsSection client={client} />
+                  {/* After the holdings: a report is a view over time of
+                      what the section above shows for the last 30 days. */}
+                  {commitmentReports && <CommitmentReportsSection client={commitmentReports} />}
                 </>
               ),
             },

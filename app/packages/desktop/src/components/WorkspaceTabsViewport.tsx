@@ -47,6 +47,8 @@ import {
 } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
+import { createDesktopCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
 import { createDesktopInvoicesClient } from "@/lib/invoices-client";
@@ -105,6 +107,12 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let commitmentReportsClient: CommitmentReportsClient | null = null;
+function getCommitmentReportsClient(): CommitmentReportsClient {
+  if (!commitmentReportsClient) commitmentReportsClient = createDesktopCommitmentReportsClient();
+  return commitmentReportsClient;
 }
 
 let costReportsClient: CostReportsClient | null = null;
@@ -317,6 +325,8 @@ function renderPanel(
           // previous org's budgets and flagged resources.
           key={activeCloudOrgId ?? "local"}
           client={getCostsClient()}
+          // Cloud-only: reports read server-side cost rows and the inventory.
+          commitmentReports={activeCloudOrgId ? getCommitmentReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
           onOpenExternal={(url) => void invoke("open_external_url", { url })}
