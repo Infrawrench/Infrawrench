@@ -165,6 +165,7 @@ export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/Sch
 export { MetricChart } from "./components/charts/MetricChart.js";
 export { SparklineChart } from "./components/charts/SparklineChart.js";
 
+export * from "./command-palette/index.js";
 export { SpotlightSearch } from "./components/SpotlightSearch.js";
 export type {
   SpotlightMode,

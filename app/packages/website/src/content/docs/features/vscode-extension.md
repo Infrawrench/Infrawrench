@@ -61,9 +61,11 @@ used.
 
 ### Search
 
-**Infrawrench: Search Resources and Services** searches every connected account's resources,
-your workflows and your services from the command palette. Pick a resource to open it, or copy
-its id or name.
+**Infrawrench: Search Resources, Services and Saved Objects** searches every connected
+account's resources, your workflows and your services from the command palette. It also finds
+the saved objects the app's own [command palette](./spotlight-search.md) indexes: cost reports,
+dashboards, budgets, canvases, SLOs, runbooks, status pages, probes and more. Pick a resource to
+open it, or copy its id or name; pick a saved object to open it in the web or desktop app.
 
 ### Services view
 

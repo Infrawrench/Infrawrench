@@ -13,10 +13,14 @@ import {
   formatMonthlyEstimate,
   formatScorecardScore,
   incidentSeverityLabel,
-  isWorkflowSearchResult,
+  EDITOR_SEARCH_KINDS,
+  SEARCH_KIND_LABELS,
+  objectSearchResults,
   searchOrg,
+  searchResultKind,
   webWorkflowUrl,
   type ResourceVulnerabilityTally,
+  type SearchObjectKind,
   type SearchResult,
   type Service,
 } from "@infrawrench/client-core";
@@ -38,7 +42,9 @@ export default function Command() {
 
   const search = useCachedPromise(
     (orgId: string, q: string) =>
-      q.trim().length >= 2 ? searchOrg(client.api, orgId, q) : Promise.resolve([]),
+      q.trim().length >= 2
+        ? searchOrg(client.api, orgId, q, undefined, { kinds: EDITOR_SEARCH_KINDS })
+        : Promise.resolve([]),
     [client.orgId, query],
     { keepPreviousData: true },
   );
@@ -49,8 +55,14 @@ export default function Command() {
 
   const matchedServices = filterServices(services.data ?? [], query).slice(0, 20);
   const results = search.data ?? [];
-  const resources = results.filter((r) => !isWorkflowSearchResult(r));
-  const workflows = results.filter(isWorkflowSearchResult);
+  const resources = results.filter((r) => searchResultKind(r) === "resource");
+  const workflows = results.filter((r) => searchResultKind(r) === "workflow");
+  // Reports, dashboards, budgets, SLOs, runbooks…: one section per kind, in
+  // the server's order (kinds ranked by their best match).
+  const objectSections = new Map<SearchObjectKind, SearchResult[]>();
+  for (const o of objectSearchResults(results)) {
+    objectSections.set(o.kind, [...(objectSections.get(o.kind) ?? []), o]);
+  }
   const error = search.error ?? services.error;
 
   return (
@@ -59,7 +71,7 @@ export default function Command() {
       onSearchTextChange={setQuery}
       throttle
       isShowingDetail={showDetail && (resources.length > 0 || matchedServices.length > 0)}
-      searchBarPlaceholder="Search resources, accounts, providers, services"
+      searchBarPlaceholder="Search resources, services, reports, dashboards, SLOs"
     >
       {error ? (
         <List.EmptyView
@@ -71,9 +83,16 @@ export default function Command() {
         <List.EmptyView
           icon={Icon.MagnifyingGlass}
           title={query.trim().length < 2 ? "Type to search" : "No matches"}
-          description="Resources across every connected account, plus your services."
+          description="Resources across every connected account, your services, and saved reports, dashboards, budgets, SLOs and more."
         />
       )}
+      {[...objectSections].map(([kind, items]) => (
+        <List.Section key={kind} title={SEARCH_KIND_LABELS[kind].plural}>
+          {items.map((o) => (
+            <ObjectItem key={o.id} client={client} kind={kind} result={o} />
+          ))}
+        </List.Section>
+      ))}
       <List.Section title="Services">
         {matchedServices.map((s) => (
           <ServiceItem
@@ -111,6 +130,44 @@ export default function Command() {
         ))}
       </List.Section>
     </List>
+  );
+}
+
+/** A saved object: opens where Cmd+K in the apps would take it. */
+function ObjectItem({
+  client,
+  kind,
+  result: o,
+}: {
+  client: Client;
+  kind: SearchObjectKind;
+  result: SearchResult;
+}) {
+  const dest = destinationsFor(client, {
+    kind: "object",
+    orgId: client.orgId,
+    objectKind: kind,
+    objectId: o.id,
+  });
+  return (
+    <List.Item
+      icon={Icon.Document}
+      title={o.displayName}
+      subtitle={o.subtitle}
+      accessories={[{ text: SEARCH_KIND_LABELS[kind].singular }]}
+      actions={
+        <ActionPanel>
+          <OpenActions client={client} dest={dest} />
+          <Action.CopyToClipboard title="Copy Name" content={o.displayName} />
+          <Action.CopyToClipboard
+            title="Copy Link"
+            content={dest.web}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+          />
+          <Action.CopyToClipboard title="Copy ID" content={o.id} />
+        </ActionPanel>
+      }
+    />
   );
 }
 

@@ -6,8 +6,10 @@ import {
   webIncidentUrl,
   webResourceUrl,
   webServiceUrl,
+  webObjectUrl,
   webVulnerabilitiesUrl,
 } from "../deep-links";
+import { SEARCH_OBJECT_KINDS } from "../search";
 
 const resource = {
   accountId: "acc-1",
@@ -35,6 +37,33 @@ describe("web URLs", () => {
   });
 });
 
+describe("webObjectUrl", () => {
+  it("links objects with a page of their own by id", () => {
+    expect(webObjectUrl("https://x.test/", "o", "cost_report", "r/1")).toBe(
+      "https://x.test/org/o/cost-reports/r%2F1",
+    );
+    expect(webObjectUrl("https://x.test", "o", "dashboard", "d")).toBe(
+      "https://x.test/org/o/dashboard/d",
+    );
+    expect(webObjectUrl("https://x.test", "o", "slo", "s")).toBe("https://x.test/org/o/slos/s");
+  });
+
+  it("links objects that live inside a page to that page", () => {
+    expect(webObjectUrl("https://x.test", "o", "budget", "b")).toBe("https://x.test/org/o/costs");
+    expect(webObjectUrl("https://x.test", "o", "virtual_tag", "v")).toBe(
+      "https://x.test/org/o/settings/virtual-tags",
+    );
+  });
+
+  it("covers every object kind", () => {
+    for (const kind of SEARCH_OBJECT_KINDS) {
+      expect(webObjectUrl("https://x.test", "o", kind, "id")).toMatch(
+        /^https:\/\/x\.test\/org\/o\//,
+      );
+    }
+  });
+});
+
 describe("desktop deep links", () => {
   it("round-trips every kind", () => {
     const links = [
@@ -42,6 +71,12 @@ describe("desktop deep links", () => {
       { kind: "incident" as const, orgId: "org-1", incidentId: "inc-9" },
       { kind: "service" as const, orgId: "org-1", serviceId: "svc-2" },
       { kind: "vulnerabilities" as const, orgId: "org-1" },
+      {
+        kind: "object" as const,
+        orgId: "org-1",
+        objectKind: "cost_report" as const,
+        objectId: "rep 1",
+      },
     ];
     for (const link of links) {
       const url = desktopDeepLink(link);
@@ -57,6 +92,8 @@ describe("desktop deep links", () => {
     expect(parseDesktopDeepLink("infrawrench://open/unknown?org=o&id=1")).toBeNull();
     expect(parseDesktopDeepLink("infrawrench://open/vulnerabilities")).toBeNull();
     expect(parseDesktopDeepLink("not a url")).toBeNull();
+    expect(parseDesktopDeepLink("infrawrench://open/object?org=o&id=1&type=nope")).toBeNull();
+    expect(parseDesktopDeepLink("infrawrench://open/object?org=o&id=1")).toBeNull();
   });
 });
 

@@ -1081,5 +1081,6 @@ export * from "./cost-report-anomaly-alerts";
 export * from "./costs-panel-tabs";
 export * from "./deep-links";
 export * from "./search";
+export * from "./fuzzy";
 export * from "./resource-insight";
 export * from "./resource-reports";

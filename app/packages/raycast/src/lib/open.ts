@@ -2,6 +2,7 @@ import { open } from "@raycast/api";
 import {
   desktopDeepLink,
   webIncidentUrl,
+  webObjectUrl,
   webResourceUrl,
   webServiceUrl,
   webVulnerabilitiesUrl,
@@ -23,7 +24,9 @@ export function destinationsFor(client: Client, link: DesktopDeepLink): Destinat
         ? webIncidentUrl(client.cloudUrl, client.orgId, link.incidentId)
         : link.kind === "vulnerabilities"
           ? webVulnerabilitiesUrl(client.cloudUrl, client.orgId)
-          : webServiceUrl(client.cloudUrl, client.orgId, link.serviceId);
+          : link.kind === "object"
+            ? webObjectUrl(client.cloudUrl, client.orgId, link.objectKind, link.objectId)
+            : webServiceUrl(client.cloudUrl, client.orgId, link.serviceId);
   return { web, desktop: desktopDeepLink(link) };
 }
 

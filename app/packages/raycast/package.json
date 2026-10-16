@@ -28,7 +28,7 @@
       "name": "search-resources",
       "title": "Search Resources",
       "subtitle": "Infrawrench",
-      "description": "Search resources and services across every connected account, with cost, status and owning service.",
+      "description": "Search resources, services, cost reports, dashboards, budgets, SLOs and more across your organization, with cost, status and owning service for resources.",
       "mode": "view"
     },
     {

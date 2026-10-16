@@ -21,6 +21,8 @@ import { Modal } from "../components/Modal.js";
 import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
 import { ReportForecastsSection } from "./ReportForecastsSection.js";
+import { usePaletteIntent } from "../command-palette/intents.js";
+import { StarButton } from "../command-palette/StarButton.js";
 import type { CostReportsClient } from "./types.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 import {
@@ -140,6 +142,13 @@ export function CostReportsPanel({
   const [sharingTarget, setSharingTarget] = useState<ShareTarget | null>(null);
   const onShare = client.sharing ? setSharingTarget : undefined;
   const canWrite = Boolean(client.createReport && client.updateReport && client.deleteReport);
+  // "Create cost report" from the command palette.
+  usePaletteIntent(
+    (intent) => intent.type === "create" && intent.kind === "cost_report",
+    () => {
+      if (canWrite) setEditing({ report: null });
+    },
+  );
   const canPlace = Boolean(
     client.listDashboards && client.addReportToDashboard && client.removeReportPlacement,
   );
@@ -1192,7 +1201,10 @@ function ReportDetail({
               {folderPath}
             </span>
           )}
-          <h2 className="mt-1 truncate text-sm font-semibold text-on-surface">{report.name}</h2>
+          <div className="mt-1 flex min-w-0 items-center gap-1">
+            <h2 className="truncate text-sm font-semibold text-on-surface">{report.name}</h2>
+            <StarButton starRef={{ kind: "cost_report", id: report.id }} name={report.name} />
+          </div>
           {report.description && (
             <p className="truncate text-xs text-on-surface-faint mt-0.5">{report.description}</p>
           )}

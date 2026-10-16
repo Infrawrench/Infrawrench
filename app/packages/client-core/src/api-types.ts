@@ -95,6 +95,8 @@ export interface DashboardWorkflowPin {
  */
 export interface ResourceSearchResult {
   id: string;
+  /** See `SearchResult.kind` in `search.ts`; absent from local desktop hits. */
+  kind?: import("./search").SearchResultKind | undefined;
   pluginId: string;
   pluginDisplayName: string;
   pluginLogoSvg: string;

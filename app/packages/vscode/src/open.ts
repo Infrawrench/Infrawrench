@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import {
   desktopDeepLink,
+  webObjectUrl,
   webResourceUrl,
   webServiceUrl,
   webVulnerabilitiesUrl,
   type DeepLinkResource,
+  type SearchObjectKind,
 } from "@infrawrench/client-core";
 import { readConfig } from "./config";
 import type { Session } from "./session";
@@ -39,6 +41,21 @@ export async function openVulnerabilities(session: Session): Promise<void> {
     readConfig().openIn === "desktop"
       ? desktopDeepLink({ kind: "vulnerabilities", orgId })
       : webVulnerabilitiesUrl(session.cloudUrl, orgId);
+  await vscode.env.openExternal(vscode.Uri.parse(target, true));
+}
+
+/** A saved object from the search index (report, dashboard, SLO, …). */
+export async function openObject(
+  session: Session,
+  objectKind: SearchObjectKind,
+  objectId: string,
+): Promise<void> {
+  const orgId = session.orgId;
+  if (!orgId) return;
+  const target =
+    readConfig().openIn === "desktop"
+      ? desktopDeepLink({ kind: "object", orgId, objectKind, objectId })
+      : webObjectUrl(session.cloudUrl, orgId, objectKind, objectId);
   await vscode.env.openExternal(vscode.Uri.parse(target, true));
 }
 

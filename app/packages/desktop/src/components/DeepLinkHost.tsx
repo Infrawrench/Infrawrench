@@ -2,7 +2,13 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { parseDesktopDeepLink } from "@infrawrench/client-core";
-import { toast, useUIStore, vulnerabilitiesTabTarget } from "@infrawrench/ui";
+import {
+  paletteDestination,
+  requestPaletteIntent,
+  toast,
+  useUIStore,
+  vulnerabilitiesTabTarget,
+} from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import {
   incidentsTabTarget,
@@ -41,6 +47,20 @@ export function DeepLinkHost() {
         toast.error(
           gt("That link is for another organization. Switch to it, then open the link again."),
         );
+        return;
+      }
+      if (link.kind === "object") {
+        // The palette's own kind-to-tab mapping, so a link lands exactly
+        // where picking the same object in Cmd+K would.
+        const dest = paletteDestination({
+          id: link.objectId,
+          kind: link.objectKind,
+          pluginId: "",
+          resourceTypeId: link.objectKind,
+          accountId: "",
+        });
+        void navigateToWorkspaceTarget(navigate, dest.target, { mode: "pin" });
+        if (dest.intent) requestPaletteIntent(dest.intent);
         return;
       }
       const target =

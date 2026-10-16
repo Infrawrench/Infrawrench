@@ -19,6 +19,12 @@ export interface SectionTabsProps<T extends string> {
   storageKey?: string | undefined;
   /** Tab to open on, ahead of the remembered one (a deep link). */
   initialTab?: T | undefined;
+  /**
+   * Switch to a tab after mount (the command palette opening an object that
+   * lives on one). A new `nonce` re-requests the same tab after the viewer
+   * moved away from it.
+   */
+  requestedTab?: { id: T; nonce: number } | undefined;
   className?: string | undefined;
 }
 
@@ -50,6 +56,7 @@ export function SectionTabs<T extends string>({
   ariaLabel,
   storageKey,
   initialTab,
+  requestedTab,
   className,
 }: SectionTabsProps<T>) {
   const gt = useGT();
@@ -63,6 +70,16 @@ export function SectionTabs<T extends string>({
   });
   const [visited, setVisited] = useState<ReadonlySet<T>>(() => new Set([active]));
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // A request from outside, applied once per nonce (state adjusted during
+  // render, React's documented alternative to an effect for this).
+  const [handledNonce, setHandledNonce] = useState<number | null>(null);
+  if (requestedTab && requestedTab.nonce !== handledNonce && ids.includes(requestedTab.id)) {
+    const id = requestedTab.id;
+    setHandledNonce(requestedTab.nonce);
+    setActive(id);
+    setVisited((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }
 
   // A tab can disappear when its data source goes away; fall back to the first.
   const current = ids.includes(active) ? active : tabs[0]!.id;

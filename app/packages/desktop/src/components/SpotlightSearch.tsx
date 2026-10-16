@@ -33,14 +33,16 @@ function resultToResource(result: SpotlightResult): DraggableResource {
   };
 }
 
-export function SpotlightSearch({
-  dashboardId,
-  mode,
-  onClose,
-  onPinned,
-  onNavigate,
-  onDrop,
-}: SpotlightSearchProps) {
+/**
+ * Everything the local workspace can jump to: the SQLite resource cache
+ * first (instant), then each account's live listing as it arrives, plus
+ * workflows in navigate mode. Shared by the pin/connect spotlight and the
+ * command palette, which ranks these with the same matcher as the server.
+ */
+export function useLocalSpotlightResults(mode: "pin" | "navigate" | "drop"): {
+  results: SpotlightResult[];
+  loading: boolean;
+} {
   const [allResults, setAllResults] = useState<SpotlightResult[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -240,7 +242,20 @@ export function SpotlightSearch({
     return () => {
       cancelled = true;
     };
-  }, [dashboardId, mode]);
+  }, [mode]);
+
+  return { results: allResults, loading };
+}
+
+export function SpotlightSearch({
+  dashboardId,
+  mode,
+  onClose,
+  onPinned,
+  onNavigate,
+  onDrop,
+}: SpotlightSearchProps) {
+  const { results: allResults, loading } = useLocalSpotlightResults(mode);
 
   const handleSelect = useCallback(
     async (result: SpotlightResult) => {

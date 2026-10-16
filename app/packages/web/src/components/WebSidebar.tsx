@@ -23,6 +23,7 @@ import {
   formatErrorMessage,
   PanelLeftOpenIcon,
   SettingsIcon,
+  usePaletteIntent,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -170,6 +171,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  // The command palette's "Create dashboard" and "Connect account" land on
+  // the flows this sidebar owns (it expands the sidebar first).
+  usePaletteIntent(
+    (intent) =>
+      intent.type === "create" && (intent.kind === "dashboard" || intent.kind === "account"),
+    (intent) => {
+      if (intent.kind === "dashboard") setAddingDashboard(true);
+      else setShowAddAccount(true);
+    },
+  );
   const accountsVersion = useUIStore((s) => s.accountsVersion);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
 

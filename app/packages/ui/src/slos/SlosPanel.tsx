@@ -20,6 +20,8 @@ import { MetricChart } from "../components/charts/MetricChart.js";
 import { IssueIndicator } from "../components/IssueIndicator.js";
 import { Modal } from "../components/Modal.js";
 import { SloEditorModal } from "./SloEditorModal.js";
+import { usePaletteIntent } from "../command-palette/intents.js";
+import { StarButton } from "../command-palette/StarButton.js";
 import type { SlosClient } from "./types.js";
 
 export interface SlosPanelProps {
@@ -386,7 +388,10 @@ function SloDetail({
         </button>
         <div className="mt-1 flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-on-surface">{slo.name}</h2>
+            <div className="flex items-center gap-1">
+              <h2 className="text-base font-semibold text-on-surface">{slo.name}</h2>
+              <StarButton starRef={{ kind: "slo", id: slo.id }} name={slo.name} />
+            </div>
             <p className="text-xs text-on-surface-faint">
               {source} ·{" "}
               {gt("{target} over {days} days", {
@@ -587,6 +592,13 @@ export function SlosPanel({ client, sloId, onSloChange }: SlosPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ existing: Slo | null } | null>(null);
   const canWrite = Boolean(client.createSlo && client.updateSlo && client.deleteSlo);
+  // "New SLO" from the command palette.
+  usePaletteIntent(
+    (intent) => intent.type === "create" && intent.kind === "slo",
+    () => {
+      if (canWrite) setEditing({ existing: null });
+    },
+  );
 
   const reload = useCallback(() => {
     setError(null);

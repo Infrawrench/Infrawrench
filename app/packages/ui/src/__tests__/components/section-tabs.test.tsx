@@ -32,6 +32,19 @@ describe("SectionTabs", () => {
     expect(onMount).toHaveBeenCalledTimes(2);
   });
 
+  it("switches to a requested tab once per nonce", () => {
+    const t = tabs(() => {});
+    const { rerender } = render(
+      <SectionTabs ariaLabel="Views" tabs={t} requestedTab={{ id: "c", nonce: 1 }} />,
+    );
+    expect(screen.getByRole("tab", { name: "Gamma" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Alpha" }));
+    rerender(<SectionTabs ariaLabel="Views" tabs={t} requestedTab={{ id: "c", nonce: 1 }} />);
+    expect(screen.getByRole("tab", { name: "Alpha" })).toHaveAttribute("aria-selected", "true");
+    rerender(<SectionTabs ariaLabel="Views" tabs={t} requestedTab={{ id: "c", nonce: 2 }} />);
+    expect(screen.getByRole("tab", { name: "Gamma" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("remembers the last tab under the storage key", () => {
     const { unmount } = render(
       <SectionTabs ariaLabel="Views" storageKey="k" tabs={tabs(() => {})} />,

@@ -71,6 +71,8 @@ interface DetailViewProps {
   schema: DetailViewSchema;
   resourceId: string;
   pluginLogoSvg: string;
+  /** Rendered beside the title (the command palette's star toggle). */
+  titleAccessory?: React.ReactNode;
   /** Called when the user confirms an association reroll */
   onReroll?: (
     fieldKey: string,
@@ -313,6 +315,7 @@ export function DetailView({
   onTranscribeAudio,
   dependencies,
   onOpenDependency,
+  titleAccessory,
 }: DetailViewProps) {
   const gt = useGT();
   const { rerollingField, closeReroll } = useUIStore();
@@ -514,7 +517,10 @@ export function DetailView({
             aria-hidden
           />
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
+            <div className="flex min-w-0 items-center gap-1">
+              <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
+              {titleAccessory}
+            </div>
             {schema.subtitle && (
               <p className="text-sm text-on-surface-muted mt-0.5">{schema.subtitle}</p>
             )}

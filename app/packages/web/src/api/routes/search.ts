@@ -1,12 +1,11 @@
 import { Hono } from "hono";
-import { eq, and, isNull } from "drizzle-orm";
-import { db } from "../../db/client";
-import { accounts, resources, workflows } from "../../db/schema";
-
-// Inline workflow glyph for the spotlight group header (matches WorkflowIcon).
-const WORKFLOW_LOGO_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>`;
-import { getPlugin } from "../../plugins/loader";
+import {
+  SEARCH_RESULT_KINDS,
+  isSearchResultKind,
+  type SearchResultKind,
+} from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
+import { legacySearch, searchPalette, searchableKinds } from "../../services/palette-search";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -17,102 +16,53 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/search?q=...: search resources across all accounts */
+/**
+ * Parse `kinds=`: a comma list of `SearchResultKind`s, or `all`. Null for an
+ * unknown name, which is a 400 rather than silently searching less than asked.
+ */
+export function parseSearchKinds(raw: string): SearchResultKind[] | null {
+  const parts = raw
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 1 && parts[0] === "all") return [...SEARCH_RESULT_KINDS];
+  const out: SearchResultKind[] = [];
+  for (const p of parts) {
+    if (!isSearchResultKind(p)) return null;
+    if (!out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * GET /api/org/:orgId/search?q=…[&kinds=…]
+ *
+ * Without `kinds` this is the original contract (resources and workflows,
+ * `resources:read`), which the editor extensions and mobile still call. With
+ * it, the command palette's index: each named kind the caller's role can read,
+ * narrowed to the objects they could open, fuzzy-ranked. A kind the caller
+ * cannot read is skipped rather than refused, so one request serves every
+ * role.
+ */
 app.get("/", async (c) => {
-  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
-  const q = (c.req.query("q") ?? "").toLowerCase().trim();
+  const q = c.req.query("q") ?? "";
+  const rawKinds = c.req.query("kinds");
 
-  const allResources = await db
-    .select({
-      id: resources.id,
-      pluginId: resources.pluginId,
-      resourceTypeId: resources.resourceTypeId,
-      accountId: resources.accountId,
-      displayName: resources.displayName,
-      fieldsJson: resources.fieldsJson,
-    })
-    .from(resources)
-    .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)));
-
-  const allAccounts = await db
-    .select({ id: accounts.id, displayName: accounts.displayName, pluginId: accounts.pluginId })
-    .from(accounts)
-    .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
-
-  const accountMap = new Map(allAccounts.map((a) => [a.id, a]));
-
-  const pluginCache = new Map<
-    string,
-    { logoSvg: string; displayName: string; resourceTypes: Map<string, string> }
-  >();
-
-  const results = [];
-  for (const r of allResources) {
-    let pluginMeta = pluginCache.get(r.pluginId);
-    if (!pluginMeta) {
-      const loaded = await getPlugin(r.pluginId);
-      if (loaded) {
-        const rtMap = new Map(loaded.plugin.resourceTypes.map((rt) => [rt.id, rt.displayName]));
-        pluginMeta = {
-          logoSvg: loaded.plugin.manifest.logoSvg,
-          displayName: loaded.plugin.manifest.displayName,
-          resourceTypes: rtMap,
-        };
-      } else {
-        pluginMeta = { logoSvg: "", displayName: r.pluginId, resourceTypes: new Map() };
-      }
-      pluginCache.set(r.pluginId, pluginMeta);
-    }
-
-    const account = accountMap.get(r.accountId);
-    const accountName = account?.displayName ?? "";
-    const resourceTypeLabel = pluginMeta.resourceTypes.get(r.resourceTypeId) ?? r.resourceTypeId;
-
-    if (q) {
-      const searchable =
-        `${r.displayName} ${accountName} ${pluginMeta.displayName} ${resourceTypeLabel}`.toLowerCase();
-      if (!searchable.includes(q)) continue;
-    }
-
-    results.push({
-      id: r.id,
-      pluginId: r.pluginId,
-      pluginDisplayName: pluginMeta.displayName,
-      pluginLogoSvg: pluginMeta.logoSvg,
-      resourceTypeId: r.resourceTypeId,
-      resourceTypeLabel,
-      accountId: r.accountId,
-      accountName,
-      displayName: r.displayName,
-    });
-
-    if (results.length >= 50) break;
+  if (rawKinds === undefined) {
+    requirePermission(c, "resources:read");
+    return c.json(await legacySearch(organizationId, q));
   }
 
-  // Workflows are navigation targets too: index them by name.
-  const wfRows = await db
-    .select({ id: workflows.id, name: workflows.name, trigger: workflows.trigger })
-    .from(workflows)
-    .where(and(eq(workflows.organizationId, organizationId), isNull(workflows.deletedAt)));
-  for (const w of wfRows) {
-    if (q && !w.name.toLowerCase().includes(q)) continue;
-    const triggerKind = (w.trigger as { kind?: string } | null)?.kind ?? "manual";
-    results.push({
-      id: w.id,
-      pluginId: "__workflows__",
-      pluginDisplayName: "Workflows",
-      pluginLogoSvg: WORKFLOW_LOGO_SVG,
-      resourceTypeId: "__workflow__",
-      resourceTypeLabel: "Workflow",
-      accountId: "",
-      accountName: "",
-      displayName: w.name,
-      subtitle: `${triggerKind} trigger`,
-    });
+  const kinds = parseSearchKinds(rawKinds);
+  if (!kinds) {
+    return c.json(
+      { error: `Unknown kind in "${rawKinds}". Valid: all, ${SEARCH_RESULT_KINDS.join(", ")}.` },
+      400,
+    );
   }
-
-  return c.json(results);
+  const allowed = searchableKinds(c.get("permissions") ?? [], kinds);
+  return c.json(await searchPalette(organizationId, q, allowed));
 });
 
 export { app as searchRoutes };

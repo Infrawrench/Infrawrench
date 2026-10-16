@@ -3,14 +3,18 @@ import {
   SERVICE_TIER_LABELS,
   fetchServices,
   filterServices,
+  EDITOR_SEARCH_KINDS,
+  SEARCH_KIND_LABELS,
   isWorkflowSearchResult,
+  objectSearchResults,
   searchOrg,
+  searchResultKind,
   webWorkflowUrl,
   type SearchResult,
   type Service,
 } from "@infrawrench/client-core";
 import { TtlCache } from "./cache";
-import { openResource, openService, openUrl } from "./open";
+import { openObject, openResource, openService, openUrl } from "./open";
 import type { Session } from "./session";
 
 type Item = vscode.QuickPickItem & {
@@ -21,9 +25,10 @@ type Item = vscode.QuickPickItem & {
 const servicesCache = new TtlCache<Service[]>(60 * 1000);
 
 /**
- * Command-palette search over the spotlight search API (resources and
- * workflows) plus the org's services, filtered client-side because the search
- * endpoint does not index them.
+ * Command-palette search over the org's search index (resources, workflows,
+ * and saved objects: cost reports, dashboards, budgets, SLOs, runbooks…) plus
+ * the org's services, filtered client-side from `/services` because that
+ * listing carries tier, owners and on-call the search hit does not.
  */
 export async function runSearch(session: Session): Promise<void> {
   const api = session.api;
@@ -34,7 +39,7 @@ export async function runSearch(session: Session): Promise<void> {
   }
   const qp = vscode.window.createQuickPick<Item>();
   qp.title = `Search ${session.orgName ?? "Infrawrench"}`;
-  qp.placeholder = "Resource, account, provider, type or service name";
+  qp.placeholder = "Resource, service, report, dashboard, SLO or other name";
   qp.matchOnDescription = true;
   qp.matchOnDetail = true;
 
@@ -46,7 +51,9 @@ export async function runSearch(session: Session): Promise<void> {
     void (async () => {
       try {
         const [results, services] = await Promise.all([
-          value.trim().length >= 2 ? searchOrg(api, orgId, value) : Promise.resolve([]),
+          value.trim().length >= 2
+            ? searchOrg(api, orgId, value, undefined, { kinds: EDITOR_SEARCH_KINDS })
+            : Promise.resolve([]),
           servicesCache
             .get(orgId, async () => (await fetchServices(api, orgId)).services)
             .catch(() => [] as Service[]),
@@ -98,8 +105,8 @@ function toItems(results: SearchResult[], services: Service[]): Item[] {
       });
     }
   }
-  const resources = results.filter((r) => !isWorkflowSearchResult(r));
-  const workflows = results.filter(isWorkflowSearchResult);
+  const resources = results.filter((r) => searchResultKind(r) === "resource");
+  const workflows = results.filter((r) => searchResultKind(r) === "workflow");
   if (resources.length > 0) {
     items.push({ label: "Resources", kind: vscode.QuickPickItemKind.Separator });
     for (const r of resources) {
@@ -123,12 +130,34 @@ function toItems(results: SearchResult[], services: Service[]): Item[] {
       });
     }
   }
+  // Saved objects, one separator per kind, in the server's order.
+  let lastKind: string | null = null;
+  for (const o of objectSearchResults(results)) {
+    if (o.kind !== lastKind) {
+      items.push({
+        label: SEARCH_KIND_LABELS[o.kind].plural,
+        kind: vscode.QuickPickItemKind.Separator,
+      });
+      lastKind = o.kind;
+    }
+    items.push({
+      label: `$(file) ${o.displayName}`,
+      description: o.subtitle ?? "",
+      alwaysShow: true,
+      result: o,
+    });
+  }
   return items;
 }
 
 async function actOnResult(session: Session, orgId: string, r: SearchResult): Promise<void> {
   if (isWorkflowSearchResult(r)) {
     await openUrl(webWorkflowUrl(session.cloudUrl, orgId, r.id));
+    return;
+  }
+  const [object] = objectSearchResults([r]);
+  if (object) {
+    await openObject(session, object.kind, object.id);
     return;
   }
   const action = await vscode.window.showQuickPick(
