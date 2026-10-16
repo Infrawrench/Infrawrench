@@ -90,9 +90,29 @@ A **Text** card holds notes in markdown: headings, **bold**, lists, links, quote
 
 You can create additional dashboards from **Dashboards → New**. Useful for splitting by environment (prod, staging) or by responsibility (mine vs team).
 
+## Default dashboards
+
+The dashboard you land on when you open the app (the web home page, a new tab on desktop, the top of the Dashboards tab on mobile) is picked in three layers, most specific first:
+
+1. **Your own default.** Open any dashboard, choose **Default → Set as my default**, and you land there from then on, in this organization. **Default → Clear my default** hands the choice back to the layers below.
+2. **Your role's default.** An admin can give each role, built-in or custom, a default dashboard under **Settings → Roles**. Everyone holding that role lands there unless they picked their own.
+3. **The organization default.** The dashboard created as **Home** when the organization was set up. It is the final fallback and can't be deleted.
+
+The **Default** menu says which layer put you on the dashboard you're looking at, so it's never a mystery why the app opened where it did. A star on the button marks the dashboard you land on.
+
+<insert [A dashboard header with the Default menu open, showing "You land here when you open the app: it is the default for your role, Finance." above the Set as my default entry] here>
+
+A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings refuses anything else and says why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: members skip that layer and land on the next one, and the **Default** menu tells you your own pick was skipped. Deleting a dashboard clears it as anyone's default.
+
+<insert [Settings → Roles with the Finance role's card showing a Default dashboard picker set to "Spend overview", and the Member card set to "Organization default (Home)"] here>
+
+Role defaults also travel in [config as code](./config-as-code.md) (a dashboard's `defaultForRoles`) and in Terraform as [`infrawrench_role_default_dashboard`](./terraform-provider.md). The CLI's `infrawrench dashboards` marks the one you land on and says why (`--json` includes the full resolution).
+
+A member holds one role today. If membership ever carries several, the choice stays deterministic: a custom role's default beats a built-in role's, then Owner beats Admin beats Member, then role names in alphabetical order.
+
 ## On mobile
 
-The [mobile app](./mobile-app.md) builds and edits dashboards too: **New dashboard** on the Dashboards tab, then **Edit** on a dashboard to add cards, reorder them, configure a cost graph or budget, and rename or delete the dashboard. Cards move with **Move up** / **Move down** instead of being dragged, **Duplicate** copies a card, KPI and text cards are shown but edited on web or desktop, the cost graph sheet offers the same measure, unit, binning and cumulative options, and a cost graph's custom absolute date range stays on web and desktop; everything else is the same options over the same API, so a dashboard built on a phone opens unchanged here. See [building a dashboard on the phone](./mobile-app.md#building-a-dashboard-on-the-phone).
+The [mobile app](./mobile-app.md) builds and edits dashboards too: **New dashboard** on the Dashboards tab, then **Edit** on a dashboard to add cards, reorder them, configure a cost graph or budget, and rename or delete the dashboard. **Set as my default** and **Clear my default** sit next to **Edit**, and the Dashboards tab lists the one you land on first. Cards move with **Move up** / **Move down** instead of being dragged, **Duplicate** copies a card, KPI and text cards are shown but edited on web or desktop, the cost graph sheet offers the same measure, unit, binning and cumulative options, and a cost graph's custom absolute date range stays on web and desktop; everything else is the same options over the same API, so a dashboard built on a phone opens unchanged here. See [building a dashboard on the phone](./mobile-app.md#building-a-dashboard-on-the-phone).
 
 ## When the dashboard is worth using
 

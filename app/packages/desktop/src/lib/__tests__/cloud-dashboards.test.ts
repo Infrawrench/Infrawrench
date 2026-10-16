@@ -4,6 +4,10 @@ const invoke = vi.fn();
 vi.mock("../invoke", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
 import {
+  clearMyCloudDefaultDashboard,
+  createCloudDashboardDefaultClient,
+  getCloudDefaultDashboard,
+  setMyCloudDefaultDashboard,
   createCloudDashboard,
   deleteCloudDashboard,
   getCloudDashboard,
@@ -44,6 +48,27 @@ describe("cloud-dashboards wrappers", () => {
   it("deleteCloudDashboard", async () => {
     await deleteCloudDashboard("org1", "d1");
     expect(invoke).toHaveBeenCalledWith("cloud_delete_dashboard", { orgId: "org1", id: "d1" });
+  });
+
+  it("default dashboard wrappers", async () => {
+    await getCloudDefaultDashboard("org1");
+    expect(invoke).toHaveBeenCalledWith("cloud_get_default_dashboard", { orgId: "org1" });
+    await setMyCloudDefaultDashboard("org1", "d1");
+    expect(invoke).toHaveBeenCalledWith("cloud_set_my_default_dashboard", {
+      orgId: "org1",
+      dashboardId: "d1",
+    });
+    await clearMyCloudDefaultDashboard("org1");
+    expect(invoke).toHaveBeenCalledWith("cloud_clear_my_default_dashboard", { orgId: "org1" });
+  });
+
+  it("createCloudDashboardDefaultClient routes through the same channels", async () => {
+    const client = createCloudDashboardDefaultClient("org1");
+    await client.setMine("d2");
+    expect(invoke).toHaveBeenCalledWith("cloud_set_my_default_dashboard", {
+      orgId: "org1",
+      dashboardId: "d2",
+    });
   });
 
   it("renameCloudDashboard", async () => {

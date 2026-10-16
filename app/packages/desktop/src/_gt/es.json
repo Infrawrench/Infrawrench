@@ -22458,5 +22458,21 @@
     "t": "p",
     "i": 1,
     "c": "Columnas: from, to, rate y, o bien effective_from (con un effective_to opcional), o bien billing_period como YYYY-MM para un mes. Las filas que coinciden con un par y fecha de inicio guardados lo reemplazan; nada más se modifica. Los tipos subidos son tipos declarados, así que prevalecen sobre los tipos automáticos en los días que cubren."
-  }
+  },
+  "698b986bddd76704": "No se pudo establecer el panel predeterminado",
+  "a867d1229d8d6ed5": "Predeterminado de la organización ({name})",
+  "640d208b2badb468": "Predeterminado de la organización",
+  "b6d42f77b9710d56": "Panel predeterminado: {name}",
+  "452ae0b4f5e412cf": "Panel predeterminado",
+  "e47daf3a1e8013ed": "Panel predeterminado para {role}",
+  "986df125eb088a5a": "Un panel que no puedes ver",
+  "2e63e7b5a440659b": "Llegas aquí al abrir la aplicación. Lo elegiste tú.",
+  "7c80619cab6f7d6a": "Llegas aquí al abrir la aplicación: es el predeterminado de tu rol, {role}.",
+  "8fc1c0c17f5932e7": "Llegas aquí al abrir la aplicación: es el predeterminado de la organización.",
+  "073e474e701f41dd": "Al abrir la aplicación llegas a {name}.",
+  "de1e046db6c30129": "Tu propio panel predeterminado ya no se comparte contigo, así que se ha omitido.",
+  "13c2120ca86adb6d": "No se pudo establecer tu panel predeterminado",
+  "9d5f2a33c1e86464": "Establecer como mi predeterminado",
+  "cf2ba394704459d7": "No se pudo quitar tu panel predeterminado",
+  "bc8519f41c056ead": "Quitar mi predeterminado"
 }

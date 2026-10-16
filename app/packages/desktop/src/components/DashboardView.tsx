@@ -35,6 +35,7 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   DashboardAddMenu,
+  DashboardDefaultMenu,
   DashboardExportActions,
 } from "@infrawrench/ui";
 import {
@@ -90,6 +91,7 @@ import {
   deleteCloudWidget,
   duplicateCloudWidget,
   unpinCloudWorkflow,
+  createCloudDashboardDefaultClient,
   type CloudProbeItem,
 } from "../lib/cloud-api";
 import type { WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
@@ -226,6 +228,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         ? createDesktopDashboardExportClient(activeCloudOrgId, canManageDelivery)
         : null,
     [activeCloudOrgId, canManageDelivery],
+  );
+  // "My default dashboard" is a cloud preference; local dashboards have none.
+  const defaultClient = useMemo(
+    () => (activeCloudOrgId ? createCloudDashboardDefaultClient(activeCloudOrgId) : null),
+    [activeCloudOrgId],
   );
 
   /**
@@ -1234,6 +1241,13 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         </div>
 
         <div className="flex items-center gap-1">
+          {defaultClient && (
+            <DashboardDefaultMenu
+              dashboardId={dashboardId}
+              client={defaultClient}
+              onChanged={() => bumpDashboardPins()}
+            />
+          )}
           {exportClient && (
             <DashboardExportActions
               dashboardId={dashboardId}

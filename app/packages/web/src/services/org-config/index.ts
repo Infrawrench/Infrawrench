@@ -28,7 +28,7 @@ import {
   IdleSettingsError,
   validateIdleSettingsPatch,
 } from "@infrawrench/server-core/idle/settings";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import {
   ORG_CONFIG_SECTIONS,
@@ -88,11 +88,13 @@ import {
   orgTagPolicies,
   resources,
   savingsViews,
+  roles,
   slos,
   syntheticProbes,
   workflows,
 } from "../../db/schema";
 import { requirePaidPlan } from "../entitlements";
+import { roleDefaultProblem, rolePermissionProblem } from "../default-dashboards";
 import { orgGithubInstallationIds } from "../github-installations";
 import { OrgConfigError, type ParsedOrgConfigDocument } from "./schema";
 import {
@@ -1034,17 +1036,33 @@ async function planDashboards(plan: PlanBuilder, args: DashboardPlanArgs): Promi
     named.add(entry.key);
     const resolved = resolveCards(plan, entry, args);
     const current = byKey.get(entry.key);
-    const next = { ...entry, cards: resolved.cards };
+    // Omitted `defaultForRoles` leaves role defaults as they are, so a
+    // document written before the field existed never clears them.
+    const roleNames =
+      entry.defaultForRoles === undefined
+        ? current?.config.defaultForRoles
+        : normalizeRoleNames(entry.defaultForRoles);
+    const next: OrgConfigDashboard = {
+      ...entry,
+      cards: resolved.cards,
+      ...(roleNames ? { defaultForRoles: roleNames } : {}),
+    };
+    if (!roleNames) delete next.defaultForRoles;
 
     if (!current) {
       const id = uuidv4();
       if (entry.isDefault) defaultDashboardId = id;
+      const roleIds =
+        entry.defaultForRoles === undefined
+          ? null
+          : await resolveRoleDefaults(plan, organizationId, entry, null, state);
       plan.record("dashboards", entry.key, entry.name, "create");
       plan.op(async (tx) => {
         await tx
           .insert(dashboards)
           .values({ id, organizationId, name: entry.name, isDefault: entry.isDefault });
         await writeCards(tx, organizationId, id, resolved.rows, now);
+        if (roleIds) await writeRoleDefaults(tx, organizationId, id, roleIds, now);
       });
       continue;
     }
@@ -1057,6 +1075,9 @@ async function planDashboards(plan: PlanBuilder, args: DashboardPlanArgs): Promi
     }
     plan.record("dashboards", entry.key, entry.name, "update", fields);
     const rebuildCards = fields.includes("cards");
+    const roleIds = fields.includes("defaultForRoles")
+      ? await resolveRoleDefaults(plan, organizationId, entry, current.id, state)
+      : null;
     plan.op(async (tx) => {
       await tx
         .update(dashboards)
@@ -1066,6 +1087,7 @@ async function planDashboards(plan: PlanBuilder, args: DashboardPlanArgs): Promi
         await clearCards(tx, organizationId, current.id, now);
         await writeCards(tx, organizationId, current.id, resolved.rows, now);
       }
+      if (roleIds) await writeRoleDefaults(tx, organizationId, current.id, roleIds, now);
     });
   }
 
@@ -1106,6 +1128,91 @@ async function planDashboards(plan: PlanBuilder, args: DashboardPlanArgs): Promi
       await tx.delete(dashboards).where(eq(dashboards.id, entity.id));
     });
   }
+}
+
+/** Sorted, de-duplicated role names; `undefined` for none, matching the export. */
+function normalizeRoleNames(names: readonly string[]): string[] | undefined {
+  const seen = new Map<string, string>();
+  for (const name of names) {
+    const trimmed = name.trim();
+    if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+  }
+  const out = [...seen.values()].sort();
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Resolve a dashboard's `defaultForRoles` names to role ids, the same checks
+ * the role-defaults route makes: the role must exist (exactly one by that
+ * name), hold `dashboards:read`, and, for a dashboard that already exists, be
+ * able to see it under its sharing. Anything else is reported and dropped.
+ */
+async function resolveRoleDefaults(
+  plan: PlanBuilder,
+  organizationId: string,
+  entry: OrgConfigDashboard,
+  dashboardId: string | null,
+  state: OrgConfigState,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (const name of normalizeRoleNames(entry.defaultForRoles ?? []) ?? []) {
+    const matches = state.roles.filter((r) => r.name.toLowerCase() === name.toLowerCase());
+    if (matches.length === 0) {
+      plan.miss(
+        "dashboards",
+        entry.key,
+        `defaultForRoles names "${name}", which is not a role in this organization`,
+      );
+      continue;
+    }
+    if (matches.length > 1) {
+      plan.miss(
+        "dashboards",
+        entry.key,
+        `defaultForRoles names "${name}", which matches ${matches.length} roles; rename one so the name is unique`,
+      );
+      continue;
+    }
+    const role = matches[0]!;
+    const problem = dashboardId
+      ? await roleDefaultProblem(organizationId, role, dashboardId)
+      : rolePermissionProblem(role);
+    if (problem) {
+      plan.miss("dashboards", entry.key, problem);
+      continue;
+    }
+    ids.push(role.id);
+  }
+  return ids;
+}
+
+/**
+ * Point exactly `roleIds` at `dashboardId`: the listed roles move here (from
+ * whatever they defaulted to before), and roles that defaulted here but are no
+ * longer listed fall back to the org default.
+ */
+async function writeRoleDefaults(
+  tx: Tx,
+  organizationId: string,
+  dashboardId: string,
+  roleIds: string[],
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(roles)
+    .set({ defaultDashboardId: null, updatedAt: now })
+    .where(
+      and(
+        eq(roles.organizationId, organizationId),
+        eq(roles.defaultDashboardId, dashboardId),
+        ...(roleIds.length > 0 ? [notInArray(roles.id, roleIds)] : []),
+      ),
+    );
+  if (roleIds.length === 0) return;
+  await tx
+    .update(roles)
+    .set({ defaultDashboardId: dashboardId, updatedAt: now })
+    .where(and(eq(roles.organizationId, organizationId), inArray(roles.id, roleIds)));
 }
 
 /** A card resolved to concrete row values, ready to insert. */

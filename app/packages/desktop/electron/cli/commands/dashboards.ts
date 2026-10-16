@@ -16,6 +16,7 @@ import type {
   DashboardNotificationSendResult,
   DashboardWidget,
   KpiWidgetConfig,
+  DefaultDashboardResolution,
 } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
@@ -43,17 +44,27 @@ function describeTargets(n: DashboardNotification): string {
   return parts.length > 0 ? parts.join(", ") : "no destinations";
 }
 
+/** Why this is the caller's default: `"your choice"`, `"default for the Finance role"`. */
+export function describeLanding(r: DefaultDashboardResolution): string {
+  if (r.source === "user") return "your choice";
+  if (r.source === "role") return `default for the ${r.roleDefault?.roleName ?? ""} role`;
+  return "organization default";
+}
+
 /** `infrawrench dashboards`: list the org's dashboards with their delivery. */
 export async function cmdDashboards(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
-  const [dashboards, notifications] = await Promise.all([
+  const [dashboards, notifications, landing] = await Promise.all([
     orgFetch<Dashboard[]>(org.id, "/dashboards"),
     // Org-wide in one call, like `reports`. Defensive: a server without
     // dashboard delivery costs the column, not the list.
     orgFetch<DashboardNotification[]>(org.id, "/dashboard-notifications").catch(
       () => [] as DashboardNotification[],
     ),
+    // Which one you land on (yours, your role's, or the org's). Same
+    // defensiveness: an older server just loses the marker.
+    orgFetch<DefaultDashboardResolution>(org.id, "/dashboards/default").catch(() => null),
   ]);
   const schedulesByDashboard = new Map<string, DashboardNotification[]>();
   for (const n of notifications) {
@@ -63,7 +74,7 @@ export async function cmdDashboards(ctx: CliContext): Promise<void> {
   }
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, dashboards, notifications });
+    printJson({ org: org.id, dashboards, notifications, default: landing });
     return;
   }
 
@@ -78,7 +89,14 @@ export async function cmdDashboards(ctx: CliContext): Promise<void> {
   printTable(dashboards, [
     {
       header: "name",
-      value: (d) => (d.isDefault ? `${c.bold(d.name)} ${c.dim("(default)")}` : c.bold(d.name)),
+      value: (d) => {
+        const marks: string[] = [];
+        if (landing?.dashboardId === d.id) marks.push("your default");
+        if (d.isDefault) marks.push("org default");
+        return marks.length > 0
+          ? `${c.bold(d.name)} ${c.dim(`(${marks.join(", ")})`)}`
+          : c.bold(d.name);
+      },
     },
     {
       header: "delivery",
@@ -86,6 +104,16 @@ export async function cmdDashboards(ctx: CliContext): Promise<void> {
     },
     { header: "id", value: (d) => c.dim(d.id) },
   ]);
+
+  if (landing) {
+    println();
+    println(
+      `${c.dim("You land on")} ${c.bold(landing.dashboardName)} ${c.dim(`· ${describeLanding(landing)}`)}`,
+    );
+    if (landing.skipped.includes("user")) {
+      println(c.yellow("Your own default is no longer shared with you, so it was skipped."));
+    }
+  }
 
   println();
   println(
@@ -198,7 +226,7 @@ export async function cmdShowDashboard(
   }
 
   println(
-    `${c.bold(dashboard.name)}${dashboard.isDefault ? ` ${c.dim("(default)")}` : ""} ${c.dim(`· ${dashboard.id}`)}`,
+    `${c.bold(dashboard.name)}${dashboard.isDefault ? ` ${c.dim("(org default)")}` : ""} ${c.dim(`· ${dashboard.id}`)}`,
   );
   println();
   if (kpis.length > 0) {

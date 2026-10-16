@@ -165,7 +165,7 @@ infrawrench budgets "Prod" --json
 infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"
 ```
 
-`--format pdf` downloads the server-rendered [PDF](./dashboard-pdf.md) instead of charting in the terminal, to `--out <path>` (or `--file`) or to the report's name as a file in the current directory. `dashboards` does the same for whole dashboards, and lists them with their delivery schedules:
+`--format pdf` downloads the server-rendered [PDF](./dashboard-pdf.md) instead of charting in the terminal, to `--out <path>` (or `--file`) or to the report's name as a file in the current directory. `dashboards` does the same for whole dashboards, and lists them with their delivery schedules and the one you [land on](./dashboard.md#default-dashboards) (yours, your role's or the organization's; `--json` carries it as `default`):
 
 ```
 infrawrench dashboards

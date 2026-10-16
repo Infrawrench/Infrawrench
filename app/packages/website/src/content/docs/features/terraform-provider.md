@@ -97,6 +97,8 @@ An API key reaches everything in the provider except two things, whatever scopes
 | `infrawrench_api_key` | Closed entirely        | A key that can mint keys can mint a longer-lived one and outlive its own revocation |
 | `infrawrench_role`    | Readable, not writable | A key shouldn't manufacture durable authority for other principals                  |
 
+`infrawrench_role_default_dashboard` is not in that table on purpose. It sets where a role's members land, not what they may do: the dashboard has to be shared with the role already, so it grants nothing. It lives under `/dashboards` rather than `/team` and needs `org:settings:write`, which a key can hold.
+
 If you manage either, keep them in a separate Terraform root that a person applies with a WorkOS access token — which is the separation the restriction is arguing for anyway. The provider recognises this particular 403 and tells you which resource is affected, rather than leaving you staring at a permission error that isn't about permissions.
 
 <insert [The Create API Key dialog under Settings → API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
@@ -494,19 +496,20 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Accounts and access
 
-| Resource                            | Manages                                                                                                                             |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                              |
-| `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                                       |
-| `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                                        |
-| `infrawrench_jit_access_policy`     | [Just-in-time access](./just-in-time-access.md) policies: which cloud roles may be requested, for how long, and who approves        |
-| `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                                     |
-| `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder, cost canvas or dashboard |
-| `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                                         |
-| `infrawrench_ssh_key`               | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                                  |
-| `infrawrench_ssh_snippet`           | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                                       |
-| `infrawrench_deploy_trigger`        | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                                  |
-| `infrawrench_workflow_schedule`     | The cron on an existing [workflow](./workflows.md)                                                                                  |
+| Resource                             | Manages                                                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_account`                | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                              |
+| `infrawrench_bastion`                | [Bastion agent](./bastion-vms.md) enrollments                                                                                       |
+| `infrawrench_role`                   | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                                        |
+| `infrawrench_jit_access_policy`      | [Just-in-time access](./just-in-time-access.md) policies: which cloud roles may be requested, for how long, and who approves        |
+| `infrawrench_cost_visibility_scope`  | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                                     |
+| `infrawrench_object_sharing`         | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder, cost canvas or dashboard |
+| `infrawrench_role_default_dashboard` | The [default dashboard](./dashboard.md#default-dashboards) for a built-in or custom role                                            |
+| `infrawrench_api_key`                | [API keys](../team-and-billing/api-keys.md)                                                                                         |
+| `infrawrench_ssh_key`                | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                                  |
+| `infrawrench_ssh_snippet`            | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                                       |
+| `infrawrench_deploy_trigger`         | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                                  |
+| `infrawrench_workflow_schedule`      | The cron on an existing [workflow](./workflows.md)                                                                                  |
 
 ### Alert delivery
 

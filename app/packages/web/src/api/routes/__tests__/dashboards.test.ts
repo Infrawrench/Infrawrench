@@ -55,6 +55,43 @@ vi.mock("@/services/dashboard-kpi", () => {
 
 vi.mock("uuid", () => ({ v4: () => "dash-uuid-1" }));
 
+// Resolution has its own suite (services/__tests__/default-dashboards.test.ts);
+// here it is a stub so the routes' query chains stay the ones under test.
+const resolution = {
+  dashboardId: "d1",
+  dashboardName: "Home",
+  source: "org",
+  userDefaultDashboardId: null,
+  roleDefault: null,
+  orgDefaultDashboardId: "d1",
+  skipped: [],
+};
+const mockResolve = vi.fn();
+const mockSetMine = vi.fn();
+const mockClearMine = vi.fn();
+const mockListRoleDefaults = vi.fn();
+const mockSetRole = vi.fn();
+const mockClearRole = vi.fn();
+vi.mock("@/services/default-dashboards", () => {
+  class DefaultDashboardError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+    }
+  }
+  return {
+    DefaultDashboardError,
+    resolveDefaultDashboard: (...a: unknown[]) => mockResolve(...a),
+    setMyDefaultDashboard: (...a: unknown[]) => mockSetMine(...a),
+    clearMyDefaultDashboard: (...a: unknown[]) => mockClearMine(...a),
+    listRoleDefaultDashboards: (...a: unknown[]) => mockListRoleDefaults(...a),
+    setRoleDefaultDashboard: (...a: unknown[]) => mockSetRole(...a),
+    clearRoleDefaultDashboard: (...a: unknown[]) => mockClearRole(...a),
+  };
+});
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: {
@@ -114,6 +151,7 @@ describe("Dashboard routes", () => {
     mockGetLatestStats.mockResolvedValue(null);
     mockGetLatestMetrics.mockResolvedValue(null);
     mockGetMetricRange.mockResolvedValue([]);
+    mockResolve.mockResolvedValue(resolution);
   });
 
   describe("GET / — list dashboards", () => {
@@ -134,6 +172,136 @@ describe("Dashboard routes", () => {
       const body = await res.json();
       expect(body).toHaveLength(2);
       expect(body[0].name).toBe("Home");
+    });
+
+    it("marks the dashboard the caller lands on", async () => {
+      const rows = [
+        { id: "d1", name: "Home", isDefault: true },
+        { id: "d2", name: "Prod", isDefault: false },
+      ];
+      const orderBy = vi.fn().mockResolvedValue(rows);
+      const where = vi.fn().mockReturnValue({ orderBy });
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+      mockResolve.mockResolvedValue({ ...resolution, dashboardId: "d2", source: "user" });
+
+      const res = await buildApp().request("/", { method: "GET" });
+      const body = (await res.json()) as Array<{ id: string; isResolvedDefault: boolean }>;
+      expect(body.map((d) => [d.id, d.isResolvedDefault])).toEqual([
+        ["d1", false],
+        ["d2", true],
+      ]);
+      expect(mockResolve).toHaveBeenCalledWith("org-1", "user-1");
+    });
+  });
+
+  describe("default dashboard resolution routes", () => {
+    it("GET /default returns the caller's resolution", async () => {
+      const res = await buildApp().request("/default", { method: "GET" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(resolution);
+    });
+
+    it("PUT /default/me sets the caller's default and returns the new resolution", async () => {
+      mockSetMine.mockResolvedValue({ id: "d2", name: "Prod" });
+      const res = await buildApp().request("/default/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dashboardId: "d2" }),
+      });
+      expect(res.status).toBe(200);
+      expect(mockSetMine).toHaveBeenCalledWith("org-1", "user-1", "d2");
+    });
+
+    it("PUT /default/me rejects a missing dashboardId", async () => {
+      const res = await buildApp().request("/default/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(400);
+      expect(mockSetMine).not.toHaveBeenCalled();
+    });
+
+    it("PUT /default/me answers 404 for a dashboard the caller cannot open", async () => {
+      const { DefaultDashboardError } = await import("@/services/default-dashboards");
+      mockSetMine.mockRejectedValue(new DefaultDashboardError("Dashboard not found", 404));
+      const res = await buildApp().request("/default/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dashboardId: "hidden" }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("DELETE /default/me clears the caller's default", async () => {
+      const res = await buildApp().request("/default/me", { method: "DELETE" });
+      expect(res.status).toBe(200);
+      expect(mockClearMine).toHaveBeenCalledWith("org-1", "user-1");
+    });
+
+    it("GET /role-defaults needs team:read", async () => {
+      mockListRoleDefaults.mockResolvedValue([]);
+      const denied = await buildTestApp(dashboardRoutes, ["dashboards:read"]).request(
+        "/role-defaults",
+        { method: "GET" },
+      );
+      expect(denied.status).toBe(403);
+      const ok = await buildApp().request("/role-defaults", { method: "GET" });
+      expect(ok.status).toBe(200);
+    });
+
+    it("PUT /role-defaults/:roleId needs org:settings:write", async () => {
+      const res = await buildTestApp(dashboardRoutes, ["dashboards:read", "team:read"]).request(
+        "/role-defaults/r1",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dashboardId: "d2" }),
+        },
+      );
+      expect(res.status).toBe(403);
+      expect(mockSetRole).not.toHaveBeenCalled();
+    });
+
+    it("PUT /role-defaults/:roleId passes a sharing refusal through as 422", async () => {
+      const { DefaultDashboardError } = await import("@/services/default-dashboards");
+      mockSetRole.mockRejectedValue(
+        new DefaultDashboardError("This dashboard is not shared with the Finance role.", 422),
+      );
+      const res = await buildApp().request("/role-defaults/r1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dashboardId: "d2" }),
+      });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error).toMatch(/not shared/);
+    });
+
+    it("PUT /role-defaults/:roleId returns the role's new default", async () => {
+      mockSetRole.mockResolvedValue({
+        role: { id: "r1", name: "Finance", isSystem: false, systemKey: null },
+        dashboard: { id: "d2", name: "Prod" },
+      });
+      const res = await buildApp().request("/role-defaults/r1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dashboardId: "d2" }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        roleId: "r1",
+        roleName: "Finance",
+        isSystem: false,
+        systemKey: null,
+        dashboardId: "d2",
+      });
+    });
+
+    it("DELETE /role-defaults/:roleId clears it", async () => {
+      mockClearRole.mockResolvedValue({ id: "r1", name: "Finance" });
+      const res = await buildApp().request("/role-defaults/r1", { method: "DELETE" });
+      expect(res.status).toBe(200);
+      expect(mockClearRole).toHaveBeenCalledWith("org-1", "r1");
     });
   });
 
@@ -158,10 +326,12 @@ describe("Dashboard routes", () => {
     });
   });
 
-  describe("GET /default/full — get-or-create default dashboard", () => {
-    it("creates the default dashboard when none exists", async () => {
-      // First select() for finding default dashboard returns empty
-      const selectChain1 = chainMock([]);
+  describe("GET /default/full: the caller's default dashboard", () => {
+    it("loads the dashboard the resolution picked", async () => {
+      // First select() loads the resolved dashboard row.
+      const selectChain1 = chainMock([
+        { id: "d1", name: "Home", isDefault: true, organizationId: "org-1" },
+      ]);
       // Later selects: pins/workflow pins use innerJoin().where().orderBy(),
       // widgets use where().orderBy() directly; support both, resolving [].
       const pinsOrderBy = vi.fn().mockResolvedValue([]);
@@ -176,23 +346,14 @@ describe("Dashboard routes", () => {
         return selectCallCount === 1 ? selectChain1 : selectChain2;
       });
 
-      const defaultDash = {
-        id: "dash-uuid-1",
-        name: "Home",
-        isDefault: true,
-        organizationId: "org-1",
-      };
-      const returning = vi.fn().mockResolvedValue([defaultDash]);
-      const values = vi.fn().mockReturnValue({ returning });
-      mockInsert.mockReturnValue({ values });
-
       const app = buildApp();
       const res = await app.request("/default/full", { method: "GET" });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.dashboard.name).toBe("Home");
       expect(body.dashboard.isDefault).toBe(true);
-      expect(mockInsert).toHaveBeenCalled();
+      expect(body.resolution).toEqual(resolution);
+      expect(mockResolve).toHaveBeenCalledWith("org-1", "user-1");
     });
   });
 

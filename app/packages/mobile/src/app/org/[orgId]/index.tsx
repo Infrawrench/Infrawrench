@@ -22,6 +22,15 @@ import { colors, spacing } from "@/lib/theme";
  * nothing else, and everything that fills it lives one screen deeper, on the
  * dashboard itself.
  */
+/** "Your default" marks where you land; "Organization default" the fallback. */
+function dashboardSubtitle(d: Dashboard): { subtitle?: string } {
+  if (d.isResolvedDefault && d.isDefault)
+    return { subtitle: "Your default · Organization default" };
+  if (d.isResolvedDefault) return { subtitle: "Your default" };
+  if (d.isDefault) return { subtitle: "Organization default" };
+  return {};
+}
+
 export default function OrgDashboards() {
   const router = useRouter();
   const { api, orgId } = useOrgApi();
@@ -60,8 +69,13 @@ export default function OrgDashboards() {
     );
   }
 
-  // Default first, then alphabetical: the order the sidebar uses on web.
+  // The one you land on first (your own default, else your role's, else the
+  // org's), then the org default, then alphabetical. An older server sends no
+  // `isResolvedDefault`, which leaves the org default first as before.
   const list = [...(dashboards.data ?? [])].sort((a, b) => {
+    const landA = a.isResolvedDefault === true;
+    const landB = b.isResolvedDefault === true;
+    if (landA !== landB) return landA ? -1 : 1;
     if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
@@ -86,7 +100,7 @@ export default function OrgDashboards() {
             <Row
               key={dashboard.id}
               title={dashboard.name}
-              {...(dashboard.isDefault ? { subtitle: "Default" } : {})}
+              {...dashboardSubtitle(dashboard)}
               onPress={() => router.push(`/org/${orgId}/dashboard/${dashboard.id}`)}
             />
           ))}

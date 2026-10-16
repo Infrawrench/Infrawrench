@@ -15,8 +15,57 @@ import { CostDateRange } from "./cost-reports";
 const Dashboard = strict({
   id: Uuid,
   name: z.string(),
-  isDefault: z.boolean(),
+  isDefault: z.boolean().describe("The organization default: the final fallback, never deletable."),
+  isResolvedDefault: z
+    .boolean()
+    .describe(
+      "The dashboard the caller lands on: their own default, else their role's, else the " +
+        "organization default. Exactly one listed dashboard has it, unless sharing hides it.",
+    ),
 }).openapi("Dashboard");
+
+const DefaultDashboardSource = z
+  .enum(["user", "role", "org"])
+  .describe(
+    "Which layer the default came from. `user`: the caller's own pick. `role`: the default an " +
+      "admin set for the caller's role. `org`: the organization default.",
+  )
+  .openapi("DefaultDashboardSource");
+
+const DefaultDashboardResolution = strict({
+  dashboardId: Uuid,
+  dashboardName: z.string(),
+  source: DefaultDashboardSource,
+  userDefaultDashboardId: Uuid.nullable().describe(
+    "The caller's own pick, whether or not it could be used.",
+  ),
+  roleDefault: strict({ roleId: Uuid, roleName: z.string(), dashboardId: Uuid })
+    .nullable()
+    .describe(
+      "The role default that applies to the caller. When a member holds several roles, custom " +
+        "roles win over system roles, then owner, admin, member, then role name and id.",
+    ),
+  orgDefaultDashboardId: Uuid,
+  skipped: z
+    .array(z.enum(["user", "role"]))
+    .describe(
+      "Layers that were set but passed over because the dashboard is no longer shared with the caller.",
+    ),
+}).openapi("DefaultDashboardResolution");
+
+const RoleDefaultDashboard = strict({
+  roleId: Uuid,
+  roleName: z.string(),
+  isSystem: z.boolean(),
+  systemKey: z.string().nullable(),
+  dashboardId: Uuid.nullable().describe(
+    "Null when the role has no default and its members fall through to the organization default.",
+  ),
+}).openapi("RoleDefaultDashboard");
+
+const SetDefaultDashboardRequest = strict({ dashboardId: Uuid }).openapi(
+  "SetDefaultDashboardRequest",
+);
 
 const DashboardFull = strict({
   id: Uuid,
@@ -203,6 +252,9 @@ const DashboardKpiResult = strict({
 
 const DashboardWithPins = strict({
   dashboard: DashboardFull,
+  resolution: DefaultDashboardResolution.optional().describe(
+    "Only on `GET /dashboards/default/full`: why this is the caller's default.",
+  ),
   pins: z.array(Pin),
   workflowPins: z.array(WorkflowPin),
   widgets: z.array(Widget),
@@ -442,9 +494,125 @@ export function registerDashboardPaths(ctx: BuildContext) {
 
   registry.registerPath({
     method: "get",
+    path: "/api/org/{orgId}/dashboards/default",
+    tags: ["Dashboards"],
+    summary: "Which dashboard the caller lands on, and why",
+    description:
+      "Resolves the caller's default dashboard: their own default, else the default set for " +
+      "their role, else the organization default (created as `Home` on first read). A layer " +
+      "whose dashboard is no longer shared with the caller is skipped and listed in `skipped`.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Resolution",
+        content: { "application/json": { schema: DefaultDashboardResolution } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/dashboards/default/me",
+    tags: ["Dashboards"],
+    summary: "Set my default dashboard",
+    description:
+      "Overrides the role and organization defaults for the caller in this organization. The " +
+      "dashboard must be one the caller can open.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: SetDefaultDashboardRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The caller's resolution after the change",
+        content: { "application/json": { schema: DefaultDashboardResolution } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/dashboards/default/me",
+    tags: ["Dashboards"],
+    summary: "Clear my default dashboard",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "The caller's resolution after the change",
+        content: { "application/json": { schema: DefaultDashboardResolution } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards/role-defaults",
+    tags: ["Dashboards"],
+    summary: "List each role's default dashboard",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Every role, system and custom, with its default",
+        content: { "application/json": { schema: z.array(RoleDefaultDashboard) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/dashboards/role-defaults/{roleId}",
+    tags: ["Dashboards"],
+    summary: "Set a role's default dashboard",
+    description:
+      "Members holding the role land on this dashboard unless they picked their own. Refused " +
+      "with 422 when the role lacks `dashboards:read` or the dashboard is not shared with the " +
+      "role (org-wide or by a role grant). Works for system and custom roles. Needs `org:settings:write` (not `team:role:write`), so an API key can manage it.",
+    request: {
+      params: params({ roleId: Uuid.openapi({ param: { name: "roleId", in: "path" } }) }),
+      body: {
+        content: { "application/json": { schema: SetDefaultDashboardRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The role's default",
+        content: { "application/json": { schema: RoleDefaultDashboard } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+      // The role cannot view the dashboard (no `dashboards:read`, or not shared with it).
+      422: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/dashboards/role-defaults/{roleId}",
+    tags: ["Dashboards"],
+    summary: "Clear a role's default dashboard",
+    request: {
+      params: params({ roleId: Uuid.openapi({ param: { name: "roleId", in: "path" } }) }),
+    },
+    responses: {
+      200: { description: "Cleared", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
     path: "/api/org/{orgId}/dashboards/default/full",
     tags: ["Dashboards"],
-    summary: "Get-or-create the default dashboard with its pins",
+    summary: "Get the caller's default dashboard with its pins",
+    description:
+      "The dashboard `GET /dashboards/default` resolves to, with its cards. The organization " +
+      "default is created as `Home` on first read.",
     request: { params: OrgIdParam },
     responses: {
       200: {

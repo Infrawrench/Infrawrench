@@ -58,6 +58,11 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   // itself) goes through the costs IPC instead.
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/alert-email/settings$`) },
   { methods: ["DELETE"], pattern: new RegExp(`${ORG}/alert-email/suppressions/[^/?]+$`) },
+  // Default dashboard per role on the Roles page: the dashboard picker (read
+  // only) and the role defaults themselves.
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/dashboards$`) },
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/dashboards/role-defaults$`) },
+  { methods: ["PUT", "DELETE"], pattern: new RegExp(`${ORG}/dashboards/role-defaults/[^/?]+$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
   // GitHub issues page: the repository picker, the connect link and the IaC

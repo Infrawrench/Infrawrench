@@ -65,6 +65,18 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("POST", "/api/org/o1/business-metrics")).toBe(false);
   });
 
+  it("allows the Roles page's default dashboards, and nothing else on dashboards", () => {
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/dashboards")).toBe(true);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/dashboards/role-defaults")).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/dashboards/role-defaults/r1")).toBe(true);
+    expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/dashboards/role-defaults/r1")).toBe(
+      true,
+    );
+    expect(isAllowedSettingsRequest("POST", "/api/org/o1/dashboards")).toBe(false);
+    expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/dashboards/d1")).toBe(false);
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/dashboards/d1")).toBe(false);
+  });
+
   it("refuses routes off the surface", () => {
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/resources")).toBe(false);
     expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/audit-logs")).toBe(false);

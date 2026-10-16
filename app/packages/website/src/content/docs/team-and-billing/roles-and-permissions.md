@@ -53,6 +53,8 @@ Owners and anyone with `team:role:write` can define their own roles in **Setting
 
 A custom role cannot be deleted while any member or pending invitation still references it. Reassign or revoke first.
 
+Each role's card, built-in roles included, also has a **Default dashboard** picker: the dashboard members holding the role land on when they haven't chosen their own. Changing it needs `org:settings:write` rather than `team:role:write`, because it grants nothing; the dashboard has to be shared with the role already. See [default dashboards](../features/dashboard.md#default-dashboards).
+
 ## Assigning a role
 
 Use **Settings → Team → (member) → Role picker** to change a member's role. The owner role cannot be reassigned through this picker — use the existing owner to promote someone first.

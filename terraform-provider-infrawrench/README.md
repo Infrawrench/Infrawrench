@@ -268,6 +268,7 @@ permissions.
 | SSH keys, SSH snippets                                                                                                                              | `ssh-keys:read`             | `ssh-keys:write`                                                           |
 | API keys                                                                                                                                            | `apikeys:read`              | `apikeys:write`                                                            |
 | Roles                                                                                                                                               | `team:read`                 | `team:role:write`                                                          |
+| Role default dashboards                                                                                                                             | `team:read`                 | `org:settings:write`                                                       |
 | Deploy triggers                                                                                                                                     | `deployments:read`          | `deployments:write`                                                        |
 | Workflow schedules                                                                                                                                  | `workflows:read`            | `workflows:write`                                                          |
 | Session recording settings                                                                                                                          | `session-recordings:read`   | `session-recordings:write`                                                 |
@@ -748,19 +749,21 @@ secret store that consumes it rather than into an output.
 
 ### Accounts and access
 
-| Resource                            | Import                               | Notes                                                                                            |
-| ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `infrawrench_account`               | by id                                | Credentials are write-only; three permissions, three routes                                      |
-| `infrawrench_bastion`               | by id                                | Token returned once; renaming re-enrols                                                          |
-| `infrawrench_role`                  | by id                                | Built-in roles are refused rather than half-managed                                              |
-| `infrawrench_jit_access_policy`     | by id                                | Policies only; requests and grants are runtime objects, closed to API keys                       |
-| `infrawrench_cost_visibility_scope` | by `<principal_kind>/<principal_id>` | Which costs a role, member or key sees; scopes intersect                                         |
-| `infrawrench_object_sharing`        | by `<object_type>/<object_id>`       | Authoritative sharing for a report, folder, canvas, savings view or dashboard; destroy resets it |
-| `infrawrench_api_key`               | by id                                | Every attribute replaces; delete is revoke                                                       |
-| `infrawrench_ssh_key`               | by id                                | Import a public key, or generate and hold the private one                                        |
-| `infrawrench_ssh_snippet`           | by id                                | Registers a command; does not run it                                                             |
-| `infrawrench_deploy_trigger`        | by id                                | `enabled` is the only mutable field                                                              |
-| `infrawrench_workflow_schedule`     | by workflow id                       | Attaches a cron to a workflow it does not own                                                    |
+| Resource                             | Import                                  | Notes                                                                                            |
+| ------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| -----------------------------------  | ------------------------------------    | ------------------------------------------------------------------------------------------------ |
+| `infrawrench_account`                | by id                                   | Credentials are write-only; three permissions, three routes                                      |
+| `infrawrench_bastion`                | by id                                   | Token returned once; renaming re-enrols                                                          |
+| `infrawrench_role`                   | by id                                   | Built-in roles are refused rather than half-managed                                              |
+| `infrawrench_jit_access_policy`      | by id                                   | Policies only; requests and grants are runtime objects, closed to API keys                       |
+| `infrawrench_cost_visibility_scope`  | by `<principal_kind>/<principal_id>`    | Which costs a role, member or key sees; scopes intersect                                         |
+| `infrawrench_object_sharing`         | by `<object_type>/<object_id>`          | Authoritative sharing for a report, folder, canvas, savings view or dashboard; destroy resets it |
+| `infrawrench_role_default_dashboard` | by role id, or `owner`/`admin`/`member` | Where a role's members land; built-in roles too; open to API keys; destroy clears it             |
+| `infrawrench_api_key`                | by id                                   | Every attribute replaces; delete is revoke                                                       |
+| `infrawrench_ssh_key`                | by id                                   | Import a public key, or generate and hold the private one                                        |
+| `infrawrench_ssh_snippet`            | by id                                   | Registers a command; does not run it                                                             |
+| `infrawrench_deploy_trigger`         | by id                                   | `enabled` is the only mutable field                                                              |
+| `infrawrench_workflow_schedule`      | by workflow id                          | Attaches a cron to a workflow it does not own                                                    |
 
 ### Alert delivery
 

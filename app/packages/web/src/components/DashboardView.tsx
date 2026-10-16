@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
-import { IssueIndicator, ShareDialog } from "@infrawrench/ui";
+import { DashboardDefaultMenu, IssueIndicator, ShareDialog } from "@infrawrench/ui";
+import { createWebDashboardDefaultClient } from "../lib/dashboard-default-client";
 import { createWebSharingClient } from "../lib/cost-client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useGT } from "gt-react";
@@ -232,6 +233,7 @@ export function DashboardView({
     () => createWebDashboardExportClient(orgId, canManageDelivery),
     [orgId, canManageDelivery],
   );
+  const defaultClient = useMemo(() => createWebDashboardDefaultClient(orgId), [orgId]);
 
   const customGraphsClient: CustomGraphsClient = useMemo(
     () => ({
@@ -704,6 +706,14 @@ export function DashboardView({
         </div>
 
         <div className="flex items-center gap-1">
+          {dashboardId && (
+            <DashboardDefaultMenu
+              dashboardId={dashboardId}
+              client={defaultClient}
+              // The sidebar marks (and links home to) the resolved default.
+              onChanged={() => bumpDashboardPins()}
+            />
+          )}
           <DashboardExportActions
             dashboardId={dashboardId}
             dashboardName={dashboardName}

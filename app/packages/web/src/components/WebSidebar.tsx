@@ -835,10 +835,15 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             </div>
 
             {dashboardList.map((dash) => {
-              const dashHref = dash.isDefault
-                ? `/org/${orgId}`
-                : `/org/${orgId}/dashboard/${dash.id}`;
-              const isActive = dash.isDefault
+              // The org home route shows the caller's resolved default (their
+              // own, their role's, else the org's), so that is the one that
+              // links home. Older servers send no flag: fall back to the org
+              // default. Deletion stays keyed on the org default.
+              const isLanding =
+                dash.isResolvedDefault ??
+                (dash.isDefault && !dashboardList.some((d) => d.isResolvedDefault));
+              const dashHref = isLanding ? `/org/${orgId}` : `/org/${orgId}/dashboard/${dash.id}`;
+              const isActive = isLanding
                 ? pathname === `/org/${orgId}` || pathname === `/org/${orgId}/`
                 : pathname === `/org/${orgId}/dashboard/${dash.id}`;
 

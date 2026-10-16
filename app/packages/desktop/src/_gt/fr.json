@@ -22457,5 +22457,21 @@
     "t": "p",
     "i": 1,
     "c": "Colonnes : from, to, rate, et soit effective_from (avec un effective_to facultatif), soit billing_period au format YYYY-MM pour un mois. Les lignes qui correspondent à une paire et une date de début enregistrées les remplacent ; rien d'autre n'est modifié. Les taux importés sont des taux déclarés : ils l'emportent sur les taux automatiques pour les jours qu'ils couvrent."
-  }
+  },
+  "698b986bddd76704": "Impossible de définir le tableau de bord par défaut",
+  "a867d1229d8d6ed5": "Par défaut de l'organisation ({name})",
+  "640d208b2badb468": "Par défaut de l'organisation",
+  "b6d42f77b9710d56": "Tableau de bord par défaut : {name}",
+  "452ae0b4f5e412cf": "Tableau de bord par défaut",
+  "e47daf3a1e8013ed": "Tableau de bord par défaut pour {role}",
+  "986df125eb088a5a": "Un tableau de bord que vous ne pouvez pas voir",
+  "2e63e7b5a440659b": "Vous arrivez ici à l'ouverture de l'application. Vous l'avez choisi.",
+  "7c80619cab6f7d6a": "Vous arrivez ici à l'ouverture de l'application : c'est le tableau de bord par défaut de votre rôle, {role}.",
+  "8fc1c0c17f5932e7": "Vous arrivez ici à l'ouverture de l'application : c'est le tableau de bord par défaut de l'organisation.",
+  "073e474e701f41dd": "À l'ouverture de l'application, vous arrivez sur {name}.",
+  "de1e046db6c30129": "Votre propre tableau de bord par défaut n'est plus partagé avec vous ; il a donc été ignoré.",
+  "13c2120ca86adb6d": "Impossible de définir votre tableau de bord par défaut",
+  "9d5f2a33c1e86464": "Définir comme mon tableau de bord par défaut",
+  "cf2ba394704459d7": "Impossible de supprimer votre tableau de bord par défaut",
+  "bc8519f41c056ead": "Supprimer mon tableau de bord par défaut"
 }

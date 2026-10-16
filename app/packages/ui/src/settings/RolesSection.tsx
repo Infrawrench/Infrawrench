@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
-import type { OrgRole as Role } from "@infrawrench/client-core";
+import type { Dashboard, OrgRole as Role, RoleDefaultDashboard } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
@@ -28,6 +28,8 @@ export function RolesSection() {
   const gtData = useDataString();
   const { orgId, api, has } = useSettingsHost();
   const canEdit = has("team:role:write");
+  // A role's landing dashboard is org configuration, not role authority.
+  const canSetDefaults = has("org:settings:write");
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [allPermissions, setAllPermissions] = useState<string[]>([]);
@@ -35,6 +37,8 @@ export function RolesSection() {
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dashboards, setDashboards] = useState<Dashboard[] | null>(null);
+  const [roleDefaults, setRoleDefaults] = useState<Map<string, string | null>>(new Map());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,7 +52,34 @@ export function RolesSection() {
     } finally {
       setLoading(false);
     }
+    // Default dashboards are a column on each card, not the page: a server
+    // without the endpoints (or a caller without dashboards:read) just loses
+    // the column.
+    try {
+      const [list, defaults] = await Promise.all([
+        api.get<Dashboard[]>(`/api/org/${orgId}/dashboards`),
+        api.get<RoleDefaultDashboard[]>(`/api/org/${orgId}/dashboards/role-defaults`),
+      ]);
+      setDashboards(list);
+      setRoleDefaults(new Map(defaults.map((d) => [d.roleId, d.dashboardId])));
+    } catch {
+      setDashboards(null);
+    }
   }, [api, orgId]);
+
+  async function changeRoleDefault(role: Role, dashboardId: string) {
+    setError(null);
+    try {
+      if (dashboardId) {
+        await api.put(`/api/org/${orgId}/dashboards/role-defaults/${role.id}`, { dashboardId });
+      } else {
+        await api.delete(`/api/org/${orgId}/dashboards/role-defaults/${role.id}`);
+      }
+      setRoleDefaults((prev) => new Map(prev).set(role.id, dashboardId || null));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Failed to set the default dashboard"));
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -121,6 +152,15 @@ export function RolesSection() {
                           plural: role.permissions.length === 1 ? "" : "s",
                         })}
                   </p>
+                  {dashboards && (
+                    <RoleDefaultDashboardPicker
+                      role={role}
+                      dashboards={dashboards}
+                      value={roleDefaults.get(role.id) ?? null}
+                      canEdit={canSetDefaults}
+                      onChange={(id) => void changeRoleDefault(role, id)}
+                    />
+                  )}
                 </div>
                 {canEdit && !role.isSystem && (
                   <div className="flex gap-2">
@@ -164,6 +204,66 @@ export function RolesSection() {
           onError={setError}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Where members holding `role` land when they have not picked their own
+ * default. Empty means the organization default. The server refuses a
+ * dashboard the role cannot see, and the section shows that message.
+ */
+function RoleDefaultDashboardPicker({
+  role,
+  dashboards,
+  value,
+  canEdit,
+  onChange,
+}: {
+  role: Role;
+  dashboards: Dashboard[];
+  value: string | null;
+  canEdit: boolean;
+  onChange: (dashboardId: string) => void;
+}) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const orgDefault = dashboards.find((d) => d.isDefault);
+  const current = value ? dashboards.find((d) => d.id === value) : null;
+  const id = `role-default-dashboard-${role.id}`;
+  const fallbackLabel = orgDefault
+    ? gt("Organization default ({name})", { name: orgDefault.name })
+    : gt("Organization default");
+
+  if (!canEdit) {
+    return (
+      <p className="mt-1 text-xs text-on-surface-muted">
+        {gt("Default dashboard: {name}", { name: current ? current.name : fallbackLabel })}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <label htmlFor={id} className="text-xs text-on-surface-muted">
+        {gt("Default dashboard")}
+      </label>
+      <select
+        id={id}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={gt("Default dashboard for {role}", { role: gtData(role.name) })}
+        className="rounded-md border border-border bg-surface-sunken px-2 py-1 text-xs text-on-surface"
+      >
+        <option value="">{fallbackLabel}</option>
+        {/* A default that is no longer listed (unshared from you) still shows, so saving is not a silent change. */}
+        {value && !current && <option value={value}>{gt("A dashboard you cannot see")}</option>}
+        {dashboards.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

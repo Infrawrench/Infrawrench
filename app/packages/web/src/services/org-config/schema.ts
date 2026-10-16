@@ -193,6 +193,7 @@ const dashboardSchema = z
     key,
     name,
     isDefault: z.boolean().default(false),
+    defaultForRoles: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
     cards: z.array(dashboardCardSchema).max(ORG_CONFIG_LIMITS.maxCardsPerDashboard).default([]),
   })
   .strict();
@@ -554,6 +555,21 @@ export function parseOrgConfigDocument(raw: unknown): ParsedOrgConfigDocument {
     throw new OrgConfigError(
       `Only one dashboard can be the default; ${defaults.map((d) => d.key).join(", ")} all claim it.`,
     );
+  }
+  // A role lands on one dashboard, so naming it twice is a contradiction the
+  // document has to resolve, not something apply should pick a winner for.
+  const roleClaims = new Map<string, string>();
+  for (const dashboard of parsed.data.dashboards ?? []) {
+    for (const role of dashboard.defaultForRoles ?? []) {
+      const lower = role.toLowerCase();
+      const other = roleClaims.get(lower);
+      if (other && other !== dashboard.key) {
+        throw new OrgConfigError(
+          `The role "${role}" is the default for both ${other} and ${dashboard.key}; a role can have one default dashboard.`,
+        );
+      }
+      roleClaims.set(lower, dashboard.key);
+    }
   }
   return parsed.data;
 }

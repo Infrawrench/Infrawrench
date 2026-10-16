@@ -61,6 +61,7 @@ import {
   pinCloudResource,
   pinCloudWorkflow,
   listCloudDashboards,
+  getCloudDefaultDashboard,
   validateCloudWorkspaceTabs as validateCloudTabs,
   type CloudOrg,
 } from "../lib/cloud-api";
@@ -106,14 +107,21 @@ async function validateCloudWorkspaceTabs(
 }
 
 /**
- * The dashboard to fall back to: the org's default when signed in, the local
- * default otherwise. Dashboards live on whichever side is active, so this has
- * to branch on the org rather than always reading the local database.
+ * The dashboard to fall back to: when signed in, the one the server resolves
+ * for this member (their own default, else their role's, else the org's); the
+ * local default otherwise. Dashboards live on whichever side is active, so
+ * this has to branch on the org rather than always reading the local database.
  */
 async function resolveDefaultDashboard(
   orgId: string | null,
 ): Promise<{ id: string; name: string } | null> {
   if (orgId) {
+    try {
+      const resolved = await getCloudDefaultDashboard(orgId);
+      if (resolved?.dashboardId) return { id: resolved.dashboardId, name: resolved.dashboardName };
+    } catch {
+      // An older server without the resolution route: the org default below.
+    }
     const list = await listCloudDashboards(orgId);
     const first = list.find((d) => d.isDefault) ?? list[0];
     return first ? { id: first.id, name: first.name } : null;

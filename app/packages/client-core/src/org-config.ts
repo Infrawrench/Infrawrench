@@ -233,6 +233,13 @@ export interface OrgConfigDashboard {
   name: string;
   /** Exactly one dashboard in a document may be the default. */
   isDefault: boolean;
+  /**
+   * Role names (case-insensitive) whose members land on this dashboard when
+   * they have not picked their own. Omitted leaves role defaults untouched;
+   * `[]` clears every role currently pointing here. A role may be named by at
+   * most one dashboard.
+   */
+  defaultForRoles?: string[] | undefined;
   cards: OrgConfigDashboardCard[];
 }
 

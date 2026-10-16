@@ -939,6 +939,7 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export * from "./dashboard-defaults";
 export * from "./virtual-tags";
 export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
