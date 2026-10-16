@@ -1022,6 +1022,8 @@ export * from "./savings-findings";
 // KPI and text dashboard widgets, and the resizable grid's layout rules.
 export * from "./dashboard-widgets";
 export * from "./network-flows";
+// Saved network flow reports: config, validation, assembly and CSV.
+export * from "./network-flow-reports";
 export * from "./ai-attribution";
 export * from "./iac";
 export * from "./jira";

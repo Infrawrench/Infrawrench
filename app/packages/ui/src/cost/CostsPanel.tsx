@@ -21,6 +21,8 @@ import { CommitmentsSection } from "./CommitmentsSection.js";
 import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
 import { NetworkFlowSection } from "./NetworkFlowSection.js";
 import { KubernetesNetworkSection } from "./KubernetesNetworkSection.js";
+import { NetworkFlowReportsSection } from "../network-flow-reports/NetworkFlowReportsSection.js";
+import type { NetworkFlowReportsClient } from "../network-flow-reports/types.js";
 import type {
   ExtendedSupportClient,
   ExtendedSupportFinding,
@@ -162,6 +164,11 @@ export interface CostsPanelProps {
    * report" lands. Omitted, the breakdown offers no save.
    */
   onOpenCostReport?: ((reportId: string) => void) | undefined;
+  /**
+   * Saved network flow reports, on the Network tab. Cloud-only: desktop leaves
+   * it off in local mode and the section is left out.
+   */
+  networkFlowReports?: NetworkFlowReportsClient | undefined;
 }
 
 /**
@@ -197,6 +204,7 @@ export function CostsPanel({
   initialTab,
   onOpenAnomalyResource,
   onOpenCostReport,
+  networkFlowReports,
 }: CostsPanelProps) {
   const uid = useId();
   const gt = useGT();
@@ -563,6 +571,9 @@ export function CostsPanel({
               content: (
                 <>
                   <NetworkFlowSection client={client} />
+                  {/* After the live view: a saved report is the same store
+                      read through a chosen window, filter and grouping. */}
+                  {networkFlowReports && <NetworkFlowReportsSection client={networkFlowReports} />}
                   {/* Kept apart from the org-wide total: pod traffic leaves
                       through the same node interfaces a VPC flow log counts. */}
                   <KubernetesNetworkSection client={client} />

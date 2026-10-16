@@ -140,6 +140,8 @@ const ADDITIVE_COLUMNS: Array<[ClickHouseTable, ClickHouseColumn]> = [
   [costDaily, costDaily.list_amount],
   [costDaily, costDaily.list_reported],
   [networkFlowDaily, networkFlowDaily.method],
+  [networkFlowDaily, networkFlowDaily.src_network],
+  [networkFlowDaily, networkFlowDaily.dst_network],
   [costDaily, costDaily.blended_amount],
   [costDaily, costDaily.blended_reported],
 ];

@@ -12,7 +12,25 @@ import {
   setNetworkFlowSettings,
   NetworkFlowSettingsError,
 } from "@infrawrench/server-core/network-flow/settings";
+import {
+  getNetworkFlowReportOptions,
+  NetworkFlowReportError,
+  runNetworkFlowReportConfig,
+} from "@infrawrench/server-core/network-flow/report";
+import {
+  normalizeNetworkFlowReportConfig,
+  normalizeNetworkFlowReportInput,
+} from "@infrawrench/client-core";
 import { logAudit } from "../../services/audit";
+import { CostReportFolderError } from "../../services/cost-report-folders";
+import {
+  createNetworkFlowReport,
+  getNetworkFlowReport,
+  listNetworkFlowReports,
+  runSavedNetworkFlowReport,
+  softDeleteNetworkFlowReport,
+  updateNetworkFlowReport,
+} from "../../services/network-flow-reports";
 import { NETWORK_FLOW_SCOPES } from "@infrawrench/plugin-base";
 
 import type { AuthSession } from "../auth-middleware";
@@ -216,6 +234,167 @@ app.put("/settings", async (c: Context) => {
   } catch (e) {
     if (e instanceof NetworkFlowSettingsError) return c.json({ error: e.message }, 400);
     throw e;
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Saved network flow reports
+ *
+ * CRUD follows the cost reports' rules (report folders, per-object sharing,
+ * soft delete): `costs:read` to list and run, `costs:write` to change, each
+ * write audit-logged as `network_flow_report.*`. The storage and access rules
+ * are in `services/network-flow-reports.ts`, the reads in server-core, the
+ * assembly and validation in client-core.
+ * ------------------------------------------------------------------ */
+
+async function readJson(c: Context): Promise<{ ok: true; body: unknown } | { ok: false }> {
+  try {
+    return { ok: true, body: await c.req.json() };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function reportError(c: Context, e: unknown) {
+  if (e instanceof NetworkFlowReportError || e instanceof CostReportFolderError) {
+    return c.json({ error: e.message }, 400);
+  }
+  throw e;
+}
+
+/** GET /report-options: picker values for the report editor. */
+app.get("/report-options", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  return c.json(await getNetworkFlowReportOptions(c.get("organizationId") as string));
+});
+
+/**
+ * POST /report-query: run an unsaved config (the editor's preview, and ad-hoc
+ * runs from the API and CLI). A read despite the method, like `/costs/query`.
+ */
+app.post("/report-query", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  const json = await readJson(c);
+  if (!json.ok) return c.json({ error: "Invalid JSON body" }, 400);
+  const parsed = normalizeNetworkFlowReportConfig(json.body);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  try {
+    return c.json(
+      await runNetworkFlowReportConfig(c.get("organizationId") as string, parsed.value),
+    );
+  } catch (e) {
+    return reportError(c, e);
+  }
+});
+
+/** GET /reports: saved reports the caller may open. */
+app.get("/reports", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  return c.json(await listNetworkFlowReports(c.get("organizationId") as string));
+});
+
+/** POST /reports: create a saved report. */
+app.post("/reports", async (c: Context) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId") as string;
+  const session = c.get("session");
+  const json = await readJson(c);
+  if (!json.ok) return c.json({ error: "Invalid JSON body" }, 400);
+  const parsed = normalizeNetworkFlowReportInput(json.body);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  try {
+    const created = await createNetworkFlowReport(
+      organizationId,
+      parsed.value,
+      session.userId ?? null,
+    );
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "network_flow_report.create",
+      entityType: "network_flow_report",
+      entityId: created.id,
+      metadata: { name: created.name },
+    });
+    return c.json(created);
+  } catch (e) {
+    return reportError(c, e);
+  }
+});
+
+/** GET /reports/:id */
+app.get("/reports/:id", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  const report = await getNetworkFlowReport(
+    c.get("organizationId") as string,
+    c.req.param("id") as string,
+  );
+  if (!report) return c.json({ error: "Not found" }, 404);
+  return c.json(report);
+});
+
+/** PUT /reports/:id: replace name, description, config and folder. */
+app.put("/reports/:id", async (c: Context) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId") as string;
+  const session = c.get("session");
+  const json = await readJson(c);
+  if (!json.ok) return c.json({ error: "Invalid JSON body" }, 400);
+  const parsed = normalizeNetworkFlowReportInput(json.body);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  try {
+    const updated = await updateNetworkFlowReport(
+      organizationId,
+      c.req.param("id") as string,
+      parsed.value,
+    );
+    if (!updated) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "network_flow_report.update",
+      entityType: "network_flow_report",
+      entityId: updated.id,
+      metadata: { name: updated.name },
+    });
+    return c.json(updated);
+  } catch (e) {
+    return reportError(c, e);
+  }
+});
+
+/** DELETE /reports/:id: soft delete. */
+app.delete("/reports/:id", async (c: Context) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId") as string;
+  const session = c.get("session");
+  const reportId = c.req.param("id") as string;
+  if (!(await softDeleteNetworkFlowReport(organizationId, reportId))) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "network_flow_report.delete",
+    entityType: "network_flow_report",
+    entityId: reportId,
+    metadata: {},
+  });
+  return c.json({ ok: true });
+});
+
+/** POST /reports/:id/run: execute a saved report. A read despite the method. */
+app.post("/reports/:id/run", async (c: Context) => {
+  requirePermission(c, "costs:read");
+  try {
+    const result = await runSavedNetworkFlowReport(
+      c.get("organizationId") as string,
+      c.req.param("id") as string,
+    );
+    if (!result) return c.json({ error: "Not found" }, 404);
+    return c.json(result);
+  } catch (e) {
+    return reportError(c, e);
   }
 });
 

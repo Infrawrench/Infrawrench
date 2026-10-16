@@ -421,6 +421,14 @@ export const networkFlowDaily = clickhouseTable(
      * distinguish one.
      */
     method: label("method").notNull().default(""),
+    /**
+     * The private network each endpoint sits in (a VPC id), when the plugin
+     * reports it. Added after the table shipped, so DEFAULT '' and outside the
+     * sort key and the pair hash, like `method`: it describes an endpoint, and
+     * saved network flow reports filter and group by it.
+     */
+    src_network: label("src_network").notNull().default(""),
+    dst_network: label("dst_network").notNull().default(""),
     ingested_at: dateTime()
       .notNull()
       .default(sql`now()`),

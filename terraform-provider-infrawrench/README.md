@@ -736,6 +736,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_network_flow_settings`        | by org id                     | Org singleton; destroy turns collection **off**              |
 | `infrawrench_kubernetes_network_settings`  | by account id                 | One per Kubernetes account; destroy clears the billed source |
 | `infrawrench_kubernetes_efficiency_report` | by id                         | Files into cost report folders; figures computed at run time |
+| `infrawrench_network_flow_report`          | by id                         | Files into report folders; `date_preset` or dates            |
 
 ### Accounts and access
 

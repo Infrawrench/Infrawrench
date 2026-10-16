@@ -124,6 +124,7 @@ export const SHAREABLE_OBJECT_TYPES = [
   "kubernetes_efficiency_report",
   "savings_view",
   "resource_report",
+  "network_flow_report",
 ] as const;
 export type ShareableObjectType = (typeof SHAREABLE_OBJECT_TYPES)[number];
 

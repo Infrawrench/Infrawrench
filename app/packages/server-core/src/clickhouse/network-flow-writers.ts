@@ -58,6 +58,8 @@ export function toNetworkFlowRows(
     rate_per_gb: r.ratePerGb,
     estimated_cost: r.estimatedCost,
     method: r.method,
+    src_network: r.srcNetwork,
+    dst_network: r.dstNetwork,
   }));
 }
 

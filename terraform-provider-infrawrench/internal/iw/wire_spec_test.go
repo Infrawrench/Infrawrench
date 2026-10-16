@@ -404,6 +404,10 @@ func specChecks() []specCheck {
 
 		{schema: "NetworkFlowSettings", value: NetworkFlowSettings{}},
 		{schema: "KubernetesNetworkSettings", value: KubernetesNetworkSettings{}},
+		{schema: "NetworkFlowReport", value: NetworkFlowReport{}},
+		{schema: "NetworkFlowReportInput", value: NetworkFlowReportInput{}},
+		{schema: "NetworkFlowReportConfig", value: NetworkFlowReportConfig{}},
+		{schema: "NetworkFlowReportFilters", value: NetworkFlowReportFilters{}},
 
 		{schema: "JiraIntegration", value: JiraIntegration{}},
 		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},

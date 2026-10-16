@@ -4,6 +4,7 @@ import "./accounts";
 import "./agents";
 import "./chat";
 import "./costs";
+import "./network-flow-reports";
 import "./cost-canvases";
 import "./k8s-efficiency";
 import "./invoices";

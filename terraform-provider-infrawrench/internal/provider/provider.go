@@ -227,6 +227,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewSessionRecordingSettingsResource,
 		NewNetworkFlowSettingsResource,
 		NewKubernetesNetworkSettingsResource,
+		NewNetworkFlowReportResource,
 
 		// Accounts and access.
 		NewAccountResource,
