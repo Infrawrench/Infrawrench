@@ -208,7 +208,9 @@ app.get("/anomalies", async (c) => {
     return c.json({ error: "days must be an integer between 1 and 90" }, 400);
   }
 
-  return c.json({ anomalies: await listRecentCostAnomalies(organizationId, days) });
+  return c.json({
+    anomalies: await listRecentCostAnomalies(organizationId, days, { backfillContributors: true }),
+  });
 });
 
 /**

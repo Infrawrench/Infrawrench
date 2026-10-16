@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from
 import { useGT } from "gt-react";
 
 import { useDataString } from "../i18n/data-strings.js";
-import type { CostsPanelTab } from "@infrawrench/client-core";
+import type { CostAnomalyContributorResource, CostsPanelTab } from "@infrawrench/client-core";
 
 import { Modal } from "../components/Modal.js";
 import { SectionTabs } from "../components/SectionTabs.js";
@@ -152,6 +152,16 @@ export interface CostsPanelProps {
   onOpenExternal?: ((url: string) => void) | undefined;
   /** Tab to open on instead of the remembered one. */
   initialTab?: CostsPanelTab | undefined;
+  /**
+   * Open a synced resource an anomaly's breakdown names (the driving
+   * resource). Omitted, the anomalies section names it without a link.
+   */
+  onOpenAnomalyResource?: ((resource: CostAnomalyContributorResource) => void) | undefined;
+  /**
+   * Open a cost report by id: where an anomaly breakdown's "Save as cost
+   * report" lands. Omitted, the breakdown offers no save.
+   */
+  onOpenCostReport?: ((reportId: string) => void) | undefined;
 }
 
 /**
@@ -185,6 +195,8 @@ export function CostsPanel({
   onOpenScheduledResource,
   onOpenExternal,
   initialTab,
+  onOpenAnomalyResource,
+  onOpenCostReport,
 }: CostsPanelProps) {
   const uid = useId();
   const gt = useGT();
@@ -470,7 +482,11 @@ export function CostsPanel({
                   {/* Anomalies are unconfigured outliers, change alerts are
                       configured thresholds; efficiency alerts read on a slower
                       clock ("is something quietly wrong"), so they come last. */}
-                  <CostAnomaliesSection client={client} />
+                  <CostAnomaliesSection
+                    client={client}
+                    onOpenResource={onOpenAnomalyResource}
+                    onOpenCostReport={onOpenCostReport}
+                  />
                   <CostChangeAlertsSection client={client} />
                   <EfficiencyAlertsSection client={client} />
                 </>

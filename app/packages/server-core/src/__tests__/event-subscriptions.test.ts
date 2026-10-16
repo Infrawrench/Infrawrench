@@ -140,6 +140,11 @@ describe("publishEvent", () => {
         baseline: 1,
         currency: "USD",
         hints: [],
+        driverResourceId: null,
+        driverResourceName: null,
+        driverDelta: null,
+        driverShare: null,
+        contributors: [],
       },
       { title: "x", privateCostObject: true },
     );

@@ -108,6 +108,7 @@
     "./cost/change-impact": "./src/cost/change-impact.ts",
     "./cost/change-impact-load": "./src/cost/change-impact-load.ts",
     "./cost/anomaly-acknowledge": "./src/cost/anomaly-acknowledge.ts",
+    "./cost/anomaly-contributors": "./src/cost/anomaly-contributors.ts",
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
     "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",
     "./cost/anomaly-feedback": "./src/cost/anomaly-feedback.ts",

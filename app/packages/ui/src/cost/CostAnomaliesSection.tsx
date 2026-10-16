@@ -5,13 +5,20 @@ import {
   COST_ANOMALY_SMS_MODE_LABELS,
   DEFAULT_COST_ANOMALY_SETTINGS,
   costAnomalyDeltaPercent,
+  costAnomalyDriver,
+  costAnomalyHeadlineContributors,
   countUnexplainedCostAnomalies,
+  describeCostAnomalyContributor,
+  formatContributorShare,
   isCostAnomalyExplained,
+  splitCostAnomalyDriverHint,
+  type CostAnomalyContributorResource,
 } from "@infrawrench/client-core";
 import { useCallback, useEffect, useId, useState } from "react";
 import { T, useGT } from "gt-react";
 
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
+import { CostAnomalyBreakdownModal } from "./CostAnomalyBreakdownModal.js";
 import { CostAnomalyExplainModal } from "./CostAnomalyExplainModal.js";
 import { CostAnomalyFeedbackModal } from "./CostAnomalyFeedbackModal.js";
 import {
@@ -37,6 +44,13 @@ function formatDay(day: string): string {
 
 export interface CostAnomaliesSectionProps {
   client: CostsClient;
+  /**
+   * Open a synced resource's detail page: the driving resource on a row and in
+   * its breakdown. Omitted, the resource is named but not a link.
+   */
+  onOpenResource?: ((resource: CostAnomalyContributorResource) => void) | undefined;
+  /** Open a cost report the breakdown just saved. Omitted, it offers no save. */
+  onOpenCostReport?: ((reportId: string) => void) | undefined;
 }
 
 /**
@@ -46,7 +60,11 @@ export interface CostAnomaliesSectionProps {
  * only thing configurable from here is what counts as anomalous, which the
  * tuning panel edits when the host wires the settings calls.
  */
-export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
+export function CostAnomaliesSection({
+  client,
+  onOpenResource,
+  onOpenCostReport,
+}: CostAnomaliesSectionProps) {
   const gt = useGT();
   const [anomalies, setAnomalies] = useState<CostAnomaly[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +76,8 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
     anomaly: CostAnomaly;
     verdict: CostAnomalyVerdict;
   } | null>(null);
+  /** The row whose contributor breakdown is open, or null. */
+  const [breakdown, setBreakdown] = useState<CostAnomaly | null>(null);
   const [showSuppressions, setShowSuppressions] = useState(false);
   const [showPrecision, setShowPrecision] = useState(false);
   const feedbackLabels = useAnomalyFeedbackLabels();
@@ -105,6 +125,17 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
     const delta = costAnomalyDeltaPercent(a);
     const isNew = a.kind === "new_source";
     const hints = a.hints ?? [];
+    const driver = costAnomalyDriver(a);
+    const driverShare = driver ? formatContributorShare(driver.share) : null;
+    const moved = costAnomalyHeadlineContributors(a).map((c) =>
+      describeCostAnomalyContributor(c, a.currency),
+    );
+    const notes = [
+      moved.length > 0 ? gt("What moved:\n{lines}", { lines: moved.join("\n") }) : null,
+      hints.length > 0
+        ? gt("What changed around this window:\n{hints}", { hints: hints.join("\n") })
+        : null,
+    ].filter((n): n is string => n !== null);
     return (
       <FileIssueButton
         sourceKind="cost_anomaly"
@@ -137,15 +168,26 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                 : formatMoney(a.baselineCents / 100, a.currency),
             },
             { label: gt("Change"), value: delta },
+            ...(driver
+              ? [
+                  {
+                    label: gt("Driving resource"),
+                    value:
+                      driver.label && driver.label !== driver.key
+                        ? `${driver.label} (${driver.key})`
+                        : driver.key,
+                  },
+                  {
+                    label: gt("Driver's rise"),
+                    value: `+${formatMoney(driver.deltaCents / 100, a.currency)}${
+                      driverShare ? ` (${driverShare})` : ""
+                    }`,
+                  },
+                ]
+              : []),
             { label: gt("Detected"), value: a.detectedAt },
           ],
-          ...(hints.length > 0
-            ? {
-                note: gt("What changed around this window:\n{hints}", {
-                  hints: hints.join("\n"),
-                }),
-              }
-            : {}),
+          ...(notes.length > 0 ? { note: notes.join("\n\n") } : {}),
         }}
       />
     );
@@ -262,8 +304,13 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
               {anomalies.map((a) => {
                 const delta = costAnomalyDeltaPercent(a);
                 const isNew = a.kind === "new_source";
-                const hints = a.hints ?? [];
                 const explained = isCostAnomalyExplained(a);
+                const driver = costAnomalyDriver(a);
+                // The driver's own hint is the line below restated; what the
+                // timeline saw happen to it rides on that line instead.
+                const { driverEvent, otherHints: hints } = splitCostAnomalyDriverHint(a);
+                const driverShare = driver ? formatContributorShare(driver.share) : null;
+                const hasBreakdown = (a.contributors ?? []).length > 0;
                 return (
                   <tr key={a.id} className="text-on-surface-secondary">
                     <td className="whitespace-nowrap px-3 py-2">{formatDay(a.day)}</td>
@@ -302,6 +349,48 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         >
                           {gt("Suppressed")}
                         </span>
+                      )}
+                      {/*
+                        The driving resource, prominently: the line under the
+                        provider or service that says which thing to go and look
+                        at. A link when the resource is synced and the host can
+                        open it; the provider id beside the name either way, since
+                        that is what the bill and the console call it.
+                      */}
+                      {driver && (
+                        <p className="mt-1 text-xs text-on-surface">
+                          <span className="text-on-surface-faint">{gt("Driven by")} </span>
+                          {driver.resource && onOpenResource ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenResource(driver.resource!)}
+                              className="font-medium text-on-surface underline decoration-dotted underline-offset-2 hover:text-info"
+                            >
+                              {driver.label}
+                            </button>
+                          ) : (
+                            <span className="font-medium">{driver.label}</span>
+                          )}
+                          {driver.label !== driver.key && (
+                            <span className="ml-1 text-on-surface-faint">{driver.key}</span>
+                          )}
+                          <span className="text-on-surface-faint">
+                            {" · "}
+                            {driverShare
+                              ? gt("+{delta}, {share} of the rise", {
+                                  delta: formatMoney(driver.deltaCents / 100, a.currency),
+                                  share: driverShare,
+                                })
+                              : gt("+{delta}", {
+                                  delta: formatMoney(driver.deltaCents / 100, a.currency),
+                                })}
+                            {driverEvent === "appeared"
+                              ? ` · ${gt("new that day or the day before")}`
+                              : driverEvent === "changed"
+                                ? ` · ${gt("changed that day or the day before")}`
+                                : ""}
+                          </span>
+                        </p>
                       )}
                       {a.feedback && (
                         <p className="mt-1 text-xs text-on-surface-faint">
@@ -373,6 +462,15 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         the row's life and should read as the closing move.
                       */}
                       <span className="inline-flex items-center gap-3">
+                        {hasBreakdown && (
+                          <button
+                            type="button"
+                            onClick={() => setBreakdown(a)}
+                            className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
+                          >
+                            {gt("Breakdown")}
+                          </button>
+                        )}
                         {renderFileIssue(a)}
                         {client.submitAnomalyFeedback && (
                           <>
@@ -419,6 +517,16 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
           onChanged={applyAcknowledgement}
           onClose={() => setJudging(null)}
           fileIssue={renderFileIssue(judging.anomaly)}
+        />
+      )}
+
+      {breakdown && (
+        <CostAnomalyBreakdownModal
+          anomaly={breakdown}
+          client={client}
+          onOpenResource={onOpenResource}
+          onOpenCostReport={onOpenCostReport}
+          onClose={() => setBreakdown(null)}
         />
       )}
 

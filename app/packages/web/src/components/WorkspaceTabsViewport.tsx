@@ -448,6 +448,22 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             )
           }
+          // An anomaly's driving resource, and the report its breakdown saves.
+          onOpenAnomalyResource={(r) =>
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId: r.accountId,
+                resourceId: r.id,
+                view: "details",
+                pluginId: r.pluginId,
+                resourceTypeId: r.resourceTypeId,
+              }),
+            )
+          }
+          onOpenCostReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(costReportsTabTarget(reportId)))
+          }
         />
       );
     case "cost-reports":

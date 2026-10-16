@@ -17,7 +17,7 @@ import {
   HOURLY_BINNING_UNAVAILABLE_REASON,
   referencedVirtualTagKeys,
 } from "@infrawrench/client-core";
-import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import {
   dayRange,
@@ -1692,6 +1692,129 @@ export async function getCostCoverage(
   const result = new Map<string, { firstDay: string; lastDay: string }>();
   for (const r of rows) result.set(r.account_id, { firstDay: r.first_day, lastDay: r.last_day });
   return result;
+}
+
+/**
+ * One value of one facet in {@link getAnomalyContributorRows}: its spend on the
+ * anomalous day and summed across the baseline window before it.
+ */
+export interface AnomalyContributorRow {
+  /**
+   * `total` (one row, the whole scope), `account`, `region`, `resource`,
+   * `usage_unit`, `charge_type`, or `tag:<key>` for each provider tag key.
+   */
+  facet: string;
+  /** The facet's value as the rows carry it; "" for rows with none. */
+  key: string;
+  /** The one account all of this value's spend sits in; "" when several. */
+  accountId: string;
+  /** The one plugin all of this value's spend came from; "" when several. */
+  pluginId: string;
+  /** Spend on the anomalous day. */
+  actual: number;
+  /** Spend summed over the whole baseline window (divide for the mean). */
+  baselineTotal: number;
+}
+
+/** What {@link getAnomalyContributorRows} decomposes. */
+export interface AnomalyContributorQuery {
+  /** The anomalous day, "YYYY-MM-DD". */
+  day: string;
+  /** First day of the baseline window, "YYYY-MM-DD" (inclusive). */
+  baselineFrom: string;
+  /** Days in the baseline window: the divisor that turns a sum into the mean. */
+  baselineDays: number;
+  /** The anomaly's breakdown and value: the scope being decomposed. */
+  dimension: "provider" | "service";
+  dimensionKey: string;
+  currency: string;
+  /** Rows kept per facet (each tag key is its own facet), largest rise first. */
+  perFacet: number;
+  /** Rows kept overall; the `total` row always sorts first. */
+  maxRows: number;
+}
+
+/**
+ * Decompose one anomaly's scope along every contributor facet at once: **one
+ * scan, one statement**.
+ *
+ * Each row is `ARRAY JOIN`ed against its own facet values (its account, its
+ * region, its resource id, its usage unit, its charge type, and one entry per
+ * tag it carries) plus a `total` entry, and the result is grouped by
+ * (facet, value). Every facet is therefore a partition of the same rows, and
+ * the `total` row is the denominator each share is taken against, read from
+ * the same snapshot rather than from the anomaly's stored figures (which may
+ * predate a restatement).
+ *
+ * `LIMIT n BY facet` over a global "largest rise first" order bounds the answer
+ * to a few rows per facet however many resources or tag values the scope
+ * holds, and `uniqExact` on the account says whether a value's spend sits in
+ * one account (the fact cost visibility folding decides on).
+ *
+ * Cash basis and every charge type, exactly what detection judged, through the
+ * one org predicate every cost read uses: unattended callers (the evaluator)
+ * read org-wide, and a scoped request would read only its scope, which is why
+ * the read side computes these unrestricted and folds afterwards.
+ */
+export async function getAnomalyContributorRows(
+  organizationId: string,
+  q: AnomalyContributorQuery,
+): Promise<AnomalyContributorRow[]> {
+  const days = Math.max(1, q.baselineDays);
+  const facets = sql`arrayConcat([tuple('total', ''), tuple('account', ${costDaily.account_id}), tuple('region', toString(${costDaily.region})), tuple('resource', ${costDaily.resource_id}), tuple('usage_unit', toString(${costDaily.usage_unit})), tuple('charge_type', toString(${costDaily.charge_type}))], arrayMap((k, v) -> tuple(concat('tag:', toString(k)), v), mapKeys(${costDaily.tags}), mapValues(${costDaily.tags})))`;
+  const amount = amountExpr(undefined);
+  const scopeCond =
+    q.dimension === "provider"
+      ? eq(costDaily.plugin_id, q.dimensionKey)
+      : eq(costDaily.service, q.dimensionKey);
+  const rows = await query((db) =>
+    db
+      .select({
+        facet: sql<string>`tupleElement(f, 1)`.as("facet"),
+        key: sql<string>`tupleElement(f, 2)`.as("key"),
+        // Aliased apart from the column names on purpose: ClickHouse resolves
+        // aliases inside expressions, and `any(account_id) AS account_id`
+        // would read its own result.
+        single_account:
+          sql<string>`if(uniqExact(${costDaily.account_id}) = 1, any(${costDaily.account_id}), '')`.as(
+            "single_account",
+          ),
+        single_plugin:
+          sql<string>`if(uniqExact(${costDaily.plugin_id}) = 1, toString(any(${costDaily.plugin_id})), '')`.as(
+            "single_plugin",
+          ),
+        actual: sql<number>`sumIf(${amount}, ${eq(costDaily.day, q.day)})`.as("actual"),
+        baseline_total: sql<number>`sumIf(${amount}, ${lt(costDaily.day, q.day)})`.as(
+          "baseline_total",
+        ),
+      })
+      .from(costDaily)
+      .final()
+      .arrayJoin(sql`${facets} AS f`)
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(q.baselineFrom, q.day),
+          scopeCond,
+          eq(costDaily.currency, q.currency),
+        ),
+      )
+      .groupBy(sql`facet`, sql`key`)
+      .orderBy(
+        desc(sql`facet = 'total'`),
+        desc(sql`actual - baseline_total / ${sql.raw(String(days))}`),
+      )
+      .limitBy(Math.max(1, Math.floor(q.perFacet)), sql`facet`)
+      .limit(Math.max(1, Math.floor(q.maxRows))),
+  );
+  return rows.map((r) => ({
+    facet: String(r.facet),
+    key: String(r.key),
+    accountId: String(r.single_account),
+    pluginId: String(r.single_plugin),
+    actual: Number(r.actual),
+    baselineTotal: Number(r.baseline_total),
+  }));
 }
 
 /** One grouped row of {@link getPricingLines}. */

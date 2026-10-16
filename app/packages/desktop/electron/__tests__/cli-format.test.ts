@@ -4,6 +4,7 @@ import {
   githubRepoFromRemote,
   parseNameStatusZ,
   anomalyDeltaPercent,
+  anomalyDriverLabel,
   anomalyFeedbackLabel,
   matchIdPrefix,
   precisionChart,
@@ -591,6 +592,36 @@ describe("matchVirtualTag", () => {
     const found = matchVirtualTag(tags, "tea");
     expect(found.match).toBeNull();
     expect(!found.match && found.candidates.map((t) => t.id)).toEqual(["t1", "t3"]);
+  });
+});
+
+describe("anomalyDriverLabel", () => {
+  const resource = (key: string, label: string, deltaCents: number, share: number | null) => ({
+    facet: "resource",
+    key,
+    label,
+    deltaCents,
+    share,
+  });
+
+  it("names the resource that carried most of the rise, with its share", () => {
+    expect(
+      anomalyDriverLabel({
+        contributors: [
+          resource("i-small", "i-small", 1_000, 0.25),
+          resource("i-0abc", "web-1", 9_000, 0.64),
+          { ...resource("acc", "Production", 20_000, 1), facet: "account" },
+        ],
+      }),
+    ).toBe("web-1 64%");
+  });
+
+  it("is a dash when nothing qualifies", () => {
+    expect(anomalyDriverLabel({})).toBe("-");
+    expect(anomalyDriverLabel({ contributors: [resource("i-1", "i-1", 500, 0.1)] })).toBe("-");
+    expect(
+      anomalyDriverLabel({ contributors: [{ ...resource("", "Other", 9_000, 0.9), other: true }] }),
+    ).toBe("-");
   });
 });
 

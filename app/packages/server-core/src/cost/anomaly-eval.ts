@@ -46,6 +46,7 @@ import { costAnomalies } from "../db/schema";
 import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import {
+  ANOMALY_BASELINE_DAYS,
   detectNewSpendSource,
   detectSpike,
   fillDailySeries,
@@ -53,6 +54,7 @@ import {
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
 import { buildAnomalyHints } from "./anomaly-hints";
+import { computeAnomalyContributors } from "./anomaly-contributors";
 import {
   EMPTY_FEEDBACK_CONTEXT,
   anomalyFeedbackButtons,
@@ -72,10 +74,19 @@ import { pageAboutAnomalies, type AnomalySmsItem } from "./anomaly-sms";
 import { isoDay, addDays, daysBetween } from "./dates";
 import { orgAppUrl } from "../app-url";
 import { publishEvent } from "../events/publish";
-import { COST_ANOMALY_DETECTED } from "@infrawrench/client-core";
+import {
+  COST_ANOMALY_DETECTED,
+  costAnomalyContributorPhrase,
+  costAnomalyDriver,
+  costAnomalyHeadlineContributors,
+  costAnomalyLeadContributor,
+  describeCostAnomalyContributor,
+  formatContributorShare,
+  type CostAnomalyContributor,
+} from "@infrawrench/client-core";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
-const BASELINE_DAYS = 28;
+const BASELINE_DAYS = ANOMALY_BASELINE_DAYS;
 
 /** Days a key stays quiet after notifying, so a level shift alerts once. */
 const COOLDOWN_DAYS = 7;
@@ -106,6 +117,25 @@ const EVALUATION_DAYS = 3;
  * alert.
  */
 const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * How long a stored contributor breakdown stands before a pass recomputes it.
+ *
+ * A row stays a candidate on every pass until something delivers it (a
+ * cooldown keeps it undelivered for days), and the breakdown is one grouped
+ * ClickHouse read; recomputing it hourly for an answer that only moves when
+ * the day is restated would be waste. Six hours still picks up a restatement
+ * the same day it lands.
+ */
+const CONTRIBUTOR_REFRESH_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The share of the rise one account must carry for the anomaly to count as
+ * "about" that account: the `accountId` routing fact and the event envelope's
+ * `accountId`. High on purpose: `accountId in [prod]` should take an anomaly
+ * that is prod's, not one prod merely took part in.
+ */
+const ACCOUNT_FACT_MIN_SHARE = 0.8;
 
 /** orgId → epoch ms of the last evaluation. Best-effort, per process. */
 const lastEvaluatedAt = new Map<string, number>();
@@ -138,6 +168,9 @@ interface PendingAnomaly {
   actual: number;
   mean: number;
   threshold: number;
+  /** The stored contributor breakdown and when it was computed (null: never). */
+  contributors: CostAnomalyContributor[] | null;
+  contributorsComputedAt: Date | null;
 }
 
 /** What one of the two detectors found, flattened to what a row needs. */
@@ -309,6 +342,8 @@ async function detectForDimension(
           id: costAnomalies.id,
           notifiedAt: costAnomalies.notifiedAt,
           suppressedById: costAnomalies.suppressedById,
+          contributors: costAnomalies.contributors,
+          contributorsComputedAt: costAnomalies.contributorsComputedAt,
         });
       if (!row || row.notifiedAt) continue; // already delivered for this day
 
@@ -331,6 +366,8 @@ async function detectForDimension(
         actual: finding.actual,
         mean: finding.mean,
         threshold: finding.threshold,
+        contributors: row.contributors ?? null,
+        contributorsComputedAt: row.contributorsComputedAt ?? null,
       });
     }
   }
@@ -449,13 +486,52 @@ export async function detectCostAnomaliesForOrg(
         // read them without re-running the window queries; failures degrade
         // to an un-annotated alert (`buildAnomalyHints` never throws, but the
         // store is guarded too: hints must never cost a delivery).
+        //
+        // Contributors come first, because the hints lead with what they say:
+        // the anomalous day's rise decomposed by resource, account, region,
+        // usage unit, charge type and tag (`anomaly-contributors.ts`), one
+        // grouped ClickHouse read, stored on the row. A breakdown computed
+        // within `CONTRIBUTOR_REFRESH_MS` is reused. Like hints, a failure only
+        // costs the alert its breakdown.
+        let contributors: CostAnomalyContributor[] = anomaly.contributors ?? [];
+        const fresh =
+          anomaly.contributorsComputedAt !== null &&
+          at - anomaly.contributorsComputedAt.getTime() < CONTRIBUTOR_REFRESH_MS;
+        if (!fresh) {
+          try {
+            const computed = await computeAnomalyContributors(organizationId, {
+              day: anomaly.day,
+              dimension: anomaly.dimension,
+              dimensionKey: anomaly.dimensionKey,
+              currency: anomaly.currency,
+            });
+            if (computed) {
+              contributors = computed;
+              await db
+                .update(costAnomalies)
+                .set({ contributors: computed, contributorsComputedAt: new Date() })
+                .where(eq(costAnomalies.id, anomaly.id));
+            }
+          } catch (err) {
+            console.error(
+              `[anomaly-eval] contributor store failed for anomaly ${anomaly.id}:`,
+              err,
+            );
+          }
+        }
+        const lead = costAnomalyLeadContributor({ contributors });
+
         let hints: string[] = [];
         try {
-          hints = await buildAnomalyHints(organizationId, {
-            day: anomaly.day,
-            dimension: anomaly.dimension,
-            dimensionKey: anomaly.dimensionKey,
-          });
+          hints = await buildAnomalyHints(
+            organizationId,
+            {
+              day: anomaly.day,
+              dimension: anomaly.dimension,
+              dimensionKey: anomaly.dimensionKey,
+            },
+            lead ? { contributor: lead, currency: anomaly.currency } : null,
+          );
           if (hints.length > 0) {
             await db.update(costAnomalies).set({ hints }).where(eq(costAnomalies.id, anomaly.id));
           }
@@ -484,12 +560,56 @@ export async function detectCostAnomaliesForOrg(
               `${formatAmount(anomaly.mean, anomaly.currency)}/day baseline over the prior ${BASELINE_DAYS} days`;
         const context = `${anomaly.day} · ${label}${anomaly.kind === "new_source" ? " · new" : ""}`;
 
-        // Slack and Teams have room for the full list; a push notification is
-        // one or two lines on a lock screen, so it carries only the top hint.
-        // The batched SMS carries none: its 320-character budget is already
-        // spent naming the anomalies themselves (`anomaly-sms.ts`).
-        const hintedBody = hints.length > 0 ? `${body}\n\nAround then: ${hints.join("; ")}.` : body;
-        const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
+        // When there is a lead contributor, `buildAnomalyHints` put its
+        // sentence first; the rest are the timeline's and audit log's leads.
+        // The body states the breakdown itself under "What moved" (a line per
+        // facet, driving resource first), so the lead hint is not repeated in
+        // "Around then".
+        const leadHint = lead ? (hints[0] ?? null) : null;
+        const aroundThen = lead ? hints.slice(1) : hints;
+        const moved = costAnomalyHeadlineContributors({ contributors }).map((c) =>
+          describeCostAnomalyContributor(c, anomaly.currency),
+        );
+        const driver = costAnomalyDriver({ contributors });
+        const driverUrl = driver?.resource
+          ? orgAppUrl(
+              organizationId,
+              `resources/${encodeURIComponent(driver.resource.pluginId)}/` +
+                `${encodeURIComponent(driver.resource.resourceTypeId)}/` +
+                `${encodeURIComponent(driver.resource.id)}` +
+                `?accountId=${encodeURIComponent(driver.resource.accountId)}`,
+            )
+          : null;
+
+        // Slack, Teams and email have room for the whole breakdown and every
+        // hint; a push notification is one or two lines on a lock screen, so
+        // it carries only the lead (the breakdown's lead when there is one,
+        // else the top hint). The batched SMS carries none: its 320-character
+        // budget is already spent naming the anomalies themselves
+        // (`anomaly-sms.ts`).
+        const hintedBody =
+          body +
+          (moved.length > 0 ? `\n\nWhat moved: ${moved.join("; ")}.` : "") +
+          (driverUrl ? `\nOpen the resource: ${driverUrl}` : "") +
+          (aroundThen.length > 0 ? `\n\nAround then: ${aroundThen.join("; ")}.` : "");
+        const pushBody = leadHint
+          ? `${body}\n${leadHint.charAt(0).toUpperCase()}${leadHint.slice(1)}.`
+          : hints.length > 0
+            ? `${body}\nLikely related: ${hints[0]}.`
+            : body;
+
+        // The account the anomaly is about, when one account carried nearly
+        // all of the rise: a routing fact (`accountId in [prod]`) and the
+        // event envelope's account. Absent otherwise, which matches nothing.
+        const accountFact =
+          contributors.find(
+            (c) =>
+              c.facet === "account" &&
+              !c.other &&
+              c.share !== null &&
+              c.share >= ACCOUNT_FACT_MIN_SHARE,
+          )?.key || null;
+        const leadShare = lead ? formatContributorShare(lead.share) : null;
 
         const url = orgAppUrl(organizationId, "costs");
         // Event subscriptions get the anomaly as data, independent of whether
@@ -508,8 +628,20 @@ export async function detectCostAnomaliesForOrg(
             baseline: anomaly.mean,
             currency: anomaly.currency,
             hints,
+            driverResourceId: driver?.key ?? null,
+            driverResourceName: driver ? (driver.resource?.name ?? driver.key) : null,
+            driverDelta: driver ? driver.deltaCents / 100 : null,
+            driverShare: driver?.share ?? null,
+            contributors: [...contributors]
+              .sort((a, b) => b.deltaCents - a.deltaCents)
+              .map((c) => describeCostAnomalyContributor(c, anomaly.currency)),
           },
-          { title, url, idempotencyKey: `cost-anomaly:${anomaly.id}` },
+          {
+            title,
+            url,
+            idempotencyKey: `cost-anomaly:${anomaly.id}`,
+            ...(accountFact ? { accountId: accountFact } : {}),
+          },
         );
         // `facts` is what routing rules match on, and this is the trigger the
         // feature was designed around: "anomalies over $500 on the prod account
@@ -539,6 +671,7 @@ export async function detectCostAnomaliesForOrg(
               currency: anomaly.currency,
               key: anomaly.dimensionKey,
               ...(dimension === "provider" ? { pluginId: anomaly.dimensionKey } : {}),
+              ...(accountFact ? { accountId: accountFact } : {}),
             },
             // Expected / Unexpected, answered in the channel: the verdict tunes
             // detection (`anomaly-feedback.ts`). Teams cards are one-way
@@ -567,8 +700,26 @@ export async function detectCostAnomaliesForOrg(
                         value: formatAmount(anomaly.mean, anomaly.currency),
                       },
                     ]),
+                ...(lead
+                  ? [
+                      {
+                        label:
+                          lead.facet === "resource" ? "Driving resource" : "Largest contributor",
+                        value:
+                          costAnomalyContributorPhrase(lead) +
+                          (leadShare ? ` (${leadShare} of the rise)` : ""),
+                      },
+                    ]
+                  : []),
+                ...(driverUrl ? [{ label: "Resource page", value: driverUrl }] : []),
               ],
-              note: hints.length > 0 ? `Around then: ${hints.join("; ")}.` : undefined,
+              note:
+                [
+                  moved.length > 0 ? `What moved: ${moved.join("; ")}.` : null,
+                  aroundThen.length > 0 ? `Around then: ${aroundThen.join("; ")}.` : null,
+                ]
+                  .filter((part): part is string => part !== null)
+                  .join("\n\n") || undefined,
               appUrl: url,
             },
           },

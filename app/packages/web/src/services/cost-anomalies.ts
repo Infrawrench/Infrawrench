@@ -17,6 +17,14 @@ import type {
   CostAnomalyAcknowledgement,
   CostAnomalyFeedback,
 } from "@infrawrench/client-core";
+import { foldCostAnomalyContributors } from "@infrawrench/client-core";
+import { computeAnomalyContributors } from "@infrawrench/server-core/cost/anomaly-contributors";
+import {
+  isCostScoped,
+  runWithCostVisibility,
+  strictlyVisibleAccountIds,
+  unrestrictedCostVisibility,
+} from "@infrawrench/server-core/cost/visibility-context";
 import {
   planAnomalyAcknowledgement,
   CostAnomalyAcknowledgeError,
@@ -30,6 +38,16 @@ export { CostAnomalyAcknowledgeError };
 
 /** Hard cap on rows returned, whatever window was asked for. */
 const MAX_ROWS = 200;
+
+/**
+ * Most anomalies one read computes a missing contributor breakdown for.
+ *
+ * Rows detected before contributors existed have none; the first reads after
+ * deploy fill them in, newest first, a few at a time so a 90-day window never
+ * turns one list request into a hundred ClickHouse statements. Each is one
+ * grouped read, run in parallel; the rest are picked up by later reads.
+ */
+const LAZY_CONTRIBUTOR_LIMIT = 4;
 
 type CostAnomalyRow = typeof costAnomalies.$inferSelect;
 
@@ -91,16 +109,76 @@ export function toCostAnomaly(
     // Rows written before hints existed (or whose hint queries failed at
     // detection time) hold null; the wire contract is always an array.
     hints: row.hints ?? [],
+    // Stored org-wide; what a cost-scoped caller may not see is folded into one
+    // "other" row per facet. Null (never computed) reads as an empty list.
+    contributors: foldCostAnomalyContributors(
+      row.contributors ?? [],
+      strictlyVisibleAccountIds(row.organizationId),
+    ),
     acknowledgement: toAcknowledgement(row),
     feedback: toFeedback(row, feedbackByName),
     suppressionId: row.suppressedById,
   };
 }
 
+/**
+ * Compute and store the contributor breakdown for rows that have never had
+ * one: anomalies detected before the feature, or whose breakdown failed at
+ * detection. At most {@link LAZY_CONTRIBUTOR_LIMIT} per call, in the order
+ * given (callers pass newest first). Mutates the rows it fills so the caller's
+ * answer carries them.
+ *
+ * Computed **unrestricted** whoever is asking, because the row is shared and
+ * stored org-wide: a breakdown computed inside one viewer's scope would be
+ * that viewer's slice of the money stored as everybody's. Folding for the
+ * viewer happens in {@link toCostAnomaly}. A cost-scoped caller triggers
+ * nothing at all; anomalies are withheld from them anyway.
+ *
+ * Never throws: a failed breakdown leaves the row as it was, to be tried again.
+ */
+export async function backfillAnomalyContributors(
+  organizationId: string,
+  rows: CostAnomalyRow[],
+): Promise<void> {
+  if (isCostScoped(organizationId)) return;
+  const missing = rows
+    .filter((r) => r.contributorsComputedAt === null)
+    .slice(0, LAZY_CONTRIBUTOR_LIMIT);
+  await Promise.all(
+    missing.map(async (row) => {
+      try {
+        const computed = await runWithCostVisibility(
+          unrestrictedCostVisibility(organizationId),
+          () =>
+            computeAnomalyContributors(organizationId, {
+              day: row.day,
+              dimension: row.dimension,
+              dimensionKey: row.dimensionKey,
+              currency: row.currency,
+            }),
+        );
+        if (!computed) return;
+        const computedAt = new Date();
+        await db
+          .update(costAnomalies)
+          .set({ contributors: computed, contributorsComputedAt: computedAt })
+          .where(
+            and(eq(costAnomalies.id, row.id), eq(costAnomalies.organizationId, organizationId)),
+          );
+        row.contributors = computed;
+        row.contributorsComputedAt = computedAt;
+      } catch (err) {
+        console.error(`[cost-anomalies] contributor backfill failed for anomaly ${row.id}:`, err);
+      }
+    }),
+  );
+}
+
 /** One anomaly of this org as the API answers it, or null. */
 export async function getCostAnomalyView(
   organizationId: string,
   anomalyId: string,
+  opts: { backfillContributors?: boolean } = {},
 ): Promise<CostAnomaly | null> {
   const [hit] = await db
     .select({ row: costAnomalies, byName: feedbackByNameSql })
@@ -108,7 +186,9 @@ export async function getCostAnomalyView(
     .leftJoin(users, eq(users.id, costAnomalies.feedbackByUserId))
     .where(and(eq(costAnomalies.id, anomalyId), eq(costAnomalies.organizationId, organizationId)))
     .limit(1);
-  return hit ? toCostAnomaly(hit.row, hit.byName ?? null) : null;
+  if (!hit) return null;
+  if (opts.backfillContributors) await backfillAnomalyContributors(organizationId, [hit.row]);
+  return toCostAnomaly(hit.row, hit.byName ?? null);
 }
 
 /**
@@ -123,6 +203,7 @@ export async function getCostAnomalyView(
 export async function listRecentCostAnomalies(
   organizationId: string,
   days: number,
+  opts: { backfillContributors?: boolean } = {},
 ): Promise<CostAnomaly[]> {
   // Anomalies are detected per provider and per service over every team's
   // spend; a cost-scoped caller cannot be shown them without the org-wide
@@ -136,6 +217,16 @@ export async function listRecentCostAnomalies(
     .where(and(eq(costAnomalies.organizationId, organizationId), gte(costAnomalies.day, since)))
     .orderBy(desc(costAnomalies.day), desc(costAnomalies.actualAmountCents))
     .limit(MAX_ROWS);
+
+  // Interactive readers (the list endpoint, the chat agent) fill in breakdowns
+  // older rows never got; unattended ones (canvases, digests) read what is
+  // stored and never pay for a ClickHouse statement per row.
+  if (opts.backfillContributors) {
+    await backfillAnomalyContributors(
+      organizationId,
+      rows.map((r) => r.row),
+    );
+  }
 
   return rows.map((r) => toCostAnomaly(r.row, r.byName ?? null));
 }

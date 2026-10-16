@@ -1099,6 +1099,46 @@ describe("efficiency alerts", () => {
   });
 });
 
+describe("GET /anomalies", () => {
+  it("answers the window with each finding's contributors, backfilling missing ones", async () => {
+    const contributors = [
+      {
+        facet: "resource",
+        key: "i-0abc",
+        tagKey: null,
+        label: "web-1",
+        accountId: "acc-1",
+        resource: {
+          id: "res-1",
+          accountId: "acc-1",
+          pluginId: "aws",
+          resourceTypeId: "ec2-instance",
+          name: "web-1",
+        },
+        actualCents: 20_000,
+        baselineCents: 3_000,
+        deltaCents: 17_000,
+        share: 0.98,
+      },
+    ];
+    mockListAnomalies.mockResolvedValue([{ ...acknowledgedAnomaly, contributors }]);
+
+    const res = await buildApp().request("/anomalies?days=14");
+
+    expect(res.status).toBe(200);
+    // Interactive reads fill in breakdowns older findings never got.
+    expect(mockListAnomalies).toHaveBeenCalledWith("org-1", 14, { backfillContributors: true });
+    const json = (await res.json()) as { anomalies: Array<{ contributors: unknown }> };
+    expect(json.anomalies[0]!.contributors).toEqual(contributors);
+  });
+
+  it("rejects a window outside 1-90 days", async () => {
+    const res = await buildApp().request("/anomalies?days=365");
+    expect(res.status).toBe(400);
+    expect(mockListAnomalies).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /anomalies/:id/acknowledge", () => {
   const body = JSON.stringify({ explanation: "Migrated the API fleet to Graviton" });
 

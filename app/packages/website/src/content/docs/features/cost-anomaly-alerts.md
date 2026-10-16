@@ -149,6 +149,70 @@ window.
 
 <insert [Slack anomaly alert message whose body ends with an "Around then:" line listing the same root-cause hints] here>
 
+## What drove it: the driving resource
+
+Detection works per provider and per service, which is the right level to decide that a day is
+unusual and the wrong one to act on: "Amazon EC2 tripled" sends somebody off to read a bill.
+So every anomaly is also broken down by what moved underneath it. Infrawrench takes the
+anomalous day's spend in that provider or service and compares each part of it with its own
+average over the same 28 days detection used, along six breakdowns:
+
+- **Resource**, by the provider's own resource id (an instance, a bucket, a database), for
+  providers that report resource ids on their bill.
+- **Account**, **region**, **usage unit** (the unit the provider bills the line in, such as
+  hours or GB-months) and **charge type** (usage, a commitment purchase, a credit, tax).
+- **Tag values**, one value per tag key, for the tag keys the day's spend carries.
+
+Each breakdown adds up to the whole rise, so every row says how much of it that one thing
+carried: "i-0abc123 (web-1) rose $420 over its $12/day average, 64% of the rise". Only things
+that went up are listed, a few per breakdown, and anything under 5% of the rise is left out as
+noise.
+
+The **driving resource** is the resource that carried the most of the rise, provided it
+carried at least a fifth of it. It is the first thing every surface shows:
+
+- On the **Anomalies** list (web, desktop and mobile) it sits under the provider or service as
+  "Driven by web-1 i-0abc123 · +$420, 64% of the rise". When the resource is in your synced
+  inventory, its name opens the resource's page.
+- **Breakdown** on the row opens the full table (every breakdown, with each row's average, its
+  spend on the day, its rise and its share) above a daily cost chart of the selected row from
+  four weeks before the anomaly to a week after, with the anomalous day shaded. The driving
+  resource is selected to begin with; pick any other row to chart it instead. **Save as cost
+  report** turns the chart into a [cost report](./cost-reports.md), filtered to that resource and
+  that provider or service, with a note pinned to the anomalous day so the report keeps marking
+  it, and opens it.
+- **Slack, Teams and email** alerts gain a "What moved" line naming the driving resource and the
+  largest riser in up to two other breakdowns (an account, a region, a tag value), plus a link to
+  the resource's page when it is synced. The **push notification** leads with the same thing:
+  the driving resource, or, for a provider that reports no resource ids, the account or region
+  that carried most of the rise.
+- The first [root-cause hint](#root-cause-hints) becomes the driving resource, with what the
+  change timeline recorded for it ("…and appeared in the window" when it was created that day
+  or the day before), ahead of the timeline and audit-log hints.
+- **Issues** filed in Jira, Linear or GitHub from an anomaly include the driving resource and
+  the "What moved" lines.
+- The [chat agent and MCP tools](./mcp.md) receive the whole breakdown and are told to cite it
+  when explaining an anomaly.
+
+When one account carried at least 80% of the rise, the alert is treated as being about that
+account: an [alert routing](./alert-routing.md) rule on that account matches it, and the
+[event](./event-subscriptions.md) names it as its `accountId`.
+
+The breakdown is computed when the anomaly is detected and stored with it, so every surface
+shows the same answer. Anomalies found before this existed are broken down the first time you
+open the list, a few at a time. A provider that bills per service only (no resource ids) has no
+driving resource; the other breakdowns still appear.
+
+The breakdown is computed over the whole organization's spend, like the anomaly itself, which
+is why members with a [cost visibility scope](../team-and-billing/cost-visibility.md) do not
+see anomalies at all. The API applies the scope to the breakdown as well, as a second line of
+defence: any row whose spend sits outside the caller's accounts is added into a single "Other"
+row per breakdown, with its amount but without its name.
+
+<insert [Costs panel Anomalies list with a spike row showing the "Driven by" line under the service name (resource name as a link, provider id, rise and share) and the Breakdown action next to File an issue] here>
+
+<insert [The anomaly breakdown dialog: the daily chart of the driving resource with the anomalous day shaded, the Open resource and Save as cost report buttons, and the table grouped into Resource, Account, Region and Tag rows with average, on-the-day, rise and share columns] here>
+
 ## Where anomalies appear
 
 The Costs panel (web and desktop) has an **Anomalies** section on its **Alerts** tab, listing the last 30 days:
@@ -185,7 +249,7 @@ infrawrench costs --anomalies --last 2w    # the same window, said the other way
 infrawrench costs --anomalies --json       # stable JSON for scripting
 ```
 
-It is a flag on `costs` rather than a command of its own: it answers a question about the same data the chart draws. Text mode prints a table of the day, what spiked (the provider or service, and which of the two it is), the actual spend, the trailing baseline per day, and the percentage change — `new` where the key had no baseline to be up from. New spend sources are marked `[new source]` and print `none` for their baseline. A `notified` column shows the day the alert was delivered, or a dash for anomalies detected while no channel was connected or inside another anomaly's cooldown.
+It is a flag on `costs` rather than a command of its own: it answers a question about the same data the chart draws. Text mode prints a table of the day, what spiked (the provider or service, and which of the two it is), the actual spend, the trailing baseline per day, the percentage change (`new` where the key had no baseline to be up from), and a `driven by` column naming the [driving resource](#what-drove-it-the-driving-resource) with its share of the rise. New spend sources are marked `[new source]` and print `none` for their baseline. A `notified` column shows the day the alert was delivered, or a dash for anomalies detected while no channel was connected or inside another anomaly's cooldown.
 
 An `explained` column carries the first line of the explanation for any finding somebody has
 [explained](#explaining-an-anomaly), or a dash for one nobody has. Explaining itself is a web and
@@ -210,7 +274,7 @@ infrawrench costs --anomalies sensitivity
 
 Ids can be a unique prefix. Every one of these takes `--json`.
 
-The `--json` output carries a `kind` field on every row (`spike` or `new_source`), so a script can route the two differently, and the full `acknowledgement` object where there is one.
+The `--json` output carries a `kind` field on every row (`spike` or `new_source`), so a script can route the two differently, the full `acknowledgement` object where there is one, and the whole `contributors` breakdown.
 
 <insert [Terminal showing `infrawrench costs --anomalies` output: the table of day, what spiked, actual vs baseline spend, the red percentage-change column, and the notified column] here>
 
@@ -300,6 +364,16 @@ Each row also carries `hints` — the [root-cause hints](#root-cause-hints) comp
 anomaly fired, as an array of up to three strings, empty when nothing notable happened in the
 window or the row predates hint collection. The CLI's `costs --anomalies --json` output
 includes the same field.
+
+Each row also carries `contributors`: the [breakdown](#what-drove-it-the-driving-resource) of
+the day's rise, a few rows per breakdown. Every row has a `facet` (`resource`, `account`,
+`region`, `usage_unit`, `charge_type` or `tag`), the `key` as the cost rows carry it (for a
+resource, the provider's own id), `tagKey` for a tag, a display `label`, the `accountId` its
+spend sits in (null when it spans several), `resource` (the synced inventory resource it
+matched, with the ids a link needs, or null), `actualCents`, `baselineCents`, `deltaCents` and
+`share` of the whole rise. A row with `other: true` stands for spend outside your cost
+visibility scope. The driving resource is the `resource` row with the largest `deltaCents` whose
+`share` is at least 0.2.
 
 Each row also carries `acknowledgement` — `null` while the finding is still an open question,
 and otherwise the explanation, when it was recorded, who recorded it, and `annotationId`: the
@@ -518,7 +592,8 @@ Feedback needs the `costs:write` permission, the same as explaining; reading it 
 An anomaly usually needs someone to go and look at something. If your organization has
 [Jira](./jira.md) or [Linear](./linear.md) connected, each row on the Anomalies table carries
 a file link that opens an issue prefilled with the day, the dimension, the spend, the
-baseline, the percentage over, and any root-cause hints already computed for it. Once filed,
+baseline, the percentage over, the driving resource and what else moved, and any root-cause
+hints already computed for it. Once filed,
 the row shows the issue key instead, so the same spike doesn't get raised twice.
 
 The two actions sit next to each other and answer different questions: file it when somebody

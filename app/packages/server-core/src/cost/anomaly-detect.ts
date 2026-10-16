@@ -60,6 +60,13 @@ export interface AnomalyDetectionOptions {
   minNewSourceAbs: number;
 }
 
+/**
+ * Days of history a baseline is computed over (excluding the day itself).
+ * Shared by the evaluator and the contributor decomposition so "the baseline"
+ * means the same window in the alert and in its breakdown.
+ */
+export const ANOMALY_BASELINE_DAYS = 28;
+
 export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
   sigmas: 3,
   /** ~$10. Denominated in USD: `optionsForCurrency` converts per series. */

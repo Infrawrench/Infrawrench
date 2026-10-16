@@ -34,8 +34,18 @@ vi.mock("../twilio-pager", () => ({ sendOneShotPage }));
  * choreographed for the evaluator's own query shapes. Default: no hints, which
  * is also what a real failure degrades to.
  */
-const buildAnomalyHints = vi.fn(async (): Promise<string[]> => []);
+const buildAnomalyHints = vi.fn(async (..._args: unknown[]): Promise<string[]> => []);
 vi.mock("../cost/anomaly-hints", () => ({ buildAnomalyHints }));
+
+/**
+ * The contributor breakdown, mocked at its module boundary for the same
+ * reason as the hints: its ranking and its one ClickHouse statement have
+ * their own suite (`anomaly-contributors.test.ts`). Default: null, "could not
+ * compute", which writes nothing and leaves the statement order below as it
+ * always was.
+ */
+const computeAnomalyContributors = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+vi.mock("../cost/anomaly-contributors", () => ({ computeAnomalyContributors }));
 // Event subscriptions have their own suite (event-subscriptions.test.ts); here
 // the extra query would only shift this file's scripted database responses.
 vi.mock("../events/publish", () => ({
@@ -203,6 +213,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
   buildAnomalyHints.mockResolvedValue([]);
+  computeAnomalyContributors.mockResolvedValue(null);
   settingsRow = null;
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   queryCosts.mockResolvedValue([]);
@@ -624,11 +635,11 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
 
     await anomalyEval.detectCostAnomaliesForOrg("org-hints-stored", NOW, OPTS, true);
 
-    expect(buildAnomalyHints).toHaveBeenCalledWith("org-hints-stored", {
-      day: YESTERDAY,
-      dimension: "provider",
-      dimensionKey: "gcp",
-    });
+    expect(buildAnomalyHints).toHaveBeenCalledWith(
+      "org-hints-stored",
+      { day: YESTERDAY, dimension: "provider", dimensionKey: "gcp" },
+      null,
+    );
     expect(hintWrites()).toEqual([HINTS]);
   });
 
@@ -681,6 +692,133 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
     ).resolves.toBeUndefined();
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
+    expect(stampedCount()).toBe(1);
+  });
+});
+
+/** Every `contributors` breakdown written onto an anomaly row this pass. */
+const contributorWrites = () =>
+  pg.queries
+    .filter((q) => q.sql.startsWith('update "cost_anomalies"') && q.sql.includes('"contributors"'))
+    .map((q) => (typeof q.params[0] === "string" ? JSON.parse(q.params[0]) : q.params[0]));
+
+/**
+ * The contributor leg: the evaluator computes the breakdown before the hints
+ * (so they can lead with it), stores it, reuses a fresh one, and puts the
+ * driver into every transport's message and the routing facts.
+ */
+describe("detectCostAnomaliesForOrg: contributors", () => {
+  const CONTRIBUTORS = [
+    {
+      facet: "resource",
+      key: "i-0abc",
+      tagKey: null,
+      label: "web-1",
+      accountId: "acc_prod",
+      resource: {
+        id: "res_1",
+        accountId: "acc_prod",
+        pluginId: "gcp",
+        resourceTypeId: "gce-instance",
+        name: "web-1",
+      },
+      actualCents: 400_000,
+      baselineCents: 0,
+      deltaCents: 400_000,
+      share: 0.8,
+    },
+    {
+      facet: "account",
+      key: "acc_prod",
+      tagKey: null,
+      label: "Production",
+      accountId: "acc_prod",
+      resource: null,
+      actualCents: 475_000,
+      baselineCents: 0,
+      deltaCents: 475_000,
+      share: 0.95,
+    },
+  ];
+
+  function oneNewSource(upsertRow: Record<string, unknown> = { id: "anom1", notifiedAt: null }) {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    pg.queueRows(settingsRow ? [settingsRow] : []);
+    pg.queueRows([upsertRow]);
+  }
+
+  it("stores the breakdown, leads the hints with it, and names the driver everywhere", async () => {
+    computeAnomalyContributors.mockResolvedValue(CONTRIBUTORS);
+    buildAnomalyHints.mockResolvedValue(["lead sentence", "12 gce-instance resources appeared"]);
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-contrib", NOW, OPTS, true);
+
+    expect(computeAnomalyContributors).toHaveBeenCalledWith("org-contrib", {
+      day: YESTERDAY,
+      dimension: "provider",
+      dimensionKey: "gcp",
+      currency: "USD",
+    });
+    expect(contributorWrites()).toEqual([CONTRIBUTORS]);
+    expect(buildAnomalyHints).toHaveBeenCalledWith(
+      "org-contrib",
+      { day: YESTERDAY, dimension: "provider", dimensionKey: "gcp" },
+      { contributor: CONTRIBUTORS[0], currency: "USD" },
+    );
+
+    const [event] = routeAlert.mock.calls[0]! as unknown as [
+      {
+        body: string;
+        pushBody: string;
+        facts: Record<string, unknown>;
+        finding: { details: Array<{ label: string; value: string }>; note?: string };
+      },
+    ];
+    expect(event.body).toContain("What moved: resource web-1 (i-0abc): +$4,000");
+    expect(event.body).toContain("account Production (acc_prod)");
+    // The lead sentence is the breakdown restated; it is not repeated as a lead.
+    expect(event.body).toContain("Around then: 12 gce-instance resources appeared.");
+    expect(event.body).not.toContain("lead sentence");
+    expect(event.pushBody).toContain("Lead sentence.");
+    // Nearly all of the rise sat in one account, so the anomaly is about it.
+    expect(event.facts["accountId"]).toBe("acc_prod");
+    expect(event.finding.details).toContainEqual({
+      label: "Driving resource",
+      value: "resource web-1 (i-0abc) (80% of the rise)",
+    });
+    expect(event.finding.note).toContain("What moved:");
+  });
+
+  it("reuses a breakdown computed within the refresh window", async () => {
+    oneNewSource({
+      id: "anom1",
+      notifiedAt: null,
+      suppressedById: null,
+      contributors: JSON.stringify(CONTRIBUTORS),
+      contributorsComputedAt: "2026-07-15 11:00:00",
+    });
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-contrib-fresh", NOW, OPTS, true);
+
+    expect(computeAnomalyContributors).not.toHaveBeenCalled();
+    expect(contributorWrites()).toEqual([]);
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string }];
+    expect(event.body).toContain("What moved: resource web-1 (i-0abc)");
+  });
+
+  it("delivers without a breakdown, and without an account fact, when it cannot be computed", async () => {
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-contrib-none", NOW, OPTS, true);
+
+    expect(contributorWrites()).toEqual([]);
+    const [event] = routeAlert.mock.calls[0]! as unknown as [
+      { body: string; facts: Record<string, unknown> },
+    ];
+    expect(event.body).not.toContain("What moved");
+    expect(event.facts["accountId"]).toBeUndefined();
     expect(stampedCount()).toBe(1);
   });
 });

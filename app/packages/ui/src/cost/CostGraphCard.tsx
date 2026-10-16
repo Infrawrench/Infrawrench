@@ -119,6 +119,12 @@ export interface CostGraphCardProps {
    * hides the action rather than offering one that would fail.
    */
   onSaveAsReport?: ((config: CostGraphConfig, name: string) => Promise<void>) | undefined;
+  /**
+   * A bucket to draw attention to (`YYYY-MM-DD` for a daily chart): a shaded
+   * band behind it, the way an anomaly breakdown marks the day it is about.
+   * Drawn only when the chart has that bucket; it carries no data of its own.
+   */
+  highlightBucket?: string | undefined;
 }
 
 /** A value waiting for the user to say which dimension to drill into it by. */
@@ -245,6 +251,7 @@ function SpendGraphCard({
   annotationReportName,
   onConversion,
   onSaveAsReport,
+  highlightBucket,
 }: CostGraphCardProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -1065,6 +1072,18 @@ function SpendGraphCard({
             with no annotations at all: `ifOverflow="hidden"` keeps that true
             even if a bucket ever went missing between the two renders.
           */}
+          {highlightBucket && (
+            <ReferenceArea
+              x1={highlightBucket}
+              x2={highlightBucket}
+              ifOverflow="hidden"
+              fill={chart.tick}
+              fillOpacity={0.18}
+              stroke={chart.tick}
+              strokeOpacity={0.5}
+              strokeDasharray="3 3"
+            />
+          )}
           {markers.map((marker) => (
             <Fragment key={marker.bucket}>
               {marker.endBucket && (

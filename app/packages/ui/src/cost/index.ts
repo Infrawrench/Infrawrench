@@ -35,6 +35,10 @@ export { CostsPanel, type CostsPanelProps } from "./CostsPanel.js";
 export { TagGovernanceSection } from "./TagGovernanceSection.js";
 export { CostAnomaliesSection, type CostAnomaliesSectionProps } from "./CostAnomaliesSection.js";
 export {
+  CostAnomalyBreakdownModal,
+  type CostAnomalyBreakdownModalProps,
+} from "./CostAnomalyBreakdownModal.js";
+export {
   CostChangeAlertsSection,
   CostChangeAlertConfigModal,
   alertToInput,

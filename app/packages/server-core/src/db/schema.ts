@@ -22,6 +22,7 @@ import type {
   BillingRuleAdjustment,
   ManagedAccountPricing,
   BillingRuleMatch,
+  CostAnomalyContributor,
   CostExportDestination,
   CostExportQuery,
   EscalationPolicy,
@@ -1697,6 +1698,20 @@ export const costAnomalies = pgTable(
       (): AnyPgColumn => costAnomalySuppressions.id,
       { onDelete: "set null" },
     ),
+    /**
+     * What moved underneath the flagged key: the day's rise decomposed by
+     * resource, account, region, usage unit, charge type and tag value, a few
+     * per facet, ranked by contribution (`cost/anomaly-contributors.ts`).
+     * Org-wide figures, computed with no cost visibility scope; the read side
+     * folds what a scoped viewer may not see. Null until computed.
+     */
+    contributors: jsonb("contributors").$type<CostAnomalyContributor[]>(),
+    /**
+     * When `contributors` was last computed. Null means never, which is what
+     * the read side's lazy backfill looks for: an empty list computed on
+     * purpose is not recomputed on every read.
+     */
+    contributorsComputedAt: timestamp("contributors_computed_at"),
   },
   (t) => ({
     onceUnique: uniqueIndex("cost_anomalies_once_unique").on(

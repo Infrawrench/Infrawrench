@@ -16,9 +16,11 @@ import type {
 import type {
   CostAnomalyFeedbackInput,
   CostAnomalySuppressionInput,
+  CostReportInput,
 } from "@infrawrench/client-core";
 import {
   acknowledgeCloudCostAnomaly,
+  createCloudCostReport,
   annotateCloudBudgetAlert,
   listCloudBudgetAlertEvents,
   createCloudBudget,
@@ -150,6 +152,9 @@ export function createDesktopCostsClient(): CostsClient {
       listCloudBusinessMetricImportRuns(requireOrgId(), metricId, limit),
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
+    // An anomaly breakdown's "Save as cost report": the same cloud write the
+    // reports panel makes.
+    createCostReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),
     // Explaining a finding is org-level cloud state like the tuning below it,
     // so desktop gets the composer too rather than a list it can only read.
     acknowledgeAnomaly: (anomalyId: string, explanation: string) =>

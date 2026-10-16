@@ -351,7 +351,18 @@ export function costTools(): ToolDefinition[] {
         "started costing money; it has no baseline, so never quote a percentage for one.\n\n" +
         "`hints` are facts the detector collected from the change timeline and audit log around " +
         "the anomalous day ('12 gce-instance resources appeared'); they are leads, not " +
-        "conclusions. `acknowledgement` is present when somebody has already established what " +
+        "conclusions.\n\n" +
+        "`contributors` is a measurement, not a lead: the anomalous day's rise over its baseline " +
+        "decomposed by resource, account, region, usage unit, charge type and tag value, each " +
+        "with its own baseline, actual, delta and `share` of the whole rise. The `resource` row " +
+        "with the largest delta (when it carries at least 20% of the rise) is the driving " +
+        "resource; `key` is its provider id and `resource` the synced inventory row, when there " +
+        "is one. When explaining an anomaly, cite the contributors by name and amount ('i-0abc " +
+        "(web-1) in Production rose $420 over its $12/day baseline, 64% of the rise') before " +
+        "reaching for hints, and say so when there are none (the provider may not report " +
+        "resource ids). A row with `other: true` stands for spend outside the caller's cost " +
+        "visibility; never speculate about what it is.\n\n" +
+        "`acknowledgement` is present when somebody has already established what " +
         "the finding was; say so rather than re-deriving it, and never contradict it without " +
         "saying you are. Use an id from here with acknowledge_cost_anomaly or " +
         "give_cost_anomaly_feedback. `feedback` is the verdict (expected or unexpected) and who " +
@@ -371,7 +382,9 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         const days = (input["days"] as number | undefined) ?? 30;
-        return ok(await listRecentCostAnomalies(auth.organizationId, days));
+        return ok(
+          await listRecentCostAnomalies(auth.organizationId, days, { backfillContributors: true }),
+        );
       },
     },
 
@@ -381,7 +394,7 @@ export function costTools(): ToolDefinition[] {
       description:
         "Record what a detected anomaly actually was, in a sentence, and publish that sentence " +
         "as a dated annotation on **every** cost chart covering the anomalous day. This is the " +
-        "tool for the case where you have worked out the cause, from the hints, the change " +
+        "tool for the case where you have worked out the cause, from the contributors, the hints, the change " +
         "timeline, a deployment, a workflow run, and the knowledge would otherwise be lost the " +
         "moment the conversation ends.\n\n" +
         "Write what happened, not what the numbers did: the row already says spend tripled, and " +

@@ -216,6 +216,10 @@ export function createWebCostsClient(orgId: string): CostsClient {
       );
       return res.anomalies;
     },
+    // An anomaly breakdown's "Save as cost report". Offered unconditionally like
+    // the annotation writes: the server enforces `costs:write`.
+    createCostReport: (input: CostReportInput) =>
+      apiPost<CostReport>(`/api/org/${orgId}/cost-reports`, input),
     // Offered unconditionally, like the annotation writes: the server enforces
     // `costs:write`, so a viewer's 403 surfaces as the action's error rather
     // than as an action that quietly isn't there.

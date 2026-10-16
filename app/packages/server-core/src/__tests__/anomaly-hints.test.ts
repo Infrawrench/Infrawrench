@@ -7,6 +7,7 @@ vi.mock("../db/client", () => ({ db: {} }));
 import {
   anomalyHintWindow,
   composeAnomalyHints,
+  leadContributorHint,
   MAX_ANOMALY_HINTS,
   type AuditHintEntry,
   type ChangeAggregate,
@@ -147,5 +148,39 @@ describe("composeAnomalyHints — merged ranking", () => {
     // The strongest fact from each source survives the cap.
     expect(hints).toContain("12 gce-instance resources appeared");
     expect(hints).toContain("Astrid lifted a change freeze early");
+  });
+});
+
+describe("leadContributorHint", () => {
+  const contributor = {
+    facet: "resource" as const,
+    key: "i-0abc",
+    tagKey: null,
+    label: "web-1",
+    accountId: "acc_a",
+    resource: null,
+    actualCents: 43_200,
+    baselineCents: 1_200,
+    deltaCents: 42_000,
+    share: 0.64,
+  };
+
+  it("states the share and the rise, with what the timeline saw happen to it", () => {
+    expect(leadContributorHint({ contributor, currency: "USD" })).toBe(
+      "resource web-1 (i-0abc) carried 64% of the rise (+$420)",
+    );
+    expect(
+      leadContributorHint({ contributor, currency: "USD", changeKinds: ["updated", "created"] }),
+    ).toBe("resource web-1 (i-0abc) carried 64% of the rise (+$420), and appeared in the window");
+  });
+
+  it("always leads the list, ahead of every timeline or audit hint", () => {
+    const hints = composeAnomalyHints(
+      [created("gce-instance", 12)],
+      [audit("change_freeze.end"), audit("workflow.run")],
+      "lead",
+    );
+    expect(hints[0]).toBe("lead");
+    expect(hints).toHaveLength(MAX_ANOMALY_HINTS);
   });
 });
