@@ -29,6 +29,12 @@ export interface PdfChartSeries {
    * rather than as one more stacked bar.
    */
   overlay?: boolean | undefined;
+  /**
+   * Drawn as its own bar beside each category's bar (or stack) rather than in
+   * it: the previous period as paired bars. Bar charts only; a line or area
+   * chart draws it as a line, like an overlay.
+   */
+  paired?: boolean | undefined;
 }
 
 export type PdfBlock =

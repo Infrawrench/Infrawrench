@@ -375,6 +375,13 @@ type CostGraphConfig struct {
 	Measure    *string `json:"measure,omitempty"`
 	UsageUnit  *string `json:"usageUnit,omitempty"`
 	Cumulative *bool   `json:"cumulative,omitempty"`
+	// The axis options, omitempty for the same reason: a config that never
+	// mentions them is byte-identical on the wire. XAxis absent is the date
+	// axis; ComparisonStyle absent is the dashed comparison line.
+	XAxis           *string `json:"xAxis,omitempty"`
+	XAxisTagKey     *string `json:"xAxisTagKey,omitempty"`
+	SegmentByDate   *bool   `json:"segmentByDate,omitempty"`
+	ComparisonStyle *string `json:"comparisonStyle,omitempty"`
 }
 
 // CostReportInput is the POST/PUT body. FolderID is nullable so that moving a

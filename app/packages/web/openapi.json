@@ -8356,7 +8356,7 @@
         "properties": {
           "bucket": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The bin's start date (YYYY-MM-DD), or, when the request set `xAxis`, the dimension value this point belongs to (`__other__` for the folded remainder).",
             "example": "2026-07-01"
           },
           "amount": {
@@ -8541,6 +8541,67 @@
         "additionalProperties": false,
         "description": "What an adjusted answer did. Present whenever the request asked to be adjusted, even for an organisation with no rules; its absence means, and can only mean, that every figure in the response is exactly what the providers charged."
       },
+      "CostDimension": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "account",
+          "service",
+          "region",
+          "resource",
+          "tag",
+          "charge_type",
+          "commitment",
+          "virtual_tag"
+        ]
+      },
+      "CostXAxisInfo": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/CostDimension"
+          },
+          "tagKey": {
+            "type": "string"
+          },
+          "segment": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dimension",
+              "date"
+            ],
+            "description": "What each series is: one per `groupBy` value (`dimension`), one per date bin (`date`; the series key is the bin start), or one unsegmented series per currency (`none`)."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The axis values in drawing order: ranked by spend, then `__other__`."
+          }
+        },
+        "required": [
+          "dimension",
+          "segment",
+          "values"
+        ],
+        "additionalProperties": false,
+        "description": "Set when the request put a dimension on the X axis. Every series point (and every comparison point) is then keyed by dimension value rather than date, and the comparison is folded onto the current period's values so each value is compared with itself."
+      },
       "CostQueryResponse": {
         "type": "object",
         "properties": {
@@ -8599,6 +8660,9 @@
           "usageUnit": {
             "type": "string",
             "description": "The unit a `usage` response is in."
+          },
+          "xAxis": {
+            "$ref": "#/components/schemas/CostXAxisInfo"
           }
         },
         "required": [
@@ -8619,20 +8683,6 @@
           "cumulative"
         ],
         "description": "Time bucket of the x axis. Weeks start on Monday and quarters on the first of January, April, July and October (UTC). `cumulative` is the older spelling of daily bins with `cumulative: true`, kept so stored configs and existing clients keep working. `hourly` is refused with a 400 while no connected account stores hourly cost rows: every provider's spend is collected per UTC day today (see `granularity` on /costs/status)."
-      },
-      "CostDimension": {
-        "type": "string",
-        "enum": [
-          "provider",
-          "account",
-          "service",
-          "region",
-          "resource",
-          "tag",
-          "charge_type",
-          "commitment",
-          "virtual_tag"
-        ]
       },
       "CostFilterOperator": {
         "type": "string",
@@ -8799,6 +8849,26 @@
           "cumulative": {
             "type": "boolean",
             "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
+          },
+          "xAxis": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDimension"
+              },
+              {
+                "description": "Put this dimension's values on the X axis instead of date bins: one bar per value, ranked by spend over the range, the top `topN` then `__other__`. `groupBy` then segments each bar (or set `segmentByDate` to segment by bin instead). Omitted is the date axis. Refused with a forecast, a scenario, a running total, the `count` measure or a unit-cost chart, which all need dates."
+              }
+            ]
+          },
+          "xAxisTagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Required when `xAxis` is `tag` or `virtual_tag`: which key's values go on the axis."
+          },
+          "segmentByDate": {
+            "type": "boolean",
+            "description": "With `xAxis` and `groupBy: none`: segment each bar by date bin (one series per bin). Refused alongside a `groupBy`; ignored without `xAxis`."
           }
         },
         "required": [
@@ -10310,6 +10380,34 @@
             "type": "boolean",
             "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
           },
+          "xAxis": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDimension"
+              },
+              {
+                "description": "Put this dimension's values on the X axis instead of date bins: one bar per value, ranked by spend over the range, the top `topN` then `__other__`. `groupBy` then segments each bar (or set `segmentByDate` to segment by bin instead). Omitted is the date axis. Refused with a forecast, a scenario, a running total, the `count` measure or a unit-cost chart, which all need dates."
+              }
+            ]
+          },
+          "xAxisTagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Required when `xAxis` is `tag` or `virtual_tag`: which key's values go on the axis."
+          },
+          "segmentByDate": {
+            "type": "boolean",
+            "description": "With `xAxis` and `groupBy: none`: segment each bar by date bin (one series per bin). Refused alongside a `groupBy`; ignored without `xAxis`."
+          },
+          "comparisonStyle": {
+            "type": "string",
+            "enum": [
+              "line",
+              "bars"
+            ],
+            "description": "How `comparePreviousPeriod` is drawn: `line` (omitted) is the dashed totals line, `bars` a previous-period bar beside each bar (bar charts only). Tables always list previous, change and change % columns."
+          },
           "unitCostMetricId": {
             "type": "string",
             "description": "Divide spend by this business metric (an id, so a key rename never re-points the graph)."
@@ -10749,6 +10847,28 @@
           "cumulative": {
             "type": "boolean",
             "description": "Running totals from the start of the range, at any bin size. Omitted is off. Totals then report the last point rather than the sum."
+          },
+          "xAxis": {
+            "type": "string",
+            "enum": [
+              "date",
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment",
+              "virtual_tag"
+            ],
+            "description": "Put a dimension on the X axis for this run, or `date` to put the date bins back on a report saved with a dimension axis. A dimension axis drops the saved forecast and scenario for the run; a count or running total falls back to the date axis."
+          },
+          "xAxisTagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Required when `xAxis` is `tag` or `virtual_tag`: which key's values go on the axis."
           }
         },
         "additionalProperties": false
@@ -65535,7 +65655,7 @@
           "Cost reports"
         ],
         "summary": "Run a cost report",
-        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. The body is optional: the report *is* the query, so a caller never has to reassemble its config to get the numbers. It may carry one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`) that apply to this run only and are never saved; switching a run to `usage` or `count` drops the saved forecast, scenario and billing rules, which only apply to money.\n\n_Requires permission: `costs:read`._",
+        "description": "Executes the report's saved config and returns the series, along with the inclusive window a relative preset resolved to. The body is optional: the report *is* the query, so a caller never has to reassemble its config to get the numbers. It may carry one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`, `xAxis`) that apply to this run only and are never saved; switching a run to `usage` or `count` drops the saved forecast, scenario and billing rules, which only apply to money.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {

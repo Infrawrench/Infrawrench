@@ -101,10 +101,21 @@ describe("costResponseBlocks", () => {
     expect(chart?.kind).toBe("chart");
     if (chart?.kind !== "chart") throw new Error("expected a chart");
     expect(chart.categories).toEqual(["Sep 1", "Sep 2", "Sep 3"]);
-    expect(chart.series.map((s) => s.label)).toEqual(["AWS", "Other", "Forecast"]);
+    expect(chart.series.map((s) => s.label)).toEqual([
+      "AWS",
+      "Other",
+      "Previous period",
+      "Forecast",
+    ]);
     expect(chart.series[0]?.values).toEqual([10, 20, null]);
     expect(chart.series[1]?.color).toBe(OTHER_SERIES_COLOR);
-    expect(chart.series[2]).toMatchObject({ color: FORECAST_COLOR, dashed: true, overlay: true });
+    // The previous period lands positionally, as the card's dashed line does.
+    expect(chart.series[2]).toMatchObject({
+      values: [15, null, null],
+      dashed: true,
+      overlay: true,
+    });
+    expect(chart.series[3]).toMatchObject({ color: FORECAST_COLOR, dashed: true, overlay: true });
 
     const table = blocks[1];
     if (table?.kind !== "table") throw new Error("expected a table");
@@ -244,5 +255,88 @@ describe("KPI and text cards", () => {
       { kind: "text", text: "See the runbook (https://example.com/r)." },
     ]);
     expect(card.highlight).toBeNull();
+  });
+});
+
+describe("costResponseBlocks on a dimension X axis", () => {
+  const response = {
+    series: [
+      {
+        key: "",
+        label: "Total",
+        currency: "USD",
+        points: [
+          { bucket: "ec2", amount: 120 },
+          { bucket: "__other__", amount: 30 },
+        ],
+      },
+    ],
+    comparison: [
+      {
+        key: "",
+        label: "Total",
+        currency: "USD",
+        points: [
+          { bucket: "ec2", amount: 100 },
+          { bucket: "__other__", amount: 40 },
+        ],
+      },
+    ],
+    currencies: ["USD"],
+    totals: { USD: 150 },
+    previousTotals: { USD: 140 },
+    xAxis: {
+      dimension: "service" as const,
+      segment: "none" as const,
+      values: [
+        { key: "ec2", label: "EC2" },
+        { key: "__other__", label: "Other" },
+      ],
+    },
+  };
+
+  it("charts one category per value with the previous period as paired bars", () => {
+    const { blocks, totalChange } = costResponseBlocks(
+      {
+        ...DEFAULT_COST_GRAPH_CONFIG,
+        groupBy: "none",
+        xAxis: "service",
+        comparePreviousPeriod: true,
+        comparisonStyle: "bars",
+      },
+      response,
+    );
+    const chart = blocks[0];
+    if (chart?.kind !== "chart") throw new Error("expected a chart");
+    expect(chart.categories).toEqual(["EC2", "Other"]);
+    expect(chart.series[0]?.values).toEqual([120, 30]);
+    expect(chart.series[1]).toMatchObject({
+      label: "Previous period",
+      values: [100, 40],
+      paired: true,
+    });
+
+    const table = blocks[1];
+    if (table?.kind !== "table") throw new Error("expected a table");
+    expect(table.columns).toEqual(["Service", "Spend", "Previous period", "Change", "Change %"]);
+    expect(table.rows[0]).toEqual(["EC2", "$120", "$100", "+$20.00", "+20.0%"]);
+    expect(table.rows[1]).toEqual(["Other", "$30.00", "$40.00", "-$10.00", "-25.0%"]);
+    expect(table.rows.at(-1)).toEqual(["Total", "$150", "$140", "+$10.00", "+7.1%"]);
+    expect(totalChange).toBe("+7.1%");
+  });
+
+  it("keeps the dashed line for the line style", () => {
+    const { blocks } = costResponseBlocks(
+      {
+        ...DEFAULT_COST_GRAPH_CONFIG,
+        groupBy: "none",
+        xAxis: "service",
+        comparePreviousPeriod: true,
+      },
+      response,
+    );
+    const chart = blocks[0];
+    if (chart?.kind !== "chart") throw new Error("expected a chart");
+    expect(chart.series[1]).toMatchObject({ dashed: true, overlay: true });
   });
 });

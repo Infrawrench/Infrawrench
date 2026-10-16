@@ -20,6 +20,7 @@ import {
   COST_RANGE_PRESETS,
   costGraphConfigSchema,
   type CostBasis,
+  type CostDimensionId,
   type BusinessMetric,
   type CostGraphConfig,
   type CostScenarioModel,
@@ -227,6 +228,11 @@ export function CostGraphConfigModal({
   const keyedGroupBy =
     config.groupBy === "tag" || config.groupBy === "virtual_tag" ? config.groupBy : null;
   const tagKeys = keyedGroupBy ? (keyOptions[keyedGroupBy] ?? []) : [];
+  /** The X axis dimension when it is a keyed one, which needs its own key picker. */
+  const keyedXAxis = config.xAxis === "tag" || config.xAxis === "virtual_tag" ? config.xAxis : null;
+  const xAxisKeys = keyedXAxis ? (keyOptions[keyedXAxis] ?? []) : [];
+  const dimensionAxis = Boolean(config.xAxis);
+  const barChart = config.chartType === "stacked_bar" || config.chartType === "multi_bar";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -313,13 +319,51 @@ export function CostGraphConfigModal({
     });
 
   useEffect(() => {
-    if (!keyedGroupBy || keyOptions[keyedGroupBy]) return;
-    const pseudo = keyedGroupBy === "tag" ? "tag-keys" : "virtual-tag-keys";
-    void api
-      .loadDimensionValues(pseudo)
-      .then((options) => setKeyOptions((prev) => ({ ...prev, [keyedGroupBy]: options })))
-      .catch(() => setKeyOptions((prev) => ({ ...prev, [keyedGroupBy]: [] })));
-  }, [api, keyedGroupBy, keyOptions]);
+    for (const keyed of [keyedGroupBy, keyedXAxis]) {
+      if (!keyed || keyOptions[keyed]) continue;
+      const pseudo = keyed === "tag" ? "tag-keys" : "virtual-tag-keys";
+      void api
+        .loadDimensionValues(pseudo)
+        .then((options) => setKeyOptions((prev) => ({ ...prev, [keyed]: options })))
+        .catch(() => setKeyOptions((prev) => ({ ...prev, [keyed]: [] })));
+    }
+  }, [api, keyedGroupBy, keyedXAxis, keyOptions]);
+
+  /**
+   * Put a dimension (or the date bins) on the X axis. Everything that only
+   * means something over time goes with the dates: the forecast and its
+   * scenario, the running total, the count measure and unit costs. A pie has
+   * no X axis, so it becomes a stacked bar. A segment equal to the new axis is
+   * cleared rather than stored as a combination the card would refuse.
+   */
+  const setXAxis = (value: "date" | CostDimensionId) =>
+    setConfig((prev) => {
+      const next: CostGraphConfig = { ...prev };
+      delete next.xAxisTagKey;
+      if (value === "date") {
+        delete next.xAxis;
+        delete next.segmentByDate;
+        return next;
+      }
+      next.xAxis = value;
+      if (next.groupBy === value) {
+        next.groupBy = "none";
+        delete next.groupByTagKey;
+      }
+      next.showForecast = false;
+      delete next.scenarioModelId;
+      delete next.cumulative;
+      if (next.binning === "cumulative") next.binning = "daily";
+      if (isCostTotalsChart(next.chartType)) next.chartType = "stacked_bar";
+      if (next.measure === "count") delete next.measure;
+      delete next.unitCostMetricId;
+      delete next.unitCostMode;
+      delete next.unitCostScale;
+      delete next.unitCostUsageUnit;
+      delete next.unitCostLabelFilters;
+      delete next.unitCostGroupByLabel;
+      return next;
+    });
 
   const set = (patch: Partial<CostGraphConfig>) =>
     setConfig((prev) => ({ ...prev, ...patch }) as CostGraphConfig);
@@ -339,7 +383,12 @@ export function CostGraphConfigModal({
       // other display option, so an untouched card's config stays byte-stable.
       ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),
       unitCostLabelFilters: labelFilters.length > 0 ? labelFilters : undefined,
-    };
+      // The same rule for the axis options: stored only when they say
+      // something, so an untouched card keeps the config it had.
+      segmentByDate: config.xAxis && config.segmentByDate ? true : undefined,
+      comparisonStyle:
+        config.comparePreviousPeriod && config.comparisonStyle === "bars" ? "bars" : undefined,
+    } satisfies CostGraphConfig;
     const parsed = costGraphConfigSchema.safeParse(cleaned);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? gt("Invalid configuration"));
@@ -399,8 +448,9 @@ export function CostGraphConfigModal({
                   <option
                     key={t}
                     value={t}
-                    // A count is one series: a pie of it is a single slice.
-                    disabled={measure === "count" && isCostTotalsChart(t)}
+                    // A count is one series: a pie of it is a single slice. A
+                    // pie has no X axis to put a dimension on.
+                    disabled={(measure === "count" || dimensionAxis) && isCostTotalsChart(t)}
                   >
                     {gtData(CHART_TYPE_LABELS[t])}
                   </option>
@@ -441,7 +491,8 @@ export function CostGraphConfigModal({
                 onChange={(e) => setMeasure(e.target.value as CostMeasure)}
               >
                 {COST_MEASURES.map((m) => (
-                  <option key={m} value={m}>
+                  // Count is per date bin; a dimension axis has none.
+                  <option key={m} value={m} disabled={m === "count" && dimensionAxis}>
                     {gtData(COST_MEASURE_LABELS[m])}
                   </option>
                 ))}
@@ -503,26 +554,57 @@ export function CostGraphConfigModal({
                 <option value="custom">{gt("Custom…")}</option>
               </select>
             </div>
+            {!isCostTotalsChart(config.chartType) && (
+              <div>
+                <label htmlFor={`${uid}-x-axis`} className={labelClass}>
+                  {gt("X axis")}
+                </label>
+                <select
+                  id={`${uid}-x-axis`}
+                  className={selectClass}
+                  value={config.xAxis ?? "date"}
+                  aria-describedby={dimensionAxis ? `${uid}-x-axis-hint` : undefined}
+                  onChange={(e) => setXAxis(e.target.value as "date" | CostDimensionId)}
+                >
+                  <option value="date">{gt("Date")}</option>
+                  {COST_DIMENSIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {gtData(DIMENSION_LABELS[d])}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label htmlFor={`${uid}-group-by`} className={labelClass}>
-                {gt("Group by")}
+                {dimensionAxis ? gt("Segment by") : gt("Group by")}
               </label>
               <select
                 id={`${uid}-group-by`}
                 className={selectClass}
-                value={config.groupBy}
+                value={dimensionAxis && config.segmentByDate ? "__date__" : config.groupBy}
                 onChange={(e) =>
-                  set({
-                    groupBy: e.target.value as CostGraphConfig["groupBy"],
-                    // A provider tag key means nothing as a virtual tag key and
-                    // vice versa, so switching dimension clears the choice.
-                    groupByTagKey: undefined,
-                  })
+                  e.target.value === "__date__"
+                    ? set({ groupBy: "none", groupByTagKey: undefined, segmentByDate: true })
+                    : set({
+                        groupBy: e.target.value as CostGraphConfig["groupBy"],
+                        // A provider tag key means nothing as a virtual tag key and
+                        // vice versa, so switching dimension clears the choice.
+                        groupByTagKey: undefined,
+                        segmentByDate: undefined,
+                      })
                 }
               >
                 <option value="none">{gt("None")}</option>
+                {dimensionAxis && <option value="__date__">{gt("Date bin")}</option>}
                 {COST_DIMENSIONS.map((d) => (
-                  <option key={d} value={d}>
+                  <option
+                    key={d}
+                    value={d}
+                    // The same dimension on both would split every bar into
+                    // exactly one segment; keyed ones differ by key.
+                    disabled={dimensionAxis && d === config.xAxis && !keyedXAxis}
+                  >
                     {gtData(DIMENSION_LABELS[d])}
                   </option>
                 ))}
@@ -558,7 +640,33 @@ export function CostGraphConfigModal({
             </p>
           )}
 
-          {measure === "cost" && (
+          {dimensionAxis && (
+            <p id={`${uid}-x-axis-hint`} className="text-[11px] text-on-surface-faint -mt-2">
+              {gt(
+                "One bar per value, ranked by spend over the whole range; values past the top groups fold into Other. Forecasts and running totals need the date axis.",
+              )}
+            </p>
+          )}
+
+          {keyedXAxis && (
+            <div>
+              <label htmlFor={`${uid}-x-axis-key`} className={labelClass}>
+                {keyedXAxis === "tag" ? gt("X axis tag key") : gt("X axis virtual tag")}
+              </label>
+              <TagKeySelect
+                id={`${uid}-x-axis-key`}
+                className={selectClass}
+                options={xAxisKeys}
+                value={config.xAxisTagKey ?? ""}
+                onChange={(xAxisTagKey) => set({ xAxisTagKey })}
+                emptyLabel={
+                  keyedXAxis === "tag" ? gt("Choose a tag key…") : gt("Choose a virtual tag…")
+                }
+              />
+            </div>
+          )}
+
+          {measure === "cost" && !dimensionAxis && (
             <UnitCostConfigFields api={api} config={config} set={set} metrics={metrics} />
           )}
 
@@ -674,8 +782,9 @@ export function CostGraphConfigModal({
               <input
                 type="checkbox"
                 checked={config.showForecast}
-                // A forecast projects spend; usage and count have no trend to fit.
-                disabled={measure !== "cost"}
+                // A forecast projects spend; usage and count have no trend to
+                // fit, and a dimension axis has no future to project onto.
+                disabled={measure !== "cost" || dimensionAxis}
                 onChange={(e) => set({ showForecast: e.target.checked })}
               />
               {gt("Forecast")}
@@ -685,13 +794,40 @@ export function CostGraphConfigModal({
                 type="checkbox"
                 checked={cumulative}
                 // Summing per-bin counts would count one service once per bin,
-                // and a unit cost is a ratio per bin.
-                disabled={measure === "count" || Boolean(config.unitCostMetricId)}
+                // a unit cost is a ratio per bin, and a dimension axis has no
+                // bins to run a total across.
+                disabled={measure === "count" || Boolean(config.unitCostMetricId) || dimensionAxis}
                 onChange={(e) => set({ cumulative: e.target.checked || undefined })}
               />
               {gt("Cumulative")}
             </label>
           </div>
+
+          {/*
+            How the previous period is drawn. Bar charts only: paired bars
+            beside a line or an area would be two marks pretending to be one
+            comparison. The table always lists previous, change and change %.
+          */}
+          {config.comparePreviousPeriod && barChart && (
+            <div>
+              <label htmlFor={`${uid}-comparison-style`} className={labelClass}>
+                {gt("Show the previous period as")}
+              </label>
+              <select
+                id={`${uid}-comparison-style`}
+                className={selectClass}
+                value={config.comparisonStyle ?? "line"}
+                onChange={(e) =>
+                  set({
+                    comparisonStyle: e.target.value === "bars" ? "bars" : undefined,
+                  })
+                }
+              >
+                <option value="line">{gt("A dashed totals line")}</option>
+                <option value="bars">{gt("Paired bars beside each bar")}</option>
+              </select>
+            </div>
+          )}
 
           {/* The scenario picker. Only offered alongside the forecast, because
               a scenario adjusts the projected region and there is nothing to

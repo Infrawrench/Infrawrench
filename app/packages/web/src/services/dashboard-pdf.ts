@@ -28,9 +28,11 @@ import {
   OTHER_GROUP_KEY,
   OTHER_SERIES_COLOR,
   SCENARIO_COLOR,
+  costCategoryChart,
   costQueryForConfig,
   costSeriesTotal,
   effectiveCostBinning,
+  totalPerBucket,
   isCostTotalsChart,
   describeCostConversion,
   orderDashboardCards,
@@ -136,14 +138,21 @@ export function describeConfig(config: CostGraphConfig, from: string, to: string
   } else if (config.measure === "count") {
     parts.push(COST_MEASURE_LABELS.count.toLowerCase());
   }
-  if (config.groupBy !== "none") {
-    parts.push(
-      `by ${
-        config.groupBy === "tag"
-          ? `tag ${config.groupByTagKey ?? ""}`.trim()
-          : COST_DIMENSION_LABELS[config.groupBy as CostDimensionId].toLowerCase()
-      }`,
-    );
+  const dimensionName = (dimension: CostDimensionId, tagKey: string | undefined) =>
+    dimension === "tag"
+      ? `tag ${tagKey ?? ""}`.trim()
+      : dimension === "virtual_tag"
+        ? `virtual tag ${tagKey ?? ""}`.trim()
+        : COST_DIMENSION_LABELS[dimension].toLowerCase();
+  if (config.xAxis && !isCostTotalsChart(config.chartType)) {
+    parts.push(`${dimensionName(config.xAxis, config.xAxisTagKey)} on the x axis`);
+    if (config.groupBy !== "none") {
+      parts.push(`segmented by ${dimensionName(config.groupBy, config.groupByTagKey)}`);
+    } else if (config.segmentByDate) {
+      parts.push("segmented by date bin");
+    }
+  } else if (config.groupBy !== "none") {
+    parts.push(`by ${dimensionName(config.groupBy, config.groupByTagKey)}`);
   }
   if (config.costBasis) parts.push(`${COST_BASIS_LABELS[config.costBasis].toLowerCase()} basis`);
   if (config.adjusted) parts.push("billing rules applied");
@@ -165,6 +174,34 @@ function pctChange(current: number, previous: number): string {
   if (previous === 0) return "new";
   const pct = ((current - previous) / previous) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+/** A signed change in the card's unit: "+$12.00", "-$3.40". */
+function signedChange(current: number, previous: number, format: PdfValueFormat): string {
+  const change = current - previous;
+  return `${change > 0 ? "+" : change < 0 ? "-" : ""}${formatPdfValue(Math.abs(change), format)}`;
+}
+
+/** The muted grey a previous period is drawn in, as on the card. */
+const PREVIOUS_PERIOD_COLOR = "#9ca3af";
+
+/**
+ * The previous period as a chart series: paired bars beside each bar when the
+ * config asks for them on a bar chart, the dashed totals line otherwise.
+ */
+function previousPeriodSeries(
+  config: CostGraphConfig,
+  values: Array<number | null>,
+): PdfChartSeries {
+  const bars =
+    config.comparisonStyle === "bars" &&
+    (config.chartType === "stacked_bar" || config.chartType === "multi_bar");
+  return {
+    label: "Previous period",
+    values,
+    color: PREVIOUS_PERIOD_COLOR,
+    ...(bars ? { paired: true } : { dashed: true, overlay: true }),
+  };
 }
 
 /** Map one cost query response onto blocks: the chart, then the totals. */
@@ -206,6 +243,19 @@ export function costResponseBlocks(
 
   const label = (key: string, l: string) => (key === OTHER_GROUP_KEY ? "Other" : l || "Total");
 
+  // A dimension on the X axis: one category per value, laid out (with the
+  // previous period paired by value) by the same client-core function the
+  // card and the phone use.
+  if (response.xAxis && !isCostTotalsChart(config.chartType)) {
+    return dimensionAxisBlocks(config, response, {
+      bin,
+      format,
+      valueFormat,
+      measureHeader,
+      primary,
+    });
+  }
+
   if (isCostTotalsChart(config.chartType)) {
     blocks.push({
       kind: "pie",
@@ -227,6 +277,8 @@ export function costResponseBlocks(
       for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.amount;
       return values;
     });
+    // Previous bucket #n against bucket #n, the rule the card's line uses.
+    const previous = response.comparison ? totalPerBucket(response.comparison) : null;
     const tableRows = buckets.map((b, i) => {
       const cells = grid.map((values) => {
         const v = values[i];
@@ -236,13 +288,32 @@ export function costResponseBlocks(
         (sum, s) => sum + (s.points.find((p) => p.bucket === b)?.amount ?? 0),
         0,
       );
-      return [shortDate(b, bin), ...cells, formatPdfValue(total, format)];
+      const row = [shortDate(b, bin), ...cells, formatPdfValue(total, format)];
+      if (previous) {
+        const prev = previous[i]?.amount;
+        row.push(
+          prev === undefined ? "-" : formatPdfValue(prev, format),
+          prev === undefined ? "-" : signedChange(total, prev, format),
+          prev === undefined ? "-" : pctChange(total, prev),
+        );
+      }
+      return row;
     });
     blocks.push({
       kind: "table",
-      columns: ["Period", ...shown.map((s) => label(s.key, s.label)), "Total"],
+      columns: [
+        "Period",
+        ...shown.map((s) => label(s.key, s.label)),
+        "Total",
+        ...(previous ? ["Previous period", "Change", "Change %"] : []),
+      ],
       rows: tableRows.slice(-MAX_TABLE_ROWS),
-      align: ["left", ...shown.map(() => "right" as const), "right"],
+      align: [
+        "left",
+        ...shown.map(() => "right" as const),
+        "right",
+        ...(previous ? (["right", "right", "right"] as const) : []),
+      ],
     });
   } else {
     const index = new Map(buckets.map((b, i) => [b, i]));
@@ -255,6 +326,16 @@ export function costResponseBlocks(
         ...(s.key === OTHER_GROUP_KEY ? { color: OTHER_SERIES_COLOR } : {}),
       };
     });
+    if (response.comparison) {
+      // Positional, like the card: previous bucket #n lands on bucket #n.
+      const previous = totalPerBucket(response.comparison.filter((c) => c.currency === primary));
+      const observed = new Set(series.flatMap((s) => s.points.map((p) => p.bucket)));
+      let at = 0;
+      const values = buckets.map((b) =>
+        observed.has(b) ? (previous[at++]?.amount ?? null) : null,
+      );
+      chartSeries.push(previousPeriodSeries(config, values));
+    }
     if (response.forecast && response.forecast.length > 0) {
       const values = new Array<number | null>(buckets.length).fill(null);
       for (const p of response.forecast) values[index.get(p.bucket) ?? 0] = p.amount;
@@ -363,6 +444,142 @@ export function costResponseBlocks(
   if (currencies.length > 1) {
     notes.push(
       `Charted in ${primary}; spend in ${currencies.slice(1).join(", ")} is listed above.`,
+    );
+  }
+  for (const note of notes) blocks.push({ kind: "text", text: note, tone: "muted" });
+
+  const primaryTotal = primary !== undefined ? (response.totals[primary] ?? 0) : null;
+  const prevTotal = primary !== undefined ? response.previousTotals?.[primary] : undefined;
+  return {
+    blocks,
+    total:
+      primary !== undefined && primaryTotal !== null
+        ? formatPdfValue(primaryTotal, valueFormat(primary))
+        : null,
+    totalChange:
+      primaryTotal !== null && prevTotal !== undefined ? pctChange(primaryTotal, prevTotal) : null,
+  };
+}
+
+/**
+ * A dimension-X-axis response as blocks: the bars (or table) per value, then a
+ * per-value table with the previous period and the change beside each, since
+ * a value is what this chart is about. Mixed currencies chart the primary one,
+ * as on the date axis.
+ */
+function dimensionAxisBlocks(
+  config: CostGraphConfig,
+  response: CostQueryResponse,
+  ctx: {
+    bin: CostBinSize;
+    format: PdfValueFormat;
+    valueFormat: (currency: string) => PdfValueFormat;
+    measureHeader: string;
+    primary: string | undefined;
+  },
+): { blocks: PdfBlock[]; total: string | null; totalChange: string | null } {
+  const { format, valueFormat, primary } = ctx;
+  const blocks: PdfBlock[] = [];
+  const charted: CostQueryResponse = {
+    ...response,
+    series: response.series.filter((s) => !primary || s.currency === primary),
+    ...(response.comparison
+      ? { comparison: response.comparison.filter((s) => !primary || s.currency === primary) }
+      : {}),
+  };
+  const chart = costCategoryChart(charted, ctx.bin);
+  const xAxis = response.xAxis!;
+  const axisHeader =
+    xAxis.dimension === "tag" || xAxis.dimension === "virtual_tag"
+      ? (xAxis.tagKey ?? COST_DIMENSION_LABELS[xAxis.dimension])
+      : COST_DIMENSION_LABELS[xAxis.dimension];
+
+  if (config.chartType !== "table") {
+    const series: PdfChartSeries[] = chart.series.map((s) => ({
+      label: s.isOther ? "Other" : s.label || "Total",
+      values: s.values,
+      ...(s.isOther ? { color: OTHER_SERIES_COLOR } : {}),
+    }));
+    if (chart.previous) series.push(previousPeriodSeries(config, chart.previous));
+    blocks.push({
+      kind: "chart",
+      chartType: config.chartType as "line" | "area" | "stacked_bar" | "multi_bar",
+      categories: chart.categories.map((c) => c.label),
+      series,
+      format,
+    });
+  }
+
+  // One row per value: its total, and with a comparison, the previous period
+  // and the change. The table view is exactly this table, with the segments.
+  const shown = config.chartType === "table" ? chart.series.slice(0, 5) : [];
+  const rows = chart.categories.map((c, i) => {
+    const total = chart.totals[i] ?? 0;
+    const row = [
+      c.label,
+      ...shown.map((s) => {
+        const v = s.values[i];
+        return v === null || v === undefined ? "-" : formatPdfValue(v, format);
+      }),
+      formatPdfValue(total, format),
+    ];
+    if (chart.previous) {
+      const prev = chart.previous[i];
+      row.push(
+        prev === null || prev === undefined ? "-" : formatPdfValue(prev, format),
+        prev === null || prev === undefined ? "-" : signedChange(total, prev, format),
+        prev === null || prev === undefined ? "-" : pctChange(total, prev),
+      );
+    }
+    return row;
+  });
+  for (const currency of response.currencies) {
+    const total = response.totals[currency] ?? 0;
+    const prev = response.previousTotals?.[currency];
+    const row = [
+      response.currencies.length > 1 ? `Total (${currency})` : "Total",
+      ...shown.map(() => ""),
+      formatPdfValue(total, valueFormat(currency)),
+    ];
+    if (chart.previous) {
+      row.push(
+        prev === undefined ? "-" : formatPdfValue(prev, valueFormat(currency)),
+        prev === undefined ? "-" : signedChange(total, prev, valueFormat(currency)),
+        prev === undefined ? "-" : pctChange(total, prev),
+      );
+    }
+    rows.push(row);
+  }
+  blocks.push({
+    kind: "table",
+    columns: [
+      axisHeader,
+      ...shown.map((s) => (s.isOther ? "Other" : s.label || "Total")),
+      ctx.measureHeader,
+      ...(chart.previous ? ["Previous period", "Change", "Change %"] : []),
+    ],
+    rows: rows.slice(0, MAX_TABLE_ROWS),
+    align: [
+      "left",
+      ...shown.map(() => "right" as const),
+      "right",
+      ...(chart.previous ? (["right", "right", "right"] as const) : []),
+    ],
+  });
+
+  const notes: string[] = [];
+  if (response.conversion) {
+    const note = describeCostConversion(response.conversion);
+    if (note) notes.push(note);
+  }
+  if (response.adjustment) {
+    notes.push(
+      "Billing rules applied: these are adjusted figures, not what the providers charged.",
+    );
+  }
+  if (response.currencies.length > 1) {
+    notes.push(
+      `Charted in ${primary}; spend in ${response.currencies.slice(1).join(", ")} is in the totals.`,
     );
   }
   for (const note of notes) blocks.push({ kind: "text", text: note, tone: "muted" });

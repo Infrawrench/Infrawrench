@@ -43,6 +43,10 @@ var (
 	costReportChartTypes = []string{"stacked_bar", "multi_bar", "line", "area", "pie", "donut", "table"}
 	costReportBinnings   = []string{"daily", "weekly", "monthly", "quarterly", "cumulative"}
 	costReportMeasures   = []string{"cost", "usage", "count"}
+	// costReportXAxes is `date` (the bins, which the wire spells by omitting
+	// the field) plus every dimension a report can group by.
+	costReportXAxes            = append([]string{"date"}, costDimensions...)
+	costReportComparisonStyles = []string{"line", "bars"}
 
 	// costReportGroupBy is the filter dimensions plus the explicit "no grouping"
 	// option, which the server spells `none` rather than omitting the key.
@@ -78,6 +82,10 @@ type costReportConfigModel struct {
 	Measure               types.String `tfsdk:"measure"`
 	UsageUnit             types.String `tfsdk:"usage_unit"`
 	Cumulative            types.Bool   `tfsdk:"cumulative"`
+	XAxis                 types.String `tfsdk:"x_axis"`
+	XAxisTagKey           types.String `tfsdk:"x_axis_tag_key"`
+	SegmentByDate         types.Bool   `tfsdk:"segment_by_date"`
+	ComparisonStyle       types.String `tfsdk:"comparison_style"`
 	DateRange             types.Object `tfsdk:"date_range"`
 	Filter                types.List   `tfsdk:"filter"`
 }
@@ -123,6 +131,10 @@ var costReportConfigAttrTypes = map[string]attr.Type{
 	"measure":                  types.StringType,
 	"usage_unit":               types.StringType,
 	"cumulative":               types.BoolType,
+	"x_axis":                   types.StringType,
+	"x_axis_tag_key":           types.StringType,
+	"segment_by_date":          types.BoolType,
+	"comparison_style":         types.StringType,
 	"date_range":               costReportDateRangeObjectType,
 	"filter":                   types.ListType{ElemType: costFilterObjectType},
 }
@@ -298,6 +310,34 @@ func (r *costReportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 						Optional: true,
 						MarkdownDescription: "Draw running totals from the start of the range instead of " +
 							"per-bin values, at any bin size. Omitted is off.",
+					},
+					"x_axis": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "What goes on the X axis. One of `" + joinBackticked(costReportXAxes) +
+							"`; omitted (or `date`) is the date bins. A dimension draws one bar per value, " +
+							"ranked by spend over the range with values past `top_n` folded into Other, and " +
+							"`group_by` then segments each bar. A dimension axis cannot be combined with " +
+							"`show_forecast`, `cumulative`, a `count` measure or `unit_cost_metric_id`, nor " +
+							"with a `pie` or `donut` `chart_type`; the server rejects those combinations.",
+						Validators: []validator.String{oneOfValidator(costReportXAxes...)},
+					},
+					"x_axis_tag_key": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "With `x_axis` set to `tag` or `virtual_tag`: which key's values " +
+							"go on the axis, 1–256 characters.",
+						Validators: []validator.String{stringvalidator.LengthBetween(1, 256)},
+					},
+					"segment_by_date": schema.BoolAttribute{
+						Optional: true,
+						MarkdownDescription: "With a dimension `x_axis` and `group_by = \"none\"`: split each " +
+							"bar by date bin instead of by a second dimension. Omitted is off.",
+					},
+					"comparison_style": schema.StringAttribute{
+						Optional: true,
+						MarkdownDescription: "How `compare_previous_period` is drawn: `line` (omitted) is the " +
+							"dashed totals line, `bars` a previous-period bar paired beside each bar (bar " +
+							"chart types only). Table views always list previous, change and change % columns.",
+						Validators: []validator.String{oneOfValidator(costReportComparisonStyles...)},
 					},
 				},
 				Blocks: map[string]schema.Block{
@@ -564,8 +604,21 @@ func costReportInputFrom(ctx context.Context, model costReportResourceModel) (iw
 			Measure:               stringPtr(cfg.Measure),
 			UsageUnit:             stringPtr(cfg.UsageUnit),
 			Cumulative:            boolPtr(cfg.Cumulative),
+			XAxis:                 xAxisPtr(cfg.XAxis),
+			XAxisTagKey:           stringPtr(cfg.XAxisTagKey),
+			SegmentByDate:         boolPtr(cfg.SegmentByDate),
+			ComparisonStyle:       stringPtr(cfg.ComparisonStyle),
 		},
 	}, diags
+}
+
+// xAxisPtr sends a dimension and omits `date`: the wire spells the date axis
+// by leaving the field out, and the server's enum has no `date` member.
+func xAxisPtr(v types.String) *string {
+	if v.ValueString() == "date" {
+		return nil
+	}
+	return stringPtr(v)
 }
 
 // costReportStateFrom maps a server report into Terraform state.
@@ -632,6 +685,20 @@ func costReportStateFrom(ctx context.Context, remote *iw.CostReport, prior costR
 	if cumulative.IsNull() {
 		cumulative = priorConfig.Cumulative
 	}
+	// The axis options follow the same rule. `x_axis = "date"` is never on the
+	// wire at all, so an absent axis keeps whatever the config said.
+	xAxis := stringValue(remote.Config.XAxis)
+	if xAxis.IsNull() {
+		xAxis = priorConfig.XAxis
+	}
+	segmentByDate := boolValue(remote.Config.SegmentByDate)
+	if segmentByDate.IsNull() {
+		segmentByDate = priorConfig.SegmentByDate
+	}
+	comparisonStyle := stringValue(remote.Config.ComparisonStyle)
+	if comparisonStyle.IsNull() {
+		comparisonStyle = priorConfig.ComparisonStyle
+	}
 
 	config, d := types.ObjectValueFrom(ctx, costReportConfigAttrTypes, costReportConfigModel{
 		ChartType:             types.StringValue(remote.Config.ChartType),
@@ -654,6 +721,10 @@ func costReportStateFrom(ctx context.Context, remote *iw.CostReport, prior costR
 		Measure:               measure,
 		UsageUnit:             usageUnit,
 		Cumulative:            cumulative,
+		XAxis:                 xAxis,
+		XAxisTagKey:           stringValue(remote.Config.XAxisTagKey),
+		SegmentByDate:         segmentByDate,
+		ComparisonStyle:       comparisonStyle,
 		DateRange:             dateRange,
 		Filter:                filters,
 	})

@@ -17,7 +17,13 @@
  * they still parse to exactly these shapes.
  */
 
-import type { CostBinningId, CostGraphConfig, CostMeasure, CostQueryResponse } from "./costs";
+import type {
+  CostBinningId,
+  CostDimensionId,
+  CostGraphConfig,
+  CostMeasure,
+  CostQueryResponse,
+} from "./costs";
 
 /** Bounds the API enforces on report names and descriptions. */
 export const COST_REPORT_LIMITS = {
@@ -142,6 +148,14 @@ export interface CostReportRunOverrides {
   usageUnit?: string | undefined;
   binning?: CostBinningId | undefined;
   cumulative?: boolean | undefined;
+  /**
+   * Put a dimension on the X axis for this run (`"date"` puts the date bins
+   * back on a report saved with a dimension axis). Running a dimension axis
+   * drops the saved forecast and scenario, which need dates to project over.
+   */
+  xAxis?: CostDimensionId | "date" | undefined;
+  /** With a keyed `xAxis` ("tag", "virtual_tag"): which key. */
+  xAxisTagKey?: string | undefined;
 }
 
 /**
@@ -173,6 +187,34 @@ export function applyCostReportRunOverrides(
   if (overrides.usageUnit) next.usageUnit = overrides.usageUnit;
   // `binning: "cumulative"` plus an explicit toggle-off means daily bins.
   if (overrides.cumulative === false && next.binning === "cumulative") next.binning = "daily";
+  if (overrides.xAxis === "date") {
+    delete next.xAxis;
+    delete next.xAxisTagKey;
+    delete next.segmentByDate;
+  } else if (overrides.xAxis) {
+    next.xAxis = overrides.xAxis;
+    if (overrides.xAxisTagKey) next.xAxisTagKey = overrides.xAxisTagKey;
+    else delete next.xAxisTagKey;
+    // A segment equal to the new axis would be refused; one bar per value is
+    // what was asked for.
+    if (next.groupBy === overrides.xAxis) {
+      next.groupBy = "none";
+      delete next.groupByTagKey;
+    }
+    next.showForecast = false;
+    delete next.scenarioModelId;
+  }
+  // Whatever the overrides combined into, a dimension axis cannot carry a
+  // count or a running total: the date axis comes back rather than the run
+  // failing on a combination nobody saved.
+  if (
+    next.xAxis &&
+    (next.measure === "count" || next.cumulative === true || next.binning === "cumulative")
+  ) {
+    delete next.xAxis;
+    delete next.xAxisTagKey;
+    delete next.segmentByDate;
+  }
   return next;
 }
 

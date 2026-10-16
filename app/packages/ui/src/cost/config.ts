@@ -44,6 +44,7 @@ import {
   COST_FILTER_OPS,
   costFilterOpError,
   COST_MEASURES,
+  COST_COMPARISON_STYLES,
   costDisplayProblem,
   COST_QUERY_MAX_LENGTH,
   COST_RANGE_PRESETS,
@@ -207,6 +208,11 @@ export {
   formatCostMeasureValue,
   costSeriesTotal,
   isCostTotalsChart,
+  COST_COMPARISON_STYLES,
+  COST_COMPARISON_STYLE_LABELS,
+  type CostComparisonStyle,
+  type CostXAxis,
+  type CostXAxisValue,
   type CostBinSize,
   type CostMeasure,
   type CostGranularity,
@@ -644,6 +650,15 @@ const costGraphConfigObjectSchema = z.object({
   measure: z.enum(COST_MEASURES).optional(),
   usageUnit: z.string().min(1).max(64).optional(),
   cumulative: z.boolean().optional(),
+  /**
+   * A dimension on the X axis, the date-bin segment flag and the comparison
+   * style. Optional, never defaulted, like the rest: absent is the date axis
+   * and the dashed comparison line every stored card already draws.
+   */
+  xAxis: z.enum(COST_DIMENSIONS).optional(),
+  xAxisTagKey: z.string().min(1).max(256).optional(),
+  segmentByDate: z.boolean().optional(),
+  comparisonStyle: z.enum(COST_COMPARISON_STYLES).optional(),
 });
 
 /**
@@ -659,7 +674,16 @@ function refineCostGraphConfig(
   ctx: z.RefinementCtx,
 ): void {
   const problem = costDisplayProblem({ ...config, forecast: config.showForecast });
-  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["measure"] });
+  if (problem) {
+    // Point an axis problem at the axis, so an editor (or a Terraform plan)
+    // highlights the field that has to change.
+    const path =
+      config.xAxis &&
+      !costDisplayProblem({ ...config, forecast: config.showForecast, xAxis: undefined })
+        ? ["xAxis"]
+        : ["measure"];
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path });
+  }
 }
 
 export const costGraphConfigSchema = costGraphConfigObjectSchema.superRefine(refineCostGraphConfig);
@@ -670,6 +694,8 @@ export const costReportRunOverridesSchema = z.object({
   usageUnit: z.string().min(1).max(64).optional(),
   binning: z.enum(COST_BINNINGS).optional(),
   cumulative: z.boolean().optional(),
+  xAxis: z.enum(["date", ...COST_DIMENSIONS]).optional(),
+  xAxisTagKey: z.string().min(1).max(256).optional(),
 });
 
 /** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
@@ -1391,6 +1417,14 @@ export const costQueryRequestSchema = z.object({
   measure: z.enum(COST_MEASURES).optional(),
   usageUnit: z.string().min(1).max(64).optional(),
   cumulative: z.boolean().optional(),
+  /**
+   * A dimension on the X axis instead of date bins. The cross-field rules
+   * (a keyed axis names its key, no forecast or running total on it) are
+   * enforced by the service through `costDisplayProblem`, like the measure's.
+   */
+  xAxis: z.enum(COST_DIMENSIONS).optional(),
+  xAxisTagKey: z.string().min(1).max(256).optional(),
+  segmentByDate: z.boolean().optional(),
 });
 
 /**

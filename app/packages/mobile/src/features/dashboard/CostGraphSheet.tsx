@@ -198,9 +198,17 @@ export function CostGraphSheet({
       />
       <ChipSelect
         label="Chart type"
+        hint={
+          // The X axis is edited on web and desktop; the sheet keeps it and
+          // says so, rather than offering a pie that would drop it.
+          config.xAxis
+            ? "This card puts a dimension on its X axis (set on web or desktop), so pie and donut are unavailable."
+            : undefined
+        }
         options={
-          // A count is one series: a pie of it would be a single slice.
-          measure === "count"
+          // A count is one series: a pie of it would be a single slice. A pie
+          // has no X axis to keep a dimension on.
+          measure === "count" || config.xAxis
             ? CHART_TYPE_OPTIONS.filter((o) => !isCostTotalsChart(o.value))
             : CHART_TYPE_OPTIONS
         }

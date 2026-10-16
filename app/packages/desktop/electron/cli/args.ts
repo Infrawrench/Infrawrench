@@ -93,6 +93,16 @@ export interface RangeFlags {
   unit?: string | undefined;
   /** `costs`/`reports --cumulative`: running totals instead of per-bin values. */
   cumulative?: boolean | undefined;
+  /**
+   * `costs`/`reports --x-axis <dimension>`: one bar per value of a dimension
+   * instead of date bins (`date` puts the bins back on a report saved with a
+   * dimension axis). Raw so the command validates it like `--group-by`.
+   */
+  xAxis?: string | undefined;
+  /** `costs --segment-by-date`: with `--x-axis` and no group-by, split each value by bin. */
+  segmentByDate?: boolean | undefined;
+  /** `costs --compare`: add the previous period of the same length, with the change. */
+  compare?: boolean | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -481,6 +491,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         bin: { type: "string" },
         unit: { type: "string" },
         cumulative: { type: "boolean", default: false },
+        // `costs`/`reports` axis options: a dimension on X, and the previous period.
+        "x-axis": { type: "string" },
+        "segment-by-date": { type: "boolean", default: false },
+        compare: { type: "boolean", default: false },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
         // `costs --anomalies`: same command, different question.
@@ -755,6 +769,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       bin: str("bin"),
       unit: str("unit"),
       cumulative: values.cumulative === true,
+      xAxis: str("x-axis"),
+      segmentByDate: values["segment-by-date"] === true,
+      compare: values.compare === true,
       chargeTypes: Array.isArray(multi["charge-type"]) ? multi["charge-type"] : [],
     },
     deploy: {

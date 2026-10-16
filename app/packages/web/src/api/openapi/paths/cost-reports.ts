@@ -13,6 +13,9 @@ import type { BuildContext } from "../context";
 import {
   CostBinning,
   CostCumulative,
+  CostSegmentByDate,
+  CostXAxis,
+  CostXAxisTagKey,
   CostMeasure,
   CostQueryResponse,
   CostUsageUnit,
@@ -102,6 +105,17 @@ export const CostGraphConfig = strict({
   measure: CostMeasure.optional(),
   usageUnit: CostUsageUnit.optional(),
   cumulative: CostCumulative.optional(),
+  xAxis: CostXAxis.optional(),
+  xAxisTagKey: CostXAxisTagKey.optional(),
+  segmentByDate: CostSegmentByDate.optional(),
+  comparisonStyle: z
+    .enum(["line", "bars"])
+    .optional()
+    .describe(
+      "How `comparePreviousPeriod` is drawn: `line` (omitted) is the dashed totals line, " +
+        "`bars` a previous-period bar beside each bar (bar charts only). Tables always list " +
+        "previous, change and change % columns.",
+    ),
   unitCostMetricId: z
     .string()
     .optional()
@@ -195,6 +209,26 @@ const CostReportRunOverrides = strict({
   usageUnit: CostUsageUnit.optional(),
   binning: CostBinning.optional(),
   cumulative: CostCumulative.optional(),
+  xAxis: z
+    .enum([
+      "date",
+      "provider",
+      "account",
+      "service",
+      "region",
+      "resource",
+      "tag",
+      "charge_type",
+      "commitment",
+      "virtual_tag",
+    ])
+    .optional()
+    .describe(
+      "Put a dimension on the X axis for this run, or `date` to put the date bins back on a " +
+        "report saved with a dimension axis. A dimension axis drops the saved forecast and " +
+        "scenario for the run; a count or running total falls back to the date axis.",
+    ),
+  xAxisTagKey: CostXAxisTagKey.optional(),
 }).openapi("CostReportRunOverrides");
 
 const CostReportRunResult = strict({
@@ -372,7 +406,7 @@ export function registerCostReportPaths(ctx: BuildContext) {
       "Executes the report's saved config and returns the series, along with the inclusive " +
       "window a relative preset resolved to. The body is optional: the report *is* the query, " +
       "so a caller never has to reassemble its config to get the numbers. It may carry " +
-      "one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`) that apply " +
+      "one-off display overrides (`measure`, `usageUnit`, `binning`, `cumulative`, `xAxis`) that apply " +
       "to this run only and are never saved; switching a run to `usage` or `count` drops the " +
       "saved forecast, scenario and billing rules, which only apply to money.",
     request: {

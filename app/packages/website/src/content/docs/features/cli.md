@@ -100,6 +100,7 @@ infrawrench costs --group-by tag:team    # one tag's values, e.g. a Kubernetes n
 infrawrench costs --last 12m --bin quarter --cumulative          # running quarterly totals
 infrawrench costs --measure count --group-by service              # how many services were billed each day
 infrawrench costs --measure usage --unit Hrs --group-by service   # summed usage quantity in one unit
+infrawrench costs --x-axis service --compare                     # one bar per service, with the change since last period
 infrawrench costs --group-by virtual_tag:team      # a virtual tag key; virtual_tag['team'] works too
 infrawrench costs --group-by tag:env     # any tag; Kubernetes labels: k8s_node_label:team, k8s_pvc_label:<key>
 infrawrench costs tag-keys               # the tag keys in your cost data, with the --group-by value for each

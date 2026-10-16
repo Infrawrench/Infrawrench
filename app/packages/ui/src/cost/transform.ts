@@ -7,7 +7,7 @@
  * live in `@infrawrench/client-core` (mobile draws the same charts with SVG);
  * they are re-exported here so recharts callers still import one module.
  */
-import { binForecast, totalPerBucket } from "@infrawrench/client-core";
+import { binForecast, costCategoryChart, totalPerBucket } from "@infrawrench/client-core";
 import type { CostBinningId, CostQueryResponse, CostQuerySeries } from "./config.js";
 
 export {
@@ -21,13 +21,19 @@ export {
 export interface ChartSeriesDef {
   /** recharts dataKey: group key made collision-safe. */
   dataKey: string;
+  /** The series' group key as the API returned it: what a drill narrows to. */
+  key: string;
   label: string;
   currency: string;
   isOther: boolean;
 }
 
 export interface PivotedChart {
-  /** One row per bucket: { bucket: "2026-07-01", s0: 12.3, s1: 4.5, ... } */
+  /**
+   * One row per bucket: { bucket: "2026-07-01", s0: 12.3, s1: 4.5, ... }. On a
+   * dimension X axis `bucket` is the dimension value and {@link LABEL_KEY}
+   * carries its display label.
+   */
   rows: Array<Record<string, string | number | null>>;
   series: ChartSeriesDef[];
 }
@@ -35,6 +41,38 @@ export interface PivotedChart {
 export const COMPARISON_KEY = "__previous__";
 export const FORECAST_KEY = "__forecast__";
 export const SCENARIO_KEY = "__scenario__";
+/** A dimension-axis row's display label (its `bucket` is the raw value). */
+export const LABEL_KEY = "__label__";
+
+/**
+ * Rows for a dimension-X-axis response: one per value in the server's order
+ * (ranked by spend, "Other" last), a column per segment, and the previous
+ * period paired by value. The layout itself is client-core's
+ * `costCategoryChart`, shared with mobile and the PDF.
+ */
+export function pivotDimensionAxis(
+  response: CostQueryResponse,
+  binning: CostBinningId,
+): PivotedChart {
+  const chart = costCategoryChart(response, binning);
+  const series: ChartSeriesDef[] = chart.series.map((s, i) => ({
+    dataKey: `s${i}`,
+    key: s.key,
+    label: s.label,
+    currency: s.currency,
+    isOther: s.isOther,
+  }));
+  const rows = chart.categories.map((c, at) => {
+    const row: Record<string, string | number | null> = { bucket: c.key, [LABEL_KEY]: c.label };
+    chart.series.forEach((s, i) => {
+      const v = s.values[at];
+      if (v !== null && v !== undefined) row[`s${i}`] = v;
+    });
+    if (chart.previous) row[COMPARISON_KEY] = chart.previous[at] ?? null;
+    return row;
+  });
+  return { rows, series };
+}
 
 /**
  * Pivot per-group series into recharts rows keyed by bucket. Series order is
@@ -45,6 +83,7 @@ export const SCENARIO_KEY = "__scenario__";
 export function pivotSeries(series: CostQuerySeries[]): PivotedChart {
   const defs: ChartSeriesDef[] = series.map((s, i) => ({
     dataKey: `s${i}`,
+    key: s.key,
     label:
       s.currency && new Set(series.map((x) => x.currency)).size > 1
         ? `${s.label} (${s.currency})`

@@ -131,7 +131,9 @@ export function costReportTools(): ToolDefinition[] {
         "list_cost_dimension_values dimension=usage-units) or 'count' (how many distinct values " +
         "of the report's group-by had nonzero cost per bin, e.g. how many services were billed " +
         "each day; its total is a distinct count over the whole range). Switching to usage or " +
-        "count drops the report's forecast, scenario and billing rules for that run. When the " +
+        "count drops the report's forecast, scenario and billing rules for that run. `xAxis` " +
+        "puts a dimension on the X axis for this run ('date' puts the dates back); its result " +
+        "points are keyed by value, listed in `result.xAxis.values`. When the " +
         "result carries `measure`, its amounts are not money: say so.",
       inputSchema: { reportId: z.string(), ...costReportRunOverridesSchema.shape },
       risk: "read",

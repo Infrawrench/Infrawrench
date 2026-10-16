@@ -107,3 +107,27 @@ describe("usage units", () => {
     expect(ch.lastQuery()).toContain("`cost_daily`.`usage_unit` != ''");
   });
 });
+
+describe("dimension X axis", () => {
+  it("puts the X dimension ahead of the segment in one group key, keeping date buckets", async () => {
+    await queryCosts("org", { ...baseQuery, xAxis: "provider", groupBy: "region" });
+    const sql = ch.lastQuery();
+    expect(sql).toContain("concat(");
+    expect(sql).toContain("`cost_daily`.`plugin_id`");
+    expect(sql).toContain("`cost_daily`.`region`");
+    // The bins stay in the scan: conversion picks each day's rate from them.
+    expect(sql).toContain("toStartOfQuarter(`day`)");
+  });
+
+  it("groups by the X dimension alone when there is no segment dimension", async () => {
+    await queryCosts("org", {
+      ...baseQuery,
+      xAxis: "region",
+      groupBy: "none",
+      segmentByDate: true,
+    });
+    const sql = ch.lastQuery();
+    expect(sql).not.toContain("concat(");
+    expect(sql).toContain("`region` as `grp`");
+  });
+});

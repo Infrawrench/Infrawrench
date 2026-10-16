@@ -344,6 +344,22 @@ export function CostReportsPanel({
     if (created) onSelectReport?.(created.id);
   }
 
+  /**
+   * Keep a drilled-down view of a report as a report of its own, filed beside
+   * the one it came from. The original is untouched: drilling never edits it.
+   */
+  async function saveDrilledReport(report: CostReport, config: CostGraphConfig, name: string) {
+    const clean =
+      normalizeCostReportName(name) ??
+      duplicateCostReportName(
+        report.name,
+        (reports ?? []).map((r) => r.name),
+      );
+    const created = await client.createReport?.({ ...toInput(report), name: clean, config });
+    await refresh();
+    if (created) onSelectReport?.(created.id);
+  }
+
   async function deleteReport(report: CostReport) {
     const where =
       report.placements.length > 0
@@ -507,6 +523,9 @@ export function CostReportsPanel({
             onDuplicate={() => void duplicateReport(selected)}
             onDelete={() => void deleteReport(selected)}
             onPlace={() => setPlacing(selected)}
+            onSaveDrilled={
+              canWrite ? (config, name) => saveDrilledReport(selected, config, name) : undefined
+            }
             onShare={
               onShare
                 ? () =>
@@ -1095,6 +1114,7 @@ function ReportDetail({
   onPlace,
   onShare,
   onOpenDashboard,
+  onSaveDrilled,
 }: {
   report: CostReport;
   folderPath: string | null;
@@ -1110,6 +1130,8 @@ function ReportDetail({
   onPlace: () => void;
   onShare?: (() => void) | undefined;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
+  /** Save a drilled-down view as a new report; absent for a reader. */
+  onSaveDrilled?: ((config: CostGraphConfig, name: string) => Promise<void>) | undefined;
 }) {
   const gt = useGT();
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -1272,6 +1294,7 @@ function ReportDetail({
           // ones, and a note written from it defaults to this report's scope.
           annotationReportId={report.id}
           annotationReportName={report.name}
+          onSaveAsReport={onSaveDrilled}
         />
       </div>
 

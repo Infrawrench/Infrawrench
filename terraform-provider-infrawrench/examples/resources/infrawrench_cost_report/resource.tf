@@ -42,3 +42,23 @@ resource "infrawrench_cost_report" "services_billed" {
     }
   }
 }
+
+# One bar per service, split by region, with last period paired beside each bar.
+resource "infrawrench_cost_report" "services_vs_last_month" {
+  name = "Services this month vs last"
+
+  config {
+    chart_type              = "stacked_bar"
+    binning                 = "monthly"
+    x_axis                  = "service"
+    group_by                = "region"
+    top_n                   = 8
+    compare_previous_period = true
+    comparison_style        = "bars"
+
+    date_range {
+      kind   = "relative"
+      preset = "mtd"
+    }
+  }
+}
