@@ -136,6 +136,10 @@ function toCostDailyRow(
     // back to the amortized one, a reported zero is a real share.
     blended_amount: r.blendedAmount ?? 0,
     blended_reported: r.blendedAmount === undefined ? 0 : 1,
+    // Absent means "the provider did not say": savings count the row as
+    // having saved nothing, never as costing nothing on demand.
+    on_demand_amount: r.onDemandAmount ?? 0,
+    on_demand_reported: r.onDemandAmount === undefined ? 0 : 1,
   };
 }
 
