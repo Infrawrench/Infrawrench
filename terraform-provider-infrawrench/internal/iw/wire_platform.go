@@ -596,10 +596,14 @@ type ManagedAccountInput struct {
 	ApplyBillingRules *bool   `json:"applyBillingRules,omitempty"`
 	// Pricing is always sent by the provider; the API keeps the saved
 	// settings when it is absent, which only matters to other clients.
-	Pricing       *ManagedAccountPricing `json:"pricing,omitempty"`
-	Notes         *string                `json:"notes"`
-	CostCentreIDs []string               `json:"costCentreIds"`
-	AccountIDs    []string               `json:"accountIds"`
+	Pricing *ManagedAccountPricing `json:"pricing,omitempty"`
+	Notes   *string                `json:"notes"`
+	// BillingProfileID is always sent, null included: the API leaves the saved
+	// profile alone only when the key is absent, and a provider that omitted it
+	// could never clear one.
+	BillingProfileID *string  `json:"billingProfileId"`
+	CostCentreIDs    []string `json:"costCentreIds"`
+	AccountIDs       []string `json:"accountIds"`
 }
 
 // ManagedAccountPricing is how a customer's invoice is priced beyond the
@@ -652,12 +656,82 @@ type ManagedAccount struct {
 	ApplyBillingRules bool                  `json:"applyBillingRules"`
 	Pricing           ManagedAccountPricing `json:"pricing"`
 	Notes             *string               `json:"notes"`
+	BillingProfileID  *string               `json:"billingProfileId"`
 	CostCentreIDs     []string              `json:"costCentreIds"`
 	AccountIDs        []string              `json:"accountIds"`
 	InvoiceCount      int64                 `json:"invoiceCount"`
 	CreatedByUserID   *string               `json:"createdByUserId"`
 	CreatedAt         string                `json:"createdAt"`
 	UpdatedAt         string                `json:"updatedAt"`
+}
+
+/* ----------------------------- billing profiles ---------------------------- */
+
+// BillingProfileTaxRate is a tax charged on an invoice's subtotal as its own line.
+type BillingProfileTaxRate struct {
+	Name string  `json:"name"`
+	Rate float64 `json:"rate"`
+}
+
+// BillingProfileBank is where a customer pays. Every field may be null; the
+// API drops an all-null block to null.
+type BillingProfileBank struct {
+	AccountName   *string `json:"accountName"`
+	BankName      *string `json:"bankName"`
+	IBAN          *string `json:"iban"`
+	BIC           *string `json:"bic"`
+	AccountNumber *string `json:"accountNumber"`
+	RoutingNumber *string `json:"routingNumber"`
+	Instructions  *string `json:"instructions"`
+}
+
+// BillingProfileInput is the POST/PUT body. Logo is a PNG or JPEG data URL;
+// it is always sent, null included, so removing it from configuration removes
+// it from the profile.
+type BillingProfileInput struct {
+	Name               string                  `json:"name"`
+	LegalName          *string                 `json:"legalName"`
+	Address            *string                 `json:"address"`
+	TaxID              *string                 `json:"taxId"`
+	PONumber           *string                 `json:"poNumber"`
+	ToEmails           []string                `json:"toEmails"`
+	CcEmails           []string                `json:"ccEmails"`
+	Currency           *string                 `json:"currency"`
+	PaymentTermsDays   *int64                  `json:"paymentTermsDays"`
+	NumberPrefix       string                  `json:"numberPrefix"`
+	NumberIncludesYear bool                    `json:"numberIncludesYear"`
+	NumberStart        int64                   `json:"numberStart"`
+	TaxRates           []BillingProfileTaxRate `json:"taxRates"`
+	Bank               *BillingProfileBank     `json:"bank"`
+	Footer             *string                 `json:"footer"`
+	Logo               *string                 `json:"logo"`
+}
+
+// BillingProfile is reusable invoice settings shared by the customers
+// assigned to it: addressee, recipients, currency, terms, tax, numbering and
+// remittance details. Approved invoices carry their own frozen copy.
+type BillingProfile struct {
+	ID                 string                  `json:"id"`
+	Name               string                  `json:"name"`
+	LegalName          *string                 `json:"legalName"`
+	Address            *string                 `json:"address"`
+	TaxID              *string                 `json:"taxId"`
+	PONumber           *string                 `json:"poNumber"`
+	ToEmails           []string                `json:"toEmails"`
+	CcEmails           []string                `json:"ccEmails"`
+	Currency           *string                 `json:"currency"`
+	PaymentTermsDays   *int64                  `json:"paymentTermsDays"`
+	NumberPrefix       string                  `json:"numberPrefix"`
+	NumberIncludesYear bool                    `json:"numberIncludesYear"`
+	NumberStart        int64                   `json:"numberStart"`
+	TaxRates           []BillingProfileTaxRate `json:"taxRates"`
+	Bank               *BillingProfileBank     `json:"bank"`
+	Footer             *string                 `json:"footer"`
+	Logo               *string                 `json:"logo"`
+	ManagedAccountIDs  []string                `json:"managedAccountIds"`
+	CreatedByUserID    *string                 `json:"createdByUserId"`
+	CreatedAt          string                  `json:"createdAt"`
+	UpdatedAt          string                  `json:"updatedAt"`
 }
 
 /* ----------------------------- deploy triggers ----------------------------- */

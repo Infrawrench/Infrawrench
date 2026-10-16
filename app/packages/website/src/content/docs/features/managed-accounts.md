@@ -32,6 +32,7 @@ If a customer has their own dedicated cloud account, you can name the **account*
 3. Give it a name, contact details, and a **billing currency**.
 4. Tick the cost centres — and any cloud accounts — whose spend is theirs.
 5. Choose the **cost basis** and whether your **billing rules** apply.
+6. Optionally pick a [billing profile](#billing-profiles) for its tax, terms, bank details and numbering.
 
 ![The New customer modal with the cost-centre picker showing an indented tree and two centres ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/new-customer-modal.png)
 
@@ -82,6 +83,48 @@ Choose, per customer, what happens to three kinds of provider benefit: **pass th
 ## Which rule changed what
 
 Every invoice line carries the steps that moved it, in order: re-rating, discount treatment and each billing rule, with the amount each one added or removed. Expand a line (the ▸ beside its name) to see them. Under the lines, **How this total was reached** lists every rule and setting with its total effect on the invoice, the re-rating coverage, and anything that could not be priced. On an approved invoice all of this is frozen with the figures.
+
+## Billing profiles
+
+A **billing profile** is the part of an invoice that is not a number: who it is addressed to, who it is emailed to, the tax on it, when it is due, where the money goes, and how it is numbered. Several customers can share one, which is the point: a parent company with a managed account per business unit, or every customer you bill from the same entity on the same terms, is one profile to keep up to date instead of a dozen.
+
+Open **Invoices → Billing profiles → New profile**. A profile holds:
+
+| Section                     | Fields                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Bill to**                 | Legal entity name, address, tax ID or VAT number, PO number                                                                    |
+| **Recipients**              | **To** and **Cc** addresses                                                                                                    |
+| **Currency, terms and tax** | Invoice currency, payment terms in days (net 30 prints a due date 30 days after the issue date), and up to five tax rates      |
+| **Bank details**            | Account name, bank, IBAN, SWIFT/BIC, account and routing number for banks without IBANs, and free-text remittance instructions |
+| **Numbering and layout**    | Number prefix, whether the number carries the year, the first number, a footer, and a logo (PNG or JPEG, up to 100 KB)         |
+
+<insert [The billing profile editor with a legal name, a VAT number, one To address, net 30 terms, a 19% VAT line, an IBAN and a logo filled in, and the "Numbers look like EU-2026-0100" hint under the numbering fields] here>
+
+Assign it to a customer with the **Billing profile** picker in the customer editor.
+
+### The profile wins where it says something
+
+Leave a field blank on the profile and each customer's own details fill it: a profile with no legal name leaves every customer's name on its invoices, one with no address leaves each customer's billing address, one with no currency leaves each customer's billing currency. Set it and it applies to every customer on the profile.
+
+Recipients are the exception: they **add up**. The customer's own contact email still receives every invoice, and the profile's **To** list is added to it, because quietly dropping a contact somebody typed onto a customer is the kind of change nobody notices until an invoice goes unpaid. **Cc** addresses get their own copy too.
+
+When a profile sets a **currency**, invoices for its customers are issued in that currency instead of the customer's billing currency, converted at your [exchange rates](./cloud-costs.md#currency) exactly as before.
+
+### Tax lines
+
+Each tax rate becomes its own line at the bottom of the invoice, charged on the **converted subtotal** of every other line and rounded to the currency's minor unit (cents, pence, or nothing for yen). Two rates are each charged on the same subtotal; taxes do not compound. A tax line has nothing collected, so `collected + adjustment = subtotal` still holds for it like every other line.
+
+### Numbering
+
+Invoice numbers follow the profile: `INV-2026-0001` by default, `EU-2026-0001` with the prefix `EU`, or `EU-0001` without the year. **First number** lets you carry on a sequence from the system you used before, so the first invoice raised here can be `EU-2026-0100`. Profiles that share a prefix share a sequence. Customers without a profile keep `INV-YYYY-NNNN`.
+
+### Approved invoices keep the profile they were issued with
+
+A draft follows its profile: change the bank details and every draft shows the new ones. **Approval copies the profile onto the invoice**, together with the figures, so editing a profile later (a new bank account, a new tax rate, a new logo) reaches the next invoice and never one a customer already holds.
+
+When billing profiles arrived, every organization that already had customers got one profile called **Default**, with all of its customers assigned and every field blank. Nothing about the next invoice changed: each customer's own contact, address and currency still apply, and numbering carries on as `INV-YYYY-NNNN`. It is there so you have one place to add your tax line, terms and bank details for all of them at once.
+
+A profile cannot be deleted while customers are assigned to it; the error names them. Move them to another profile first.
 
 ## Raising an invoice
 
@@ -140,16 +183,22 @@ An invoice a customer cannot reconcile is an invoice a customer does not pay, so
 
 ### Downloading it
 
-**Download CSV** gives you the derivation as a file — every column above, plus the totals in the same file so nobody has to sum it themselves. It uses the same RFC 4180 quoting as [scheduled cost exports](./cost-exports.md), so a customer who already ingests those needs no second parser.
+**Download PDF** gives you the document a customer files: your logo, the addressee from the billing profile, the lines, the subtotal, each tax line, the total due, the issue and due dates, the PO number, and the bank details to pay into, with the profile's footer on every page. It shows the price, not the derivation: the collected-versus-adjusted split stays in the CSV. A draft's PDF says **Draft invoice** across the top.
 
-> The download button is web-only. The desktop app talks to the cloud with a bearer token that a plain download link cannot carry.
+<insert [A downloaded invoice PDF showing a logo top left, "INVOICE" and its number top right, the Bill to block with a VAT number, the dates and PO number, two lines, a subtotal, a VAT line, the total due, and the payment section with an IBAN] here>
+
+**Download CSV** gives you the derivation as a file: every column above, plus the totals in the same file so nobody has to sum it themselves, plus the addressee, tax ID, PO number, issue date, due date and payment terms on every row. It uses the same RFC 4180 quoting as [scheduled cost exports](./cost-exports.md), so a customer who already ingests those needs no second parser.
+
+Both downloads work in the web app and the desktop app.
 
 ## Sending it to the customer
 
 **Send** on an approved invoice does two things, and they are recorded separately because they are different facts:
 
 - it records the **release** — this document may go to the customer, and this person said so;
-- it **emails the invoice** to the customer's contact addresses, with the CSV attached.
+- it **emails the invoice** to the customer's contact addresses and its billing profile's **To** and **Cc** addresses, with the PDF and the CSV attached.
+
+The recipients are the ones frozen onto the invoice at approval, so an address added to the profile afterwards does not receive an invoice that was approved before it.
 
 The CSV is attached to the message rather than linked. An invoice has to still open when somebody queries it eleven months later, and a link is a thing that stops resolving.
 
@@ -175,15 +224,45 @@ Sending again never rewrites who released the invoice, and never touches a figur
 
 ![A sent invoice's detail view showing a red "Delivery failed" line with the recipient addresses and the transport's error, and a "Retry delivery" button](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/delivery-failed.png)
 
+## Assigning cost centres and accounts in bulk
+
+Connecting a dozen new accounts for an existing customer, or splitting one customer into two, is one action rather than a dozen edits. Open **Invoices → Assign in bulk**:
+
+1. Pick the customer to assign to, or **No customer (unassign)**.
+2. Tick the cost centres and cloud accounts. Each one shows the customer that has it today; the filter box narrows both lists.
+3. Read the preview, then **Assign**.
+
+The preview prices the move over a period (the last full month by default; change the dates to see another). For each item it shows who bills it now and the spend that moves with it: a cost centre's **whole subtree**, and an account's spend **that no cost centre already claims**, which is exactly what the customer's invoice would pick up. Underneath it says how much leaves each customer, how many draft invoices will change, and warns you if a cost centre sits under another customer's centre (its spend would then be billed to both).
+
+<insert [The Assign cost centres and accounts modal with "Contoso" chosen as the target, three accounts ticked (one currently on "Northwind"), and the preview listing each item's spend, "£1,240.00 moves from Northwind to Contoso" and "2 draft invoices will change"] here>
+
+Everything moves in one transaction: each item is taken off whichever customer had it and given to the one you chose, so the same money can never end up on two customers. Only drafts change. An approved invoice carries its own copy of its scope, so moving an account cannot re-bill a period you have already invoiced.
+
+## Finding spend nobody is billed for
+
+**Invoices → Unassigned spend** lists the period's spend, by cost centre and by cloud account, that no customer is billed for: the account connected last week and never put on a customer, the new cost centre nobody added to a contract. It is raw, amortized spend, before your billing rules.
+
+Rows are worked out the way an invoice works them out: your allocation rules claim spend for cost centres first, and each account's row is only the spend no rule claimed. A cost centre counts as assigned when it or any of its parents is on a customer. So assigning a row moves exactly the amount it shows.
+
+Pick a customer in a row's **Assign to…** box to open the preview with that row selected, or tick several rows and use **Assign selected**. A row reading **Not attributable to a connected account** is spend from an account that has since been removed, or uploaded costs with no account; it cannot be put on a customer.
+
+<insert [The Unassigned spend view for last month showing "£3,410.00 unassigned, of £48,200.00 in total", a table of four rows (two cloud accounts, a cost centre and one "Not attributable to a connected account" row) with checkboxes and an "Assign to…" picker on each] here>
+
+The invoices list carries the count too: when last month has unassigned spend, a banner above your customers says how much and across how many cost centres and accounts, with a **Review** button.
+
 ## Permissions
 
 Invoices have their own permission family rather than riding `costs:*`. Every other cost surface is your organization looking at its own spend; this one holds a customer's contact details and the price you quoted them.
 
-| Permission       | Covers                                                       |
-| ---------------- | ------------------------------------------------------------ |
-| `invoices:read`  | Customers, invoices, line items, the CSV                     |
-| `invoices:write` | Add a customer, raise a draft, edit a period, delete a draft |
-| `invoices:issue` | Approve, send, void                                          |
+| Permission       | Covers                                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| `invoices:read`  | Customers, invoices, line items, the CSV and PDF, billing profiles                                             |
+| `invoices:write` | Add a customer, raise a draft, edit a period, delete a draft, create and edit billing profiles, assign in bulk |
+| `invoices:issue` | Approve, send, void                                                                                            |
+
+**Unassigned spend** and the bulk-assignment preview also need `costs:read`: they are breakdowns of your whole organization's spend, and a role that may see invoices but not costs should not get the costs this way. Like the rest of invoicing, none of this is available to members with [scoped cost visibility](../team-and-billing/cost-visibility.md).
+
+Every billing profile change is in the [audit log](../team-and-billing/audit-log.md) field by field, with IBANs and account numbers cut to their last four characters, remittance instructions reduced to "(set)", and the logo to whether there is one. A bulk assignment logs one entry listing every customer whose scope changed, before and after, plus an entry on each of those customers.
 
 The split between the last two is the one worth using. `invoices:write` is entirely revisable; `invoices:issue` is not — approving freezes what a customer will be sent, and sending puts it in their mailbox, which no API call takes back. A billing clerk can hold `read` and `write` and prepare the month while only the finance lead holds `issue`.
 
@@ -196,7 +275,13 @@ infrawrench invoices                      # every invoice, newest period first
 infrawrench invoices customers            # the managed accounts themselves
 infrawrench invoices INV-2026-0004        # one invoice, with its full derivation
 infrawrench invoices northwind --json     # by customer name, as JSON
+infrawrench invoices profiles             # billing profiles and how many customers use each
+infrawrench invoices profiles "EU"        # one profile in full (account numbers masked)
+infrawrench invoices unassigned           # last month's spend no customer is billed for
+infrawrench invoices unassigned --from 2026-01-01 --to 2026-03-31 --json
 ```
+
+`invoices profiles <name>` masks IBANs and account numbers to their last four characters in the terminal; `--json` carries them in full for a script that needs them. `invoices unassigned --json` includes `assignable`, the number of rows that could be put on a customer, so a scheduled job can fail when it is not zero.
 
 Read-only. Approving and sending carry an audit entry naming a person — and sending now actually emails a customer — which is not something to make one flag away in a shell. `infrawrench invoices INV-2026-0004` does print the delivery outcome, so a reconciliation script can tell "we released it" from "it arrived". What the terminal is good for is the other half — printing an invoice's derivation next to `infrawrench showback` for the same period, in a reconciliation script.
 
@@ -206,7 +291,7 @@ See the [CLI reference](./cli.md).
 
 ## From the model
 
-The [MCP server and AI chat](./mcp.md) expose `list_managed_accounts`, `get_managed_account`, `list_invoices` and `get_invoice` — all read-only, all on `invoices:read`. Approving an invoice is not an act a model takes because it inferred from a conversation that it was time.
+The [MCP server and AI chat](./mcp.md) expose `list_managed_accounts`, `get_managed_account`, `list_invoices`, `get_invoice`, `list_billing_profiles` (account numbers masked, no logo) and `find_unassigned_spend` (which also needs `costs:read`): all read-only, all on `invoices:read`. Approving an invoice is not an act a model takes because it inferred from a conversation that it was time.
 
 `get_invoice` returns the whole derivation, so "why is this customer being billed this" is a question the model can actually answer.
 
@@ -214,7 +299,11 @@ The [MCP server and AI chat](./mcp.md) expose `list_managed_accounts`, `get_mana
 
 - `GET /managed-accounts`, `GET /managed-accounts/{id}` (`invoices:read`)
 - `POST /managed-accounts`, `PUT /managed-accounts/{id}`, `DELETE /managed-accounts/{id}` (`invoices:write`)
-- `GET /invoices`, `GET /invoices/{id}`, `GET /invoices/{id}/export` (`invoices:read`)
+- `GET /managed-accounts/unassigned`, `POST /managed-accounts/assignments/preview` (`invoices:read` and `costs:read`)
+- `POST /managed-accounts/assignments` (`invoices:write`)
+- `GET /billing-profiles`, `GET /billing-profiles/{id}` (`invoices:read`)
+- `POST /billing-profiles`, `PUT /billing-profiles/{id}`, `DELETE /billing-profiles/{id}` (`invoices:write`)
+- `GET /invoices`, `GET /invoices/{id}`, `GET /invoices/{id}/export`, `GET /invoices/{id}/pdf` (`invoices:read`)
 - `POST /invoices`, `PUT /invoices/{id}`, `DELETE /invoices/{id}` (`invoices:write`)
 - `POST /invoices/{id}/approve`, `POST /invoices/{id}/send`, `POST /invoices/{id}/void` (`invoices:issue`)
 

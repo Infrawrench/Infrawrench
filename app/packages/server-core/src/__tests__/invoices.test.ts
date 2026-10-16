@@ -56,6 +56,8 @@ vi.mock("../db/schema", () => ({
     displayName: "displayName",
   },
   organizations: { __table: "organizations", id: "id", displayName: "displayName" },
+  billingProfiles: { __table: "billing_profiles", id: "id", organizationId: "organizationId" },
+  billingLogos: { __table: "billing_logos", id: "id", organizationId: "organizationId" },
 }));
 
 type Row = Record<string, unknown>;
@@ -77,6 +79,8 @@ const store = {
   accounts: new Map<string, Row>(),
   cloudAccounts: [] as Row[],
   orgs: [] as Row[],
+  profiles: new Map<string, Row>(),
+  logos: [] as Row[],
   numbers: [] as Array<{ number: string | null }>,
   /** Set to make the next insert blow up, standing in for a crash mid-write. */
   failNextInsert: null as string | null,
@@ -120,6 +124,8 @@ function tableRows(table: Table): Map<string, Row> | Row[] {
   if (table.__table === "managed_invoices") return store.invoices;
   if (table.__table === "managed_accounts") return store.accounts;
   if (table.__table === "organizations") return store.orgs;
+  if (table.__table === "billing_profiles") return store.profiles;
+  if (table.__table === "billing_logos") return store.logos;
   return store.cloudAccounts;
 }
 
@@ -164,6 +170,12 @@ function makeDb() {
     }),
     insert: (table: Table) => ({
       values: (values: Row) => ({
+        onConflictDoNothing: async () => {
+          const target = tableRows(table);
+          if (Array.isArray(target) && !target.some((r) => r["id"] === values["id"])) {
+            target.push({ ...values });
+          }
+        },
         returning: async () => {
           if (store.failNextInsert) {
             const message = store.failNextInsert;
@@ -355,6 +367,8 @@ beforeEach(() => {
   store.accounts = new Map([["cust-1", customer()]]);
   store.cloudAccounts = [];
   store.orgs = [{ id: ORG, displayName: "Fabrikam Cloud" }];
+  store.profiles = new Map();
+  store.logos = [];
   store.numbers = [];
   store.failNextInsert = null;
   inserted.length = 0;
@@ -1096,5 +1110,133 @@ describe("sending delivers the invoice", () => {
     expect(sent.delivery!.status).toBe("no_targets");
     // And it is retryable once the address is added, without a confirmation.
     expect(await sendInvoice(ORG, "inv-1", "user-9")).toBeTruthy();
+  });
+});
+
+describe("billing profiles", () => {
+  /** A 1×1 opaque PNG, small enough to read in a test. */
+  const LOGO =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+  function profile(overrides: Row = {}): Row {
+    return {
+      id: "bp-1",
+      organizationId: ORG,
+      name: "EU customers",
+      legalName: "Northwind Trading GmbH",
+      address: "Hauptstrasse 1\n10115 Berlin",
+      taxId: "DE123456789",
+      poNumber: "PO-778",
+      toEmails: ["ap@northwind.example"],
+      ccEmails: ["finance@fabrikam.example"],
+      currency: null,
+      paymentTermsDays: 30,
+      numberPrefix: "NW",
+      numberIncludesYear: true,
+      numberStart: 100,
+      taxRates: [{ name: "VAT", rate: 20 }],
+      bank: null,
+      footer: "Registered in Berlin.",
+      logo: LOGO,
+      createdByUserId: null,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    store.profiles.set("bp-1", profile());
+    store.accounts.set("cust-1", customer({ billingProfileId: "bp-1" }));
+  });
+
+  it("adds the profile's tax as a line on the converted subtotal, and still reconciles", async () => {
+    const { getInvoice } = await import("../cost/invoices");
+    const { managedInvoiceReconciles } = await import("@infrawrench/client-core");
+    const draft = await getInvoice(ORG, "inv-1");
+    const tax = draft!.lines.find((l) => l.kind === "tax")!;
+    // 1104 GBP of lines, 20% on top.
+    expect(tax).toMatchObject({ label: "VAT (20%)", currency: "GBP", collected: 0, billed: 220.8 });
+    expect(draft!.lines.at(-1)!.kind).toBe("tax");
+    expect(draft!.totals.billed).toEqual({ GBP: 1324.8 });
+    expect(managedInvoiceReconciles(draft!.totals)).toBe(true);
+  });
+
+  it("invoices in the profile's currency when it sets one", async () => {
+    store.profiles.set("bp-1", profile({ currency: "USD", taxRates: [] }));
+    const { getInvoice } = await import("../cost/invoices");
+    const draft = await getInvoice(ORG, "inv-1");
+    expect(draft!.totals.billed).toEqual({ USD: 1380 });
+    expect(draft!.lines.every((l) => l.rate === 1)).toBe(true);
+  });
+
+  it("resolves the billing block live on a draft", async () => {
+    const { getInvoice } = await import("../cost/invoices");
+    const draft = await getInvoice(ORG, "inv-1");
+    expect(draft!.billing).toMatchObject({
+      profileId: "bp-1",
+      legalName: "Northwind Trading GmbH",
+      taxId: "DE123456789",
+      poNumber: "PO-778",
+      cc: ["finance@fabrikam.example"],
+      paymentTermsDays: 30,
+    });
+  });
+
+  it("numbers with the profile's prefix and start, and freezes the billing block at approval", async () => {
+    const { approveInvoice, getInvoice } = await import("../cost/invoices");
+    const approved = await approveInvoice(ORG, "inv-1", "user-2");
+    expect(approved.number).toBe("NW-2026-0100");
+    const issueDate = approved.billing!.issueDate;
+    expect(approved.billing!.dueDate).toBe(
+      new Date(Date.parse(`${issueDate}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10),
+    );
+    // The logo is stored by hash in the approval's own transaction.
+    expect(approved.billing!.logoId).toMatch(/^[0-9a-f]{64}$/);
+    expect(store.logos).toHaveLength(1);
+
+    // The profile is edited afterwards: new address, new rate, no logo.
+    store.profiles.set(
+      "bp-1",
+      profile({ address: "Elsewhere 9", taxRates: [{ name: "VAT", rate: 25 }], logo: null }),
+    );
+    const reread = await getInvoice(ORG, "inv-1");
+    expect(reread!.billing!.address).toBe("Hauptstrasse 1\n10115 Berlin");
+    expect(reread!.totals.billed).toEqual({ GBP: 1324.8 });
+  });
+
+  it("continues an existing sequence for the same prefix", async () => {
+    store.numbers = [{ number: "NW-2026-0150" }, { number: "INV-2026-0900" }];
+    const { approveInvoice } = await import("../cost/invoices");
+    const approved = await approveInvoice(ORG, "inv-1", "user-2");
+    expect(approved.number).toBe("NW-2026-0151");
+  });
+
+  it("refuses approval when the profile's taxes changed under it", async () => {
+    getShowbackSpend.mockImplementation(async () => {
+      store.profiles.get("bp-1")!["taxRates"] = [{ name: "VAT", rate: 19 }];
+      return [{ costCentreId: "cc-platform", currency: "USD", amount: 1150, rawAmount: 1000 }];
+    });
+    const { approveInvoice } = await import("../cost/invoices");
+    await expect(approveInvoice(ORG, "inv-1", "user-2")).rejects.toThrow(
+      /the billing profile's currency or taxes/,
+    );
+    expect(invoiceIn()!["status"]).toBe("draft");
+  });
+
+  it("sends to the frozen To and Cc lists, with the PDF attached", async () => {
+    const { approveInvoice, sendInvoice } = await import("../cost/invoices");
+    await approveInvoice(ORG, "inv-1", "user-2");
+    await sendInvoice(ORG, "inv-1", "user-9");
+    const [, , options] = deliverInvoiceEmail.mock.calls[0] as [
+      string,
+      unknown,
+      { to: string[]; cc: string[]; pdf: Uint8Array | null; csv: string },
+    ];
+    expect(options.to).toEqual(["ap@northwind.example"]);
+    expect(options.cc).toEqual(["finance@fabrikam.example"]);
+    expect(Buffer.from(options.pdf!).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(options.csv).toContain("Northwind Trading GmbH");
+    expect(options.csv).toContain("PO-778");
   });
 });

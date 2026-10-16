@@ -322,6 +322,10 @@ func specChecks() []specCheck {
 		{schema: "ManagedAccountInput", value: ManagedAccountInput{}},
 		{schema: "ManagedAccountPricing", value: ManagedAccountPricing{}},
 		{schema: "DiscountTreatment", value: DiscountTreatment{}},
+		{schema: "BillingProfile", value: BillingProfile{}},
+		{schema: "BillingProfileInput", value: BillingProfileInput{}},
+		{schema: "BillingProfileBank", value: BillingProfileBank{}},
+		{schema: "BillingProfileTaxRate", value: BillingProfileTaxRate{}},
 
 		{schema: "DeployTrigger", value: DeployTrigger{}},
 		{schema: "DeployTriggerInput", value: DeployTriggerInput{}},

@@ -625,6 +625,38 @@ func (c *Client) DeleteManagedAccount(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/managed-accounts/"+seg(id))
 }
 
+/* ----------------------------- billing profiles ---------------------------- */
+
+func (c *Client) GetBillingProfile(ctx context.Context, id string) (*BillingProfile, error) {
+	var out BillingProfile
+	if err := c.Get(ctx, "/billing-profiles/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateBillingProfile(ctx context.Context, in BillingProfileInput) (*BillingProfile, error) {
+	var out BillingProfile
+	if err := c.Post(ctx, "/billing-profiles", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateBillingProfile(ctx context.Context, id string, in BillingProfileInput) (*BillingProfile, error) {
+	var out BillingProfile
+	if err := c.Put(ctx, "/billing-profiles/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteBillingProfile is refused with a 409 naming them while live customers
+// are assigned; Terraform destroys dependent managed accounts first.
+func (c *Client) DeleteBillingProfile(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/billing-profiles/"+seg(id))
+}
+
 /* ----------------------------- deploy triggers ----------------------------- */
 
 func (c *Client) ListDeployTriggers(ctx context.Context) ([]DeployTrigger, error) {

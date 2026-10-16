@@ -12,10 +12,13 @@
 // resolution-mode attribute (the CLI is CJS, client-core is ESM), so the CLI
 // still ships zero runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import type { RangeFlags } from "../args";
 import type {
+  BillingProfile,
   ManagedAccount,
   ManagedInvoice,
   ManagedInvoiceSummary,
+  UnassignedSpendReport,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { formatInvoiceStatus, formatInvoiceTotal } from "../format";
 import { c, printJson, println, printTable, type Column } from "../output";
@@ -333,4 +336,239 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
   if (invoice.supersededByInvoiceId) {
     println(c.dim(`  superseded by ${invoice.supersededByInvoiceId}`));
   }
+
+  // Who it is addressed to and how it gets paid, when the invoice carries it.
+  const b = invoice.billing;
+  if (b) {
+    println();
+    println(c.bold("Billing"));
+    println(`  bill to    ${b.legalName}${b.taxId ? c.dim(` · tax ID ${b.taxId}`) : ""}`);
+    if (b.poNumber) println(`  PO         ${b.poNumber}`);
+    println(
+      `  dates      issued ${b.issueDate}` +
+        (b.dueDate ? `, due ${b.dueDate} (${describeTerms(b.paymentTermsDays)})` : ", no terms"),
+    );
+    println(
+      `  emailed    ${b.to.length > 0 ? b.to.join(", ") : c.yellow("nobody")}` +
+        (b.cc.length > 0 ? c.dim(` · cc ${b.cc.join(", ")}`) : ""),
+    );
+    if (b.profileName) println(c.dim(`  profile    ${b.profileName}`));
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Billing profiles
+ * ------------------------------------------------------------------ */
+
+function describeTerms(days: number | null): string {
+  if (days === null) return "no terms";
+  return days === 0 ? "due on receipt" : `net ${days}`;
+}
+
+/**
+ * The last four characters only. The terminal is a screen someone may be
+ * sharing; `--json` carries the full value for a script that needs it.
+ */
+export function tail4(value: string | null): string | null {
+  if (!value) return null;
+  const compact = value.replace(/\s+/g, "");
+  return compact.length <= 4 ? "••••" : `•••• ${compact.slice(-4)}`;
+}
+
+/**
+ * `infrawrench invoices profiles [name]`: the billing profiles customers are
+ * assigned to, or one in full.
+ */
+export async function cmdInvoiceProfiles(ctx: CliContext, query?: string): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const [profiles, customers] = await Promise.all([
+    orgFetch<BillingProfile[]>(org.id, "/billing-profiles"),
+    orgFetch<ManagedAccount[]>(org.id, "/managed-accounts"),
+  ]);
+  const customerName = new Map(customers.map((a) => [a.id, a.name]));
+
+  if (query) {
+    const lower = query.toLowerCase();
+    const matches = profiles.filter(
+      (p) =>
+        p.id === query || p.name.toLowerCase() === lower || p.name.toLowerCase().includes(lower),
+    );
+    const exact = matches.find((p) => p.id === query || p.name.toLowerCase() === lower);
+    const profile = exact ?? (matches.length === 1 ? matches[0]! : null);
+    if (!profile) {
+      if (matches.length === 0) throw new CliError(`No billing profile matches "${query}".`);
+      throw new CliError(
+        `"${query}" matches ${matches.length} profiles: ${matches.map((p) => p.name).join(", ")}.`,
+      );
+    }
+    if (ctx.flags.output === "json") {
+      printJson({ org: org.id, ...profile });
+      return;
+    }
+    println(c.bold(profile.name));
+    const rows: Array<[string, string | null]> = [
+      ["legal name", profile.legalName ?? c.dim("each customer's own name")],
+      ["address", profile.address ? profile.address.replace(/\n/g, ", ") : null],
+      ["tax ID", profile.taxId],
+      ["PO number", profile.poNumber],
+      ["to", profile.toEmails.length > 0 ? profile.toEmails.join(", ") : null],
+      ["cc", profile.ccEmails.length > 0 ? profile.ccEmails.join(", ") : null],
+      ["currency", profile.currency ?? c.dim("each customer's own")],
+      ["terms", describeTerms(profile.paymentTermsDays)],
+      [
+        "taxes",
+        profile.taxRates.length > 0
+          ? profile.taxRates.map((t) => `${t.name} ${t.rate}%`).join(", ")
+          : c.dim("none"),
+      ],
+      [
+        "numbering",
+        `${profile.numberPrefix}${profile.numberIncludesYear ? "-YYYY" : ""}-NNNN, from ${profile.numberStart}`,
+      ],
+      ["account", profile.bank?.accountName ?? null],
+      ["bank", profile.bank?.bankName ?? null],
+      ["IBAN", tail4(profile.bank?.iban ?? null)],
+      ["SWIFT/BIC", profile.bank?.bic ?? null],
+      ["account no.", tail4(profile.bank?.accountNumber ?? null)],
+      ["routing", profile.bank?.routingNumber ?? null],
+      ["footer", profile.footer],
+      ["logo", profile.logo ? "yes" : null],
+    ];
+    for (const [label, value] of rows) {
+      if (value) println(`  ${label.padEnd(12)} ${value}`);
+    }
+    println(
+      `  ${"customers".padEnd(12)} ${
+        profile.managedAccountIds.length > 0
+          ? profile.managedAccountIds.map((id) => customerName.get(id) ?? id).join(", ")
+          : c.dim("none")
+      }`,
+    );
+    return;
+  }
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, profiles });
+    return;
+  }
+  if (profiles.length === 0) {
+    println(c.dim("No billing profiles. Create one in the Invoices tab, under Billing profiles."));
+    return;
+  }
+  const columns: Column<BillingProfile>[] = [
+    { header: "name", value: (p) => p.name },
+    { header: "bill to", value: (p) => p.legalName ?? c.dim("customer") },
+    { header: "currency", value: (p) => p.currency ?? c.dim("customer") },
+    { header: "terms", value: (p) => describeTerms(p.paymentTermsDays) },
+    {
+      header: "taxes",
+      value: (p) =>
+        p.taxRates.length > 0
+          ? p.taxRates.map((t) => `${t.name} ${t.rate}%`).join(", ")
+          : c.dim("—"),
+    },
+    { header: "prefix", value: (p) => p.numberPrefix },
+    { header: "customers", value: (p) => String(p.managedAccountIds.length), align: "right" },
+  ];
+  printTable(profiles, columns);
+  println();
+  println(
+    c.dim(
+      "Drafts follow a profile edit; approved invoices keep the settings they were issued with. " +
+        "Run `infrawrench invoices profiles <name>` for one in full.",
+    ),
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Unassigned spend
+ * ------------------------------------------------------------------ */
+
+function formatAmounts(amounts: Record<string, number>): string {
+  const entries = Object.entries(amounts).filter(([, v]) => v !== 0);
+  if (entries.length === 0) return "0.00";
+  return entries
+    .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+    .map(([currency, amount]) => `${amount.toFixed(2)} ${currency}`)
+    .join(" + ");
+}
+
+/** The query string for `--from`/`--to`: both or neither, ISO days, in order. */
+export function unassignedQuery(range: Pick<RangeFlags, "from" | "to">): string {
+  const { from, to } = range;
+  if (!from && !to) return "";
+  if (!from || !to) {
+    throw new CliError("Give both --from and --to, or neither for the last full month.", 2);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    throw new CliError("--from and --to are days, like 2026-01-31.", 2);
+  }
+  if (to < from) throw new CliError("--to must not be before --from.", 2);
+  return `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+}
+
+/**
+ * `infrawrench invoices unassigned [--from YYYY-MM-DD --to YYYY-MM-DD]`:
+ * spend no customer is billed for, by cost centre and account. Defaults to
+ * the last full month. Exits 0 either way; a script that wants to fail on
+ * unassigned spend reads `assignable` from `--json`.
+ */
+export async function cmdInvoiceUnassigned(
+  ctx: CliContext,
+  range: Pick<RangeFlags, "from" | "to">,
+): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  const query = unassignedQuery(range);
+  const report = await orgFetch<UnassignedSpendReport>(
+    org.id,
+    `/managed-accounts/unassigned${query}`,
+  );
+
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, ...report });
+    return;
+  }
+
+  println(
+    `${c.bold(org.displayName)} ${c.dim(`· ${report.periodFrom} → ${report.periodTo} · amortized, before billing rules`)}`,
+  );
+  println();
+  if (report.rows.length === 0) {
+    println(c.green("Every cost in this period is billed to a customer."));
+    return;
+  }
+  const columns: Column<UnassignedSpendReport["rows"][number]>[] = [
+    {
+      header: "item",
+      value: (r) => (r.kind === "unallocated" ? c.dim("(no connected account)") : r.name),
+    },
+    {
+      header: "kind",
+      value: (r) =>
+        c.dim(
+          r.kind === "cost_centre"
+            ? "cost centre"
+            : r.kind === "account"
+              ? (r.pluginId ?? "account")
+              : "—",
+        ),
+    },
+    { header: "spend", value: (r) => formatAmounts(r.amounts), align: "right" },
+  ];
+  printTable(report.rows, columns);
+  println();
+  println(
+    `  ${c.bold("unassigned")} ${formatAmounts(report.totals.unassigned)} ${c.dim(
+      `of ${formatAmounts(report.totals.all)}`,
+    )}`,
+  );
+  println();
+  println(
+    c.dim(
+      "Assign these in the Invoices tab (Unassigned spend), or name the cost centre or account " +
+        "on a customer.",
+    ),
+  );
 }

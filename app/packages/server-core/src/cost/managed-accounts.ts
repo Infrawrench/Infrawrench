@@ -29,7 +29,13 @@ import {
   type ManagedAccountPricing,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { accounts, costCentres, managedAccounts, managedInvoices } from "../db/schema";
+import {
+  accounts,
+  billingProfiles,
+  costCentres,
+  managedAccounts,
+  managedInvoices,
+} from "../db/schema";
 
 export type { ManagedAccount, ManagedAccountInput };
 export { MANAGED_ACCOUNT_LIMITS };
@@ -85,6 +91,7 @@ function toWire(row: Row, invoiceCount: number): ManagedAccount {
     // Null is the pre-pricing default: nothing re-rated, everything passed through.
     pricing: normalizeManagedAccountPricing(row.pricing),
     notes: row.notes,
+    billingProfileId: row.billingProfileId,
     costCentreIds: Array.isArray(row.costCentreIds) ? row.costCentreIds : [],
     accountIds: Array.isArray(row.accountIds) ? row.accountIds : [],
     invoiceCount,
@@ -118,6 +125,8 @@ interface Normalized {
   applyBillingRules: boolean;
   /** Undefined on an update that did not send it: the saved settings stay. */
   pricing?: ManagedAccountPricing | undefined;
+  /** Undefined on an update that did not send it: the saved profile stays. */
+  billingProfileId?: string | null | undefined;
   notes: string | null;
   costCentreIds: string[];
   accountIds: string[];
@@ -171,6 +180,12 @@ function normalizeInput(input: ManagedAccountInput): Normalized {
   return {
     name,
     pricing,
+    billingProfileId:
+      input.billingProfileId === undefined
+        ? undefined
+        : input.billingProfileId === null || !String(input.billingProfileId).trim()
+          ? null
+          : String(input.billingProfileId).trim(),
     contactName: trimOrNull(
       input.contactName,
       MANAGED_ACCOUNT_LIMITS.maxContactNameLength,
@@ -204,6 +219,19 @@ function normalizeInput(input: ManagedAccountInput): Normalized {
  * silently short rather than one that fails to save.
  */
 async function assertScopeExists(organizationId: string, data: Normalized): Promise<void> {
+  if (data.billingProfileId) {
+    const [profile] = await db
+      .select({ id: billingProfiles.id })
+      .from(billingProfiles)
+      .where(
+        and(
+          eq(billingProfiles.id, data.billingProfileId),
+          eq(billingProfiles.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    if (!profile) throw new ManagedAccountError("Unknown billing profile");
+  }
   if (data.costCentreIds.length > 0) {
     const rows = await db
       .select({ id: costCentres.id })
@@ -370,6 +398,7 @@ export async function createManagedAccount(
         organizationId,
         ...data,
         pricing: data.pricing ?? null,
+        billingProfileId: data.billingProfileId ?? null,
         createdByUserId: createdByUserId ?? null,
       })
       .returning();
@@ -410,6 +439,8 @@ export async function updateManagedAccount(
         // Absent means "leave as saved", so a client that predates the
         // pricing settings cannot wipe them by saving a contact address.
         pricing: data.pricing === undefined ? existing.pricing : data.pricing,
+        billingProfileId:
+          data.billingProfileId === undefined ? existing.billingProfileId : data.billingProfileId,
         updatedAt: new Date(),
       })
       .where(and(eq(managedAccounts.id, id), eq(managedAccounts.organizationId, organizationId)))

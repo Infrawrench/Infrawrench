@@ -1,6 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import { PdfBody } from "./dashboard-notifications";
 import {
   BILLING_RULE_KIND_ENUM,
   ManagedAccountPricing,
@@ -63,6 +64,11 @@ const ManagedAccountInput = strict({
       "through.",
   }),
   notes: z.string().max(4000).nullish(),
+  billingProfileId: Uuid.nullish().openapi({
+    description:
+      "The billing profile this customer's invoices are addressed, taxed and numbered by. " +
+      "Absent on update leaves the saved profile; null removes it.",
+  }),
   costCentreIds: z
     .array(z.string().min(1))
     .max(100)
@@ -102,6 +108,7 @@ const ManagedAccount = strict({
   applyBillingRules: z.boolean(),
   pricing: ManagedAccountPricing,
   notes: z.string().nullable(),
+  billingProfileId: Uuid.nullable(),
   costCentreIds: z.array(z.string()),
   accountIds: z.array(z.string()),
   invoiceCount: z.number().int(),
@@ -114,6 +121,280 @@ const ManagedAccount = strict({
     "most one managed account; billing the same money to two customers is refused at write " +
     "time with a 409 naming the other customer.",
 });
+
+/* ------------------------------------------------------------------ *
+ * Billing profiles
+ * ------------------------------------------------------------------ */
+
+const BillingProfileTaxRate = strict({
+  name: z.string().min(1).max(40).openapi({ example: "VAT" }),
+  rate: z.number().min(0).max(100).openapi({ description: "Percent.", example: 20 }),
+}).openapi("BillingProfileTaxRate", {
+  description:
+    "A tax applied to the invoice subtotal as its own line. Several rates each apply to the " +
+    "same subtotal; they do not compound.",
+});
+
+const BillingProfileBank = strict({
+  accountName: z.string().max(120).nullable(),
+  bankName: z.string().max(120).nullable(),
+  iban: z
+    .string()
+    .max(64)
+    .nullable()
+    .openapi({
+      description:
+        "Checked against its mod-97 digits and stored grouped in fours. Masked to its last four " +
+        "characters in audit entries.",
+    }),
+  bic: z.string().max(11).nullable().openapi({ description: "SWIFT / BIC." }),
+  accountNumber: z.string().max(64).nullable().openapi({
+    description: "For banking systems without IBANs. Masked in audit entries.",
+  }),
+  routingNumber: z
+    .string()
+    .max(64)
+    .nullable()
+    .openapi({ description: "Sort code, ABA routing number, BSB." }),
+  instructions: z.string().max(2000).nullable().openapi({
+    description: "Free-text remittance instructions, printed under the bank details.",
+  }),
+}).openapi("BillingProfileBank");
+
+const BillingProfileBankInput = strict({
+  accountName: z.string().max(120).nullish(),
+  bankName: z.string().max(120).nullish(),
+  iban: z.string().max(64).nullish(),
+  bic: z.string().max(11).nullish(),
+  accountNumber: z.string().max(64).nullish(),
+  routingNumber: z.string().max(64).nullish(),
+  instructions: z.string().max(2000).nullish(),
+}).openapi("BillingProfileBankInput");
+
+const BillingProfileInput = strict({
+  name: z.string().min(1).max(120).openapi({
+    description: "What the profile is called in pickers. Not printed on the invoice.",
+    example: "EU customers",
+  }),
+  legalName: z.string().max(200).nullish().openapi({
+    description: "The legal entity invoices are addressed to. Null leaves each customer's name.",
+  }),
+  address: z.string().max(1000).nullish().openapi({
+    description: "Printed under the legal name. Null leaves each customer's billing address.",
+  }),
+  taxId: z.string().max(64).nullish().openapi({ description: "Tax ID or VAT number." }),
+  poNumber: z.string().max(64).nullish().openapi({ description: "Purchase-order reference." }),
+  toEmails: z.array(z.string().max(254)).max(20).optional().openapi({
+    description:
+      "Addresses invoices are emailed to, **in addition to** each customer's own contact email.",
+  }),
+  ccEmails: z.array(z.string().max(254)).max(20).optional().openapi({
+    description: "Addresses that receive a copy. Each address gets its own message.",
+  }),
+  currency: z
+    .string()
+    .regex(/^[A-Za-z]{3}$/)
+    .nullish()
+    .openapi({
+      description:
+        "ISO 4217. When set, invoices for every assigned customer are issued in this currency " +
+        "instead of the customer's billing currency.",
+    }),
+  paymentTermsDays: z.number().int().min(0).max(365).nullish().openapi({
+    description: "Net N days from the issue date. Null prints no due date; 0 is due on receipt.",
+  }),
+  numberPrefix: z
+    .string()
+    .min(1)
+    .max(16)
+    .optional()
+    .openapi({
+      description:
+        "Starts with a letter; letters, digits and hyphens. Defaults to `INV`. Profiles sharing a " +
+        "prefix share a sequence.",
+      example: "INV",
+    }),
+  numberIncludesYear: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "Defaults to true: `INV-2026-0001`, with the sequence restarting each year of the period " +
+        "end. False gives `INV-0001` and one sequence for ever.",
+    }),
+  numberStart: z.number().int().min(1).max(999_999_999).optional().openapi({
+    description:
+      "The lowest sequence number issued, for continuing a sequence from another system.",
+  }),
+  taxRates: z.array(BillingProfileTaxRate).max(5).optional(),
+  bank: BillingProfileBankInput.nullish(),
+  footer: z.string().max(2000).nullish().openapi({
+    description: "Printed at the bottom of every page of the PDF.",
+  }),
+  logo: z
+    .string()
+    .nullish()
+    .openapi({
+      description:
+        "A PNG or JPEG `data:` URL of at most 100 KB, printed at the top of the PDF. Interlaced " +
+        "and 16-bit PNGs and CMYK JPEGs are refused. Absent on update leaves the saved logo; null " +
+        "removes it.",
+    }),
+}).openapi("BillingProfileInput");
+
+const BillingProfile = strict({
+  id: Uuid,
+  name: z.string(),
+  legalName: z.string().nullable(),
+  address: z.string().nullable(),
+  taxId: z.string().nullable(),
+  poNumber: z.string().nullable(),
+  toEmails: z.array(z.string()),
+  ccEmails: z.array(z.string()),
+  currency: z.string().nullable(),
+  paymentTermsDays: z.number().int().nullable(),
+  numberPrefix: z.string(),
+  numberIncludesYear: z.boolean(),
+  numberStart: z.number().int(),
+  taxRates: z.array(BillingProfileTaxRate),
+  bank: BillingProfileBank.nullable(),
+  footer: z.string().nullable(),
+  logo: z.string().nullable(),
+  managedAccountIds: z
+    .array(Uuid)
+    .openapi({ description: "Live customers assigned to this profile." }),
+  createdByUserId: z.string().nullable(),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+}).openapi("BillingProfile", {
+  description:
+    "Reusable invoice settings: addressee, recipients, tax, payment terms, remittance details " +
+    "and numbering, shared by every customer assigned to it. The profile wins where it sets a " +
+    "field and the customer fills the gaps; recipients are the union of both.\n\n" +
+    "Drafts follow a profile edit. **Approved invoices do not**: approval writes a resolved copy " +
+    "onto the invoice (`Invoice.billing`), so a new bank account or tax rate reaches the next " +
+    "invoice and no issued one.",
+});
+
+const InvoiceBilling = strict({
+  profileId: Uuid.nullable(),
+  profileName: z.string().nullable(),
+  legalName: z.string(),
+  attention: z.string().nullable(),
+  address: z.string().nullable(),
+  taxId: z.string().nullable(),
+  poNumber: z.string().nullable(),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  paymentTermsDays: z.number().int().nullable(),
+  issueDate: IsoDay,
+  dueDate: IsoDay.nullable(),
+  taxRates: z.array(BillingProfileTaxRate),
+  bank: BillingProfileBank.nullable(),
+  footer: z.string().nullable(),
+  logoId: z
+    .string()
+    .nullable()
+    .openapi({ description: "SHA-256 of the logo printed on the PDF, frozen with the invoice." }),
+  numberPrefix: z.string(),
+  numberIncludesYear: z.boolean(),
+}).openapi("InvoiceBilling", {
+  description:
+    "Who the invoice is addressed to and how to pay it: the customer and its billing profile " +
+    "resolved together. Live on a draft; written once at approval and read back verbatim after.",
+});
+
+/* ------------------------------------------------------------------ *
+ * Scope tools
+ * ------------------------------------------------------------------ */
+
+const UnassignedSpendReport = strict({
+  periodFrom: IsoDay,
+  periodTo: IsoDay,
+  rows: z.array(
+    strict({
+      kind: z.enum(["cost_centre", "account", "unallocated"]).openapi({
+        description:
+          "`unallocated` is spend that resolved to no cost centre and no connected account " +
+          "(a disconnected account, an uploaded source); it cannot be assigned.",
+      }),
+      id: z.string().nullable(),
+      name: z.string().openapi({ description: "Cost centres carry their full path." }),
+      pluginId: z.string().nullable(),
+      amounts: CurrencyAmounts,
+    }),
+  ),
+  totals: strict({
+    unassigned: CurrencyAmounts,
+    assigned: CurrencyAmounts,
+    all: CurrencyAmounts,
+  }),
+  assignable: z.number().int(),
+}).openapi("UnassignedSpendReport", {
+  description:
+    "Spend in the period no customer is billed for. Resolved exactly the way an invoice " +
+    "resolves it: allocation rules claim spend for cost centres first, and each account claims " +
+    "only what no rule did. A cost centre is assigned when it or any ancestor is on a customer. " +
+    "Raw spend on the amortized basis, before billing rules.",
+});
+
+const ManagedAccountAssignment = strict({
+  managedAccountId: Uuid.nullable().openapi({
+    description: "The customer to assign to, or null to take the items off every customer.",
+  }),
+  costCentreIds: z.array(z.string().min(1)).max(500).default([]),
+  accountIds: z.array(z.string().min(1)).max(500).default([]),
+}).openapi("ManagedAccountAssignment");
+
+const ManagedAccountAssignmentPreviewRequest = ManagedAccountAssignment.extend({
+  periodFrom: IsoDay.optional(),
+  periodTo: IsoDay.optional(),
+}).openapi("ManagedAccountAssignmentPreviewRequest", {
+  description: "The period whose spend is previewed defaults to the last full calendar month.",
+});
+
+const ManagedAccountAssignmentPreview = strict({
+  periodFrom: IsoDay,
+  periodTo: IsoDay,
+  target: strict({ id: Uuid, name: z.string() }).nullable(),
+  items: z.array(
+    strict({
+      kind: z.enum(["cost_centre", "account"]),
+      id: z.string(),
+      name: z.string(),
+      fromManagedAccountId: Uuid.nullable(),
+      fromManagedAccountName: z.string().nullable(),
+      amounts: CurrencyAmounts.openapi({
+        description:
+          "Spend that moves with the item: a cost centre's whole subtree, an account's spend no " +
+          "cost centre claimed.",
+      }),
+      unchanged: z.boolean(),
+    }),
+  ),
+  moves: z.array(
+    strict({
+      fromManagedAccountId: Uuid.nullable(),
+      fromManagedAccountName: z.string().nullable(),
+      amounts: CurrencyAmounts,
+    }),
+  ),
+  total: CurrencyAmounts,
+  affectedDrafts: z.number().int(),
+  warnings: z.array(z.string()),
+}).openapi("ManagedAccountAssignmentPreview");
+
+const ManagedAccountAssignmentResult = strict({
+  changes: z.array(
+    strict({
+      id: Uuid,
+      name: z.string(),
+      before: strict({ costCentreIds: z.array(z.string()), accountIds: z.array(z.string()) }),
+      after: strict({ costCentreIds: z.array(z.string()), accountIds: z.array(z.string()) }),
+    }),
+  ),
+  accounts: z.array(ManagedAccount),
+}).openapi("ManagedAccountAssignmentResult");
 
 /* ------------------------------------------------------------------ *
  * Invoices
@@ -133,11 +414,14 @@ const InvoiceStatus = z.enum(["draft", "approved", "sent", "void"]).openapi("Inv
 });
 
 const InvoiceLine = strict({
-  kind: z.enum(["cost_centre", "account", "fixed"]),
-  refId: z
-    .string()
-    .nullable()
-    .openapi({ description: "Cost-centre id, account id, or null for an org-level fixed charge." }),
+  kind: z.enum(["cost_centre", "account", "fixed", "tax"]).openapi({
+    description:
+      "`tax` lines come from the customer's billing profile: one per tax rate, on the " +
+      "converted subtotal of every other line, always last.",
+  }),
+  refId: z.string().nullable().openapi({
+    description: "Cost-centre id, account id, or null for an org-level fixed charge or a tax.",
+  }),
   label: z.string().openapi({
     description:
       "The name at issue time, frozen with the numbers; renaming a cost centre in March must " +
@@ -324,6 +608,11 @@ const Invoice = InvoiceSummary.extend({
   lines: z.array(InvoiceLine),
   totals: InvoiceTotals,
   derivation: InvoiceDerivation,
+  billing: InvoiceBilling.nullable().openapi({
+    description:
+      "Addressee, recipients, terms and remittance details. Null on invoices approved before " +
+      "billing profiles existed.",
+  }),
   live: z.boolean().openapi({
     description:
       "True when the figures in this response were recomputed for it; true for a draft, false " +
@@ -493,7 +782,192 @@ export function registerInvoicePaths(ctx: BuildContext) {
     },
   });
 
+  /* -- scope tools -- */
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/managed-accounts/unassigned",
+    tags: ["Managed Accounts"],
+    summary: "Find spend no customer is billed for",
+    description:
+      "Spend in the period, by cost centre and account, that no managed account's scope " +
+      "covers. Requires `costs:read` as well as `invoices:read`: it is a cost breakdown of the " +
+      "whole organisation.",
+    request: {
+      params: OrgIdParam,
+      query: strict({
+        from: IsoDay.optional().openapi({
+          description: "Defaults, with `to`, to the last full calendar month.",
+        }),
+        to: IsoDay.optional(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Unassigned spend",
+        content: { "application/json": { schema: UnassignedSpendReport } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/managed-accounts/assignments/preview",
+    tags: ["Managed Accounts"],
+    summary: "Preview a bulk assignment",
+    description:
+      "What moving these cost centres and accounts would do: who holds each one today, the " +
+      "spend that moves with it in the period, the totals leaving each customer, and how many " +
+      "draft invoices will change. Nothing is written.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: ManagedAccountAssignmentPreviewRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The preview",
+        content: { "application/json": { schema: ManagedAccountAssignmentPreview } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/managed-accounts/assignments",
+    tags: ["Managed Accounts"],
+    summary: "Assign cost centres and accounts to a customer in bulk",
+    description:
+      "Takes each item off whichever customer holds it and gives it to `managedAccountId`, or " +
+      "to nobody when that is null, in one transaction. Only drafts change: an approved " +
+      "invoice carries its own copy of its scope.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: ManagedAccountAssignment } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "The customers whose scope changed, and the full list after",
+        content: { "application/json": { schema: ManagedAccountAssignmentResult } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  /* -- billing profiles -- */
+
+  const profileIdParam = OrgIdParam.extend({
+    id: Uuid.openapi({ param: { name: "id", in: "path" } }),
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/billing-profiles",
+    tags: ["Billing Profiles"],
+    summary: "List billing profiles",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Profiles, name-sorted",
+        content: { "application/json": { schema: z.array(BillingProfile) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/billing-profiles",
+    tags: ["Billing Profiles"],
+    summary: "Create a billing profile",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: BillingProfileInput } }, required: true },
+    },
+    responses: {
+      200: { description: "Created", content: { "application/json": { schema: BillingProfile } } },
+      400: ErrorResponses[400],
+      409: ErrorResponses[409],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/billing-profiles/{id}",
+    tags: ["Billing Profiles"],
+    summary: "Get a billing profile",
+    request: { params: profileIdParam },
+    responses: {
+      200: {
+        description: "The profile",
+        content: { "application/json": { schema: BillingProfile } },
+      },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/billing-profiles/{id}",
+    tags: ["Billing Profiles"],
+    summary: "Update a billing profile",
+    description:
+      "A full replace, except `logo`, which is left as saved when absent. Draft invoices of the " +
+      "assigned customers follow the change; approved invoices keep the copy frozen onto them.",
+    request: {
+      params: profileIdParam,
+      body: { content: { "application/json": { schema: BillingProfileInput } }, required: true },
+    },
+    responses: {
+      200: { description: "Updated", content: { "application/json": { schema: BillingProfile } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+      409: ErrorResponses[409],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/billing-profiles/{id}",
+    tags: ["Billing Profiles"],
+    summary: "Delete a billing profile",
+    description:
+      "Refused with 409, naming them, while live customers are assigned: removing a profile " +
+      "out from under a customer would change the address, tax and numbering of its next invoice.",
+    request: { params: profileIdParam },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+      409: ErrorResponses[409],
+    },
+  });
+
   /* -- invoices -- */
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/invoices/{id}/pdf",
+    tags: ["Invoices"],
+    summary: "Download an invoice as PDF",
+    description:
+      "The document a customer files: addressee, lines, tax, total, due date and remittance " +
+      "details, from the billing block frozen at approval. A draft is watermarked. The " +
+      "collected-versus-adjusted derivation stays in the CSV.",
+    request: { params: invoiceIdParam },
+    responses: {
+      200: {
+        description: "PDF",
+        content: PdfBody,
+      },
+      404: ErrorResponses[404],
+    },
+  });
 
   registry.registerPath({
     method: "get",
@@ -646,7 +1120,8 @@ export function registerInvoicePaths(ctx: BuildContext) {
     description:
       "Changes no figure; the document was frozen at approval. It records the **release** " +
       "(this may go to the customer, and this person said so), then emails the invoice to the " +
-      "customer's contact addresses with the CSV attached.\n\n" +
+      "customer's contact addresses and its billing profile's To and Cc, as frozen at approval, " +
+      "with the PDF and the CSV attached.\n\n" +
       "**200 even when delivery failed.** The release happened and is recorded either way; " +
       "`delivery` says what became of the transport. An error status would leave the caller " +
       "unable to tell which of the two failed. A failed delivery is visible, and re-sending " +

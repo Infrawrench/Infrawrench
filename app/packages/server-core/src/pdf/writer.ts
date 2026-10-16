@@ -20,7 +20,8 @@
  * no I/O, unit-testable.
  */
 import { deflateSync } from "node:zlib";
-import { PDF_BASE_FONTS, toWinAnsi, type PdfFontName } from "./fonts";
+import { PDF_BASE_FONTS, pdfFontWidths, textWidth, toWinAnsi, type PdfFontName } from "./fonts";
+import type { PdfImageData } from "./image";
 
 /** A colour as `#rrggbb`. */
 export type PdfColor = string;
@@ -175,16 +176,38 @@ export class PdfPage {
   text(x: number, top: number, text: string, opts: TextOptions = {}): void {
     if (!text) return;
     const size = opts.size ?? 10;
-    const font = opts.font === "bold" ? "F2" : "F1";
+    const fontName: PdfFontName = opts.font === "bold" ? "bold" : "regular";
+    const font = fontName === "bold" ? "F2" : "F1";
     const baseline = this.y(top + size * 0.8);
-    this.ops.push(
-      `BT ${rgb(opts.color ?? "#111827")} rg /${font} ${num(size)} Tf ${num(x)} ${num(baseline)} Td ${hexString(text)} Tj ET`,
-    );
+    const color = rgb(opts.color ?? "#111827");
+    // Readers draw the standard fonts from their own metrics and ignore
+    // `/Widths`, and the euro is the one glyph they set wider than they
+    // advance: "€18" drew the 1 over the sign. So a euro gets a run of its
+    // own, and what follows starts where the layout measured it to.
+    const runs = text.includes("€") ? text.split(/(€)/).filter((r) => r !== "") : [text];
+    let at = x;
+    for (const run of runs) {
+      this.ops.push(
+        `BT ${color} rg /${font} ${num(size)} Tf ${num(at)} ${num(baseline)} Td ${hexString(run)} Tj ET`,
+      );
+      at += textWidth(run, size, fontName);
+    }
   }
 
   /** A clickable rectangle that opens `uri`. */
   link(x: number, top: number, width: number, height: number, uri: string): void {
     this.links.push({ x, y: this.y(top + height), width, height, uri });
+  }
+
+  /**
+   * Draw an image registered with {@link PdfDocument.addImage}, scaled into
+   * the box whose top-left corner is (`x`, `top`).
+   */
+  image(name: string, x: number, top: number, width: number, height: number): void {
+    if (width <= 0 || height <= 0) return;
+    this.ops.push(
+      `q ${num(width)} 0 0 ${num(height)} ${num(x)} ${num(this.y(top + height))} cm /${name} Do Q`,
+    );
   }
 }
 
@@ -209,6 +232,17 @@ export class PdfDocument {
     return page;
   }
 
+  private readonly images: PdfImageData[] = [];
+
+  /**
+   * Register an image and return the name pages draw it by
+   * ({@link PdfPage.image}). Written once, however many pages use it.
+   */
+  addImage(image: PdfImageData): string {
+    this.images.push(image);
+    return `Im${this.images.length}`;
+  }
+
   /** Serialize. `now` stamps the info dictionary's creation date. */
   toBytes(now = new Date()): Uint8Array {
     if (this.pages.length === 0) this.addPage();
@@ -221,6 +255,39 @@ export class PdfDocument {
     };
 
     let next = 6;
+    const streamObject = (dict: string, bytes: Uint8Array): Buffer =>
+      Buffer.concat([
+        Buffer.from(`<< ${dict} /Length ${bytes.length} >>\nstream\n`, "latin1"),
+        Buffer.from(bytes),
+        Buffer.from("\nendstream", "latin1"),
+      ]);
+    const imageRefs: string[] = [];
+    this.images.forEach((image, i) => {
+      const imageId = next++;
+      let smaskRef = "";
+      if (image.smask) {
+        const smaskId = next++;
+        set(
+          smaskId,
+          streamObject(
+            `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
+              "/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+            image.smask,
+          ),
+        );
+        smaskRef = ` /SMask ${smaskId} 0 R`;
+      }
+      set(
+        imageId,
+        streamObject(
+          `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} ` +
+            `/ColorSpace /${image.colorSpace} /BitsPerComponent 8 /Filter /${image.filter}${smaskRef}`,
+          image.data,
+        ),
+      );
+      imageRefs.push(`/Im${i + 1} ${imageId} 0 R`);
+    });
+    const xobjects = imageRefs.length > 0 ? ` /XObject << ${imageRefs.join(" ")} >>` : "";
     const pageIds: number[] = [];
     for (const page of this.pages) {
       const pageId = next++;
@@ -246,7 +313,7 @@ export class PdfDocument {
       set(
         pageId,
         `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(page.width)} ${num(page.height)}] ` +
-          `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R` +
+          `/Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects} >> /Contents ${contentId} 0 R` +
           (linkIds.length > 0 ? ` /Annots [${linkIds.map((id) => `${id} 0 R`).join(" ")}]` : "") +
           " >>",
       );
@@ -259,11 +326,13 @@ export class PdfDocument {
     );
     set(
       3,
-      `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_BASE_FONTS.regular} /Encoding /WinAnsiEncoding >>`,
+      `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_BASE_FONTS.regular} /Encoding /WinAnsiEncoding` +
+        ` /FirstChar 32 /LastChar 255 /Widths [${pdfFontWidths("regular").join(" ")}] >>`,
     );
     set(
       4,
-      `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_BASE_FONTS.bold} /Encoding /WinAnsiEncoding >>`,
+      `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_BASE_FONTS.bold} /Encoding /WinAnsiEncoding` +
+        ` /FirstChar 32 /LastChar 255 /Widths [${pdfFontWidths("bold").join(" ")}] >>`,
     );
     const pad = (n: number) => String(n).padStart(2, "0");
     const date = `D:${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;

@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import {
+  managedAccountAssignmentPreviewSchema,
+  managedAccountAssignmentSchema,
   managedAccountInputSchema,
   managedInvoiceInputSchema,
   managedInvoiceSendSchema,
@@ -27,10 +29,17 @@ import {
   getInvoice,
   listInvoices,
   renderInvoiceCsv,
+  renderInvoicePdfFor,
   sendInvoice,
   updateInvoice,
   voidInvoice,
 } from "@infrawrench/server-core/cost/invoices";
+import {
+  assignManagedAccountScope,
+  findUnassignedSpend,
+  previewManagedAccountAssignment,
+} from "@infrawrench/server-core/cost/managed-account-scope";
+import { invoicePdfFilename } from "@infrawrench/server-core/cost/invoice-pdf";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -77,7 +86,8 @@ declare module "hono" {
  *
  * Two facts, recorded separately and never conflated. `POST /send` records the
  * **release**: the document may go to the customer, and this person said so,
- * and then emails it to the customer's contact addresses with the CSV attached.
+ * and then emails it to the recipients frozen at approval (the customer's contact
+ * plus its billing profile's To and Cc) with the PDF and the CSV attached.
  * The release is written once; the delivery outcome is written per attempt, and
  * neither can touch a figure frozen at approval.
  *
@@ -117,6 +127,120 @@ accountsApp.get("/", async (c) => {
   return c.json(await listManagedAccounts(c.get("organizationId")));
 });
 
+/* -- scope tools, registered before `/:id` so the static paths win -- */
+
+const periodQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+
+/**
+ * GET /api/org/:orgId/managed-accounts/unassigned: spend in the period that no
+ * customer is billed for, by cost centre and account.
+ *
+ * `costs:read` on top of `invoices:read`: this is a cost breakdown of the
+ * whole org, not a view of the customer book, and a role that may see
+ * invoices but not spend should not get spend through the side door.
+ */
+accountsApp.get("/unassigned", async (c) => {
+  requirePermission(c, "invoices:read");
+  requirePermission(c, "costs:read");
+  const parsed = periodQuerySchema.safeParse({ from: c.req.query("from"), to: c.req.query("to") });
+  if (!parsed.success) return c.json({ error: "Invalid period", issues: parsed.error.issues }, 400);
+  try {
+    return c.json(await findUnassignedSpend(c.get("organizationId"), parsed.data));
+  } catch (e) {
+    return accountWriteError(c, e);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/managed-accounts/assignments/preview: what moving
+ * these cost centres and accounts would do, with the spend that moves with
+ * them. A dry run; nothing is written.
+ */
+accountsApp.post("/assignments/preview", async (c) => {
+  requirePermission(c, "invoices:read");
+  requirePermission(c, "costs:read");
+  const parsed = managedAccountAssignmentPreviewSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid assignment", issues: parsed.error.issues }, 400);
+  }
+  const { periodFrom, periodTo, ...assignment } = parsed.data;
+  try {
+    return c.json(
+      await previewManagedAccountAssignment(c.get("organizationId"), assignment, {
+        from: periodFrom,
+        to: periodTo,
+      }),
+    );
+  } catch (e) {
+    return accountWriteError(c, e);
+  }
+});
+
+/**
+ * POST /api/org/:orgId/managed-accounts/assignments: move cost centres and
+ * accounts onto one customer (or off every customer, with a null
+ * `managedAccountId`) in one transaction.
+ *
+ * Audited as one entry listing every customer whose scope changed, before and
+ * after, plus one `managed_account.update` per customer so each customer's
+ * own history shows the change too.
+ */
+accountsApp.post("/assignments", async (c) => {
+  requirePermission(c, "invoices:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const parsed = managedAccountAssignmentSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid assignment", issues: parsed.error.issues }, 400);
+  }
+  let changes;
+  try {
+    changes = await assignManagedAccountScope(organizationId, parsed.data);
+  } catch (e) {
+    return accountWriteError(c, e);
+  }
+  if (changes.length > 0) {
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "managed_account.assign",
+      entityType: "managed_account",
+      entityId: parsed.data.managedAccountId ?? "unassigned",
+      metadata: {
+        managedAccountId: parsed.data.managedAccountId,
+        costCentreIds: parsed.data.costCentreIds,
+        accountIds: parsed.data.accountIds,
+        changes,
+      },
+    });
+    for (const change of changes) {
+      void logAudit({
+        organizationId,
+        userId: session.userId,
+        action: "managed_account.update",
+        entityType: "managed_account",
+        entityId: change.id,
+        metadata: {
+          name: change.name,
+          via: "bulk_assignment",
+          before: change.before,
+          after: change.after,
+        },
+      });
+    }
+  }
+  return c.json({ changes, accounts: await listManagedAccounts(organizationId) });
+});
+
 /** GET /api/org/:orgId/managed-accounts/:id: one customer. */
 accountsApp.get("/:id", async (c) => {
   requirePermission(c, "invoices:read");
@@ -153,6 +277,7 @@ accountsApp.post("/", async (c) => {
       billingCurrency: account.billingCurrency,
       costCentreIds: account.costCentreIds,
       accountIds: account.accountIds,
+      billingProfileId: account.billingProfileId,
     },
   });
   return c.json(account);
@@ -193,6 +318,7 @@ accountsApp.put("/:id", async (c) => {
       billingCurrency: account.billingCurrency,
       costCentreIds: account.costCentreIds,
       accountIds: account.accountIds,
+      billingProfileId: account.billingProfileId,
     },
   });
   return c.json(account);
@@ -298,6 +424,32 @@ app.get("/:id/export", async (c) => {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
+});
+
+/**
+ * GET /api/org/:orgId/invoices/:id/pdf: the invoice as a PDF.
+ *
+ * The document a customer files: addressee, lines, tax, total, due date and
+ * remittance details, from the billing block frozen at approval. A draft
+ * renders its live figures under a "Draft" watermark.
+ */
+app.get("/:id/pdf", async (c) => {
+  requirePermission(c, "invoices:read");
+  const organizationId = c.get("organizationId");
+  let invoice;
+  try {
+    invoice = await getInvoice(organizationId, c.req.param("id"));
+  } catch (e) {
+    return invoiceError(c, e);
+  }
+  if (!invoice) return c.json({ error: "Not found" }, 404);
+  const bytes = await renderInvoicePdfFor(organizationId, invoice);
+  return new Response(new Uint8Array(bytes), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${invoicePdfFilename(invoice)}"`,
     },
   });
 });

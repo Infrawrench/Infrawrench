@@ -1,4 +1,9 @@
 import type {
+  BillingProfile,
+  BillingProfileInput,
+  ManagedAccountAssignmentInput,
+  ManagedAccountAssignmentPreview,
+  UnassignedSpendReport,
   CostCentre,
   ManagedAccount,
   ManagedAccountInput,
@@ -80,4 +85,31 @@ export interface InvoicesClient {
     reason: string,
     supersede: boolean,
   ): Promise<{ invoice: ManagedInvoice; replacement: ManagedInvoice | null }>;
+
+  /**
+   * The download URL for an invoice's PDF (web, where a plain link carries
+   * the session cookie).
+   */
+  invoicePdfUrl?(invoiceId: string): string;
+  /**
+   * Fetch and save an invoice file (desktop, where the cloud needs a Bearer
+   * header an `<a download>` cannot carry). Used when the URL methods are absent.
+   */
+  downloadInvoiceFile?(invoice: ManagedInvoice, format: "csv" | "pdf"): Promise<void>;
+
+  /* -- billing profiles: reads `invoices:read`, writes `invoices:write` -- */
+
+  listBillingProfiles?(): Promise<BillingProfile[]>;
+  createBillingProfile?(input: BillingProfileInput): Promise<BillingProfile>;
+  updateBillingProfile?(id: string, input: BillingProfileInput): Promise<BillingProfile>;
+  deleteBillingProfile?(id: string): Promise<void>;
+
+  /* -- scope tools: reads `invoices:read` + `costs:read`, assigning `invoices:write` -- */
+
+  /** Spend no customer is billed for. Absent period: the last full month. */
+  findUnassignedSpend?(period?: { from: string; to: string }): Promise<UnassignedSpendReport>;
+  previewAssignment?(
+    input: ManagedAccountAssignmentInput & { periodFrom?: string; periodTo?: string },
+  ): Promise<ManagedAccountAssignmentPreview>;
+  assignScope?(input: ManagedAccountAssignmentInput): Promise<{ accounts: ManagedAccount[] }>;
 }

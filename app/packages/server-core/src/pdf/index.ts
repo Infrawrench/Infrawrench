@@ -7,3 +7,11 @@ export type { PdfBlock, PdfChartSeries, PdfReportModel, PdfSection, PdfValueForm
 export { formatPdfValue, niceTicks, renderReportPdf } from "./render";
 export { textWidth, toWinAnsi, truncateText, wrapText } from "./fonts";
 export { A4, PdfDocument, PdfPage } from "./writer";
+export {
+  MAX_IMAGE_PIXELS,
+  PdfImageError,
+  readImageDataUrl,
+  readJpeg,
+  readPng,
+  type PdfImageData,
+} from "./image";

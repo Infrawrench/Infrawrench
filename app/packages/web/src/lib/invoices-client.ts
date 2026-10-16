@@ -1,5 +1,10 @@
 import type { InvoiceScopeAccount, InvoicesClient } from "@infrawrench/ui/invoices";
 import type {
+  BillingProfile,
+  BillingProfileInput,
+  ManagedAccountAssignmentInput,
+  ManagedAccountAssignmentPreview,
+  UnassignedSpendReport,
   CostCentre,
   ManagedAccount,
   ManagedAccountInput,
@@ -36,6 +41,7 @@ export function createWebInvoicesClient(orgId: string): InvoicesClient {
     // Content-Disposition filename right and streams without buffering the CSV
     // into memory first. Session auth rides the cookie.
     invoiceExportUrl: (invoiceId: string) => `${base}/invoices/${invoiceId}/export`,
+    invoicePdfUrl: (invoiceId: string) => `${base}/invoices/${invoiceId}/pdf`,
     listCostDimension: async (dimension: "provider" | "service") => {
       const res = await apiGet<{ values: Array<string | CostDimensionOption> }>(
         `${base}/costs/dimensions?dimension=${dimension}`,
@@ -69,5 +75,32 @@ export function createWebInvoicesClient(orgId: string): InvoicesClient {
         `${base}/invoices/${invoiceId}/void`,
         { reason, supersede },
       ),
+
+    listBillingProfiles: () => apiGet<BillingProfile[]>(`${base}/billing-profiles`),
+    createBillingProfile: (input: BillingProfileInput) =>
+      apiPost<BillingProfile>(`${base}/billing-profiles`, input),
+    updateBillingProfile: (id: string, input: BillingProfileInput) =>
+      apiPut<BillingProfile>(`${base}/billing-profiles/${id}`, input),
+    deleteBillingProfile: async (id: string) => {
+      await apiDelete(`${base}/billing-profiles/${id}`);
+    },
+
+    findUnassignedSpend: (period?: { from: string; to: string }) =>
+      apiGet<UnassignedSpendReport>(
+        `${base}/managed-accounts/unassigned${
+          period
+            ? `?from=${encodeURIComponent(period.from)}&to=${encodeURIComponent(period.to)}`
+            : ""
+        }`,
+      ),
+    previewAssignment: (
+      input: ManagedAccountAssignmentInput & { periodFrom?: string; periodTo?: string },
+    ) =>
+      apiPost<ManagedAccountAssignmentPreview>(
+        `${base}/managed-accounts/assignments/preview`,
+        input,
+      ),
+    assignScope: (input: ManagedAccountAssignmentInput) =>
+      apiPost<{ accounts: ManagedAccount[] }>(`${base}/managed-accounts/assignments`, input),
   };
 }

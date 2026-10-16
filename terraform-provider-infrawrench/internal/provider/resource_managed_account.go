@@ -42,6 +42,7 @@ type managedAccountResourceModel struct {
 	CostBasis         types.String `tfsdk:"cost_basis"`
 	ApplyBillingRules types.Bool   `tfsdk:"apply_billing_rules"`
 	Notes             types.String `tfsdk:"notes"`
+	BillingProfileID  types.String `tfsdk:"billing_profile_id"`
 	CostCentreIDs     types.Set    `tfsdk:"cost_centre_ids"`
 	AccountIDs        types.Set    `tfsdk:"account_ids"`
 	InvoiceCount      types.Int64  `tfsdk:"invoice_count"`
@@ -171,6 +172,13 @@ func (r *managedAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"notes": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Internal notes, up to 4000 characters. Not shown to the customer.",
+			},
+			"billing_profile_id": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "The `infrawrench_billing_profile` this customer's invoices are addressed, taxed, " +
+					"numbered and paid by. The profile wins where it sets a field and this customer's own details " +
+					"fill the gaps. Unset means none. Changing it reaches draft invoices only; approved invoices " +
+					"keep the settings they were issued with.",
 			},
 			"cost_centre_ids": schema.SetAttribute{
 				Optional:    true,
@@ -496,6 +504,7 @@ func managedAccountInputFrom(ctx context.Context, model managedAccountResourceMo
 		CostBasis:         stringPtr(model.CostBasis),
 		ApplyBillingRules: boolPtr(model.ApplyBillingRules),
 		Notes:             stringPtr(model.Notes),
+		BillingProfileID:  stringPtr(model.BillingProfileID),
 		CostCentreIDs:     centres,
 		AccountIDs:        accounts,
 	}, diags
@@ -556,6 +565,7 @@ func managedAccountStateFrom(ctx context.Context, remote *iw.ManagedAccount) (ma
 		CostBasis:         types.StringValue(remote.CostBasis),
 		ApplyBillingRules: types.BoolValue(remote.ApplyBillingRules),
 		Notes:             stringValue(remote.Notes),
+		BillingProfileID:  stringValue(remote.BillingProfileID),
 		CostCentreIDs:     centres,
 		AccountIDs:        accounts,
 		InvoiceCount:      types.Int64Value(remote.InvoiceCount),

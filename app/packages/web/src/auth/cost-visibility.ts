@@ -79,6 +79,12 @@ export const COST_SCOPE_DENY_RULES: readonly CostScopeDenyRule[] = [
       "Managed accounts use the whole organization's spend and are not available with scoped cost access.",
   },
   {
+    prefix: "/billing-profiles",
+    methods: "*",
+    reason:
+      "Billing profiles belong to the invoicing surface, which uses the whole organization's spend and is not available with scoped cost access.",
+  },
+  {
     prefix: "/digest",
     methods: "*",
     reason:

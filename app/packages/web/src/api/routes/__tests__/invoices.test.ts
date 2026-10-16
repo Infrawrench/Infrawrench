@@ -58,6 +58,7 @@ const invoices = {
   sendInvoice: vi.fn(),
   voidInvoice: vi.fn(),
   renderInvoiceCsv: vi.fn((..._a: unknown[]) => "number,total\nINV-2026-0001,100\n"),
+  renderInvoicePdfFor: vi.fn(async (..._a: unknown[]) => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
 };
 
 vi.mock("@infrawrench/server-core/cost/invoices", () => ({
@@ -71,6 +72,18 @@ vi.mock("@infrawrench/server-core/cost/invoices", () => ({
   sendInvoice: (...a: unknown[]) => invoices.sendInvoice(...a),
   voidInvoice: (...a: unknown[]) => invoices.voidInvoice(...a),
   renderInvoiceCsv: (...a: unknown[]) => invoices.renderInvoiceCsv(...a),
+  renderInvoicePdfFor: (...a: unknown[]) => invoices.renderInvoicePdfFor(...a),
+}));
+
+const scope = {
+  findUnassignedSpend: vi.fn(),
+  previewManagedAccountAssignment: vi.fn(),
+  assignManagedAccountScope: vi.fn(),
+};
+vi.mock("@infrawrench/server-core/cost/managed-account-scope", () => ({
+  findUnassignedSpend: (...a: unknown[]) => scope.findUnassignedSpend(...a),
+  previewManagedAccountAssignment: (...a: unknown[]) => scope.previewManagedAccountAssignment(...a),
+  assignManagedAccountScope: (...a: unknown[]) => scope.assignManagedAccountScope(...a),
 }));
 
 const mockLogAudit = vi.fn();
@@ -320,5 +333,102 @@ describe("export", () => {
     expect(res.headers.get("Content-Type")).toContain("text/csv");
     expect(res.headers.get("Content-Disposition")).toContain('filename="INV-2026-0001.csv"');
     expect(await res.text()).toContain("INV-2026-0001");
+  });
+
+  it("serves the PDF as an attachment named after the invoice", async () => {
+    const app = buildTestApp(invoiceRoutes, ["invoices:read"]);
+    invoices.getInvoice.mockResolvedValue(INVOICE);
+    const res = await app.request("/inv-1/pdf");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/pdf");
+    expect(res.headers.get("Content-Disposition")).toContain('filename="INV-2026-0001.pdf"');
+    expect(invoices.renderInvoicePdfFor).toHaveBeenCalledWith("org-1", INVOICE);
+  });
+});
+
+describe("scope tools", () => {
+  it("keeps the unassigned-spend finder and the preview behind costs:read too", async () => {
+    const invoicesOnly = buildTestApp(managedAccountRoutes, ["invoices:read", "invoices:write"]);
+    expect((await invoicesOnly.request("/unassigned")).status).toBe(403);
+    expect(
+      (
+        await invoicesOnly.request("/assignments/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ managedAccountId: null, accountIds: ["a1"] }),
+        })
+      ).status,
+    ).toBe(403);
+    expect(scope.findUnassignedSpend).not.toHaveBeenCalled();
+
+    const both = buildTestApp(managedAccountRoutes, ["invoices:read", "costs:read"]);
+    scope.findUnassignedSpend.mockResolvedValue({ rows: [], assignable: 0 });
+    const res = await both.request("/unassigned?from=2026-01-01&to=2026-01-31");
+    expect(res.status).toBe(200);
+    expect(scope.findUnassignedSpend).toHaveBeenCalledWith("org-1", {
+      from: "2026-01-01",
+      to: "2026-01-31",
+    });
+  });
+
+  it("does not mistake /unassigned for a customer id", async () => {
+    const app = buildTestApp(managedAccountRoutes);
+    scope.findUnassignedSpend.mockResolvedValue({ rows: [], assignable: 0 });
+    await app.request("/unassigned");
+    expect(service.getManagedAccount).not.toHaveBeenCalled();
+  });
+
+  it("assigns on invoices:write and audits every customer whose scope changed", async () => {
+    const reader = buildTestApp(managedAccountRoutes, ["invoices:read", "costs:read"]);
+    const body = JSON.stringify({ managedAccountId: "cust-2", costCentreIds: ["cc-1"] });
+    const post = { method: "POST", headers: { "Content-Type": "application/json" }, body };
+    expect((await reader.request("/assignments", post)).status).toBe(403);
+
+    const app = buildTestApp(managedAccountRoutes, ["invoices:write"]);
+    scope.assignManagedAccountScope.mockResolvedValue([
+      {
+        id: "cust-1",
+        name: "Northwind",
+        before: { costCentreIds: ["cc-1"], accountIds: [] },
+        after: { costCentreIds: [], accountIds: [] },
+      },
+      {
+        id: "cust-2",
+        name: "Contoso",
+        before: { costCentreIds: [], accountIds: [] },
+        after: { costCentreIds: ["cc-1"], accountIds: [] },
+      },
+    ]);
+    service.listManagedAccounts.mockResolvedValue([]);
+    const res = await app.request("/assignments", post);
+    expect(res.status).toBe(200);
+    expect(scope.assignManagedAccountScope).toHaveBeenCalledWith("org-1", {
+      managedAccountId: "cust-2",
+      costCentreIds: ["cc-1"],
+      accountIds: [],
+    });
+    const actions = mockLogAudit.mock.calls.map(
+      (c) => `${(c[0] as { action: string }).action}:${(c[0] as { entityId: string }).entityId}`,
+    );
+    expect(actions).toEqual([
+      "managed_account.assign:cust-2",
+      "managed_account.update:cust-1",
+      "managed_account.update:cust-2",
+    ]);
+  });
+
+  it("maps a refused assignment to a 400 with the service's sentence", async () => {
+    const app = buildTestApp(managedAccountRoutes);
+    scope.assignManagedAccountScope.mockRejectedValue(
+      new ManagedAccountError("Unknown cost centre or account: nope"),
+    );
+    const res = await app.request("/assignments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ managedAccountId: null, costCentreIds: ["nope"] }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("nope");
+    expect(mockLogAudit).not.toHaveBeenCalled();
   });
 });

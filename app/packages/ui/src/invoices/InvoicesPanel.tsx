@@ -5,17 +5,23 @@ import {
   MANAGED_INVOICE_DELIVERY_STATUS_LABELS,
   describeManagedInvoiceTotal,
   managedInvoiceDeliveryRetryable,
+  type BillingProfile,
+  type BillingProfileInput,
   type CostCentre,
   type CostDimensionOption,
   type ManagedAccount,
   type ManagedAccountInput,
   type ManagedInvoiceSummary,
+  type UnassignedSpendReport,
 } from "@infrawrench/client-core";
 
 import type { InvoiceScopeAccount, InvoicesClient } from "./types.js";
-import { StatusChip } from "./shared.js";
+import { BTN, StatusChip, amountsText } from "./shared.js";
 import { InvoiceDetail } from "./InvoiceDetail.js";
 import { CustomerList, CustomerModal, RaiseInvoiceModal } from "./Customers.js";
+import { BillingProfileList, BillingProfileModal } from "./BillingProfiles.js";
+import { BulkAssignModal, type BulkAssignInitial } from "./BulkAssignModal.js";
+import { UnassignedSpend } from "./UnassignedSpend.js";
 
 /* ------------------------------------------------------------------ *
  * Panel
@@ -32,6 +38,8 @@ export interface InvoicesPanelProps {
   /** Open an invoice (or, with undefined, go back to the list). */
   onSelectInvoice?: ((invoiceId: string | undefined) => void) | undefined;
 }
+
+type Section = "invoices" | "profiles" | "unassigned";
 
 /**
  * Managed accounts and their invoices.
@@ -51,23 +59,39 @@ export interface InvoicesPanelProps {
  * Actions are driven by {@link managedInvoiceBlocker}: the same function the
  * server refuses with, so a disabled button and a 409 always say the same
  * sentence, and neither can drift from the other.
+ *
+ * Billing profiles and the unassigned-spend finder are sections of the same
+ * panel rather than tabs of their own: they are only ever used by whoever is
+ * preparing invoices, and the finder's assign action lands on the customers
+ * listed here.
  */
 export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPanelProps) {
   const gt = useGT();
+  const [section, setSection] = useState<Section>("invoices");
   const [accounts, setAccounts] = useState<ManagedAccount[] | null>(null);
   const [invoices, setInvoices] = useState<ManagedInvoiceSummary[] | null>(null);
+  const [profiles, setProfiles] = useState<BillingProfile[] | null>(null);
   const [centres, setCentres] = useState<CostCentre[]>([]);
   const [cloudAccounts, setCloudAccounts] = useState<InvoiceScopeAccount[]>([]);
   const [providers, setProviders] = useState<CostDimensionOption[]>([]);
   const [services, setServices] = useState<CostDimensionOption[]>([]);
+  const [unassigned, setUnassigned] = useState<UnassignedSpendReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<{ account: ManagedAccount | null } | null>(
     null,
   );
+  const [editingProfile, setEditingProfile] = useState<{ profile: BillingProfile | null } | null>(
+    null,
+  );
   const [raising, setRaising] = useState<ManagedAccount | null>(null);
+  const [assigning, setAssigning] = useState<BulkAssignInitial | null>(null);
+  // Bumped after an assignment so the finder reloads what it shows.
+  const [unassignedVersion, setUnassignedVersion] = useState(0);
 
   const canWrite = Boolean(client.createManagedAccount && client.createInvoice);
   const canIssue = Boolean(client.approveInvoice && client.sendInvoice && client.voidInvoice);
+  const canWriteProfiles = Boolean(client.createBillingProfile && client.updateBillingProfile);
+  const canAssign = Boolean(client.assignScope);
 
   const refresh = useCallback(async () => {
     // A failure has to be visible: an empty list and a broken list look
@@ -83,19 +107,23 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
-    // The two picker lists are fetched separately and their failures swallowed:
+    // The picker lists are fetched separately and their failures swallowed:
     // cost centres ride `costs:read` and accounts ride `accounts:read`, neither
     // of which an invoices-only role necessarily holds. Losing a picker should
     // cost you the ability to *edit* a customer's scope, not the ability to see
     // this month's invoices, which is what folding them into the load above
-    // would have done.
+    // would have done. The unassigned count rides `costs:read` too.
     const noOptions = () => [] as CostDimensionOption[];
-    const [centreRows, cloudRows, providerRows, serviceRows] = await Promise.all([
-      client.listCostCentres().catch(() => [] as CostCentre[]),
-      client.listAccounts().catch(() => [] as InvoiceScopeAccount[]),
-      client.listCostDimension?.("provider").catch(noOptions) ?? noOptions(),
-      client.listCostDimension?.("service").catch(noOptions) ?? noOptions(),
-    ]);
+    const [centreRows, cloudRows, providerRows, serviceRows, profileRows, unassignedReport] =
+      await Promise.all([
+        client.listCostCentres().catch(() => [] as CostCentre[]),
+        client.listAccounts().catch(() => [] as InvoiceScopeAccount[]),
+        client.listCostDimension?.("provider").catch(noOptions) ?? noOptions(),
+        client.listCostDimension?.("service").catch(noOptions) ?? noOptions(),
+        client.listBillingProfiles?.().catch(() => [] as BillingProfile[]) ??
+          Promise.resolve([] as BillingProfile[]),
+        client.findUnassignedSpend?.().catch(() => null) ?? Promise.resolve(null),
+      ]);
     setCentres(centreRows);
     setCloudAccounts(cloudRows);
     // Without the dimension lists, fall back to the providers of the accounts
@@ -106,6 +134,8 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
         : [...new Set(cloudRows.map((a) => a.pluginId))].map((p) => ({ value: p, label: p })),
     );
     setServices(serviceRows);
+    setProfiles(profileRows);
+    setUnassigned(unassignedReport);
   }, [client]);
 
   useEffect(() => {
@@ -118,6 +148,24 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     else await client.createManagedAccount?.(input);
     setEditingAccount(null);
     await refresh();
+  }
+
+  async function saveProfile(input: BillingProfileInput) {
+    const target = editingProfile?.profile;
+    if (target) await client.updateBillingProfile?.(target.id, input);
+    else await client.createBillingProfile?.(input);
+    setEditingProfile(null);
+    await refresh();
+  }
+
+  async function deleteProfile(profile: BillingProfile) {
+    if (!window.confirm(gt('Delete the billing profile "{name}"?', { name: profile.name }))) return;
+    try {
+      await client.deleteBillingProfile?.(profile.id);
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function retireAccount(account: ManagedAccount) {
@@ -153,6 +201,32 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     if (created) onSelectInvoice?.(created.id);
   }
 
+  const loadUnassigned = useCallback(
+    async (period: { from: string; to: string }): Promise<UnassignedSpendReport> => {
+      if (!client.findUnassignedSpend) throw new Error("Not available");
+      return client.findUnassignedSpend(period);
+    },
+    [client],
+  );
+
+  const sections: Array<{ id: Section; label: string }> = [
+    { id: "invoices", label: gt("Invoices and customers") },
+    ...(client.listBillingProfiles
+      ? [{ id: "profiles" as const, label: gt("Billing profiles") }]
+      : []),
+    ...(client.findUnassignedSpend
+      ? [
+          {
+            id: "unassigned" as const,
+            label:
+              unassigned && unassigned.assignable > 0
+                ? gt("Unassigned spend ({count})", { count: unassigned.assignable })
+                : gt("Unassigned spend"),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
@@ -182,16 +256,88 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
           />
         ) : (
           <>
-            <CustomerList
-              accounts={accounts}
-              centres={centres}
-              canWrite={canWrite}
-              onNew={() => setEditingAccount({ account: null })}
-              onEdit={(a) => setEditingAccount({ account: a })}
-              onRetire={(a) => void retireAccount(a)}
-              onRaise={setRaising}
-            />
-            <InvoiceList invoices={invoices} onOpen={(id) => onSelectInvoice?.(id)} />
+            {sections.length > 1 && (
+              <div role="tablist" className="flex gap-1 border-b border-border">
+                {sections.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={section === s.id}
+                    onClick={() => setSection(s.id)}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+                      section === s.id
+                        ? "border-blue-500 text-on-surface"
+                        : "border-transparent text-on-surface-faint hover:text-on-surface"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {section === "invoices" && (
+              <>
+                {/* The finder's count, where invoices are prepared: spend nobody
+                    is billed for is the one thing an invoice run cannot show. */}
+                {unassigned && unassigned.assignable > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-on-surface">
+                    <span>
+                      {unassigned.assignable === 1
+                        ? gt(
+                            "{amount} of last month's spend, in 1 cost centre or account, isn't billed to any customer.",
+                            { amount: amountsText(unassigned.totals.unassigned) },
+                          )
+                        : gt(
+                            "{amount} of last month's spend, across {count} cost centres and accounts, isn't billed to any customer.",
+                            {
+                              amount: amountsText(unassigned.totals.unassigned),
+                              count: unassigned.assignable,
+                            },
+                          )}
+                    </span>
+                    <button type="button" className={BTN} onClick={() => setSection("unassigned")}>
+                      {gt("Review")}
+                    </button>
+                  </div>
+                )}
+                <CustomerList
+                  accounts={accounts}
+                  centres={centres}
+                  profiles={profiles ?? []}
+                  canWrite={canWrite}
+                  onNew={() => setEditingAccount({ account: null })}
+                  onEdit={(a) => setEditingAccount({ account: a })}
+                  onRetire={(a) => void retireAccount(a)}
+                  onRaise={setRaising}
+                  onAssign={canAssign ? () => setAssigning({}) : undefined}
+                />
+                <InvoiceList invoices={invoices} onOpen={(id) => onSelectInvoice?.(id)} />
+              </>
+            )}
+
+            {section === "profiles" && (
+              <BillingProfileList
+                profiles={profiles}
+                customers={accounts ?? []}
+                canWrite={canWriteProfiles}
+                onNew={() => setEditingProfile({ profile: null })}
+                onEdit={(p) => setEditingProfile({ profile: p })}
+                onDelete={(p) => void deleteProfile(p)}
+              />
+            )}
+
+            {section === "unassigned" && client.findUnassignedSpend && (
+              <UnassignedSpend
+                // Remounted after an assignment, so it reloads what it shows.
+                key={unassignedVersion}
+                load={loadUnassigned}
+                customers={accounts ?? []}
+                canAssign={canAssign}
+                onAssign={setAssigning}
+              />
+            )}
           </>
         )}
       </div>
@@ -201,6 +347,7 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
           account={editingAccount.account}
           centres={centres}
           cloudAccounts={cloudAccounts}
+          profiles={client.listBillingProfiles ? (profiles ?? []) : undefined}
           providers={providers}
           services={services}
           onPreview={
@@ -218,11 +365,36 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
         />
       )}
 
+      {editingProfile && (
+        <BillingProfileModal
+          profile={editingProfile.profile}
+          onSave={saveProfile}
+          onClose={() => setEditingProfile(null)}
+        />
+      )}
+
       {raising && (
         <RaiseInvoiceModal
           account={raising}
           onRaise={(from, to, notes) => raiseInvoice(raising, from, to, notes)}
           onClose={() => setRaising(null)}
+        />
+      )}
+
+      {assigning && client.assignScope && (
+        <BulkAssignModal
+          customers={accounts ?? []}
+          centres={centres}
+          cloudAccounts={cloudAccounts}
+          initial={assigning}
+          onPreview={client.previewAssignment}
+          onAssign={async (input) => {
+            await client.assignScope!(input);
+            setAssigning(null);
+            setUnassignedVersion((v) => v + 1);
+            await refresh();
+          }}
+          onClose={() => setAssigning(null)}
         />
       )}
     </div>

@@ -110,8 +110,8 @@ The same permission set gates every surface, not just the web UI:
   Workflows used to be gated on `dashboards:read` / `dashboards:write`. Custom roles and API keys that granted those had the matching workflow permissions added to them once, during the upgrade that introduced them, so nobody lost access — the added permissions show up in the role editor, ticked, and you can untick them. Every grant since means exactly what it says: a custom role granting `workflows:write` while withholding `workflows:approve` withholds it. Custom graphs, which really are dashboard content, stayed on the dashboard permissions.
 
 - **[Managed accounts & invoices](../features/managed-accounts.md)** are a family of their own rather than more `costs:*`, and split three ways. Every other cost surface is the organization looking at its own spend; a managed account holds a customer's contact details and the price you quoted them.
-  - `invoices:read` — customers, invoices, line items and the CSV export.
-  - `invoices:write` — add a customer, raise a draft invoice, edit its period, delete a draft. Entirely revisable, and none of it visible outside the organization.
+  - `invoices:read` — customers, invoices, line items, the CSV and PDF downloads, and billing profiles.
+  - `invoices:write` — add a customer, raise a draft invoice, edit its period, delete a draft, create and edit billing profiles, assign cost centres and accounts in bulk. Entirely revisable, and none of it visible outside the organization.
   - `invoices:issue` — approve, send, void. The irreversible half: approving freezes the figures a customer will be sent, sending emails the invoice to them, voiding withdraws a document already in their hands.
 
   The last split is the one worth using: a billing clerk holding `read` and `write` can prepare a month's invoices while only the finance lead holds `issue`. Members hold none of the three; Admin and Owner hold all three through their wildcards.
