@@ -39,6 +39,8 @@ An empty filter does not filter. A filter that is set **never matches an event t
 
 Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.finding.status_changed`) carry spend, so subscribing to them, or to every event, also needs the `costs:read` permission. Budgets visible only to their owner never emit events.
 
+`cost.anomaly.detected` names what drove the anomaly: `driverResourceId` (the provider's id for the [driving resource](./cost-anomaly-alerts.md#what-drove-it-the-driving-resource)), `driverResourceName`, `driverDelta` and `driverShare`, all null when no resource carried a fifth of the rise, and `contributors`, one line per account, region, usage unit, charge type, tag value or resource that rose, largest first. When one account carried at least 80% of the rise, the event's `accountId` is that account.
+
 ## The event catalog
 
 | Event type                       | When                                                                                | Default severity                                                      |

@@ -160,6 +160,11 @@ describe("EventData typing", () => {
       baseline: 0,
       currency: "USD",
       hints: [],
+      driverResourceId: null,
+      driverResourceName: null,
+      driverDelta: null,
+      driverShare: null,
+      contributors: [],
     };
     // @ts-expect-error not one of the enum values
     const bad: typeof data.kind = "other";

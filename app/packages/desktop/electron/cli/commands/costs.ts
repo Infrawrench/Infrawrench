@@ -29,6 +29,7 @@ import { resolveDayWindow, resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
 import {
   anomalyDeltaPercent,
+  anomalyDriverLabel,
   anomalyFeedbackLabel,
   formatGroupBy,
   KEYED_GROUP_DIMENSIONS,
@@ -857,6 +858,13 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
       align: "right",
     },
     {
+      // The resource that carried most of the rise, and its share of it. The
+      // whole breakdown (accounts, regions, usage units, charge types, tags)
+      // is `contributors` in `--json`.
+      header: "driven by",
+      value: (a) => anomalyDriverLabel(a),
+    },
+    {
       header: "notified",
       value: (a) => (a.notifiedAt ? c.dim(a.notifiedAt.slice(0, 10)) : c.dim("—")),
     },
@@ -880,7 +888,7 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
   println();
   println(
     c.dim(
-      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.",
+      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. The driven-by column is the resource that carried most of the day's rise, with its share; --json has the full breakdown by resource, account, region, usage unit, charge type and tag. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.",
     ),
   );
   println(

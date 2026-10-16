@@ -1,16 +1,23 @@
 import { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import {
   COST_ANOMALY_DIMENSION_LABELS,
   COST_ANOMALY_FEEDBACK_REASON_LABELS,
   COST_ANOMALY_VERDICT_LABELS,
   costAnomalyDeltaPercent,
+  costAnomalyDriver,
+  costAnomalyHeadlineContributors,
+  describeCostAnomalyContributor,
+  formatContributorShare,
   formatMoney,
+  splitCostAnomalyDriverHint,
   type CostAnomaly,
   type CostAnomalyVerdict,
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
+import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { FileIssueSheet } from "@/features/issue-filing/FileIssueSheet";
 import { useFilableTrackers, useIssueLinks } from "@/features/issue-filing/useIssueFiling";
 import { useOrgPermissions } from "@/lib/permissions";
@@ -52,6 +59,12 @@ import {
  * without alerting. The suppression list editor, the sensitivity panel and
  * the precision report stay on web and desktop: they are org-wide policy and
  * reporting, the same line as detection tuning.
+ *
+ * **The driving resource** leads each row's evidence: the resource that
+ * carried most of the day's rise (`costAnomalyDriver`), tappable through to
+ * its detail screen when it is synced, then the other facets that moved
+ * (account, region, tag). The breakdown chart and "save as cost report" are
+ * web and desktop: they need the chart and the report editor.
  */
 export function CostAnomaliesSection() {
   const anomalies = useCostAnomalies();
@@ -127,9 +140,29 @@ function AnomalyRow({
   const isNew = anomaly.kind === "new_source";
   const delta = costAnomalyDeltaPercent(anomaly);
   // Optional on the wire: an app a release ahead of its server still renders.
-  const hints = anomaly.hints ?? [];
+  // The driver's own hint is the "Driven by" line restated, so it rides there.
+  const { driverEvent, otherHints: hints } = splitCostAnomalyDriverHint(anomaly);
+  const allHints = anomaly.hints ?? [];
   const feedback = anomaly.feedback ?? null;
   const suppressed = Boolean(anomaly.suppressionId);
+  const router = useRouter();
+  const { orgId } = useOrgApi();
+  // Optional on the wire, like hints: an older server sends none.
+  const driver = costAnomalyDriver(anomaly);
+  const driverShare = driver ? formatContributorShare(driver.share) : null;
+  const alsoMoved = costAnomalyHeadlineContributors(anomaly).filter((c) => c !== driver);
+  const moved = costAnomalyHeadlineContributors(anomaly).map((c) =>
+    describeCostAnomalyContributor(c, anomaly.currency),
+  );
+  const openDriver = () => {
+    const r = driver?.resource;
+    if (!r) return;
+    router.push(
+      `/org/${orgId}/resources/${encodeURIComponent(r.pluginId)}/${encodeURIComponent(
+        r.resourceTypeId,
+      )}/${encodeURIComponent(r.id)}?accountId=${encodeURIComponent(r.accountId)}`,
+    );
+  };
 
   const { linksFor } = useIssueLinks();
   const trackers = useFilableTrackers();
@@ -215,6 +248,33 @@ function AnomalyRow({
             ? "No prior spend in the trailing 28 days"
             : `Baseline ${formatMoney(anomaly.baselineCents / 100, anomaly.currency)}/day`}
         </Text>
+        {driver && (
+          <Pressable
+            accessibilityRole={driver.resource ? "link" : "text"}
+            disabled={!driver.resource}
+            onPress={openDriver}
+          >
+            <Text style={styles.driver} numberOfLines={2}>
+              Driven by{" "}
+              <Text style={driver.resource ? styles.driverLink : styles.driverName}>
+                {driver.label}
+              </Text>
+              {driver.label !== driver.key ? ` (${driver.key})` : ""} · +
+              {formatMoney(driver.deltaCents / 100, anomaly.currency)}
+              {driverShare ? `, ${driverShare} of the rise` : ""}
+              {driverEvent === "appeared"
+                ? " · new that day or the day before"
+                : driverEvent === "changed"
+                  ? " · changed that day or the day before"
+                  : ""}
+            </Text>
+          </Pressable>
+        )}
+        {alsoMoved.map((c) => (
+          <Text key={`${c.facet}:${c.tagKey ?? ""}:${c.key}`} style={styles.hint} numberOfLines={2}>
+            · {describeCostAnomalyContributor(c, anomaly.currency)}
+          </Text>
+        ))}
         {/* Read-only on purpose: see the component note. */}
         {anomaly.acknowledgement && (
           <Text style={styles.explanation} numberOfLines={3}>
@@ -339,10 +399,30 @@ function AnomalyRow({
                   : formatMoney(anomaly.baselineCents / 100, anomaly.currency),
               },
               { label: "Change", value: delta },
+              ...(driver
+                ? [
+                    {
+                      label: "Driving resource",
+                      value:
+                        driver.label !== driver.key
+                          ? `${driver.label} (${driver.key})`
+                          : driver.key,
+                    },
+                  ]
+                : []),
               { label: "Detected", value: anomaly.detectedAt },
             ],
-            ...(hints.length > 0
-              ? { note: `What changed around this window:\n${hints.join("\n")}` }
+            ...(moved.length > 0 || allHints.length > 0
+              ? {
+                  note: [
+                    moved.length > 0 ? `What moved:\n${moved.join("\n")}` : null,
+                    allHints.length > 0
+                      ? `What changed around this window:\n${allHints.join("\n")}`
+                      : null,
+                  ]
+                    .filter((n): n is string => n !== null)
+                    .join("\n\n"),
+                }
               : {}),
           }}
           onClose={() => setFiling(false)}
@@ -390,6 +470,9 @@ const styles = StyleSheet.create({
   baseline: { color: colors.textFaint, fontSize: 11 },
   explanation: { color: colors.text, fontSize: 12, marginTop: 2 },
   hint: { color: colors.textFaint, fontSize: 11 },
+  driver: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  driverName: { color: colors.text, fontWeight: "600" },
+  driverLink: { color: colors.accent, fontWeight: "600" },
   linkRow: { flexDirection: "row", gap: spacing.sm },
   issueLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
   issueAction: { color: colors.textMuted, fontSize: 11, marginTop: 2 },

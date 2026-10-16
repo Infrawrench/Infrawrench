@@ -9,7 +9,11 @@
  * - the change timeline (`resource_changes`): "12 gce-instance resources
  *   appeared";
  * - the audit log (`audit_logs`): "Astrid ran workflow \"Nightly rebuild\"",
- *   "a change freeze was lifted".
+ *   "a change freeze was lifted";
+ * - and, ahead of both, the contributor decomposition's lead
+ *   (`anomaly-contributors.ts`): "resource web-1 (i-0abc) carried 64% of the
+ *   rise (+$420), and appeared in the window". That one is a measurement of
+ *   the spend rather than a lead, so it always ranks first.
  *
  * The split mirrors `anomaly-detect.ts` / `anomaly-eval.ts`: the ranking and
  * phrasing (`composeAnomalyHints`) are pure and unit-tested without a
@@ -24,6 +28,13 @@
  * (`cost_anomalies.hints`) so the list UI can render them without re-querying.
  */
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import {
+  COST_ANOMALY_LEAD_HINT_APPEARED,
+  COST_ANOMALY_LEAD_HINT_CHANGED,
+  costAnomalyContributorPhrase,
+  formatContributorShare,
+  type CostAnomalyContributor,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { auditLogs, resourceChanges, users, workflows } from "../db/schema";
 
@@ -214,8 +225,56 @@ function auditHint(entry: AuditHintEntry, count: number): ScoredHint | null {
 }
 
 /**
+ * The contributor decomposition's answer, as evidence for a hint: the lead
+ * contributor (`costAnomalyLeadContributor`) and, when it is a synced
+ * resource, what the change timeline recorded for *that resource* in the hint
+ * window.
+ */
+export interface AnomalyLeadEvidence {
+  contributor: CostAnomalyContributor;
+  currency: string;
+  changeKinds?: ReadonlyArray<"created" | "updated" | "deleted">;
+}
+
+function hintMoney(cents: number, currency: string): string {
+  const amount = cents / 100;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: Math.abs(amount) < 10 ? 2 : 0,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+/**
+ * Phrase the lead contributor: "resource web-1 (i-0abc) carried 64% of the
+ * rise (+$420), and appeared in the window". Pure. The change clause joins two
+ * independent facts (the money says this resource moved; the timeline says it
+ * is new) into the single most useful sentence the alert can carry.
+ */
+export function leadContributorHint(evidence: AnomalyLeadEvidence): string {
+  const c = evidence.contributor;
+  const name = costAnomalyContributorPhrase(c);
+  const delta = hintMoney(Math.max(0, c.deltaCents), evidence.currency);
+  const share = formatContributorShare(c.share);
+  let text = share
+    ? `${name} carried ${share} of the rise (+${delta})`
+    : `${name} rose by ${delta}`;
+  const kinds = evidence.changeKinds ?? [];
+  if (kinds.includes("created")) text += COST_ANOMALY_LEAD_HINT_APPEARED;
+  else if (kinds.includes("updated")) text += COST_ANOMALY_LEAD_HINT_CHANGED;
+  return text;
+}
+
+/**
  * Rank and phrase the window's evidence into at most {@link MAX_ANOMALY_HINTS}
  * hints. Pure: the inputs are whatever the two queries (or a test) supply.
+ *
+ * `leadHint`, when given, is always the first hint: it is the contributor
+ * decomposition's measurement of what moved, and every other hint is a lead.
  *
  * Audit entries arrive one row per event and are grouped here by
  * (action, actor, entity) so ten identical workflow runs read as one hint
@@ -226,8 +285,12 @@ function auditHint(entry: AuditHintEntry, count: number): ScoredHint | null {
 export function composeAnomalyHints(
   changes: readonly ChangeAggregate[],
   audit: readonly AuditHintEntry[],
+  leadHint: string | null = null,
 ): string[] {
   const candidates: ScoredHint[] = [];
+  // What the spend itself says moved outranks anything the timeline or audit
+  // log suggests: it is a measurement of the anomaly, the rest are leads.
+  if (leadHint) candidates.push({ score: Number.MAX_SAFE_INTEGER, text: leadHint });
 
   for (const row of changes) {
     const hint = changeHint(row);
@@ -277,16 +340,40 @@ function metadataName(metadata: unknown): string | null {
  * cannot be mapped to a plugin generically, so the service dimension reads
  * org-wide.
  *
+ * `lead`, when given, is the contributor decomposition's lead contributor. It
+ * becomes the first hint, **always**, including when the window queries fail
+ * (it needs nothing from them but an optional clause): callers rely on that to
+ * tell it apart from the timeline's leads. When it is a synced resource, one
+ * more indexed read asks the change timeline what happened to that resource
+ * in the window.
+ *
  * Never throws, and never returns more than {@link MAX_ANOMALY_HINTS}
- * entries. A failure logs and returns `[]`: hints annotate an alert that must
- * be delivered regardless.
+ * entries. A failure logs and returns `[]` (or just the lead hint): hints
+ * annotate an alert that must be delivered regardless.
  */
 export async function buildAnomalyHints(
   organizationId: string,
   target: AnomalyHintTarget,
+  lead?: AnomalyLeadEvidence | null,
 ): Promise<string[]> {
+  const { from, to } = anomalyHintWindow(target.day);
+  let leadHint = lead ? leadContributorHint(lead) : null;
   try {
-    const { from, to } = anomalyHintWindow(target.day);
+    const leadResourceId = lead?.contributor.resource?.id;
+    if (lead && leadResourceId) {
+      const kinds = await db
+        .selectDistinct({ changeKind: resourceChanges.changeKind })
+        .from(resourceChanges)
+        .where(
+          and(
+            eq(resourceChanges.organizationId, organizationId),
+            gte(resourceChanges.createdAt, from),
+            lt(resourceChanges.createdAt, to),
+            eq(resourceChanges.resourceId, leadResourceId),
+          ),
+        );
+      leadHint = leadContributorHint({ ...lead, changeKinds: kinds.map((k) => k.changeKind) });
+    }
 
     const changeWhere = [
       eq(resourceChanges.organizationId, organizationId),
@@ -356,12 +443,12 @@ export async function buildAnomalyHints(
       count: Number(row.count),
     }));
 
-    return composeAnomalyHints(changes, audit);
+    return composeAnomalyHints(changes, audit, leadHint);
   } catch (err) {
     console.error(
       `[anomaly-hints] hint queries failed for org ${organizationId} (${target.dimension} ${target.dimensionKey} on ${target.day}):`,
       err,
     );
-    return [];
+    return leadHint ? [leadHint] : [];
   }
 }

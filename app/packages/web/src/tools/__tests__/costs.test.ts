@@ -323,7 +323,7 @@ describe("costTools — anomalies", () => {
 
   it("list_cost_anomalies defaults to the 30-day window", async () => {
     const r = await tool("list_cost_anomalies").handler({}, auth);
-    expect(mockListAnomalies).toHaveBeenCalledWith("o1", 30);
+    expect(mockListAnomalies).toHaveBeenCalledWith("o1", 30, { backfillContributors: true });
     expect(JSON.parse(r.content[0]!.text)[0].id).toBe("anom-1");
   });
 

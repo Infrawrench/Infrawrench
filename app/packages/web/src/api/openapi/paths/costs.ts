@@ -446,6 +446,62 @@ const CostAnomalyFeedback = strict({
   ),
 }).openapi("CostAnomalyFeedback");
 
+const CostAnomalyContributor = strict({
+  facet: z
+    .enum(["resource", "account", "region", "usage_unit", "charge_type", "tag"])
+    .describe(
+      "Which breakdown this value belongs to. Each facet partitions the anomaly's spend, so " +
+        "within a facet the deltas add up to the anomaly's rise.",
+    ),
+  key: z
+    .string()
+    .describe(
+      "The value as cost rows carry it: an account id, a region, the provider-native resource " +
+        "id, a usage unit, a charge type or a tag value. Empty for rows with no value and for " +
+        "the folded `other` row.",
+    ),
+  tagKey: z.string().nullable().describe("The tag key, for the `tag` facet; null otherwise."),
+  label: z
+    .string()
+    .describe("Display name: the account's or synced resource's name where known, else `key`."),
+  accountId: z
+    .string()
+    .nullable()
+    .describe("The one account this value's spend sits in; null when it spans several."),
+  resource: strict({
+    id: z.string().describe("Infrawrench's resource id."),
+    accountId: z.string(),
+    pluginId: z.string(),
+    resourceTypeId: z.string(),
+    name: z.string(),
+  })
+    .nullable()
+    .describe(
+      "The synced inventory resource a `resource` contributor's provider id matched, for a " +
+        "link to its detail page; null when it was never synced.",
+    ),
+  actualCents: z.number().int().describe("Spend on the anomalous day, in cents."),
+  baselineCents: z
+    .number()
+    .int()
+    .describe("Mean daily spend over the same 28-day baseline the detector used, in cents."),
+  deltaCents: z.number().int().describe("`actualCents - baselineCents`."),
+  share: z
+    .number()
+    .nullable()
+    .describe(
+      "`deltaCents` as a share of the anomaly's whole rise (0 to 1; above 1 when other values " +
+        "fell). Null when the scope did not rise as a whole.",
+    ),
+  other: z
+    .boolean()
+    .optional()
+    .describe(
+      "True for the row standing in for contributors outside the caller's cost visibility " +
+        "scope: their amounts summed, their names withheld.",
+    ),
+}).openapi("CostAnomalyContributor");
+
 export const CostAnomaly = strict({
   id: Uuid,
   day: IsoDate.describe("The anomalous UTC day."),
@@ -488,7 +544,18 @@ export const CostAnomaly = strict({
         "change timeline and audit log for the anomalous day and the day before (e.g. " +
         '"12 gce-instance resources appeared", a workflow run, a lifted change freeze), ' +
         "ranked by likely relevance and capped at three. Empty when nothing notable " +
-        "happened in the window or the anomaly predates hint collection.",
+        "happened in the window or the anomaly predates hint collection. When the contributor " +
+        "breakdown found a clear lead, the first hint names it.",
+    ),
+  contributors: z
+    .array(CostAnomalyContributor)
+    .describe(
+      "What moved underneath the flagged provider or service: the anomalous day's rise over its " +
+        "baseline decomposed by resource, account, region, usage unit, charge type and tag " +
+        "value, a few per facet, largest first within each. The driving resource is the " +
+        "`resource` row with the largest delta that carries at least 20% of the rise. Computed " +
+        "at detection (and on first read for older findings) and stored. Contributors outside " +
+        "the caller's cost visibility scope are folded into one `other` row per facet.",
     ),
   acknowledgement: strict({
     explanation: z

@@ -131,6 +131,37 @@ export const ANOMALY_SCOPE_LABELS: Record<string, string> = {
   cost_centre: "cost centre",
 };
 
+/**
+ * The resource that drove an anomaly's rise, for the `driven by` column of
+ * `costs --anomalies`: the `resource` contributor with the largest positive
+ * delta carrying at least a fifth of the rise. A copy of client-core's
+ * `costAnomalyDriver` on purpose (this module is CJS and pure; see the CLI
+ * section of KNOWLEDGE.md), and the same 20% floor.
+ */
+export function anomalyDriverLabel(anomaly: {
+  contributors?:
+    | Array<{
+        facet: string;
+        key: string;
+        label: string;
+        deltaCents: number;
+        share: number | null;
+        other?: boolean | undefined;
+      }>
+    | undefined;
+}): string {
+  let best: NonNullable<typeof anomaly.contributors>[number] | null = null;
+  for (const c of anomaly.contributors ?? []) {
+    if (c.facet !== "resource" || c.other || !(c.deltaCents > 0)) continue;
+    if (c.share === null || c.share < 0.2) continue;
+    if (!best || c.deltaCents > best.deltaCents) best = c;
+  }
+  if (!best) return c.dim("-");
+  const name = safe(best.label && best.label !== best.key ? best.label : best.key);
+  const clipped = name.length > 28 ? `${name.slice(0, 27)}…` : name;
+  return `${clipped} ${c.dim(`${Math.round((best.share ?? 0) * 100)}%`)}`;
+}
+
 /** The `feedback` column of `costs --anomalies`. */
 export function anomalyFeedbackLabel(anomaly: {
   feedback?: { verdict: string; byName: string | null } | null | undefined;

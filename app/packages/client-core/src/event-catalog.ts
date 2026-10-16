@@ -306,6 +306,24 @@ export const COST_ANOMALY_DETECTED = defineEventType({
     baseline: num("Mean daily spend over the baseline window, in `currency`."),
     currency: str("ISO 4217 currency code."),
     hints: list("What the change timeline and audit log say happened around then."),
+    driverResourceId: str(
+      "Provider-native id of the resource that drove the rise; null when the provider reports no resource ids or no resource rose.",
+      { nullable: true },
+    ),
+    driverResourceName: str(
+      "The driving resource's name in the synced inventory, else its provider id; null with `driverResourceId`.",
+      { nullable: true },
+    ),
+    driverDelta: num("How far the driving resource rose over its own baseline, in `currency`.", {
+      nullable: true,
+    }),
+    driverShare: num(
+      "The driving resource's share of the whole rise, 0 to 1 (above 1 when other spend fell).",
+      { nullable: true },
+    ),
+    contributors: list(
+      "The largest contributors to the rise across resources, accounts, regions, usage units, charge types and tags, one line each, largest first.",
+    ),
   },
 });
 

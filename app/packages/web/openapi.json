@@ -538,6 +538,41 @@
               "type": "string"
             },
             "description": "What the change timeline and audit log say happened around then."
+          },
+          "driverResourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id of the resource that drove the rise; null when the provider reports no resource ids or no resource rose."
+          },
+          "driverResourceName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The driving resource's name in the synced inventory, else its provider id; null with `driverResourceId`."
+          },
+          "driverDelta": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "How far the driving resource rose over its own baseline, in `currency`."
+          },
+          "driverShare": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The driving resource's share of the whole rise, 0 to 1 (above 1 when other spend fell)."
+          },
+          "contributors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The largest contributors to the rise across resources, accounts, regions, usage units, charge types and tags, one line each, largest first."
           }
         },
         "required": [
@@ -549,7 +584,12 @@
           "actual",
           "baseline",
           "currency",
-          "hints"
+          "hints",
+          "driverResourceId",
+          "driverResourceName",
+          "driverDelta",
+          "driverShare",
+          "contributors"
         ],
         "description": "`data` of a `cost.anomaly.detected` event, version 1. A provider or service spent well outside its baseline, or a new source of spend appeared."
       },
@@ -8973,6 +9013,114 @@
         ],
         "additionalProperties": false
       },
+      "CostAnomalyContributor": {
+        "type": "object",
+        "properties": {
+          "facet": {
+            "type": "string",
+            "enum": [
+              "resource",
+              "account",
+              "region",
+              "usage_unit",
+              "charge_type",
+              "tag"
+            ],
+            "description": "Which breakdown this value belongs to. Each facet partitions the anomaly's spend, so within a facet the deltas add up to the anomaly's rise."
+          },
+          "key": {
+            "type": "string",
+            "description": "The value as cost rows carry it: an account id, a region, the provider-native resource id, a usage unit, a charge type or a tag value. Empty for rows with no value and for the folded `other` row."
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tag key, for the `tag` facet; null otherwise."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name: the account's or synced resource's name where known, else `key`."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The one account this value's spend sits in; null when it spans several."
+          },
+          "resource": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Infrawrench's resource id."
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "pluginId": {
+                "type": "string"
+              },
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "accountId",
+              "pluginId",
+              "resourceTypeId",
+              "name"
+            ],
+            "additionalProperties": false,
+            "description": "The synced inventory resource a `resource` contributor's provider id matched, for a link to its detail page; null when it was never synced."
+          },
+          "actualCents": {
+            "type": "integer",
+            "description": "Spend on the anomalous day, in cents."
+          },
+          "baselineCents": {
+            "type": "integer",
+            "description": "Mean daily spend over the same 28-day baseline the detector used, in cents."
+          },
+          "deltaCents": {
+            "type": "integer",
+            "description": "`actualCents - baselineCents`."
+          },
+          "share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "`deltaCents` as a share of the anomaly's whole rise (0 to 1; above 1 when other values fell). Null when the scope did not rise as a whole."
+          },
+          "other": {
+            "type": "boolean",
+            "description": "True for the row standing in for contributors outside the caller's cost visibility scope: their amounts summed, their names withheld."
+          }
+        },
+        "required": [
+          "facet",
+          "key",
+          "tagKey",
+          "label",
+          "accountId",
+          "resource",
+          "actualCents",
+          "baselineCents",
+          "deltaCents",
+          "share"
+        ],
+        "additionalProperties": false
+      },
       "CostAnomalyFeedbackReason": {
         "type": [
           "string",
@@ -9113,7 +9261,14 @@
             "items": {
               "type": "string"
             },
-            "description": "Root-cause hints computed when the anomaly fired: human-readable facts from the change timeline and audit log for the anomalous day and the day before (e.g. \"12 gce-instance resources appeared\", a workflow run, a lifted change freeze), ranked by likely relevance and capped at three. Empty when nothing notable happened in the window or the anomaly predates hint collection."
+            "description": "Root-cause hints computed when the anomaly fired: human-readable facts from the change timeline and audit log for the anomalous day and the day before (e.g. \"12 gce-instance resources appeared\", a workflow run, a lifted change freeze), ranked by likely relevance and capped at three. Empty when nothing notable happened in the window or the anomaly predates hint collection. When the contributor breakdown found a clear lead, the first hint names it."
+          },
+          "contributors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostAnomalyContributor"
+            },
+            "description": "What moved underneath the flagged provider or service: the anomalous day's rise over its baseline decomposed by resource, account, region, usage unit, charge type and tag value, a few per facet, largest first within each. The driving resource is the `resource` row with the largest delta that carries at least 20% of the rise. Computed at detection (and on first read for older findings) and stored. Contributors outside the caller's cost visibility scope are folded into one `other` row per facet."
           },
           "acknowledgement": {
             "type": [
@@ -9181,6 +9336,7 @@
           "detectedAt",
           "notifiedAt",
           "hints",
+          "contributors",
           "acknowledgement",
           "feedback",
           "suppressionId"

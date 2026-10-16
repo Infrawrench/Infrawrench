@@ -10,6 +10,7 @@ import type {
   CostAlertEvent,
   CostAlertInput,
   CostAnomaly,
+  CostReportInput,
   CostAnomalySettings,
   CostAnomalySettingsView,
   CostAnomalyFeedbackInput,
@@ -253,6 +254,13 @@ export interface CostsClient extends CostApi {
    * simply doesn't render the anomalies section.
    */
   listAnomalies?(days?: number): Promise<CostAnomaly[]>;
+  /**
+   * Save a cost report (`POST /cost-reports`): what an anomaly breakdown's
+   * "Save as cost report" stores, a daily chart of the contributor around the
+   * anomalous day. Optional: unwired (or a viewer without `costs:write`), the
+   * breakdown still draws the chart and simply offers no save.
+   */
+  createCostReport?(input: CostReportInput): Promise<{ id: string }>;
   /**
    * Explain a finding: record what it was, and put that sentence on every cost
    * chart covering the day as an annotation. Answers the updated anomaly.

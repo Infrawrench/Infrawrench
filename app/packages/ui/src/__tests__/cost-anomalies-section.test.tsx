@@ -415,3 +415,92 @@ describe("CostAnomaliesSection — explaining a finding", () => {
     expect(await screen.findByText("Suppressed")).toBeTruthy();
   });
 });
+
+describe("CostAnomaliesSection: the driving resource", () => {
+  const driverRow = {
+    facet: "resource" as const,
+    key: "i-0abc",
+    tagKey: null,
+    label: "web-1",
+    accountId: "acc-1",
+    resource: {
+      id: "res-1",
+      accountId: "acc-1",
+      pluginId: "aws",
+      resourceTypeId: "ec2-instance",
+      name: "web-1",
+    },
+    actualCents: 18_000,
+    baselineCents: 1_000,
+    deltaCents: 17_000,
+    share: 0.98,
+  };
+  const accountRow = {
+    ...driverRow,
+    facet: "account" as const,
+    key: "acc-1",
+    label: "Production",
+    resource: null,
+    share: 1,
+  };
+  const withContributors = anomaly({ contributors: [driverRow, accountRow] });
+
+  it("names the driver under the row and opens the synced resource", async () => {
+    const onOpenResource = vi.fn();
+    render(
+      <CostAnomaliesSection
+        client={makeClient([withContributors])}
+        onOpenResource={onOpenResource}
+      />,
+    );
+    expect(await screen.findByText("Driven by")).toBeTruthy();
+    expect(screen.getByText("i-0abc")).toBeTruthy();
+    expect(screen.getByText(/98% of the rise/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "web-1" }));
+    expect(onOpenResource).toHaveBeenCalledWith(driverRow.resource);
+  });
+
+  it("shows no driver or breakdown for a row without contributors", async () => {
+    render(<CostAnomaliesSection client={makeClient([anomaly()])} />);
+    await screen.findByText("+173%");
+    expect(screen.queryByText("Driven by")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Breakdown" })).toBeNull();
+  });
+
+  it("opens the breakdown and saves the driver's chart as a cost report", async () => {
+    const createCostReport = vi.fn(async () => ({ id: "rep-1" }));
+    const createCostAnnotation = vi.fn(async () => ({}));
+    const onOpenCostReport = vi.fn();
+    render(
+      <CostAnomaliesSection
+        client={makeClient([withContributors], {
+          queryCosts: vi.fn(async () => {
+            throw new Error("no chart in tests");
+          }),
+          createCostReport,
+          createCostAnnotation,
+        } as unknown as Partial<CostsClient>)}
+        onOpenCostReport={onOpenCostReport}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Breakdown" }));
+    expect(await screen.findByText("What drove this anomaly")).toBeTruthy();
+    // Grouped by facet: the account row is listed under its own heading.
+    expect(screen.getByText("Production")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save as cost report" }));
+    await waitFor(() => expect(onOpenCostReport).toHaveBeenCalledWith("rep-1"));
+    const [input] = createCostReport.mock.calls[0]! as unknown as [
+      { name: string; config: { filters: unknown[]; binning: string } },
+    ];
+    expect(input.name).toBe("web-1 around 2026-07-30");
+    expect(input.config.binning).toBe("daily");
+    expect(input.config.filters).toEqual([
+      { dimension: "service", op: "in", values: ["Amazon EC2"] },
+      { dimension: "resource", op: "in", values: ["i-0abc"] },
+    ]);
+    // The day stays marked on the saved report's chart.
+    expect(createCostAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({ startDate: "2026-07-30", costReportId: "rep-1" }),
+    );
+  });
+});

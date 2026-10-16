@@ -1142,6 +1142,13 @@
       "when": 1792149322466,
       "tag": "0162_dashboard_widget_spans",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1792149652989,
+      "tag": "0163_anomaly_contributors",
+      "breakpoints": true
     }
   ]
 }

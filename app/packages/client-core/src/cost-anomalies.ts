@@ -1,6 +1,7 @@
 import type { CloudFetch } from "./fetch";
 import type { CostAnomalyFeedback } from "./cost-anomaly-feedback";
 import type { AlertEmailRecipients } from "./alert-email";
+import type { CostAnomalyContributor } from "./cost-anomaly-contributors";
 
 /* ------------------------------------------------------------------ *
  * Cost anomalies: GET /costs/anomalies.
@@ -95,6 +96,20 @@ export interface CostAnomaly {
    * renders the row.
    */
   hints?: string[];
+  /**
+   * What moved underneath the flagged provider or service: the anomalous
+   * day's rise decomposed by resource, account, region, usage unit, charge
+   * type and tag value, ranked by contribution, a few per facet. The driving
+   * resource is `costAnomalyDriver(anomaly)`.
+   *
+   * Computed when the anomaly is detected (and on first read for findings
+   * older than the feature), then stored, so every surface shows the same
+   * answer. Empty when the breakdown found nothing (ClickHouse unavailable,
+   * or the spend has since been restated away). Contributors outside the
+   * viewer's cost visibility scope are folded into one `other` row per facet.
+   * Optional on the wire, like `hints`.
+   */
+  contributors?: CostAnomalyContributor[];
   /**
    * The explanation somebody attached to this finding, or null while it is
    * still an open question. Optional on the wire for the same reason `hints`
