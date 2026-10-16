@@ -7,14 +7,28 @@ export async function listAutoScalingGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "autoscaling",
-    "DescribeAutoScalingGroups",
-    "2011-01-01",
-  );
-  const groups = ensureArray(
-    (data["AutoScalingGroups"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  // `parseXml` unwraps only the response root, so the groups sit under
+  // `DescribeAutoScalingGroupsResult`; reading `AutoScalingGroups` off the
+  // root found nothing and no Auto Scaling group was ever listed. The call
+  // pages at 50 by default (100 max) with `NextToken` on the Result element.
+  const groups: Record<string, unknown>[] = [];
+  let nextToken: string | undefined;
+  for (let page = 0; page < 50; page += 1) {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "autoscaling",
+      "DescribeAutoScalingGroups",
+      "2011-01-01",
+      { MaxRecords: "100", ...(nextToken ? { NextToken: nextToken } : {}) },
+    );
+    const result = (data["DescribeAutoScalingGroupsResult"] ?? data) as Record<string, unknown>;
+    groups.push(
+      ...(ensureArray(
+        (result["AutoScalingGroups"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[]),
+    );
+    nextToken = result["NextToken"] ? String(result["NextToken"]) : undefined;
+    if (!nextToken) break;
+  }
 
   return groups.map((asg) => {
     const name = String(asg["AutoScalingGroupName"] ?? "");

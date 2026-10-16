@@ -1105,6 +1105,7 @@ Verified against Baseten's published management API spec (`https://api.baseten.c
 - Auth: AWS Signature Version 4 (pure Web Crypto, no AWS SDK dependency)
 - Credentials: `accessKeyId`, `secretAccessKey` (sensitive), `region`
 - API calls use direct AWS REST APIs: EC2 Query API (XML), JSON Amz-Target APIs, REST JSON APIs
+- **Query-protocol response shape** (`ec2QueryCall`/`queryPostCall`, i.e. ELBv2, Auto Scaling, Redshift, RDS, ElastiCache, IAM, SNS, CloudWatch, CloudFormation): `parseXml` unwraps only the response root, so the payload is under `data["<Action>Result"]`, and `NextToken`/`Marker` live there too. Only EC2's own protocol (`ec2Call`) has no Result wrapper. List items are `<member>` for most services but element-named for the RDS family (`<DBInstance>`) and Redshift (`<Cluster>`, `<VpcSecurityGroup>`). A lister reading the wrong level returns `[]` without an error, which hid broken Auto Scaling, Redshift and ELBv2 listers for a long time; test listers by running the documented sample XML through the real `parseXml`, never a hand-built object.
 - Resource ID format: `{accountId}:{typeId}:{externalId}`
 - 51 resource types organized by category:
   - **Compute (8):** `ec2-instance` (SSH, create), `lambda-function`, `ecs-service`, `eks-cluster` (K8s peer integration, create), `apprunner-service`, `auto-scaling-group`, `batch-job-queue`, `sagemaker-endpoint`
