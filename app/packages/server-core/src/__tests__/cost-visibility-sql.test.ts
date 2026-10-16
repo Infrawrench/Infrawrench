@@ -123,6 +123,23 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
     "getUncoveredDailySpend",
     () => commitmentReaders.getUncoveredDailySpend(ORG, "2026-09-01", "2026-09-30", ["a"]),
   ],
+  [
+    "getCommitmentReportCells",
+    () =>
+      commitmentReaders.getCommitmentReportCells(ORG, {
+        from: "2026-09-01",
+        to: "2026-09-30",
+        bucket: "weekly",
+        split: "commitment",
+        accountIds: ["a"],
+        commitmentIds: ["sp-1"],
+      }),
+  ],
+  [
+    "getCommitmentReportDimensionValues",
+    () =>
+      commitmentReaders.getCommitmentReportDimensionValues(ORG, "2026-09-01", "2026-09-30", ["a"]),
+  ],
 ];
 
 beforeEach(() => {

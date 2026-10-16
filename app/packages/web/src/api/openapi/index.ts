@@ -83,6 +83,7 @@ import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
 import { registerCostVisibilityPaths } from "./paths/cost-visibility";
 import { registerCommitmentPaths } from "./paths/commitments";
+import { registerCommitmentReportPaths } from "./paths/commitment-reports";
 import { registerSavingsPaths } from "./paths/savings";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
@@ -248,6 +249,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCreditPaths(ctx);
   registerCostVisibilityPaths(ctx);
   registerCommitmentPaths(ctx);
+  registerCommitmentReportPaths(ctx);
   registerSavingsPaths(ctx);
   registerNetworkFlowPaths(ctx);
   registerAiAttributionPaths(ctx);

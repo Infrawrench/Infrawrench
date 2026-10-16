@@ -9,7 +9,7 @@ sidebar_order: 3
 Roles decide _what_ someone can do. Two more controls decide _which_ costs and _which_ objects:
 
 - **Cost visibility scopes** limit the cost rows a role, member or API key can see. A team lead scoped to the Platform cost centre sees Platform's spend everywhere and nothing else.
-- **Sharing** decides who can open or edit each cost report, report folder and dashboard.
+- **Sharing** decides who can open or edit each cost report, [commitment report](../features/commitment-reports.md), report folder and dashboard.
 
 Both narrow what a role already allows. Neither can grant a permission the role lacks.
 
@@ -79,7 +79,7 @@ Every change is recorded in the [audit log](./audit-log.md) as `cost_visibility.
 
 ## Sharing reports and dashboards
 
-Every cost report, report folder and dashboard has a **Share** action. It sets:
+Every cost report, commitment report, report folder and dashboard has a **Share** action. It sets:
 
 - **Everyone in the organization**: _Can edit_ (the default, which is how every object behaves until somebody shares it), _Can view_, or _No access_.
 - **People and roles**: _Owner_, _Can edit_ or _Can view_ for individual members or whole roles.

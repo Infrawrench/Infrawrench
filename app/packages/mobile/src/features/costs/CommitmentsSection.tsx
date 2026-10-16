@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 import {
+  commitmentDaysUntilEnd,
   formatMoney,
+  isCommitmentExpiringSoon,
   type CommitmentCoverageView,
   type CommitmentHolding,
   type CommitmentRecommendationView,
@@ -177,6 +179,12 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
           {holding.accountName} · {holding.region ?? "All regions"} · {committedLabel(holding)}
           {holding.endDate ? ` · ends ${holding.endDate.slice(0, 10)}` : ""}
         </Text>
+        {isCommitmentExpiringSoon(holding) && (
+          <Text style={styles.warning}>
+            Expires in {commitmentDaysUntilEnd(holding)} day
+            {commitmentDaysUntilEnd(holding) === 1 ? "" : "s"}
+          </Text>
+        )}
         <Text style={styles.subtitle} numberOfLines={1}>
           {utilizationLabel(holding)}
         </Text>

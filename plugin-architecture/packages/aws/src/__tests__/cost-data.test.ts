@@ -872,3 +872,71 @@ describe("fetchAwsCostData blended basis", () => {
     expect(rows.find((r) => r.region === "us-east-1")!.blendedAmount).toBeCloseTo(32, 9);
   });
 });
+
+describe("fetchAwsCostData on-demand equivalent", () => {
+  const EC2 = "Amazon Elastic Compute Cloud - Compute";
+
+  function route(routes: {
+    covered: GroupSpec[];
+    savingsPlan: GroupSpec[];
+    riOnDemand?: Record<string, string>;
+  }) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as {
+        Filter?: { Not?: unknown; Dimensions?: { Key: string; Values: string[] } };
+        Metrics?: string[];
+      };
+      const date = "2026-07-01";
+      if (!body.Metrics) {
+        return new Response(
+          JSON.stringify({
+            UtilizationsByTime: Object.entries(routes.riOnDemand ?? {}).map(([d, cost]) => ({
+              TimePeriod: { Start: d },
+              Total: { OnDemandCostOfRIHoursUsed: cost },
+            })),
+          }),
+          { status: 200 },
+        );
+      }
+      if (body.Filter?.Not) return ceResponse([{ date, groups: [] }]);
+      const values = body.Filter?.Dimensions?.Values ?? [];
+      if (values.length === 1 && values[0] === "Usage") {
+        return ceResponse([
+          { date, groups: [{ keys: [EC2, "us-east-1"], unblended: "100", amortized: "100" }] },
+        ]);
+      }
+      if (values.length === 1 && values[0] === "SavingsPlanCoveredUsage") {
+        return ceResponse([{ date, groups: routes.savingsPlan }]);
+      }
+      return ceResponse([{ date, groups: routes.covered }]);
+    });
+  }
+
+  it("stamps the SP half's unblended plus the RI half at the utilization ratio", async () => {
+    route({
+      covered: [{ keys: [EC2, "us-west-2"], unblended: "50", amortized: "70" }],
+      savingsPlan: [{ keys: [EC2, "us-west-2"], unblended: "50", amortized: "30" }],
+      riOnDemand: { "2026-07-01": "100" },
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    const covered = rows.find((r) => r.chargeType === "commitment_covered_usage")!;
+    // 50 (SP on demand) + 40 RI effective × 100/40 = 150.
+    expect(covered.onDemandAmount).toBeCloseTo(150, 9);
+    // Uncovered usage needs none: its amortized amount is its on-demand cost.
+    expect(rows.find((r) => r.chargeType === "usage")!.onDemandAmount).toBeUndefined();
+  });
+
+  it("omits it when the RI ratio is unusable, rather than guessing a discount", async () => {
+    route({
+      covered: [{ keys: [EC2, "us-west-2"], unblended: "0", amortized: "40" }],
+      savingsPlan: [],
+      riOnDemand: { "2026-07-01": "10" },
+    });
+
+    const { rows } = await fetchAwsCostData(creds, RANGE);
+
+    expect(rows.every((r) => r.onDemandAmount === undefined)).toBe(true);
+  });
+});

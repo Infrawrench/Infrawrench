@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 76 resources and 8 data
+accounts and access control, and alert delivery. 77 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -667,6 +667,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
+| `infrawrench_commitment_report`         | by id     | Files into report folders; `date_preset` or dates    |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |
 | `infrawrench_cost_canvas`               | by id     | `spec_json` holds queries; compared as JSON          |

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import {
+  commitmentDaysUntilEnd,
   formatCreditAmount,
+  isCommitmentExpiringSoon,
   type CommitmentHolding,
+  type CommitmentPaymentOption,
   type CommitmentRecommendationView,
   type CommitmentsFeed,
   type CommitmentState,
@@ -218,9 +221,64 @@ function CoverageLine({ feed }: { feed: CommitmentsFeed }) {
   );
 }
 
+function paymentLabel(
+  gt: ReturnType<typeof useGT>,
+  option: CommitmentPaymentOption | null,
+): string | null {
+  switch (option) {
+    case "all_upfront":
+      return gt("all upfront");
+    case "partial_upfront":
+      return gt("partial upfront");
+    case "no_upfront":
+      return gt("no upfront");
+    case "monthly":
+      return gt("monthly");
+    default:
+      return null;
+  }
+}
+
+function termLabel(gt: ReturnType<typeof useGT>, termDays: number | null): string | null {
+  if (termDays === null || termDays <= 0) return null;
+  // Providers report 365 / 1095 (and leap-year variants): name the years.
+  const years = termDays / 365;
+  if (Math.abs(years - Math.round(years)) < 0.02 && Math.round(years) >= 1) {
+    return Math.round(years) === 1
+      ? gt("1-year term")
+      : gt("{years}-year term", { years: Math.round(years) });
+  }
+  return gt("{days}-day term", { days: termDays });
+}
+
 function HoldingRow({ holding }: { holding: CommitmentHolding }) {
   const gt = useGT();
   const { utilization } = holding;
+  const expiringSoon = isCommitmentExpiringSoon(holding);
+  const daysLeft = commitmentDaysUntilEnd(holding);
+  // The inventory's contract facts, each only when the provider reported it:
+  // a missing term or payment option is "not reported", not "none".
+  const contract = [
+    termLabel(gt, holding.termDays),
+    paymentLabel(gt, holding.paymentOption),
+    holding.startDate ? gt("started {date}", { date: holding.startDate.slice(0, 10) }) : null,
+    // Without an hourly figure the line above already leads with the upfront.
+    holding.upfrontAmount !== null && holding.currency && holding.hourlyCommitmentAmount !== null
+      ? gt("{amount} upfront", {
+          amount: formatCreditAmount(holding.upfrontAmount, holding.currency),
+        })
+      : null,
+    holding.recurringAmount !== null && holding.currency
+      ? holding.recurringPeriod === "month"
+        ? gt("{amount}/month recurring", {
+            amount: formatCreditAmount(holding.recurringAmount, holding.currency),
+          })
+        : gt("{amount}/hour recurring", {
+            amount: formatCreditAmount(holding.recurringAmount, holding.currency),
+          })
+      : null,
+    holding.scope,
+  ].filter((part): part is string => Boolean(part));
   const money =
     holding.hourlyCommitmentAmount !== null && holding.currency
       ? gt("{amount}/hour committed", {
@@ -246,6 +304,9 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
           {holding.accountName} · {holding.region ?? gt("All regions")} · {money}
           {holding.endDate && <> · {gt("ends {date}", { date: holding.endDate.slice(0, 10) })}</>}
         </p>
+        {contract.length > 0 && (
+          <p className="text-xs text-on-surface-muted mt-0.5">{contract.join(" · ")}</p>
+        )}
         <p className="text-xs text-on-surface-muted mt-0.5">
           {utilization.utilization !== null ? (
             <>
@@ -278,6 +339,13 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
           )}
         </p>
       </div>
+      {expiringSoon && daysLeft !== null && (
+        <span className="text-xs px-2 py-0.5 rounded-md whitespace-nowrap text-warning bg-amber-500/10">
+          {daysLeft === 1
+            ? gt("Expires in 1 day")
+            : gt("Expires in {days} days", { days: daysLeft })}
+        </span>
+      )}
       <span
         className={`text-xs px-2 py-0.5 rounded-md whitespace-nowrap ${STATE_CLASS[holding.state]}`}
       >

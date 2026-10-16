@@ -716,6 +716,26 @@ export function blendAzureRows(
   return blendCommitmentPools(members);
 }
 
+/**
+ * The on-demand-equivalent cost of each covered consumption row, by index
+ * into `rows` (`CostRow.onDemandAmount`): its effective cost times its
+ * service-day's on-demand/effective ratio. Undefined for every other row and
+ * for a covered row whose service-day has no ratio (a meter nobody could
+ * price, or a ratio outside the sanity bounds): omitted, never guessed. The
+ * same figure {@link blendAzureRows} uses as the row's pool weight. Pure.
+ */
+export function azureCoveredOnDemand(
+  rows: readonly CostRow[],
+  ratios: ReadonlyMap<string, number | null>,
+): Array<number | undefined> {
+  return rows.map((r) => {
+    if (r.chargeType !== "commitment_covered_usage") return undefined;
+    const ratio = ratios.get(serviceDayKey(r.date, r.service ?? "", r.currency));
+    if (ratio === undefined || ratio === null) return undefined;
+    return (r.amortizedAmount ?? r.amount) * ratio;
+  });
+}
+
 const RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices";
 
 /**
@@ -783,15 +803,18 @@ const COST_AND_QUANTITY = {
 };
 
 /**
- * Blended amounts for `rows`, by index: the two meter queries and any retail
- * lookups, then {@link blendAzureRows}. Skipped when nothing was covered; any
- * failure blends nothing.
+ * Blended amounts and on-demand equivalents for `rows`, by index: the two
+ * meter queries and any retail lookups, then {@link blendAzureRows} and
+ * {@link azureCoveredOnDemand}. Skipped when nothing was covered; any failure
+ * blends nothing and stamps no on-demand equivalent.
  */
-async function blendedAmounts(
+async function commitmentPricing(
   ctx: AzureHttpContext,
   range: CostFetchRange,
   rows: readonly CostRow[],
-): Promise<Array<number | undefined> | undefined> {
+): Promise<
+  { blended: Array<number | undefined>; onDemand: Array<number | undefined> } | undefined
+> {
   if (!rows.some((r) => r.chargeType === "commitment_covered_usage")) return undefined;
   try {
     const covered: AzureCoveredMeter[] = [];
@@ -865,7 +888,8 @@ async function blendedAmounts(
         // No list price: those service-days stay unblended.
       }
     }
-    return blendAzureRows(rows, azureCoveredRatios(covered, meterPrice));
+    const ratios = azureCoveredRatios(covered, meterPrice);
+    return { blended: blendAzureRows(rows, ratios), onDemand: azureCoveredOnDemand(rows, ratios) };
   } catch {
     return undefined;
   }
@@ -1110,11 +1134,17 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     });
   }
 
-  const blended = await blendedAmounts(ctx, range, rows);
-  if (!blended) return rows;
+  const pricing = await commitmentPricing(ctx, range, rows);
+  if (!pricing) return rows;
   return rows.map((r, i) => {
-    const b = blended[i];
-    return b === undefined ? r : { ...r, blendedAmount: b };
+    const b = pricing.blended[i];
+    const od = pricing.onDemand[i];
+    if (b === undefined && od === undefined) return r;
+    return {
+      ...r,
+      ...(b !== undefined ? { blendedAmount: b } : {}),
+      ...(od !== undefined ? { onDemandAmount: od } : {}),
+    };
   });
 }
 

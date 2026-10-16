@@ -4,6 +4,7 @@ import "./accounts";
 import "./agents";
 import "./chat";
 import "./costs";
+import "./commitment-reports";
 import "./cost-canvases";
 import "./invoices";
 import "./metric-alerts";

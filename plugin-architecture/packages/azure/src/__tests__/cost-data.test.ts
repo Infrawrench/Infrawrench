@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CostRow } from "@infrawrench/plugin-base";
 
-import { azureCoveredRatios, fetchAzureCostData, mapAzureChargeType } from "../cost-data.js";
+import {
+  azureCoveredOnDemand,
+  azureCoveredRatios,
+  fetchAzureCostData,
+  mapAzureChargeType,
+} from "../cost-data.js";
 import type { AzureHttpContext } from "../shared.js";
 
 const RANGE = { fromDate: "2026-07-01", toDate: "2026-07-02" };
@@ -963,5 +968,37 @@ describe("azureCoveredRatios", () => {
       new Map([["m", 1]]),
     );
     expect([...ratios.values()]).toEqual([null]);
+  });
+});
+
+describe("azureCoveredOnDemand", () => {
+  const key = (service: string) => ["2026-07-01", service, "USD"].join("\u0000");
+  const row = (
+    chargeType: NonNullable<CostRow["chargeType"]>,
+    service: string,
+    amortized: number,
+  ): CostRow => ({
+    date: "2026-07-01",
+    service,
+    region: "eastus",
+    currency: "USD",
+    amount: chargeType === "usage" ? amortized : 0,
+    amortizedAmount: amortized,
+    chargeType,
+  });
+
+  it("re-prices covered rows at their service-day ratio and leaves the rest alone", () => {
+    const out = azureCoveredOnDemand(
+      [
+        row("commitment_covered_usage", "Virtual Machines", 40),
+        row("usage", "Virtual Machines", 25),
+        row("commitment_covered_usage", "SQL Database", 10),
+      ],
+      new Map<string, number | null>([
+        [key("Virtual Machines"), 2.5],
+        [key("SQL Database"), null],
+      ]),
+    );
+    expect(out).toEqual([100, undefined, undefined]);
   });
 });

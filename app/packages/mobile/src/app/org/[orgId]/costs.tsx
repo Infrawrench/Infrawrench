@@ -21,6 +21,7 @@ import {
 } from "@/components/ui";
 import { CarbonSection } from "@/features/costs/CarbonSection";
 import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
+import { CommitmentReportsSection } from "@/features/costs/CommitmentReportsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
 import { EfficiencyAlertsSection } from "@/features/costs/EfficiencyAlertsSection";
@@ -181,6 +182,7 @@ export default function CostsScreen() {
       )}
 
       {tab === "commitments" && <CommitmentsSection />}
+      {tab === "commitments" && <CommitmentReportsSection />}
 
       {tab === "carbon" && <CarbonSection />}
 

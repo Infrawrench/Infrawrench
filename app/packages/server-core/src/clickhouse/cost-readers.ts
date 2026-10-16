@@ -187,6 +187,8 @@ const BILLED_ONLY_COLUMNS = {
   list_reported: sql`toUInt8(0)`,
   blended_amount: sql`toFloat64(0)`,
   blended_reported: sql`toUInt8(0)`,
+  on_demand_amount: sql`toFloat64(0)`,
+  on_demand_reported: sql`toUInt8(0)`,
 } as const;
 
 /** The split half's projection: its own columns, then the billed-only defaults. */

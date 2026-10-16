@@ -1,6 +1,6 @@
 /**
  * Per-object sharing (`/api/org/:orgId/sharing/:objectType/:objectId`) for
- * cost reports, report folders and dashboards. See
+ * cost reports, commitment reports, report folders, canvases and dashboards. See
  * `services/object-sharing.ts` for the model.
  *
  * Reading the document needs viewer on the object plus the object family's
@@ -40,12 +40,14 @@ const READ_PERMISSION: Record<ShareableObjectType, string> = {
   cost_report: "costs:read",
   cost_report_folder: "costs:read",
   cost_canvas: "costs:read",
+  commitment_report: "costs:read",
   dashboard: "dashboards:read",
 };
 const WRITE_PERMISSION: Record<ShareableObjectType, string> = {
   cost_report: "costs:write",
   cost_report_folder: "costs:write",
   cost_canvas: "costs:write",
+  commitment_report: "costs:write",
   dashboard: "dashboards:write",
 };
 

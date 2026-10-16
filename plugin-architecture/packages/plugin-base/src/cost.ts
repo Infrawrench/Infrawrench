@@ -293,6 +293,25 @@ export interface CostRow {
    * prices by construction, and the host records them as such.
    */
   listAmount?: number;
+  /**
+   * What this row's consumption would have cost **without any commitment**,
+   * at the account's own on-demand rates, in `currency`. Set it only on
+   * `commitment_covered_usage` rows, and only when the provider said (AWS:
+   * a Savings Plan's covered `UnblendedCost` and `OnDemandCostOfRIHoursUsed`;
+   * Azure: the subscription's own per-meter on-demand rate). These are the
+   * same on-demand-equivalent weights a plugin computes for
+   * {@link blendedAmount}, so a plugin that blends already has them.
+   *
+   * It is what makes "how much did our commitments save" answerable: savings
+   * is this minus the row's amortized amount. Uncovered usage needs nothing,
+   * because its amortized amount *is* its on-demand cost. Absent means "not
+   * reported", and the host then counts the row as having saved nothing
+   * rather than guessing a discount (understating a saving is recoverable,
+   * overstating one gets a renewal signed). Different from
+   * {@link listAmount}: that is the public list price for invoice re-rating,
+   * this is the counterfactual for the buyer's own savings.
+   */
+  onDemandAmount?: number;
 }
 
 /**

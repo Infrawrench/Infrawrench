@@ -90,6 +90,7 @@ import { cmdHygiene } from "./commands/hygiene";
 import { cmdAgents } from "./commands/agents";
 import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
+import { cmdCommitmentReportQuery, cmdCommitmentReports } from "./commands/commitment-reports";
 import { cmdSavings, cmdSavingsLog } from "./commands/savings";
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
@@ -345,6 +346,12 @@ COMMANDS
   credits             prepaid balances with burn rate & runway ("6 days left")
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
+  commitments reports [name|id]  list saved commitment reports, or run one: coverage,
+                      utilization, savings & commitment cost over time
+                      [--metric utilization] [--format csv] [--out file.csv]
+  commitments report  an unsaved commitment report   [--last 90d | --from --to]
+                      [--bin day|week|month|quarter] [--group-by provider|commitment_type|
+                      commitment|service|account|region] [--provider aws] [-a account]
   savings             realized savings: what resizes, cleanups, schedules & commitments
                       actually saved vs projected   [--from] [--to] [--group-by month|kind|cost-centre|account]
   savings log "<what>" log a saving by hand   --amount <monthly> [--currency USD] [--from <day>] [--note]
@@ -450,7 +457,9 @@ FLAGS
   --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
   --gaps              compliance: only controls without evidence, with the reasons why
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
-                      costs push: json (default), csv or focus
+                      costs push: json (default), csv or focus; csv for commitments reports
+  --metric <m>        commitments reports: the metric the sparkline draws (coverage,
+                      utilization, effectiveSavingsRate, netSavings, onDemandRemainder, …)
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
                       feedback: the reason category (planned_launch, migration, …); leaks
                       dismiss: false-positive, wont-fix or used-in-tests
@@ -1092,6 +1101,23 @@ export async function runCli(): Promise<void> {
         await cmdCredits(ctx);
         break;
       case "commitments":
+        // `commitments reports [name|id]` lists or runs a saved commitment
+        // report; `commitments report` runs an unsaved one from flags. Bare
+        // `commitments` is the holdings, coverage and planner feed.
+        if (rest[0] === "reports") {
+          await cmdCommitmentReports(ctx, rest.slice(1).join(" "), parsed.range, {
+            format: parsed.exportFlags.format,
+            out: parsed.exportFlags.out,
+          });
+          break;
+        }
+        if (rest[0] === "report") {
+          await cmdCommitmentReportQuery(ctx, parsed.range, parsed.prices.provider, {
+            format: parsed.exportFlags.format,
+            out: parsed.exportFlags.out,
+          });
+          break;
+        }
         await cmdCommitments(ctx);
         break;
       case "savings":

@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 76 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 77 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -423,6 +423,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                         |
 | `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                              |
 | `infrawrench_cost_report_folder`        | Report folders                                                                                 |
+| `infrawrench_commitment_report`         | [Commitment reports](./commitment-reports.md): coverage, utilization and savings over time     |
 | `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                        |
 | `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email          |
 | `infrawrench_cost_canvas`               | Cost canvases: report pages of text, KPIs, charts and tables, kept in code once vetted         |

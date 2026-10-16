@@ -485,3 +485,57 @@ func TestCostCanvasSpecKeepsConfiguredFormatting(t *testing.T) {
 		}
 	})
 }
+
+func TestCommitmentReportRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	remote := &iw.CommitmentReport{
+		ID:   "r1",
+		Name: "EC2 coverage",
+		Config: iw.CommitmentReportConfig{
+			Version:     1,
+			DateRange:   iw.CostDateRange{Kind: "absolute", From: ptr("2026-01-01"), To: ptr("2026-06-30")},
+			Granularity: "monthly",
+			GroupBy:     "account",
+			Metric:      "coverage",
+			Filters:     iw.CommitmentReportFilters{Providers: []string{"aws"}},
+		},
+		CreatedAt: "2026-07-01T00:00:00Z",
+		UpdatedAt: "2026-07-01T00:00:00Z",
+	}
+	state, diags := commitmentReportStateFrom(ctx, remote)
+	if diags.HasError() {
+		t.Fatalf("state mapping: %v", diags)
+	}
+	if !state.DatePreset.IsNull() || state.DateFrom.ValueString() != "2026-01-01" {
+		t.Errorf("an absolute range must leave date_preset null: %+v", state)
+	}
+	// Filters the server did not echo are null, the shape an omitted attribute plans as.
+	if !state.Services.IsNull() || !state.CommitmentIDs.IsNull() || state.Providers.IsNull() {
+		t.Errorf("filter sets mapped wrong: %+v", state)
+	}
+	if !state.Description.IsNull() || !state.FolderID.IsNull() {
+		t.Error("absent nullable fields must map to null")
+	}
+
+	in, diags := commitmentReportInputFrom(ctx, state)
+	if diags.HasError() {
+		t.Fatalf("input mapping: %v", diags)
+	}
+	if in.Config.DateRange.Kind != "absolute" || in.Config.DateRange.Preset != nil {
+		t.Errorf("date range lost its branch: %+v", in.Config.DateRange)
+	}
+	if len(in.Config.Filters.Providers) != 1 || in.Config.Filters.Services != nil {
+		t.Errorf("filters mapped wrong: %+v", in.Config.Filters)
+	}
+	if in.FolderID != nil {
+		t.Error("a null folder must be sent as null (top level)")
+	}
+
+	state.DatePreset = types.StringValue("90d")
+	state.DateFrom = types.StringNull()
+	state.DateTo = types.StringNull()
+	in, _ = commitmentReportInputFrom(ctx, state)
+	if in.Config.DateRange.Kind != "relative" || *in.Config.DateRange.Preset != "90d" {
+		t.Errorf("a preset must send a relative range: %+v", in.Config.DateRange)
+	}
+}

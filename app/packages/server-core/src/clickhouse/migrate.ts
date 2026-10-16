@@ -142,6 +142,8 @@ const ADDITIVE_COLUMNS: Array<[ClickHouseTable, ClickHouseColumn]> = [
   [networkFlowDaily, networkFlowDaily.method],
   [costDaily, costDaily.blended_amount],
   [costDaily, costDaily.blended_reported],
+  [costDaily, costDaily.on_demand_amount],
+  [costDaily, costDaily.on_demand_reported],
 ];
 
 function addColumnSQL(table: ClickHouseTable, column: ClickHouseColumn): string {

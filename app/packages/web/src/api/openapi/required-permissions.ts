@@ -251,6 +251,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // one that should govern "how much is left".
   "GET /credits": "costs:read",
   "GET /commitments": "costs:read",
+  "GET /commitments/report-options": "costs:read",
+  "POST /commitments/report-query": "costs:read",
+  "GET /commitments/reports": "costs:read",
+  "POST /commitments/reports": "costs:write",
+  "GET /commitments/reports/{id}": "costs:read",
+  "PUT /commitments/reports/{id}": "costs:write",
+  "DELETE /commitments/reports/{id}": "costs:write",
+  "POST /commitments/reports/{id}/run": "costs:read",
   "GET /network-flows": "costs:read",
   "GET /network-flows/settings": "costs:read",
   // Not `costs:write`: enabling collection spends the organization's money in

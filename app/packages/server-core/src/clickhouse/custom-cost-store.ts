@@ -123,6 +123,8 @@ export async function tombstoneCustomCostRows(scope: CustomCostRowScope): Promis
         list_reported: 0,
         blended_amount: 0,
         blended_reported: 0,
+        on_demand_amount: 0,
+        on_demand_reported: 0,
       };
     });
     await insertCostRows(tombstones);

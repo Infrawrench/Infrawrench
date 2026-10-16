@@ -36,7 +36,7 @@ const g = (
 const ALICE = { organizationId: "o", userId: "alice", roleId: "role-fin", override: false };
 
 async function levelOf(
-  type: "cost_report" | "cost_report_folder" | "dashboard",
+  type: "cost_report" | "cost_report_folder" | "dashboard" | "commitment_report",
   id: string,
   grants: Row[],
   meta: { createdByUserId?: string | null; folderId?: string | null } = {},
@@ -100,6 +100,26 @@ describe("object sharing levels", () => {
     expect(await levelOf("cost_report", "r1", grants, { folderId: "f-child" }, folders)).toBe(
       "editor",
     );
+  });
+
+  it("a commitment report is owned by its creator and inherits its folder's sharing", async () => {
+    const own = g("commitment_report", "c1", "org", "", "none");
+    expect(await levelOf("commitment_report", "c1", [own], { createdByUserId: "alice" })).toBe(
+      "owner",
+    );
+    const grants = [own, g("cost_report_folder", "f1", "role", "role-fin", "viewer")];
+    expect(
+      await levelOf("commitment_report", "c1", grants, { folderId: "f1" }, [
+        { id: "f1", parent: null },
+      ]),
+    ).toBe("viewer");
+    // A cost report's own grants say nothing about a commitment report.
+    expect(
+      await levelOf("commitment_report", "c1", [
+        own,
+        g("cost_report", "c1", "member", "alice", "owner"),
+      ]),
+    ).toBe("none");
   });
 
   it("a folder left at the default does not undo a report's 'none'", async () => {
