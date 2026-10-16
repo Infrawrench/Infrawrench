@@ -4,6 +4,7 @@ import {
   accountTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
@@ -359,6 +360,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns k8s-efficiency route args, clearing the report param for the list", () => {
+    expect(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget())).toEqual({
+      to: "/k8s-efficiency",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget("r1"))).toEqual({
+      to: "/k8s-efficiency",
+      search: { report: "r1" },
+    });
+  });
+
   it("returns invoices route args, clearing the invoice param for the list", () => {
     // Same reason as cost-reports: navigating back to the list must CLEAR
     // ?invoice=, or the route resolves straight back into the open invoice.
@@ -541,6 +553,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/cost-canvases", undefined, "canvas=c1")).toEqual({
       kind: "cost-canvases",
       canvasId: "c1",
+    });
+  });
+
+  it("parses the k8s-efficiency path with its report param", () => {
+    expect(syncWorkspaceRouteFromPath("/k8s-efficiency")).toEqual({ kind: "k8s-efficiency" });
+    expect(syncWorkspaceRouteFromPath("/k8s-efficiency", undefined, "report=r1")).toEqual({
+      kind: "k8s-efficiency",
+      reportId: "r1",
     });
   });
 

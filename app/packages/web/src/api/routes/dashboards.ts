@@ -814,6 +814,8 @@ app.post("/validate-tabs", async (c) => {
       // Same rule for Canvases: `canvasId` only remembers which canvas was
       // open, and the panel shows "not found" for one that is gone.
       target.kind === "cost-canvases" ||
+      // And for Kubernetes efficiency reports: `reportId` is remembered state.
+      target.kind === "k8s-efficiency" ||
       // Same as Cost reports: the Invoices tab is the list page, and
       // `invoiceId` only remembers which invoice was open. A voided or deleted
       // invoice must not invalidate the tab.

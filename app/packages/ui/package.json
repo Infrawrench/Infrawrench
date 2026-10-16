@@ -49,6 +49,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./k8s-efficiency": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
     "./invoices": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

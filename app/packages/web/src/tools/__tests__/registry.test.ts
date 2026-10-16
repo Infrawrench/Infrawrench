@@ -39,6 +39,11 @@ vi.mock("../cost-canvases", () => ({
     { name: "cv1", title: "CV1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../k8s-efficiency", () => ({
+  kubernetesEfficiencyTools: () => [
+    { name: "ke1", title: "KE1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../cost-alerts", () => ({
   costAlertTools: () => [
     { name: "ca1", title: "CA1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -174,6 +179,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("u1");
     expect(names).toContain("cr1");
     expect(names).toContain("cv1");
+    expect(names).toContain("ke1");
     expect(names).toContain("ca1");
     expect(names).toContain("iv1");
     expect(names).toContain("m1");

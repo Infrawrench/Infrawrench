@@ -81,6 +81,10 @@
       "description": "Reports built from a plain-language description by the chat agent: a saved, strictly validated spec of KPI tiles, charts, tables, budgets, anomalies and short narrative. The spec stores queries, not numbers, so running a canvas re-executes them with no model call; edits proposed in chat are approved against a diff."
     },
     {
+      "name": "Kubernetes efficiency reports",
+      "description": "Saved views over Kubernetes clusters' derived cost: per cluster, namespace, workload, label, node pool or cost category, how much of the money bought capacity that was used, requested but unused, unmeasured, idle, or overhead, with an efficiency percentage on a total or allocated basis. Filed in cost-report folders and shared like cost reports; every read is narrowed to the caller's cost visibility scope."
+    },
+    {
       "name": "Cost annotations",
       "description": "Dated notes drawn over cost charts, such as \"we migrated to Graviton here\". A note has a start day and an optional end day. Without a report id it appears on every cost chart; with one, only on that report. Annotations never change a series, total or axis."
     },
@@ -7362,6 +7366,7 @@
               "savings",
               "cost-reports",
               "cost-canvases",
+              "k8s-efficiency",
               "invoices",
               "graph",
               "logs",
@@ -11296,6 +11301,700 @@
           "email",
           "pdfAttached",
           "slackFilesUploaded"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "account",
+              "region",
+              "tag"
+            ],
+            "description": "`account` is a Kubernetes cluster (its connected account id). `tag` covers namespace, workload, workload_kind, node_pool, capacity_type, instance_type, zone and the `k8s_pod_label:`, `k8s_node_label:` and `k8s_pvc_label:` labels."
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "minItems": 1,
+            "maxItems": 200
+          },
+          "tagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Required when `dimension` is `tag`."
+          }
+        },
+        "required": [
+          "dimension",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesCostCategory": {
+        "type": "string",
+        "enum": [
+          "cpu",
+          "memory",
+          "gpu",
+          "storage",
+          "network",
+          "control_plane",
+          "compute"
+        ],
+        "description": "What the money bought. `network` is load balancers; `compute` is CPU and memory together, and only appears on rows collected before the two were written apart."
+      },
+      "KubernetesEfficiencyConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KubernetesEfficiencyFilter"
+            },
+            "maxItems": 20
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "cluster",
+              "namespace",
+              "workload",
+              "label",
+              "node_pool",
+              "category"
+            ]
+          },
+          "groupByLabelKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The tag key to group by; required exactly when `groupBy` is `label`."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KubernetesCostCategory"
+            },
+            "maxItems": 7,
+            "description": "Cost categories to include. Absent or empty is every category."
+          },
+          "idle": {
+            "type": "string",
+            "enum": [
+              "separate",
+              "spread"
+            ],
+            "description": "`separate` keeps idle capacity and cluster overhead as their own rows; `spread` shares them across each cluster's groups, per period, in proportion to what each was allocated."
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "total",
+              "allocated"
+            ],
+            "description": "Efficiency denominator. `total`: used / (total - unmeasured), so idle and overhead count against it. `allocated`: used / (used + unused), what workloads reserved only."
+          }
+        },
+        "required": [
+          "version",
+          "dateRange",
+          "granularity",
+          "filters",
+          "groupBy",
+          "idle",
+          "basis"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/KubernetesEfficiencyConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/KubernetesEfficiencyConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A cost-report folder to file it under; null is the top level."
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyOptions": {
+        "type": "object",
+        "properties": {
+          "clusters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "namespaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "nodePools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "labelKeys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "group": {
+                  "type": "string",
+                  "enum": [
+                    "tag",
+                    "k8s",
+                    "k8s_pod_label",
+                    "k8s_node_label",
+                    "k8s_pvc_label"
+                  ]
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string",
+                        "enum": [
+                          "tag",
+                          "k8s",
+                          "k8s_pod_label",
+                          "k8s_node_label",
+                          "k8s_pvc_label"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "group",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "group",
+                "keys"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "clusters",
+          "regions",
+          "namespaces",
+          "nodePools",
+          "labelKeys"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyFigures": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "used": {
+            "type": "number",
+            "description": "Capacity measurably used (and mounted volumes, load balancers)."
+          },
+          "unused": {
+            "type": "number",
+            "description": "Requested but measured unused."
+          },
+          "unmeasured": {
+            "type": "number",
+            "description": "Allocated with no usage data."
+          },
+          "idle": {
+            "type": "number",
+            "description": "Capacity nobody requested, unrequested GPUs, unattached volumes."
+          },
+          "overhead": {
+            "type": "number",
+            "description": "System-reserved node capacity and the control-plane fee."
+          },
+          "allocated": {
+            "type": "number",
+            "description": "used + unused + unmeasured."
+          },
+          "efficiency": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "0..1 on the report's basis; null when unmeasured."
+          },
+          "measuredShare": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "total",
+          "used",
+          "unused",
+          "unmeasured",
+          "idle",
+          "overhead",
+          "allocated",
+          "efficiency",
+          "measuredShare"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "group",
+              "idle",
+              "overhead",
+              "unattributed"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "figures": {
+            "$ref": "#/components/schemas/KubernetesEfficiencyFigures"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "$ref": "#/components/schemas/KubernetesCostCategory"
+                },
+                "figures": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyFigures"
+                }
+              },
+              "required": [
+                "category",
+                "figures"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bucket": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "number"
+                },
+                "used": {
+                  "type": "number",
+                  "description": "Capacity measurably used (and mounted volumes, load balancers)."
+                },
+                "unused": {
+                  "type": "number",
+                  "description": "Requested but measured unused."
+                },
+                "unmeasured": {
+                  "type": "number",
+                  "description": "Allocated with no usage data."
+                },
+                "idle": {
+                  "type": "number",
+                  "description": "Capacity nobody requested, unrequested GPUs, unattached volumes."
+                },
+                "overhead": {
+                  "type": "number",
+                  "description": "System-reserved node capacity and the control-plane fee."
+                },
+                "allocated": {
+                  "type": "number",
+                  "description": "used + unused + unmeasured."
+                },
+                "efficiency": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "0..1 on the report's basis; null when unmeasured."
+                },
+                "measuredShare": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "bucket",
+                "total",
+                "used",
+                "unused",
+                "unmeasured",
+                "idle",
+                "overhead",
+                "allocated",
+                "efficiency",
+                "measuredShare"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "label",
+          "figures",
+          "categories",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "cluster",
+              "namespace",
+              "workload",
+              "label",
+              "node_pool",
+              "category"
+            ]
+          },
+          "groupByLabelKey": {
+            "type": "string"
+          },
+          "idle": {
+            "type": "string",
+            "enum": [
+              "separate",
+              "spread"
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "total",
+              "allocated"
+            ]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "totals": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyFigures"
+                },
+                "categories": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "category": {
+                        "$ref": "#/components/schemas/KubernetesCostCategory"
+                      },
+                      "figures": {
+                        "$ref": "#/components/schemas/KubernetesEfficiencyFigures"
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "figures"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bucket": {
+                        "type": "string"
+                      },
+                      "total": {
+                        "type": "number"
+                      },
+                      "used": {
+                        "type": "number",
+                        "description": "Capacity measurably used (and mounted volumes, load balancers)."
+                      },
+                      "unused": {
+                        "type": "number",
+                        "description": "Requested but measured unused."
+                      },
+                      "unmeasured": {
+                        "type": "number",
+                        "description": "Allocated with no usage data."
+                      },
+                      "idle": {
+                        "type": "number",
+                        "description": "Capacity nobody requested, unrequested GPUs, unattached volumes."
+                      },
+                      "overhead": {
+                        "type": "number",
+                        "description": "System-reserved node capacity and the control-plane fee."
+                      },
+                      "allocated": {
+                        "type": "number",
+                        "description": "used + unused + unmeasured."
+                      },
+                      "efficiency": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "0..1 on the report's basis; null when unmeasured."
+                      },
+                      "measuredShare": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "bucket",
+                      "total",
+                      "used",
+                      "unused",
+                      "unmeasured",
+                      "idle",
+                      "overhead",
+                      "allocated",
+                      "efficiency",
+                      "measuredShare"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KubernetesEfficiencyRow"
+                  }
+                }
+              },
+              "required": [
+                "currency",
+                "totals",
+                "categories",
+                "points",
+                "rows"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "includesLegacyRows": {
+            "type": "boolean",
+            "description": "Some rows predate the resource and usage tags (reported as `compute`, unmeasured)."
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "idle",
+          "basis",
+          "buckets",
+          "currencies",
+          "includesLegacyRows"
+        ],
+        "additionalProperties": false
+      },
+      "KubernetesEfficiencyRunResult": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/KubernetesEfficiencyResult"
+          }
+        },
+        "required": [
+          "reportId",
+          "name",
+          "result"
         ],
         "additionalProperties": false
       },
@@ -39789,7 +40488,8 @@
           "cost_report",
           "cost_report_folder",
           "dashboard",
-          "cost_canvas"
+          "cost_canvas",
+          "kubernetes_efficiency_report"
         ]
       },
       "OrgAccessLevel": {
@@ -63748,6 +64448,604 @@
         "operationId": "postOrgOrgIdCostCanvasesIdNotificationsNotificationIdSend",
         "x-required-permission": "org:settings:write",
         "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports": {
+      "get": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "List Kubernetes efficiency reports",
+        "description": "The reports the caller's sharing lets them open, alphabetically.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KubernetesEfficiencyReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdK8sEfficiencyReports",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Create a Kubernetes efficiency report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KubernetesEfficiencyReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdK8sEfficiencyReports",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/options": {
+      "get": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Picker options for Kubernetes efficiency reports",
+        "description": "Clusters, regions, namespaces, node pools and label keys present on the org's Kubernetes cost rows, narrowed to the caller's cost visibility scope.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdK8sEfficiencyReportsOptions",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/values": {
+      "get": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Values of one label on Kubernetes cost rows",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "tagKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "values"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdK8sEfficiencyReportsValues",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/query": {
+      "post": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Run an unsaved Kubernetes efficiency report config",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/KubernetesEfficiencyConfig"
+                  }
+                },
+                "required": [
+                  "config"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdK8sEfficiencyReportsQuery",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/{id}": {
+      "get": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Get a Kubernetes efficiency report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdK8sEfficiencyReportsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Replace a Kubernetes efficiency report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KubernetesEfficiencyReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdK8sEfficiencyReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Delete a Kubernetes efficiency report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdK8sEfficiencyReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/{id}/run": {
+      "post": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Run a Kubernetes efficiency report",
+        "description": "Per row and in total: total, used, requested-but-unused, unmeasured, idle and overhead cost, efficiency on the report's basis, a per-category breakdown and a per-period series.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesEfficiencyRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdK8sEfficiencyReportsIdRun",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/k8s-efficiency-reports/{id}/export": {
+      "get": {
+        "tags": [
+          "Kubernetes efficiency reports"
+        ],
+        "summary": "Export a Kubernetes efficiency report",
+        "description": "One record per row and cost category plus the totals; with `perPeriod`, each row's figures per period as well. CSV (RFC 4180) or newline-delimited JSON.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "ndjson"
+              ]
+            },
+            "required": false,
+            "name": "format",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false",
+                "1",
+                "0"
+              ]
+            },
+            "required": false,
+            "name": "perPeriod",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdK8sEfficiencyReportsIdExport",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/cost-reports/{id}/notifications": {

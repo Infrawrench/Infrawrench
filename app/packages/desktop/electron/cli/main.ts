@@ -69,6 +69,7 @@ import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdSeats } from "./commands/seats";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
+import { cmdK8sEfficiency } from "./commands/k8s-efficiency";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
@@ -137,7 +138,7 @@ COMMANDS
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
-                      [--group-by tag:<key> | virtual_tag:<key> | k8s_node_label:<key> | k8s_pvc_label:<key>
+                      [--group-by tag:<key> | virtual_tag:<key> | k8s_node_label:<key> | k8s_pvc_label:<key> | k8s_pod_label:<key>
                        group by a provider tag, a virtual tag or a Kubernetes label]
                       [--basis cash|amortized|blended] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency (stated rates, then
@@ -286,6 +287,14 @@ COMMANDS
   seats refresh       re-collect seats now
   carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
+  k8s-efficiency      saved Kubernetes efficiency reports (cloud only)
+  k8s-efficiency <name|id>
+                      run one: total, used, requested-but-unused, unmeasured, idle and overhead
+                      cost, efficiency %, by cost category and by group
+                      [--format csv|ndjson] [--out <path>] (the per-period export)
+  k8s-efficiency --group-by <cluster|namespace|workload|node_pool|category|label-key>
+                      the same, unsaved, over every cluster you can see
+                      [--last 30d] [--basis total|allocated]
   k8s-network [cluster]
                       a Kubernetes cluster's network costs by traffic class (same zone,
                       cross-zone, cross-region, internet), namespace and workload, top talkers,
@@ -989,6 +998,9 @@ export async function runCli(): Promise<void> {
         break;
       case "k8s-network":
         await cmdK8sNetwork(ctx, rest.join(" "), parsed.range);
+        break;
+      case "k8s-efficiency":
+        await cmdK8sEfficiency(ctx, rest.join(" "), parsed.range, parsed.exportFlags);
         break;
       case "alerts":
         if (rest[0] === "events") {

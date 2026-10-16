@@ -4,6 +4,7 @@ import {
   accountTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   postureTabTarget,
   vulnerabilitiesTabTarget,
@@ -403,5 +404,28 @@ describe("tab icons", () => {
     const tabs = useUIStore.getState().workspaceTabs;
     useUIStore.getState().replaceWorkspaceTabs(tabs, id);
     expect(useUIStore.getState().workspaceTabs[0]?.icon).toBe("data:image/png;base64,AAA");
+  });
+});
+
+describe("k8s-efficiency tab identity", () => {
+  it("uses one tab id whatever report is open", () => {
+    expect(getWorkspaceTabId(k8sEfficiencyTabTarget())).toBe("k8s-efficiency");
+    expect(getWorkspaceTabId(k8sEfficiencyTabTarget("r1"))).toBe("k8s-efficiency");
+  });
+
+  it("has a fallback title", () => {
+    expect(getWorkspaceTabFallbackTitle(k8sEfficiencyTabTarget())).toBe("Kubernetes efficiency");
+  });
+
+  it("compares the report so the route sync retargets the open tab", () => {
+    expect(
+      workspaceTabTargetsEqual(k8sEfficiencyTabTarget("r1"), k8sEfficiencyTabTarget("r1")),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(k8sEfficiencyTabTarget("r1"), k8sEfficiencyTabTarget("r2")),
+    ).toBe(false);
+    expect(workspaceTabTargetsEqual(k8sEfficiencyTabTarget(), k8sEfficiencyTabTarget("r1"))).toBe(
+      false,
+    );
   });
 });

@@ -7,6 +7,7 @@ import {
   costsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -62,6 +63,7 @@ export {
   workflowsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -162,6 +164,19 @@ export function getWorkspaceNavigateArgs(
           }
         : {
             to: "/org/$orgId/cost-canvases",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
+    // Kubernetes efficiency: the Cost reports shape again.
+    case "k8s-efficiency":
+      return target.reportId
+        ? {
+            to: "/org/$orgId/k8s-efficiency/$reportId",
+            params: { orgId, reportId: target.reportId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/k8s-efficiency",
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
@@ -594,6 +609,10 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "cost-canvases") {
     // /cost-canvases is the list; /cost-canvases/{id} is one canvas. One tab.
     return costCanvasesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "k8s-efficiency") {
+    // /k8s-efficiency is the list; /k8s-efficiency/{id} is one report. One tab.
+    return k8sEfficiencyTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "invoices") {
     // /invoices is the list; /invoices/{id} is one invoice. Both are the same

@@ -84,6 +84,7 @@
     "./clickhouse/slo-readers": "./src/clickhouse/slo-readers.ts",
     "./clickhouse/writers": "./src/clickhouse/writers.ts",
     "./clickhouse/cost-readers": "./src/clickhouse/cost-readers.ts",
+    "./clickhouse/k8s-efficiency-readers": "./src/clickhouse/k8s-efficiency-readers.ts",
     "./clickhouse/virtual-tag-sql": "./src/clickhouse/virtual-tag-sql.ts",
     "./clickhouse/cost-writers": "./src/clickhouse/cost-writers.ts",
     "./clickhouse/network-flow-readers": "./src/clickhouse/network-flow-readers.ts",

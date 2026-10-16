@@ -93,6 +93,24 @@ const manifest: PluginManifest = {
       },
     },
     {
+      key: "costPodLabelKeys",
+      label: "Pod labels for cost",
+      description:
+        "Optional. Which pod labels become cost dimensions on workload compute and GPU cost, " +
+        "so Kubernetes efficiency reports and cost graphs can be grouped and filtered by " +
+        "them. Labels a controller sets per pod or per rollout (pod-template-hash and the " +
+        "like) are never recorded. Left blank, the standard app.kubernetes.io labels plus app, " +
+        "team, owner, environment and cost-center are used where your pods have them. Pick up " +
+        "to 20; choose none to record no extra labels.",
+      sensitive: false,
+      optional: true,
+      providerOptions: {
+        dependsOn: ["kubeconfig"],
+        multiple: true,
+        emptyLabel: "Default labels",
+      },
+    },
+    {
       key: "costPvcLabelKeys",
       label: "Volume labels for cost",
       description:
@@ -134,7 +152,7 @@ const manifest: PluginManifest = {
    */
   costs: {
     focus: { default: { category: "Compute", subcategory: "Containers" } },
-    dimensions: ["service", "resource", "tag"],
+    dimensions: ["service", "region", "resource", "tag"],
     maxHistoryDays: 1,
     restatementDays: 1,
   },
@@ -185,14 +203,18 @@ export const plugin: Plugin = {
    * `kubectl get nodes --show-labels` to fill the field in.
    */
   async listCredentialOptions(fieldKey, credentials, services) {
-    if (fieldKey !== "costNodeLabelKeys" && fieldKey !== "costPvcLabelKeys") {
-      throw new Error(`Kubernetes plugin: no options for "${fieldKey}"`);
-    }
+    const kind =
+      fieldKey === "costNodeLabelKeys"
+        ? "node"
+        : fieldKey === "costPvcLabelKeys"
+          ? "pvc"
+          : fieldKey === "costPodLabelKeys"
+            ? "pod"
+            : null;
+    if (!kind) throw new Error(`Kubernetes plugin: no options for "${fieldKey}"`);
     if (!credentials["kubeconfig"]) throw new Error("Paste the kubeconfig first.");
     const client = new KubernetesClient(credentials, services);
-    const options = await client.listLabelKeyOptions(
-      fieldKey === "costNodeLabelKeys" ? "node" : "pvc",
-    );
+    const options = await client.listLabelKeyOptions(kind);
     return [
       {
         id: "none",

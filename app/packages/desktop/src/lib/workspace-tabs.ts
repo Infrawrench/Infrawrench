@@ -7,6 +7,7 @@ import {
   costsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -57,6 +58,7 @@ export {
   costsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -157,6 +159,13 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/cost-canvases",
         search: target.canvasId ? { canvas: target.canvasId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    // Kubernetes efficiency: the Cost reports shape, `?report=<id>`.
+    case "k8s-efficiency":
+      return {
+        to: "/k8s-efficiency",
+        search: target.reportId ? { report: target.reportId } : {},
         ...(replace ? { replace: true } : {}),
       };
     // Same always-pass-`search` rule as Cost reports: omitting the key makes
@@ -398,6 +407,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "cost-canvases") {
     const params = new URLSearchParams(search ?? "");
     return costCanvasesTabTarget(params.get("canvas") ?? undefined);
+  }
+  if (segments[0] === "k8s-efficiency") {
+    const params = new URLSearchParams(search ?? "");
+    return k8sEfficiencyTabTarget(params.get("report") ?? undefined);
   }
   if (segments[0] === "invoices") {
     const params = new URLSearchParams(search ?? "");

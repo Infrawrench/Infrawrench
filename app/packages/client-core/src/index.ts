@@ -298,6 +298,7 @@ export {
   K8S_NODE_LABEL_TAG_PREFIX,
   K8S_PVC_LABEL_TAG_PREFIX,
   K8S_NODE_ATTRIBUTE_TAG_KEYS,
+  K8S_POD_LABEL_TAG_PREFIX,
   COST_TAG_ALIASES,
   costTagAliasFor,
   describeCostTagKey,
@@ -497,6 +498,7 @@ export {
   type CostReportWidgetConfig,
 } from "./cost-reports";
 export * from "./cost-canvases";
+export * from "./k8s-efficiency";
 export {
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,

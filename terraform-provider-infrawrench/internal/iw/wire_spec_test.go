@@ -88,6 +88,10 @@ func specChecks() []specCheck {
 		{schema: "CostReportInput", value: CostReportInput{}},
 		{schema: "CostGraphConfig", value: CostGraphConfig{}},
 		{schema: "CostReportFolder", value: CostReportFolder{}},
+		{schema: "KubernetesEfficiencyReport", value: KubernetesEfficiencyReport{}},
+		{schema: "KubernetesEfficiencyReportInput", value: KubernetesEfficiencyReportInput{}},
+		{schema: "KubernetesEfficiencyConfig", value: KubernetesEfficiencyConfig{}},
+		{schema: "KubernetesEfficiencyFilter", value: CostFilter{}},
 		{schema: "CostReportFolderInput", value: CostReportFolderInput{}},
 
 		{schema: "CostAlert", value: CostAlert{}},

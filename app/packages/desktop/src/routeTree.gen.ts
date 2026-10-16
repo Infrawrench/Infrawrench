@@ -31,6 +31,7 @@ import { Route as IacRouteImport } from './routes/iac'
 import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as JitAccessRouteImport } from './routes/jit-access'
+import { Route as K8sEfficiencyRouteImport } from './routes/k8s-efficiency'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MomentRouteImport } from './routes/moment'
@@ -163,6 +164,11 @@ const JitAccessRoute = JitAccessRouteImport.update({
   path: '/jit-access',
   getParentRoute: () => rootRouteImport,
 } as any)
+const K8sEfficiencyRoute = K8sEfficiencyRouteImport.update({
+  id: '/k8s-efficiency',
+  path: '/k8s-efficiency',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
   '/jit-access': typeof JitAccessRoute
+  '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -338,6 +345,7 @@ export interface FileRoutesByTo {
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
   '/jit-access': typeof JitAccessRoute
+  '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -384,6 +392,7 @@ export interface FileRoutesById {
   '/incidents': typeof IncidentsRoute
   '/invoices': typeof InvoicesRoute
   '/jit-access': typeof JitAccessRoute
+  '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
   '/moment': typeof MomentRoute
@@ -431,6 +440,7 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/invoices'
     | '/jit-access'
+    | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -476,6 +486,7 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/invoices'
     | '/jit-access'
+    | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -521,6 +532,7 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/invoices'
     | '/jit-access'
+    | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
     | '/moment'
@@ -567,6 +579,7 @@ export interface RootRouteChildren {
   IncidentsRoute: typeof IncidentsRoute
   InvoicesRoute: typeof InvoicesRoute
   JitAccessRoute: typeof JitAccessRoute
+  K8sEfficiencyRoute: typeof K8sEfficiencyRoute
   LogsRoute: typeof LogsRoute
   MetricAlertsRoute: typeof MetricAlertsRoute
   MomentRoute: typeof MomentRoute
@@ -746,6 +759,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JitAccessRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/k8s-efficiency': {
+      id: '/k8s-efficiency'
+      path: '/k8s-efficiency'
+      fullPath: '/k8s-efficiency'
+      preLoaderRoute: typeof K8sEfficiencyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/logs': {
       id: '/logs'
       path: '/logs'
@@ -919,6 +939,7 @@ const rootRouteChildren: RootRouteChildren = {
   IncidentsRoute: IncidentsRoute,
   InvoicesRoute: InvoicesRoute,
   JitAccessRoute: JitAccessRoute,
+  K8sEfficiencyRoute: K8sEfficiencyRoute,
   LogsRoute: LogsRoute,
   MetricAlertsRoute: MetricAlertsRoute,
   MomentRoute: MomentRoute,

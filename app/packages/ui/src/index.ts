@@ -373,6 +373,7 @@ export {
   costsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -1211,6 +1212,7 @@ export * from "./cost/index.js";
 // same CostGraphCard/CostGraphConfigModal a dashboard cost card uses.
 export * from "./cost-reports/index.js";
 export * from "./cost-canvases/index.js";
+export * from "./k8s-efficiency/index.js";
 // Scheduled delivery and PDF export: the schedule list/editor shared by cost
 // reports and dashboards, and the dashboard header's export actions.
 export * from "./delivery/index.js";

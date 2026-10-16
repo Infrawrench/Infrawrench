@@ -33,6 +33,27 @@
  * capacity in pool gpu-a" is a query rather than a guess. The money is
  * unchanged: the rows still partition the cluster's bill exactly.
  *
+ * Every row also says **what kind of capacity** its money bought and **whether
+ * it was used**, in two reserved tags, so an efficiency report can be a query
+ * over stored rows rather than a live call into the cluster:
+ *
+ *  - `k8s_resource`: `cpu`, `memory`, `gpu`, `storage`, `network` (load
+ *    balancers) or `control_plane`. A workload's compute share is written as
+ *    separate CPU and memory rows, each from its own pool.
+ *  - `k8s_usage`: `used` (capacity a pod measurably used, priced through the
+ *    same pools as its charge), `unused` (requested but measured unused: the
+ *    gap between `max(request, usage)` and usage), `unmeasured` (allocated, no
+ *    usage data: never read as either of the other two), `idle` (capacity no
+ *    pod requested, unrequested GPUs and unattached volumes) and `overhead`
+ *    (system-reserved capacity and the control-plane fee). A mounted volume
+ *    and a provisioned load balancer count as `used`: attachment is the usage
+ *    signal the API gives for them.
+ *
+ * Pod labels ride along under `k8s_pod_label:<key>` on compute and GPU rows,
+ * for the keys the account's allowlist names (see `cost-labels.ts`), and rows
+ * derived from a node carry its region (the cluster's single region on
+ * cluster-level rows, when every node agrees on one).
+ *
  * Re-running a day must reproduce identical dimension keys or the host's
  * ReplacingMergeTree dedupe inserts duplicates instead of replacing. Every key
  * component here is derived from cluster state and a fixed label set: no
@@ -46,7 +67,7 @@ import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { HOURS_PER_DAY, workloadKey, type ClusterAllocation } from "./cost-model.js";
 import { SYSTEM_NAMESPACES } from "./resource-listers.js";
 import { namespacedKey } from "./attribution.js";
-import { nodeCostTags, pvcCostTags } from "./cost-labels.js";
+import { nodeCostTags, podCostTags, pvcCostTags } from "./cost-labels.js";
 
 /**
  * Labels to attach to the rows, and which keys of them are allowed through.
@@ -57,8 +78,11 @@ export interface CostRowLabelContext {
   nodeLabels: Map<string, Record<string, string>>;
   /** `namespace/claim` → labels. */
   claimLabels: Map<string, Record<string, string>>;
+  /** `namespace/pod` → labels. Optional so older callers keep working. */
+  podLabels?: Map<string, Record<string, string>> | undefined;
   nodeLabelKeys: readonly string[];
   pvcLabelKeys: readonly string[];
+  podLabelKeys?: readonly string[] | undefined;
 }
 
 /** A stable string for a tag map, independent of insertion order. */
@@ -83,11 +107,16 @@ export const SERVICE_GPU = "kubernetes-gpu";
 /** GPUs no pod requested, one row per GPU node. Its own bucket, like idle. */
 export const SERVICE_GPU_IDLE = "kubernetes-gpu-idle";
 
-/** A row's GPU model tag: one model, or `mixed` across several. */
-function modelTag(models: Set<string>): string {
-  if (models.size === 0) return "";
-  return models.size === 1 ? [...models][0]! : "mixed";
-}
+/** Tag naming the kind of capacity a row's money bought. Re-keys history if renamed. */
+export const RESOURCE_TAG = "k8s_resource";
+/** Tag naming whether that capacity was used. Re-keys history if renamed. */
+export const USAGE_TAG = "k8s_usage";
+
+/** Values of {@link RESOURCE_TAG}. Mirrored in `client-core/src/k8s-efficiency.ts`. */
+export type KubernetesCostResource =
+  "cpu" | "memory" | "gpu" | "storage" | "network" | "control_plane";
+/** Values of {@link USAGE_TAG}. Mirrored in `client-core/src/k8s-efficiency.ts`. */
+export type KubernetesUsageState = "used" | "unused" | "unmeasured" | "idle" | "overhead";
 
 /**
  * Which day a snapshot describes.
@@ -140,36 +169,59 @@ export function allocationToCostRows(
   const date = snapshotDay(range);
   const currency = allocation.currency;
 
-  // Aggregate by (service, resourceId, tag set) so re-running reproduces the
-  // same keys regardless of pod churn within a workload. The tag set is part
-  // of the key because node labels split one workload into several rows.
+  // Aggregate by (service, resourceId, region, tag set) so re-running
+  // reproduces the same keys regardless of pod churn within a workload. The
+  // tag set is part of the key because node and pod labels, and the resource
+  // and usage tags, split one workload into several rows.
   const buckets = new Map<
     string,
-    { service: string; resourceId: string; tags: Record<string, string>; amount: number }
+    {
+      service: string;
+      resourceId: string;
+      region: string;
+      tags: Record<string, string>;
+      amount: number;
+    }
   >();
 
   const push = (
     service: string,
     resourceId: string,
+    region: string,
     tags: Record<string, string>,
     amount: number | null,
   ) => {
     if (amount == null || !Number.isFinite(amount) || amount === 0) return;
-    const key = `${service}|${resourceId}|${canonicalTags(tags)}`;
+    const key = `${service}|${resourceId}|${region}|${canonicalTags(tags)}`;
     const existing = buckets.get(key);
     if (existing) existing.amount += amount;
-    else buckets.set(key, { service, resourceId, tags, amount });
+    else buckets.set(key, { service, resourceId, region, tags, amount });
   };
 
-  // GPU model per workload, from the nodes its GPU pods landed on.
-  const gpuModels = new Map<string, Set<string>>();
-  for (const pod of allocation.pods) {
-    if (pod.gpus <= 0) continue;
-    const key = `${pod.namespace}/${pod.workloadKind}/${pod.workload}`;
-    const set = gpuModels.get(key) ?? new Set<string>();
-    if (pod.gpuModel) set.add(pod.gpuModel);
-    gpuModels.set(key, set);
-  }
+  /**
+   * Split one charge into its used and unused parts. `wasted` null means no
+   * usage data, which is `unmeasured`, never `used`: a pod nobody measured is
+   * not thereby efficient. Waste is clamped to the charge so the two parts
+   * always sum to it exactly.
+   */
+  const pushUsage = (
+    service: string,
+    resourceId: string,
+    region: string,
+    tags: Record<string, string>,
+    resource: KubernetesCostResource,
+    charged: number | null,
+    wasted: number | null,
+  ) => {
+    if (charged == null) return;
+    if (wasted == null) {
+      push(service, resourceId, region, usageTags(tags, resource, "unmeasured"), charged);
+      return;
+    }
+    const unused = Math.min(charged, Math.max(0, wasted));
+    push(service, resourceId, region, usageTags(tags, resource, "used"), charged - unused);
+    push(service, resourceId, region, usageTags(tags, resource, "unused"), unused);
+  };
 
   // Node tags, computed once per node rather than once per pod.
   const nodeTagCache = new Map<string, Record<string, string>>();
@@ -182,49 +234,63 @@ export function allocationToCostRows(
     }
     return tags;
   };
+  const nodeRegion = new Map(allocation.nodes.map((n) => [n.name, n.region]));
+  const regions = new Set(allocation.nodes.map((n) => n.region));
+  // Disks, load balancers and the control plane have no node. When every node
+  // agrees on one region it is theirs too; otherwise it is left blank rather
+  // than guessed.
+  const clusterRegion = regions.size === 1 ? ([...regions][0] ?? "") : "";
+  const tagsForPod = (namespace: string, podName: string): Record<string, string> => {
+    if (!labels?.podLabels || !labels.podLabelKeys) return {};
+    return podCostTags(
+      labels.podLabels.get(namespacedKey(namespace, podName)) ?? {},
+      labels.podLabelKeys,
+    );
+  };
 
-  // Deliberately the CPU/memory COMPUTE share, not the workload's total: its
-  // GPUs, volumes and load balancers get their own service rows below, and
-  // adding them here as well would double-count the same money under two
-  // service labels.
-  if (labels) {
-    // Per pod, so each share of compute carries the shape of the node it was
-    // bought from. A pod's `dailyCost` is CPU + memory + GPU, so its GPU part
-    // comes off here (it is the GPU row's); summing a workload's pods then
-    // reproduces its `computeDailyCost` exactly. Unplaced pods are unpriced
-    // and contribute nothing either way.
-    for (const pod of allocation.pods) {
-      push(
-        SERVICE_WORKLOAD,
-        workloadKey(pod.namespace, pod.workloadKind, pod.workload),
-        {
-          ...tagsFor(pod.namespace, pod.workload, pod.workloadKind),
-          ...tagsForNode(pod.nodeName),
-        },
-        pod.dailyCost == null ? null : pod.dailyCost - (pod.gpuDailyCost ?? 0),
-      );
-    }
-  } else {
-    for (const workload of allocation.workloads) {
-      push(
-        SERVICE_WORKLOAD,
-        workload.key,
-        tagsFor(workload.namespace, workload.workload, workload.workloadKind),
-        workload.computeDailyCost,
-      );
-    }
-  }
-
-  for (const workload of allocation.workloads) {
-    if (workload.gpus > 0) {
-      push(
+  // Compute, per pod, so each share carries the shape of the node it was
+  // bought from and the labels of the pod that holds it. CPU and memory are
+  // separate rows from separate pools; together they are the pod's
+  // `dailyCost - gpuDailyCost`, so a workload's rows still sum to its
+  // `computeDailyCost`. Unplaced pods are unpriced and contribute nothing.
+  for (const pod of allocation.pods) {
+    if (pod.dailyCost == null) continue;
+    const resourceId = workloadKey(pod.namespace, pod.workloadKind, pod.workload);
+    const region = nodeRegion.get(pod.nodeName) ?? "";
+    const tags = {
+      ...tagsFor(pod.namespace, pod.workload, pod.workloadKind),
+      ...tagsForNode(pod.nodeName),
+      ...tagsForPod(pod.namespace, pod.name),
+    };
+    pushUsage(
+      SERVICE_WORKLOAD,
+      resourceId,
+      region,
+      tags,
+      "cpu",
+      scaleDay(pod.cpuHourlyCost),
+      scaleDay(pod.cpuWastedHourlyCost),
+    );
+    pushUsage(
+      SERVICE_WORKLOAD,
+      resourceId,
+      region,
+      tags,
+      "memory",
+      scaleDay(pod.memoryHourlyCost),
+      scaleDay(pod.memoryWastedHourlyCost),
+    );
+    if (pod.gpus > 0 && pod.gpuDailyCost != null) {
+      // The GPU share per pod too, tagged with the model of the node it
+      // holds, so used and idle GPU money group by the same node pool as CPU.
+      pushUsage(
         SERVICE_GPU,
-        workload.key,
-        {
-          ...tagsFor(workload.namespace, workload.workload, workload.workloadKind),
-          gpu_model: modelTag(gpuModels.get(workload.key) ?? new Set()),
-        },
-        workload.gpuDailyCost,
+        resourceId,
+        region,
+        { ...tags, gpu_model: pod.gpuModel },
+        "gpu",
+        pod.gpuDailyCost,
+        pod.gpuWastedDailyCost,
       );
     }
   }
@@ -238,14 +304,19 @@ export function allocationToCostRows(
     push(
       SERVICE_GPU_IDLE,
       `node/${node.name}/gpu-idle`,
-      {
-        namespace: "",
-        workload: "gpu-idle",
-        workload_kind: "ClusterCapacity",
-        system: "false",
-        gpu_model: node.gpu.inventory.model,
-        ...tagsForNode(node.name),
-      },
+      node.region,
+      usageTags(
+        {
+          namespace: "",
+          workload: "gpu-idle",
+          workload_kind: "ClusterCapacity",
+          system: "false",
+          gpu_model: node.gpu.inventory.model,
+          ...tagsForNode(node.name),
+        },
+        "gpu",
+        "idle",
+      ),
       node.gpu.hourlyIdleCost == null ? null : node.gpu.hourlyIdleCost * HOURS_PER_DAY,
     );
   }
@@ -271,7 +342,12 @@ export function allocationToCostRows(
       push(
         SERVICE_STORAGE_IDLE,
         resourceId,
-        { ...tagsFor(volume.namespace, "", "PersistentVolumeClaim"), ...claimTags },
+        clusterRegion,
+        usageTags(
+          { ...tagsFor(volume.namespace, "", "PersistentVolumeClaim"), ...claimTags },
+          "storage",
+          "idle",
+        ),
         volume.dailyCost,
       );
       continue;
@@ -279,10 +355,15 @@ export function allocationToCostRows(
     push(
       SERVICE_STORAGE,
       resourceId,
-      {
-        ...tagsFor(volume.namespace, volume.workload ?? "", volume.workloadKind ?? ""),
-        ...claimTags,
-      },
+      clusterRegion,
+      usageTags(
+        {
+          ...tagsFor(volume.namespace, volume.workload ?? "", volume.workloadKind ?? ""),
+          ...claimTags,
+        },
+        "storage",
+        "used",
+      ),
       volume.dailyCost,
     );
   }
@@ -292,7 +373,8 @@ export function allocationToCostRows(
     push(
       SERVICE_LOAD_BALANCER,
       `${lb.namespace}/Service/${lb.name}`,
-      tagsFor(lb.namespace, lb.workload ?? "", lb.workloadKind ?? ""),
+      clusterRegion,
+      usageTags(tagsFor(lb.namespace, lb.workload ?? "", lb.workloadKind ?? ""), "network", "used"),
       lb.dailyCost,
     );
   }
@@ -303,6 +385,11 @@ export function allocationToCostRows(
   // overcharges the tenant and hides the real finding, which is that the
   // cluster is oversized. The control-plane fee goes further: there is no
   // per-workload quantity to apportion a flat per-cluster charge by at all.
+  //
+  // Per node, carrying the node's tags when there are any: idle capacity is a
+  // property of a node pool (and of spot versus on-demand), which is exactly
+  // the axis someone resizes along. Same `resourceId` as the cluster-wide row,
+  // and CPU and memory apart, like the pods'.
   const idleTags = {
     namespace: "",
     workload: "idle",
@@ -315,51 +402,71 @@ export function allocationToCostRows(
     workload_kind: "ClusterCapacity",
     system: "true",
   };
-  if (labels) {
-    // Per node, carrying the node's tags: idle capacity is a property of a
-    // node pool (and of spot versus on-demand), which is exactly the axis
-    // someone resizes along. Same `resourceId` as the cluster-wide row.
-    for (const node of allocation.nodes) {
-      const tags = tagsForNode(node.name);
-      push(SERVICE_IDLE, "cluster/idle", { ...idleTags, ...tags }, scaleDay(node.hourlyIdleCost));
+  for (const node of allocation.nodes) {
+    const tags = tagsForNode(node.name);
+    for (const [resource, idle, reserved] of [
+      ["cpu", node.hourlyIdleCpuCost, node.hourlySystemReservedCpuCost],
+      ["memory", node.hourlyIdleMemoryCost, node.hourlySystemReservedMemoryCost],
+    ] as const) {
+      push(
+        SERVICE_IDLE,
+        "cluster/idle",
+        node.region,
+        usageTags({ ...idleTags, ...tags }, resource, "idle"),
+        scaleDay(idle),
+      );
       push(
         SERVICE_SYSTEM_RESERVED,
         "cluster/system-reserved",
-        { ...systemReservedTags, ...tags },
-        scaleDay(node.hourlySystemReservedCost),
+        node.region,
+        usageTags({ ...systemReservedTags, ...tags }, resource, "overhead"),
+        scaleDay(reserved),
       );
     }
-  } else {
-    push(SERVICE_IDLE, "cluster/idle", idleTags, allocation.dailyIdleCost);
-    push(
-      SERVICE_SYSTEM_RESERVED,
-      "cluster/system-reserved",
-      systemReservedTags,
-      allocation.dailySystemReservedCost,
-    );
   }
   push(
     SERVICE_CONTROL_PLANE,
     "cluster/control-plane",
-    {
-      namespace: "",
-      workload: "control-plane",
-      workload_kind: "ClusterCapacity",
-      system: "true",
-    },
+    clusterRegion,
+    usageTags(
+      {
+        namespace: "",
+        workload: "control-plane",
+        workload_kind: "ClusterCapacity",
+        system: "true",
+      },
+      "control_plane",
+      "overhead",
+    ),
     allocation.dailyControlPlaneCost,
   );
 
   // Sorted so the emitted order is deterministic too, not required for
   // dedupe, but it makes a diff of two runs readable.
   return [...buckets.values()]
-    .sort((a, b) => a.service.localeCompare(b.service) || a.resourceId.localeCompare(b.resourceId))
+    .sort(
+      (a, b) =>
+        a.service.localeCompare(b.service) ||
+        a.resourceId.localeCompare(b.resourceId) ||
+        a.region.localeCompare(b.region) ||
+        canonicalTags(a.tags).localeCompare(canonicalTags(b.tags)),
+    )
     .map((b) => ({
       date,
       service: b.service,
       resourceId: b.resourceId,
+      ...(b.region ? { region: b.region } : {}),
       tags: b.tags,
       currency,
       amount: b.amount,
     }));
+}
+
+/** A row's tags plus its resource and usage tags. */
+function usageTags(
+  tags: Record<string, string>,
+  resource: KubernetesCostResource,
+  usage: KubernetesUsageState,
+): Record<string, string> {
+  return { ...tags, [RESOURCE_TAG]: resource, [USAGE_TAG]: usage };
 }

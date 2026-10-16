@@ -273,11 +273,9 @@ The tab ends with a **Share** block: the whole report as fixed-width text, with 
 
 Each workload row also carries an **Open** link straight to that Deployment, StatefulSet or DaemonSet.
 
-### Why it is not a saved cost report
+### Across clusters, over time: efficiency reports
 
-[Saved cost reports](./cost-reports.md) are saved _queries over stored cost rows_ — a chart config, run against the daily cost warehouse, rendered as one money-over-time card. The numbers this report is about (requested, used, wasted CPU and memory) are computed live from the cluster API and are never written to that warehouse; only the money is. There is no report-kind discriminator to extend and no per-row usage columns to query, so it lives where its data lives: on the cluster.
-
-The cost side of the allocation still lands in the cost warehouse as usual, so cluster spend charts and budgets like any other provider's.
+This tab is one cluster, right now. For the same question across every cluster and over a window, saved, filed and shared, use [Kubernetes efficiency reports](./kubernetes-efficiency.md). Each day's cost rows record whether their money bought CPU, memory, GPU, storage, network or control-plane capacity, and whether it was used, requested but unused, unmeasured, idle or overhead, so a report is a query over stored cost rather than a live call into the cluster.
 
 ### Right-sizing: what this does and does not do
 
@@ -327,9 +325,12 @@ The dimensions it reports:
 | Tag `workload`      | The owning Deployment / StatefulSet / DaemonSet / Job name, where there is one |
 | Tag `workload_kind` | That owner's kind                                                              |
 | Tag `system`        | `true` for the control-plane namespaces                                        |
-| Tag `gpu_model`     | On GPU rows: the GPU model (`a100-80gb`, `t4`, …), or `mixed`                  |
+| Tag `gpu_model`     | On GPU rows: the GPU model (`a100-80gb`, `t4`, …)                              |
+| Tag `k8s_resource`  | `cpu`, `memory`, `gpu`, `storage`, `network` or `control_plane`                |
+| Tag `k8s_usage`     | `used`, `unused`, `unmeasured`, `idle` or `overhead`                           |
+| Region              | The node's region; on cluster-wide rows, only when all nodes agree             |
 
-Node and volume labels are dimensions too; see [Node and volume labels](#node-and-volume-labels) below.
+Pod, node and volume labels are dimensions too; see [Node and volume labels](#node-and-volume-labels) below. The `k8s_resource` and `k8s_usage` tags are what [Kubernetes efficiency reports](./kubernetes-efficiency.md) read.
 
 The service labels **partition** the bill — every unit of money appears under exactly one, so they can be summed without double-counting:
 
@@ -345,7 +346,7 @@ The service labels **partition** the bill — every unit of money appears under 
 | `kubernetes-gpu`             | A workload's share of GPU node price, charged by its GPU requests.    |
 | `kubernetes-gpu-idle`        | Allocatable GPUs no pod requested, one row per GPU node.              |
 
-Because they partition, a workload's `kubernetes-workload` row carries its **CPU and memory compute only** — its GPUs, disks and load balancers are separate rows under their own labels. Group by the `namespace` tag for a per-team view including storage; filter to `kubernetes-workload` alone for compute only; filter to `kubernetes-storage-idle` for a standing list of disks to delete.
+Because they partition, a workload's `kubernetes-workload` rows carry its **CPU and memory compute only** (one row for CPU and one for memory, each split into used and unused where usage is measured). Its GPUs, disks and load balancers are separate rows under their own labels. Group by the `namespace` tag for a per-team view including storage; filter to `kubernetes-workload` alone for compute only; filter to `kubernetes-storage-idle` for a standing list of disks to delete.
 
 GPU spend by model, from the terminal:
 
@@ -376,11 +377,11 @@ A workload whose pods run on several kinds of node is written as one row per kin
 
 ### Choosing which labels to record
 
-Any node label or PersistentVolumeClaim label can become a dimension too. They are recorded as tags named `k8s_node_label:<label key>` and `k8s_pvc_label:<label key>`. Which keys are recorded is a per-cluster setting: open the Kubernetes account, choose **Update credentials**, and use the **Node labels for cost** and **Volume labels for cost** pickers. They list the label keys actually present on the cluster, most common first, with a few sample values, so there is nothing to look up.
+Any pod label, node label or PersistentVolumeClaim label can become a dimension too. They are recorded as tags named `k8s_pod_label:<label key>`, `k8s_node_label:<label key>` and `k8s_pvc_label:<label key>`. Which keys are recorded is a per-cluster setting: open the Kubernetes account, choose **Update credentials**, and use the **Pod labels for cost**, **Node labels for cost** and **Volume labels for cost** pickers. They list the label keys actually present on the cluster, most common first, with a few sample values, so there is nothing to look up.
 
 <insert [Update credentials modal on a Kubernetes account with the "Node labels for cost" picker open, listing label keys like team and karpenter.sh/nodepool with their node counts and sample values] here>
 
-Left blank, each uses a short default: the standard topology and architecture labels for nodes, the `app.kubernetes.io/*` labels for claims, and `team`, `owner`, `environment` and `cost-center` for both, wherever your objects carry them. Choose **none** to record no extra labels.
+Left blank, each uses a short default: the standard topology and architecture labels for nodes, the `app.kubernetes.io/*` labels for claims and pods (plus `app` for pods), and `team`, `owner`, `environment` and `cost-center` for all three, wherever your objects carry them. Choose **none** to record no extra labels. Pod labels a controller sets per pod or per rollout, such as `pod-template-hash`, are never recorded.
 
 **Why there is a limit.** Node labels split rows, so a label that is different on every node (`kubernetes.io/hostname`, a node or instance id) would turn every workload into one row per node per day. Those per-node keys are never recorded and are not offered in the picker, and each setting is capped at 20 keys. Changing the setting takes effect from the next daily collection; earlier days keep the labels they were collected with.
 
@@ -388,7 +389,7 @@ Left blank, each uses a short default: the standard topology and architecture la
 
 - **Cost graphs:** group by **Tag** and pick the key. The tag-key picker groups Kubernetes node and volume labels under their own headings.
 - **Filters, saved filters and budgets:** add a **Tag** filter row; the key box suggests every key in your cost data.
-- **Query language:** `k8s_node_label['team'] = 'payments'` is shorthand for `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` likewise. The normalised tags are plain tags: `tag['capacity_type'] = 'spot'`.
+- **Query language:** `k8s_node_label['team'] = 'payments'` is shorthand for `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` and `k8s_pod_label['team'] = 'search'` likewise. The normalised tags are plain tags: `tag['capacity_type'] = 'spot'`.
 - **Allocation rules:** match a cost centre on a node or volume label from the Tag Policy page, for example everything on nodes labelled `team=data`.
 - **CLI:** `infrawrench costs --group-by tag:capacity_type` groups by a plain tag, and `--group-by k8s_node_label:team` or `--group-by k8s_pvc_label:app.kubernetes.io/name` by a label. `infrawrench costs tag-keys` lists every key with the `--group-by` value that selects it (add `--json` for scripts).
 

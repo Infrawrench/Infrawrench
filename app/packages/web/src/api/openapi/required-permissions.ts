@@ -646,6 +646,17 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-canvases/{id}/notifications/{notificationId}": "org:settings:write",
   "DELETE /cost-canvases/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /cost-canvases/{id}/notifications/{notificationId}/send": "org:settings:write",
+  // Kubernetes efficiency reports: the cost report rules.
+  "GET /k8s-efficiency-reports": "costs:read",
+  "POST /k8s-efficiency-reports": "costs:write",
+  "GET /k8s-efficiency-reports/options": "costs:read",
+  "GET /k8s-efficiency-reports/values": "costs:read",
+  "POST /k8s-efficiency-reports/query": "costs:read",
+  "GET /k8s-efficiency-reports/{id}": "costs:read",
+  "PUT /k8s-efficiency-reports/{id}": "costs:write",
+  "DELETE /k8s-efficiency-reports/{id}": "costs:write",
+  "POST /k8s-efficiency-reports/{id}/run": "costs:read",
+  "GET /k8s-efficiency-reports/{id}/export": "costs:read",
   // report delivery schedules; reads ride costs:read (mobile shows them
   // read-only), but writes and "send now" are org:settings:write, the
   // cost-exports reasoning: a schedule is standing authorisation to ship org

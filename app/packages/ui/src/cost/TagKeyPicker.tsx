@@ -86,6 +86,7 @@ export function TagKeySelect({
     k8s: gt("Kubernetes"),
     k8s_node_label: gt("Kubernetes node labels"),
     k8s_pvc_label: gt("Kubernetes volume labels"),
+    k8s_pod_label: gt("Kubernetes pod labels"),
   };
   // A raw key gets its readable name; an option that already carries its own
   // label (a virtual tag's name) keeps it.

@@ -719,7 +719,11 @@ export const KEYED_GROUP_DIMENSIONS = ["tag", "virtual_tag"] as const;
  * `k8s_pvc_label:<key>` tags. A restatement of client-core's
  * `COST_TAG_ALIASES` keys, for the same reason as the list above.
  */
-export const K8S_LABEL_GROUP_ALIASES = ["k8s_node_label", "k8s_pvc_label"] as const;
+export const K8S_LABEL_GROUP_ALIASES = [
+  "k8s_node_label",
+  "k8s_pvc_label",
+  "k8s_pod_label",
+] as const;
 
 /**
  * Parse a `--group-by` value into the dimension and, for a keyed dimension,

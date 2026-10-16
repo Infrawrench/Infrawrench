@@ -27,6 +27,7 @@ function tagKeyChipLabel(key: string): string {
   const d = describeCostTagKey(key);
   if (d.group === "k8s_node_label") return `node label: ${d.name}`;
   if (d.group === "k8s_pvc_label") return `volume label: ${d.name}`;
+  if (d.group === "k8s_pod_label") return `pod label: ${d.name}`;
   return d.name;
 }
 import {

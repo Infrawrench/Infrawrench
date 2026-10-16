@@ -17,6 +17,7 @@ import { registerCostPaths } from "./paths/costs";
 import { registerCostAnomalyFeedbackPaths } from "./paths/cost-anomaly-feedback";
 import { registerCostReportPaths } from "./paths/cost-reports";
 import { registerCostCanvasPaths } from "./paths/cost-canvases";
+import { registerKubernetesEfficiencyReportPaths } from "./paths/k8s-efficiency-reports";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
 import { registerDashboardNotificationPaths } from "./paths/dashboard-notifications";
 import { registerCostReportFolderPaths } from "./paths/cost-report-folders";
@@ -182,6 +183,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostAnomalyFeedbackPaths(ctx);
   registerCostReportPaths(ctx);
   registerCostCanvasPaths(ctx);
+  registerKubernetesEfficiencyReportPaths(ctx);
   registerCostReportNotificationPaths(ctx);
   registerDashboardNotificationPaths(ctx);
   registerCostReportFolderPaths(ctx);
@@ -359,6 +361,15 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "strictly validated spec of KPI tiles, charts, tables, budgets, anomalies and short " +
           "narrative. The spec stores queries, not numbers, so running a canvas re-executes " +
           "them with no model call; edits proposed in chat are approved against a diff.",
+      },
+      {
+        name: "Kubernetes efficiency reports",
+        description:
+          "Saved views over Kubernetes clusters' derived cost: per cluster, namespace, workload, " +
+          "label, node pool or cost category, how much of the money bought capacity that was " +
+          "used, requested but unused, unmeasured, idle, or overhead, with an efficiency " +
+          "percentage on a total or allocated basis. Filed in cost-report folders and shared " +
+          "like cost reports; every read is narrowed to the caller's cost visibility scope.",
       },
       {
         name: "Cost annotations",

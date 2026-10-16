@@ -36,8 +36,14 @@ import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-r
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
 import {
+  KubernetesEfficiencyPanel,
+  type KubernetesEfficiencyClient,
+} from "@infrawrench/ui/k8s-efficiency";
+import { createWebKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
+import {
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -216,6 +222,16 @@ function getCostCanvasesClient(orgId: string): CostCanvasesClient {
   if (!client) {
     client = createWebCostCanvasesClient(orgId);
     costCanvasesClients.set(orgId, client);
+  }
+  return client;
+}
+
+const k8sEfficiencyClients = new Map<string, KubernetesEfficiencyClient>();
+function getKubernetesEfficiencyClient(orgId: string): KubernetesEfficiencyClient {
+  let client = k8sEfficiencyClients.get(orgId);
+  if (!client) {
+    client = createWebKubernetesEfficiencyClient(orgId);
+    k8sEfficiencyClients.set(orgId, client);
   }
   return client;
 }
@@ -436,6 +452,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
+          }
+        />
+      );
+    case "k8s-efficiency":
+      return (
+        <KubernetesEfficiencyPanel
+          key={orgId}
+          client={getKubernetesEfficiencyClient(orgId)}
+          reportId={t.reportId}
+          // The URL owns which report is open, as for Cost reports.
+          onSelectReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget(reportId)))
           }
         />
       );

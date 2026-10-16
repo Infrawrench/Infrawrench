@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 
 import { computeClusterCost } from "../cluster-cost.js";
-import { allocationToCostRows, SERVICE_IDLE, SERVICE_WORKLOAD } from "../cost-data.js";
+import {
+  allocationToCostRows,
+  RESOURCE_TAG,
+  SERVICE_IDLE,
+  SERVICE_WORKLOAD,
+  USAGE_TAG,
+} from "../cost-data.js";
 import { buildCostIndex, costSubtitleSuffix, applyCostStatus } from "../cost-surface.js";
 import { fetchClusterUtilization, describeUtilizationGap } from "../metrics-api.js";
 import { parseNodeRates, rateForNode, hasAnyRate, EMPTY_RATE_TABLE } from "../node-rates.js";
@@ -252,7 +258,7 @@ describe("allocationToCostRows", () => {
     expect(rows.every((r) => r.currency === "USD")).toBe(true);
 
     const workloadRows = rows.filter((r) => r.service === SERVICE_WORKLOAD);
-    expect(workloadRows.map((r) => r.resourceId).sort()).toEqual([
+    expect([...new Set(workloadRows.map((r) => r.resourceId))].sort()).toEqual([
       "app/Deployment/web",
       "kube-system/DaemonSet/coredns",
     ]);
@@ -265,12 +271,14 @@ describe("allocationToCostRows", () => {
     const { allocation } = await computeClusterCost(fakeCluster(), RATES);
     const rows = allocationToCostRows(allocation, range);
     const web = rows.find((r) => r.resourceId === "app/Deployment/web")!;
-    expect(web.tags).toEqual({
+    expect(web.tags).toMatchObject({
       namespace: "app",
       workload: "web",
       workload_kind: "Deployment",
       system: "false",
     });
+    expect(["cpu", "memory"]).toContain(web.tags![RESOURCE_TAG]);
+    expect(["used", "unused", "unmeasured"]).toContain(web.tags![USAGE_TAG]);
     const dns = rows.find((r) => r.resourceId === "kube-system/DaemonSet/coredns")!;
     expect(dns.tags!["system"]).toBe("true");
   });
@@ -294,6 +302,36 @@ describe("allocationToCostRows", () => {
     const { allocation } = await computeClusterCost(fakeCluster(), EMPTY_RATE_TABLE);
     // Zero rows, not zero-amount rows: "we don't know" is not "it's free".
     expect(allocationToCostRows(allocation, range)).toEqual([]);
+  });
+
+  it("splits measured compute into used and unused, and never calls unmeasured used", async () => {
+    const { allocation } = await computeClusterCost(fakeCluster(), RATES);
+    const rows = allocationToCostRows(allocation, range);
+    const web = allocation.workloads.find((w) => w.workload === "web")!;
+    const webRows = rows.filter(
+      (r) => r.service === SERVICE_WORKLOAD && r.resourceId === "app/Deployment/web",
+    );
+    const sumOf = (pred: (r: (typeof rows)[number]) => boolean) =>
+      webRows.filter(pred).reduce((acc, r) => acc + r.amount, 0);
+    expect(sumOf(() => true)).toBeCloseTo(web.computeDailyCost!, 9);
+    // Unused is exactly the priced waste the cluster's own report shows.
+    expect(sumOf((r) => r.tags![USAGE_TAG] === "unused")).toBeCloseTo(web.wastedDailyCost!, 9);
+    expect(webRows.some((r) => r.tags![USAGE_TAG] === "unmeasured")).toBe(false);
+
+    const blind = allocationToCostRows(
+      (await computeClusterCost(fakeCluster({ metrics: "404" }), RATES)).allocation,
+      range,
+    ).filter((r) => r.service === SERVICE_WORKLOAD);
+    expect(blind.every((r) => r.tags![USAGE_TAG] === "unmeasured")).toBe(true);
+  });
+
+  it("tags every row with a resource and a usage state, and carries the node region", async () => {
+    const { allocation } = await computeClusterCost(fakeCluster(), RATES);
+    const rows = allocationToCostRows(allocation, range);
+    expect(rows.every((r) => r.tags![RESOURCE_TAG] && r.tags![USAGE_TAG])).toBe(true);
+    const idle = rows.filter((r) => r.service === SERVICE_IDLE);
+    expect(idle.every((r) => r.tags![USAGE_TAG] === "idle")).toBe(true);
+    expect(rows.find((r) => r.resourceId === "app/Deployment/web")!.region).toBe("nyc1");
   });
 
   it("sums to the cluster's total spend", async () => {

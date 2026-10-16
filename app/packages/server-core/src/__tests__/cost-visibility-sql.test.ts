@@ -31,6 +31,7 @@ vi.mock("../clickhouse/client", () => ({
 const readers = await import("../clickhouse/cost-readers");
 const commitmentReaders = await import("../clickhouse/commitment-readers");
 const flowReaders = await import("../clickhouse/network-flow-readers");
+const k8sEfficiencyReaders = await import("../clickhouse/k8s-efficiency-readers");
 const ctx = await import("../cost/visibility-context");
 const { expandCentreSubtrees } = ctx;
 
@@ -123,6 +124,26 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
     "getUncoveredDailySpend",
     () => commitmentReaders.getUncoveredDailySpend(ORG, "2026-09-01", "2026-09-30", ["a"]),
   ],
+  [
+    "scanKubernetesEfficiency",
+    () =>
+      k8sEfficiencyReaders.scanKubernetesEfficiency(ORG, {
+        from: "2026-09-01",
+        to: "2026-09-30",
+        granularity: "week",
+        filters: [],
+        groupBy: "namespace",
+      }),
+  ],
+  [
+    "getKubernetesDimensionValues",
+    () =>
+      k8sEfficiencyReaders.getKubernetesDimensionValues(ORG, {
+        dimension: "tag",
+        tagKey: "namespace",
+      }),
+  ],
+  ["getKubernetesTagKeys", () => k8sEfficiencyReaders.getKubernetesTagKeys(ORG)],
 ];
 
 beforeEach(() => {
