@@ -54,10 +54,18 @@ write_files:
 
 runcmd:
   # A 1 GB micro instance needs room for Node's heap spikes.
-  - [bash, -c, "if [ ${swap_gb} -gt 0 ] && [ ! -f /swapfile ]; then fallocate -l ${swap_gb}G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi"]
+  - [
+      bash,
+      -c,
+      "if [ ${swap_gb} -gt 0 ] && [ ! -f /swapfile ]; then fallocate -l ${swap_gb}G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi",
+    ]
   # Oracle's Ubuntu images allow only SSH inbound in iptables; the web VMs'
   # cross-replica relay needs port 3000 from inside the VCN.
-  - [bash, -c, "iptables -I INPUT 5 -p tcp -s ${vcn_cidr} --dport 3000 -j ACCEPT && netfilter-persistent save"]
+  - [
+      bash,
+      -c,
+      "iptables -I INPUT 5 -p tcp -s ${vcn_cidr} --dport 3000 -j ACCEPT && netfilter-persistent save",
+    ]
   - [systemctl, enable, --now, docker]
   - [systemctl, daemon-reload]
   - [systemctl, enable, --now, infrawrench-agent.timer]

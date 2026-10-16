@@ -20,6 +20,9 @@ pnpm-lock.yaml
 # only produces a false format:check failure right after you deploy.
 *.tfstate
 *.tfstate.*
+# Provider binaries from `terraform init`; gitignored per directory, which
+# Prettier never reads, and big enough to crash format:check.
+.terraform/
 
 # Generator-owned artifacts — `generate:openapi` and `drizzle-kit generate`
 # write these wholesale in their own style. Formatting them just guarantees a
