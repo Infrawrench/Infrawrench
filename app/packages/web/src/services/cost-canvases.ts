@@ -24,6 +24,7 @@ import {
   costQueryForConfig,
   describeCostCanvasChanges,
   diffCostCanvasSpecs,
+  previousEqualWindow,
   primaryCostCurrency,
   renderCostCanvasText,
   resolveCostDateRange,
@@ -490,16 +491,6 @@ export interface RunCanvasOptions {
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-function previousWindow(from: string, to: string): { from: string; to: string } {
-  const start = Date.parse(`${from}T00:00:00Z`);
-  const end = Date.parse(`${to}T00:00:00Z`);
-  const days = Math.round((end - start) / 86_400_000) + 1;
-  return {
-    from: iso(new Date(start - days * 86_400_000)),
-    to: iso(new Date(start - 86_400_000)),
-  };
-}
-
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -562,7 +553,7 @@ async function unitCostKpi(
   const first = response.series[0];
   let previous: number | null | undefined;
   if (compare) {
-    const prev = await run(previousWindow(from, to));
+    const prev = await run(previousEqualWindow(from, to));
     previous = prev.series.find((s) => s.currency === first?.currency)?.overallValue ?? null;
   }
   const value = first?.overallValue ?? null;

@@ -10,6 +10,7 @@ import {
   IsoDateTime,
 } from "../common";
 import type { BuildContext } from "../context";
+import { CostDateRange } from "./cost-reports";
 
 const Dashboard = strict({
   id: Uuid,
@@ -55,13 +56,25 @@ const WorkflowPin = strict({
 }).openapi("DashboardWorkflowPin");
 
 const WidgetKind = z
-  .enum(["cost_graph", "cost_report", "budget", "custom_graph", "cost_canvas", "realized_savings"])
+  .enum([
+    "cost_graph",
+    "cost_report",
+    "budget",
+    "custom_graph",
+    "cost_canvas",
+    "realized_savings",
+    "kpi",
+    "text",
+  ])
   .describe(
     "`cost_graph` stores its whole config inline; a one-off card. `cost_report` points at a " +
       "saved cost report by id, so editing the report updates every dashboard showing it. " +
       "`cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way. " +
       "`realized_savings` shows the org's realized savings report; its config is only a view " +
-      "choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36).",
+      "choice (`grouping`: month | kind | costCentre | account, and `months` back, 1–36). " +
+      "`kpi` is one figure with a period-over-period change (see `KpiWidgetConfig`; answered by " +
+      "`POST /dashboards/kpi`). `text` is markdown (`{version: 1, markdown}`, up to 20,000 " +
+      "characters), rendered without raw HTML.",
   )
   .openapi("DashboardWidgetKind");
 
@@ -107,9 +120,86 @@ const UpdateWidgetRequest = strict({
   config: JsonObject.optional(),
   gridX: z.number().int().min(0).optional(),
   gridY: z.number().int().min(0).optional(),
-  gridW: z.number().int().min(0).optional(),
-  gridH: z.number().int().min(0).optional(),
+  /** Column span: the grid flows in `gridX` order and each card spans this many columns. */
+  gridW: z.number().int().min(1).max(12).optional(),
+  /** Row span; a row is a minimum height, so content is never clipped. */
+  gridH: z.number().int().min(1).max(12).optional(),
 }).openapi("UpdateWidgetRequest");
+
+const KpiWidgetSource = z
+  .discriminatedUnion("kind", [
+    strict({
+      kind: z.literal("cost_report"),
+      reportId: Uuid,
+      measure: z.enum(["cost", "usage", "count", "unit_cost", "business_metric"]),
+      aggregation: z.enum(["sum", "daily_average"]),
+      usageUnit: z.string().min(1).max(64).optional(),
+    }),
+    strict({
+      kind: z.literal("budget"),
+      budgetId: Uuid,
+      measure: z.enum(["actual", "forecast", "remaining", "percent_used"]),
+    }),
+    strict({
+      kind: z.literal("commitments"),
+      measure: z.enum(["coverage", "utilization", "savings"]),
+    }),
+    strict({
+      kind: z.literal("realized_savings"),
+      eventKind: z
+        .enum([
+          "rightsizing",
+          "orphan_deletion",
+          "sleep_schedule",
+          "commitment",
+          "saas_seat",
+          "manual",
+        ])
+        .optional(),
+    }),
+  ])
+  .describe(
+    "Where a KPI's figure comes from. A saved report brings its filters, saved filter, cost " +
+      "basis and billing-rule choice; `unit_cost` and `business_metric` need a report with a " +
+      "business metric attached, `count` a report grouped by a dimension. A budget follows its " +
+      "own period. Commitment coverage and utilization are read over the commitments " +
+      "service's trailing window; `savings` is the realized savings of kind `commitment`.",
+  )
+  .openapi("KpiWidgetSource");
+
+const KpiWidgetConfig = strict({
+  version: z.literal(1),
+  source: KpiWidgetSource,
+  dateRange: CostDateRange.optional().describe(
+    "The window. Absent follows the source (a report's own range, the last 30 days for " +
+      "savings); refused for a budget and for commitment coverage and utilization.",
+  ),
+  comparePreviousPeriod: z.boolean(),
+  upIsGood: z
+    .boolean()
+    .optional()
+    .describe("Which direction the change badge colours as good; absent derives it."),
+}).openapi("KpiWidgetConfig");
+
+const DashboardKpiRequest = strict({ config: KpiWidgetConfig }).openapi("DashboardKpiRequest");
+
+const DashboardKpiResult = strict({
+  value: z.number().nullable(),
+  unit: z.enum(["money", "money_per_unit", "percent", "count", "quantity"]),
+  currency: z.string().optional(),
+  perUnit: z.string().optional(),
+  previous: z.number().nullable(),
+  change: z.number().nullable(),
+  changePercent: z.number().nullable(),
+  upIsGood: z.boolean(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  previousFrom: z.string().optional(),
+  previousTo: z.string().optional(),
+  sourceName: z.string().optional(),
+  limit: z.number().nullable().optional(),
+  note: z.string().optional(),
+}).openapi("DashboardKpiResult");
 
 const DashboardWithPins = strict({
   dashboard: DashboardFull,
@@ -416,7 +506,7 @@ export function registerDashboardPaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/dashboards/widgets",
     tags: ["Dashboards"],
-    summary: "Add a cost-graph or budget widget to a dashboard",
+    summary: "Add a widget (cost graph, report, budget, KPI, text, ...) to a dashboard",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CreateWidgetRequest } }, required: true },
@@ -440,6 +530,49 @@ export function registerDashboardPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Updated", content: { "application/json": { schema: WidgetFull } } },
       400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/widgets/{widgetId}/duplicate",
+    tags: ["Dashboards"],
+    summary: "Copy a widget in place",
+    description:
+      "Inserts a copy with the same kind, config and size directly after the original, moving " +
+      "every card behind it one slot along. A copy of a budget or report card is a second view " +
+      "onto the same budget or report. Audit-logged.",
+    request: {
+      params: params({ widgetId: Uuid.openapi({ param: { name: "widgetId", in: "path" } }) }),
+    },
+    responses: {
+      200: { description: "The copy", content: { "application/json": { schema: WidgetFull } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/kpi",
+    tags: ["Dashboards"],
+    summary: "Evaluate a KPI widget config",
+    description:
+      "Answers one KPI config: a saved card posts its own, an editor posts one to preview it. " +
+      "Needs `costs:read`, plus `budgets:read` for a budget source; figures are measured inside " +
+      "the caller's cost visibility scope.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: DashboardKpiRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "The figure and its comparison",
+        content: { "application/json": { schema: DashboardKpiResult } },
+      },
+      400: ErrorResponses[400],
+      403: ErrorResponses[403],
       404: ErrorResponses[404],
     },
   });

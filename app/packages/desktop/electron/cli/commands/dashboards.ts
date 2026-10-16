@@ -11,8 +11,11 @@
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   Dashboard,
+  DashboardKpiResult,
   DashboardNotification,
   DashboardNotificationSendResult,
+  DashboardWidget,
+  KpiWidgetConfig,
 } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
@@ -111,10 +114,53 @@ async function resolveDashboard(orgId: string, query: string): Promise<Dashboard
   );
 }
 
+/** One KPI card answered: the figure, or why there is none. */
+interface KpiReading {
+  widgetId: string;
+  title: string;
+  config: KpiWidgetConfig;
+  result: DashboardKpiResult | null;
+  error: string | null;
+}
+
+/**
+ * Answer every KPI card on a dashboard, in grid order. A card that fails
+ * carries its error rather than failing the command, the PDF's rule.
+ */
+async function readKpis(orgId: string, dashboardId: string): Promise<KpiReading[]> {
+  const full = await orgFetch<{ widgets?: DashboardWidget[] }>(
+    orgId,
+    `/dashboards/${encodeURIComponent(dashboardId)}`,
+  );
+  const kpis = (full.widgets ?? [])
+    .filter((w) => w.kind === "kpi")
+    .sort((a, b) => a.gridX - b.gridX);
+  return Promise.all(
+    kpis.map(async (w): Promise<KpiReading> => {
+      const config = w.config as KpiWidgetConfig;
+      try {
+        const result = await orgFetch<DashboardKpiResult>(orgId, "/dashboards/kpi", {
+          method: "POST",
+          body: JSON.stringify({ config }),
+        });
+        return { widgetId: w.id, title: w.title, config, result, error: null };
+      } catch (e) {
+        return {
+          widgetId: w.id,
+          title: w.title,
+          config,
+          result: null,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }),
+  );
+}
+
 /**
  * `infrawrench dashboards <name|id>`: with `--format pdf`, write the
- * server-rendered PDF; otherwise a short summary of the dashboard and its
- * delivery schedules.
+ * server-rendered PDF; otherwise a short summary of the dashboard, the
+ * figures on its KPI cards, and its delivery schedules.
  */
 export async function cmdShowDashboard(
   ctx: CliContext,
@@ -136,13 +182,18 @@ export async function cmdShowDashboard(
     return;
   }
 
-  const schedules = await orgFetch<DashboardNotification[]>(
-    org.id,
-    `/dashboards/${encodeURIComponent(dashboard.id)}/notifications`,
-  ).catch(() => [] as DashboardNotification[]);
+  const [schedules, kpis] = await Promise.all([
+    orgFetch<DashboardNotification[]>(
+      org.id,
+      `/dashboards/${encodeURIComponent(dashboard.id)}/notifications`,
+    ).catch(() => [] as DashboardNotification[]),
+    // Defensive like the schedules: a server without KPI cards costs the
+    // section, not the command.
+    readKpis(org.id, dashboard.id).catch(() => [] as KpiReading[]),
+  ]);
 
   if (ctx.flags.output === "json") {
-    printJson({ org: org.id, dashboard, notifications: schedules });
+    printJson({ org: org.id, dashboard, notifications: schedules, kpis });
     return;
   }
 
@@ -150,6 +201,38 @@ export async function cmdShowDashboard(
     `${c.bold(dashboard.name)}${dashboard.isDefault ? ` ${c.dim("(default)")}` : ""} ${c.dim(`· ${dashboard.id}`)}`,
   );
   println();
+  if (kpis.length > 0) {
+    const core = await import("@infrawrench/client-core");
+    println(c.dim("KPIs"));
+    printTable(kpis, [
+      {
+        header: "card",
+        value: (k) => c.bold(k.title || core.kpiMeasureSummaryText(k.config)),
+      },
+      {
+        header: "value",
+        value: (k) => (k.result ? core.formatDashboardKpiValue(k.result) : c.red(k.error ?? "")),
+      },
+      {
+        header: "change",
+        value: (k) => {
+          if (!k.result) return "";
+          const abs = core.formatDashboardKpiChange(k.result);
+          if (!abs) return c.dim("-");
+          const pct = core.formatDashboardKpiChangePercent(k.result.changePercent);
+          const text = `${abs}${pct ? ` (${pct})` : ""}`;
+          const tone = core.kpiChangeTone(k.result);
+          return tone === "good" ? c.green(text) : tone === "bad" ? c.red(text) : c.dim(text);
+        },
+      },
+      {
+        header: "window",
+        value: (k) =>
+          k.result?.from && k.result.to ? c.dim(`${k.result.from} to ${k.result.to}`) : "",
+      },
+    ]);
+    println();
+  }
   if (schedules.length === 0) {
     println(c.dim("No delivery schedules. Add one from the dashboard's menu (web or desktop)."));
   } else {

@@ -199,7 +199,7 @@ COMMANDS
                       explain a fired budget alert (the latest by default); the note shows on
                       the budget, on cost charts at that day, and in the alert's Slack thread
   dashboards          the org's dashboards and their scheduled PDF deliveries
-  dashboards <n|id>   one dashboard's delivery schedules
+  dashboards <n|id>   one dashboard's KPI card figures and delivery schedules
                       [--format pdf [--out <path>]  save the rendered dashboard as a PDF]
   dashboards send <n> deliver a dashboard to its schedules now (PDF attached to email/Slack)
   exports             scheduled cost exports (raw rows → warehouse/object store), with the

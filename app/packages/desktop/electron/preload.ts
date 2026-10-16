@@ -513,6 +513,8 @@ const INVOKE_CHANNELS = [
   "cloud_create_widget",
   "cloud_update_widget",
   "cloud_delete_widget",
+  "cloud_duplicate_widget",
+  "cloud_evaluate_dashboard_kpi",
   "cloud_list_custom_graphs",
   "cloud_get_custom_graph",
   "cloud_create_custom_graph",

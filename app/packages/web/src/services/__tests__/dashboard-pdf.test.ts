@@ -19,7 +19,13 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   getOrgCurrencySettings: vi.fn(),
 }));
 
-const { costResponseBlocks, customChartBlocks } = await import("../dashboard-pdf");
+const evaluateDashboardKpi = vi.fn();
+vi.mock("../dashboard-kpi", () => ({
+  evaluateDashboardKpi: (...args: unknown[]) => evaluateDashboardKpi(...args),
+}));
+
+const { costResponseBlocks, customChartBlocks, kpiCard, textCard } =
+  await import("../dashboard-pdf");
 
 describe("costResponseBlocks", () => {
   const config = { ...DEFAULT_COST_GRAPH_CONFIG, comparePreviousPeriod: true };
@@ -190,5 +196,53 @@ describe("customChartBlocks", () => {
       series: [{ label: "p95", values: [null, 5] }],
       format: { unit: "ms" },
     });
+  });
+});
+
+describe("KPI and text cards", () => {
+  it("prints a KPI as one stats tile with its change, toned by direction", async () => {
+    evaluateDashboardKpi.mockResolvedValue({
+      value: 1500,
+      unit: "money",
+      currency: "USD",
+      previous: 1000,
+      change: 500,
+      changePercent: 50,
+      upIsGood: false,
+      from: "2026-10-01",
+      to: "2026-10-10",
+      sourceName: "AWS spend",
+    });
+    const card = await kpiCard(
+      "org-1",
+      "",
+      {
+        version: 1,
+        source: { kind: "cost_report", reportId: "r1", measure: "cost", aggregation: "sum" },
+        comparePreviousPeriod: true,
+      },
+      new Date("2026-10-16T00:00:00Z"),
+    );
+    expect(card.section.title).toBe("Spend");
+    expect(card.section.subtitle).toContain("AWS spend");
+    const tile = card.section.blocks[0];
+    expect(tile).toMatchObject({ kind: "stats" });
+    if (tile?.kind !== "stats") throw new Error("expected stats");
+    expect(tile.items[0]).toMatchObject({ tone: "bad" });
+    expect(tile.items[0]?.caption).toMatch(/\+50\.0%/);
+    expect(card.highlight).toMatch(/^Spend: /);
+  });
+
+  it("prints markdown as plain paragraphs with the link targets", () => {
+    const card = textCard("Context", {
+      version: 1,
+      markdown: "## Why\n\nSee the [runbook](https://example.com/r).",
+    });
+    expect(card.section.title).toBe("Context");
+    expect(card.section.blocks).toEqual([
+      { kind: "text", text: "Why" },
+      { kind: "text", text: "See the runbook (https://example.com/r)." },
+    ]);
+    expect(card.highlight).toBeNull();
   });
 });

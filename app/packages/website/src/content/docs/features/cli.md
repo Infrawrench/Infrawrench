@@ -159,9 +159,12 @@ infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"
 
 ```
 infrawrench dashboards
+infrawrench dashboards "Platform"          # its KPI cards' figures and change, then its schedules
 infrawrench dashboards "Platform" --format pdf
 infrawrench dashboards send "Platform"     # deliver it to its schedules right now, PDF attached
 ```
+
+Naming one dashboard answers each of its [KPI cards](./dashboard.md#kpi-cards) the way the card does on screen: the figure, the change against the previous period (green when that direction is good news, red when it is not) and the window it covers. `--output json` carries the same readings under `kpis`, with a card that could not be answered carrying its `error` instead.
 
 <insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
 

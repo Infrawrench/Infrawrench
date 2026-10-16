@@ -1135,6 +1135,13 @@
       "when": 1792149185677,
       "tag": "0161_resource_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1792149322466,
+      "tag": "0162_dashboard_widget_spans",
+      "breakpoints": true
     }
   ]
 }

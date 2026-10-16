@@ -119,6 +119,15 @@ import {
   MANAGED_INVOICE_LIMITS,
   type ManagedInvoiceUpdate,
   REALIZED_SAVINGS_GROUPINGS,
+  SAVINGS_EVENT_KINDS,
+  KPI_AGGREGATIONS,
+  KPI_BUDGET_MEASURES,
+  KPI_COMMITMENT_MEASURES,
+  KPI_REPORT_MEASURES,
+  TEXT_WIDGET_LIMITS,
+  kpiWidgetConfigProblem,
+  type KpiWidgetConfig,
+  type TextWidgetConfig,
   REALIZED_SAVINGS_LIMITS,
   REALIZED_SAVINGS_WIDGET_LIMITS,
   type RealizedSavingsSettings,
@@ -1094,6 +1103,60 @@ export const realizedSavingsWidgetConfigSchema = z.object({
     .max(REALIZED_SAVINGS_WIDGET_LIMITS.maxMonths),
 });
 
+/**
+ * A `kpi` card: one figure from a picked source. Ids only, never a query
+ * string; the cross-field rules are `kpiWidgetConfigProblem`'s, shared with
+ * both editors and the evaluator.
+ */
+const kpiWidgetSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("cost_report"),
+    reportId: z.string().min(1),
+    measure: z.enum(KPI_REPORT_MEASURES),
+    aggregation: z.enum(KPI_AGGREGATIONS),
+    usageUnit: z.string().min(1).max(64).optional(),
+  }),
+  z.object({
+    kind: z.literal("budget"),
+    budgetId: z.string().min(1),
+    measure: z.enum(KPI_BUDGET_MEASURES),
+  }),
+  z.object({ kind: z.literal("commitments"), measure: z.enum(KPI_COMMITMENT_MEASURES) }),
+  z.object({
+    kind: z.literal("realized_savings"),
+    eventKind: z.enum(SAVINGS_EVENT_KINDS).optional(),
+  }),
+]);
+
+export const kpiWidgetConfigObjectSchema = z.object({
+  version: z.literal(1),
+  source: kpiWidgetSourceSchema,
+  dateRange: costDateRangeSchema.optional(),
+  comparePreviousPeriod: z.boolean(),
+  upIsGood: z.boolean().optional(),
+});
+
+export const kpiWidgetConfigSchema = kpiWidgetConfigObjectSchema.superRefine((config, ctx) => {
+  const problem = kpiWidgetConfigProblem(config);
+  if (problem) ctx.addIssue({ code: "custom", message: problem });
+});
+
+/** A `text` card: markdown, sanitised where it is drawn rather than here. */
+export const textWidgetConfigSchema = z.object({
+  version: z.literal(1),
+  markdown: z.string().max(TEXT_WIDGET_LIMITS.maxLength),
+});
+
+// Instantiated rather than listed in a type alias: an uninstantiated
+// `[Exact<A, B>]` resolves to `never` without erroring, so only a value being
+// assigned to it makes drift a build failure.
+type ExactWidget<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+true satisfies ExactWidget<z.infer<typeof kpiWidgetConfigSchema>, KpiWidgetConfig>;
+true satisfies ExactWidget<z.infer<typeof textWidgetConfigSchema>, TextWidgetConfig>;
+
+/** POST /dashboards/kpi: evaluate one KPI config (a saved card's, or an editor's preview). */
+export const dashboardKpiRequestSchema = z.object({ config: kpiWidgetConfigSchema });
+
 /** PUT /savings/settings. */
 export const realizedSavingsSettingsSchema = z.object({
   horizonMonths: z
@@ -1151,6 +1214,8 @@ const widgetConfigSchemas = {
   custom_graph: customGraphWidgetConfigSchema,
   cost_canvas: costCanvasWidgetConfigSchema,
   realized_savings: realizedSavingsWidgetConfigSchema,
+  kpi: kpiWidgetConfigSchema,
+  text: textWidgetConfigSchema,
 } as const satisfies Record<DashboardWidgetKind, z.ZodTypeAny>;
 
 export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {

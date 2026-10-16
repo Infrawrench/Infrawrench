@@ -708,6 +708,16 @@ async function loadDashboardCards(
       if (!graphKey) continue;
       delete config["graphId"];
     }
+    // A KPI over a budget names it the way a budget card does: by key, so the
+    // document applies to an org whose budget ids differ. Report KPIs keep the
+    // raw report id, like a `cost_report` card: reports are not in the document.
+    const source = config["source"] as Record<string, unknown> | undefined;
+    if (widgetKind === "kpi" && source?.["kind"] === "budget") {
+      budgetKey = maps.budgetKeyById.get(String(source["budgetId"] ?? ""));
+      if (!budgetKey) continue;
+      const { budgetId: _lifted, ...rest } = source;
+      config["source"] = rest;
+    }
     push(widget.dashboardId, widget.gridX, widget.createdAt, {
       kind: "widget",
       widgetKind,

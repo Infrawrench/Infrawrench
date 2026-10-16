@@ -12,7 +12,13 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
   useTabId,
-  SortableDashboardCard,
+  DashboardGridCard,
+  DASHBOARD_GRID_STYLE,
+  useDashboardGridColumns,
+  KpiWidgetCard,
+  KpiWidgetConfigModal,
+  TextWidgetCard,
+  TextWidgetConfigModal,
   SortableContext,
   rectSortingStrategy,
   cardOrderIndex,
@@ -32,9 +38,15 @@ import {
   DashboardExportActions,
 } from "@infrawrench/ui";
 import {
+  DEFAULT_KPI_WIDGET_CONFIG,
   DEFAULT_REALIZED_SAVINGS_WIDGET_CONFIG,
+  DEFAULT_TEXT_WIDGET_CONFIG,
   hasPermission,
+  type DashboardCardSize,
+  type DashboardWidgetKind,
+  type KpiWidgetConfig,
   type RealizedSavingsWidgetConfig,
+  type TextWidgetConfig,
 } from "@infrawrench/client-core";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
 import { createDesktopCostApi } from "../lib/cost-api";
@@ -76,6 +88,7 @@ import {
   createCloudWidget,
   updateCloudWidget,
   deleteCloudWidget,
+  duplicateCloudWidget,
   unpinCloudWorkflow,
   type CloudProbeItem,
 } from "../lib/cloud-api";
@@ -159,6 +172,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [savingsModal, setSavingsModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [kpiModal, setKpiModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [textModal, setTextModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const grid = useDashboardGridColumns();
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetPickerOpen, setBudgetPickerOpen] = useState(false);
   const [reportPickerOpen, setReportPickerOpen] = useState(false);
@@ -356,7 +372,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               w.kind === "cost_graph" ||
               w.kind === "cost_report" ||
               w.kind === "budget" ||
-              w.kind === "cost_canvas",
+              w.kind === "cost_canvas" ||
+              w.kind === "kpi",
           )
         ) {
           void loadCloudCostStatus(orgId)
@@ -960,6 +977,59 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
   }
 
+  /** Create or update a widget whose config the dashboard owns outright (KPI, text). */
+  async function saveOwnedWidget(
+    kind: DashboardWidgetKind,
+    widget: DashboardWidget | null,
+    title: string,
+    config: KpiWidgetConfig | TextWidgetConfig,
+  ) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    if (widget) {
+      const updated = await updateCloudWidget(orgId, widget.id, { title, config });
+      setWidgets((prev) => prev.map((w) => (w.id === widget.id ? { ...w, ...updated } : w)));
+    } else {
+      const created = await createCloudWidget(orgId, { dashboardId, kind, title, config });
+      setWidgets((prev) => [...prev, created]);
+    }
+  }
+
+  /** Persist a card's new span; the grid already shows it. */
+  async function resizeWidget(widgetId: string, size: DashboardCardSize) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    setWidgets((prev) =>
+      prev.map((w) => (w.id === widgetId ? { ...w, gridW: size.w, gridH: size.h } : w)),
+    );
+    try {
+      await updateCloudWidget(orgId, widgetId, { gridW: size.w, gridH: size.h });
+    } catch (e) {
+      toast.error(gt("Couldn't resize card"), { description: formatErrorMessage(e) });
+    }
+  }
+
+  /**
+   * Copy a card in place. The server opens the slot after the original by
+   * moving every later card along one, so the local copy does the same.
+   */
+  async function duplicateWidget(widget: DashboardWidget) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    try {
+      const created = await duplicateCloudWidget(orgId, widget.id);
+      setPinned((prev) =>
+        prev.map((r) => (r.grid_x >= created.gridX ? { ...r, grid_x: r.grid_x + 1 } : r)),
+      );
+      const shift = <T extends { gridX: number }>(card: T): T =>
+        card.gridX >= created.gridX ? { ...card, gridX: card.gridX + 1 } : card;
+      setWorkflowPins((prev) => prev.map(shift));
+      setWidgets((prev) => [...prev.map(shift), created]);
+    } catch (e) {
+      toast.error(gt("Couldn't duplicate card"), { description: formatErrorMessage(e) });
+    }
+  }
+
   /** A realized savings card holds only a view choice; the report is the org's. */
   async function saveSavingsWidget(
     widget: DashboardWidget | null,
@@ -1088,6 +1158,51 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     );
   }
 
+  // One set of handlers for both "+" tiles (the empty dashboard's and the grid's).
+  const addMenuHandlers = {
+    onPickResource: () => {
+      setAddMenuOpen(false);
+      setSpotlightMode("pin");
+    },
+    onPickCostGraph: () => {
+      setAddMenuOpen(false);
+      setCostModal({ widget: null });
+    },
+    onPickBudget: () => {
+      setAddMenuOpen(false);
+      setBudgetModal({ widget: null });
+    },
+    onPickExistingBudget: () => {
+      setAddMenuOpen(false);
+      setBudgetPickerOpen(true);
+    },
+    onPickSavedReport: () => {
+      setAddMenuOpen(false);
+      setReportPickerOpen(true);
+    },
+    onPickCustomGraph: () => {
+      setAddMenuOpen(false);
+      setGraphPickerOpen(true);
+    },
+    onPickRealizedSavings: costApi.getRealizedSavings
+      ? () => {
+          setAddMenuOpen(false);
+          setSavingsModal({ widget: null });
+        }
+      : undefined,
+    onPickKpi: costApi.evaluateDashboardKpi
+      ? () => {
+          setAddMenuOpen(false);
+          setKpiModal({ widget: null });
+        }
+      : undefined,
+    onPickText: () => {
+      setAddMenuOpen(false);
+      setTextModal({ widget: null });
+    },
+    onClose: () => setAddMenuOpen(false),
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -1178,68 +1293,39 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               </p>
               <p className="text-xs mt-1 opacity-60">{gt("or drag a resource or workflow here")}</p>
             </button>
-            {addMenuOpen && (
-              <DashboardAddMenu
-                onPickResource={() => {
-                  setAddMenuOpen(false);
-                  setSpotlightMode("pin");
-                }}
-                onPickCostGraph={() => {
-                  setAddMenuOpen(false);
-                  setCostModal({ widget: null });
-                }}
-                onPickBudget={() => {
-                  setAddMenuOpen(false);
-                  setBudgetModal({ widget: null });
-                }}
-                onPickExistingBudget={() => {
-                  setAddMenuOpen(false);
-                  setBudgetPickerOpen(true);
-                }}
-                onPickSavedReport={() => {
-                  setAddMenuOpen(false);
-                  setReportPickerOpen(true);
-                }}
-                onPickCustomGraph={() => {
-                  setAddMenuOpen(false);
-                  setGraphPickerOpen(true);
-                }}
-                onPickRealizedSavings={
-                  costApi.getRealizedSavings
-                    ? () => {
-                        setAddMenuOpen(false);
-                        setSavingsModal({ widget: null });
-                      }
-                    : undefined
-                }
-                onClose={() => setAddMenuOpen(false)}
-              />
-            )}
+            {addMenuOpen && <DashboardAddMenu {...addMenuHandlers} />}
           </div>
         ) : (
           <SortableContext
             items={cards.map((c) => `dashboard-card:${dashboardCardId(c.kind, c.id)}`)}
             strategy={rectSortingStrategy}
           >
-            <div
-              className="grid gap-4"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
-            >
+            <div ref={grid.ref} style={DASHBOARD_GRID_STYLE}>
               {cards.map((card) => (
-                <SortableDashboardCard
+                <DashboardGridCard
                   key={dashboardCardId(card.kind, card.id)}
                   id={dashboardCardId(card.kind, card.id)}
-                  // The wrapper is the grid item, so a cost graph's span
-                  // belongs here rather than on the card.
-                  className={
-                    card.kind === "widget" &&
-                    (card.widget.kind === "cost_graph" ||
-                      card.widget.kind === "cost_report" ||
-                      card.widget.kind === "custom_graph" ||
-                      card.widget.kind === "cost_canvas" ||
-                      card.widget.kind === "realized_savings")
-                      ? "col-span-2"
+                  columns={grid.columns}
+                  // Widgets carry a stored span; pins are always one track.
+                  size={
+                    card.kind === "widget"
+                      ? { w: card.widget.gridW, h: card.widget.gridH }
+                      : { w: 1, h: 1 }
+                  }
+                  label={
+                    card.kind === "widget"
+                      ? card.widget.title || gt("card")
+                      : card.kind === "workflow"
+                        ? gt("workflow")
+                        : card.row.display_name
+                  }
+                  onResize={
+                    card.kind === "widget"
+                      ? (size) => void resizeWidget(card.widget.id, size)
                       : undefined
+                  }
+                  onDuplicate={
+                    card.kind === "widget" ? () => void duplicateWidget(card.widget) : undefined
                   }
                 >
                   {card.kind === "resource" ? (
@@ -1328,6 +1414,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                         </T>
                       </div>
                     )
+                  ) : card.widget.kind === "kpi" ? (
+                    <KpiWidgetCard
+                      title={card.widget.title}
+                      config={card.widget.config as KpiWidgetConfig}
+                      evaluate={activeCloudOrgId ? costApi.evaluateDashboardKpi : undefined}
+                      onEdit={() => setKpiModal({ widget: card.widget })}
+                      onRemove={() => void removeWidget(card.widget.id)}
+                    />
+                  ) : card.widget.kind === "text" ? (
+                    <TextWidgetCard
+                      title={card.widget.title}
+                      config={card.widget.config as TextWidgetConfig}
+                      onEdit={() => setTextModal({ widget: card.widget })}
+                      onRemove={() => void removeWidget(card.widget.id)}
+                    />
                   ) : card.widget.kind === "realized_savings" ? (
                     <RealizedSavingsCard
                       title={card.widget.title}
@@ -1344,7 +1445,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       onRemove={() => void removeWidget(card.widget.id)}
                     />
                   )}
-                </SortableDashboardCard>
+                </DashboardGridCard>
               ))}
 
               <div className="relative min-h-[140px]">
@@ -1360,46 +1461,40 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                     {activeCloudOrgId ? gt("Add") : gt("Add resource")}
                   </span>
                 </button>
-                {addMenuOpen && (
-                  <DashboardAddMenu
-                    onPickResource={() => {
-                      setAddMenuOpen(false);
-                      setSpotlightMode("pin");
-                    }}
-                    onPickCostGraph={() => {
-                      setAddMenuOpen(false);
-                      setCostModal({ widget: null });
-                    }}
-                    onPickBudget={() => {
-                      setAddMenuOpen(false);
-                      setBudgetModal({ widget: null });
-                    }}
-                    onPickExistingBudget={() => {
-                      setAddMenuOpen(false);
-                      setBudgetPickerOpen(true);
-                    }}
-                    onPickSavedReport={() => {
-                      setAddMenuOpen(false);
-                      setReportPickerOpen(true);
-                    }}
-                    onPickCustomGraph={() => {
-                      setAddMenuOpen(false);
-                      setGraphPickerOpen(true);
-                    }}
-                    onPickRealizedSavings={
-                      costApi.getRealizedSavings
-                        ? () => {
-                            setAddMenuOpen(false);
-                            setSavingsModal({ widget: null });
-                          }
-                        : undefined
-                    }
-                    onClose={() => setAddMenuOpen(false)}
-                  />
-                )}
+                {addMenuOpen && <DashboardAddMenu {...addMenuHandlers} />}
               </div>
             </div>
           </SortableContext>
+        )}
+
+        {kpiModal && (
+          <KpiWidgetConfigModal
+            initialTitle={kpiModal.widget?.title ?? ""}
+            initialConfig={
+              kpiModal.widget
+                ? (kpiModal.widget.config as KpiWidgetConfig)
+                : DEFAULT_KPI_WIDGET_CONFIG
+            }
+            loadReports={loadAllReports}
+            loadBudgets={loadAllBudgets}
+            listUsageUnits={costApi.listUsageUnits}
+            evaluate={costApi.evaluateDashboardKpi}
+            onSave={(title, config) => saveOwnedWidget("kpi", kpiModal.widget, title, config)}
+            onClose={() => setKpiModal(null)}
+          />
+        )}
+
+        {textModal && (
+          <TextWidgetConfigModal
+            initialTitle={textModal.widget?.title ?? ""}
+            initialConfig={
+              textModal.widget
+                ? (textModal.widget.config as TextWidgetConfig)
+                : DEFAULT_TEXT_WIDGET_CONFIG
+            }
+            onSave={(title, config) => saveOwnedWidget("text", textModal.widget, title, config)}
+            onClose={() => setTextModal(null)}
+          />
         )}
 
         {costModal && (

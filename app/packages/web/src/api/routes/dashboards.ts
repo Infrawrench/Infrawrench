@@ -6,16 +6,23 @@ import {
   loadObjectMeta,
   requireObjectAccess,
 } from "../../services/object-sharing";
-import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
+import { eq, and, inArray, isNull, desc, max, gte, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import type { StoredWorkflowMetricDef as MetricDef } from "@infrawrench/ui/workflows";
 import {
   widgetConfigSchemaFor,
+  dashboardKpiRequestSchema,
   DASHBOARD_WIDGET_KINDS,
   type DashboardWidget,
   type DashboardWidgetKind,
 } from "@infrawrench/ui/cost/config";
+import {
+  DASHBOARD_GRID_LIMITS,
+  defaultWidgetSize,
+  duplicateCostReportName,
+  type KpiWidgetConfig,
+} from "@infrawrench/client-core";
 import { db } from "../../db/client";
 import {
   dashboards,
@@ -43,6 +50,8 @@ import type { AuthSession } from "../auth-middleware";
 import { getPlugin } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
 import { nextPinSyncVersion } from "../../services/sync-versions";
+import { logAudit } from "../../services/audit";
+import { DashboardKpiError, evaluateDashboardKpi } from "../../services/dashboard-kpi";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -419,22 +428,10 @@ app.post("/widgets", async (c) => {
     return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
   }
 
-  // A report card shows the report's numbers: only a report the caller can
-  // open may be placed.
-  const reportId = (parsed.data as { reportId?: unknown }).reportId;
-  if (kind === "cost_report" && typeof reportId === "string") {
-    const meta = await loadObjectMeta(organizationId, "cost_report", reportId);
-    if (!meta) return c.json({ error: "Report not found" }, 404);
-    await requireObjectAccess(organizationId, "cost_report", reportId, meta, "viewer");
-  }
-  // Same for a canvas card.
-  const canvasId = (parsed.data as { canvasId?: unknown }).canvasId;
-  if (kind === "cost_canvas" && typeof canvasId === "string") {
-    const meta = await loadObjectMeta(organizationId, "cost_canvas", canvasId);
-    if (!meta) return c.json({ error: "Canvas not found" }, 404);
-    await requireObjectAccess(organizationId, "cost_canvas", canvasId, meta, "viewer");
-  }
+  const missing = await widgetTargetProblem(organizationId, kind, parsed.data);
+  if (missing) return c.json({ error: missing }, 404);
 
+  const size = defaultWidgetSize(kind);
   const [created] = await db
     .insert(dashboardWidgets)
     .values({
@@ -445,8 +442,190 @@ app.post("/widgets", async (c) => {
       title: body.title ?? "",
       config: parsed.data,
       gridX: await nextGridX(dashboard.id),
+      gridW: size.w,
+      gridH: size.h,
     })
     .returning();
+  void logAudit({
+    organizationId,
+    userId: c.get("session").userId,
+    action: "dashboard_widget.create",
+    entityType: "dashboard_widget",
+    entityId: created!.id,
+    metadata: { dashboardId: dashboard.id, kind },
+  });
+  return c.json(created);
+});
+
+/**
+ * Why a widget may not point where its config says, or null.
+ *
+ * A report or canvas card shows that object's numbers, so only one the caller
+ * can open may be placed, whether directly or as a KPI's source. Throws the
+ * sharing 403 when the object exists but is not shared with the caller.
+ */
+async function widgetTargetProblem(
+  organizationId: string,
+  kind: DashboardWidgetKind,
+  config: unknown,
+): Promise<string | null> {
+  const reportId =
+    kind === "cost_report"
+      ? (config as { reportId?: unknown }).reportId
+      : kind === "kpi" && (config as KpiWidgetConfig).source.kind === "cost_report"
+        ? (config as { source: { reportId?: unknown } }).source.reportId
+        : undefined;
+  if (typeof reportId === "string") {
+    const meta = await loadObjectMeta(organizationId, "cost_report", reportId);
+    if (!meta) return "Report not found";
+    await requireObjectAccess(organizationId, "cost_report", reportId, meta, "viewer");
+  }
+  const canvasId = kind === "cost_canvas" ? (config as { canvasId?: unknown }).canvasId : undefined;
+  if (typeof canvasId === "string") {
+    const meta = await loadObjectMeta(organizationId, "cost_canvas", canvasId);
+    if (!meta) return "Canvas not found";
+    await requireObjectAccess(organizationId, "cost_canvas", canvasId, meta, "viewer");
+  }
+  return null;
+}
+
+/**
+ * POST /api/dashboards/kpi: answer one KPI config.
+ *
+ * Takes the config rather than a widget id so the editor can preview a card
+ * before it is saved; a saved card posts its own config. Read-only, so it
+ * needs the reads its source needs: `costs:read` always, `budgets:read` for a
+ * budget. The figures are measured inside the caller's cost visibility scope.
+ */
+app.post("/kpi", async (c) => {
+  requirePermission(c, "dashboards:read");
+  requirePermission(c, "costs:read");
+  const organizationId = c.get("organizationId");
+  const parsed = dashboardKpiRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid KPI config",
+        issues: parsed.error.issues,
+      },
+      400,
+    );
+  }
+  const config = parsed.data.config;
+  if (config.source.kind === "budget") requirePermission(c, "budgets:read");
+  try {
+    return c.json(
+      await evaluateDashboardKpi(organizationId, config, {
+        granted: c.get("permissions") ?? [],
+      }),
+    );
+  } catch (e) {
+    if (e instanceof DashboardKpiError) return c.json({ error: e.message }, e.status);
+    throw e;
+  }
+});
+
+/**
+ * POST /api/dashboards/widgets/:widgetId/duplicate: copy a card in place.
+ *
+ * The copy keeps the original's kind, config and size and lands right after
+ * it: every card behind the original moves one slot along the shared
+ * sequence, in one transaction, so the grid never shows two cards on one
+ * slot. A copy of a budget or report card is a second view onto the same
+ * budget or report, never a second budget or report.
+ */
+app.post("/widgets/:widgetId/duplicate", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+  const [widget] = await db
+    .select()
+    .from(dashboardWidgets)
+    .where(
+      and(
+        eq(dashboardWidgets.id, c.req.param("widgetId")),
+        eq(dashboardWidgets.organizationId, organizationId),
+        isNull(dashboardWidgets.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!widget) return c.json({ error: "Not found" }, 404);
+  await requireObjectAccess(organizationId, "dashboard", widget.dashboardId, {}, "editor");
+  const kind = widget.kind as DashboardWidgetKind;
+  if (!DASHBOARD_WIDGET_KINDS.includes(kind)) {
+    return c.json({ error: "This card type cannot be copied by this version" }, 400);
+  }
+  const missing = await widgetTargetProblem(organizationId, kind, widget.config);
+  if (missing) return c.json({ error: missing }, 404);
+
+  const siblings = await db
+    .select({ title: dashboardWidgets.title })
+    .from(dashboardWidgets)
+    .where(
+      and(eq(dashboardWidgets.dashboardId, widget.dashboardId), isNull(dashboardWidgets.deletedAt)),
+    );
+  const title = widget.title
+    ? duplicateCostReportName(
+        widget.title,
+        siblings.map((s) => s.title),
+      )
+    : "";
+  const slot = widget.gridX + 1;
+  const created = await db.transaction(async (tx) => {
+    await tx
+      .update(dashboardPins)
+      .set({
+        gridX: sql`${dashboardPins.gridX} + 1`,
+        // Resource pins are the card kind desktop sync carries, so a moved
+        // pin must read as changed to it, as a reorder does.
+        syncVersion: nextPinSyncVersion(organizationId),
+      })
+      .where(
+        and(eq(dashboardPins.dashboardId, widget.dashboardId), gte(dashboardPins.gridX, slot)),
+      );
+    await tx
+      .update(dashboardWorkflowPins)
+      .set({ gridX: sql`${dashboardWorkflowPins.gridX} + 1` })
+      .where(
+        and(
+          eq(dashboardWorkflowPins.dashboardId, widget.dashboardId),
+          gte(dashboardWorkflowPins.gridX, slot),
+        ),
+      );
+    await tx
+      .update(dashboardWidgets)
+      .set({ gridX: sql`${dashboardWidgets.gridX} + 1` })
+      .where(
+        and(
+          eq(dashboardWidgets.dashboardId, widget.dashboardId),
+          gte(dashboardWidgets.gridX, slot),
+          isNull(dashboardWidgets.deletedAt),
+        ),
+      );
+    const [row] = await tx
+      .insert(dashboardWidgets)
+      .values({
+        id: uuidv4(),
+        organizationId,
+        dashboardId: widget.dashboardId,
+        kind,
+        title,
+        config: widget.config,
+        gridX: slot,
+        gridY: widget.gridY,
+        gridW: widget.gridW,
+        gridH: widget.gridH,
+      })
+      .returning();
+    return row!;
+  });
+  void logAudit({
+    organizationId,
+    userId: c.get("session").userId,
+    action: "dashboard_widget.duplicate",
+    entityType: "dashboard_widget",
+    entityId: created.id,
+    metadata: { dashboardId: widget.dashboardId, kind, sourceWidgetId: widget.id },
+  });
   return c.json(created);
 });
 
@@ -484,11 +663,30 @@ app.patch("/widgets/:widgetId", async (c) => {
     if (!parsed.success) {
       return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
     }
+    const missing = await widgetTargetProblem(
+      organizationId,
+      widget.kind as DashboardWidgetKind,
+      parsed.data,
+    );
+    if (missing) return c.json({ error: missing }, 404);
     updates.config = parsed.data;
   }
-  for (const key of ["gridX", "gridY", "gridW", "gridH"] as const) {
+  for (const key of ["gridX", "gridY"] as const) {
     const value = body[key];
     if (typeof value === "number" && Number.isInteger(value) && value >= 0) updates[key] = value;
+  }
+  // A span is a card's size in grid tracks: at least one, and at most what
+  // org config as code can express, so a document always round-trips it.
+  for (const [key, max] of [
+    ["gridW", DASHBOARD_GRID_LIMITS.maxWidth],
+    ["gridH", DASHBOARD_GRID_LIMITS.maxHeight],
+  ] as const) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max) {
+      return c.json({ error: `${key} must be a whole number from 1 to ${max}` }, 400);
+    }
+    updates[key] = value;
   }
 
   const [updated] = await db
@@ -496,6 +694,18 @@ app.patch("/widgets/:widgetId", async (c) => {
     .set(updates)
     .where(eq(dashboardWidgets.id, widget.id))
     .returning();
+  // A resize or move is layout, not a change to what the card shows: only
+  // the latter goes in the audit log, or every drag would.
+  if (body.title !== undefined || body.config !== undefined) {
+    void logAudit({
+      organizationId,
+      userId: c.get("session").userId,
+      action: "dashboard_widget.update",
+      entityType: "dashboard_widget",
+      entityId: widget.id,
+      metadata: { dashboardId: widget.dashboardId, kind: widget.kind },
+    });
+  }
   return c.json(updated);
 });
 
@@ -528,6 +738,14 @@ app.delete("/widgets/:widgetId", async (c) => {
     )
     .returning({ id: dashboardWidgets.id });
   if (!deleted) return c.json({ error: "Not found" }, 404);
+  void logAudit({
+    organizationId,
+    userId: c.get("session").userId,
+    action: "dashboard_widget.delete",
+    entityType: "dashboard_widget",
+    entityId: deleted.id,
+    metadata: { dashboardId: target.dashboardId },
+  });
   return c.json({ ok: true });
 });
 

@@ -56,6 +56,8 @@ import type {
 } from "@infrawrench/ui/cost";
 import type {
   CostCentre,
+  DashboardKpiResult,
+  KpiWidgetConfig,
   RealizedSavingsReport,
   RealizedSavingsSettings,
   SavingsEvent,
@@ -190,6 +192,8 @@ export function createWebCostApi(orgId: string): CostApi {
       apiGet<RealizedSavingsReport>(
         `/api/org/${orgId}/savings/realized${rangeQuery(range?.from, range?.to)}`,
       ),
+    evaluateDashboardKpi: (config: KpiWidgetConfig) =>
+      apiPost<DashboardKpiResult>(`/api/org/${orgId}/dashboards/kpi`, { config }),
   };
 }
 

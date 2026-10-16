@@ -83,6 +83,8 @@ import type {
   AlertEmailOptions,
 } from "@infrawrench/client-core";
 import type {
+  DashboardKpiResult,
+  KpiWidgetConfig,
   RealizedSavingsReport,
   RealizedSavingsSettings,
   SavingsEvent,
@@ -475,9 +477,25 @@ export async function createCloudWidget(
 export async function updateCloudWidget(
   orgId: string,
   widgetId: string,
-  request: { title?: string; config?: unknown },
+  request: { title?: string; config?: unknown; gridW?: number; gridH?: number },
 ): Promise<DashboardWidget> {
   return invoke("cloud_update_widget", { orgId, widgetId, request });
+}
+
+/** Copy a card in place: the server opens the slot after the original. */
+export async function duplicateCloudWidget(
+  orgId: string,
+  widgetId: string,
+): Promise<DashboardWidget> {
+  return invoke("cloud_duplicate_widget", { orgId, widgetId });
+}
+
+/** Answer one KPI card's config (`POST /dashboards/kpi`). */
+export async function evaluateCloudDashboardKpi(
+  orgId: string,
+  config: KpiWidgetConfig,
+): Promise<DashboardKpiResult> {
+  return invoke("cloud_evaluate_dashboard_kpi", { orgId, config });
 }
 
 export async function deleteCloudWidget(orgId: string, widgetId: string): Promise<void> {

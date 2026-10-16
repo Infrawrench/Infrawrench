@@ -14,6 +14,8 @@ export function DashboardAddMenu({
   onPickExistingBudget,
   onPickCustomGraph,
   onPickRealizedSavings,
+  onPickKpi,
+  onPickText,
   onClose,
 }: {
   onPickResource: () => void;
@@ -24,6 +26,10 @@ export function DashboardAddMenu({
   onPickCustomGraph: () => void;
   /** Omitted by a host with no realized savings report: the entry is hidden. */
   onPickRealizedSavings?: (() => void) | undefined;
+  /** Omitted by a host that cannot evaluate KPIs: the entry is hidden. */
+  onPickKpi?: (() => void) | undefined;
+  /** Omitted by a host whose dashboards hold no widgets (desktop local mode). */
+  onPickText?: (() => void) | undefined;
   onClose: () => void;
 }) {
   const gt = useGT();
@@ -69,6 +75,16 @@ export function DashboardAddMenu({
         {onPickRealizedSavings && (
           <button type="button" onClick={onPickRealizedSavings} className={itemClass}>
             <span className="text-on-surface-faint">▦</span> {gt("Realized savings")}
+          </button>
+        )}
+        {onPickKpi && (
+          <button type="button" onClick={onPickKpi} className={itemClass}>
+            <span className="text-on-surface-faint">#</span> {gt("KPI")}
+          </button>
+        )}
+        {onPickText && (
+          <button type="button" onClick={onPickText} className={itemClass}>
+            <span className="text-on-surface-faint">¶</span> {gt("Text")}
           </button>
         )}
       </div>
