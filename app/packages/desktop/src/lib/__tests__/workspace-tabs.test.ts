@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -103,6 +104,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(incidentsTabTarget("inc-1"));
     expect(detail.to).toBe("/incidents");
     expect(detail.search).toEqual({ incident: "inc-1" });
+  });
+
+  it("returns resource-reports route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(resourceReportsTabTarget());
+    expect(list.to).toBe("/resource-reports");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(resourceReportsTabTarget("r1"));
+    expect(detail.to).toBe("/resource-reports");
+    expect(detail.search).toEqual({ report: "r1" });
   });
 
   it("returns slos route args, clearing the param for the list view", () => {
@@ -496,6 +507,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/incidents", undefined, "?incident=inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the resource-reports path, with and without a report", () => {
+    expect(syncWorkspaceRouteFromPath("/resource-reports")).toEqual({ kind: "resource-reports" });
+    expect(syncWorkspaceRouteFromPath("/resource-reports", undefined, "?report=r1")).toEqual({
+      kind: "resource-reports",
+      reportId: "r1",
     });
   });
 

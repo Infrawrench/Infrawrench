@@ -8,6 +8,8 @@ A cost graph on a dashboard is a card and nothing more: it belongs to that dashb
 
 A **cost report** is the same graph as an object. It has a name, its own page, and an id — so it can be run from the CLI or from chat, and dashboards can point at it instead of copying it. Edit the report once and every dashboard showing it updates.
 
+For a table of the resources themselves, with each one's cost beside its tags and metadata, see [resource reports](./resource-reports.md).
+
 > **Cloud only.** Reports are org rows over spend collected by Infrawrench Cloud's background pollers. On the desktop app the Reports tab appears when you are signed into a cloud org; local-only mode has no spend to report on.
 
 ## Open the Reports page

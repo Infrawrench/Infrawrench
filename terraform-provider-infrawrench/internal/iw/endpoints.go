@@ -308,6 +308,36 @@ func (c *Client) DeleteKubernetesEfficiencyReport(ctx context.Context, id string
 	return c.Delete(ctx, "/k8s-efficiency-reports/"+seg(id))
 }
 
+/* ----------------------------- resource reports ---------------------------- */
+
+func (c *Client) GetResourceReport(ctx context.Context, id string) (*ResourceReport, error) {
+	var out ResourceReport
+	if err := c.Get(ctx, "/resource-reports/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateResourceReport(ctx context.Context, in ResourceReportInput) (*ResourceReport, error) {
+	var out ResourceReport
+	if err := c.Post(ctx, "/resource-reports", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateResourceReport(ctx context.Context, id string, in ResourceReportInput) (*ResourceReport, error) {
+	var out ResourceReport
+	if err := c.Put(ctx, "/resource-reports/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteResourceReport(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/resource-reports/"+seg(id))
+}
+
 /* --------------------------- cost report folders --------------------------- */
 
 func (c *Client) ListCostReportFolders(ctx context.Context) ([]CostReportFolder, error) {

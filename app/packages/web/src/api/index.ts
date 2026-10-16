@@ -69,6 +69,7 @@ import {
   orgDashboardNotificationRoutes,
 } from "./routes/dashboard-notifications";
 import { costReportFolderRoutes } from "./routes/cost-report-folders";
+import { resourceReportRoutes } from "./routes/resource-reports";
 import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
 import { costAlertRoutes } from "./routes/cost-alerts";
@@ -439,6 +440,8 @@ orgScoped.route("/cost-reports", costReportPdfRoutes);
 orgScoped.route("/dashboards", dashboardNotificationRoutes);
 orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
+// Saved inventory tables with per-resource cost, filed in the same folders.
+orgScoped.route("/resource-reports", resourceReportRoutes);
 // Natural-language report canvases: CRUD, run, preview, PDF and schedules.
 orgScoped.route("/cost-canvases", costCanvasRoutes);
 orgScoped.route("/k8s-efficiency-reports", kubernetesEfficiencyReportRoutes);

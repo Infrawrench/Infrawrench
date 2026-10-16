@@ -1013,3 +1013,4 @@ export * from "./costs-panel-tabs";
 export * from "./deep-links";
 export * from "./search";
 export * from "./resource-insight";
+export * from "./resource-reports";

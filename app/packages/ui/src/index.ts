@@ -372,6 +372,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -1211,6 +1212,7 @@ export * from "./cost/index.js";
 // `cost/` because the panel is its own org-level page, but it renders the very
 // same CostGraphCard/CostGraphConfigModal a dashboard cost card uses.
 export * from "./cost-reports/index.js";
+export * from "./resource-reports/index.js";
 export * from "./cost-canvases/index.js";
 export * from "./k8s-efficiency/index.js";
 // Scheduled delivery and PDF export: the schedule list/editor shared by cost

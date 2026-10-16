@@ -667,6 +667,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |
 | `infrawrench_savings_view`              | by id     | A saved view over the savings findings list          |
 | `infrawrench_cost_report`               | by id     |                                                      |
+| `infrawrench_resource_report`           | by id     | Columns are ids: `core:`, `field:`, `tag:`, `cost:`  |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |

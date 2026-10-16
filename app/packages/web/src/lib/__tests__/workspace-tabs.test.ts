@@ -26,6 +26,7 @@ import {
   resourceSftpTabTarget,
   resourceAppsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -897,6 +898,29 @@ describe("cost reports tab", () => {
     // The URL is what records the open report on the tab, so a target that
     // does not survive this round trip loses the report on reload.
     for (const target of [costReportsTabTarget(), costReportsTabTarget("r1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$reportId", args.params!["reportId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("resource reports tab", () => {
+  it("navigates to the list path without a report and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(resourceReportsTabTarget())).toEqual({
+      to: "/org/$orgId/resource-reports",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(resourceReportsTabTarget("r1"))).toEqual({
+      to: "/org/$orgId/resource-reports/$reportId",
+      params: { orgId: "test-org", reportId: "r1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    for (const target of [resourceReportsTabTarget(), resourceReportsTabTarget("r1")]) {
       const args = getWorkspaceNavigateArgs(target);
       const path = args.to
         .replace("$orgId", args.params!["orgId"]!)

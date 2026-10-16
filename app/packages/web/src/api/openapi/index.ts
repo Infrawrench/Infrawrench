@@ -16,6 +16,7 @@ import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerCostAnomalyFeedbackPaths } from "./paths/cost-anomaly-feedback";
 import { registerCostReportPaths } from "./paths/cost-reports";
+import { registerResourceReportPaths } from "./paths/resource-reports";
 import { registerCostCanvasPaths } from "./paths/cost-canvases";
 import { registerKubernetesEfficiencyReportPaths } from "./paths/k8s-efficiency-reports";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
@@ -183,6 +184,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostPaths(ctx);
   registerCostAnomalyFeedbackPaths(ctx);
   registerCostReportPaths(ctx);
+  registerResourceReportPaths(ctx);
   registerCostCanvasPaths(ctx);
   registerKubernetesEfficiencyReportPaths(ctx);
   registerCostReportNotificationPaths(ctx);

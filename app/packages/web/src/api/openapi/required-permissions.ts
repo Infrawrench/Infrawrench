@@ -740,6 +740,20 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-report-folders": "costs:write",
   "PUT /cost-report-folders/{id}": "costs:write",
   "DELETE /cost-report-folders/{id}": "costs:write",
+  // resource reports; cost and virtual tag cells additionally need costs:read
+  // (checked in the service: without it they come back empty, not 403).
+  "GET /resource-reports": "resources:read",
+  "POST /resource-reports": "resources:write",
+  "GET /resource-reports/folders": "resources:read",
+  "GET /resource-reports/options": "resources:read",
+  "GET /resource-reports/tag-values": "resources:read",
+  "POST /resource-reports/query": "resources:read",
+  "POST /resource-reports/csv": "resources:read",
+  "GET /resource-reports/{id}": "resources:read",
+  "PUT /resource-reports/{id}": "resources:write",
+  "DELETE /resource-reports/{id}": "resources:write",
+  "GET /resource-reports/{id}/rows": "resources:read",
+  "GET /resource-reports/{id}/csv": "resources:read",
   // cost exports: reads ride costs:read like every other cost surface, but
   // writes are org:settings:write rather than costs:write. Creating an export
   // is standing authorisation to ship the org's whole billing history to a

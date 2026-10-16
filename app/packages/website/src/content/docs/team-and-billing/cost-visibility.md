@@ -79,7 +79,7 @@ Every change is recorded in the [audit log](./audit-log.md) as `cost_visibility.
 
 ## Sharing reports and dashboards
 
-Every cost report, report folder and dashboard has a **Share** action. It sets:
+Every cost report, [resource report](../features/resource-reports.md), report folder and dashboard has a **Share** action. It sets:
 
 - **Everyone in the organization**: _Can edit_ (the default, which is how every object behaves until somebody shares it), _Can view_, or _No access_.
 - **People and roles**: _Owner_, _Can edit_ or _Can view_ for individual members or whole roles.
@@ -91,7 +91,7 @@ Rules:
 - The person who creates a report, folder or dashboard is its owner. Owners change sharing; editors change content; viewers open it.
 - Deleting needs owner access, or editor access on an object nobody owns (objects created before sharing existed).
 - Sharing on a folder reaches every report and subfolder inside it. A folder left at the default adds nothing, so making one report "No access" is not undone by the folder it sits in.
-- Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read`, editing `costs:write` or `dashboards:write`.
+- Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read`, editing `costs:write` or `dashboards:write`. A resource report needs `resources:read` to open and `resources:write` to edit, and its cost columns still need `costs:read`.
 - [Saved views over savings findings](../features/savings-findings.md#saved-views) share the same way, with the creator as owner; opening one needs `resources:read`, editing it `resources:write`.
 - Admins and owners hold `sharing:override`, which opens and re-shares everything. That is what keeps an object manageable after its owner leaves.
 - A report card on a dashboard only appears for people who can open the report itself.

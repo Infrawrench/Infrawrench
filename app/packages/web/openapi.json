@@ -7565,6 +7565,7 @@
               "costs",
               "savings",
               "cost-reports",
+              "resource-reports",
               "cost-canvases",
               "k8s-efficiency",
               "invoices",
@@ -10481,6 +10482,777 @@
         },
         "additionalProperties": false
       },
+      "ResourceReportTagFilter": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "tag",
+              "virtual_tag"
+            ],
+            "description": "Provider tags (from the resource) or virtual tags (from its cost rows)."
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "in",
+              "not_in",
+              "exists",
+              "missing"
+            ],
+            "description": "`exists` and `missing` take no values; `in` and `not_in` need at least one."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "source",
+          "key",
+          "op",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportFilters": {
+        "type": "object",
+        "properties": {
+          "pluginIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Providers; empty does not filter."
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pluginId",
+                "resourceTypeId"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 200,
+            "description": "Resource types, each with its plugin, since type ids repeat across plugins."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Matched exactly, as synced."
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Matched ignoring case."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceReportTagFilter"
+            },
+            "maxItems": 10,
+            "description": "AND-ed."
+          },
+          "nameContains": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "createdFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive UTC day on the created column.",
+            "example": "2026-07-01"
+          },
+          "createdTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          }
+        },
+        "required": [
+          "pluginIds",
+          "accountIds",
+          "resourceTypes",
+          "regions",
+          "statuses",
+          "tags",
+          "nameContains",
+          "createdFrom",
+          "createdTo"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportSort": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "description": "`<kind>:<key>`. `core:name|type|provider|account|region|status|created|external_id`; `field:<key>` a key of the resource's synced fields (offered by `GET /resource-reports/options`); `tag:<key>` a provider tag; `vtag:<key>` a virtual tag, read from the resource's own cost rows over `costRange` (the value holding the most spend); `cost:range|mtd|previous_month` spend joined by provider resource id.",
+            "example": "cost:range"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          }
+        },
+        "required": [
+          "column",
+          "direction"
+        ],
+        "additionalProperties": false,
+        "description": "Null sorts by name, ascending."
+      },
+      "ResourceReportConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ResourceReportFilters"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "`<kind>:<key>`. `core:name|type|provider|account|region|status|created|external_id`; `field:<key>` a key of the resource's synced fields (offered by `GET /resource-reports/options`); `tag:<key>` a provider tag; `vtag:<key>` a virtual tag, read from the resource's own cost rows over `costRange` (the value holding the most spend); `cost:range|mtd|previous_month` spend joined by provider resource id.",
+              "example": "cost:range"
+            },
+            "minItems": 1,
+            "maxItems": 40,
+            "description": "Shown columns, in display order."
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ResourceReportSort"
+          },
+          "costRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/CostBasis"
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "version",
+          "filters",
+          "columns",
+          "sort",
+          "costRange",
+          "costBasis",
+          "pageSize"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/ResourceReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "A report folder (the tree cost reports use); null is the top level.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/ResourceReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "A report folder (the tree cost reports use); null is the top level.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportFolder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentFolderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and moving a folder inside itself or one of its own subfolders is rejected, both are 400s."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parentFolderId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportOptions": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "pluginId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "pluginId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "pluginId",
+                "resourceTypeId",
+                "label",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "declared": {
+                  "type": "boolean",
+                  "description": "Declared by a resource type, not only seen on synced resources."
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "count",
+                "declared"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Metadata fields the requested resource types expose."
+          },
+          "tagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preferredTagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "virtualTagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty without `costs:read`."
+          },
+          "costAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "providers",
+          "accounts",
+          "resourceTypes",
+          "regions",
+          "statuses",
+          "fields",
+          "tagKeys",
+          "preferredTagKeys",
+          "virtualTagKeys",
+          "costAvailable"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportColumn": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "`<kind>:<key>`. `core:name|type|provider|account|region|status|created|external_id`; `field:<key>` a key of the resource's synced fields (offered by `GET /resource-reports/options`); `tag:<key>` a provider tag; `vtag:<key>` a virtual tag, read from the resource's own cost rows over `costRange` (the value holding the most spend); `cost:range|mtd|previous_month` spend joined by provider resource id.",
+            "example": "cost:range"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "core",
+              "field",
+              "tag",
+              "vtag",
+              "cost"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "English label, as the CSV header prints it."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "key",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportMoney": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The resource id the resource detail view is addressed by."
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Text per non-cost column id; null when the resource has no value."
+          },
+          "costs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ResourceReportMoney"
+              }
+            },
+            "description": "Spend per cost column id, one entry per currency, largest first. Empty when the resource had no cost rows in the window."
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "values",
+          "costs"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportRows": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceReportColumn"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceReportRow"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Matching resources; a lower bound when `truncated`."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "A filter or the sort needed the in-memory scan and it stopped at 100,000 resources."
+          },
+          "sort": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceReportSort"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "cost": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean",
+                "description": "False without `costs:read` or a cost store: cost and virtual tag cells are empty."
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "basis": {
+                "$ref": "#/components/schemas/CostBasis"
+              },
+              "windows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "window": {
+                      "type": "string",
+                      "enum": [
+                        "range",
+                        "mtd",
+                        "previous_month"
+                      ]
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "example": "2026-07-01"
+                    },
+                    "to": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "example": "2026-07-01"
+                    }
+                  },
+                  "required": [
+                    "window",
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "available",
+              "reason",
+              "basis",
+              "windows"
+            ],
+            "additionalProperties": false,
+            "description": "Null when the report has no cost or virtual tag column."
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "total",
+          "offset",
+          "limit",
+          "truncated",
+          "sort",
+          "cost"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceReportQueryRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/ResourceReportConfig"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "additionalProperties": false
+      },
       "CostCanvasKpiMetric": {
         "anyOf": [
           {
@@ -12592,42 +13364,6 @@
           "lastStatus",
           "lastError",
           "createdByUserId",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "CostReportFolder": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
-          },
-          "name": {
-            "type": "string"
-          },
-          "parentFolderId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Parent folder for nesting; null is a top-level folder. Nesting is capped at 3 levels, and moving a folder inside itself or one of its own subfolders is rejected, both are 400s."
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "parentFolderId",
           "createdAt",
           "updatedAt"
         ],
@@ -40836,7 +41572,8 @@
           "dashboard",
           "cost_canvas",
           "kubernetes_efficiency_report",
-          "savings_view"
+          "savings_view",
+          "resource_report"
         ]
       },
       "OrgAccessLevel": {
@@ -64446,6 +65183,744 @@
         },
         "operationId": "postOrgOrgIdCostReportsIdRun",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "List resource reports",
+        "description": "The saved inventory reports the caller's sharing lets them open, by name.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReports",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Create a resource report",
+        "description": "The creator is the report's implicit owner for sharing. Filing it in a folder needs editor access to the folder. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourceReports",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/folders": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "List report folders for resource reports",
+        "description": "The report folders the caller can see. Resource reports share the folder tree cost reports use; create and rename folders through `/cost-report-folders`.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostReportFolder"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsFolders",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/options": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "What a resource report can filter and show",
+        "description": "Providers, accounts, resource types, regions and statuses with resource counts, the metadata fields the given types expose (from the type definitions and the newest synced resources), provider tag keys and, with `costs:read`, virtual tag keys.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated `pluginId/resourceTypeId` pairs narrowing `fields`."
+            },
+            "required": false,
+            "description": "Comma-separated `pluginId/resourceTypeId` pairs narrowing `fields`.",
+            "name": "types",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Picker options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReportOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsOptions",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/tag-values": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Values one tag key takes",
+        "description": "Provider tag values from synced resources, or virtual tag values from spend (empty without `costs:read`), most common first.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tag",
+                "virtual_tag"
+              ]
+            },
+            "required": false,
+            "name": "source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "key",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "values"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsTagValues",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/query": {
+      "post": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Run an unsaved resource report config",
+        "description": "A read despite the method. Returns one page of rows. Cost and virtual tag cells need `costs:read` and respect the caller's cost visibility scope.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceReportQueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One page of rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReportRows"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourceReportsQuery",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/csv": {
+      "post": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Export an unsaved resource report config as CSV",
+        "description": "Every matching row up to 50,000, with tag and cost columns (one numeric column per cost column and currency). A cut file ends with a `# Truncated` line.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/ResourceReportConfig"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "config"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourceReportsCsv",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/{id}": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Read a resource report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "put": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Replace a resource report",
+        "description": "Name, description, config and folder together. Needs editor. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdResourceReportsId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Delete a resource report",
+        "description": "Soft delete; its sharing goes with it. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdResourceReportsId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/{id}/rows": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Run a saved resource report",
+        "description": "One page of rows. `sort` and `direction` override the saved sort for this request only.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "`<kind>:<key>`. `core:name|type|provider|account|region|status|created|external_id`; `field:<key>` a key of the resource's synced fields (offered by `GET /resource-reports/options`); `tag:<key>` a provider tag; `vtag:<key>` a virtual tag, read from the resource's own cost rows over `costRange` (the value holding the most spend); `cost:range|mtd|previous_month` spend joined by provider resource id.",
+              "example": "cost:range"
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "required": false,
+            "name": "direction",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceReportRows"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsIdRows",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/resource-reports/{id}/csv": {
+      "get": {
+        "tags": [
+          "Resource reports"
+        ],
+        "summary": "Export a saved resource report as CSV",
+        "description": "Every matching row up to 50,000; a cut file ends with a `# Truncated` line.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourceReportsIdCsv",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/cost-canvases": {

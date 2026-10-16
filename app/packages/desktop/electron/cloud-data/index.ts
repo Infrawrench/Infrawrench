@@ -36,6 +36,7 @@ import "./schedules";
 import "./leases";
 import "./probes";
 import "./slos";
+import "./resource-reports";
 import "./services";
 import "./dora";
 import "./incidents";

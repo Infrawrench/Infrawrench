@@ -811,6 +811,8 @@ app.post("/validate-tabs", async (c) => {
       // The Cost reports tab is the list page; `reportId` only remembers which
       // report was open, so a deleted report must not invalidate the tab.
       target.kind === "cost-reports" ||
+      // Resource reports likewise: `reportId` is remembered state only.
+      target.kind === "resource-reports" ||
       // Same rule for Canvases: `canvasId` only remembers which canvas was
       // open, and the panel shows "not found" for one that is gone.
       target.kind === "cost-canvases" ||

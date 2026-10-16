@@ -40,6 +40,7 @@ import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
 import { Route as ProbesRouteImport } from './routes/probes'
 import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
 import { Route as QuotasRouteImport } from './routes/quotas'
+import { Route as ResourceReportsRouteImport } from './routes/resource-reports'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as ServicesRouteImport } from './routes/services'
@@ -209,6 +210,11 @@ const QuotasRoute = QuotasRouteImport.update({
   path: '/quotas',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResourceReportsRoute = ResourceReportsRouteImport.update({
+  id: '/resource-reports',
+  path: '/resource-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RunbooksRoute = RunbooksRouteImport.update({
   id: '/runbooks',
   path: '/runbooks',
@@ -308,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
+  '/resource-reports': typeof ResourceReportsRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/services': typeof ServicesRoute
@@ -354,6 +361,7 @@ export interface FileRoutesByTo {
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
+  '/resource-reports': typeof ResourceReportsRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/services': typeof ServicesRoute
@@ -401,6 +409,7 @@ export interface FileRoutesById {
   '/probes': typeof ProbesRoute
   '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
+  '/resource-reports': typeof ResourceReportsRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
   '/services': typeof ServicesRoute
@@ -449,6 +458,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/query-monitors'
     | '/quotas'
+    | '/resource-reports'
     | '/runbooks'
     | '/savings'
     | '/services'
@@ -495,6 +505,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/query-monitors'
     | '/quotas'
+    | '/resource-reports'
     | '/runbooks'
     | '/savings'
     | '/services'
@@ -541,6 +552,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/query-monitors'
     | '/quotas'
+    | '/resource-reports'
     | '/runbooks'
     | '/savings'
     | '/services'
@@ -588,6 +600,7 @@ export interface RootRouteChildren {
   ProbesRoute: typeof ProbesRoute
   QueryMonitorsRoute: typeof QueryMonitorsRoute
   QuotasRoute: typeof QuotasRoute
+  ResourceReportsRoute: typeof ResourceReportsRoute
   RunbooksRoute: typeof RunbooksRoute
   SavingsRoute: typeof SavingsRoute
   ServicesRoute: typeof ServicesRoute
@@ -822,6 +835,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuotasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/resource-reports': {
+      id: '/resource-reports'
+      path: '/resource-reports'
+      fullPath: '/resource-reports'
+      preLoaderRoute: typeof ResourceReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/runbooks': {
       id: '/runbooks'
       path: '/runbooks'
@@ -948,6 +968,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProbesRoute: ProbesRoute,
   QueryMonitorsRoute: QueryMonitorsRoute,
   QuotasRoute: QuotasRoute,
+  ResourceReportsRoute: ResourceReportsRoute,
   RunbooksRoute: RunbooksRoute,
   SavingsRoute: SavingsRoute,
   ServicesRoute: ServicesRoute,

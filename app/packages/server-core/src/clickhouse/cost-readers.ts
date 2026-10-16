@@ -1021,6 +1021,146 @@ export async function getResourceCostTotals(
   }));
 }
 
+/** One provider resource's spend in one currency, per requested window. */
+export interface ResourceCostWindowRow {
+  accountId: string;
+  resourceId: string;
+  currency: string;
+  /** One amount per window, in the order the windows were given. */
+  amounts: number[];
+}
+
+/**
+ * Spend per provider resource id over several windows in one scan: a resource
+ * report's accrued, month-to-date and previous-month columns. The scan covers
+ * the union of the windows and each window is a `sumIf` over it, so three
+ * columns cost one read rather than three.
+ *
+ * `accountIds` / `resourceIds` narrow the read to one page of a report; a
+ * report sorted by cost passes neither and reads every resource the org (as
+ * the caller's visibility scope sees it) has spend for.
+ */
+export async function getResourceCostWindows(
+  organizationId: string,
+  windows: ReadonlyArray<{ from: string; to: string }>,
+  opts: {
+    costBasis?: CostBasis | undefined;
+    accountIds?: readonly string[] | undefined;
+    resourceIds?: readonly string[] | undefined;
+  } = {},
+): Promise<ResourceCostWindowRow[]> {
+  if (windows.length === 0) return [];
+  if (opts.resourceIds && opts.resourceIds.length === 0) return [];
+  if (opts.accountIds && opts.accountIds.length === 0) return [];
+  const from = windows.reduce((m, w) => (w.from < m ? w.from : m), windows[0]!.from);
+  const to = windows.reduce((m, w) => (w.to > m ? w.to : m), windows[0]!.to);
+  const money = amountExpr(opts.costBasis);
+  const sums: Record<string, SQL.Aliased<number>> = {};
+  windows.forEach((w, i) => {
+    sums[`w${i}`] =
+      sql<number>`sumIf(${money}, ${costDaily.day} >= toDate(${w.from}) AND ${costDaily.day} <= toDate(${w.to}))`.as(
+        `w${i}`,
+      );
+  });
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        resource_id: costDaily.resource_id,
+        currency: costDaily.currency,
+        ...sums,
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(from, to),
+          sql`${costDaily.resource_id} != ''`,
+          ...(opts.accountIds ? [inArray(costDaily.account_id, [...opts.accountIds])] : []),
+          ...(opts.resourceIds ? [inArray(costDaily.resource_id, [...opts.resourceIds])] : []),
+        ),
+      )
+      .groupBy(costDaily.account_id, costDaily.resource_id, costDaily.currency),
+  );
+  return rows.map((r) => {
+    const record = r as unknown as Record<string, unknown>;
+    return {
+      accountId: r.account_id,
+      resourceId: r.resource_id,
+      currency: r.currency,
+      amounts: windows.map((_, i) => Number(record[`w${i}`] ?? 0)),
+    };
+  });
+}
+
+/** Spend per (provider resource, virtual tag value): what a resource's value is read from. */
+export interface ResourceVirtualTagValueRow {
+  accountId: string;
+  resourceId: string;
+  value: string;
+  /** Spend carrying the value, summed across currencies; only used to rank values. */
+  amount: number;
+}
+
+/**
+ * The values one virtual tag takes on each provider resource's cost rows over
+ * a range. Virtual tags are rules over cost rows, so this is the honest answer
+ * to "what is this resource's team": what its own spend is tagged as. A split
+ * tag weights each share, so the caller can pick the value holding the most
+ * spend. An unknown key throws `VirtualTagUnresolvedError`.
+ */
+export async function getResourceVirtualTagValues(
+  organizationId: string,
+  key: string,
+  from: string,
+  to: string,
+  opts: {
+    accountIds?: readonly string[] | undefined;
+    resourceIds?: readonly string[] | undefined;
+    virtualTags?: VirtualTagDefinitions | undefined;
+  } = {},
+): Promise<ResourceVirtualTagValueRow[]> {
+  if (opts.resourceIds && opts.resourceIds.length === 0) return [];
+  if (opts.accountIds && opts.accountIds.length === 0) return [];
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(organizationId, [key], from, to, opts.virtualTags),
+  );
+  const value = scope.value(key);
+  const money = scope.weighted(sql`abs(${amountExpr(undefined)})`);
+  const rows = await query((db) =>
+    withVirtualTagJoins(
+      db
+        .select({
+          account_id: costDaily.account_id,
+          resource_id: costDaily.resource_id,
+          value: sql<string>`${value}`.as("value"),
+          amount: sql<number>`sum(${money})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      scope,
+    )
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(from, to),
+          sql`${costDaily.resource_id} != ''`,
+          ...(opts.accountIds ? [inArray(costDaily.account_id, [...opts.accountIds])] : []),
+          ...(opts.resourceIds ? [inArray(costDaily.resource_id, [...opts.resourceIds])] : []),
+        ),
+      )
+      .groupBy(costDaily.account_id, costDaily.resource_id, sql`value`),
+  );
+  return rows.map((r) => ({
+    accountId: r.account_id,
+    resourceId: r.resource_id,
+    value: String(r.value),
+    amount: Number(r.amount),
+  }));
+}
+
 /** Distinct values of a dimension within an org (for filter/group pickers). */
 export async function getCostDimensionValues(
   organizationId: string,

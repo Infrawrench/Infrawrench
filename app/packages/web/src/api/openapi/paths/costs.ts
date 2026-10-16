@@ -47,7 +47,7 @@ const CostChargeType = z
   ])
   .openapi("CostChargeType");
 
-const CostBasis = z
+export const CostBasis = z
   .enum(["cash", "amortized", "blended"])
   .describe(
     "Which number to sum. `cash` is what the provider charged on the day it charged it; the " +

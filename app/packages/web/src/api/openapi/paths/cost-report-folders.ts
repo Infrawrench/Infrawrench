@@ -15,7 +15,7 @@ const CostReportFolderInput = strict({
   parentFolderId: ParentFolderId.optional(),
 }).openapi("CostReportFolderInput");
 
-const CostReportFolder = strict({
+export const CostReportFolder = strict({
   id: Uuid,
   name: z.string(),
   parentFolderId: ParentFolderId,

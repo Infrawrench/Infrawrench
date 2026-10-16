@@ -700,6 +700,48 @@ export const costReports = pgTable(
 );
 
 /**
+ * Resource reports: saved inventory tables over the synced `resources` rows,
+ * with per-resource cost joined from ClickHouse by provider resource id (see
+ * `client-core/src/resource-reports.ts`).
+ *
+ * The cost report's sibling, deliberately shaped like it: soft-deleted, a
+ * creator who is the implicit owner for sharing (`object_access_grants`
+ * with `object_type = 'resource_report'`), and filed in the **same** folder
+ * tree as cost reports (`cost_report_folders`), so one folder can hold both
+ * kinds of report and its sharing covers both. SET NULL for the same reason
+ * as `cost_reports.folder_id`: deleting a folder never deletes a report.
+ *
+ * Nothing about the rows is stored: a report is a query, run live, so it is
+ * never stale and never holds a copy of anybody's money.
+ */
+export const resourceReports = pgTable(
+  "resource_reports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** A `ResourceReportConfig`, validated against `resourceReportConfigSchema` on write. */
+    config: jsonb("config").notNull(),
+    folderId: text("folder_id").references(() => costReportFolders.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("resource_reports_org_idx").on(t.organizationId),
+    folderIdx: index("resource_reports_folder_idx").on(t.organizationId, t.folderId),
+  }),
+);
+
+/**
  * Cost canvases: reports built from a natural-language description by the
  * chat agent (see `client-core/src/cost-canvases.ts`).
  *

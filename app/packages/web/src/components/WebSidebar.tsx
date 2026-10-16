@@ -27,6 +27,7 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
+import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
@@ -582,6 +583,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostReportsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/cost-reports", params: { orgId: orgId! } }),
+              },
+              {
+                key: "resource-reports",
+                label: gt("Resource reports"),
+                icon: <ResourceReportsIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/resource-reports", params: { orgId: orgId! } }),
               },
               {
                 key: "cost-canvases",

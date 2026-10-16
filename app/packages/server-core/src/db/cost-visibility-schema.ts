@@ -98,6 +98,7 @@ export const objectAccessGrants = pgTable(
         | "cost_canvas"
         | "kubernetes_efficiency_report"
         | "savings_view"
+        | "resource_report"
       >()
       .notNull(),
     objectId: text("object_id").notNull(),

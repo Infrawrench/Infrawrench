@@ -99,6 +99,7 @@ import {
 } from "./commands/savings-findings";
 import { cmdProbes } from "./commands/probes";
 import { cmdSlos } from "./commands/slos";
+import { cmdResourceReports } from "./commands/resource-reports";
 import { cmdServices } from "./commands/services";
 import { cmdScorecards } from "./commands/scorecards";
 import { cmdDora } from "./commands/dora";
@@ -188,6 +189,11 @@ COMMANDS
                       file reports (and folder:<path> folders) into one folder, all or nothing
   reports delete <item>... [-y]
                       delete reports and folders, all or nothing (asks first without -y)
+  resource-reports    saved inventory reports: synced resources with picked columns & cost
+  resource-reports <name|id>
+                      run one: a page of rows with its tag, metadata & cost columns
+                      [--limit n] [--offset n] [--sort <column> [--desc]]
+                      [--format csv [--out <path>]  every row as CSV instead]
   budgets <name|id>   one budget's alert history, with the note on each firing
   budgets annotate <name|id> --note <text> [--event <id>]
                       explain a fired budget alert (the latest by default); the note shows on
@@ -1151,6 +1157,18 @@ export async function runCli(): Promise<void> {
       case "slos":
         // `infrawrench slos <id|name>` shows one SLO's burn rates and charts.
         await cmdSlos(ctx, rest[0]);
+        break;
+      case "resource-reports":
+        // Bare lists them; `resource-reports <name|id>` runs one (the words
+        // join into one name, like `reports`).
+        await cmdResourceReports(ctx, rest, {
+          limit: parsed.range.limit,
+          offset: parsed.range.offset,
+          sort: parsed.prices.sort,
+          desc: parsed.prices.desc,
+          format: parsed.exportFlags.format,
+          out: parsed.exportFlags.out,
+        });
         break;
       case "services":
         // `services [list] [--tier n]`, `services show <id|slug|name>`.

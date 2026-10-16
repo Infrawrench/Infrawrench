@@ -497,6 +497,17 @@ export {
   type UnitCostThresholdDirection,
   type UnitCostThresholdMode,
 } from "@infrawrench/client-core";
+import {
+  RESOURCE_REPORT_LIMITS,
+  RESOURCE_REPORT_TAG_OPS,
+  resourceReportConfigError,
+  type ResourceReportConfig,
+  type ResourceReportFilters,
+  type ResourceReportInput,
+  type ResourceReportQueryRequest,
+  type ResourceReportSort,
+  type ResourceReportTagFilter,
+} from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
   dimension: z.enum(COST_DIMENSIONS),
@@ -2238,3 +2249,112 @@ export type SchemasMatchKubernetesEfficiencyContract = [
   Exact<z.infer<typeof kubernetesEfficiencyConfigSchema>, KubernetesEfficiencyConfig>,
   Exact<z.infer<typeof kubernetesEfficiencyReportInputSchema>, KubernetesEfficiencyReportInput>,
 ];
+
+/* ------------------------------------------------------------------ *
+ * Resource reports (client-core `resource-reports.ts`)
+ * ------------------------------------------------------------------ */
+
+const RR = RESOURCE_REPORT_LIMITS;
+const rrKey = z.string().min(1).max(RR.maxKeyLength);
+const rrValues = z.array(z.string().min(1).max(RR.maxValueLength)).max(RR.maxFilterValues);
+
+export const resourceReportTagFilterSchema = z
+  .object({
+    source: z.enum(["tag", "virtual_tag"]),
+    key: rrKey,
+    op: z.enum(RESOURCE_REPORT_TAG_OPS),
+    values: rrValues,
+  })
+  .strict();
+
+export const resourceReportFiltersSchema = z
+  .object({
+    pluginIds: z.array(z.string().min(1).max(128)).max(RR.maxFilterValues),
+    accountIds: z.array(z.string().min(1).max(128)).max(RR.maxFilterValues),
+    resourceTypes: z
+      .array(
+        z
+          .object({
+            pluginId: z.string().min(1).max(128),
+            resourceTypeId: z.string().min(1).max(256),
+          })
+          .strict(),
+      )
+      .max(RR.maxFilterValues),
+    regions: rrValues,
+    statuses: rrValues,
+    tags: z.array(resourceReportTagFilterSchema).max(RR.maxTagFilters),
+    nameContains: z.string().max(RR.maxNameContainsLength).nullable(),
+    createdFrom: isoDate.nullable(),
+    createdTo: isoDate.nullable(),
+  })
+  .strict();
+
+export const resourceReportSortSchema = z
+  .object({
+    column: z
+      .string()
+      .min(1)
+      .max(RR.maxKeyLength + 8),
+    direction: z.enum(["asc", "desc"]),
+  })
+  .strict();
+
+/**
+ * A saved report's config. Shape here; the rules a person reads
+ * (`resourceReportConfigError`) run in a refinement so every writer (the
+ * routes, the editors, the provider) refuses the same configs with the same
+ * words.
+ */
+export const resourceReportConfigSchema = z
+  .object({
+    version: z.literal(1),
+    filters: resourceReportFiltersSchema,
+    columns: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(RR.maxKeyLength + 8),
+      )
+      .max(RR.maxColumns),
+    sort: resourceReportSortSchema.nullable(),
+    costRange: costDateRangeSchema,
+    costBasis: z.enum(COST_BASES),
+    pageSize: z.number().int().min(1).max(RR.maxPageSize),
+  })
+  .strict()
+  .superRefine((config, ctx) => {
+    const problem = resourceReportConfigError(config);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
+
+export const resourceReportInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(RR.maxNameLength),
+    description: z.string().max(RR.maxDescriptionLength).optional(),
+    config: resourceReportConfigSchema,
+    folderId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
+export const resourceReportQueryRequestSchema = z
+  .object({
+    config: resourceReportConfigSchema,
+    offset: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(RR.maxPageSize).optional(),
+  })
+  .strict();
+
+/**
+ * Instantiated, unlike a bare alias: assigning `true` is what makes a drifted
+ * schema a type error rather than a silently-`never` tuple.
+ */
+export const resourceReportSchemasMatchContract: [
+  Exact<z.infer<typeof resourceReportTagFilterSchema>, ResourceReportTagFilter>,
+  Exact<z.infer<typeof resourceReportFiltersSchema>, ResourceReportFilters>,
+  Exact<z.infer<typeof resourceReportSortSchema>, ResourceReportSort>,
+  Exact<z.infer<typeof resourceReportConfigSchema>, ResourceReportConfig>,
+  Exact<z.infer<typeof resourceReportInputSchema>, ResourceReportInput>,
+  Exact<z.infer<typeof resourceReportQueryRequestSchema>, ResourceReportQueryRequest>,
+] = [true, true, true, true, true, true];

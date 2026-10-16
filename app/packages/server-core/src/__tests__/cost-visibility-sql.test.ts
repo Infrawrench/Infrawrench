@@ -78,6 +78,27 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
       }),
   ],
   ["getResourceCostTotals", () => readers.getResourceCostTotals(ORG, "2026-09-01", "2026-09-30")],
+  [
+    "getResourceCostWindows",
+    () =>
+      readers.getResourceCostWindows(
+        ORG,
+        [
+          { from: "2026-09-01", to: "2026-09-30" },
+          { from: "2026-10-01", to: "2026-10-16" },
+        ],
+        { resourceIds: ["i-1"] },
+      ),
+  ],
+  [
+    "getResourceVirtualTagValues",
+    () =>
+      readers.getResourceVirtualTagValues(ORG, "team", "2026-09-01", "2026-09-30", {
+        virtualTags: new Map([
+          ["team", { key: "team", defaultValue: null, split: false, rules: [] }],
+        ]),
+      }),
+  ],
   ["getCostDimensionValues", () => readers.getCostDimensionValues(ORG, "service")],
   ["getCostTagKeys", () => readers.getCostTagKeys(ORG)],
   [

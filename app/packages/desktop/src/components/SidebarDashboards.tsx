@@ -46,6 +46,7 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
+import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
@@ -53,6 +54,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -267,6 +269,17 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costReportsTabTarget(), {
                 label: gt("Reports"),
+              }),
+          },
+          // Cloud-only like Reports: the rows join the cloud's synced inventory
+          // with its cost store.
+          {
+            key: "resource-reports",
+            label: gt("Resource reports"),
+            icon: <ResourceReportsIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, resourceReportsTabTarget(), {
+                label: gt("Resource reports"),
               }),
           },
           // Cloud-only: canvases are built by the cloud chat agent over

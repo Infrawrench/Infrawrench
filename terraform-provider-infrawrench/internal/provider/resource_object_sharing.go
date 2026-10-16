@@ -53,14 +53,15 @@ func (r *objectSharingResource) Metadata(_ context.Context, req resource.Metadat
 
 func (r *objectSharingResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Who can open or edit one cost report, report folder, cost canvas or dashboard.\n\n" +
+		MarkdownDescription: "Who can open or edit one cost report, resource report, report folder, cost canvas or dashboard.\n\n" +
 			"Authoritative for the object: the org-wide default and every `grant` block are the whole " +
 			"sharing document, and anything added in the Share dialog outside Terraform shows up as a diff. " +
 			"Destroying the resource resets the object to the default, where everyone in the organization " +
 			"can edit.\n\n" +
-			"Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read` and " +
-			"editing `costs:write` or `dashboards:write`. Explicit sharing on a report folder also reaches " +
-			"every report and subfolder inside it. Members holding `sharing:override` (admins and owners) " +
+			"Sharing never goes beyond a role: opening still needs `costs:read` or `dashboards:read` " +
+			"(`resources:read` for a resource report) and editing `costs:write` or `dashboards:write` " +
+			"(`resources:write`). Explicit sharing on a report folder also reaches every report, cost " +
+			"or resource, and subfolder inside it. Members holding `sharing:override` (admins and owners) " +
 			"see and manage every object regardless.\n\n" +
 			"Changing sharing needs owner access on the object. The creator of a report or canvas is always " +
 			"its owner and is not listed here; a dashboard or folder must keep at least one `owner` grant.",
@@ -72,8 +73,8 @@ func (r *objectSharingResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"object_type": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas`, `dashboard` or `savings_view`. Changing it replaces the resource.",
-				Validators:          []validator.String{oneOfValidator("cost_report", "cost_report_folder", "cost_canvas", "dashboard", "savings_view")},
+				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas`, `resource_report`, `dashboard` or `savings_view`. Changing it replaces the resource.",
+				Validators:          []validator.String{oneOfValidator("cost_report", "cost_report_folder", "cost_canvas", "resource_report", "dashboard", "savings_view")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"object_id": schema.StringAttribute{

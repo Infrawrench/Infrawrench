@@ -6,6 +6,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -62,6 +63,7 @@ export {
   deliveryTabTarget,
   workflowsTabTarget,
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -151,6 +153,20 @@ export function getWorkspaceNavigateArgs(
           }
         : {
             to: "/org/$orgId/cost-reports",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
+    // Resource reports: the Cost reports shape (path segment on web, ?report=
+    // on desktop).
+    case "resource-reports":
+      return target.reportId
+        ? {
+            to: "/org/$orgId/resource-reports/$reportId",
+            params: { orgId, reportId: target.reportId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/resource-reports",
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
@@ -605,6 +621,10 @@ export function syncWorkspaceRouteFromPath(
     // /cost-reports is the list; /cost-reports/{id} is one report. Both are the
     // same tab: the id is remembered state, not a second tab.
     return costReportsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "resource-reports") {
+    // /resource-reports is the list; /resource-reports/{id} one report. One tab.
+    return resourceReportsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "cost-canvases") {
     // /cost-canvases is the list; /cost-canvases/{id} is one canvas. One tab.

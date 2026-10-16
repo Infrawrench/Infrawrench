@@ -242,6 +242,11 @@ export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
   return { kind: "cost-reports", ...(reportId ? { reportId } : {}) };
 }
 
+/** Resource reports. One tab, optionally remembering which report is open. */
+export function resourceReportsTabTarget(reportId?: string): WorkspaceTabTarget {
+  return { kind: "resource-reports", ...(reportId ? { reportId } : {}) };
+}
+
 /**
  * The Canvases page. With a `canvasId` it opens that canvas; without one the
  * list. One tab either way, like Cost reports.

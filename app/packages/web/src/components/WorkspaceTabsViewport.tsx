@@ -42,6 +42,7 @@ import {
 import { createWebKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import {
   costReportsTabTarget,
+  resourceReportsTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   incidentsTabTarget,
@@ -98,6 +99,7 @@ import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebPriceCatalogPanel } from "./WebPriceCatalogPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebSlosPanel } from "./WebSlosPanel";
+import { WebResourceReportsPanel } from "./WebResourceReportsPanel";
 import { WebServicesPanel } from "./WebServicesPanel";
 import { WebDeliveryPanel } from "./WebDeliveryPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
@@ -463,6 +465,25 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
+          }
+        />
+      );
+    case "resource-reports":
+      return (
+        <WebResourceReportsPanel
+          key={orgId}
+          orgId={orgId}
+          reportId={t.reportId}
+          // The URL owns which report is open, the cost reports rule.
+          onSelectReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(resourceReportsTabTarget(reportId ?? undefined)))
+          }
+          onOpenResource={(ref) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+              ),
+            )
           }
         />
       );
