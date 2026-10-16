@@ -700,6 +700,44 @@ export const costReports = pgTable(
 );
 
 /**
+ * Saved commitment reports: coverage, utilization, savings and commitment
+ * cost over a window, at a granularity, split and filtered (see
+ * `client-core/src/commitment-reports.ts` for the config and every metric).
+ *
+ * The same shape and the same rules as `cost_reports`: filed in the same
+ * report-folder tree (SET NULL, so deleting a folder never deletes a report),
+ * shared through `object_access_grants` with the creator as implicit owner,
+ * and soft-deleted. `config` is validated by `normalizeCommitmentReportConfig`
+ * at every write.
+ */
+export const commitmentReports = pgTable(
+  "commitment_reports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    config: jsonb("config").notNull(),
+    folderId: text("folder_id").references(() => costReportFolders.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `cost_reports`: set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("commitment_reports_org_idx").on(t.organizationId),
+    folderIdx: index("commitment_reports_folder_idx").on(t.organizationId, t.folderId),
+  }),
+);
+
+/**
  * Cost canvases: reports built from a natural-language description by the
  * chat agent (see `client-core/src/cost-canvases.ts`).
  *

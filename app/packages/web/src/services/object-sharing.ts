@@ -1,5 +1,6 @@
 /**
- * Per-object sharing for cost reports, report folders and dashboards.
+ * Per-object sharing for cost reports, commitment reports, report folders,
+ * canvases and dashboards.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -46,6 +47,7 @@ import {
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { db } from "../db/client";
 import {
+  commitmentReports,
   costCanvases,
   costReportFolders,
   costReports,
@@ -68,12 +70,17 @@ const storage = new AsyncLocalStorage<SharingPrincipal>();
 
 /** Types whose creator is their implicit owner (`created_by_user_id`). */
 function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
-  return type === "cost_report" || type === "cost_canvas";
+  return type === "cost_report" || type === "cost_canvas" || type === "commitment_report";
 }
 
 /** Types that sit in the report-folder tree and inherit its explicit sharing. */
 function inFolderTree(type: ShareableObjectType): boolean {
-  return type === "cost_report" || type === "cost_report_folder";
+  return type === "cost_report" || type === "commitment_report" || type === "cost_report_folder";
+}
+
+/** Reports filed by `folderId` (as opposed to a folder, whose parent is its own column). */
+function isFiledReport(type: ShareableObjectType): boolean {
+  return type === "cost_report" || type === "commitment_report";
 }
 
 export function runWithSharingPrincipal<T>(principal: SharingPrincipal, fn: () => T): T {
@@ -202,8 +209,7 @@ export async function loadAccessResolver(
   const p = currentPrincipal(organizationId);
   if (!p) return FULL_ACCESS;
 
-  const types: ShareableObjectType[] =
-    type === "cost_report" ? ["cost_report", "cost_report_folder"] : [type];
+  const types: ShareableObjectType[] = isFiledReport(type) ? [type, "cost_report_folder"] : [type];
   const rows = await db
     .select()
     .from(objectAccessGrants)
@@ -249,7 +255,7 @@ export async function loadAccessResolver(
         levels.push("owner");
       }
       if (inFolderTree(type)) {
-        const parent = type === "cost_report" ? meta?.folderId : folderParent.get(objectId);
+        const parent = isFiledReport(type) ? meta?.folderId : folderParent.get(objectId);
         levels.push(...chainLevels(parent));
       }
       return maxAccessLevel(levels);
@@ -359,6 +365,26 @@ export async function loadObjectMeta(
       .where(and(eq(costReports.id, objectId), eq(costReports.organizationId, organizationId)))
       .limit(1);
     return row && !row.deletedAt ? row : null;
+  }
+  if (type === "commitment_report") {
+    const [row] = await db
+      .select({
+        name: commitmentReports.name,
+        createdByUserId: commitmentReports.createdByUserId,
+        folderId: commitmentReports.folderId,
+        deletedAt: commitmentReports.deletedAt,
+      })
+      .from(commitmentReports)
+      .where(
+        and(
+          eq(commitmentReports.id, objectId),
+          eq(commitmentReports.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    return row && !row.deletedAt
+      ? { name: row.name, createdByUserId: row.createdByUserId, folderId: row.folderId }
+      : null;
   }
   if (type === "cost_canvas") {
     const [row] = await db

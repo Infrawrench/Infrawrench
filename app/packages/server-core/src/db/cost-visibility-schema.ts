@@ -91,7 +91,9 @@ export const objectAccessGrants = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     objectType: text("object_type")
-      .$type<"cost_report" | "cost_report_folder" | "dashboard" | "cost_canvas">()
+      .$type<
+        "cost_report" | "cost_report_folder" | "dashboard" | "cost_canvas" | "commitment_report"
+      >()
       .notNull(),
     objectId: text("object_id").notNull(),
     principalKind: text("principal_kind").$type<"org" | "member" | "role">().notNull(),

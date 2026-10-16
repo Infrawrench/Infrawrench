@@ -303,4 +303,8 @@
 // (`/compliance`), DORA delivery metrics (`/dora`), SaaS seats (`/seats`),
 // the `services`, `vulnerabilities`, `compliance` and `delivery` members of
 // the workspace `TabTarget` enum, and the new push payloads. All additive.
-export const API_VERSION = "1.81.0";
+// 1.82.0: commitment reports. `GET /commitments/report-options`, `POST
+// /commitments/report-query`, `GET|POST /commitments/reports`, `GET|PUT|DELETE
+// /commitments/reports/{id}`, `POST /commitments/reports/{id}/run`, and
+// `commitment_report` in the `ShareableObjectType` enum. Additive.
+export const API_VERSION = "1.82.0";

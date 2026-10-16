@@ -280,6 +280,7 @@
     "./commitments/utilization": "./src/commitments/utilization.ts",
     "./commitments/planner": "./src/commitments/planner.ts",
     "./commitments/feed": "./src/commitments/feed.ts",
+    "./commitments/report": "./src/commitments/report.ts",
     "./commitments/expiry-detect": "./src/commitments/expiry-detect.ts",
     "./commitments/idle-detect": "./src/commitments/idle-detect.ts",
     "./commitments/alert-eval": "./src/commitments/alert-eval.ts",
