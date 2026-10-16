@@ -3,6 +3,7 @@ import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { ensureArray } from "./xml.js";
+import { collectPages, queryString, tokenParam } from "./paginate.js";
 import { EC2_SSH_WORLD_OPEN } from "./constants.js";
 import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
@@ -67,14 +68,39 @@ export function rdsSecurityGroupIds(entity: Record<string, unknown>): string {
   return joinIds(members.map((m) => m["VpcSecurityGroupId"]));
 }
 
+/**
+ * Every `<item>` of an EC2 Describe action's `<setKey>`, across all pages.
+ * EC2 pages with `MaxResults`/`NextToken` and returns the next token as a
+ * lowercase `nextToken` directly under the response root; a page may hold
+ * fewer than `MaxResults` items (even none) while a token is still present.
+ * `MaxResults` cannot be combined with an id list (`InstanceId.N`, ...).
+ */
+export function describeEc2Items(
+  ctx: ListerContext,
+  action: string,
+  setKey: string,
+  maxResults: number,
+): Promise<Record<string, unknown>[]> {
+  return collectPages(async (nextToken) => {
+    const data = await ctx.ec2<Record<string, unknown>>(action, {
+      MaxResults: String(maxResults),
+      ...tokenParam("NextToken", nextToken),
+    });
+    return {
+      items: ensureArray((data[setKey] as Record<string, unknown> | undefined)?.["item"]) as Record<
+        string,
+        unknown
+      >[],
+      next: data["nextToken"],
+    };
+  });
+}
+
 export async function listEC2Instances(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeInstances");
-  const reservations = ensureArray(
-    (data["reservationSet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const reservations = await describeEc2Items(ctx, "DescribeInstances", "reservationSet", 1000);
 
   // Batch-resolve AMI names so we can derive SSH usernames from vendor
   // conventions. One DescribeImages call covers all distinct AMI IDs across
@@ -92,18 +118,21 @@ export async function listEC2Instances(
   const amiNameByImageId = new Map<string, string>();
   if (imageIds.size > 0) {
     try {
-      const params: Record<string, string> = {};
-      let i = 1;
-      for (const id of imageIds) {
-        params[`ImageId.${i}`] = id;
-        i++;
-      }
-      const imagesData = await ctx.ec2<Record<string, unknown>>("DescribeImages", params);
-      const imagesSet = imagesData["imagesSet"] as Record<string, unknown> | undefined;
-      for (const img of ensureArray(imagesSet?.["item"]) as Record<string, unknown>[]) {
-        const id = String(img["imageId"] ?? "");
-        const name = String(img["name"] ?? img["description"] ?? "");
-        if (id) amiNameByImageId.set(id, name);
+      // An id list can't be paged with MaxResults; AWS advises at most 1,000
+      // ids per call instead, so large fleets go in chunks.
+      const ids = [...imageIds];
+      for (let start = 0; start < ids.length; start += 1000) {
+        const params: Record<string, string> = {};
+        ids.slice(start, start + 1000).forEach((id, i) => {
+          params[`ImageId.${i + 1}`] = id;
+        });
+        const imagesData = await ctx.ec2<Record<string, unknown>>("DescribeImages", params);
+        const imagesSet = imagesData["imagesSet"] as Record<string, unknown> | undefined;
+        for (const img of ensureArray(imagesSet?.["item"]) as Record<string, unknown>[]) {
+          const id = String(img["imageId"] ?? "");
+          const name = String(img["name"] ?? img["description"] ?? "");
+          if (id) amiNameByImageId.set(id, name);
+        }
       }
     } catch {
       // DescribeImages permission missing or rate-limited: proceed without
@@ -117,10 +146,7 @@ export async function listEC2Instances(
   // saves the user from clicking through to each SG to find out.
   const sshCidrsByGroupId = new Map<string, string[]>();
   try {
-    const sgData = await ctx.ec2<Record<string, unknown>>("DescribeSecurityGroups");
-    const sgs = ensureArray(
-      (sgData["securityGroupInfo"] as Record<string, unknown> | undefined)?.["item"],
-    ) as Record<string, unknown>[];
+    const sgs = await describeEc2Items(ctx, "DescribeSecurityGroups", "securityGroupInfo", 1000);
     for (const sg of sgs) {
       const gid = String(sg["groupId"] ?? "");
       if (!gid) continue;
@@ -243,10 +269,7 @@ export async function listEBSVolumes(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeVolumes");
-  const volumes = ensureArray(
-    (data["volumeSet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const volumes = await describeEc2Items(ctx, "DescribeVolumes", "volumeSet", 500);
 
   return volumes.map((vol) => {
     const volumeId = String(vol["volumeId"] ?? "");
@@ -286,10 +309,7 @@ export async function listEBSVolumes(
 }
 
 export async function listVPCs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2<Record<string, unknown>>("DescribeVpcs");
-  const vpcs = ensureArray(
-    (data["vpcSet"] as Record<string, unknown> | undefined)?.["item"],
-  ) as Record<string, unknown>[];
+  const vpcs = await describeEc2Items(ctx, "DescribeVpcs", "vpcSet", 1000);
 
   return vpcs.map((vpc) => {
     const vpcId = String(vpc["vpcId"] ?? "");
@@ -420,8 +440,13 @@ export async function listEKSClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const listData = await ctx.jsonGet<{ clusters?: string[] }>("eks", "/clusters");
-  const clusterNames = listData.clusters ?? [];
+  const clusterNames = await collectPages(async (nextToken) => {
+    const page = await ctx.jsonGet<{ clusters?: string[]; nextToken?: string | null }>(
+      "eks",
+      `/clusters${queryString({ maxResults: 100, nextToken })}`,
+    );
+    return { items: page.clusters ?? [], next: page.nextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const name of clusterNames) {
@@ -446,11 +471,13 @@ export async function listEKSClusters(
       let instanceTypesSet = new Set<string>();
       let diskSizeGb = 0;
       try {
-        const ngList = await ctx.jsonGet<{ nodegroups?: string[] }>(
-          "eks",
-          `/clusters/${encodeURIComponent(name)}/node-groups`,
-        );
-        const ngNames = ngList.nodegroups ?? [];
+        const ngNames = await collectPages(async (nextToken) => {
+          const page = await ctx.jsonGet<{ nodegroups?: string[]; nextToken?: string | null }>(
+            "eks",
+            `/clusters/${encodeURIComponent(name)}/node-groups${queryString({ maxResults: 100, nextToken })}`,
+          );
+          return { items: page.nodegroups ?? [], next: page.nextToken };
+        });
         nodeGroupCount = ngNames.length;
         for (const ngName of ngNames) {
           try {
@@ -533,15 +560,22 @@ export async function listRDSInstances(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "rds",
-    "DescribeDBInstances",
-    "2014-10-31",
-  );
-  const result = data["DescribeDBInstancesResult"] as Record<string, unknown> | undefined;
-  const instances = ensureArray(
-    (result?.["DBInstances"] as Record<string, unknown> | undefined)?.["DBInstance"],
-  ) as Record<string, unknown>[];
+  // MaxRecords tops out at 100; the next page's `Marker` sits in the Result.
+  const instances = await collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "rds",
+      "DescribeDBInstances",
+      "2014-10-31",
+      { MaxRecords: "100", ...tokenParam("Marker", marker) },
+    );
+    const result = data["DescribeDBInstancesResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["DBInstances"] as Record<string, unknown> | undefined)?.["DBInstance"],
+      ) as Record<string, unknown>[],
+      next: result?.["Marker"],
+    };
+  });
   return instances.map((db) => {
     const dbId = String(db["DBInstanceIdentifier"] ?? "");
     const endpoint = db["Endpoint"] as Record<string, unknown> | undefined;
@@ -621,10 +655,20 @@ export async function listS3Buckets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  // S3 ListBuckets uses XML REST GET to the S3 endpoint
-  const data = await ctx.xmlGet<Record<string, unknown>>("s3", "/");
-  const bucketsContainer = data["Buckets"] as Record<string, unknown> | undefined;
-  const bucketList = ensureArray(bucketsContainer?.["Bucket"]) as Record<string, unknown>[];
+  // S3 ListBuckets uses XML REST GET to the S3 endpoint. An unpaginated call
+  // is rejected for accounts above the default bucket quota, so always page:
+  // `ContinuationToken` sits directly under `<ListAllMyBucketsResult>`.
+  const bucketList = await collectPages(async (continuationToken) => {
+    const data = await ctx.xmlGet<Record<string, unknown>>(
+      "s3",
+      `/${queryString({ "max-buckets": 10000, "continuation-token": continuationToken })}`,
+    );
+    const bucketsContainer = data["Buckets"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(bucketsContainer?.["Bucket"]) as Record<string, unknown>[],
+      next: data["ContinuationToken"],
+    };
+  });
   return bucketList.map((b) => {
     const name = String(b["Name"] ?? "");
     return {
@@ -733,32 +777,42 @@ export async function listECSServices(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   // First list clusters, then list services in each cluster
-  const clustersData = await ctx.json<{ clusterArns?: string[] }>(
-    "ecs",
-    "AmazonEC2ContainerServiceV20141113.ListClusters",
-    {},
-  );
-  const clusterArns = clustersData.clusterArns ?? [];
+  const clusterArns = await collectPages(async (nextToken) => {
+    const page = await ctx.json<{ clusterArns?: string[]; nextToken?: string | null }>(
+      "ecs",
+      "AmazonEC2ContainerServiceV20141113.ListClusters",
+      { maxResults: 100, ...tokenParam("nextToken", nextToken) },
+    );
+    return { items: page.clusterArns ?? [], next: page.nextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const clusterArn of clusterArns) {
     const clusterName = clusterArn.split("/").pop() ?? clusterArn;
     try {
-      const servicesListData = await ctx.json<{ serviceArns?: string[] }>(
-        "ecs",
-        "AmazonEC2ContainerServiceV20141113.ListServices",
-        { cluster: clusterArn },
-      );
-      const serviceArns = servicesListData.serviceArns ?? [];
+      // ListServices returns only 10 a page unless asked for more (max 100).
+      const serviceArns = await collectPages(async (nextToken) => {
+        const page = await ctx.json<{ serviceArns?: string[]; nextToken?: string | null }>(
+          "ecs",
+          "AmazonEC2ContainerServiceV20141113.ListServices",
+          { cluster: clusterArn, maxResults: 100, ...tokenParam("nextToken", nextToken) },
+        );
+        return { items: page.serviceArns ?? [], next: page.nextToken };
+      });
       if (serviceArns.length === 0) continue;
 
-      const servicesData = await ctx.json<{ services?: Record<string, unknown>[] }>(
-        "ecs",
-        "AmazonEC2ContainerServiceV20141113.DescribeServices",
-        { cluster: clusterArn, services: serviceArns },
-      );
+      // DescribeServices accepts at most 10 services per call.
+      const services: Record<string, unknown>[] = [];
+      for (let i = 0; i < serviceArns.length; i += 10) {
+        const servicesData = await ctx.json<{ services?: Record<string, unknown>[] }>(
+          "ecs",
+          "AmazonEC2ContainerServiceV20141113.DescribeServices",
+          { cluster: clusterArn, services: serviceArns.slice(i, i + 10) },
+        );
+        services.push(...(servicesData.services ?? []));
+      }
 
-      for (const svc of servicesData.services ?? []) {
+      for (const svc of services) {
         const serviceName = String(svc["serviceName"] ?? "");
         const serviceArn = String(svc["serviceArn"] ?? "");
         results.push({
@@ -798,12 +852,16 @@ export async function listDynamoDBTables(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const listData = await ctx.json<{ TableNames?: string[] }>(
-    "dynamodb",
-    "DynamoDB_20120810.ListTables",
-    {},
-  );
-  const tableNames = listData.TableNames ?? [];
+  // ListTables pages by table name: the last name of one page is where the
+  // next one starts.
+  const tableNames = await collectPages(async (startName) => {
+    const page = await ctx.json<{ TableNames?: string[]; LastEvaluatedTableName?: string }>(
+      "dynamodb",
+      "DynamoDB_20120810.ListTables",
+      { Limit: 100, ...tokenParam("ExclusiveStartTableName", startName) },
+    );
+    return { items: page.TableNames ?? [], next: page.LastEvaluatedTableName };
+  });
   const results: ResourceInstance[] = [];
 
   for (const tableName of tableNames) {
@@ -874,16 +932,21 @@ export async function listElastiCacheClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>(
-    "elasticache",
-    "DescribeCacheClusters",
-    "2015-02-02",
-    { ShowCacheNodeInfo: "true" },
-  );
-  const result = data["DescribeCacheClustersResult"] as Record<string, unknown> | undefined;
-  const clusters = ensureArray(
-    (result?.["CacheClusters"] as Record<string, unknown> | undefined)?.["CacheCluster"],
-  ) as Record<string, unknown>[];
+  const clusters = await collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "elasticache",
+      "DescribeCacheClusters",
+      "2015-02-02",
+      { ShowCacheNodeInfo: "true", MaxRecords: "100", ...tokenParam("Marker", marker) },
+    );
+    const result = data["DescribeCacheClustersResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (result?.["CacheClusters"] as Record<string, unknown> | undefined)?.["CacheCluster"],
+      ) as Record<string, unknown>[],
+      next: result?.["Marker"],
+    };
+  });
   return clusters.map((c) => {
     const clusterId = String(c["CacheClusterId"] ?? "");
     const nodesContainer = c["CacheNodes"] as Record<string, unknown> | undefined;
@@ -936,8 +999,16 @@ export async function listSQSQueues(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ QueueUrls?: string[] }>("sqs", "AmazonSQS.ListQueues", {});
-  const queueUrls = data.QueueUrls ?? [];
+  // Without MaxResults, ListQueues stops at 1,000 queues and never returns a
+  // NextToken, so the rest are dropped silently.
+  const queueUrls = await collectPages(async (nextToken) => {
+    const page = await ctx.json<{ QueueUrls?: string[]; NextToken?: string | null }>(
+      "sqs",
+      "AmazonSQS.ListQueues",
+      { MaxResults: 1000, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: page.QueueUrls ?? [], next: page.NextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const queueUrl of queueUrls) {
@@ -991,10 +1062,21 @@ export async function listSNSTopics(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>("sns", "ListTopics", "2010-03-31");
-  const listResult = data["ListTopicsResult"] as Record<string, unknown> | undefined;
-  const topicsContainer = listResult?.["Topics"] as Record<string, unknown> | undefined;
-  const topicEntries = ensureArray(topicsContainer?.["member"]) as Record<string, unknown>[];
+  // ListTopics has no page-size parameter (AWS returns up to 100 a page).
+  const topicEntries = await collectPages(async (nextToken) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "sns",
+      "ListTopics",
+      "2010-03-31",
+      tokenParam("NextToken", nextToken),
+    );
+    const listResult = data["ListTopicsResult"] as Record<string, unknown> | undefined;
+    const topicsContainer = listResult?.["Topics"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(topicsContainer?.["member"]) as Record<string, unknown>[],
+      next: listResult?.["NextToken"],
+    };
+  });
   const results: ResourceInstance[] = [];
 
   for (const topic of topicEntries) {
@@ -1066,12 +1148,16 @@ export async function listECRRepositories(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ repositories?: Record<string, unknown>[] }>(
-    "ecr",
-    "AmazonEC2ContainerRegistry_V20150921.DescribeRepositories",
-    {},
-  );
-  const repos = data.repositories ?? [];
+  const repos = await collectPages(async (nextToken) => {
+    const page = await ctx.json<{
+      repositories?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("ecr", "AmazonEC2ContainerRegistry_V20150921.DescribeRepositories", {
+      maxResults: 1000,
+      ...tokenParam("nextToken", nextToken),
+    });
+    return { items: page.repositories ?? [], next: page.nextToken };
+  });
   return repos.map((repo) => {
     const name = String(repo["repositoryName"] ?? "");
     const repositoryUri = String(repo["repositoryUri"] ?? "");
@@ -1116,12 +1202,16 @@ export async function listSecretsManagerSecrets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ SecretList?: Record<string, unknown>[] }>(
-    "secretsmanager",
-    "secretsmanager.ListSecrets",
-    {},
-  );
-  const secrets = data.SecretList ?? [];
+  // A page can come back empty and still carry a NextToken, so the walk
+  // follows the token rather than stopping on an empty list.
+  const secrets = await collectPages(async (nextToken) => {
+    const page = await ctx.json<{ SecretList?: Record<string, unknown>[]; NextToken?: string }>(
+      "secretsmanager",
+      "secretsmanager.ListSecrets",
+      { MaxResults: 100, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: page.SecretList ?? [], next: page.NextToken };
+  });
   return secrets.map((s) => {
     const name = String(s["Name"] ?? "");
     return {
@@ -1163,11 +1253,20 @@ export async function listCloudFrontDistributions(
   // lands here is the *body* of `<DistributionList>`: an `<Items>` container
   // holding one `<DistributionSummary>` per distribution (absent entirely when
   // the account has none).
-  const data = await ctx.xmlGet<{
-    Items?: { DistributionSummary?: Record<string, unknown> | Record<string, unknown>[] };
-  }>("cloudfront", "/2020-05-31/distribution");
-
-  const items = ensureArray(data.Items?.DistributionSummary);
+  //
+  // It pages with `Marker`/`MaxItems`: `IsTruncated` and `NextMarker` are
+  // direct children of `<DistributionList>`.
+  const items = await collectPages(async (marker) => {
+    const data = await ctx.xmlGet<{
+      Items?: { DistributionSummary?: Record<string, unknown> | Record<string, unknown>[] };
+      IsTruncated?: string;
+      NextMarker?: string;
+    }>("cloudfront", `/2020-05-31/distribution${queryString({ MaxItems: 100, Marker: marker })}`);
+    return {
+      items: ensureArray(data.Items?.DistributionSummary),
+      next: data.IsTruncated === "true" ? data.NextMarker : undefined,
+    };
+  });
   return items.map((dist) => {
     const distId = String(dist["Id"] ?? "");
     // Origins ship with the distribution summary as
@@ -1217,11 +1316,21 @@ export async function listIAMUsers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.ec2Query<Record<string, unknown>>("iam", "ListUsers", "2010-05-08");
-  const listResult = data["ListUsersResult"] as Record<string, unknown> | undefined;
-  const users = ensureArray(
-    (listResult?.["Users"] as Record<string, unknown> | undefined)?.["member"],
-  ) as Record<string, unknown>[];
+  // IAM pages with Marker/MaxItems; `Marker` is only meaningful while
+  // `IsTruncated` is true.
+  const users = await collectPages(async (marker) => {
+    const data = await ctx.ec2Query<Record<string, unknown>>("iam", "ListUsers", "2010-05-08", {
+      MaxItems: "1000",
+      ...tokenParam("Marker", marker),
+    });
+    const listResult = data["ListUsersResult"] as Record<string, unknown> | undefined;
+    return {
+      items: ensureArray(
+        (listResult?.["Users"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: listResult?.["IsTruncated"] === "true" ? listResult["Marker"] : undefined,
+    };
+  });
   return users.map((u) => {
     const userName = String(u["UserName"] ?? "");
     return {

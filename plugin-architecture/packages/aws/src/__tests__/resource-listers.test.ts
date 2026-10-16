@@ -220,7 +220,7 @@ describe("listEKSClusters", () => {
   it("maps clusters, node groups, and builds kubeconfig", async () => {
     const ctx = makeCtx({
       jsonGet: (_s, path) => {
-        if (path === "/clusters") return { clusters: ["c1"] };
+        if (path === "/clusters?maxResults=100") return { clusters: ["c1"] };
         if (path === "/clusters/c1")
           return {
             cluster: {
@@ -232,7 +232,7 @@ describe("listEKSClusters", () => {
               createdAt: "2020-01-01T00:00:00Z",
             },
           };
-        if (path === "/clusters/c1/node-groups") return { nodegroups: ["ng1"] };
+        if (path === "/clusters/c1/node-groups?maxResults=100") return { nodegroups: ["ng1"] };
         if (path === "/clusters/c1/node-groups/ng1")
           return {
             nodegroup: {
@@ -253,10 +253,10 @@ describe("listEKSClusters", () => {
   it("skips clusters that fail to describe and tolerates missing node groups", async () => {
     const ctx = makeCtx({
       jsonGet: (_s, path) => {
-        if (path === "/clusters") return { clusters: ["good", "bad"] };
+        if (path === "/clusters?maxResults=100") return { clusters: ["good", "bad"] };
         if (path === "/clusters/good")
           return { cluster: { status: "ACTIVE", endpoint: "e", certificateAuthority: {} } };
-        if (path === "/clusters/good/node-groups") throw new Error("denied");
+        if (path === "/clusters/good/node-groups?maxResults=100") throw new Error("denied");
         if (path === "/clusters/bad") throw new Error("denied");
         return {};
       },
@@ -713,7 +713,7 @@ describe("listECRRepositories / listSecretsManagerSecrets / listCloudFrontDistri
     const out = await listCloudFrontDistributions(ctx, "acct");
 
     // The lister must use the XML transport: `jsonGet` would throw in prod.
-    expect(ctx.xmlGet).toHaveBeenCalledWith("cloudfront", "/2020-05-31/distribution");
+    expect(ctx.xmlGet).toHaveBeenCalledWith("cloudfront", "/2020-05-31/distribution?MaxItems=100");
     expect(ctx.jsonGet).not.toHaveBeenCalled();
 
     expect(out).toHaveLength(2);

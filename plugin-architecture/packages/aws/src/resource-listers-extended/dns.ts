@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { ListerContext } from "../resource-listers.js";
 import { ensureArray } from "../xml.js";
+import { collectPages, queryString } from "../paginate.js";
 
 /**
  * Route 53 is a REST-**XML** API: every response here is XML, so these
@@ -17,10 +18,18 @@ export async function listRoute53HostedZones(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.xmlGet<{
-    HostedZones?: { HostedZone?: Record<string, unknown> | Array<Record<string, unknown>> };
-  }>("route53", "/2013-04-01/hostedzone");
-  const zones = ensureArray(data.HostedZones?.HostedZone);
+  // Up to 100 a page; `NextMarker` is present only while `IsTruncated` is true.
+  const zones = await collectPages(async (marker) => {
+    const data = await ctx.xmlGet<{
+      HostedZones?: { HostedZone?: Record<string, unknown> | Array<Record<string, unknown>> };
+      IsTruncated?: string;
+      NextMarker?: string;
+    }>("route53", `/2013-04-01/hostedzone${queryString({ maxitems: 100, marker })}`);
+    return {
+      items: ensureArray(data.HostedZones?.HostedZone),
+      next: data.IsTruncated === "true" ? data.NextMarker : undefined,
+    };
+  });
   return zones.map((zone) => {
     const id = String(zone["Id"] ?? "").replace("/hostedzone/", "");
     const name = String(zone["Name"] ?? "");
@@ -61,12 +70,36 @@ export async function listRoute53RecordSets(
   for (const zone of zones) {
     const zoneId = zone.externalId ?? "";
     try {
-      const data = await ctx.xmlGet<{
-        ResourceRecordSets?: {
-          ResourceRecordSet?: Record<string, unknown> | Array<Record<string, unknown>>;
+      // Up to 300 a page. The continuation is a (name, type, identifier)
+      // triple rather than one token, carried through the walk as JSON.
+      const records = await collectPages(async (cursor) => {
+        const [name, type, identifier] = cursor
+          ? (JSON.parse(cursor) as [string, string, string | undefined])
+          : [];
+        const data = await ctx.xmlGet<{
+          ResourceRecordSets?: {
+            ResourceRecordSet?: Record<string, unknown> | Array<Record<string, unknown>>;
+          };
+          IsTruncated?: string;
+          NextRecordName?: string;
+          NextRecordType?: string;
+          NextRecordIdentifier?: string;
+        }>(
+          "route53",
+          `/2013-04-01/hostedzone/${zoneId}/rrset${queryString({ maxitems: 300, name, type, identifier })}`,
+        );
+        return {
+          items: ensureArray(data.ResourceRecordSets?.ResourceRecordSet),
+          next:
+            data.IsTruncated === "true" && data.NextRecordName
+              ? JSON.stringify([
+                  data.NextRecordName,
+                  data.NextRecordType,
+                  data.NextRecordIdentifier,
+                ])
+              : undefined,
         };
-      }>("route53", `/2013-04-01/hostedzone/${zoneId}/rrset`);
-      const records = ensureArray(data.ResourceRecordSets?.ResourceRecordSet);
+      });
       for (const record of records) {
         const name = String(record["Name"] ?? "");
         const type = String(record["Type"] ?? "");
@@ -110,10 +143,18 @@ export async function listRoute53HealthChecks(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.xmlGet<{
-    HealthChecks?: { HealthCheck?: Record<string, unknown> | Array<Record<string, unknown>> };
-  }>("route53", "/2013-04-01/healthcheck");
-  const checks = ensureArray(data.HealthChecks?.HealthCheck);
+  // Up to 1,000 a page; `NextMarker` is present only while `IsTruncated` is true.
+  const checks = await collectPages(async (marker) => {
+    const data = await ctx.xmlGet<{
+      HealthChecks?: { HealthCheck?: Record<string, unknown> | Array<Record<string, unknown>> };
+      IsTruncated?: string;
+      NextMarker?: string;
+    }>("route53", `/2013-04-01/healthcheck${queryString({ maxitems: 1000, marker })}`);
+    return {
+      items: ensureArray(data.HealthChecks?.HealthCheck),
+      next: data.IsTruncated === "true" ? data.NextMarker : undefined,
+    };
+  });
   return checks.map((hc) => {
     const id = String(hc["Id"] ?? "");
     const config = hc["HealthCheckConfig"] as Record<string, unknown> | undefined;

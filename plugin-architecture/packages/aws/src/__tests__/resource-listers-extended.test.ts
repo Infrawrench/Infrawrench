@@ -166,7 +166,7 @@ describe("dns listers", () => {
     expect(out[1]!.fields.isPrivate).toBe(false);
     // The bug: jsonGet against an XML API threw on every poll.
     expect(ctx.jsonGet).not.toHaveBeenCalled();
-    expect(ctx.xmlGet).toHaveBeenCalledWith("route53", "/2013-04-01/hostedzone");
+    expect(ctx.xmlGet).toHaveBeenCalledWith("route53", "/2013-04-01/hostedzone?maxitems=100");
   });
 
   it("listRoute53HostedZones handles a single zone parsing as a bare object", async () => {
@@ -184,7 +184,7 @@ describe("dns listers", () => {
   it("listRoute53RecordSets joins multi-value records and unwraps single ones", async () => {
     const ctx = makeCtx({
       xmlGet: (_s, path) =>
-        path === "/2013-04-01/hostedzone"
+        path === "/2013-04-01/hostedzone?maxitems=100"
           ? parseXml(LIST_HOSTED_ZONES_XML)
           : parseXml(LIST_RRSET_XML),
     });
@@ -205,7 +205,7 @@ describe("dns listers", () => {
   it("listRoute53RecordSets tolerates a zone whose records fail to list", async () => {
     const ctx = makeCtx({
       xmlGet: (_s, path) => {
-        if (path === "/2013-04-01/hostedzone") return parseXml(LIST_HOSTED_ZONES_XML);
+        if (path === "/2013-04-01/hostedzone?maxitems=100") return parseXml(LIST_HOSTED_ZONES_XML);
         if (path?.includes("Z1")) throw new Error("AccessDenied");
         return parseXml(LIST_RRSET_XML);
       },
@@ -585,34 +585,65 @@ describe("messaging extended listers", () => {
     });
     expect(await listKinesisStreams(ctx, "acct")).toEqual([]);
   });
-  it("listMSKClusters", async () => {
+  it("listMSKClusters reads the camelCase wire shape", async () => {
+    // The MSK REST API reference's ListClustersResponse is camelCase.
     const ctx = makeCtx({
       jsonGet: () => ({
-        ClusterInfoList: [
+        clusterInfoList: [
           {
-            ClusterName: "c",
-            ClusterArn: "arn:c",
-            NumberOfBrokerNodes: 3,
-            CurrentBrokerSoftwareInfo: { KafkaVersion: "3.5" },
-            BrokerNodeGroupInfo: {
-              InstanceType: "kafka.m5",
-              StorageInfo: { EbsStorageInfo: { VolumeSize: 100 } },
+            clusterName: "c",
+            clusterArn: "arn:c",
+            state: "ACTIVE",
+            numberOfBrokerNodes: 3,
+            currentBrokerSoftwareInfo: { kafkaVersion: "3.5" },
+            brokerNodeGroupInfo: {
+              instanceType: "kafka.m5.large",
+              clientSubnets: ["subnet-1", "subnet-2"],
+              securityGroups: ["sg-1"],
+              storageInfo: { ebsStorageInfo: { volumeSize: 100 } },
             },
           },
         ],
       }),
     });
     const out = await listMSKClusters(ctx, "acct");
-    expect(out[0]!.fields.storagePerBrokerGb).toBe(100);
-    expect(out[0]!.fields.kafkaVersion).toBe("3.5");
+    expect(out[0]!.externalId).toBe("c");
+    expect(out[0]!.fields).toMatchObject({
+      state: "ACTIVE",
+      numberOfBrokerNodes: 3,
+      instanceType: "kafka.m5.large",
+      storagePerBrokerGb: 100,
+      kafkaVersion: "3.5",
+      subnetIds: "subnet-1, subnet-2",
+      securityGroupIds: "sg-1",
+    });
+    expect(out[0]!.resolvedOutputs.clusterArn).toBe("arn:c");
   });
-  it("listMQBrokers", async () => {
+  it("listMQBrokers reads the camelCase wire shape", async () => {
+    // The Amazon MQ REST API reference's ListBrokersOutput is camelCase.
     const ctx = makeCtx({
       jsonGet: () => ({
-        BrokerSummaries: [{ BrokerName: "b", BrokerId: "id", EngineType: "ActiveMQ" }],
+        brokerSummaries: [
+          {
+            brokerName: "b",
+            brokerId: "id",
+            brokerArn: "arn:b",
+            brokerState: "RUNNING",
+            engineType: "ACTIVEMQ",
+            deploymentMode: "SINGLE_INSTANCE",
+            hostInstanceType: "mq.m5.large",
+          },
+        ],
       }),
     });
-    expect((await listMQBrokers(ctx, "acct"))[0]!.fields.engineType).toBe("ActiveMQ");
+    const out = await listMQBrokers(ctx, "acct");
+    expect(out[0]!.fields).toMatchObject({
+      brokerName: "b",
+      engineType: "ACTIVEMQ",
+      status: "RUNNING",
+      hostInstanceType: "mq.m5.large",
+    });
+    expect(out[0]!.resolvedOutputs.brokerArn).toBe("arn:b");
   });
   it("listEventBridgeRules", async () => {
     const ctx = makeCtx({
@@ -1136,15 +1167,26 @@ describe("devtools extended listers", () => {
     });
     expect((await listGlueDatabases(ctx, "acct"))[0]!.fields.locationUri).toBe("s3://x");
   });
-  it("listAPIGateways", async () => {
+  it("listAPIGateways reads the camelCase wire shape", async () => {
+    // The API Gateway v2 REST reference's `Apis` body is camelCase.
     const ctx = makeCtx({
       jsonGet: () => ({
-        Items: [
-          { Name: "api", ApiId: "a1", ProtocolType: "HTTP", RouteSelectionExpression: "$request" },
+        items: [
+          {
+            name: "api",
+            apiId: "a1",
+            protocolType: "HTTP",
+            routeSelectionExpression: "$request.method $request.path",
+            apiEndpoint: "https://a1.execute-api.us-east-1.amazonaws.com",
+          },
         ],
       }),
     });
     const out = await listAPIGateways(ctx, "acct");
-    expect(out[0]!.fields.routeCount).toBe(1);
+    expect(out[0]!.externalId).toBe("a1");
+    expect(out[0]!.fields).toMatchObject({ name: "api", protocolType: "HTTP", routeCount: 1 });
+    expect(out[0]!.resolvedOutputs.apiEndpoint).toBe(
+      "https://a1.execute-api.us-east-1.amazonaws.com",
+    );
   });
 });

@@ -1,16 +1,20 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { joinIds, type ListerContext } from "../resource-listers.js";
+import { collectPages, queryString, tokenParam } from "../paginate.js";
 
 export async function listKinesisStreams(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ StreamNames?: string[] }>(
-    "kinesis",
-    "Kinesis_20131202.ListStreams",
-    {},
-  );
-  const streamNames = data.StreamNames ?? [];
+  // A Limit above 100 still returns at most 100 a page.
+  const streamNames = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{ StreamNames?: string[]; NextToken?: string }>(
+      "kinesis",
+      "Kinesis_20131202.ListStreams",
+      { Limit: 100, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: data.StreamNames ?? [], next: data.NextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const streamName of streamNames) {
@@ -58,14 +62,22 @@ export async function listMSKClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    ClusterInfoList?: Record<string, unknown>[];
-  }>("kafka", "/v1/clusters");
-  const clusters = data.ClusterInfoList ?? [];
+  // MSK's REST API is camelCase on the wire (`clusterInfoList`, `clusterName`,
+  // ...); reading the PascalCase SDK names found nothing.
+  const clusters = await collectPages(async (nextToken) => {
+    const data = await ctx.jsonGet<{
+      clusterInfoList?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("kafka", `/v1/clusters${queryString({ maxResults: 100, nextToken })}`);
+    return { items: data.clusterInfoList ?? [], next: data.nextToken };
+  });
 
   return clusters.map((c) => {
-    const name = String(c["ClusterName"] ?? "");
-    const brokerNodeGroupInfo = c["BrokerNodeGroupInfo"] as Record<string, unknown> | undefined;
+    const name = String(c["clusterName"] ?? "");
+    const brokerNodeGroupInfo = c["brokerNodeGroupInfo"] as Record<string, unknown> | undefined;
+    const ebsStorageInfo = (
+      brokerNodeGroupInfo?.["storageInfo"] as Record<string, unknown> | undefined
+    )?.["ebsStorageInfo"] as Record<string, unknown> | undefined;
     return {
       id: ctx.id(accountId, "msk-cluster", name),
       pluginId: "aws",
@@ -75,38 +87,28 @@ export async function listMSKClusters(
       fields: {
         clusterName: name,
         region: ctx.region,
-        state: String(c["State"] ?? ""),
+        state: String(c["state"] ?? ""),
         kafkaVersion: String(
-          c["CurrentBrokerSoftwareInfo"]
-            ? (c["CurrentBrokerSoftwareInfo"] as Record<string, unknown>)["KafkaVersion"]
-            : "",
+          (c["currentBrokerSoftwareInfo"] as Record<string, unknown> | undefined)?.[
+            "kafkaVersion"
+          ] ?? "",
         ),
-        numberOfBrokerNodes: Number(c["NumberOfBrokerNodes"] ?? 0),
-        instanceType: String(brokerNodeGroupInfo?.["InstanceType"] ?? ""),
-        storagePerBrokerGb: Number(
-          ((brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown> | undefined)?.[
-            "EbsStorageInfo"
-          ] as Record<string, unknown> | undefined)
-            ? ((
-                (brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown>)?.[
-                  "EbsStorageInfo"
-                ] as Record<string, unknown>
-              )?.["VolumeSize"] ?? 0)
-            : 0,
-        ),
+        numberOfBrokerNodes: Number(c["numberOfBrokerNodes"] ?? 0),
+        instanceType: String(brokerNodeGroupInfo?.["instanceType"] ?? ""),
+        storagePerBrokerGb: Number(ebsStorageInfo?.["volumeSize"] ?? 0),
         // Broker ENIs live in the client subnets, guarded by these groups.
-        subnetIds: joinIds((brokerNodeGroupInfo?.["ClientSubnets"] as string[] | undefined) ?? []),
+        subnetIds: joinIds((brokerNodeGroupInfo?.["clientSubnets"] as string[] | undefined) ?? []),
         securityGroupIds: joinIds(
-          (brokerNodeGroupInfo?.["SecurityGroups"] as string[] | undefined) ?? [],
+          (brokerNodeGroupInfo?.["securityGroups"] as string[] | undefined) ?? [],
         ),
       },
       resolvedOutputs: {
-        clusterArn: String(c["ClusterArn"] ?? ""),
+        clusterArn: String(c["clusterArn"] ?? ""),
         bootstrapBrokers: "",
       },
       secretStates: [],
       externalId: name,
-      createdAt: String(c["CreationTime"] ?? ctx.now()),
+      createdAt: String(c["creationTime"] ?? ctx.now()),
       updatedAt: ctx.now(),
     };
   });
@@ -116,14 +118,20 @@ export async function listMQBrokers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{
-    BrokerSummaries?: Record<string, unknown>[];
-  }>("mq", "/v1/brokers");
-  const brokers = data.BrokerSummaries ?? [];
+  // Amazon MQ's REST API is camelCase on the wire (`brokerSummaries`,
+  // `brokerName`, ...); reading the PascalCase SDK names found nothing.
+  // maxResults is 5-100 (default 20).
+  const brokers = await collectPages(async (nextToken) => {
+    const data = await ctx.jsonGet<{
+      brokerSummaries?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("mq", `/v1/brokers${queryString({ maxResults: 100, nextToken })}`);
+    return { items: data.brokerSummaries ?? [], next: data.nextToken };
+  });
 
   return brokers.map((b) => {
-    const brokerName = String(b["BrokerName"] ?? "");
-    const brokerId = String(b["BrokerId"] ?? "");
+    const brokerName = String(b["brokerName"] ?? "");
+    const brokerId = String(b["brokerId"] ?? "");
     return {
       id: ctx.id(accountId, "mq-broker", brokerId),
       pluginId: "aws",
@@ -134,19 +142,20 @@ export async function listMQBrokers(
         brokerName,
         brokerId,
         region: ctx.region,
-        engineType: String(b["EngineType"] ?? ""),
-        engineVersion: String(b["EngineVersion"] ?? ""),
-        hostInstanceType: String(b["HostInstanceType"] ?? ""),
-        deploymentMode: String(b["DeploymentMode"] ?? ""),
-        status: String(b["BrokerState"] ?? ""),
+        engineType: String(b["engineType"] ?? ""),
+        // Not in ListBrokers' BrokerSummary; only DescribeBroker carries it.
+        engineVersion: String(b["engineVersion"] ?? ""),
+        hostInstanceType: String(b["hostInstanceType"] ?? ""),
+        deploymentMode: String(b["deploymentMode"] ?? ""),
+        status: String(b["brokerState"] ?? ""),
       },
       resolvedOutputs: {
-        brokerArn: String(b["BrokerArn"] ?? ""),
+        brokerArn: String(b["brokerArn"] ?? ""),
         consoleUrl: "",
       },
       secretStates: [],
       externalId: brokerId,
-      createdAt: String(b["Created"] ?? ctx.now()),
+      createdAt: String(b["created"] ?? ctx.now()),
       updatedAt: ctx.now(),
     };
   });
@@ -156,12 +165,14 @@ export async function listEventBridgeRules(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ Rules?: Record<string, unknown>[] }>(
-    "events",
-    "AWSEvents.ListRules",
-    {},
-  );
-  const rules = data.Rules ?? [];
+  const rules = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{ Rules?: Record<string, unknown>[]; NextToken?: string }>(
+      "events",
+      "AWSEvents.ListRules",
+      { Limit: 100, ...tokenParam("NextToken", nextToken) },
+    );
+    return { items: data.Rules ?? [], next: data.NextToken };
+  });
   return rules.map((rule) => {
     const name = String(rule["Name"] ?? "");
     return {
@@ -193,12 +204,16 @@ export async function listStepFunctions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ stateMachines?: Record<string, unknown>[] }>(
-    "states",
-    "AWSStepFunctions.ListStateMachines",
-    {},
-  );
-  const machines = data.stateMachines ?? [];
+  const machines = await collectPages(async (nextToken) => {
+    const data = await ctx.json<{
+      stateMachines?: Record<string, unknown>[];
+      nextToken?: string | null;
+    }>("states", "AWSStepFunctions.ListStateMachines", {
+      maxResults: 1000,
+      ...tokenParam("nextToken", nextToken),
+    });
+    return { items: data.stateMachines ?? [], next: data.nextToken };
+  });
   const results: ResourceInstance[] = [];
 
   for (const sm of machines) {
