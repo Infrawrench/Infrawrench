@@ -6,6 +6,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
 import { BusinessMetricImporterModal } from "./BusinessMetricImporterModal.js";
 import { MetricCsvImportModal } from "./MetricCsvImportModal.js";
+import { MetricForecastValuesPanel } from "./MetricForecastValues.js";
 import { LabelMappingsEditor, ThresholdsEditor } from "./BusinessMetricLabelEditors.js";
 import {
   BUSINESS_METRIC_KEY_HELP,
@@ -651,6 +652,8 @@ function MetricValuesModal({
 
   const load = client.listBusinessMetricValues;
   const write = client.writeBusinessMetricValues;
+  const hasForecast = Boolean(client.listBusinessMetricForecastValues);
+  const [tab, setTab] = useState<"actual" | "forecast">("actual");
 
   /** `customer=acme, plan=pro` → `{customer: "acme", plan: "pro"}`; null when malformed. */
   function parseLabelText(text: string): Record<string, string> | null {
@@ -718,93 +721,120 @@ function MetricValuesModal({
           })}
         </p>
 
-        {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-danger">
-            {error}
+        {hasForecast && (
+          <div
+            role="tablist"
+            aria-label={gt("Values")}
+            className="mb-4 flex gap-4 border-b border-border text-sm"
+          >
+            {(["actual", "forecast"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`-mb-px border-b-2 pb-1.5 ${tab === t ? "border-blue-500 text-on-surface" : "border-transparent text-on-surface-faint hover:text-on-surface-secondary"}`}
+              >
+                {t === "actual" ? gt("Reported") : gt("Forecast")}
+              </button>
+            ))}
           </div>
         )}
 
-        {write && (
-          <div className="flex items-end gap-2 mb-4">
-            <div className="flex-1">
-              <label className={labelClass} htmlFor={`${uid}-day`}>
-                {gt("Day")}
-              </label>
-              <input
-                id={`${uid}-day`}
-                type="date"
-                className={inputClass}
-                value={day}
-                onChange={(e) => setDay(e.target.value)}
-              />
-            </div>
-            <div className="flex-1">
-              <label className={labelClass} htmlFor={`${uid}-value`}>
-                {gt("Value")}
-              </label>
-              <input
-                id={`${uid}-value`}
-                className={inputClass}
-                value={amount}
-                inputMode="decimal"
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="310"
-              />
-            </div>
-            <button
-              type="button"
-              disabled={busy || amount.trim() === ""}
-              onClick={() => void submit()}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              {gt("Report")}
-            </button>
-          </div>
-        )}
-        {write && (
-          <div className="mb-4 flex flex-col gap-2">
-            <div>
-              <label className={labelClass} htmlFor={`${uid}-labels`}>
-                {gt("Labels (optional)")}
-              </label>
-              <input
-                id={`${uid}-labels`}
-                className={inputClass}
-                value={labelText}
-                onChange={(e) => setLabelText(e.target.value)}
-                // i18n-ignore: syntax example of key=value label pairs
-                placeholder="customer=acme, plan=pro"
-              />
-            </div>
-          </div>
-        )}
+        {tab === "forecast" ? (
+          <MetricForecastValuesPanel metric={metric} client={client} actuals={values ?? []} />
+        ) : (
+          <>
+            {error !== null && (
+              <div role="alert" className="mb-3 text-sm text-danger">
+                {error}
+              </div>
+            )}
 
-        {values === null && error === null && (
-          <p role="status" className="text-sm text-on-surface-faint">
-            {gt("Loading values…")}
-          </p>
-        )}
-        {values?.length === 0 && (
-          <p className="text-sm text-on-surface-faint">
-            {gt("Nothing reported yet, so unit-cost charts for this metric are blank.")}
-          </p>
-        )}
+            {write && (
+              <div className="flex items-end gap-2 mb-4">
+                <div className="flex-1">
+                  <label className={labelClass} htmlFor={`${uid}-day`}>
+                    {gt("Day")}
+                  </label>
+                  <input
+                    id={`${uid}-day`}
+                    type="date"
+                    className={inputClass}
+                    value={day}
+                    onChange={(e) => setDay(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className={labelClass} htmlFor={`${uid}-value`}>
+                    {gt("Value")}
+                  </label>
+                  <input
+                    id={`${uid}-value`}
+                    className={inputClass}
+                    value={amount}
+                    inputMode="decimal"
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="310"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || amount.trim() === ""}
+                  onClick={() => void submit()}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {gt("Report")}
+                </button>
+              </div>
+            )}
+            {write && (
+              <div className="mb-4 flex flex-col gap-2">
+                <div>
+                  <label className={labelClass} htmlFor={`${uid}-labels`}>
+                    {gt("Labels (optional)")}
+                  </label>
+                  <input
+                    id={`${uid}-labels`}
+                    className={inputClass}
+                    value={labelText}
+                    onChange={(e) => setLabelText(e.target.value)}
+                    // i18n-ignore: syntax example of key=value label pairs
+                    placeholder="customer=acme, plan=pro"
+                  />
+                </div>
+              </div>
+            )}
 
-        <ul className="flex flex-col">
-          {(values ?? []).map((value) => (
-            <li
-              key={`${value.day}-${formatBusinessMetricLabels(value.labels)}`}
-              className="flex items-center justify-between gap-3 border-b border-border py-1.5 text-sm last:border-0"
-            >
-              <span className="text-on-surface-secondary">{value.day}</span>
-              <span className="min-w-0 flex-1 truncate text-xs text-on-surface-faint">
-                {formatBusinessMetricLabels(value.labels)}
-              </span>
-              <span className="text-on-surface tabular-nums">{value.value}</span>
-              <span className="text-xs text-on-surface-faint">{value.source}</span>
-            </li>
-          ))}
-        </ul>
+            {values === null && error === null && (
+              <p role="status" className="text-sm text-on-surface-faint">
+                {gt("Loading values…")}
+              </p>
+            )}
+            {values?.length === 0 && (
+              <p className="text-sm text-on-surface-faint">
+                {gt("Nothing reported yet, so unit-cost charts for this metric are blank.")}
+              </p>
+            )}
+
+            <ul className="flex flex-col">
+              {(values ?? []).map((value) => (
+                <li
+                  key={`${value.day}-${formatBusinessMetricLabels(value.labels)}`}
+                  className="flex items-center justify-between gap-3 border-b border-border py-1.5 text-sm last:border-0"
+                >
+                  <span className="text-on-surface-secondary">{value.day}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-on-surface-faint">
+                    {formatBusinessMetricLabels(value.labels)}
+                  </span>
+                  <span className="text-on-surface tabular-nums">{value.value}</span>
+                  <span className="text-xs text-on-surface-faint">{value.source}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
         <div className="mt-5 flex justify-end">
           <button

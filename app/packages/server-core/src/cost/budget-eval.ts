@@ -50,6 +50,7 @@ import { convertGroups } from "./currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import {
   forecastDaily,
+  forecastWindowRange,
   forecastWindowTotal,
   remainingDaysInWindow,
   type DailyPoint,
@@ -111,6 +112,9 @@ interface ScopeMeasurement {
   adjustedSpend: boolean;
   /** The unadjusted trend forecast for the window. */
   forecast: number | null;
+  /** The 80% interval around `forecast`; null when there was no fit. */
+  forecastLow: number | null;
+  forecastHigh: number | null;
   /** The scenario-adjusted forecast; set only for a scope that opted in. */
   scenarioForecast: number | null;
   scenarioModelName: string | null;
@@ -227,6 +231,9 @@ export async function budgetMonthStatus(
   adjustedSpend: boolean;
   /** The **unadjusted trend** forecast, whether or not a scenario is applied. */
   forecastCents: number | null;
+  /** The 80% interval around `forecastCents`; null when there was no fit. */
+  forecastLowCents: number | null;
+  forecastHighCents: number | null;
   /**
    * The scenario-adjusted month forecast, set only when this budget opted into
    * a model. Null means forecast thresholds are judged on `forecastCents`.
@@ -262,6 +269,8 @@ function costFigures(m: ScopeMeasurement) {
     rawActualCents: m.rawActual === null ? null : Math.round(m.rawActual * 100),
     adjustedSpend: m.adjustedSpend,
     forecastCents: m.forecast === null ? null : Math.round(m.forecast * 100),
+    forecastLowCents: m.forecastLow === null ? null : Math.round(m.forecastLow * 100),
+    forecastHighCents: m.forecastHigh === null ? null : Math.round(m.forecastHigh * 100),
     scenarioForecastCents:
       m.scenarioForecast === null ? null : Math.round(m.scenarioForecast * 100),
     scenarioModelName: m.scenarioModelName,
@@ -343,7 +352,10 @@ async function measureCostScope(
   const rawActual = [...rawDaily.entries()]
     .filter(([day]) => inWindow(day))
     .reduce((sum, [, amount]) => sum + amount, 0);
-  const forecast = forecastWindowTotal(points, window.start, window.end);
+  // The expected figure is exactly `forecastWindowTotal`, so thresholds judge
+  // the number they always have; the band is display only.
+  const range = forecastWindowRange(points, window.start, window.end);
+  const forecast = range?.expected ?? null;
 
   // The scenario overlay, computed *in addition to* the trend above and never
   // in place of it. Nothing below runs for a budget that did not opt in, so an
@@ -384,6 +396,8 @@ async function measureCostScope(
     rawActual: adjustments ? rawActual : null,
     adjustedSpend: Boolean(useAdjustedSpend),
     forecast,
+    forecastLow: range?.low ?? null,
+    forecastHigh: range?.high ?? null,
     scenarioForecast,
     scenarioModelName,
     // Currencies with no rate are excluded from the figure above, so name them.
@@ -426,6 +440,8 @@ async function measureUsageScope(
     rawActual: null,
     adjustedSpend: false,
     forecast: forecastWindowTotal(points, window.start, window.end),
+    forecastLow: null,
+    forecastHigh: null,
     scenarioForecast: null,
     scenarioModelName: null,
     unconvertedCurrencies: [],
@@ -468,6 +484,21 @@ function windowBaselineProjection(
 }
 
 /** Sum children's measurements of one window into their parent's. */
+function sumBound(parts: ScopeMeasurement[], key: "forecastLow" | "forecastHigh"): number | null {
+  let sum = 0;
+  for (const p of parts) {
+    // A child with no forecast has spent its actual and projects nothing more.
+    if (p.forecast === null) {
+      sum += p.actual;
+      continue;
+    }
+    const bound = p[key];
+    if (bound === null) return null;
+    sum += bound;
+  }
+  return parts.some((p) => p.forecast !== null) ? sum : null;
+}
+
 function sumMeasurements(parts: ScopeMeasurement[]): ScopeMeasurement {
   const anyForecast = parts.some((p) => p.forecast !== null);
   const anyScenario = parts.some((p) => p.scenarioForecast !== null);
@@ -482,6 +513,11 @@ function sumMeasurements(parts: ScopeMeasurement[]): ScopeMeasurement {
     // A child with no data in the window has no forecast and has spent
     // nothing, so it adds its actual (0) rather than making the sum unknown.
     forecast: anyForecast ? parts.reduce((s, p) => s + (p.forecast ?? p.actual), 0) : null,
+    // Summed bounds: wider than the parent's true interval (it assumes the
+    // children err together), so a rolled-up band never looks more certain
+    // than its parts. Unknown when any forecasting child has no band.
+    forecastLow: sumBound(parts, "forecastLow"),
+    forecastHigh: sumBound(parts, "forecastHigh"),
     scenarioForecast: anyScenario
       ? parts.reduce((s, p) => s + (p.scenarioForecast ?? p.forecast ?? p.actual), 0)
       : null,
@@ -506,6 +542,8 @@ export interface BudgetPeriodStatus {
   rawActualCents: number | null;
   adjustedSpend: boolean;
   forecastCents: number | null;
+  forecastLowCents: number | null;
+  forecastHighCents: number | null;
   scenarioForecastCents: number | null;
   scenarioModelName: string | null;
   unconvertedCurrencies: string[];
@@ -627,6 +665,8 @@ export class BudgetStatusResolver {
       rawActualCents: null,
       adjustedSpend: Boolean(row.useAdjustedSpend) && measure === "cost",
       forecastCents: null,
+      forecastLowCents: null,
+      forecastHighCents: null,
       scenarioForecastCents: null,
       scenarioModelName: null,
       unconvertedCurrencies: [],

@@ -38,6 +38,7 @@ import { toCostScenarioModel } from "@infrawrench/server-core/cost/scenario-fore
 import { db } from "../db/client";
 import {
   budgets,
+  costReportForecasts,
   costReports,
   costScenarioModels,
   dashboardWidgets,
@@ -310,6 +311,32 @@ export async function listCostScenarioReferents(
       name: row.title,
       dashboardId: row.dashboardId,
       dashboardName: row.dashboardName,
+    });
+  }
+
+  // Named report forecasts stacking the model. Deleting it would silently
+  // change what the forecast projects, so it is refused like the rest.
+  const forecastRows = await db
+    .select({
+      id: costReportForecasts.id,
+      name: costReportForecasts.name,
+      reportName: costReports.name,
+    })
+    .from(costReportForecasts)
+    .innerJoin(costReports, eq(costReports.id, costReportForecasts.costReportId))
+    .where(
+      and(
+        eq(costReportForecasts.organizationId, organizationId),
+        isNull(costReports.deletedAt),
+        sql`${costReportForecasts.scenarioModelIds} @> ${JSON.stringify([modelId])}::jsonb`,
+      ),
+    )
+    .orderBy(asc(costReports.name), asc(costReportForecasts.name));
+  for (const row of forecastRows) {
+    referents.push({
+      kind: "cost_forecast",
+      id: row.id,
+      name: `${row.reportName}: ${row.name}`,
     });
   }
 

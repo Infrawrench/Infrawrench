@@ -152,6 +152,9 @@ func specChecks() []specCheck {
 		{schema: "CostAnnotation", value: CostAnnotation{}},
 		{schema: "CostAnnotationInput", value: CostAnnotationInput{}},
 
+		{schema: "CostForecast", value: CostForecast{}},
+		{schema: "CostForecastInput", value: CostForecastInput{}},
+
 		{schema: "ReportNotification", value: ReportNotification{}},
 		{schema: "ReportNotificationInput", value: ReportNotificationInput{}},
 		{schema: "DashboardNotification", value: DashboardNotification{}},

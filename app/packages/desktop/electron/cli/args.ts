@@ -408,6 +408,14 @@ export interface ParsedCli {
     from: string | undefined;
     to: string | undefined;
   };
+  /** `costs forecast`: which named forecast, narrowing, and the band level. */
+  forecast: {
+    name: string | undefined;
+    providers: string[];
+    services: string[];
+    level: string | undefined;
+    all: boolean;
+  };
   positionals: string[];
   version: boolean;
   /** `costs --anomalies`: the spend-spike list instead of the spend chart. */
@@ -632,6 +640,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "keep-upstream-open": { type: "boolean", default: false },
         // `vulns` filters. `--plugin`, `--limit` and `-a/--account` are shared.
         severity: { type: "string" },
+        // `costs forecast`: the named forecast and the band level.
+        forecast: { type: "string" },
+        level: { type: "string" },
         running: { type: "boolean", default: false },
         "not-running": { type: "boolean", default: false },
         "fix-available": { type: "boolean", default: false },
@@ -876,6 +887,19 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       search: str("search"),
       from: str("from"),
       to: str("to"),
+    },
+    forecast: {
+      name: str("forecast"),
+      providers: (str("provider") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      services: (str("service") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      level: str("level"),
+      all: values.all === true,
     },
     dora: {
       scope: str("scope"),

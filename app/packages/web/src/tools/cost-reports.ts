@@ -12,7 +12,12 @@
  */
 import { z } from "zod";
 
-import { costReportInputSchema, costReportRunOverridesSchema } from "@infrawrench/ui/cost/config";
+import {
+  costForecastRunRequestSchema,
+  costReportInputSchema,
+  costReportRunOverridesSchema,
+} from "@infrawrench/ui/cost/config";
+import { CostForecastError, runCostReportForecast } from "../services/cost-forecasts";
 import { costReportFolderPaths, type CostReportFolder } from "@infrawrench/client-core";
 import {
   createCostReport,
@@ -155,6 +160,37 @@ export function costReportTools(): ToolDefinition[] {
           return ok(result);
         } catch (e) {
           if (e instanceof CostQueryError) return err(e.message);
+          throw e;
+        }
+      },
+    },
+
+    {
+      name: "forecast_cost_report",
+      title: "Forecast a cost report",
+      description:
+        "Projected daily spend for a saved report's scope, with a low/expected/high band (the " +
+        "least-squares prediction interval at `confidenceLevel`, default 80%). Returns the " +
+        "automatic trend forecast as `baseline` and the requested named forecast as `forecast` " +
+        "(the report's default when `forecastId` is omitted; 'baseline' for the trend). Named " +
+        "forecasts stack scenario models in priority order and may be driven by a business " +
+        "metric's planned values. `all: true` returns every named forecast for comparison. " +
+        "Quote the band, not just the expected figure: it is a trend estimate, not a bill.",
+      inputSchema: { reportId: z.string(), ...costForecastRunRequestSchema.shape },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const { reportId, ...rest } = input as { reportId: string } & Record<string, unknown>;
+        const request = costForecastRunRequestSchema.safeParse(rest);
+        if (!request.success) return err(`Invalid request: ${request.error.message}`);
+        try {
+          const result = await runCostReportForecast(auth.organizationId, reportId, request.data);
+          if (!result) return err(`Cost report not found: ${reportId}`);
+          return ok(result);
+        } catch (e) {
+          if (e instanceof CostForecastError) return err(e.message);
           throw e;
         }
       },

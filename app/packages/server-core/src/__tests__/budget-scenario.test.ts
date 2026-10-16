@@ -167,6 +167,22 @@ describe("budgetMonthStatus — the scenario opt-in", () => {
     expect(resolveCostScenarioModel).not.toHaveBeenCalled();
   });
 
+  it("carries the trend's 80% band around the month forecast, never below spend so far", async () => {
+    // A perfectly flat history has no residuals, so its band is the forecast.
+    const flat = await budgetEval.budgetMonthStatus("org1", [], "USD", NOW);
+    expect(flat.forecastLowCents).toBe(31_000);
+    expect(flat.forecastHighCents).toBe(31_000);
+
+    // Alternating $5/$15 days: same trend, real noise, so a real band.
+    const noisy = flatSpend();
+    noisy[0]!.points.forEach((p, i) => (p.amount = i % 2 ? 15 : 5));
+    queryCosts.mockResolvedValue(noisy);
+    const status = await budgetEval.budgetMonthStatus("org1", [], "USD", NOW);
+    expect(status.forecastLowCents!).toBeLessThan(status.forecastCents!);
+    expect(status.forecastHighCents!).toBeGreaterThan(status.forecastCents!);
+    expect(status.forecastLowCents!).toBeGreaterThanOrEqual(status.actualCents);
+  });
+
   it("returns the adjusted figure alongside the trend for a budget that opted in", async () => {
     const status = await budgetEval.budgetMonthStatus(
       "org1",

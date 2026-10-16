@@ -103,6 +103,7 @@
     "./cost/visibility": "./src/cost/visibility.ts",
     "./cost/visibility-context": "./src/cost/visibility-context.ts",
     "./cost/scenario-forecast": "./src/cost/scenario-forecast.ts",
+    "./cost/report-forecast": "./src/cost/report-forecast.ts",
     "./cost/change-detect": "./src/cost/change-detect.ts",
     "./cost/change-eval": "./src/cost/change-eval.ts",
     "./cost/change-impact": "./src/cost/change-impact.ts",

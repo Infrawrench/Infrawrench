@@ -315,3 +315,43 @@ describe("parseCliArgs: leaks", () => {
     });
   });
 });
+
+describe("parseCliArgs: costs forecast", () => {
+  it("reads the forecast name, comma-separated narrowing, level and --all", () => {
+    const parsed = parseCliArgs([
+      "costs",
+      "forecast",
+      "Platform spend",
+      "--forecast",
+      "EU launch",
+      "--provider",
+      "aws, gcp",
+      "--service",
+      "Amazon EC2",
+      "--level",
+      "95",
+      "--to",
+      "2026-12-31",
+      "--all",
+    ]);
+    expect(parsed.positionals).toEqual(["costs", "forecast", "Platform spend"]);
+    expect(parsed.forecast).toEqual({
+      name: "EU launch",
+      providers: ["aws", "gcp"],
+      services: ["Amazon EC2"],
+      level: "95",
+      all: true,
+    });
+    expect(parsed.range.to).toBe("2026-12-31");
+  });
+
+  it("defaults to no narrowing", () => {
+    expect(parseCliArgs(["costs", "forecast", "r"]).forecast).toEqual({
+      name: undefined,
+      providers: [],
+      services: [],
+      level: undefined,
+      all: false,
+    });
+  });
+});

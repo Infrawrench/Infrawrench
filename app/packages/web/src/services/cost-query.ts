@@ -22,7 +22,6 @@ import {
   type CostQueryRequest,
   type CostQueryResponse,
   type CostQuerySeries,
-  type CostSeriesPoint,
 } from "@infrawrench/ui/cost/config";
 import {
   COST_STORE_GRANULARITY,
@@ -33,13 +32,21 @@ import {
   queryCosts,
   resolveVirtualTags,
   type CostSeriesGroup,
+  type CostBasis,
+  type CostChargeType,
+  type CostFilter,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
 import { VirtualTagUnresolvedError } from "@infrawrench/server-core/clickhouse/virtual-tag-sql";
-import { forecastDaily } from "@infrawrench/server-core/cost/forecast";
+import {
+  DEFAULT_FORECAST_CONFIDENCE_LEVEL,
+  forecastDailyWithBounds,
+  type DailyPoint,
+} from "@infrawrench/server-core/cost/forecast";
 import { addDays, isoDay } from "@infrawrench/server-core/cost/dates";
 import {
   convertGroups,
   mergeConvertedGroups,
+  type RateSource,
 } from "@infrawrench/server-core/cost/currency-convert";
 import { loadConversionContext } from "@infrawrench/server-core/cost/currency-settings";
 import {
@@ -56,6 +63,7 @@ import {
   referencedVirtualTagKeys,
   type CompiledBillingAdjustments,
   type CostAdjustmentSummary,
+  type CostForecastSeriesPoint,
 } from "@infrawrench/client-core";
 // The scenario overlay lives in its own module rather than growing this
 // function: everything it needs is already computed by the time it runs.
@@ -164,6 +172,72 @@ export async function resolveCostRequestFilters(
     if (e instanceof SavedCostFilterResolutionError) throw new CostQueryError(e.message);
     throw e;
   }
+}
+
+/** What the trend forecast is fit on, beyond the org. */
+export interface ForecastFitScope {
+  /** Resolved filters (saved filter and text query already compiled). */
+  filters: CostFilter[];
+  /** Last day of the fit window; the window is the 60 days ending here. */
+  fitTo: string;
+  costBasis?: CostBasis | undefined;
+  adjustments?: CompiledBillingAdjustments | undefined;
+  chargeTypes?: CostChargeType[] | undefined;
+  displayCurrency: string | null;
+  rates: RateSource;
+}
+
+/**
+ * The observed daily totals a trend forecast is fit on: the 60 days ending
+ * `fitTo`, ungrouped, converted into the display currency before they are
+ * summed. Shared by `runCostQuery` and the report forecasts so a report's
+ * Forecasts view and its chart fit exactly the same points.
+ *
+ * `currencies` is what the totals are denominated in after conversion: one
+ * entry is a single-currency projection, several mean the sum mixes them.
+ */
+export async function loadForecastObservations(
+  organizationId: string,
+  scope: ForecastFitScope,
+): Promise<{ observed: DailyPoint[]; currencies: string[] }> {
+  const fitGroups = await queryCosts(organizationId, {
+    from: addDays(scope.fitTo, -59),
+    to: scope.fitTo,
+    binning: "daily",
+    groupBy: "none",
+    // The *resolved* filters: a request filtered through a text query or a
+    // saved filter must fit its forecast on the same slice it is drawing, or
+    // the projection trends spend the chart excludes.
+    filters: scope.filters,
+    // Fit on the basis being drawn: projecting a cash series that contains a
+    // one-off commitment purchase forecasts a month-end total that cannot
+    // happen, which is the whole reason the amortized basis exists.
+    ...(scope.costBasis ? { costBasis: scope.costBasis } : {}),
+    // Same rule for adjustments: a forecast drawn under an adjusted chart has
+    // to trend the line it sits under, or the projection visibly starts at a
+    // different level from the last bar it continues.
+    ...(scope.adjustments && !billingAdjustmentsAreEmpty(scope.adjustments)
+      ? { adjustments: scope.adjustments }
+      : {}),
+    ...(scope.chargeTypes && scope.chargeTypes.length > 0
+      ? { chargeTypes: scope.chargeTypes }
+      : {}),
+  });
+  // The fit sums across currencies, so converting first is what makes the
+  // projection mean anything at all in a mixed-currency org, otherwise it
+  // adds euros to dollars and trends the result.
+  const { groups: fitConverted } = convertGroups(fitGroups, scope.displayCurrency, scope.rates);
+  const dailyTotals = new Map<string, number>();
+  const currencies = new Set<string>();
+  for (const g of fitConverted) {
+    if (g.points.length > 0) currencies.add(g.currency);
+    for (const p of g.points)
+      dailyTotals.set(p.bucket, (dailyTotals.get(p.bucket) ?? 0) + p.amount);
+  }
+  const observed = [...dailyTotals.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([day, amount]) => ({ day, amount }));
+  return { observed, currencies: [...currencies].sort() };
 }
 
 export function daySpan(from: string, to: string): number {
@@ -719,47 +793,31 @@ export async function runCostQuery(
     // Fit on trailing daily totals (ungrouped) ending at the range end, then
     // project past the last observed day: to the range end when the range
     // extends beyond the data, otherwise ~a quarter of the range ahead.
-    const fitGroups = await queryCosts(organizationId, {
-      from: addDays(q.to, -59),
-      to: q.to,
-      binning: "daily",
-      groupBy: "none",
-      // The *resolved* filters, not `q.filters`: a request filtered through a
-      // text query or a saved filter must fit its forecast on the same slice
-      // it is drawing, or the projection trends spend the chart excludes.
+    const { observed } = await loadForecastObservations(organizationId, {
       filters,
-      // Fit on the basis being drawn: projecting a cash series that contains a
-      // one-off commitment purchase forecasts a month-end total that cannot
-      // happen, which is the whole reason the amortized basis exists.
+      fitTo: q.to,
       ...(q.costBasis ? { costBasis: q.costBasis } : {}),
-      // Same rule for adjustments: a forecast drawn under an adjusted chart has
-      // to trend the line it sits under, or the projection visibly starts at a
-      // different level from the last bar it continues.
-      ...(adjustments && !billingAdjustmentsAreEmpty(adjustments) ? { adjustments } : {}),
-      ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
+      ...(adjustments ? { adjustments } : {}),
+      ...(q.chargeTypes ? { chargeTypes: q.chargeTypes } : {}),
+      displayCurrency,
+      rates,
     });
-    // The fit sums across currencies, so converting first is what makes the
-    // projection mean anything at all in a mixed-currency org, otherwise it
-    // adds euros to dollars and trends the result.
-    const { groups: fitConverted } = convertGroups(fitGroups, displayCurrency, rates);
-    const dailyTotals = new Map<string, number>();
-    for (const g of fitConverted) {
-      for (const p of g.points)
-        dailyTotals.set(p.bucket, (dailyTotals.get(p.bucket) ?? 0) + p.amount);
-    }
-    const observed = [...dailyTotals.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([day, amount]) => ({ day, amount }));
     const lastObserved = observed[observed.length - 1]?.day;
     if (lastObserved) {
       const toEnd = daySpan(lastObserved, q.to) - 1;
       const horizon =
         toEnd > 0 ? toEnd : Math.min(30, Math.max(3, Math.ceil(daySpan(q.from, q.to) / 4)));
-      const projected: CostSeriesPoint[] = forecastDaily(observed, horizon).map((p) => ({
-        bucket: p.day,
-        amount: p.amount,
-      }));
-      if (projected.length > 0) response.forecast = projected;
+      // Each day carries its prediction interval; the line itself is exactly
+      // the one `forecastDaily` has always drawn.
+      const projected: CostForecastSeriesPoint[] = forecastDailyWithBounds(
+        observed,
+        horizon,
+        DEFAULT_FORECAST_CONFIDENCE_LEVEL,
+      ).map((p) => ({ bucket: p.day, amount: p.amount, low: p.low, high: p.high }));
+      if (projected.length > 0) {
+        response.forecast = projected;
+        response.forecastConfidenceLevel = DEFAULT_FORECAST_CONFIDENCE_LEVEL;
+      }
     }
   }
 

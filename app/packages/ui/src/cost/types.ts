@@ -1,4 +1,6 @@
 import type {
+  BusinessMetricForecastValue,
+  BusinessMetricForecastValueInput,
   AlertEmailOptions,
   BillingRule,
   BudgetAlertEvent,
@@ -505,6 +507,21 @@ export interface CostsClient extends CostApi {
     metricId: string,
     values: BusinessMetricValueInput[],
   ): Promise<BusinessMetricWriteResult>;
+  /**
+   * Forecasted (planned) values: what a report forecast driven by this metric
+   * multiplies the projected unit cost by. Kept apart from the actuals. Each is
+   * optional: without the reads the Forecast tab does not render, without the
+   * writes it is read-only.
+   */
+  listBusinessMetricForecastValues?(metricId: string): Promise<BusinessMetricForecastValue[]>;
+  writeBusinessMetricForecastValues?(
+    metricId: string,
+    values: BusinessMetricForecastValueInput[],
+  ): Promise<{ written: number }>;
+  deleteBusinessMetricForecastValues?(
+    metricId: string,
+    range: { from?: string; to?: string },
+  ): Promise<{ deleted: number }>;
   /**
    * Scheduled importers. Each is optional on the usual rule: the importer
    * editor renders only when the host wires the source list and the save.

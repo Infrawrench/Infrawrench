@@ -1,5 +1,11 @@
 import type {
   BillingRule,
+  BusinessMetricForecastValue,
+  BusinessMetricForecastValueInput,
+  CostForecast,
+  CostForecastInput,
+  CostForecastResult,
+  CostForecastRunRequest,
   CarbonEstimate,
   BudgetInput,
   BudgetWithStatus,
@@ -379,6 +385,24 @@ export function createWebCostsClient(orgId: string): CostsClient {
         `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/values`,
         { values },
       ),
+    listBusinessMetricForecastValues: async (metricId: string) => {
+      const res = await apiGet<{ values: BusinessMetricForecastValue[] }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/forecast-values`,
+      );
+      return res.values;
+    },
+    writeBusinessMetricForecastValues: (
+      metricId: string,
+      values: BusinessMetricForecastValueInput[],
+    ) =>
+      apiPost<{ written: number }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/forecast-values`,
+        { values },
+      ),
+    deleteBusinessMetricForecastValues: (metricId: string, range: { from?: string; to?: string }) =>
+      apiDelete<{ deleted: number }>(
+        `/api/org/${orgId}/business-metrics/${encodeURIComponent(metricId)}/forecast-values${rangeQuery(range.from, range.to)}`,
+      ),
     listBusinessMetricSources: async () => {
       const res = await apiGet<{ sources: BusinessMetricSourceAccount[] }>(
         `/api/org/${orgId}/business-metrics/importer-sources`,
@@ -597,6 +621,29 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
         `/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}/send`,
         {},
       ),
+    // Named forecasts. Writes are costs:write plus editor on the report; a
+    // refusal surfaces as the action's error.
+    listCostForecasts: async (reportId: string) => {
+      const res = await apiGet<{ forecasts: CostForecast[] }>(
+        `/api/org/${orgId}/cost-reports/${reportId}/forecasts`,
+      );
+      return res.forecasts;
+    },
+    runCostForecast: (reportId: string, request: CostForecastRunRequest) =>
+      apiPost<CostForecastResult>(
+        `/api/org/${orgId}/cost-reports/${reportId}/forecasted-costs`,
+        request,
+      ),
+    createCostForecast: (reportId: string, input: CostForecastInput) =>
+      apiPost<CostForecast>(`/api/org/${orgId}/cost-reports/${reportId}/forecasts`, input),
+    updateCostForecast: (reportId: string, forecastId: string, input: CostForecastInput) =>
+      apiPut<CostForecast>(
+        `/api/org/${orgId}/cost-reports/${reportId}/forecasts/${forecastId}`,
+        input,
+      ),
+    deleteCostForecast: async (reportId: string, forecastId: string) => {
+      await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}/forecasts/${forecastId}`);
+    },
   };
 }
 

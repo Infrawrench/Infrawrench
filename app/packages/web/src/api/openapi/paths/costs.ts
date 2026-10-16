@@ -256,6 +256,19 @@ const CostXAxisInfo = strict({
     .describe("The axis values in drawing order: ranked by spend, then `__other__`."),
 }).openapi("CostXAxisInfo");
 
+const CostForecastSeriesPoint = strict({
+  bucket: IsoDate,
+  amount: z.number().describe("The trend's expected amount for the day."),
+  low: z
+    .number()
+    .optional()
+    .describe(
+      "Lower end of the day's prediction interval at `forecastConfidenceLevel` (the classical " +
+        "least-squares interval, widening with distance from the data), clamped at zero.",
+    ),
+  high: z.number().optional().describe("Upper end of the day's prediction interval."),
+}).openapi("CostForecastSeriesPoint");
+
 const CostQuerySeries = strict({
   key: z.string(),
   label: z.string(),
@@ -307,12 +320,17 @@ export const CostQueryResponse = strict({
   series: z.array(CostQuerySeries),
   comparison: z.array(CostQuerySeries).optional(),
   forecast: z
-    .array(CostSeriesPoint)
+    .array(CostForecastSeriesPoint)
     .optional()
     .describe(
       "The **unadjusted trend** projection. Stays the trend even when a scenario is applied, " +
         "so a reader can always see what the fit said before anybody's assumptions touched it.",
     ),
+  forecastConfidenceLevel: z
+    .number()
+    .int()
+    .optional()
+    .describe("Two-sided level, in percent, of the `low`/`high` band on `forecast` (80)."),
   scenario: CostScenarioResult.optional(),
   currencies: z.array(z.string()),
   totals: z

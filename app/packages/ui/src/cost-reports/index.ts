@@ -5,6 +5,11 @@ export { CostReportsIcon } from "./CostReportsIcon.js";
 export { ReportDeliverySection, type ReportDeliverySectionProps } from "./ReportDeliverySection.js";
 export type { CostReportsClient } from "./types.js";
 export {
+  ReportForecastsSection,
+  type ReportForecastsSectionProps,
+} from "./ReportForecastsSection.js";
+export { CostForecastModal, type CostForecastModalProps } from "./CostForecastModal.js";
+export {
   CostAnnotationsSection,
   type CostAnnotationsSectionProps,
 } from "./CostAnnotationsSection.js";

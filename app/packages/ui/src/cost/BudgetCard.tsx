@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 import { formatBudgetMonth, formatMoney } from "./transform.js";
 import {
   budgetProgress,
+  budgetForecastRange,
   formatBudgetPeriodWindow,
   formatUsageQuantity,
   upcomingBudgetPeriod,
@@ -74,6 +75,7 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }
   const fmt = budgetValueFormatter(budget);
   const { limit, actual, forecast, trendForecast, actualPercent: actualPct } = progress;
   const forecastPct = progress.forecastPercent;
+  const range = budgetForecastRange(budget);
   const fired = budget.currentMonthEvents.length > 0;
 
   const barColor =
@@ -154,6 +156,16 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }
               className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
               style={{ width: `${Math.min(100, actualPct)}%` }}
             />
+            {range && limit !== null && limit > 0 && range.high > range.low && (
+              <div
+                aria-hidden
+                className="absolute inset-y-0 bg-on-surface-faint/25"
+                style={{
+                  left: `${Math.min(100, (range.low / limit) * 100)}%`,
+                  width: `${Math.max(0, Math.min(100, (range.high / limit) * 100) - Math.min(100, (range.low / limit) * 100))}%`,
+                }}
+              />
+            )}
             {forecastPct !== null && forecast !== null && forecastPct > actualPct && (
               <div
                 className="absolute inset-y-0 border-r-2 border-dashed border-on-surface-faint"
@@ -194,6 +206,21 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }
               >
                 {gt("Forecast {amount}", { amount: fmt(forecast) })}
                 {forecastPct !== null && gt(" ({percent}%)", { percent: forecastPct.toFixed(0) })}
+              </span>
+            )}
+            {/* The trend's 80% range, beside the number it brackets. */}
+            {range && (
+              <span
+                title={gt(
+                  "80% forecast range from the recent trend: how far the period-end total could land if spend keeps varying as it has",
+                )}
+              >
+                {budget.scenarioModelName
+                  ? gt("trend range {low} to {high}", {
+                      low: fmt(range.low),
+                      high: fmt(range.high),
+                    })
+                  : gt("range {low} to {high}", { low: fmt(range.low), high: fmt(range.high) })}
               </span>
             )}
             {/* Named on the card, not just in the tooltip: the figure the

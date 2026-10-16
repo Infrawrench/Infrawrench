@@ -273,6 +273,7 @@ export {
   budgetInputError,
   budgetWithStatusToInput,
   budgetProgress,
+  budgetForecastRange,
   buildBudgetTree,
   budgetDescendantIds,
   budgetDepth,
@@ -522,6 +523,35 @@ export {
   type UnitCostThreshold,
   type UnitCostThresholdDirection,
   type UnitCostThresholdMode,
+} from "@infrawrench/client-core";
+// Named forecasts on a report and the forecast band: types and pure helpers.
+import {
+  COST_FORECAST_LIMITS,
+  type BusinessMetricForecastValueInput,
+  type CostForecastInput,
+  type CostForecastRunRequest,
+} from "@infrawrench/client-core";
+export {
+  COST_FORECAST_CONFIDENCE_LEVELS,
+  COST_FORECAST_LIMITS,
+  DEFAULT_COST_FORECAST_CONFIDENCE_LEVEL,
+  DEFAULT_COST_FORECAST_INPUT,
+  businessMetricForecastValuesError,
+  costForecastComparisonRows,
+  costForecastInputError,
+  defaultCostForecastId,
+  hasForecastBand,
+  type BusinessMetricForecastValue,
+  type BusinessMetricForecastValueInput,
+  type CostForecast,
+  type CostForecastConfidenceLevel,
+  type CostForecastInput,
+  type CostForecastPoint,
+  type CostForecastResult,
+  type CostForecastRunRequest,
+  type CostForecastSeries,
+  type CostForecastSeriesPoint,
+  type CostForecastTotal,
 } from "@infrawrench/client-core";
 import {
   RESOURCE_REPORT_LIMITS,
@@ -1980,6 +2010,54 @@ export type SchemasMatchBusinessMetricContract = [
   >,
   Exact<z.infer<typeof businessMetricLabelMappingSchema>, BusinessMetricLabelMapping>,
   Exact<z.infer<typeof unitCostThresholdSchema>, UnitCostThreshold>,
+];
+
+/* ------------------------------------------------------------------ *
+ * Forecasts: POST/PUT /cost-reports/{id}/forecasts,
+ * POST /cost-reports/{id}/forecasted-costs and
+ * POST /business-metrics/{id}/forecast-values.
+ * ------------------------------------------------------------------ */
+
+/** Create/update body for a report's named forecast. */
+export const costForecastInputSchema = z.object({
+  name: z.string().min(1).max(COST_FORECAST_LIMITS.maxNameLength),
+  description: z.string().max(COST_FORECAST_LIMITS.maxDescriptionLength).nullable().optional(),
+  scenarioModelIds: z
+    .array(z.string().min(1).max(200))
+    .max(COST_FORECAST_LIMITS.maxScenarioModels)
+    .default([]),
+  driverMetricId: z.string().min(1).max(200).nullable().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+/** Body for the forecasted-costs read; every field optional. */
+export const costForecastRunRequestSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  forecastId: z.string().min(1).max(200).optional(),
+  providers: z.array(z.string().min(1).max(200)).max(50).optional(),
+  services: z.array(z.string().min(1).max(500)).max(100).optional(),
+  confidenceLevel: z.union([z.literal(80), z.literal(90), z.literal(95)]).optional(),
+  all: z.boolean().optional(),
+});
+
+export const businessMetricForecastValueInputSchema = z.object({
+  date: isoDate,
+  value: z.number().finite().nonnegative(),
+});
+
+/** The batch envelope for `POST /business-metrics/{id}/forecast-values`. */
+export const businessMetricForecastValuesBodySchema = z.object({
+  values: z
+    .array(businessMetricForecastValueInputSchema)
+    .min(1)
+    .max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
+});
+
+export type SchemasMatchCostForecastContract = [
+  Exact<z.infer<typeof costForecastInputSchema>, CostForecastInput>,
+  Exact<z.infer<typeof costForecastRunRequestSchema>, CostForecastRunRequest>,
+  Exact<z.infer<typeof businessMetricForecastValueInputSchema>, BusinessMetricForecastValueInput>,
 ];
 
 /* ------------------------------------------------------------------ *

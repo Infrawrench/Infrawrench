@@ -24,6 +24,7 @@ import { Hono, type Context } from "hono";
 
 import {
   BUSINESS_METRIC_LIMITS,
+  businessMetricForecastValuesBodySchema,
   businessMetricImporterInputSchema,
   businessMetricImportPreviewRequestSchema,
   businessMetricImportRunRequestSchema,
@@ -66,6 +67,13 @@ import {
   runUnitCostQuery,
   runUsageUnitCostQuery,
 } from "../../services/unit-cost-query";
+import {
+  BusinessMetricForecastValueError,
+  deleteBusinessMetricForecastValues,
+  listBusinessMetricForecastValues,
+  parseForecastValueRange,
+  writeBusinessMetricForecastValues,
+} from "../../services/business-metric-forecast-values";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
@@ -365,6 +373,90 @@ app.post("/:id/values", async (c) => {
     return c.json(result);
   } catch (e) {
     return writeError(c, e);
+  }
+});
+
+/**
+ * GET /api/org/:orgId/business-metrics/:id/forecast-values?from=&to=: the
+ * metric's forecasted (planned) values in day order. Kept apart from the
+ * actuals: no unit-cost or threshold reader ever sees them.
+ */
+app.get("/:id/forecast-values", async (c) => {
+  requirePermission(c, "costs:read");
+  const metric = await getBusinessMetric(c.get("organizationId"), c.req.param("id"));
+  if (!metric) return c.json({ error: "Not found" }, 404);
+  try {
+    const range = parseForecastValueRange(c.req.query("from"), c.req.query("to"));
+    return c.json({ values: await listBusinessMetricForecastValues(metric.id, range) });
+  } catch (e) {
+    if (e instanceof BusinessMetricForecastValueError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+/**
+ * POST /api/org/:orgId/business-metrics/:id/forecast-values: write planned
+ * days. Re-sending a day restates it, as with actuals.
+ */
+app.post("/:id/forecast-values", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const metric = await getBusinessMetric(organizationId, c.req.param("id"));
+  if (!metric) return c.json({ error: "Not found" }, 404);
+  const parsed = businessMetricForecastValuesBodySchema.safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success) {
+    return c.json({ error: "Invalid values", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const result = await writeBusinessMetricForecastValues(
+      organizationId,
+      metric.id,
+      parsed.data.values,
+      session.userId ?? null,
+    );
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "business_metric.forecast_values.write",
+      entityType: "business_metric",
+      entityId: metric.id,
+      metadata: { key: metric.key, days: result.written },
+    });
+    return c.json(result);
+  } catch (e) {
+    if (e instanceof BusinessMetricForecastValueError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+/**
+ * DELETE /api/org/:orgId/business-metrics/:id/forecast-values?from=&to=:
+ * remove planned days in a range (both bounds optional; neither clears all).
+ */
+app.delete("/:id/forecast-values", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const metric = await getBusinessMetric(organizationId, c.req.param("id"));
+  if (!metric) return c.json({ error: "Not found" }, 404);
+  try {
+    const range = parseForecastValueRange(c.req.query("from"), c.req.query("to"));
+    const result = await deleteBusinessMetricForecastValues(metric.id, range);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "business_metric.forecast_values.delete",
+      entityType: "business_metric",
+      entityId: metric.id,
+      metadata: { key: metric.key, days: result.deleted, ...range },
+    });
+    return c.json(result);
+  } catch (e) {
+    if (e instanceof BusinessMetricForecastValueError) return c.json({ error: e.message }, 400);
+    throw e;
   }
 });
 

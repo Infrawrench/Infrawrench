@@ -127,6 +127,10 @@ Needs `costs:write`. The endpoint accepts the metric's key or its id.
 
 **Values** on a metric's row opens the reported days and lets you type one in. This is mostly for confirming the metric is wired up at all, and for correcting a bad number — send the day again with the right value.
 
+### Forecasted values
+
+The same dialog has a **Forecast** tab for planned values on future days: type them in, upload a CSV, or `POST /api/org/{orgId}/business-metrics/{key}/forecast-values` with the same `{"values":[{"date","value"}]}` body. They are stored apart from what was reported and never feed a unit cost or an alert; a [named forecast](./cost-forecasts.md#driver-metrics) driven by the metric multiplies its projected cost per unit by them.
+
 ## Labels
 
 A value can carry **labels** that break the day down: `customer`, `plan`, `region`, or anything else your data has. One metric then answers "how many customers" and "how many enterprise customers in eu-west" at once.

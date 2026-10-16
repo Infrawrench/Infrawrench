@@ -266,6 +266,8 @@ async function toBudgetWithStatus(
     month: status.month,
     actualCents: status.actualCents,
     forecastCents: status.forecastCents,
+    forecastLowCents: status.forecastLowCents,
+    forecastHighCents: status.forecastHighCents,
     scenarioForecastCents: status.scenarioForecastCents,
     currentMonthEvents: events.map((e) => ({
       id: e.id,

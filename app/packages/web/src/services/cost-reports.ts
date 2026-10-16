@@ -136,6 +136,21 @@ export async function getCostReport(
   return toCostReport(row, placements.get(row.id) ?? []);
 }
 
+/**
+ * A live report the caller can open at `needed`, for the services that hang
+ * objects off a report (its forecasts). Null when missing, deleted, or not
+ * shared with the caller at all; a visible report the caller cannot edit
+ * throws the sharing 403, exactly as an edit of the report itself does.
+ */
+export async function loadAccessibleCostReport(
+  organizationId: string,
+  reportId: string,
+  needed: ObjectAccessLevel = "viewer",
+): Promise<{ id: string; name: string; config: CostGraphConfig } | null> {
+  const row = await loadReportRow(organizationId, reportId, needed);
+  return row ? { id: row.id, name: row.name, config: row.config as CostGraphConfig } : null;
+}
+
 async function loadReportRow(
   organizationId: string,
   reportId: string,

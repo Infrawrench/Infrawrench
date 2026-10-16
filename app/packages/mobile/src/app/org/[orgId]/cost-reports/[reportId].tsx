@@ -4,6 +4,8 @@ import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from 
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useCostReports } from "@/features/cost-reports/useCostReports";
 import { useReportNotifications } from "@/features/cost-reports/useReportNotifications";
+import { useCostForecast } from "@/features/cost-reports/useCostForecast";
+import { ForecastList } from "@/features/cost-reports/ForecastList";
 import { NotificationRow } from "@/features/delivery/NotificationRow";
 import { useSharePdf } from "@/features/pdf/sharePdf";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -24,7 +26,8 @@ import { colors, spacing } from "@/lib/theme";
  * their last-send status, created and edited on web/desktop only. Annotations
  * likewise: the chart draws this report's notes and the org-wide ones, and the
  * text is a tap away, but writing one (which can change what every chart in
- * the org shows) stays on web and desktop.
+ * the org shows) stays on web and desktop. Forecasts are shown the same way: the
+ * automatic one and every named one with its range, composed elsewhere.
  */
 export default function CostReportDetailRoute() {
   const router = useRouter();
@@ -32,6 +35,7 @@ export default function CostReportDetailRoute() {
   const { reportId } = useLocalSearchParams<{ reportId: string }>();
   const reports = useCostReports();
   const notifications = useReportNotifications(reportId);
+  const forecast = useCostForecast(reportId);
   const pdf = useSharePdf();
 
   if (reports.isLoading) return <LoadingView />;
@@ -75,6 +79,17 @@ export default function CostReportDetailRoute() {
       </View>
 
       <CostGraphCard title={report.name} config={report.config} annotationReportId={report.id} />
+
+      <SectionTitle>Forecasts</SectionTitle>
+      {forecast.isLoading ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Projecting…</Text>
+      ) : forecast.isError ? (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+          {forecast.error instanceof Error ? forecast.error.message : "Couldn’t load the forecast."}
+        </Text>
+      ) : forecast.data ? (
+        <ForecastList result={forecast.data} />
+      ) : null}
 
       <SectionTitle>On dashboards</SectionTitle>
       {report.placements.length === 0 ? (

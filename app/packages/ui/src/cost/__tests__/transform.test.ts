@@ -3,7 +3,10 @@ import type { CostQueryResponse, CostQuerySeries } from "../config.js";
 import {
   alignComparison,
   COMPARISON_KEY,
+  FORECAST_HIGH_KEY,
   FORECAST_KEY,
+  FORECAST_LOW_KEY,
+  forecastBandOf,
   pivotSeries,
   spliceForecast,
 } from "../transform.js";
@@ -86,6 +89,47 @@ describe("spliceForecast", () => {
     // Anchor on the last observed bucket so the dashed line connects.
     expect(pivot.rows[1]![FORECAST_KEY]).toBe(12);
     expect(pivot.rows[3]).toEqual({ bucket: "2026-07-04", [FORECAST_KEY]: 14 });
+  });
+
+  it("carries the band, starting at zero width on the last observed bucket", () => {
+    const response: CostQueryResponse = {
+      series: [
+        series("a", [
+          ["2026-07-01", 10],
+          ["2026-07-02", 12],
+        ]),
+      ],
+      forecast: [
+        { bucket: "2026-07-03", amount: 13, low: 11, high: 15 },
+        { bucket: "2026-07-04", amount: 14, low: 10, high: 18 },
+      ],
+      forecastConfidenceLevel: 80,
+      currencies: ["USD"],
+      totals: { USD: 22 },
+    };
+    const pivot = pivotSeries(response.series);
+    spliceForecast(pivot, response, "daily");
+    expect(forecastBandOf(pivot.rows[0]!)).toBeNull();
+    expect(forecastBandOf(pivot.rows[1]!)).toEqual([12, 12]);
+    expect(forecastBandOf(pivot.rows[2]!)).toEqual([11, 15]);
+    expect(pivot.rows[3]).toEqual({
+      bucket: "2026-07-04",
+      [FORECAST_KEY]: 14,
+      [FORECAST_LOW_KEY]: 10,
+      [FORECAST_HIGH_KEY]: 18,
+    });
+  });
+
+  it("draws no band for a server that sends none", () => {
+    const response: CostQueryResponse = {
+      series: [series("a", [["2026-07-01", 10]])],
+      forecast: [{ bucket: "2026-07-02", amount: 11 }],
+      currencies: ["USD"],
+      totals: { USD: 10 },
+    };
+    const pivot = pivotSeries(response.series);
+    spliceForecast(pivot, response, "daily");
+    expect(pivot.rows.every((r) => forecastBandOf(r) === null)).toBe(true);
   });
 });
 

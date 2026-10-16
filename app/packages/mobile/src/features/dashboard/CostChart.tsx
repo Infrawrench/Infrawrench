@@ -5,6 +5,7 @@ import Svg, {
   G,
   Line as SvgLine,
   Path,
+  Polygon,
   Polyline,
   Rect,
   Text as SvgText,
@@ -214,6 +215,27 @@ export function CostChart({
     }
   }
 
+  // The trend's prediction interval, as two edges the band polygon joins.
+  // Drawn only when every projected bucket has bounds (older servers send none).
+  const bounded = forecastPoints.length > 0 && forecastPoints.every((p) => p.low !== undefined);
+  const bandLow = bounded ? new Array<number | null>(buckets.length).fill(null) : null;
+  const bandHigh = bounded ? new Array<number | null>(buckets.length).fill(null) : null;
+  if (bandLow && bandHigh) {
+    const lastActual = actualTotals[actualTotals.length - 1];
+    if (lastActual) {
+      const at = bucketIndex.get(lastActual.bucket)!;
+      bandLow[at] = lastActual.amount;
+      bandHigh[at] = lastActual.amount;
+    }
+    for (const p of forecastPoints) {
+      const at = bucketIndex.get(p.bucket)!;
+      const prior =
+        at === bucketIndex.get(lastActual?.bucket ?? "") ? (lastActual?.amount ?? 0) : 0;
+      bandLow[at] = prior + (p.low ?? p.amount);
+      bandHigh[at] = prior + (p.high ?? p.amount);
+    }
+  }
+
   // A second overlay beside the trend, never in place of it: the same rule
   // the web card follows, and the reason both are returned by the API.
   const scenario =
@@ -232,6 +254,7 @@ export function CostChart({
     ...(stacked ? stackTotals : series.flatMap((s) => s.values)),
     ...(comparison ?? []),
     ...(forecast ?? []),
+    ...(bandHigh ?? []),
     ...(scenario ?? []),
   ].filter((v): v is number => v !== null);
   const axis = niceAxis(Math.min(0, ...plotted), Math.max(0, ...plotted), 4);
@@ -246,6 +269,13 @@ export function CostChart({
       .map((v, i) => (v === null ? null : `${cx(i)},${y(v)}`))
       .filter((p): p is string => p !== null)
       .join(" ");
+  /** The band: along the high edge, then back along the low edge. */
+  const bandPolygon = (low: Array<number | null>, high: Array<number | null>): string => {
+    const idx = high.flatMap((v, i) => (v === null || low[i] === null ? [] : [i]));
+    const top = idx.map((i) => `${cx(i)},${y(high[i]!)}`);
+    const bottom = [...idx].reverse().map((i) => `${cx(i)},${y(low[i]!)}`);
+    return [...top, ...bottom].join(" ");
+  };
 
   /**
    * Annotation markers, mapped onto the buckets this chart actually drew by the
@@ -293,6 +323,14 @@ export function CostChart({
             stroke={colors.textMuted}
             strokeWidth={1.5}
             strokeDasharray="4 4"
+          />
+        )}
+        {bandLow && bandHigh && (
+          <Polygon
+            points={bandPolygon(bandLow, bandHigh)}
+            fill={FORECAST_COLOR}
+            opacity={0.15}
+            stroke="none"
           />
         )}
         {forecast && (
@@ -364,6 +402,14 @@ export function CostChart({
         extra={[
           ...(comparison ? [{ label: "Previous period", color: colors.textMuted }] : []),
           ...(forecast ? [{ label: "Forecast (trend)", color: FORECAST_COLOR }] : []),
+          ...(bandLow
+            ? [
+                {
+                  label: `Forecast range (${response.forecastConfidenceLevel ?? 80}%)`,
+                  color: FORECAST_COLOR,
+                },
+              ]
+            : []),
           // The model's *name*, not a generic "Scenario": a projection that
           // silently includes somebody's assumptions is worse than none, so the
           // legend has to say whose.

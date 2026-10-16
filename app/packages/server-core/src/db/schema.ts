@@ -5190,6 +5190,101 @@ export const businessMetricValues = pgTable(
 );
 
 /**
+ * Forecasted (planned) values of a business metric: "we expect 1,200
+ * customers in March". A table of its own rather than a `kind` column on
+ * `business_metric_values`, because every reader of that table divides by it
+ * (unit costs, thresholds, coverage, the importers' restatement): a forecast
+ * row there would be one missed `WHERE` away from a unit cost computed against
+ * a number nobody has measured. Here no existing reader can see it at all.
+ *
+ * One value per day and no labels: a forecast drives a cost report's projected
+ * spend as a whole (`cost_report_forecasts.driver_metric_id`).
+ */
+export const businessMetricForecastValues = pgTable(
+  "business_metric_forecast_values",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    metricId: text("metric_id")
+      .notNull()
+      .references(() => businessMetrics.id, { onDelete: "cascade" }),
+    /** The UTC day the plan is for. */
+    day: date("day").notNull(),
+    value: doublePrecision("value").notNull(),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /** Re-sending a day restates it, as with actuals. */
+    metricDayUnique: uniqueIndex("business_metric_forecast_values_metric_day_unique").on(
+      t.metricId,
+      t.day,
+    ),
+    orgIdx: index("business_metric_forecast_values_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Named forecasts on a cost report: a baseline (the trend, or a driver metric's
+ * forecasted values times the projected unit cost) plus scenario models in
+ * priority order. See `client-core/src/cost-forecasts.ts`.
+ *
+ * Hard-deleted, and cascaded from the report: a forecast has no meaning
+ * without the report whose scope it projects. A report soft-delete leaves the
+ * rows in place (unreachable, since every route resolves the report first)
+ * so an undelete would bring them back.
+ *
+ * `scenario_model_ids` is an ordered jsonb array rather than a link table
+ * because order is the point and the list is always replaced whole; deleting
+ * a model it names is refused by the scenario service's referent scan (kind
+ * `cost_forecast`), the same integrity budgets and reports get.
+ * `driver_metric_id` has no FK for the reason `budgets.saved_filter_id` has
+ * none: metrics are soft-deleted, so a dangling id must make the forecast
+ * refuse to run, never quietly fall back to the trend.
+ */
+export const costReportForecasts = pgTable(
+  "cost_report_forecasts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    costReportId: text("cost_report_id")
+      .notNull()
+      .references(() => costReports.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** Scenario model ids, applied first to last. */
+    scenarioModelIds: jsonb("scenario_model_ids").$type<string[]>().notNull().default([]),
+    driverMetricId: text("driver_metric_id"),
+    /** The report's default forecast; at most one per report (partial unique index). */
+    isDefault: boolean("is_default").notNull().default(false),
+    /** List order on the report; new forecasts go last. */
+    position: integer("position").notNull().default(0),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    reportIdx: index("cost_report_forecasts_report_idx").on(t.organizationId, t.costReportId),
+    reportNameUnique: uniqueIndex("cost_report_forecasts_report_name_unique").on(
+      t.costReportId,
+      t.name,
+    ),
+    oneDefault: uniqueIndex("cost_report_forecasts_one_default")
+      .on(t.costReportId)
+      .where(sql`is_default`),
+  }),
+);
+
+/**
  * A scheduled importer feeding one business metric from a connected account.
  *
  * One per metric (`metric_id` is unique): two importers restating the same

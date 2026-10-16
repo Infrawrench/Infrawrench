@@ -74,6 +74,12 @@ export function pivotDimensionAxis(
   return { rows, series };
 }
 
+/** The forecast band's bounds, as plain numbers per row (the axis reads them). */
+export const FORECAST_LOW_KEY = "__forecast_low__";
+export const FORECAST_HIGH_KEY = "__forecast_high__";
+/** The range area's series name: never a row key, `forecastBandOf` builds its value. */
+export const FORECAST_BAND_KEY = "__forecast_band__";
+
 /**
  * Pivot per-group series into recharts rows keyed by bucket. Series order is
  * preserved from the API (ranked by period total, "Other" last) so
@@ -145,17 +151,48 @@ export function spliceForecast(
   );
 
   const lastRow = pivot.rows[pivot.rows.length - 1];
-  if (lastRow && lastActual) lastRow[FORECAST_KEY] = lastActual.amount;
+  const bounded = binned.length > 0 && binned.every((p) => p.low !== undefined);
+  if (lastRow && lastActual) {
+    lastRow[FORECAST_KEY] = lastActual.amount;
+    // The band leaves the actuals from the same point the line does: zero
+    // width on the last observed bucket, then fanning out.
+    if (bounded) {
+      lastRow[FORECAST_LOW_KEY] = lastActual.amount;
+      lastRow[FORECAST_HIGH_KEY] = lastActual.amount;
+    }
+  }
 
   for (const p of binned) {
     const existing = pivot.rows.find((r) => r["bucket"] === p.bucket);
     if (existing) {
       // Partial current bucket: forecast merges into it rather than duplicating.
-      existing[FORECAST_KEY] = ((existing[FORECAST_KEY] as number) ?? 0) + p.amount;
+      const prior = (existing[FORECAST_KEY] as number) ?? 0;
+      existing[FORECAST_KEY] = prior + p.amount;
+      if (bounded) {
+        existing[FORECAST_LOW_KEY] = prior + (p.low ?? p.amount);
+        existing[FORECAST_HIGH_KEY] = prior + (p.high ?? p.amount);
+      }
     } else {
-      pivot.rows.push({ bucket: p.bucket, [FORECAST_KEY]: p.amount });
+      pivot.rows.push({
+        bucket: p.bucket,
+        [FORECAST_KEY]: p.amount,
+        ...(bounded ? { [FORECAST_LOW_KEY]: p.low!, [FORECAST_HIGH_KEY]: p.high! } : {}),
+      });
     }
   }
+}
+
+/**
+ * The band for a row, as recharts' range-area value: `[low, high]`, or null
+ * where the row has no projection (so the area does not reach back over the
+ * observed buckets).
+ */
+export function forecastBandOf(
+  row: Record<string, string | number | null>,
+): [number, number] | null {
+  const low = row[FORECAST_LOW_KEY];
+  const high = row[FORECAST_HIGH_KEY];
+  return typeof low === "number" && typeof high === "number" ? [low, high] : null;
 }
 
 /**

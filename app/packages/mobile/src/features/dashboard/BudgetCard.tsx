@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  budgetForecastRange,
   budgetProgress,
   currentMonthBudgetNotes,
   formatBudgetMonth,
@@ -66,6 +67,7 @@ export function BudgetCard({
   const fmt = budgetFormatter(budget);
   const { limit, actual, forecast, trendForecast, actualPercent: actualPct } = progress;
   const forecastPct = progress.forecastPercent;
+  const range = budgetForecastRange(budget);
   const fired = budget.currentMonthEvents.length > 0;
   const notes = currentMonthBudgetNotes(budget);
 
@@ -123,6 +125,12 @@ export function BudgetCard({
           </Text>
         )}
       </View>
+      {range && (
+        <Text style={styles.foot}>
+          {budget.scenarioModelName ? "Trend range" : "Likely range"} {fmt(range.low)} to{" "}
+          {fmt(range.high)} (80%)
+        </Text>
+      )}
       {/* Named on the card rather than hidden in a tooltip a phone has no way
           to show: the figure the thresholds fire on contains assumptions
           somebody wrote down, and the trend it was measured against. */}

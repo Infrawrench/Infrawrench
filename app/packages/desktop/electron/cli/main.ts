@@ -16,6 +16,7 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts, cmdCostTagKeys } from "./commands/costs";
+import { cmdCostForecast, cmdCostForecasts } from "./commands/forecasts";
 import {
   cmdAnomalyFeedback,
   cmdAnomalyPrecision,
@@ -170,6 +171,14 @@ COMMANDS
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period", distinct from budgets and anomalies)   [--limit 20]
   costs tag-keys      the tag keys in your cost data, Kubernetes node and volume labels grouped   [--json]
+  costs forecast <report>
+                      a saved report's projected spend with its low/expected/high band: the
+                      report's default forecast, or [--forecast <name|id|auto>]
+                      [--from / --to YYYY-MM-DD  the projected window; default 90 days]
+                      [--provider aws,gcp] [--service <name>,...  narrow the scope]
+                      [--level 80|90|95  band level] [--all  every named forecast side by side]
+  costs forecasts <report>
+                      a report's named forecasts, the default marked   [--json]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
                       into a custom source: --format csv|focus [--map date=Day --map tag=Team]
                       [--currency USD] [--date-format mdy|dmy] [--replace | --append]
@@ -723,6 +732,19 @@ export async function runCli(): Promise<void> {
         }
         if (rest[0] === "tag-keys") {
           await cmdCostTagKeys(ctx);
+          break;
+        }
+        if (rest[0] === "forecast") {
+          await cmdCostForecast(
+            ctx,
+            rest.slice(1).join(" ") || undefined,
+            parsed.range,
+            parsed.forecast,
+          );
+          break;
+        }
+        if (rest[0] === "forecasts") {
+          await cmdCostForecasts(ctx, rest.slice(1).join(" ") || undefined);
           break;
         }
         if (parsed.anomalies) {

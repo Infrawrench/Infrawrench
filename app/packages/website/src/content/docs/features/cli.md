@@ -104,6 +104,8 @@ infrawrench costs --x-axis service --compare                     # one bar per s
 infrawrench costs --group-by virtual_tag:team      # a virtual tag key; virtual_tag['team'] works too
 infrawrench costs --group-by tag:env     # any tag; Kubernetes labels: k8s_node_label:team, k8s_pvc_label:<key>
 infrawrench costs tag-keys               # the tag keys in your cost data, with the --group-by value for each
+infrawrench costs forecast "Platform spend" --all   # a report's forecasts with low/expected/high ranges
+infrawrench costs forecasts "Platform spend"        # a report's named forecasts
 ```
 
 `--measure` picks what is summed: `cost` (the default, money), `usage` (the usage quantity providers report, in the one unit `--unit` names; without `--unit` the command lists the units your cost data has) or `count` (how many distinct `--group-by` values had nonzero cost per bin; the headline total counts each value once over the whole range). `--bin day|week|month|quarter` sets the bin, and `--bin hour` is refused with the reason while every provider reports daily rows. `--cumulative` draws running totals. `--json` echoes `measure`, `usageUnit`, `binning` and `cumulative` beside the response, whose `measure` field says when the amounts are not money. See [display options](./cloud-costs.md#display-options).
