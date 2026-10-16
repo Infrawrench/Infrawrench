@@ -89,6 +89,12 @@ export interface RangeFlags {
   measure?: string | undefined;
   /** `costs`/`reports --bin hour|day|week|month|quarter`: the bin size. */
   bin?: string | undefined;
+  /**
+   * `commitments reports <name|id> --metric <m>`: the metric the sparkline
+   * draws (coverage, utilization, effectiveSavingsRate…). Validated by the
+   * command against client-core's list, so the error can name the choices.
+   */
+  metric?: string | undefined;
   /** `costs`/`reports --unit <unit>`: the usage unit `--measure usage` sums. */
   unit?: string | undefined;
   /** `costs`/`reports --cumulative`: running totals instead of per-bin values. */
@@ -512,6 +518,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // `costs`/`reports` display options: what to sum, the bin, the unit.
         measure: { type: "string" },
         bin: { type: "string" },
+        // `commitments reports <name> --metric utilization`: which metric to chart.
+        metric: { type: "string" },
         unit: { type: "string" },
         cumulative: { type: "boolean", default: false },
         // `costs`/`reports` axis options: a dimension on X, and the previous period.
@@ -799,6 +807,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       month: str("month"),
       measure: str("measure"),
       bin: str("bin"),
+      metric: str("metric"),
       unit: str("unit"),
       cumulative: values.cumulative === true,
       xAxis: str("x-axis"),

@@ -51,6 +51,8 @@ import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
+import { createDesktopCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
 import {
@@ -124,6 +126,12 @@ function getNetworkFlowReportsClient(): NetworkFlowReportsClient {
     networkFlowReportsClient = createDesktopNetworkFlowReportsClient();
   }
   return networkFlowReportsClient;
+}
+
+let commitmentReportsClient: CommitmentReportsClient | null = null;
+function getCommitmentReportsClient(): CommitmentReportsClient {
+  if (!commitmentReportsClient) commitmentReportsClient = createDesktopCommitmentReportsClient();
+  return commitmentReportsClient;
 }
 
 let costReportsClient: CostReportsClient | null = null;
@@ -361,6 +369,8 @@ function renderPanel(
           client={getCostsClient()}
           // Cloud-only: reports read the server's network-flow store.
           networkFlowReports={activeCloudOrgId ? getNetworkFlowReportsClient() : undefined}
+          // Cloud-only: reports read server-side cost rows and the inventory.
+          commitmentReports={activeCloudOrgId ? getCommitmentReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
           onOpenExternal={(url) => void invoke("open_external_url", { url })}
