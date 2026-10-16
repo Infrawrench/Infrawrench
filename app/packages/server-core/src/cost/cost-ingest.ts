@@ -311,6 +311,8 @@ export async function validateCostRows(opts: {
       // EffectiveCost, or cash), which is what the row already states.
       blended_amount: 0,
       blended_reported: 0,
+      on_demand_amount: 0,
+      on_demand_reported: 0,
     };
   });
 
