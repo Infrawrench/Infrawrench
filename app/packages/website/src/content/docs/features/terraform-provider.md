@@ -425,6 +425,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                               |
 | `infrawrench_savings_view`              | [Saved views over savings findings](./savings-findings.md)                                           |
 | `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                                    |
+| `infrawrench_commitment_report`         | [Commitment reports](./commitment-reports.md): coverage, utilization and savings over time             |
 | `infrawrench_resource_report`           | [Resource reports](./resource-reports.md): inventory tables with per-resource cost                   |
 | `infrawrench_cost_report_folder`        | Report folders                                                                                       |
 | `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                              |
