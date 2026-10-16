@@ -3430,6 +3430,206 @@
         "additionalProperties": false,
         "description": "One of the four DORA metrics for production moved to a different performance band over the trailing 30 days. Checked once a day."
       },
+      "EventData_savings_finding_status_changed_v1": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The finding key, `<kind>:<sourceId>`."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "orphan",
+              "oversized",
+              "extended_support",
+              "seat"
+            ],
+            "description": "Which finder reported it."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line describing the finding."
+          },
+          "resourceName": {
+            "type": "string",
+            "description": "Resource or seat holder display name."
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Infrawrench resource id; null for seats."
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider plugin id."
+          },
+          "previousStatus": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "in_progress",
+              "completed",
+              "archived"
+            ],
+            "description": "Status before the change."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "in_progress",
+              "completed",
+              "archived"
+            ],
+            "description": "Status after the change."
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "manual",
+              "resolved"
+            ],
+            "description": "For Completed: a person said so, or a scan stopped reporting it."
+          },
+          "changedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who changed it; null for automatic changes."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The note recorded with the change."
+          },
+          "monthlySavings": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly savings at stake, in `currency`."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 currency code."
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this occurrence of the finding was first observed."
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "resourceName",
+          "resourceId",
+          "pluginId",
+          "previousStatus",
+          "status",
+          "resolution",
+          "changedByUserId",
+          "note",
+          "monthlySavings",
+          "currency",
+          "detectedAt"
+        ],
+        "description": "`data` of a `savings.finding.status_changed` event, version 1. A savings finding (orphaned resource, oversized resource, extended support surcharge or unused seat) moved between Ready for review, In progress, Completed and Archived, by a person or because a scan stopped reporting it."
+      },
+      "Event_savings_finding_status_changed_v1": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`evt_…`. Unique per event and stable across retries and redeliveries: dedupe on it."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Payload schema version of `type`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/EventSeverity"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the event is about; null when it spans several or none."
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `env`/`environment`/`stage` tag of the resource the event is about; null when there is none."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line for a human."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link into Infrawrench."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "True only for Send test event."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "savings.finding.status_changed"
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData_savings_finding_status_changed_v1"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "organizationId",
+          "severity",
+          "accountId",
+          "environment",
+          "title",
+          "url",
+          "test",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "description": "A savings finding (orphaned resource, oversized resource, extended support surcharge or unused seat) moved between Ready for review, In progress, Completed and Archived, by a person or because a scan stopped reporting it."
+      },
       "EventData_secret_leaked_v1": {
         "type": "object",
         "properties": {
@@ -23570,6 +23770,145 @@
         "additionalProperties": false,
         "description": "Org-wide notification tuning. Cooldown claims (`lastNotifiedAt`, `lastSentWeekStart`) are deliberately absent: they are poller state, and resetting one from an apply would re-open a quiet period and page people twice."
       },
+      "OrgConfigSavingsView": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Stable slug identifying this entity across organizations. Derived from the name on export; it is what an apply matches on, so renaming an entity while keeping its key is a rename rather than a delete-and-create.",
+            "example": "monthly-cloud-spend"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "ready",
+              "in_progress",
+              "completed",
+              "archived",
+              "all"
+            ]
+          },
+          "filter": {
+            "type": "object",
+            "properties": {
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "orphan",
+                    "oversized",
+                    "extended_support",
+                    "seat"
+                  ]
+                }
+              },
+              "pluginIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Account display names; resolved to ids on apply."
+              },
+              "regions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "key"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "minMonthlySavings": {
+                "type": "number",
+                "minimum": 0
+              },
+              "detectedFrom": {
+                "type": "string"
+              },
+              "detectedTo": {
+                "type": "string"
+              },
+              "search": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "sort": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "savings",
+                  "detected",
+                  "name",
+                  "status_changed"
+                ]
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "direction"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "status",
+          "filter",
+          "sort"
+        ],
+        "additionalProperties": false,
+        "description": "A saved view over the savings findings list. Per-object sharing is not carried; a view an apply creates is owned by the applying user."
+      },
       "OrgConfigDocument": {
         "type": "object",
         "properties": {
@@ -23681,6 +24020,12 @@
           },
           "alertSettings": {
             "$ref": "#/components/schemas/OrgConfigAlertSettings"
+          },
+          "savingsViews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgConfigSavingsView"
+            }
           }
         },
         "additionalProperties": false,
@@ -23698,7 +24043,8 @@
           "slos",
           "costCentres",
           "tagPolicy",
-          "alertSettings"
+          "alertSettings",
+          "savingsViews"
         ]
       },
       "OrgConfigChange": {
@@ -40489,7 +40835,8 @@
           "cost_report_folder",
           "dashboard",
           "cost_canvas",
-          "kubernetes_efficiency_report"
+          "kubernetes_efficiency_report",
+          "savings_view"
         ]
       },
       "OrgAccessLevel": {
@@ -41970,6 +42317,702 @@
             "example": "2026-07-15"
           }
         },
+        "additionalProperties": false
+      },
+      "SavingsFindingKind": {
+        "type": "string",
+        "enum": [
+          "orphan",
+          "oversized",
+          "extended_support",
+          "seat"
+        ],
+        "description": "Which finder reported it: `orphan` (orphaned or idle resource), `oversized` (right-sizing), `extended_support` (a version past standard support), `seat` (an unused, duplicate or downgradable SaaS seat)."
+      },
+      "SavingsFindingMoney": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Currency units (not cents)."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false,
+        "description": "What acting on it saves per month; null when the finder has no price (and, for orphans, when the caller lacks `costs:read`, as on `/orphans`)."
+      },
+      "SavingsFindingStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "in_progress",
+          "completed",
+          "archived"
+        ],
+        "description": "`ready` (Ready for review), `in_progress`, `completed`, `archived`. Ready and In progress are open: their money counts as potential savings."
+      },
+      "SavingsFindingActor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name or email; null when the member has left."
+          }
+        },
+        "required": [
+          "userId",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "Null for the initial Ready and automatic changes."
+      },
+      "SavingsFinding": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "`<kind>:<sourceId>`, stable across scans; the handle for status changes.",
+            "example": "orphan:4f6c0a52-9b1e-4f0e-8d3c-2b7a7c1d9e10"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SavingsFindingKind"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Infrawrench resource id; null for seats."
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceTypeName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "monthlySavings": {
+            "$ref": "#/components/schemas/SavingsFindingMoney"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SavingsFindingStatus"
+          },
+          "statusChangedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "statusChangedBy": {
+            "$ref": "#/components/schemas/SavingsFindingActor"
+          },
+          "statusNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "manual",
+              "resolved"
+            ],
+            "description": "For Completed: `manual` when a person completed it, `resolved` when a scan stopped reporting it (the resource was removed, resized or is in use again)."
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First observation of this occurrence."
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "present": {
+            "type": "boolean",
+            "description": "False once a scan stopped reporting it."
+          },
+          "realizedSavings": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "title"
+            ],
+            "additionalProperties": false,
+            "description": "The realized savings entry recorded for the fix, when one matches."
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "sourceId",
+          "title",
+          "detail",
+          "pluginId",
+          "pluginName",
+          "accountId",
+          "accountName",
+          "region",
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "tags",
+          "monthlySavings",
+          "status",
+          "statusChangedAt",
+          "statusChangedBy",
+          "statusNote",
+          "resolution",
+          "detectedAt",
+          "lastSeenAt",
+          "present",
+          "realizedSavings"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsFindingsSummary": {
+        "type": "object",
+        "properties": {
+          "counts": {
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "integer"
+              },
+              "in_progress": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "archived": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "ready",
+              "in_progress",
+              "completed",
+              "archived"
+            ],
+            "additionalProperties": false
+          },
+          "potentialMonthly": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/SavingsFindingMoney"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            },
+            "description": "Monthly savings of open findings, per currency, largest first."
+          },
+          "unpricedOpenCount": {
+            "type": "integer",
+            "description": "Open findings with no price; never summed."
+          },
+          "realized": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/SavingsFindingMoney"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            },
+            "description": "Realized savings over the trailing `realizedWindowDays`, per currency (the realized savings report). Null without `costs:read`."
+          },
+          "realizedWindowDays": {
+            "type": "integer"
+          },
+          "savingsRate": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "currency",
+                "rate"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Realized ÷ (realized + potential) per currency: the share of the identified monthly opportunity already captured. Currencies with nothing on either side are omitted."
+          }
+        },
+        "required": [
+          "counts",
+          "potentialMonthly",
+          "unpricedOpenCount",
+          "realized",
+          "realizedWindowDays",
+          "savingsRate"
+        ],
+        "additionalProperties": false,
+        "description": "Over every finding the caller can see, ignoring filters."
+      },
+      "SavingsFindingsResponse": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavingsFinding"
+            },
+            "description": "Matching findings, filtered and sorted."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SavingsFindingsSummary"
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "$ref": "#/components/schemas/SavingsFindingKind"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "error"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Finders that failed to compute this time; their findings are not fixed."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "findings",
+          "summary",
+          "unavailable",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsFindingStatusFilter": {
+        "type": "string",
+        "enum": [
+          "open",
+          "ready",
+          "in_progress",
+          "completed",
+          "archived",
+          "all"
+        ],
+        "description": "Status tab. Defaults to `all` (or the view's)."
+      },
+      "SavingsFindingStatusChange": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SavingsFindingStatus"
+          },
+          "statusChangedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statusChangedBy": {
+            "$ref": "#/components/schemas/SavingsFindingActor"
+          },
+          "statusNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "manual",
+              "resolved"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "status",
+          "statusChangedAt",
+          "statusChangedBy",
+          "statusNote",
+          "resolution"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsFindingStatusInput": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 500
+          },
+          "status": {
+            "$ref": "#/components/schemas/SavingsFindingStatus"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000,
+            "description": "Recorded on every finding changed; absent or null clears the previous note."
+          }
+        },
+        "required": [
+          "keys",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsFindingFilter": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavingsFindingKind"
+            }
+          },
+          "pluginIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "key"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 20,
+            "description": "Every term must match; a term without values matches any value of the key."
+          },
+          "minMonthlySavings": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "detectedFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "detectedTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false,
+        "description": "Empty lists and blank fields are dropped on write."
+      },
+      "SavingsFindingSort": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "savings",
+              "detected",
+              "name",
+              "status_changed"
+            ]
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "direction"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingsFindingStatusFilter"
+              },
+              {
+                "description": "A status, `open` (Ready or In progress), or `all`."
+              }
+            ]
+          },
+          "filter": {
+            "$ref": "#/components/schemas/SavingsFindingFilter"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/SavingsFindingSort"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "status",
+          "filter",
+          "sort",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SavingsViewInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingsFindingStatusFilter"
+              },
+              {
+                "description": "Defaults to `open`."
+              }
+            ]
+          },
+          "filter": {
+            "$ref": "#/components/schemas/SavingsFindingFilter"
+          },
+          "sort": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingsFindingSort"
+              },
+              {
+                "description": "Defaults to savings, largest first."
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "NetworkFlowScopeSummary": {
@@ -75582,7 +76625,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings.",
+              "description": "Comma-separated subset of sections to export. Defaults to all of: budgets, customGraphs, workflows, dashboards, metricAlerts, probes, slos, costCentres, tagPolicy, alertSettings, savingsViews.",
               "example": "budgets,workflows"
             },
             "required": false,
@@ -92863,6 +93906,603 @@
         "operationId": "putOrgOrgIdSavingsSettings"
       }
     },
+    "/api/org/{orgId}/savings/findings": {
+      "get": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "List savings findings",
+        "description": "Every savings finder's findings (orphaned and idle resources, oversized resources, extended support surcharges, unused SaaS seats) with a lifecycle status, a detected date and summary tiles. Open findings that a scan stops reporting move to Completed automatically (`resolution: resolved`); a finding that returns after that reopens as Ready with a new detected date. A cost-scoped caller sees only findings on accounts granted to them outright.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Apply a saved view, by id or name. Explicit params override it."
+            },
+            "required": false,
+            "name": "view",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/SavingsFindingStatusFilter"
+            },
+            "required": false,
+            "description": "A status, `open` (Ready or In progress), or `all`.",
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated finding kinds."
+            },
+            "required": false,
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated plugin ids."
+            },
+            "required": false,
+            "name": "provider",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated account ids."
+            },
+            "required": false,
+            "name": "account",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated regions."
+            },
+            "required": false,
+            "name": "region",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "`key` or `key=value`; repeat for more terms (all must match)."
+            },
+            "required": false,
+            "name": "tag",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Minimum monthly savings, in each finding's own currency. Unpriced findings never pass."
+            },
+            "required": false,
+            "name": "minSavings",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Detected on or after (UTC day).",
+              "example": "2026-10-01"
+            },
+            "required": false,
+            "name": "detectedFrom",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Detected on or before (UTC day).",
+              "example": "2026-10-01"
+            },
+            "required": false,
+            "name": "detectedTo",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Case-insensitive text match over title, resource and account."
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "`<field>:<asc|desc>`; fields savings, detected, name, status_changed."
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "`true` bypasses the right-sizing and extended support caches."
+            },
+            "required": false,
+            "name": "refresh",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsFindingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavingsFindings",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/savings/findings/status": {
+      "post": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "Change savings finding status",
+        "description": "Moves findings to a status, recording who, when and an optional note; Completed by hand records `resolution: manual`. Audited per finding and published as the `savings.finding.status_changed` event. Keys the caller cannot see come back in `missing`; a 404 when none matched.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsFindingStatusInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updated": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavingsFindingStatusChange"
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "updated",
+                    "missing"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSavingsFindingsStatus",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/savings-views": {
+      "get": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "List savings views",
+        "description": "Saved views over the savings findings list: a status tab, a filter and a sort. Narrowed by per-object sharing (`savings_view`); the creator owns a view.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Views the caller can see, alphabetically",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavingsView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavingsViews",
+        "x-required-permission": "resources:read"
+      },
+      "post": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "Create a savings view",
+        "description": "Names are unique per organization, case-insensitively.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsViewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A live savings view already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSavingsViews",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/savings-views/{id}": {
+      "get": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "Get a savings view",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSavingsViewsId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "put": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "Update a savings view",
+        "description": "Full replace. Needs editor on the view.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavingsViewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A live savings view already uses this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSavingsViewsId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Savings findings"
+        ],
+        "summary": "Delete a savings view",
+        "description": "Soft delete. Needs owner on the view (or editor when nobody owns it).\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSavingsViewsId",
+        "x-required-permission": "resources:write"
+      }
+    },
     "/api/org/{orgId}/network-flows": {
       "get": {
         "tags": [
@@ -109281,6 +110921,29 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Event_dora_band_changed_v1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Any 2xx acknowledges the delivery."
+          }
+        }
+      }
+    },
+    "savings.finding.status_changed": {
+      "post": {
+        "tags": [
+          "Event subscriptions"
+        ],
+        "summary": "Savings finding status changed",
+        "description": "A savings finding (orphaned resource, oversized resource, extended support surcharge or unused seat) moved between Ready for review, In progress, Completed and Archived, by a person or because a scan stopped reporting it.\n\nWebhook requests carry `Infrawrench-Signature: t=<unix seconds>,v1=<hex>`, where each v1 is HMAC-SHA256 of `<t>.<raw body>` keyed with the subscription's secret (two v1 values during the 24 hours after a reroll). Also `Infrawrench-Event-Id`, `Infrawrench-Event-Type` and `Infrawrench-Delivery-Id`. Answer 2xx within 10 seconds; anything else is retried with backoff over about a day and a half.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event_savings_finding_status_changed_v1"
               }
             }
           }

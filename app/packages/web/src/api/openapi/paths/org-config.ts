@@ -250,6 +250,35 @@ const ConfigAlertSettings = strict({
     "a quiet period and page people twice.",
 });
 
+const ConfigSavingsView = strict({
+  key: ConfigKey,
+  name: z.string(),
+  description: z.string().nullable(),
+  status: z.enum(["open", "ready", "in_progress", "completed", "archived", "all"]),
+  filter: strict({
+    kinds: z.array(z.enum(["orphan", "oversized", "extended_support", "seat"])).optional(),
+    pluginIds: z.array(z.string()).optional(),
+    accounts: z
+      .array(z.string())
+      .optional()
+      .openapi({ description: "Account display names; resolved to ids on apply." }),
+    regions: z.array(z.string()).optional(),
+    tags: z.array(strict({ key: z.string(), values: z.array(z.string()).optional() })).optional(),
+    minMonthlySavings: z.number().min(0).optional(),
+    detectedFrom: z.string().optional(),
+    detectedTo: z.string().optional(),
+    search: z.string().optional(),
+  }),
+  sort: strict({
+    field: z.enum(["savings", "detected", "name", "status_changed"]),
+    direction: z.enum(["asc", "desc"]),
+  }),
+}).openapi("OrgConfigSavingsView", {
+  description:
+    "A saved view over the savings findings list. Per-object sharing is not carried; a view " +
+    "an apply creates is owned by the applying user.",
+});
+
 const ConfigDocument = strict({
   version: z.number().int().min(1).default(ORG_CONFIG_VERSION),
   exportedAt: z.string().optional(),
@@ -269,6 +298,7 @@ const ConfigDocument = strict({
     enforceOnCreate: z.boolean(),
   }).optional(),
   alertSettings: ConfigAlertSettings.optional(),
+  savingsViews: z.array(ConfigSavingsView).optional(),
 }).openapi("OrgConfigDocument", {
   description:
     "An organization's configuration. Every section is optional; a document that omits one " +

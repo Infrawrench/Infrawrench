@@ -85,6 +85,7 @@ import { registerCreditPaths } from "./paths/credits";
 import { registerCostVisibilityPaths } from "./paths/cost-visibility";
 import { registerCommitmentPaths } from "./paths/commitments";
 import { registerSavingsPaths } from "./paths/savings";
+import { registerSavingsFindingPaths } from "./paths/savings-findings";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
@@ -251,6 +252,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostVisibilityPaths(ctx);
   registerCommitmentPaths(ctx);
   registerSavingsPaths(ctx);
+  registerSavingsFindingPaths(ctx);
   registerNetworkFlowPaths(ctx);
   registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);

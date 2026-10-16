@@ -251,6 +251,58 @@ type SavedCostFilter struct {
 	UpdatedAt       string       `json:"updatedAt"`
 }
 
+/* ------------------------------ savings views ------------------------------ */
+
+// SavingsFindingTagFilter matches findings carrying a tag key, optionally with
+// one of Values.
+type SavingsFindingTagFilter struct {
+	Key    string   `json:"key"`
+	Values []string `json:"values,omitempty"`
+}
+
+// SavingsFindingFilter is a saved view's filter. The server drops empty lists
+// and blank fields on write, so every field is omitempty here and the provider
+// maps an unset attribute to an absent key.
+type SavingsFindingFilter struct {
+	Kinds             []string                  `json:"kinds,omitempty"`
+	PluginIDs         []string                  `json:"pluginIds,omitempty"`
+	AccountIDs        []string                  `json:"accountIds,omitempty"`
+	Regions           []string                  `json:"regions,omitempty"`
+	Tags              []SavingsFindingTagFilter `json:"tags,omitempty"`
+	MinMonthlySavings *float64                  `json:"minMonthlySavings,omitempty"`
+	DetectedFrom      *string                   `json:"detectedFrom,omitempty"`
+	DetectedTo        *string                   `json:"detectedTo,omitempty"`
+	Search            *string                   `json:"search,omitempty"`
+}
+
+// SavingsFindingSort orders a saved view's list.
+type SavingsFindingSort struct {
+	Field     string `json:"field"`
+	Direction string `json:"direction"`
+}
+
+// SavingsViewInput is the POST/PUT body (PUT is a full replace).
+type SavingsViewInput struct {
+	Name        string               `json:"name"`
+	Description *string              `json:"description"`
+	Status      string               `json:"status"`
+	Filter      SavingsFindingFilter `json:"filter"`
+	Sort        SavingsFindingSort   `json:"sort"`
+}
+
+// SavingsView is a saved view over the savings findings list.
+type SavingsView struct {
+	ID              string               `json:"id"`
+	Name            string               `json:"name"`
+	Description     *string              `json:"description"`
+	Status          string               `json:"status"`
+	Filter          SavingsFindingFilter `json:"filter"`
+	Sort            SavingsFindingSort   `json:"sort"`
+	CreatedByUserID *string              `json:"createdByUserId"`
+	CreatedAt       string               `json:"createdAt"`
+	UpdatedAt       string               `json:"updatedAt"`
+}
+
 /* ------------------------------- cost reports ------------------------------ */
 
 // CostDateRange is a tagged union: a relative preset or an absolute span.

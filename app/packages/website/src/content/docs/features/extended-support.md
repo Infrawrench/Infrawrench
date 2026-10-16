@@ -6,6 +6,8 @@ sidebar_order: 15
 
 Managed Kubernetes and managed databases are priced on the assumption that you keep upgrading. When a version leaves its provider's standard support window, one of two things happens: the provider starts billing a surcharge for as long as you stay on it (Amazon EKS charges an extra $0.50 per cluster-hour, RDS Extended Support bills per vCPU-hour and doubles in year three), or it schedules an upgrade for you. Both are knowable from the version a resource runs, and both tend to be noticed only when the invoice or the maintenance window arrives.
 
+Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+
 Infrawrench checks the version of every synced cluster and database against its provider's published support calendar and lists:
 
 - resources **paying an extended-support surcharge** now, with the monthly amount an upgrade removes

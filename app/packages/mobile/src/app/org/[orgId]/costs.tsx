@@ -34,6 +34,7 @@ import { ExtendedSupportSection } from "@/features/savings/ExtendedSupportSectio
 import { SeatsSection } from "@/features/savings/SeatsSection";
 import { OversizedSection } from "@/features/savings/OversizedSection";
 import { SavingsSection } from "@/features/savings/SavingsSection";
+import { FindingsSection } from "@/features/savings/FindingsSection";
 import { SchedulesSection } from "@/features/schedules/SchedulesSection";
 import { RealizedSavingsSection } from "@/features/savings/RealizedSavingsSection";
 
@@ -176,6 +177,7 @@ export default function CostsScreen() {
 
       {tab === "savings" && (
         <>
+          <FindingsSection />
           <SavingsSection />
           <OversizedSection />
           <ExtendedSupportSection />

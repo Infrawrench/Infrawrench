@@ -155,6 +155,7 @@ import credentialHygieneRoutes from "./routes/credential-hygiene.js";
 import creditRoutes from "./routes/credits.js";
 import commitmentRoutes from "./routes/commitments.js";
 import savingsRoutes from "./routes/savings.js";
+import { savingsFindingRoutes, savingsViewRoutes } from "./routes/savings-findings.js";
 import { networkFlowRoutes } from "./routes/network-flows.js";
 import { aiAttributionRoutes } from "./routes/ai-attribution.js";
 import { searchRoutes } from "./routes/search";
@@ -536,6 +537,9 @@ orgScoped.route("/jit-access", jitAccessRoutes);
 orgScoped.route("/credential-hygiene", credentialHygieneRoutes);
 orgScoped.route("/credits", creditRoutes);
 orgScoped.route("/commitments", commitmentRoutes);
+// Before `/savings`: the findings workflow is `resources:read`, realized savings `costs:read`.
+orgScoped.route("/savings/findings", savingsFindingRoutes);
+orgScoped.route("/savings-views", savingsViewRoutes);
 orgScoped.route("/savings", savingsRoutes);
 orgScoped.route("/network-flows", networkFlowRoutes);
 orgScoped.route("/ai-attribution", aiAttributionRoutes);

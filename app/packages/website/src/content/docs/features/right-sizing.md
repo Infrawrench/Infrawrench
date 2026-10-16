@@ -6,6 +6,8 @@ sidebar_order: 14
 
 The [orphan finder](./orphan-finder.md) answers "what is wasted entirely". Right-sizing answers the quieter half of the same question: "what is running real work on a machine twice the size it needs". Infrawrench computes the 95th-percentile CPU and memory utilisation over the last 14 days of the metrics it already stores, and when a machine sits well under its size, matches it against the provider's own size catalog — the same sizes the create form offers, with live prices — and recommends the cheapest smaller size that still leaves comfortable headroom.
 
+Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+
 No new metric collection and no guesswork tables: the percentiles come from the metrics Infrawrench already records for resources pinned to a dashboard, and the candidate sizes and prices come from each provider's live catalog.
 
 ## Where to find it

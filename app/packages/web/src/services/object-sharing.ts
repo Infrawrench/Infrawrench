@@ -1,6 +1,6 @@
 /**
  * Per-object sharing for cost reports, Kubernetes efficiency reports, report
- * folders, canvases and dashboards.
+ * folders, canvases, dashboards and saved savings views.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -55,6 +55,7 @@ import {
   objectAccessGrants,
   organizationMembers,
   roles,
+  savingsViews,
   users,
 } from "../db/schema";
 
@@ -71,7 +72,10 @@ const storage = new AsyncLocalStorage<SharingPrincipal>();
 /** Types whose creator is their implicit owner (`created_by_user_id`). */
 function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
   return (
-    type === "cost_report" || type === "cost_canvas" || type === "kubernetes_efficiency_report"
+    type === "cost_report" ||
+    type === "cost_canvas" ||
+    type === "kubernetes_efficiency_report" ||
+    type === "savings_view"
   );
 }
 
@@ -397,6 +401,18 @@ export async function loadObjectMeta(
       })
       .from(costCanvases)
       .where(and(eq(costCanvases.id, objectId), eq(costCanvases.organizationId, organizationId)))
+      .limit(1);
+    return row && !row.deletedAt ? { name: row.name, createdByUserId: row.createdByUserId } : null;
+  }
+  if (type === "savings_view") {
+    const [row] = await db
+      .select({
+        name: savingsViews.name,
+        createdByUserId: savingsViews.createdByUserId,
+        deletedAt: savingsViews.deletedAt,
+      })
+      .from(savingsViews)
+      .where(and(eq(savingsViews.id, objectId), eq(savingsViews.organizationId, organizationId)))
       .limit(1);
     return row && !row.deletedAt ? { name: row.name, createdByUserId: row.createdByUserId } : null;
   }

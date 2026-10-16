@@ -26,6 +26,10 @@ import {
   METRIC_ALERT_LIMITS,
   PROBE_LIMITS,
   SLO_LIMITS,
+  SAVINGS_FINDING_KINDS,
+  SAVINGS_FINDING_SORT_FIELDS,
+  SAVINGS_FINDING_STATUS_FILTERS,
+  SAVINGS_VIEW_LIMITS,
   type OrgConfigAllocationRule,
   type OrgConfigBudget,
   type OrgConfigCostCentre,
@@ -35,6 +39,8 @@ import {
   type OrgConfigDocument,
   type OrgConfigMetricAlert,
   type OrgConfigProbe,
+  type OrgConfigSavingsView,
+  type OrgConfigSavingsViewFilter,
   type OrgConfigSection,
   type OrgConfigSlo,
   type OrgConfigWorkflow,
@@ -395,6 +401,47 @@ const alertSettingsSchema = z
   })
   .strict();
 
+/* ------------------------------ savings views ------------------------------ */
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dates are YYYY-MM-DD");
+const filterValues = z
+  .array(z.string().trim().min(1).max(200))
+  .max(SAVINGS_VIEW_LIMITS.maxFilterValues);
+
+const savingsViewFilterSchema = z
+  .object({
+    kinds: z.array(z.enum(SAVINGS_FINDING_KINDS)).optional(),
+    pluginIds: filterValues.optional(),
+    accounts: filterValues.optional(),
+    regions: filterValues.optional(),
+    tags: z
+      .array(
+        z
+          .object({ key: z.string().trim().min(1).max(200), values: filterValues.optional() })
+          .strict(),
+      )
+      .max(SAVINGS_VIEW_LIMITS.maxTagTerms)
+      .optional(),
+    minMonthlySavings: z.number().min(0).optional(),
+    detectedFrom: isoDay.optional(),
+    detectedTo: isoDay.optional(),
+    search: z.string().max(SAVINGS_VIEW_LIMITS.maxSearchLength).optional(),
+  })
+  .strict();
+
+const savingsViewSchema = z
+  .object({
+    key,
+    name: z.string().trim().min(1).max(SAVINGS_VIEW_LIMITS.maxNameLength),
+    description: z.string().max(SAVINGS_VIEW_LIMITS.maxDescriptionLength).nullable(),
+    status: z.enum(SAVINGS_FINDING_STATUS_FILTERS),
+    filter: savingsViewFilterSchema,
+    sort: z
+      .object({ field: z.enum(SAVINGS_FINDING_SORT_FIELDS), direction: z.enum(["asc", "desc"]) })
+      .strict(),
+  })
+  .strict();
+
 /* -------------------------------- document --------------------------------- */
 
 const orgConfigDocumentSchema = z
@@ -424,6 +471,7 @@ const orgConfigDocumentSchema = z
       .strict()
       .optional(),
     alertSettings: alertSettingsSchema.optional(),
+    savingsViews: collection(savingsViewSchema).optional(),
   })
   .strict();
 
@@ -514,10 +562,14 @@ type SchemaMatchesOrgConfigContract = [
   Exact<z.infer<typeof sloSchema>, OrgConfigSlo>,
   Exact<z.infer<typeof allocationRuleSchema>, OrgConfigAllocationRule>,
   Exact<z.infer<typeof costCentreSchema>, OrgConfigCostCentre>,
+  Exact<z.infer<typeof savingsViewFilterSchema>, OrgConfigSavingsViewFilter>,
+  Exact<z.infer<typeof savingsViewSchema>, OrgConfigSavingsView>,
   Exact<z.infer<typeof orgConfigDocumentSchema>, OrgConfigDocument>,
 ];
 
 const schemaMatchesContract: SchemaMatchesOrgConfigContract = [
+  true,
+  true,
   true,
   true,
   true,

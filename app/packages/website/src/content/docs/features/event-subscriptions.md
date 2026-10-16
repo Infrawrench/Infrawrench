@@ -37,34 +37,35 @@ Open **Settings → Notifications → Event subscriptions** and choose **Add sub
 
 An empty filter does not filter. A filter that is set **never matches an event that lacks the fact**: a subscription limited to the production account does not receive a drift window spanning three accounts, or a declared incident, which names no single account.
 
-Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`) carry spend, so subscribing to them, or to every event, also needs the `costs:read` permission. Budgets visible only to their owner never emit events.
+Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.finding.status_changed`) carry spend, so subscribing to them, or to every event, also needs the `costs:read` permission. Budgets visible only to their owner never emit events.
 
 ## The event catalog
 
-| Event type                 | When                                                                              | Default severity                                                      |
-| -------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `cost.anomaly.detected`    | A [cost anomaly](./cost-anomaly-alerts.md) or a new source of spend is found      | warning                                                               |
-| `budget.threshold.crossed` | A budget's actual or forecast crosses a threshold                                 | warning; critical at 100% or more                                     |
-| `posture.finding.detected` | A critical or high [posture finding](./posture-checks.md) appears (once each)     | critical for critical, else warning                                   |
-| `secret.leaked`            | A secret scanner finds a [leaked credential](./leaked-credentials.md) (once each) | critical; warning when the token is reported dead and matches nothing |
-| `secret.rotated`           | A leaked credential is rotated, or its stored value is seen to change             | info                                                                  |
-| `drift.detected`           | A [drift window](./change-timeline.md) has changes                                | info                                                                  |
-| `incident.declared`        | Someone [declares an incident](./incident-mode.md)                                | critical for sev1/sev2, else warning                                  |
-| `incident.mitigated`       | A declared incident is marked mitigated                                           | as declared                                                           |
-| `incident.resolved`        | A declared incident is resolved                                                   | info                                                                  |
-| `jit_access.requested`     | A member asks for [just-in-time access](./just-in-time-access.md)                 | info                                                                  |
-| `jit_access.approved`      | An approver approves a request                                                    | warning                                                               |
-| `jit_access.denied`        | An approver denies a request                                                      | info                                                                  |
-| `jit_access.expired`       | A granted role reaches the end of its window and is removed                       | info                                                                  |
-| `slo.burn_alert`           | An [SLO](./slos.md) starts or stops burning, or exhausts its budget               | critical for fast burn and exhausted                                  |
-| `metric_alert.fired`       | A [metric alert](./metric-alerts.md) starts firing                                | warning                                                               |
-| `metric_alert.resolved`    | A firing metric alert recovers                                                    | info                                                                  |
-| `account.sync.failing`     | An account's sync keeps failing past your paging threshold                        | warning                                                               |
-| `account.sync.recovered`   | A failing sync that was announced succeeds again                                  | info                                                                  |
-| `vulnerability.found`      | A [vulnerability](./vulnerabilities.md) finding becomes alertable (once each)     | critical for critical or known exploited, else warning                |
-| `service.changed`          | A [service](./services.md) is created, edited or deleted, or its members change   | info                                                                  |
-| `scorecard.level_changed`  | A service moves up or down a level on a scorecard                                 | warning when it drops, info when it rises                             |
-| `dora.band_changed`        | A [DORA metric](./dora-metrics.md) for production changes performance band        | warning when it worsens, info when it improves                        |
+| Event type                       | When                                                                                | Default severity                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `cost.anomaly.detected`          | A [cost anomaly](./cost-anomaly-alerts.md) or a new source of spend is found        | warning                                                               |
+| `budget.threshold.crossed`       | A budget's actual or forecast crosses a threshold                                   | warning; critical at 100% or more                                     |
+| `posture.finding.detected`       | A critical or high [posture finding](./posture-checks.md) appears (once each)       | critical for critical, else warning                                   |
+| `secret.leaked`                  | A secret scanner finds a [leaked credential](./leaked-credentials.md) (once each)   | critical; warning when the token is reported dead and matches nothing |
+| `secret.rotated`                 | A leaked credential is rotated, or its stored value is seen to change               | info                                                                  |
+| `drift.detected`                 | A [drift window](./change-timeline.md) has changes                                  | info                                                                  |
+| `incident.declared`              | Someone [declares an incident](./incident-mode.md)                                  | critical for sev1/sev2, else warning                                  |
+| `incident.mitigated`             | A declared incident is marked mitigated                                             | as declared                                                           |
+| `incident.resolved`              | A declared incident is resolved                                                     | info                                                                  |
+| `jit_access.requested`           | A member asks for [just-in-time access](./just-in-time-access.md)                   | info                                                                  |
+| `jit_access.approved`            | An approver approves a request                                                      | warning                                                               |
+| `jit_access.denied`              | An approver denies a request                                                        | info                                                                  |
+| `jit_access.expired`             | A granted role reaches the end of its window and is removed                         | info                                                                  |
+| `slo.burn_alert`                 | An [SLO](./slos.md) starts or stops burning, or exhausts its budget                 | critical for fast burn and exhausted                                  |
+| `metric_alert.fired`             | A [metric alert](./metric-alerts.md) starts firing                                  | warning                                                               |
+| `metric_alert.resolved`          | A firing metric alert recovers                                                      | info                                                                  |
+| `account.sync.failing`           | An account's sync keeps failing past your paging threshold                          | warning                                                               |
+| `account.sync.recovered`         | A failing sync that was announced succeeds again                                    | info                                                                  |
+| `vulnerability.found`            | A [vulnerability](./vulnerabilities.md) finding becomes alertable (once each)       | critical for critical or known exploited, else warning                |
+| `service.changed`                | A [service](./services.md) is created, edited or deleted, or its members change     | info                                                                  |
+| `scorecard.level_changed`        | A service moves up or down a level on a scorecard                                   | warning when it drops, info when it rises                             |
+| `dora.band_changed`              | A [DORA metric](./dora-metrics.md) for production changes performance band          | warning when it worsens, info when it improves                        |
+| `savings.finding.status_changed` | A [savings finding](./savings-findings.md) changes status, by hand or automatically | info                                                                  |
 
 Posture findings ride the daily posture scan, so they need posture alerts turned on under **Notifications → Alerts & digest**; sync failures follow the paging threshold set under **SMS & voice**.
 

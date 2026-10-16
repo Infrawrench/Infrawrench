@@ -261,6 +261,15 @@ infrawrench savings --group-by cost-centre --from 2026-01-01 --json
 infrawrench savings log "Cancelled the legacy CDN" --amount 420 --currency USD --from 2026-09-01
 ```
 
+`savings findings` is the [savings findings](./savings-findings.md) list: every finder's findings with their status, detected date and the summary (potential, realized, savings rate, counts by status). It opens on the open findings; filter with `--status`, `--kind`, `--provider`, `-a/--account`, `--region`, `--tag key[=value]`, `--min-savings`, `--from`/`--to` (detected date), `--search`, or open a saved view with `--view <name>`. `savings findings set <key>... --status <status> [--note]` changes findings' status (`resources:write`), and `savings views` lists the saved views. Needs `resources:read`:
+
+```
+infrawrench savings findings
+infrawrench savings findings --status all --kind orphan,oversized --min-savings 50 --json
+infrawrench savings findings set orphan:4f6c0a52-... --status archived --note "Kept for the DR drill"
+infrawrench savings views
+```
+
 `hygiene` is the [credential hygiene](../team-and-billing/credential-hygiene.md) report: unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise. The `--json` form is the one worth scheduling — these accumulate slowly and nobody opens a settings page to check. Needs `audit:read`:
 
 ```

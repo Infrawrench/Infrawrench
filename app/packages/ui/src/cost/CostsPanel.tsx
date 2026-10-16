@@ -11,6 +11,11 @@ import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { ExtendedSupportSection } from "../savings/ExtendedSupportSection.js";
 import { SeatsSection } from "../savings/SeatsSection.js";
+import {
+  SavingsFindingsSection,
+  type SavingsFindingsClient,
+} from "../savings/SavingsFindingsSection.js";
+import type { SavingsFinding } from "@infrawrench/client-core";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
 import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
@@ -124,6 +129,14 @@ export interface CostsPanelProps {
    */
   seats?: SeatsClient | undefined;
   /**
+   * Data access for the savings findings workflow (status, detected dates,
+   * saved views) at the top of the Savings tab. Cloud-only: the lifecycle is
+   * kept server-side, so desktop leaves it off in local mode.
+   */
+  findings?: SavingsFindingsClient | undefined;
+  /** Open a finding's resource from the findings list. */
+  onOpenFindingResource?: ((finding: SavingsFinding) => void) | undefined;
+  /**
    * Data access for the "Sleep schedules" section. Omitted when the host has
    * no schedule store (desktop in local-only mode): the section is then left
    * out rather than shown empty.
@@ -166,6 +179,8 @@ export function CostsPanel({
   extendedSupport,
   onOpenExtendedSupportResource,
   seats,
+  findings,
+  onOpenFindingResource,
   schedules,
   onOpenScheduledResource,
   onOpenExternal,
@@ -466,6 +481,15 @@ export function CostsPanel({
               label: gt("Savings"),
               content: (
                 <>
+                  {/* The workflow over every finder first: the backlog is
+                      worked here, the sections below carry each finder's
+                      own actions. */}
+                  {findings && (
+                    <SavingsFindingsSection
+                      client={findings}
+                      onOpenResource={onOpenFindingResource}
+                    />
+                  )}
                   {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
                   {rightsizing && (
                     <OversizedSection

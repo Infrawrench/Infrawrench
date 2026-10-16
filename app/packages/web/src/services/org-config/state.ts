@@ -27,6 +27,7 @@ import type {
   OrgConfigDashboardCard,
   OrgConfigMetricAlert,
   OrgConfigProbe,
+  OrgConfigSavingsView,
   OrgConfigSlo,
   OrgConfigWorkflow,
   OrgConfigWorkflowMetric,
@@ -43,6 +44,7 @@ import { getExtendedSupportSettings } from "@infrawrench/server-core/extended-su
 import { getOrgDigestSettings } from "@infrawrench/server-core/digest/weekly";
 import { listDigestEmailRecipients } from "@infrawrench/server-core/digest/recipients";
 import { db } from "../../db/client";
+import { toSavingsView } from "../savings-views";
 import {
   accounts,
   budgets,
@@ -55,6 +57,7 @@ import {
   dashboards,
   metricAlertRules,
   resources,
+  savingsViews,
   slos,
   syntheticProbes,
   workflows,
@@ -104,6 +107,7 @@ export interface OrgConfigState {
   probes: OrgConfigEntity<OrgConfigProbe>[];
   slos: OrgConfigEntity<OrgConfigSlo>[];
   costCentres: OrgConfigEntity<OrgConfigCostCentre>[];
+  savingsViews: OrgConfigEntity<OrgConfigSavingsView>[];
   tagPolicy: TagPolicy;
   alertSettings: OrgConfigAlertSettingsResolved;
 }
@@ -140,6 +144,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     allocationRows,
     resourceRows,
     sloRows,
+    savingsViewRows,
   ] = await Promise.all([
     db
       .select({ id: accounts.id, displayName: accounts.displayName })
@@ -209,6 +214,11 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       .from(slos)
       .where(eq(slos.organizationId, organizationId))
       .orderBy(asc(slos.createdAt), asc(slos.id)),
+    db
+      .select()
+      .from(savingsViews)
+      .where(and(eq(savingsViews.organizationId, organizationId), isNull(savingsViews.deletedAt)))
+      .orderBy(asc(savingsViews.createdAt), asc(savingsViews.id)),
   ]);
 
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.displayName]));
@@ -411,6 +421,41 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     }),
   );
 
+  const savingsViewEntities = withKeys(
+    savingsViewRows,
+    (v) => v.id,
+    (v) => v.name,
+    (v, key): OrgConfigSavingsView => {
+      const view = toSavingsView(v);
+      const f = view.filter;
+      // The document names accounts, never ids; a view filtered to an account
+      // that has since been removed loses that account rather than exporting
+      // a dangling id.
+      const accounts = (f.accountIds ?? []).flatMap((id) => {
+        const displayName = accountNameById.get(id);
+        return displayName ? [displayName] : [];
+      });
+      return {
+        key,
+        name: view.name,
+        description: view.description,
+        status: view.status,
+        filter: {
+          ...(f.kinds ? { kinds: f.kinds } : {}),
+          ...(f.pluginIds ? { pluginIds: f.pluginIds } : {}),
+          ...(accounts.length > 0 ? { accounts } : {}),
+          ...(f.regions ? { regions: f.regions } : {}),
+          ...(f.tags ? { tags: f.tags } : {}),
+          ...(f.minMonthlySavings ? { minMonthlySavings: f.minMonthlySavings } : {}),
+          ...(f.detectedFrom ? { detectedFrom: f.detectedFrom } : {}),
+          ...(f.detectedTo ? { detectedTo: f.detectedTo } : {}),
+          ...(f.search ? { search: f.search } : {}),
+        },
+        sort: view.sort,
+      };
+    },
+  );
+
   const [tagPolicy, costAnomaly, drift, expiry, posture, extendedSupport, digest, recipients] =
     await Promise.all([
       getOrgTagPolicy(organizationId),
@@ -436,6 +481,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     probes: probeEntities,
     slos: sloEntities,
     costCentres: centreEntities,
+    savingsViews: savingsViewEntities,
     tagPolicy,
     alertSettings: {
       costAnomaly: {

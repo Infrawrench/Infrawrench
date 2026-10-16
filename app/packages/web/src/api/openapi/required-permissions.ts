@@ -790,6 +790,15 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /search": "resources:read",
   // orphans
   "GET /orphans": "resources:read",
+  // savings findings workflow: the finders' own permission to read, and
+  // resources:write to change a status (archiving silences it for everyone)
+  "GET /savings/findings": "resources:read",
+  "POST /savings/findings/status": "resources:write",
+  "GET /savings-views": "resources:read",
+  "POST /savings-views": "resources:write",
+  "GET /savings-views/{id}": "resources:read",
+  "PUT /savings-views/{id}": "resources:write",
+  "DELETE /savings-views/{id}": "resources:write",
   // right-sizing: the list is derived from the org's resource set like
   // orphans; prices are provider catalog rates, not the org's billing data
   "GET /rightsizing": "resources:read",

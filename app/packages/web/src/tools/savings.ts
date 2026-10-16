@@ -15,15 +15,83 @@ import {
   RealizedSavingsRangeError,
 } from "@infrawrench/server-core/savings/realized";
 
+import {
+  SAVINGS_FINDING_KINDS,
+  SAVINGS_FINDING_STATUS_FILTERS,
+  matchesSavingsFindingFilter,
+  matchesSavingsFindingStatus,
+  sortSavingsFindings,
+} from "@infrawrench/client-core";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+
 import { logAudit } from "../services/audit";
-import { denyUnlessPermitted } from "./permissions";
+import { listSavingsFindings } from "../services/savings-findings";
+import { denyUnlessPermitted, effectiveToolPermissions } from "./permissions";
 import { err, ok, type ToolDefinition } from "./types";
 
 /** Events returned to a model: the newest, so a long history cannot flood its context. */
 const MAX_TOOL_EVENTS = 100;
+/** Findings returned to a model, largest saving first. */
+const MAX_TOOL_FINDINGS = 200;
 
 export function savingsTools(): ToolDefinition[] {
   return [
+    {
+      name: "list_savings_findings",
+      title: "List savings findings",
+      description:
+        "Every savings finding (orphaned or idle resources, oversized resources to right-size, " +
+        "versions past standard support paying an extended support surcharge, unused SaaS " +
+        "seats) with its workflow status (`ready` for review, `in_progress`, `completed`, " +
+        "`archived`), who changed it and the note, the date it was first detected, and the " +
+        "monthly saving. Also returns summary tiles: open potential per month, realized savings " +
+        "over the last 30 days and the savings rate. Findings a scan stops reporting are " +
+        "completed automatically (`resolution: resolved`). Purely a read; at most 200 findings, " +
+        "largest saving first.",
+      inputSchema: {
+        status: z
+          .enum(SAVINGS_FINDING_STATUS_FILTERS)
+          .optional()
+          .describe("`open` (default: ready or in progress), one status, or `all`."),
+        kind: z.enum(SAVINGS_FINDING_KINDS).optional().describe("Only one finder's findings."),
+        minMonthlySavings: z
+          .number()
+          .min(0)
+          .optional()
+          .describe("Only findings saving at least this much per month (own currency)."),
+      },
+      risk: "read",
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const {
+          status = "open",
+          kind,
+          minMonthlySavings,
+        } = input as {
+          status?: (typeof SAVINGS_FINDING_STATUS_FILTERS)[number];
+          kind?: (typeof SAVINGS_FINDING_KINDS)[number];
+          minMonthlySavings?: number;
+        };
+        const permissions = await effectiveToolPermissions(auth);
+        const response = await listSavingsFindings(auth.organizationId, {
+          canReadCosts: hasPermission(permissions, "costs:read"),
+        });
+        const filter = {
+          ...(kind ? { kinds: [kind] } : {}),
+          ...(minMonthlySavings ? { minMonthlySavings } : {}),
+        };
+        const findings = sortSavingsFindings(
+          response.findings.filter(
+            (f) => matchesSavingsFindingStatus(f, status) && matchesSavingsFindingFilter(f, filter),
+          ),
+        );
+        return ok({
+          ...response,
+          findings: findings.slice(0, MAX_TOOL_FINDINGS),
+          findingsTruncated: findings.length > MAX_TOOL_FINDINGS,
+        });
+      },
+    },
     {
       name: "get_realized_savings",
       title: "Get realized savings",

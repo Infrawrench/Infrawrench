@@ -122,6 +122,7 @@ export const SHAREABLE_OBJECT_TYPES = [
   "dashboard",
   "cost_canvas",
   "kubernetes_efficiency_report",
+  "savings_view",
 ] as const;
 export type ShareableObjectType = (typeof SHAREABLE_OBJECT_TYPES)[number];
 

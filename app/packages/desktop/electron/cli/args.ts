@@ -377,8 +377,25 @@ export interface ParsedCli {
   config: ConfigFlags;
   vulns: VulnsFlags;
   compliance: ComplianceFlags;
-  /** `savings log`: the monthly amount (validated by the command) and a note. */
-  savings: { amount: string | undefined; note: string | undefined };
+  /**
+   * `savings log`: the monthly amount (validated by the command) and a note.
+   * `savings findings`: the status tab, filters, saved view and sort.
+   */
+  savings: {
+    amount: string | undefined;
+    note: string | undefined;
+    status: string | undefined;
+    kind: string | undefined;
+    provider: string | undefined;
+    region: string | undefined;
+    tag: string | undefined;
+    minSavings: string | undefined;
+    view: string | undefined;
+    sort: string | undefined;
+    search: string | undefined;
+    from: string | undefined;
+    to: string | undefined;
+  };
   positionals: string[];
   version: boolean;
   /** `costs --anomalies`: the spend-spike list instead of the spend chart. */
@@ -573,6 +590,9 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         event: { type: "string" },
         // `savings log`: a manual saving's monthly amount (`--note` is the shared one).
         amount: { type: "string" },
+        // `savings findings`: minimum monthly savings and a saved view by name or id.
+        "min-savings": { type: "string" },
+        view: { type: "string" },
         // `jit request|extend|list`: which policy and role, for how long, and
         // filters on the queue. `--reason` and `--note` are the shared ones.
         policy: { type: "string" },
@@ -821,7 +841,21 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       framework: str("framework"),
       gaps: values.gaps === true,
     },
-    savings: { amount: str("amount"), note: str("note") },
+    savings: {
+      amount: str("amount"),
+      note: str("note"),
+      status: str("status"),
+      kind: str("kind"),
+      provider: str("provider"),
+      region: str("region"),
+      tag: str("tag"),
+      minSavings: str("min-savings"),
+      view: str("view"),
+      sort: str("sort"),
+      search: str("search"),
+      from: str("from"),
+      to: str("to"),
+    },
     dora: {
       scope: str("scope"),
       failed: values.failed === true,

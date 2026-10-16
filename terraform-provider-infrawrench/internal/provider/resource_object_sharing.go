@@ -72,8 +72,8 @@ func (r *objectSharingResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"object_type": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas` or `dashboard`. Changing it replaces the resource.",
-				Validators:          []validator.String{oneOfValidator("cost_report", "cost_report_folder", "cost_canvas", "dashboard")},
+				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas`, `dashboard` or `savings_view`. Changing it replaces the resource.",
+				Validators:          []validator.String{oneOfValidator("cost_report", "cost_report_folder", "cost_canvas", "dashboard", "savings_view")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"object_id": schema.StringAttribute{

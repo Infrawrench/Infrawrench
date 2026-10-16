@@ -169,6 +169,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewTagPolicyResource,
 		NewTagKeySettingsResource,
 		NewSavedFilterResource,
+		NewSavingsViewResource,
 		NewCostReportResource,
 		NewCostReportFolderResource,
 		NewKubernetesEfficiencyReportResource,

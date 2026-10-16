@@ -23,6 +23,7 @@ const state = {
   probes: [] as unknown[],
   slos: [] as unknown[],
   costCentres: [] as unknown[],
+  savingsViews: [] as unknown[],
   tagPolicy: { requiredTags: [] as unknown[], enforceOnCreate: false },
   alertSettings: {
     costAnomaly: { sigmas: 3, minDeltaCents: 1000, newSourceMinCents: 2500, smsAlerts: "off" },
@@ -118,6 +119,7 @@ function reset() {
   state.probes = [];
   state.slos = [];
   state.costCentres = [];
+  state.savingsViews = [];
   state.tagPolicy = { requiredTags: [], enforceOnCreate: false };
 }
 
@@ -518,5 +520,45 @@ describe("SLOs", () => {
     expect(() => plan({ slos: [{ ...availability("x"), targetPercent: 100 }] })).toThrow(
       /Invalid config document/,
     );
+  });
+});
+
+describe("savings views", () => {
+  const view = (key: string, name: string, accounts?: string[]) => ({
+    key,
+    name,
+    description: null,
+    status: "open",
+    filter: { kinds: ["orphan"], ...(accounts ? { accounts } : {}) },
+    sort: { field: "savings", direction: "desc" },
+  });
+
+  it("creates a view and resolves its accounts by name", async () => {
+    const result = await plan({ savingsViews: [view("prod-waste", "Prod waste", ["Production"])] });
+    expect(result.counts.create).toBe(1);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it("reports an account that is not connected and keeps the view", async () => {
+    const result = await plan({ savingsViews: [view("ghost", "Ghost", ["Ghost Account"])] });
+    expect(result.counts.create).toBe(1);
+    expect(result.unresolved[0]).toMatchObject({ section: "savingsViews", key: "ghost" });
+  });
+
+  it("refuses two views that would share a name", async () => {
+    await expect(
+      plan({ savingsViews: [view("a", "Prod waste"), view("b", "prod WASTE")] }),
+    ).rejects.toThrow(OrgConfigError);
+  });
+
+  it("refuses a name an existing view keeps under another key in merge mode", async () => {
+    state.savingsViews = [{ key: "old", id: "v1", config: view("old", "Prod waste") }];
+    await expect(plan({ savingsViews: [view("new", "Prod waste")] })).rejects.toThrow(
+      OrgConfigError,
+    );
+    // Replace mode deletes the old one, so the name is free.
+    const replaced = await plan({ savingsViews: [view("new", "Prod waste")] }, "replace");
+    expect(replaced.counts.create).toBe(1);
+    expect(replaced.counts.delete).toBe(1);
   });
 });

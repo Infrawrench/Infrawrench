@@ -84,6 +84,11 @@ func specChecks() []specCheck {
 		{schema: "SavedCostFilter", value: SavedCostFilter{}},
 		{schema: "SavedCostFilterInput", value: SavedCostFilterInput{}},
 
+		{schema: "SavingsView", value: SavingsView{}},
+		{schema: "SavingsViewInput", value: SavingsViewInput{}},
+		{schema: "SavingsFindingFilter", value: SavingsFindingFilter{}},
+		{schema: "SavingsFindingSort", value: SavingsFindingSort{}},
+
 		{schema: "CostReport", value: CostReport{}},
 		{schema: "CostReportInput", value: CostReportInput{}},
 		{schema: "CostGraphConfig", value: CostGraphConfig{}},

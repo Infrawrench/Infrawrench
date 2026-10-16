@@ -959,6 +959,8 @@ export * from "./credits";
 export * from "./commitments";
 // What the actions people took actually saved, against a pre-action baseline.
 export * from "./realized-savings";
+// Status lifecycle, detected dates and saved views over every savings finder.
+export * from "./savings-findings";
 export * from "./network-flows";
 export * from "./ai-attribution";
 export * from "./iac";

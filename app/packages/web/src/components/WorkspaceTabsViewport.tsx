@@ -64,12 +64,14 @@ import {
   type RightsizingClient,
   type ExtendedSupportClient,
   type SeatsClient,
+  type SavingsFindingsClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 import { createWebRightsizingClient } from "@/lib/rightsizing-client";
 import { createWebExtendedSupportClient } from "@/lib/extended-support-client";
 import { createWebSeatsClient } from "@/lib/seats-client";
+import { createWebSavingsFindingsClient } from "@/lib/savings-findings-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
@@ -286,6 +288,16 @@ function getSeatsClient(orgId: string): SeatsClient {
   return client;
 }
 
+const savingsFindingsClients = new Map<string, SavingsFindingsClient>();
+function getSavingsFindingsClient(orgId: string): SavingsFindingsClient {
+  let client = savingsFindingsClients.get(orgId);
+  if (!client) {
+    client = createWebSavingsFindingsClient(orgId);
+    savingsFindingsClients.set(orgId, client);
+  }
+  return client;
+}
+
 const schedulesClients = new Map<string, SchedulesClient>();
 function getSchedulesClient(orgId: string): SchedulesClient {
   let client = schedulesClients.get(orgId);
@@ -407,6 +419,20 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
             )
           }
           seats={getSeatsClient(orgId)}
+          findings={getSavingsFindingsClient(orgId)}
+          onOpenFindingResource={(f) => {
+            if (!f.resourceId || !f.accountId || !f.pluginId || !f.resourceTypeId) return;
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId: f.accountId,
+                resourceId: f.resourceId,
+                view: "details",
+                pluginId: f.pluginId,
+                resourceTypeId: f.resourceTypeId,
+              }),
+            );
+          }}
           schedules={getSchedulesClient(orgId)}
           onOpenScheduledResource={(s) =>
             void navigate(
