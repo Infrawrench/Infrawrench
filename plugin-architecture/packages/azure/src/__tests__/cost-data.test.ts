@@ -973,7 +973,11 @@ describe("azureCoveredRatios", () => {
 
 describe("azureCoveredOnDemand", () => {
   const key = (service: string) => ["2026-07-01", service, "USD"].join("\u0000");
-  const row = (chargeType: CostRow["chargeType"], service: string, amortized: number): CostRow => ({
+  const row = (
+    chargeType: NonNullable<CostRow["chargeType"]>,
+    service: string,
+    amortized: number,
+  ): CostRow => ({
     date: "2026-07-01",
     service,
     region: "eastus",
