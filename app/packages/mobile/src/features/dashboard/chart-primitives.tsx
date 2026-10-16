@@ -98,22 +98,32 @@ export function EdgeLabels({ start, end }: { start: string; end?: string | null 
   );
 }
 
-/** Grouped or stacked bars, one group per bucket. */
+/**
+ * Grouped or stacked bars, one group per bucket.
+ *
+ * `slot` draws the group in one of `of` equal sub-bands of each bucket instead
+ * of the whole band: how a previous-period bar is paired beside the current
+ * bar (or stack) without either knowing about the other.
+ */
 export function Bars({
   series,
   bucketCount,
   stacked,
   band,
   y,
+  slot,
 }: {
   series: BarSeries[];
   bucketCount: number;
   stacked: boolean;
   band: number;
   y: (value: number) => number;
+  slot?: { index: number; of: number } | undefined;
 }) {
   const zero = y(0);
-  const groupWidth = Math.max(2, band - MARK_GAP * 2);
+  const sub = slot ? band / slot.of : band;
+  const subOffset = slot ? sub * slot.index : 0;
+  const groupWidth = Math.max(2, sub - MARK_GAP * 2);
   const barWidth = stacked ? groupWidth : Math.max(1.5, groupWidth / series.length - MARK_GAP / 2);
 
   return (
@@ -125,7 +135,7 @@ export function Bars({
             {series.map((s, si) => {
               const value = s.values[i] ?? 0;
               if (value === 0) return null;
-              const left = PAD.left + band * i + (band - groupWidth) / 2;
+              const left = PAD.left + band * i + subOffset + (sub - groupWidth) / 2;
               const x = stacked ? left : left + si * (barWidth + MARK_GAP / 2);
               const top = stacked ? y(stackTop + value) : y(value);
               const bottom = stacked ? y(stackTop) : zero;

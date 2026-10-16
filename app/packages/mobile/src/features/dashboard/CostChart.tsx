@@ -12,7 +12,10 @@ import Svg, {
 import {
   binForecast,
   bucketCostAnnotations,
+  costCategoryChart,
+  costComparisonDelta,
   costSeriesTotal,
+  formatCostChangePct,
   effectiveCostBinning,
   formatBucketLabel,
   formatCostAnnotationDates,
@@ -26,6 +29,7 @@ import {
   type CostAnnotationMarker,
   type CostBinningId,
   type CostChartType,
+  type CostComparisonStyle,
   type CostQueryResponse,
 } from "@infrawrench/client-core";
 import { colors, spacing } from "@/lib/theme";
@@ -73,6 +77,11 @@ export interface CostChartProps {
    * picker and the org-wide/this-report choice belong.
    */
   annotations?: readonly CostAnnotation[] | undefined;
+  /**
+   * How a previous-period comparison is drawn: the dashed totals line, or a
+   * muted bar paired beside each bar (bar charts only), as on web and desktop.
+   */
+  comparisonStyle?: CostComparisonStyle | undefined;
 }
 
 interface PlotSeries {
@@ -104,8 +113,22 @@ export function CostChart({
   cumulative: cumulativeFlag,
   format,
   annotations,
+  comparisonStyle,
 }: CostChartProps) {
   const { bin, cumulative } = effectiveCostBinning({ binning, cumulative: cumulativeFlag });
+  // A dimension on the X axis: one bar per value, read-only like the rest of
+  // this card (drilling into a value is a web and desktop affordance).
+  if (response.xAxis && chartType !== "pie" && chartType !== "donut") {
+    return (
+      <DimensionAxisChart
+        response={response}
+        chartType={chartType}
+        binning={binning}
+        format={format}
+        comparisonStyle={comparisonStyle}
+      />
+    );
+  }
   const actualTotals = totalPerBucket(response.series);
 
   // Forecast buckets run past the observed ones, so they widen the axis.
@@ -170,6 +193,7 @@ export function CostChart({
   }
 
   const stacked = chartType === "stacked_bar" || chartType === "area";
+  const barChart = chartType === "stacked_bar" || chartType === "multi_bar";
 
   // The previous period lands positionally (bucket #n onto bucket #n) the
   // same overlay rule the web card uses.
@@ -237,13 +261,24 @@ export function CostChart({
       <Svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
         <GridTicks ticks={axis.ticks} y={y} format={format} />
 
-        {chartType === "stacked_bar" || chartType === "multi_bar" ? (
+        {barChart && comparison && comparisonStyle === "bars" && (
+          <Bars
+            series={[{ label: "Previous period", color: colors.textMuted, values: comparison }]}
+            bucketCount={buckets.length}
+            stacked={false}
+            band={bandWidth}
+            y={y}
+            slot={{ index: 0, of: 2 }}
+          />
+        )}
+        {barChart ? (
           <Bars
             series={series}
             bucketCount={buckets.length}
             stacked={stacked}
             band={bandWidth}
             y={y}
+            {...(comparison && comparisonStyle === "bars" ? { slot: { index: 1, of: 2 } } : {})}
           />
         ) : chartType === "area" ? (
           <Areas series={series} cx={cx} y={y} />
@@ -251,7 +286,7 @@ export function CostChart({
           <Lines series={series} cx={cx} y={y} polyline={polyline} />
         )}
 
-        {comparison && (
+        {comparison && !(barChart && comparisonStyle === "bars") && (
           <Polyline
             points={polyline(comparison)}
             fill="none"
@@ -339,6 +374,176 @@ export function CostChart({
       />
 
       {markers.length > 0 && <AnnotationNotes markers={markers} />}
+    </View>
+  );
+}
+
+/**
+ * A dimension on the X axis: one bar (or point) per value in the server's
+ * ranked order, segmented by the response's series, with the previous period
+ * paired by value. The layout is client-core's `costCategoryChart`, the same
+ * one the web card and the PDF draw from.
+ *
+ * Bars are numbered rather than labelled (a phone has no room under a bar for
+ * "Amazon Elastic Compute Cloud"), and the numbered list beneath carries each
+ * value's name, total and change: the same no-hover rule as the legend.
+ */
+function DimensionAxisChart({
+  response,
+  chartType,
+  binning,
+  format,
+  comparisonStyle,
+}: {
+  response: CostQueryResponse;
+  chartType: CostChartType;
+  binning: CostBinningId;
+  format: (value: number) => string;
+  comparisonStyle?: CostComparisonStyle | undefined;
+}) {
+  const chart = costCategoryChart(response, binning);
+  const n = chart.categories.length;
+  if (n === 0 || chart.series.length === 0) {
+    return <Text style={styles.empty}>No cost data for this period yet</Text>;
+  }
+  const series: PlotSeries[] = chart.series.map((s, i) => ({
+    label: s.label,
+    color: colorFor(i, s.isOther),
+    total: s.values.reduce<number>((sum, v) => sum + (v ?? 0), 0),
+    values: s.values.map((v) => v ?? 0),
+  }));
+  const list = <CategoryList chart={chart} format={format} />;
+  if (chartType === "table") {
+    return (
+      <View style={{ gap: spacing.sm }}>
+        {list}
+        {series.length > 1 && <Legend series={series} format={format} />}
+      </View>
+    );
+  }
+
+  const stacked = chartType === "stacked_bar" || chartType === "area";
+  const barChart = chartType === "stacked_bar" || chartType === "multi_bar";
+  const paired = barChart && chart.previous !== null && comparisonStyle === "bars";
+  const plotted = [
+    ...(stacked ? chart.totals : series.flatMap((s) => s.values)),
+    ...(chart.previous ?? []),
+  ].filter((v): v is number => v !== null);
+  const axis = niceAxis(Math.min(0, ...plotted), Math.max(0, ...plotted), 4);
+  const [lo, hi] = axis.domain;
+  const y = (value: number) => PAD.top + PLOT_H - ((value - lo) / (hi - lo || 1)) * PLOT_H;
+  const band = PLOT_W / n;
+  const cx = (i: number) => PAD.left + band * (i + 0.5);
+  const polyline = (values: Array<number | null>): string =>
+    values
+      .map((v, i) => (v === null ? null : `${cx(i)},${y(v)}`))
+      .filter((pt): pt is string => pt !== null)
+      .join(" ");
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
+        <GridTicks ticks={axis.ticks} y={y} format={format} />
+        {paired && (
+          <Bars
+            series={[
+              { label: "Previous period", color: colors.textMuted, values: chart.previous! },
+            ]}
+            bucketCount={n}
+            stacked={false}
+            band={band}
+            y={y}
+            slot={{ index: 0, of: 2 }}
+          />
+        )}
+        {barChart ? (
+          <Bars
+            series={series}
+            bucketCount={n}
+            stacked={stacked}
+            band={band}
+            y={y}
+            {...(paired ? { slot: { index: 1, of: 2 } } : {})}
+          />
+        ) : chartType === "area" ? (
+          <Areas series={series} cx={cx} y={y} />
+        ) : (
+          <Lines series={series} cx={cx} y={y} polyline={polyline} />
+        )}
+        {chart.previous && !paired && (
+          <G>
+            {chart.previous.map((v, i) =>
+              v === null ? null : (
+                <Circle key={i} cx={cx(i)} cy={y(v)} r={2.5} fill={colors.textMuted} />
+              ),
+            )}
+          </G>
+        )}
+        {chart.categories.map((c, i) => (
+          <SvgText
+            key={c.key}
+            x={cx(i)}
+            y={HEIGHT - 5}
+            fill={colors.textFaint}
+            fontSize={8}
+            textAnchor="middle"
+          >
+            {i + 1}
+          </SvgText>
+        ))}
+      </Svg>
+      {list}
+      {(series.length > 1 || chart.previous) && (
+        <Legend
+          series={series.length > 1 ? series : []}
+          format={format}
+          extra={chart.previous ? [{ label: "Previous period", color: colors.textMuted }] : []}
+        />
+      )}
+    </View>
+  );
+}
+
+/** The values on a dimension axis, numbered as on the chart, with their change. */
+function CategoryList({
+  chart,
+  format,
+}: {
+  chart: ReturnType<typeof costCategoryChart>;
+  format: (value: number) => string;
+}) {
+  return (
+    <View style={styles.legend}>
+      {chart.categories.map((c, i) => {
+        const total = chart.totals[i] ?? 0;
+        const delta = chart.previous ? costComparisonDelta(total, chart.previous[i]) : null;
+        return (
+          <View key={c.key} style={styles.legendItem}>
+            <Text style={styles.noteIndex}>{i + 1}</Text>
+            <Text style={styles.legendLabel} numberOfLines={1}>
+              {c.label}
+            </Text>
+            <Text style={styles.legendValue}>{format(total)}</Text>
+            {delta && (
+              <Text
+                style={[
+                  styles.legendValue,
+                  {
+                    color:
+                      delta.change > 0
+                        ? colors.danger
+                        : delta.change < 0
+                          ? colors.success
+                          : colors.textFaint,
+                  },
+                ]}
+              >
+                {formatCostChangePct(delta.changePct)}
+              </Text>
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }

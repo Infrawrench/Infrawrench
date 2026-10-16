@@ -51,6 +51,8 @@ import {
   billingAdjustmentsAreEmpty,
   fixedTotalsForRange,
   isKeyedCostDimension,
+  COST_X_SEGMENT_SEPARATOR,
+  pivotCostGroupsToDimensionAxis,
   referencedVirtualTagKeys,
   type CompiledBillingAdjustments,
   type CostAdjustmentSummary,
@@ -393,6 +395,121 @@ async function runCostCountQuery(
   return response;
 }
 
+/** Label for an empty dimension value on the X axis (no region, untagged). */
+const EMPTY_X_VALUE_LABEL = "(no value)";
+
+/**
+ * The dimension-X-axis answer: one scan per period with the X dimension (and
+ * the segment dimension, when there is one) in the group key, converted per
+ * day while the date bins are still there, then pivoted so every point is
+ * keyed by X value (`pivotCostGroupsToDimensionAxis`).
+ *
+ * The previous period is folded onto the *current* period's X values, so a
+ * value that ranked lower last period is compared with itself rather than with
+ * whatever "Other" held then. It is returned unsegmented: paired bars and the
+ * table's change columns compare totals per value.
+ */
+async function runDimensionAxisQuery(
+  organizationId: string,
+  q: CostQueryRequest,
+  ctx: {
+    baseQuery: Parameters<typeof queryCosts>[1];
+    virtualTags: Awaited<ReturnType<typeof resolveVirtualTags>>;
+    displayCurrency: string | null;
+    rates: Parameters<typeof convertGroups>[2];
+    adjustmentSummary: CostAdjustmentSummary | undefined;
+    measure: string;
+  },
+): Promise<CostQueryResponse> {
+  const xAxis = q.xAxis!;
+  const segment: "none" | "dimension" | "date" =
+    q.groupBy !== "none" ? "dimension" : q.segmentByDate ? "date" : "none";
+  const axisQuery = {
+    ...ctx.baseQuery,
+    xAxis,
+    ...(q.xAxisTagKey ? { xAxisTagKey: q.xAxisTagKey } : {}),
+    ...(segment === "date" ? { segmentByDate: true } : {}),
+  };
+  const read = async (from: string, to: string, withVirtualTags: boolean) => {
+    const raw = await queryCosts(organizationId, {
+      ...axisQuery,
+      from,
+      to,
+      ...(withVirtualTags && ctx.virtualTags ? { virtualTags: ctx.virtualTags } : {}),
+    });
+    const { groups, conversion } = convertGroups(raw, ctx.displayCurrency, ctx.rates);
+    return { groups: mergeConvertedGroups(groups), conversion };
+  };
+
+  const current = await read(q.from, q.to, true);
+  const pivot = pivotCostGroupsToDimensionAxis(current.groups, { segment, topN: q.topN });
+  const asGroups = (series: typeof pivot.series): CostSeriesGroup[] =>
+    series.map((s) => ({ key: s.key, currency: s.currency, points: s.points }));
+
+  const xLabels = await labelSeries(
+    organizationId,
+    xAxis,
+    pivot.categories.map((key) => ({ key, currency: "", points: [] })),
+  );
+  const series =
+    segment === "dimension"
+      ? await labelSeries(organizationId, q.groupBy, asGroups(pivot.series))
+      : segment === "date"
+        ? // A date segment's label is its bin start; clients format it for the bin.
+          pivot.series.map((s) => ({ ...s, label: s.key }))
+        : await labelSeries(organizationId, "none", asGroups(pivot.series));
+
+  const response: CostQueryResponse = {
+    series,
+    currencies: [...new Set(pivot.series.map((s) => s.currency))].sort(),
+    totals: totalsOf(asGroups(pivot.series), false),
+    xAxis: {
+      dimension: xAxis,
+      ...(q.xAxisTagKey ? { tagKey: q.xAxisTagKey } : {}),
+      segment,
+      values: xLabels.map((s) => ({
+        key: s.key,
+        label: s.key === "" ? EMPTY_X_VALUE_LABEL : s.label,
+      })),
+    },
+  };
+  if (ctx.measure === "usage") {
+    response.measure = "usage";
+    if (q.usageUnit) response.usageUnit = q.usageUnit;
+  }
+  if (current.conversion) response.conversion = current.conversion;
+  if (ctx.adjustmentSummary) {
+    const rawTotals = rawTotalsOf(current.groups, false);
+    ctx.adjustmentSummary.rawTotals =
+      Object.keys(rawTotals).length > 0 ? rawTotals : { ...response.totals };
+    response.adjustment = ctx.adjustmentSummary;
+  }
+
+  if (q.comparePreviousPeriod) {
+    const span = daySpan(q.from, q.to);
+    // Converted at the previous period's own rates, like the date axis.
+    const previous = await read(addDays(q.from, -span), addDays(q.to, -span), false);
+    // The read keeps the segment in the group key (`x<sep>segment`); the
+    // comparison is per X value, so drop it here. Pivoted unsplit, every
+    // composite key missed the current values and folded into "Other".
+    const prevGroups =
+      segment === "dimension"
+        ? previous.groups.map((g) => {
+            const at = g.key.indexOf(COST_X_SEGMENT_SEPARATOR);
+            return at >= 0 ? { ...g, key: g.key.slice(0, at) } : g;
+          })
+        : previous.groups;
+    const prevPivot = pivotCostGroupsToDimensionAxis(prevGroups, {
+      segment: "none",
+      topN: q.topN,
+      keepCategories: pivot.categories,
+    });
+    response.comparison = await labelSeries(organizationId, "none", asGroups(prevPivot.series));
+    response.previousTotals = totalsOf(asGroups(prevPivot.series), false);
+  }
+  return response;
+}
+
 /** Aggregate cost series for a graph, plus optional comparison and forecast. */
 export async function runCostQuery(
   organizationId: string,
@@ -518,7 +635,12 @@ export async function runCostQuery(
   // rather than a server error, and handed to the main read only: the
   // comparison and forecast reads cover other days, and the reader resolves a
   // metric split's weights for exactly the range it reads.
-  const virtualTagKeys = referencedVirtualTagKeys(filters, q.groupBy, q.groupByTagKey);
+  const virtualTagKeys = [
+    ...new Set([
+      ...referencedVirtualTagKeys(filters, q.groupBy, q.groupByTagKey),
+      ...(q.xAxis === "virtual_tag" && q.xAxisTagKey ? [q.xAxisTagKey] : []),
+    ]),
+  ];
   // Only touched when the query names a virtual tag, so the common path (and
   // every test that mocks the readers) never reaches the loader.
   const virtualTags =
@@ -528,6 +650,21 @@ export async function runCostQuery(
   const missingVirtualTag = virtualTagKeys.find((key) => !virtualTags?.has(key));
   if (missingVirtualTag) {
     throw new CostQueryError(new VirtualTagUnresolvedError(missingVirtualTag).message);
+  }
+
+  // A dimension on the X axis is the same scan with that dimension in the
+  // group key, answered on its own path because every series point is a
+  // dimension value rather than a date from here on. Forecasts, scenarios and
+  // running totals were refused above (`costDisplayProblem`).
+  if (q.xAxis) {
+    return runDimensionAxisQuery(organizationId, q, {
+      baseQuery,
+      virtualTags,
+      displayCurrency,
+      rates,
+      adjustmentSummary,
+      measure,
+    });
   }
 
   const { grouped, conversion } = convert(

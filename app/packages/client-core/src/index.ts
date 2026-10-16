@@ -188,6 +188,12 @@ export {
   COST_MEASURES,
   COST_MEASURE_LABELS,
   COST_GRANULARITIES,
+  COST_COMPARISON_STYLES,
+  COST_COMPARISON_STYLE_LABELS,
+  type CostComparisonStyle,
+  type CostDisplayProblemInput,
+  type CostXAxis,
+  type CostXAxisValue,
   DASHBOARD_WIDGET_KINDS,
   OTHER_GROUP_KEY,
   DEFAULT_COST_GRAPH_CONFIG,
@@ -516,6 +522,7 @@ export {
 } from "./cost-reports";
 export * from "./cost-canvases";
 export * from "./k8s-efficiency";
+export * from "./cost-chart-axis";
 export {
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,

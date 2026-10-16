@@ -234,4 +234,37 @@ describe("renderReportPdf", () => {
     const empty = renderReportPdf({ ...model, sections: [] });
     expect(contentOf(empty)).toContain(hex("This dashboard has no cards yet."));
   });
+
+  it("draws a paired previous-period bar beside each stack, and as a line off a bar chart", () => {
+    const pairedModel = (chartType: "stacked_bar" | "multi_bar" | "line"): PdfReportModel => ({
+      ...model,
+      sections: [
+        {
+          title: "Services vs last month",
+          blocks: [
+            {
+              kind: "chart",
+              chartType,
+              categories: ["EC2", "S3", "Other"],
+              series: [
+                { label: "us-east-1", values: [80, 20, 5] },
+                { label: "eu-west-1", values: [40, 10, 2] },
+                { label: "Previous period", values: [100, 40, null], paired: true },
+              ],
+              format: { currency: "USD" },
+            },
+          ],
+        },
+      ],
+    });
+    const rects = (bytes: Uint8Array) => (contentOf(bytes).match(/ re\b/g) ?? []).length;
+    const stacked = renderReportPdf(pairedModel("stacked_bar"));
+    const grouped = renderReportPdf(pairedModel("multi_bar"));
+    const line = renderReportPdf(pairedModel("line"));
+    expect(contentOf(stacked)).toContain(hex("Previous period"));
+    // Two paired bars (the null draws nothing) on top of the six segments, in
+    // both bar layouts; a line chart draws the series as a line, no extra bars.
+    expect(rects(stacked)).toBe(rects(grouped));
+    expect(rects(stacked)).toBeGreaterThan(rects(line));
+  });
 });

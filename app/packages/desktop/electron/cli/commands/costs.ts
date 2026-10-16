@@ -100,6 +100,26 @@ export interface DisplayFlags {
   binning?: CostBinningId;
   usageUnit?: string;
   cumulative?: boolean;
+  /** A dimension on the X axis, or `date` (reports only) to put the bins back. */
+  xAxis?: CostDimensionId | "date";
+  xAxisTagKey?: string;
+}
+
+/**
+ * `--x-axis provider|service|tag:<key>|…|date`, in the `--group-by` spelling
+ * (a keyed dimension carries its key after a colon). `date` and `none` mean
+ * the date bins.
+ */
+function parseXAxisFlag(raw: string): Pick<DisplayFlags, "xAxis" | "xAxisTagKey"> {
+  const value = raw.trim();
+  if (value === "date" || value === "none") return { xAxis: "date" };
+  const parsed = parseGroupByFlag(value, GROUP_DIMENSIONS);
+  if ("error" in parsed) throw new CliError(parsed.error.replaceAll("--group-by", "--x-axis"), 2);
+  if (parsed.groupBy === "none") return { xAxis: "date" };
+  return {
+    xAxis: parsed.groupBy as CostDimensionId,
+    ...(parsed.tagKey ? { xAxisTagKey: parsed.tagKey } : {}),
+  };
 }
 
 /**
@@ -134,6 +154,7 @@ export function parseDisplayFlags(range: RangeFlags): DisplayFlags {
   const unit = range.unit?.trim();
   if (unit) flags.usageUnit = unit;
   if (range.cumulative) flags.cumulative = true;
+  if (range.xAxis !== undefined) Object.assign(flags, parseXAxisFlag(range.xAxis));
   return flags;
 }
 
@@ -149,8 +170,12 @@ export async function checkDisplayFlags(
     measure?: CostMeasure | undefined;
     usageUnit?: string | undefined;
     groupBy: CostQueryRequest["groupBy"];
+    groupByTagKey?: string | undefined;
     binning: CostBinningId;
     cumulative?: boolean | undefined;
+    xAxis?: CostDimensionId | undefined;
+    xAxisTagKey?: string | undefined;
+    segmentByDate?: boolean | undefined;
   },
 ): Promise<void> {
   if (q.measure === "usage" && !q.usageUnit) {
@@ -169,6 +194,61 @@ export async function checkDisplayFlags(
   const { costDisplayProblem } = await import("@infrawrench/client-core");
   const problem = costDisplayProblem(q);
   if (problem) throw new CliError(problem, 2);
+}
+
+/**
+ * The headline total with the previous period beside it, when the response
+ * carries one: "$1,200.00 (prev $1,000.00, +20.0%)".
+ */
+export function withPreviousTotal(totalLine: string, response: CostQueryResponse): string {
+  const currency = response.currencies[0];
+  const prev = currency !== undefined ? response.previousTotals?.[currency] : undefined;
+  if (prev === undefined || currency === undefined) return totalLine;
+  const current = response.totals[currency] ?? 0;
+  const pct =
+    prev === 0
+      ? "new"
+      : `${current >= prev ? "+" : ""}${(((current - prev) / Math.abs(prev)) * 100).toFixed(1)}%`;
+  return `${totalLine} (prev ${formatMeasureValue(prev, currency, response)}, ${pct})`;
+}
+
+/**
+ * A dimension-X-axis result as text: one bar per value in the server's ranked
+ * order, each with its change against the previous period when the response
+ * carries one, then the segments each bar is split by. The layout is
+ * client-core's `costCategoryChart`, the one every chart draws from.
+ */
+export async function printDimensionAxis(
+  response: CostQueryResponse,
+  binning: CostBinningId,
+): Promise<void> {
+  const { costCategoryChart, costComparisonDelta, formatCostChangePct } =
+    await import("@infrawrench/client-core");
+  const chart = costCategoryChart(response, binning);
+  const currency = response.currencies[0] ?? "";
+  const items = chart.categories.map((cat, i) => {
+    const total = chart.totals[i] ?? 0;
+    const delta = chart.previous ? costComparisonDelta(total, chart.previous[i]) : null;
+    const change = chart.previous
+      ? ` ${c.dim(delta ? formatCostChangePct(delta.changePct) : "new")}`
+      : "";
+    return {
+      label: cat.isOther ? c.dim("other") : cat.label,
+      value: total,
+      display: `${formatMeasureValue(total, currency, response)}${change}`,
+      colorIndex: i,
+    };
+  });
+  for (const line of barChart(items, 32)) println(line);
+  if (chart.series.length > 1) {
+    println();
+    const names = chart.series.map((s) => (s.isOther ? "other" : s.label));
+    println(
+      c.dim(
+        `each bar split by ${response.xAxis?.segment === "date" ? "date bin" : "segment"}: ${names.slice(0, 10).join(", ")}${names.length > 10 ? ", …" : ""}`,
+      ),
+    );
+  }
 }
 
 /** One value as text, for whichever measure the response carries. */
@@ -480,7 +560,14 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   }
   const org = await resolveOrg(ctx);
 
-  const parsedGroupBy = parseGroupByFlag(range.groupBy ?? "provider", GROUP_DIMENSIONS);
+  const display = parseDisplayFlags(range);
+  // A dimension on X makes the group-by a segment of each bar, so it defaults
+  // to none there rather than to provider.
+  const dimensionAxis = display.xAxis && display.xAxis !== "date" ? display.xAxis : undefined;
+  const parsedGroupBy = parseGroupByFlag(
+    range.groupBy ?? (dimensionAxis ? "none" : "provider"),
+    GROUP_DIMENSIONS,
+  );
   if ("error" in parsedGroupBy) throw new CliError(parsedGroupBy.error);
   const groupBy = parsedGroupBy.groupBy;
   // Set only for a keyed dimension (`tag:env`, `virtual_tag:team`): the server
@@ -494,13 +581,17 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const displayCurrency = parseCurrency(range.currency);
   const filters = await parseWhere(range.where);
   const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
-  const display = parseDisplayFlags(range);
   const binning = display.binning ?? "daily";
   const cumulative = display.cumulative === true;
+  const segmentByDate = Boolean(dimensionAxis && range.segmentByDate);
+  const compare = range.compare === true;
   await checkDisplayFlags(org.id, {
     ...display,
+    xAxis: dimensionAxis,
     binning,
     groupBy: groupBy as CostQueryRequest["groupBy"],
+    ...(groupByTagKey ? { groupByTagKey } : {}),
+    ...(segmentByDate ? { segmentByDate } : {}),
   });
 
   const { from, to } = resolveDateRange(range);
@@ -513,7 +604,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     ...(groupByTagKey ? { groupByTagKey } : {}),
     filters,
     topN: 8,
-    comparePreviousPeriod: false,
+    comparePreviousPeriod: compare,
     forecast: false,
     // Omitted when defaulted, so an older server that has never heard of either
     // field still answers the same request it always did.
@@ -531,6 +622,13 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     ...(display.measure && display.measure !== "cost" ? { measure: display.measure } : {}),
     ...(display.usageUnit ? { usageUnit: display.usageUnit } : {}),
     ...(cumulative ? { cumulative: true } : {}),
+    ...(dimensionAxis
+      ? {
+          xAxis: dimensionAxis,
+          ...(display.xAxisTagKey ? { xAxisTagKey: display.xAxisTagKey } : {}),
+          ...(segmentByDate ? { segmentByDate: true } : {}),
+        }
+      : {}),
   };
 
   const [response, collection] = await Promise.all([
@@ -570,6 +668,11 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       usageUnit: display.usageUnit ?? null,
       binning,
       cumulative,
+      // The axis the amounts are keyed by: `null` is the date bins.
+      xAxis: dimensionAxis ?? null,
+      xAxisTagKey: display.xAxisTagKey ?? null,
+      segmentByDate,
+      comparePreviousPeriod: compare,
       ...response,
       collectionFailures: collection.failing,
       awaitingData: collection.empty,
@@ -589,9 +692,12 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     return;
   }
 
-  const totalLine = Object.entries(totals)
-    .map(([currency, amount]) => formatMeasureValue(amount, currency, response))
-    .join(" + ");
+  const totalLine = withPreviousTotal(
+    Object.entries(totals)
+      .map(([currency, amount]) => formatMeasureValue(amount, currency, response))
+      .join(" + "),
+    response,
+  );
   // The basis and any charge-type narrowing go in the header: a total that is
   // not the whole net bill must say so on the same line as the number, or it
   // gets quoted as if it were.
@@ -615,6 +721,9 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     ...(response.measure === "usage" ? [`usage in ${response.usageUnit ?? "?"}`] : []),
     ...(response.measure === "count" ? [`distinct ${groupBy} count`] : []),
     ...(cumulative ? ["cumulative"] : []),
+    ...(dimensionAxis
+      ? [`by ${display.xAxisTagKey ? `${dimensionAxis} ${display.xAxisTagKey}` : dimensionAxis}`]
+      : []),
   ].join(" · ");
   println(`${c.bold(org.displayName)} ${c.dim(`· ${scope}`)}  ${c.bold(totalLine)}`);
   if (basis === "amortized" && !collection.amortizing) {
@@ -632,6 +741,13 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     );
   }
   println();
+
+  // A dimension on X: one bar per value (ranked, with the change when
+  // comparing), not a trend over time.
+  if (response.xAxis) {
+    await printDimensionAxis(response, binning);
+    return;
+  }
 
   // Daily total trend across all series (single-currency assumption per line).
   const byBucket = new Map<string, number>();

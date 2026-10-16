@@ -186,8 +186,12 @@ function drawChart(layout: Layout, block: Extract<PdfBlock, { kind: "chart" }>):
   }
 
   const stacked = block.chartType === "stacked_bar" || block.chartType === "area";
-  const base = block.series.filter((s) => !s.overlay);
-  const overlays = block.series.filter((s) => s.overlay);
+  const barChart = block.chartType === "stacked_bar" || block.chartType === "multi_bar";
+  // A paired series is its own bar beside each category's bar or stack. Off a
+  // bar chart it has nothing to stand beside, so it draws as a line.
+  const paired = barChart ? block.series.filter((s) => s.paired && !s.overlay) : [];
+  const base = block.series.filter((s) => !s.overlay && !(barChart && s.paired));
+  const overlays = block.series.filter((s) => s.overlay || (!barChart && s.paired));
 
   // Value range: stacked charts are bounded by per-category sums.
   let maxV = 0;
@@ -212,7 +216,7 @@ function drawChart(layout: Layout, block: Extract<PdfBlock, { kind: "chart" }>):
         }
       }
     }
-    for (const s of overlays) {
+    for (const s of [...overlays, ...paired]) {
       const v = s.values[i];
       if (v !== null && v !== undefined) {
         maxV = Math.max(maxV, v);
@@ -262,9 +266,27 @@ function drawChart(layout: Layout, block: Extract<PdfBlock, { kind: "chart" }>):
 
   if (block.chartType === "stacked_bar" || block.chartType === "multi_bar") {
     const barGap = Math.min(slot * 0.2, 6);
+    const drawBar = (x: number, width: number, v: number, color: string) => {
+      const y0 = yOf(Math.max(0, v));
+      const y1 = yOf(Math.min(0, v));
+      page.rect(x, y0, Math.max(width - 0.5, 0.3), Math.max(y1 - y0, 0.3), { fill: color });
+    };
     for (let i = 0; i < n; i++) {
-      const x0 = plotX + slot * i + barGap / 2;
-      const w = slot - barGap;
+      let x0 = plotX + slot * i + barGap / 2;
+      let w = slot - barGap;
+      // Paired bars take the left of the slot, one each, so every pair reads
+      // "then, now"; the stack (or the grouped bars) takes the rest.
+      if (paired.length > 0 && block.chartType === "stacked_bar") {
+        const pw = w / (paired.length + 1);
+        paired.forEach((s, k) => {
+          const v = s.values[i];
+          if (v !== null && v !== undefined && v !== 0) {
+            drawBar(x0 + pw * k, pw, v, colorOf(s));
+          }
+        });
+        x0 += pw * paired.length;
+        w = pw;
+      }
       if (block.chartType === "stacked_bar") {
         let pos = 0;
         let neg = 0;
@@ -280,15 +302,12 @@ function drawChart(layout: Layout, block: Extract<PdfBlock, { kind: "chart" }>):
           page.rect(x0, yTop, w, Math.max(yBottom - yTop, 0.3), { fill: colorOf(s) });
         }
       } else {
-        const bw = w / Math.max(1, base.length);
-        base.forEach((s, k) => {
+        const bars = [...paired, ...base];
+        const bw = w / Math.max(1, bars.length);
+        bars.forEach((s, k) => {
           const v = s.values[i];
           if (v === null || v === undefined || v === 0) return;
-          const y0 = yOf(Math.max(0, v));
-          const y1 = yOf(Math.min(0, v));
-          page.rect(x0 + bw * k, y0, Math.max(bw - 0.5, 0.3), Math.max(y1 - y0, 0.3), {
-            fill: colorOf(s),
-          });
+          drawBar(x0 + bw * k, bw, v, colorOf(s));
         });
       }
     }

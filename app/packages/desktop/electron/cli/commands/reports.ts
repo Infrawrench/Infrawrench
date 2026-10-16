@@ -27,7 +27,14 @@ import { c, printJson, println, printTable, seriesColor } from "../output";
 import { barChart, sparkline } from "../charts";
 import { exportPdf, wantsPdf, type PdfExportFlags } from "../pdf-export";
 import type { RangeFlags } from "../args";
-import { checkDisplayFlags, formatMeasureValue, parseDisplayFlags, seriesTotal } from "./costs";
+import {
+  checkDisplayFlags,
+  formatMeasureValue,
+  parseDisplayFlags,
+  printDimensionAxis,
+  seriesTotal,
+  withPreviousTotal,
+} from "./costs";
 import { confirm } from "../prompt";
 
 function requireCloud(ctx: CliContext): void {
@@ -521,6 +528,15 @@ export async function cmdRunReport(
       groupBy: report.config.groupBy,
       binning: display.binning ?? report.config.binning,
       cumulative: display.cumulative ?? report.config.cumulative,
+      ...(display.xAxis && display.xAxis !== "date"
+        ? {
+            xAxis: display.xAxis,
+            ...(display.xAxisTagKey ? { xAxisTagKey: display.xAxisTagKey } : {}),
+            // The run override makes the axis's own segment one bar per value.
+            groupBy: report.config.groupBy === display.xAxis ? "none" : report.config.groupBy,
+            ...(report.config.groupByTagKey ? { groupByTagKey: report.config.groupByTagKey } : {}),
+          }
+        : {}),
     });
   }
 
@@ -543,7 +559,9 @@ export async function cmdRunReport(
   const totalLine = Object.entries(run.result.totals)
     .map(([currency, amount]) => formatMeasureValue(amount, currency, run.result))
     .join(" + ");
-  println(`${c.bold(run.name)} ${c.dim(`· ${run.from} → ${run.to}`)}  ${c.bold(totalLine || "—")}`);
+  println(
+    `${c.bold(run.name)} ${c.dim(`· ${run.from} → ${run.to}`)}  ${c.bold(withPreviousTotal(totalLine, run.result) || "—")}`,
+  );
   if (report.description) println(c.dim(report.description));
   println();
 
@@ -553,35 +571,40 @@ export async function cmdRunReport(
     return;
   }
 
-  // Total trend across every series, on the report's own binning.
-  const byBucket = new Map<string, number>();
-  for (const s of series) {
-    for (const p of s.points) byBucket.set(p.bucket, (byBucket.get(p.bucket) ?? 0) + p.amount);
-  }
-  const buckets = [...byBucket.keys()].sort();
-  const totals = buckets.map((b) => byBucket.get(b)!);
-  const sparkWidth = Math.min(60, Math.max(20, buckets.length));
-  const measureNote =
-    run.result.measure === "usage"
-      ? ` · usage in ${run.result.usageUnit ?? "?"}`
-      : run.result.measure === "count"
-        ? ` · distinct ${report.config.groupBy} count`
-        : "";
-  println(
-    `${c.dim(`${binning}${cumulative && binning !== "cumulative" ? " cumulative" : ""}${measureNote}`)} ${seriesColor(0)(sparkline(totals, sparkWidth))}`,
-  );
-  println();
+  // Saved (or run) with a dimension on X: one bar per value, not a trend.
+  if (run.result.xAxis) {
+    await printDimensionAxis(run.result, binning === "cumulative" ? "daily" : binning);
+  } else {
+    // Total trend across every series, on the report's own binning.
+    const byBucket = new Map<string, number>();
+    for (const s of series) {
+      for (const p of s.points) byBucket.set(p.bucket, (byBucket.get(p.bucket) ?? 0) + p.amount);
+    }
+    const buckets = [...byBucket.keys()].sort();
+    const totals = buckets.map((b) => byBucket.get(b)!);
+    const sparkWidth = Math.min(60, Math.max(20, buckets.length));
+    const measureNote =
+      run.result.measure === "usage"
+        ? ` · usage in ${run.result.usageUnit ?? "?"}`
+        : run.result.measure === "count"
+          ? ` · distinct ${report.config.groupBy} count`
+          : "";
+    println(
+      `${c.dim(`${binning}${cumulative && binning !== "cumulative" ? " cumulative" : ""}${measureNote}`)} ${seriesColor(0)(sparkline(totals, sparkWidth))}`,
+    );
+    println();
 
-  const items = series.map((s, idx) => {
-    const total = seriesTotal(s.points, cumulative);
-    return {
-      label: s.key === "__other__" ? c.dim("other") : s.label,
-      value: total,
-      display: formatMeasureValue(total, s.currency, run.result),
-      colorIndex: idx,
-    };
-  });
-  for (const line of barChart(items, 32)) println(line);
+    const items = series.map((s, idx) => {
+      const total = seriesTotal(s.points, cumulative);
+      return {
+        label: s.key === "__other__" ? c.dim("other") : s.label,
+        value: total,
+        display: formatMeasureValue(total, s.currency, run.result),
+        colorIndex: idx,
+      };
+    });
+    for (const line of barChart(items, 32)) println(line);
+  }
 
   if (report.placements.length > 0) {
     println();

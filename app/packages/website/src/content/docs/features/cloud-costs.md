@@ -42,10 +42,11 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 | Cumulative | Running totals from the start of the range, at any bin size                                                                                                                                       |
 | Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                                                                                                        |
 | Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                                                                                                                     |
+| X axis     | **Date** (the default), or a dimension's values: one bar per service, account, tag value... ranked by spend; see [chart axes](./cost-chart-axes.md)                                               |
 | Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)                                                                                              |
 | Cost basis | **Cash** (what you were charged), **Amortized** (commitments spread over the term they buy) or **Blended** (amortized, with commitment discounts shared evenly across eligible usage) — see below |
 | Top groups | Show the top N groups (default 5); the rest fold into **Other**                                                                                                                                   |
-| Compare    | Overlay the previous period as a dashed line, with a % change badge                                                                                                                               |
+| Compare    | Overlay the previous period as a dashed line or as paired bars beside each bar, with a % change badge                                                                                             |
 | Forecast   | Project the recent trend forward as a dashed continuation                                                                                                                                         |
 
 ![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-service-forecast.png)
@@ -63,7 +64,8 @@ The same spend can answer different questions depending on how it is drawn. Thes
 - **Chart type**: **Stacked bar**, **Bar** (side by side), **Line** and **Area** draw a time axis. **Pie** and **Donut** draw each group's total for the period, and the donut carries the total in its hole. **Table** lists every bin as a row with a column per series, the bin's total and, with **Compare previous period** on, the previous period's figure. Count is a single series, so pie and donut are not offered for it.
 - **Binning**: daily, weekly (Monday start), monthly or quarterly (quarters start on 1 January, April, July and October, UTC). **Hourly** is listed but disabled with an explanation: every provider's cost rows are collected per day, so there is no hour to put a day's spend in. The option switches on by itself if an account ever reports hourly rows.
 - **Cumulative** turns per-bin values into running totals from the start of the range, at any bin size. Totals then read the last point instead of adding up the running sums. Count cannot be cumulative: adding up per-bin counts would count the same service once per bin.
-- **Compare previous period** overlays the same span shifted back one period, for every measure.
+- **Compare previous period** overlays the same span shifted back one period, for every measure: as a dashed totals line, or on a bar chart as a muted bar paired beside each bar. Tables add previous, change and change % columns.
+- **X axis** can hold a dimension instead of dates: one bar per value, ranked by spend, segmented by the group-by or by date bin. Clicking a bar (or a slice, a legend entry, a table value) drills into it. Both are covered in [Chart axes, comparison & drill-down](./cost-chart-axes.md).
 
 Forecasts, scenarios, billing rules and unit costs only mean anything for money, so they are switched off (and the server refuses them) for the usage and count measures. A usage or count card says under its title what it is measuring, so a number with no currency sign is never read as dollars.
 

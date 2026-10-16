@@ -138,6 +138,7 @@ export function CostGraphCard({
           cumulative={config.cumulative}
           format={(v) => fmt(v)}
           annotations={annotations.data ?? []}
+          comparisonStyle={config.comparisonStyle}
         />
       ) : (
         <Text style={styles.state}>No cost data for this period yet</Text>

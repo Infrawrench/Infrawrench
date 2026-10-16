@@ -121,6 +121,10 @@ Two behaviours worth knowing:
 
 Viewing a report's schedules needs `costs:read`; creating, editing, deleting, and **Send now** need `org:settings:write` — the same step up [cost exports](./cost-exports.md) take, because a schedule is standing authorisation to send org spend to addresses its creator picked. Every change and manual send lands in the [audit log](../team-and-billing/audit-log.md).
 
+## Drilling into a report
+
+Click a bar, a slice, a legend entry or a value in the table to narrow the report to it and break it down one level further (provider, then service, then region, then resource). Breadcrumbs under the title step back up. The report itself never changes; **Save as new report** keeps the drilled view as a report of its own, in the same folder. See [Chart axes, comparison & drill-down](./cost-chart-axes.md#drill-down).
+
 ## Annotations
 
 A step change in a spend chart explains itself for about a fortnight. After that nobody remembers whether it was a migration, a launch, or a price change — and the answer, if it exists anywhere, is in a Slack thread.
@@ -178,12 +182,13 @@ infrawrench reports send "Monthly spend"  # deliver it to its schedules right no
 infrawrench reports "Monthly spend" --format pdf  # write monthly-spend.pdf (or --out <path>)
 infrawrench reports "Monthly spend" --bin quarter --cumulative   # a one-off view, nothing saved
 infrawrench reports "Monthly spend" --measure count --json       # how many services were billed per bin
+infrawrench reports "Monthly spend" --x-axis service             # one bar per service instead of dates
 infrawrench reports move "Monthly spend" "Weekly spend" folder:"Finance / Old" --folder Archive
 infrawrench reports move "Monthly spend" --folder top    # back to the top level
 infrawrench reports delete "Old draft" folder:Scratch -y  # asks first without -y
 ```
 
-`--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour` and `--cumulative` change how this one run is measured and binned without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
+`--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour`, `--cumulative` and `--x-axis <dimension>|date` change how this one run is measured, binned and laid out without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
 
 `move` and `delete` take one item per argument (quote names with spaces); prefix a folder with `folder:`. Like the Reports page they are all or nothing, and `--json` prints what was moved or deleted.
 
@@ -193,13 +198,13 @@ The name is matched exactly first, then as a substring; an ambiguous query lists
 
 ## From chat and MCP
 
-Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report`, `bulk_move_cost_reports` and `bulk_delete_cost_reports` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning` and `cumulative` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
+Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report`, `bulk_move_cost_reports` and `bulk_delete_cost_reports`, so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning`, `cumulative` and `xAxis` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id, or back at the top level with `null`.
 
 Reads need `costs:read` and writes need `costs:write`; see [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
 
 ## On your phone
 
-The [mobile app](./mobile-app.md) lists your saved reports — grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path — and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too, honouring the saved display options: a table report draws as rows, a donut as a ring with its total, and a usage or count report prints quantities and counts rather than money.
+The [mobile app](./mobile-app.md) lists your saved reports, grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path, and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too, honouring the saved display options: a table report draws as rows, a donut as a ring with its total, a report with a dimension on its X axis as numbered bars with the values listed underneath, and a usage or count report prints quantities and counts rather than money.
 
 Creating or editing a delivery schedule stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses — org-egress decisions that belong next to the pickers that make them safe.
 

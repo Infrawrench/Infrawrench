@@ -152,7 +152,9 @@ COMMANDS
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
                       [--filter <name|id>  a saved cost filter, resolved server-side; ANDs with --where]
                       [--measure cost|usage|count] [--unit <usage unit>] [--bin day|week|month|quarter|hour]
-                      [--cumulative]
+                      [--cumulative] [--compare  the previous period, with the change]
+                      [--x-axis service|region|tag:<key>|…  one bar per value instead of dates;
+                      --group-by then splits each bar] [--segment-by-date  split each bar by bin]
   costs --anomalies   days a provider or service spiked past its own baseline, with any
                       verdict or suppression in the feedback column   [--days 30]
     feedback <id>     tell detection what a spike was (id or its first characters, from the
@@ -178,6 +180,7 @@ COMMANDS
   reports             the org's saved cost reports (named cost graphs)
   reports <name|id>   run one saved report and chart it
                       [--measure cost|usage|count] [--unit <u>] [--bin …] [--cumulative]
+                      [--x-axis <dimension>|date]
                       (one-off view of the report; nothing is saved)
                       [--format pdf [--out <path>]  save the rendered PDF instead]
   reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
@@ -515,6 +518,12 @@ FLAGS
   --bin <b>           costs/reports: day (default for costs), week, month, quarter, or hour
                       (refused while every provider reports daily rows)
   --cumulative        costs/reports: running totals from the start of the range
+  --x-axis <d>        costs/reports: put a dimension's values on the X axis (one bar per value,
+                      ranked, the tail folded into other) instead of date bins; same spelling as
+                      --group-by, which then splits each bar. reports: "date" puts the bins back
+  --segment-by-date   costs --x-axis without --group-by: split each value's bar by date bin
+  --compare           costs: add the previous period of the same length; with --x-axis each
+                      value is compared with itself
   --margin            unit-costs: draw (revenue − cost) ÷ revenue instead of cost per unit.
                       Only for a metric declared revenue-shaped; the server refuses it for a
                       count metric rather than returning a plausible wrong number

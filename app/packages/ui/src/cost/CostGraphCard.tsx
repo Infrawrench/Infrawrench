@@ -21,13 +21,27 @@ import {
   FORECAST_COLOR,
   OTHER_SERIES_COLOR,
   SCENARIO_COLOR,
+  applyCostDrillPath,
+  costComparisonDelta,
+  costDrillChoices,
+  costDrillNeedsChoice,
+  costDrillReportName,
+  costDrillTarget,
   costSeriesTotal,
   effectiveCostBinning,
+  formatCostChangePct,
   formatCostMeasureValue,
+  isCostDrillableValue,
   isCostTotalsChart,
+  nextCostDrillDimension,
+  resolveCostDrillStep,
   type CostConversion,
+  type CostDimensionId,
+  type CostDrillStep,
 } from "@infrawrench/client-core";
 import { useChartTheme } from "../chart-theme.js";
+import { useDataString } from "../i18n/data-strings.js";
+import { DIMENSION_LABELS } from "./CostFilterEditor.js";
 import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
 import { CostAnnotationModal } from "./CostAnnotationModal.js";
 import {
@@ -48,9 +62,11 @@ import {
   alignComparison,
   COMPARISON_KEY,
   FORECAST_KEY,
+  LABEL_KEY,
   SCENARIO_KEY,
   formatBucketLabel,
   formatMoney,
+  pivotDimensionAxis,
   pivotSeries,
   spliceForecast,
   spliceScenario,
@@ -94,11 +110,122 @@ export interface CostGraphCardProps {
    * the unit-cost chart: that one plots a ratio, not an amount.
    */
   onConversion?: ((conversion: CostConversion | undefined) => void) | undefined;
+  /**
+   * Save the drilled-down view as a new report, under the suggested name.
+   *
+   * Drilling is ephemeral: clicking a value narrows this card's view without
+   * touching the saved report or widget. This is the one way to keep a view
+   * somebody drilled into. Omitted where the host cannot create reports, which
+   * hides the action rather than offering one that would fail.
+   */
+  onSaveAsReport?: ((config: CostGraphConfig, name: string) => Promise<void>) | undefined;
+}
+
+/** A value waiting for the user to say which dimension to drill into it by. */
+interface PendingDrill {
+  value: string;
+  label: string;
 }
 
 interface LoadedState {
   response: CostQueryResponse;
   pivot: PivotedChart;
+}
+
+/**
+ * "Drill into…": every drillable value as a native select, which is the
+ * keyboard (and screen reader) route to what a pointer does by clicking a bar.
+ * Resets to the prompt after each pick, so the same value can be picked again
+ * after stepping back up.
+ */
+function DrillSelect({
+  values,
+  onPick,
+  className = "w-28",
+}: {
+  values: ReadonlyArray<{ value: string; label: string }>;
+  onPick: (value: { value: string; label: string }) => void;
+  className?: string;
+}) {
+  const gt = useGT();
+  return (
+    <select
+      value=""
+      aria-label={gt("Drill into a value")}
+      onChange={(e) => {
+        const picked = values.find((v) => v.value === e.target.value);
+        if (picked) onPick(picked);
+      }}
+      className={`${className} rounded border border-border bg-surface-sunken px-1 py-0.5 text-[11px] text-on-surface-secondary focus:outline-none focus:border-blue-500`}
+    >
+      <option value="">{gt("Drill into…")}</option>
+      {values.map((v) => (
+        <option key={v.value} value={v.value}>
+          {v.label || v.value || gt("(no value)")}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** The "break this value down by" choices, focused on open. */
+function DrillChoices({
+  label,
+  choices,
+  onChoose,
+  onCancel,
+  cancelLabel,
+}: {
+  label: string;
+  choices: ReadonlyArray<{ dimension: CostDimensionId; label: string }>;
+  onChoose: (dimension: CostDimensionId) => void;
+  onCancel: () => void;
+  cancelLabel: string;
+}) {
+  const firstRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px]"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <span className="text-on-surface-faint">{label}</span>
+      {choices.map((c, i) => (
+        <button
+          key={c.dimension}
+          ref={i === 0 ? firstRef : undefined}
+          type="button"
+          onClick={() => onChoose(c.dimension)}
+          className="rounded-full border border-border px-2 py-0.5 text-on-surface-secondary hover:border-border-strong focus-visible:border-border-strong"
+        >
+          {c.label}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onCancel}
+        className="underline text-on-surface-faint hover:text-on-surface-secondary"
+      >
+        {cancelLabel}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * A tick label short enough to sit under one bar. Dates are already short; a
+ * dimension value can be a 60-character resource id, which would overprint
+ * its neighbours. The tooltip and the table carry the full label.
+ */
+function truncateTick(label: string, truncate: boolean): string {
+  if (!truncate || label.length <= 16) return label;
+  return `${label.slice(0, 15)}…`;
 }
 
 /**
@@ -117,10 +244,33 @@ function SpendGraphCard({
   annotationReportId,
   annotationReportName,
   onConversion,
+  onSaveAsReport,
 }: CostGraphCardProps) {
   const gt = useGT();
+  const gtData = useDataString();
   const resolvedEditLabel = editLabel ?? gt("Edit widget");
   const chart = useChartTheme();
+  /**
+   * The values clicked through, outermost first. Local state on purpose: a
+   * drill is a way of looking, not an edit, so the saved report or widget never
+   * changes and a reload (or another viewer) sees the chart as saved.
+   */
+  const [drillPath, setDrillPath] = useState<CostDrillStep[]>([]);
+  const [pendingDrill, setPendingDrill] = useState<PendingDrill | null>(null);
+  const [saveState, setSaveState] = useState<
+    { status: "idle" | "saving" | "saved" } | { status: "error"; message: string }
+  >({ status: "idle" });
+  // A different saved config is a different chart: whatever was drilled into
+  // on the old one does not apply to it.
+  useEffect(() => {
+    setDrillPath([]);
+    setPendingDrill(null);
+    setSaveState({ status: "idle" });
+  }, [config]);
+  /** The config actually drawn: the saved one with the drill path applied. */
+  const view = useMemo(() => applyCostDrillPath(config, drillPath), [config, drillPath]);
+  /** Set by a bar's own click so the chart-wide click (annotations) skips it. */
+  const markClickedRef = useRef(false);
   const [state, setState] = useState<LoadedState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,11 +282,11 @@ function SpendGraphCard({
     startDate: string;
   } | null>(null);
 
-  const request = useMemo(() => costQueryForConfig(config), [config]);
-  const { bin, cumulative } = effectiveCostBinning(config);
+  const request = useMemo(() => costQueryForConfig(view), [view]);
+  const { bin, cumulative } = effectiveCostBinning(view);
   /** Draws period totals per group (pie, donut) rather than a time axis. */
-  const totalsChart = isCostTotalsChart(config.chartType);
-  const tableView = config.chartType === "table";
+  const totalsChart = isCostTotalsChart(view.chartType);
+  const tableView = view.chartType === "table";
 
   /**
    * Held in a ref rather than listed in the fetch effect's dependencies: a
@@ -154,6 +304,13 @@ function SpendGraphCard({
       .queryCosts(request)
       .then((response) => {
         if (cancelled) return;
+        // A dimension X axis is laid out by value, with the previous period
+        // paired by value; nothing below (forecast, scenario) applies to it.
+        if (response.xAxis && !totalsChart) {
+          setState({ response, pivot: pivotDimensionAxis(response, view.binning) });
+          onConversionRef.current?.(response.conversion);
+          return;
+        }
         const pivot = pivotSeries(response.series);
         if (response.comparison && !totalsChart) {
           alignComparison(pivot.rows, response.comparison);
@@ -161,13 +318,13 @@ function SpendGraphCard({
         // The table lists observed buckets only: a projected row would read as
         // a recorded figure in a grid of recorded figures.
         if (response.forecast && !totalsChart && !tableView) {
-          spliceForecast(pivot, response, config.binning, cumulative);
+          spliceForecast(pivot, response, view.binning, cumulative);
         }
         // A second overlay, never a replacement for the first: the trend line
         // stays on the chart beside the scenario line so a reader can see what
         // the fit said before anybody's assumptions touched it.
         if (response.scenario && !totalsChart && !tableView) {
-          spliceScenario(pivot, response, config.binning, cumulative);
+          spliceScenario(pivot, response, view.binning, cumulative);
         }
         setState({ response, pivot });
         onConversionRef.current?.(response.conversion);
@@ -185,7 +342,7 @@ function SpendGraphCard({
     return () => {
       cancelled = true;
     };
-  }, [api, request, totalsChart, tableView, config.binning, cumulative]);
+  }, [api, request, totalsChart, tableView, view.binning, cumulative]);
 
   const loadAnnotations = api.listCostAnnotations;
   const refreshAnnotations = useCallback(async () => {
@@ -211,8 +368,11 @@ function SpendGraphCard({
    * series, the totals and the y domain are computed from exactly the same rows
    * whether or not a single note exists.
    */
+  /** Values on the X axis instead of dates: annotations, which are dated, do not apply. */
+  const dimensionAxis = Boolean(state?.response.xAxis) && !totalsChart;
+
   const markers: CostAnnotationMarker[] = useMemo(() => {
-    if (!state || totalsChart || tableView) return [];
+    if (!state || totalsChart || tableView || state.response.xAxis) return [];
     return bucketCostAnnotations(
       annotations,
       state.pivot.rows.map((r) => String(r["bucket"])),
@@ -220,10 +380,73 @@ function SpendGraphCard({
     );
   }, [annotations, state, bin, totalsChart, tableView]);
 
-  const canWriteAnnotations = Boolean(
-    api.createCostAnnotation && api.updateCostAnnotation && api.deleteCostAnnotation,
-  );
+  const canWriteAnnotations =
+    Boolean(api.createCostAnnotation && api.updateCostAnnotation && api.deleteCostAnnotation) &&
+    !dimensionAxis;
   const openMarkerRow = markers.find((m) => m.bucket === openMarker) ?? null;
+
+  /*
+   * Drill-down. What a click narrows to is the value of the X axis dimension
+   * on a dimension axis, otherwise the clicked series' group-by value; null
+   * when the chart has nothing to narrow (ungrouped, count, unit cost).
+   */
+  const drillTarget = costDrillTarget(view);
+  /**
+   * The values a drill can start from, in the order the chart draws them:
+   * the X axis values on a dimension axis, otherwise the series. "Other" is
+   * left out because it is many values.
+   */
+  const drillValues = useMemo(() => {
+    if (!state || !drillTarget) return [];
+    if (state.response.xAxis && !totalsChart) {
+      return state.response.xAxis.values
+        .filter((v) => isCostDrillableValue(v.key))
+        .map((v) => ({ value: v.key, label: v.label }));
+    }
+    return state.response.series
+      .filter((s) => isCostDrillableValue(s.key))
+      .filter((s, i, all) => all.findIndex((o) => o.key === s.key) === i)
+      .map((s) => ({ value: s.key, label: s.label }));
+  }, [state, drillTarget, totalsChart]);
+  const canDrill = drillTarget !== null && drillValues.length > 0;
+
+  const pushDrillStep = (step: CostDrillStep | null) => {
+    if (!step) return;
+    setDrillPath((path) => [...path, step]);
+    setPendingDrill(null);
+    setSaveState({ status: "idle" });
+  };
+
+  /**
+   * Drill into one value: straight down the fixed hierarchy where there is
+   * one, otherwise ask which dimension to break it down by (a tag has no
+   * natural child, and a resource is the bottom of the hierarchy).
+   */
+  const drillInto = (value: string, label: string) => {
+    if (!drillTarget || !isCostDrillableValue(value)) return;
+    if (
+      costDrillNeedsChoice(drillTarget.dimension) ||
+      !nextCostDrillDimension(drillTarget.dimension)
+    ) {
+      setPendingDrill({ value, label });
+      return;
+    }
+    pushDrillStep(resolveCostDrillStep(view, value, label));
+  };
+
+  const saveDrillAsReport = async () => {
+    if (!onSaveAsReport) return;
+    setSaveState({ status: "saving" });
+    try {
+      await onSaveAsReport(view, costDrillReportName(title || gt("Costs"), drillPath));
+      setSaveState({ status: "saved" });
+    } catch (e) {
+      setSaveState({
+        status: "error",
+        message: e instanceof Error ? e.message : gt("Couldn't save the report"),
+      });
+    }
+  };
 
   const currency = state?.response.currencies[0] ?? "USD";
   /**
@@ -350,10 +573,32 @@ function SpendGraphCard({
       ? OTHER_SERIES_COLOR
       : (chart.colors[index % chart.colors.length] ?? OTHER_SERIES_COLOR);
 
+  /** A change in the card's own unit, signed: "+US$12.00", "−US$3.40". */
+  const signedAmount = (change: number): string =>
+    `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change))}`;
+
+  /**
+   * The previous-period figure for one tooltip row, with the change against
+   * the current bucket's (or value's) total beside it, so a paired bar or a
+   * point on the dashed line can be read without doing the subtraction.
+   */
+  const previousWithDelta = (previous: number, row: Record<string, unknown> | undefined) => {
+    const current = (state?.pivot.series ?? []).reduce((sum, def) => {
+      const v = row?.[def.dataKey];
+      return sum + (typeof v === "number" ? v : 0);
+    }, 0);
+    const delta = costComparisonDelta(current, previous);
+    return delta
+      ? `${fmt(previous)} (${signedAmount(delta.change)}, ${formatCostChangePct(delta.changePct)})`
+      : fmt(previous);
+  };
+
   // The chart body is exposed as a single role="img" with a summary label
   // only when a chart is actually rendered: loading, error, and empty
   // states keep their own text visible to assistive tech.
   const hasChartData = !loading && !error && (state?.pivot.rows.length ?? 0) > 0;
+  /** The "Drill into…" select sits in the rail until a drill starts. */
+  const showRailDrill = canDrill && hasChartData && drillPath.length === 0;
 
   /**
    * The table view: one row per bucket, a column per series, the bucket total
@@ -363,17 +608,36 @@ function SpendGraphCard({
    */
   const renderTable = (pivot: PivotedChart) => {
     const comparing = Boolean(state?.response.comparison);
+    // On a date axis a drill starts from a series (a column); on a dimension
+    // axis from a value (a row). Either way it is a real button, so the table
+    // is the keyboard route into the same drill a bar click takes.
+    const drillColumns = canDrill && !dimensionAxis;
+    const drillRows = canDrill && dimensionAxis;
+    const drillButton = (value: string, label: string) => (
+      <button
+        type="button"
+        onClick={() => drillInto(value, label)}
+        title={gt("Drill into {value}", { value: label })}
+        className="underline decoration-dotted underline-offset-2 hover:text-on-surface focus-visible:text-on-surface"
+      >
+        {label}
+      </button>
+    );
     return (
       <div className="flex-1 min-h-0 overflow-auto">
         <table className="w-full text-xs tabular-nums">
           <thead className="sticky top-0 bg-surface-raised">
             <tr className="text-on-surface-faint">
               <th scope="col" className="text-left font-medium py-1 pr-3">
-                {gt("Period")}
+                {dimensionAxis
+                  ? gtData(DIMENSION_LABELS[state!.response.xAxis!.dimension])
+                  : gt("Period")}
               </th>
               {pivot.series.map((def) => (
                 <th key={def.dataKey} scope="col" className="text-right font-medium py-1 px-2">
-                  {def.label}
+                  {drillColumns && isCostDrillableValue(def.key)
+                    ? drillButton(def.key, def.label)
+                    : def.label}
                 </th>
               ))}
               {pivot.series.length > 1 && (
@@ -382,25 +646,42 @@ function SpendGraphCard({
                 </th>
               )}
               {comparing && (
-                <th scope="col" className="text-right font-medium py-1 pl-2">
-                  {gt("Previous period")}
-                </th>
+                <>
+                  <th scope="col" className="text-right font-medium py-1 px-2">
+                    {gt("Previous period")}
+                  </th>
+                  <th scope="col" className="text-right font-medium py-1 px-2">
+                    {gt("Change")}
+                  </th>
+                  <th scope="col" className="text-right font-medium py-1 pl-2">
+                    {gt("Change %")}
+                  </th>
+                </>
               )}
             </tr>
           </thead>
           <tbody>
             {pivot.rows.map((row) => {
               const bucket = String(row["bucket"]);
+              const rowLabel = dimensionAxis
+                ? String(row[LABEL_KEY] ?? bucket)
+                : formatBucketLabel(bucket, bin);
               const values = pivot.series.map((def) => row[def.dataKey]);
               const rowTotal = values.reduce<number>(
                 (sum, v) => sum + (typeof v === "number" ? v : 0),
                 0,
               );
               const previous = row[COMPARISON_KEY];
+              const delta = costComparisonDelta(
+                rowTotal,
+                typeof previous === "number" ? previous : null,
+              );
               return (
                 <tr key={bucket} className="border-t border-border text-on-surface-secondary">
                   <th scope="row" className="text-left font-normal py-1 pr-3 whitespace-nowrap">
-                    {formatBucketLabel(bucket, bin)}
+                    {drillRows && isCostDrillableValue(bucket)
+                      ? drillButton(bucket, rowLabel)
+                      : rowLabel}
                   </th>
                   {values.map((v, i) => (
                     <td key={pivot.series[i]!.dataKey} className="text-right py-1 px-2">
@@ -411,9 +692,21 @@ function SpendGraphCard({
                     <td className="text-right py-1 px-2 text-on-surface">{fmt(rowTotal)}</td>
                   )}
                   {comparing && (
-                    <td className="text-right py-1 pl-2 text-on-surface-faint">
-                      {typeof previous === "number" ? fmt(previous) : "–"}
-                    </td>
+                    <>
+                      <td className="text-right py-1 px-2 text-on-surface-faint">
+                        {typeof previous === "number" ? fmt(previous) : "–"}
+                      </td>
+                      <td
+                        className={`text-right py-1 px-2 ${delta && delta.change > 0 ? "text-danger" : delta && delta.change < 0 ? "text-success" : "text-on-surface-faint"}`}
+                      >
+                        {delta ? signedAmount(delta.change) : "–"}
+                      </td>
+                      <td
+                        className={`text-right py-1 pl-2 ${delta && delta.change > 0 ? "text-danger" : delta && delta.change < 0 ? "text-success" : "text-on-surface-faint"}`}
+                      >
+                        {delta ? formatCostChangePct(delta.changePct) : "–"}
+                      </td>
+                    </>
                   )}
                 </tr>
               );
@@ -444,7 +737,7 @@ function SpendGraphCard({
         value: costSeriesTotal(s.points, cumulative),
         fill: colorFor(i, s.key === "__other__"),
       }));
-      const donut = config.chartType === "donut";
+      const donut = view.chartType === "donut";
       return (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
@@ -456,6 +749,16 @@ function SpendGraphCard({
               outerRadius="80%"
               paddingAngle={2}
               stroke="none"
+              {...(canDrill
+                ? {
+                    // A slice is a group-by value: clicking it drills into it.
+                    onClick: (_slice: unknown, index: number) => {
+                      const s = response.series[index];
+                      if (s) drillInto(s.key, s.label);
+                    },
+                    cursor: "pointer",
+                  }
+                : {})}
             >
               {slices.map((s) => (
                 <Cell key={s.name} fill={s.fill} />
@@ -488,8 +791,36 @@ function SpendGraphCard({
       );
     }
 
-    const isBar = config.chartType === "stacked_bar" || config.chartType === "multi_bar";
-    const stacked = config.chartType === "stacked_bar" || config.chartType === "area";
+    const isBar = view.chartType === "stacked_bar" || view.chartType === "multi_bar";
+    const stacked = view.chartType === "stacked_bar" || view.chartType === "area";
+    /**
+     * The previous period as a muted bar beside each current one, instead of
+     * the dashed line. Bar charts only: a bar paired with a point on a line is
+     * two different marks pretending to be one comparison.
+     */
+    const pairedBars = Boolean(response.comparison) && isBar && view.comparisonStyle === "bars";
+    /** Display label per dimension value, for the X axis ticks and tooltip. */
+    const valueLabels = new Map(
+      dimensionAxis ? pivot.rows.map((r) => [String(r["bucket"]), String(r[LABEL_KEY])]) : [],
+    );
+    const categoryLabel = (b: string): string =>
+      dimensionAxis ? (valueLabels.get(b) ?? b) : formatBucketLabel(b, bin);
+    /**
+     * A bar's own click: drill into the value it stands for. On a dimension
+     * axis that is the bar's X value whichever segment was hit; on a date
+     * axis it is the series the segment belongs to.
+     */
+    const onBarClick = (def: (typeof pivot.series)[number], payload: unknown) => {
+      if (!canDrill) return;
+      if (canWriteAnnotations) markClickedRef.current = true;
+      if (dimensionAxis) {
+        const row = (payload as { payload?: Record<string, unknown> } | undefined)?.payload;
+        const key = row?.["bucket"];
+        if (typeof key === "string") drillInto(key, String(row?.[LABEL_KEY] ?? key));
+      } else {
+        drillInto(def.key, def.label);
+      }
+    };
 
     // Own the y scale rather than leaving it to recharts, which stretches the
     // domain below zero to hit its tick count (a US$2.65 max axis starting at
@@ -518,6 +849,12 @@ function SpendGraphCard({
                 // below the chart: this is the pointer shortcut, not the only
                 // way in.
                 onClick: (nextState: { activeLabel?: string | number | undefined }) => {
+                  // A bar's own click already drilled; this is the same click
+                  // bubbling up, not a request for a note.
+                  if (markClickedRef.current) {
+                    markClickedRef.current = false;
+                    return;
+                  }
                   const bucket = nextState?.activeLabel;
                   if (typeof bucket !== "string") return;
                   const existing = markers.find((m) => m.bucket === bucket);
@@ -530,10 +867,14 @@ function SpendGraphCard({
           <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
           <XAxis
             dataKey="bucket"
-            tickFormatter={(b: string) => formatBucketLabel(b, bin)}
+            tickFormatter={(b: string) => truncateTick(categoryLabel(b), dimensionAxis)}
             tick={{ fill: chart.tick, fontSize: 11 }}
             stroke={chart.axis}
-            minTickGap={24}
+            // Every value is its own bar on a dimension axis, so each one gets
+            // its label while they fit; dates skip ticks the way they always have.
+            {...(dimensionAxis && pivot.rows.length <= 12
+              ? { interval: 0 }
+              : { minTickGap: dimensionAxis ? 8 : 24 })}
           />
           <YAxis
             tick={{ fill: chart.tick, fontSize: 11 }}
@@ -546,7 +887,9 @@ function SpendGraphCard({
           <Tooltip
             contentStyle={tooltipStyle}
             labelFormatter={(b) => {
-              const label = formatBucketLabel(String(b), bin);
+              const label = categoryLabel(String(b));
+              // A value spans the whole range, so no single day's rate is behind it.
+              if (dimensionAxis) return label;
               // Name the rate behind this bucket's converted amounts, with its
               // source and date, so a single bar can be checked by hand.
               const rates = (response.conversion?.converted ?? []).flatMap((entry) => {
@@ -566,7 +909,11 @@ function SpendGraphCard({
               });
               return rates.length > 0 ? `${label} · ${rates.join("; ")}` : label;
             }}
-            formatter={(value, name) => {
+            formatter={(value, name, item) => {
+              if (String(name) === COMPARISON_KEY) {
+                const row = (item as { payload?: Record<string, unknown> } | undefined)?.payload;
+                return [previousWithDelta(Number(value), row), gt("Previous period")];
+              }
               const label =
                 String(name) === COMPARISON_KEY
                   ? gt("Previous period")
@@ -582,6 +929,17 @@ function SpendGraphCard({
           {pivot.series.length > 1 && (
             <Legend
               wrapperStyle={{ fontSize: 11 }}
+              // On a date axis the legend entries are the series: clicking one
+              // drills into it, which is the only pointer route on a line or
+              // area chart (they have no bars to click).
+              {...(canDrill && !dimensionAxis
+                ? {
+                    onClick: (entry: { dataKey?: unknown }) => {
+                      const def = pivot.series.find((s) => s.dataKey === entry.dataKey);
+                      if (def) drillInto(def.key, def.label);
+                    },
+                  }
+                : {})}
               formatter={(value: string) => {
                 const def = pivot.series.find((s) => s.dataKey === value);
                 return (
@@ -599,6 +957,22 @@ function SpendGraphCard({
               }}
             />
           )}
+          {/*
+            Paired previous-period bars come first, so each pair reads left to
+            right as "then, now". Their own stack id keeps them beside a
+            stacked current bar rather than piled on top of it.
+          */}
+          {pairedBars && (
+            <Bar
+              dataKey={COMPARISON_KEY}
+              name={COMPARISON_KEY}
+              {...(stacked ? { stackId: "previous" } : {})}
+              fill={chart.tick}
+              fillOpacity={0.3}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={40}
+            />
+          )}
           {pivot.series.map((def, i) =>
             isBar ? (
               <Bar
@@ -609,8 +983,14 @@ function SpendGraphCard({
                 fill={colorFor(i, def.isOther)}
                 radius={stacked ? 0 : [3, 3, 0, 0]}
                 maxBarSize={40}
+                {...(canDrill
+                  ? {
+                      onClick: (data: unknown) => onBarClick(def, data),
+                      cursor: "pointer",
+                    }
+                  : {})}
               />
-            ) : config.chartType === "area" ? (
+            ) : view.chartType === "area" ? (
               <Area
                 key={def.dataKey}
                 type="monotone"
@@ -634,7 +1014,7 @@ function SpendGraphCard({
               />
             ),
           )}
-          {response.comparison && (
+          {response.comparison && !pairedBars && (
             <Line
               type="monotone"
               dataKey={COMPARISON_KEY}
@@ -642,7 +1022,9 @@ function SpendGraphCard({
               stroke={chart.tick}
               strokeWidth={1.5}
               strokeDasharray="4 4"
-              dot={false}
+              // Values on a dimension axis are separate things, not moments in
+              // a sequence: a dot marks each one's previous figure.
+              dot={dimensionAxis ? { r: 2.5, fill: chart.tick } : false}
             />
           )}
           {response.forecast && (
@@ -844,6 +1226,107 @@ function SpendGraphCard({
             {periodNativeNote && gt("Some providers report monthly totals, shown on period dates.")}
           </p>
         )}
+        {/*
+          The drill path, once there is one: where this view sits under the
+          saved chart, each level a way back up, plus the way to keep it.
+          Outside the role="img" chart body so every control is reachable.
+        */}
+        {drillPath.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+            <nav aria-label={gt("Drill-down path")}>
+              <ol className="flex flex-wrap items-center gap-1 text-on-surface-faint">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrillPath([]);
+                      setPendingDrill(null);
+                      setSaveState({ status: "idle" });
+                    }}
+                    className="underline hover:text-on-surface-secondary"
+                  >
+                    {gt("All")}
+                  </button>
+                </li>
+                {drillPath.map((step, i) => {
+                  const label = step.label || step.value || gt("(no value)");
+                  return (
+                    <li key={`${i}-${step.value}`} className="flex items-center gap-1">
+                      <span aria-hidden>›</span>
+                      {i === drillPath.length - 1 ? (
+                        <span aria-current="page" className="text-on-surface-secondary">
+                          {label}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDrillPath((path) => path.slice(0, i + 1));
+                            setPendingDrill(null);
+                            setSaveState({ status: "idle" });
+                          }}
+                          className="underline hover:text-on-surface-secondary"
+                        >
+                          {label}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+            {canDrill && (
+              <DrillSelect
+                values={drillValues}
+                onPick={(v) => drillInto(v.value, v.label)}
+                className=""
+              />
+            )}
+            {onSaveAsReport && (
+              <button
+                type="button"
+                onClick={() => void saveDrillAsReport()}
+                disabled={saveState.status === "saving"}
+                className="rounded border border-border px-1.5 py-0.5 text-on-surface-secondary hover:border-border-strong disabled:opacity-50"
+              >
+                {saveState.status === "saving" ? gt("Saving…") : gt("Save as new report")}
+              </button>
+            )}
+            {saveState.status === "saved" && (
+              <span role="status" className="text-success">
+                {gt("Saved as a new report.")}
+              </span>
+            )}
+            {saveState.status === "error" && (
+              <span role="alert" className="text-danger">
+                {saveState.message}
+              </span>
+            )}
+          </div>
+        )}
+        {/*
+          A value whose next level is the reader's choice (a tag has no natural
+          child; a resource is the bottom of the hierarchy). Focus moves to the
+          first choice, so a keyboard drill continues without hunting for it.
+        */}
+        {pendingDrill && drillTarget && (
+          <DrillChoices
+            label={gt("Break {value} down by:", {
+              value: pendingDrill.label || pendingDrill.value || gt("(no value)"),
+            })}
+            choices={costDrillChoices(drillTarget.dimension).map((d) => ({
+              dimension: d,
+              label: gtData(DIMENSION_LABELS[d]),
+            }))}
+            onChoose={(dimension) =>
+              pushDrillStep(
+                resolveCostDrillStep(view, pendingDrill.value, pendingDrill.label, { dimension }),
+              )
+            }
+            onCancel={() => setPendingDrill(null)}
+            cancelLabel={gt("Cancel")}
+          />
+        )}
       </div>
 
       <div
@@ -877,7 +1360,7 @@ function SpendGraphCard({
         marker; this is how they are read and reached with a keyboard, on a
         phone, and by anyone who never hovers anything.
       */}
-      {(markers.length > 0 || (canWriteAnnotations && hasChartData)) && (
+      {(markers.length > 0 || (canWriteAnnotations && hasChartData) || showRailDrill) && (
         <div className="px-4 pb-3 -mt-1 flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-1">
             {markers.map((marker) => {
@@ -947,6 +1430,18 @@ function SpendGraphCard({
               >
                 {gt("+ Annotate")}
               </button>
+            )}
+            {/*
+              The keyboard route into a drill: the same narrowing a click on a
+              bar, slice, legend entry or table heading does. Moves up into the
+              path bar once a drill has started.
+            */}
+            {showRailDrill && (
+              <DrillSelect
+                values={drillValues}
+                onPick={(v) => drillInto(v.value, v.label)}
+                className="ml-auto w-32"
+              />
             )}
           </div>
 

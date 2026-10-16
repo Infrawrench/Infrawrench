@@ -111,6 +111,27 @@ export const CostUsageUnit = z
       "`usage`, refused for any other measure.",
   );
 
+export const CostXAxis = CostDimension.describe(
+  "Put this dimension's values on the X axis instead of date bins: one bar per value, ranked " +
+    "by spend over the range, the top `topN` then `__other__`. `groupBy` then segments each " +
+    "bar (or set `segmentByDate` to segment by bin instead). Omitted is the date axis. Refused " +
+    "with a forecast, a scenario, a running total, the `count` measure or a unit-cost chart, " +
+    "which all need dates.",
+);
+
+export const CostXAxisTagKey = z
+  .string()
+  .min(1)
+  .max(256)
+  .describe("Required when `xAxis` is `tag` or `virtual_tag`: which key's values go on the axis.");
+
+export const CostSegmentByDate = z
+  .boolean()
+  .describe(
+    "With `xAxis` and `groupBy: none`: segment each bar by date bin (one series per bin). " +
+      "Refused alongside a `groupBy`; ignored without `xAxis`.",
+  );
+
 export const CostCumulative = z
   .boolean()
   .describe(
@@ -205,12 +226,35 @@ const CostQueryRequest = strict({
   measure: CostMeasure.optional(),
   usageUnit: CostUsageUnit.optional(),
   cumulative: CostCumulative.optional(),
+  xAxis: CostXAxis.optional(),
+  xAxisTagKey: CostXAxisTagKey.optional(),
+  segmentByDate: CostSegmentByDate.optional(),
 }).openapi("CostQueryRequest");
 
 const CostSeriesPoint = strict({
-  bucket: IsoDate,
+  bucket: z
+    .string()
+    .describe(
+      "The bin's start date (YYYY-MM-DD), or, when the request set `xAxis`, the dimension " +
+        "value this point belongs to (`__other__` for the folded remainder).",
+    )
+    .openapi({ example: "2026-07-01" }),
   amount: z.number(),
 }).openapi("CostSeriesPoint");
+
+const CostXAxisInfo = strict({
+  dimension: CostDimension,
+  tagKey: z.string().optional(),
+  segment: z
+    .enum(["none", "dimension", "date"])
+    .describe(
+      "What each series is: one per `groupBy` value (`dimension`), one per date bin (`date`; " +
+        "the series key is the bin start), or one unsegmented series per currency (`none`).",
+    ),
+  values: z
+    .array(strict({ key: z.string(), label: z.string() }))
+    .describe("The axis values in drawing order: ranked by spend, then `__other__`."),
+}).openapi("CostXAxisInfo");
 
 const CostQuerySeries = strict({
   key: z.string(),
@@ -289,6 +333,11 @@ export const CostQueryResponse = strict({
         'totals are keyed by `""`.',
     ),
   usageUnit: z.string().optional().describe("The unit a `usage` response is in."),
+  xAxis: CostXAxisInfo.optional().describe(
+    "Set when the request put a dimension on the X axis. Every series point (and every " +
+      "comparison point) is then keyed by dimension value rather than date, and the comparison " +
+      "is folded onto the current period's values so each value is compared with itself.",
+  ),
 }).openapi("CostQueryResponse");
 
 const CostDimensionValues = strict({

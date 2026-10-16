@@ -576,7 +576,46 @@ export interface CostGraphConfig {
    * daily case of the same thing. Absent is off.
    */
   cumulative?: boolean | undefined;
+  /**
+   * Put the values of this dimension on the X axis instead of date bins: one
+   * bar per value, ranked by spend, the top `topN` plus "Other". Absent (and
+   * it is absent on every config written before this existed) is the date
+   * axis every cost chart has always drawn.
+   *
+   * With a dimension on X, `groupBy` stops meaning "one series per value over
+   * time" and starts meaning "segment each bar by this second dimension";
+   * `"none"` draws one bar per value, or one stacked by date bin when
+   * {@link segmentByDate} is set. See {@link costDisplayProblem} for the
+   * combinations that need a date axis (forecasts, running totals, count).
+   */
+  xAxis?: CostDimensionId | undefined;
+  /** Required when `xAxis` is "tag" or "virtual_tag": which key's values. */
+  xAxisTagKey?: string | undefined;
+  /**
+   * With a dimension X axis and no `groupBy`: stack each bar by date bin, so
+   * "which services cost most" also shows when. Ignored on a date axis.
+   */
+  segmentByDate?: boolean | undefined;
+  /**
+   * How the previous period is drawn when `comparePreviousPeriod` is on:
+   * `line` (absent) is the muted dashed totals line; `bars` pairs a previous
+   * bar beside each current one. Only bar charts draw `bars`; the table
+   * always lists previous, change and change % columns.
+   */
+  comparisonStyle?: CostComparisonStyle | undefined;
 }
+
+/**
+ * How a previous-period comparison is drawn: a dashed totals line over the
+ * chart, or a muted bar paired beside each bucket's (or each value's) bar.
+ */
+export const COST_COMPARISON_STYLES = ["line", "bars"] as const;
+export type CostComparisonStyle = (typeof COST_COMPARISON_STYLES)[number];
+
+export const COST_COMPARISON_STYLE_LABELS: Record<CostComparisonStyle, string> = {
+  line: "Dashed line",
+  bars: "Paired bars",
+};
 
 /**
  * The calculations a unit-cost graph can draw. Spelled out here rather than
@@ -1040,6 +1079,48 @@ export interface CostQueryRequest {
    * off; `binning: "cumulative"` is the older spelling of daily + this.
    */
   cumulative?: boolean | undefined;
+  /**
+   * Put this dimension's values on the X axis instead of date bins. Absent is
+   * the date axis, byte-identical to what a server that never heard of this
+   * field returns. Present, every series point's `bucket` is a value of this
+   * dimension rather than a date, `groupBy` segments each bar, and the
+   * response carries `xAxis` with the values in drawing order and their
+   * labels. The scan is the same grouped read with this dimension added to the
+   * group key; no new query shape.
+   */
+  xAxis?: CostDimensionId | undefined;
+  /** Required when `xAxis` is "tag" or "virtual_tag". */
+  xAxisTagKey?: string | undefined;
+  /**
+   * With `xAxis` and `groupBy: "none"`: one series per date bin, so each bar
+   * stacks by bin. Refused alongside a `groupBy`; ignored without `xAxis`.
+   */
+  segmentByDate?: boolean | undefined;
+}
+
+/** One value on a dimension X axis, in drawing order. */
+export interface CostXAxisValue {
+  /** The dimension value; `"__other__"` for the folded remainder. */
+  key: string;
+  /** Display label resolved server-side (account names, provider names). */
+  label: string;
+}
+
+/**
+ * What a dimension-X-axis response put on the axis. Present only when the
+ * request named an `xAxis`; its absence means every `bucket` is a date.
+ */
+export interface CostXAxis {
+  dimension: CostDimensionId;
+  tagKey?: string;
+  /**
+   * What each series is: one series per `groupBy` value (`dimension`), one
+   * per date bin (`date`, the series key is the bin start), or a single
+   * unsegmented series per currency (`none`).
+   */
+  segment: "none" | "dimension" | "date";
+  /** Ranked by spend over the range, top N then `"__other__"`. */
+  values: CostXAxisValue[];
 }
 
 export interface CostSeriesPoint {
@@ -1185,6 +1266,13 @@ export interface CostQueryResponse {
   measure?: Exclude<CostMeasure, "cost">;
   /** The unit a `usage` response is in, echoed so a client can label it. */
   usageUnit?: string;
+  /**
+   * Set when the request put a dimension on the X axis: the values in drawing
+   * order. Every series' points (and the comparison's) are keyed by these
+   * values instead of by date bin, and the comparison is folded onto the
+   * *current* period's top N so a value is compared with itself.
+   */
+  xAxis?: CostXAxis;
 }
 
 /** Sentinel group key for the folded "Other" series. */
@@ -1269,6 +1357,16 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     ...(config.measure && config.measure !== "cost" ? { measure: config.measure } : {}),
     ...(config.measure === "usage" && config.usageUnit ? { usageUnit: config.usageUnit } : {}),
     ...(config.cumulative ? { cumulative: true } : {}),
+    // A dimension X axis, sent only when set. A pie or donut has no X axis,
+    // so one stored on either (an editor never writes it there) is dropped
+    // rather than turning the slices into something else.
+    ...(config.xAxis && !isCostTotalsChart(config.chartType)
+      ? {
+          xAxis: config.xAxis,
+          ...(config.xAxisTagKey ? { xAxisTagKey: config.xAxisTagKey } : {}),
+          ...(config.segmentByDate && config.groupBy === "none" ? { segmentByDate: true } : {}),
+        }
+      : {}),
   };
 }
 
@@ -1307,21 +1405,12 @@ export const HOURLY_BINNING_UNAVAILABLE_REASON =
  * Hourly availability is not checked here: it depends on the org's accounts,
  * not on the config, and is answered by {@link hourlyCostBinningAvailable}.
  */
-export function costDisplayProblem(q: {
-  measure?: CostMeasure | undefined;
-  usageUnit?: string | undefined;
-  groupBy: "none" | CostDimensionId;
-  binning: CostBinningId;
-  cumulative?: boolean | undefined;
-  forecast?: boolean | undefined;
-  scenarioModelId?: string | undefined;
-  adjusted?: boolean | undefined;
-  unitCostMetricId?: string | undefined;
-  unitCostMode?: string | undefined;
-}): string | null {
+export function costDisplayProblem(q: CostDisplayProblemInput): string | null {
   const measure = q.measure ?? "cost";
   // Cost per usage unit is a unit-cost chart with no metric behind it.
   const unitCost = Boolean(q.unitCostMetricId) || q.unitCostMode === "usage_unit_cost";
+  const axisProblem = costXAxisProblem(q, measure, unitCost);
+  if (axisProblem) return axisProblem;
   if (measure === "cost") {
     if (q.usageUnit) return "A usage unit only applies to the usage measure.";
     // The legacy `binning: "cumulative"` stays valid for a unit-cost chart
@@ -1351,6 +1440,59 @@ export function costDisplayProblem(q: {
   }
   if (q.adjusted) return "Billing rules adjust money, so they only apply to the cost measure.";
   if (unitCost) return "Unit costs divide spend, so they only apply to the cost measure.";
+  return null;
+}
+
+/** What {@link costDisplayProblem} reads: a stored config or a query request. */
+export interface CostDisplayProblemInput {
+  measure?: CostMeasure | undefined;
+  usageUnit?: string | undefined;
+  groupBy: "none" | CostDimensionId;
+  groupByTagKey?: string | undefined;
+  binning: CostBinningId;
+  cumulative?: boolean | undefined;
+  forecast?: boolean | undefined;
+  scenarioModelId?: string | undefined;
+  adjusted?: boolean | undefined;
+  unitCostMetricId?: string | undefined;
+  unitCostMode?: string | undefined;
+  xAxis?: CostDimensionId | undefined;
+  xAxisTagKey?: string | undefined;
+  segmentByDate?: boolean | undefined;
+  /** Only a stored config carries one; a query has no chart type to check. */
+  chartType?: CostChartType | undefined;
+}
+
+/**
+ * The dimension-X-axis half of {@link costDisplayProblem}: everything that
+ * presupposes a time axis (a forecast, a running total, a count per bin, a
+ * unit-cost ratio per bin) is refused with a dimension on X rather than
+ * silently drawn as something else.
+ */
+function costXAxisProblem(
+  q: CostDisplayProblemInput,
+  measure: CostMeasure,
+  unitCost: boolean,
+): string | null {
+  if (!q.xAxis) return null;
+  if (isKeyedCostDimension(q.xAxis) && !q.xAxisTagKey?.trim()) {
+    return "Pick which key's values go on the X axis.";
+  }
+  if (q.chartType && isCostTotalsChart(q.chartType)) {
+    return "Pie and donut charts have no X axis; pick a bar, line, area or table chart.";
+  }
+  if (q.xAxis === q.groupBy && (q.xAxisTagKey ?? "") === (q.groupByTagKey ?? "")) {
+    return "Segment the bars by a different dimension from the one on the X axis.";
+  }
+  if (q.segmentByDate && q.groupBy !== "none") {
+    return "Segment the bars by a dimension or by date bin, not both.";
+  }
+  if (effectiveCostBinning(q).cumulative) {
+    return "Running totals accumulate over time, so they need the date X axis.";
+  }
+  if (q.forecast) return "Forecasts project over time, so they need the date X axis.";
+  if (measure === "count") return "Count is drawn per date bin, so it needs the date X axis.";
+  if (unitCost) return "Unit costs are drawn per date bin, so they need the date X axis.";
   return null;
 }
 

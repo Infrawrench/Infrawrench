@@ -12,6 +12,7 @@ import type {
   CostSeriesPoint,
 } from "@infrawrench/client-core";
 import {
+  COST_X_SEGMENT_SEPARATOR,
   effectiveCostBinning,
   HOURLY_BINNING_UNAVAILABLE_REASON,
   referencedVirtualTagKeys,
@@ -642,6 +643,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
       organizationId,
       [
         ...referencedVirtualTagKeys(q.filters, q.groupBy, q.groupByTagKey),
+        ...(q.xAxis === "virtual_tag" && q.xAxisTagKey ? [q.xAxisTagKey] : []),
         // A cost-centre grouping through rules that match on a virtual tag
         // needs that tag in scope, exactly as `getShowbackSpend` does.
         ...(q.groupByAllocation ?? []).flatMap((r) =>
@@ -673,6 +675,20 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   }
   if (q.groupByAllocation) {
     groupExpr = allocationExpr(q.groupByAllocation, scope);
+  }
+  // A dimension X axis rides in the same group key, ahead of the segment and
+  // joined by the unit separator, so the scan, the date buckets (which the
+  // currency converter still needs) and every chain below are unchanged. The
+  // service splits the key back apart (`pivotCostGroupsToDimensionAxis`).
+  if (q.xAxis) {
+    let xExpr = dimensionExpr(q.xAxis, q.xAxisTagKey, scope);
+    if (adjustments && q.xAxis === "account") {
+      xExpr = reallocationExpr(adjustments.reallocations, "account", xExpr);
+    }
+    groupExpr =
+      q.groupBy === "none" || q.segmentByDate
+        ? xExpr
+        : sql`concat(${xExpr}, ${COST_X_SEGMENT_SEPARATOR}, ${groupExpr})`;
   }
 
   const where = and(
@@ -715,6 +731,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   // instead (AI rows split by caller); nothing else changes about the query.
   const attributed = referencesCallerTags([
     q.groupBy === "tag" ? q.groupByTagKey : undefined,
+    q.xAxis === "tag" ? q.xAxisTagKey : undefined,
     ...q.filters.map((f) => (f.dimension === "tag" ? f.tagKey : undefined)),
   ])
     ? attributedCostSource(organizationId, q.from, q.to)

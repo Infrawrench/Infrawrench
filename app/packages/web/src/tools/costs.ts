@@ -93,6 +93,12 @@ export function costTools(): ToolDefinition[] {
         "the whole range, not a sum). Usage and count responses carry `measure`, their series " +
         "have an empty currency, and they cannot be combined with forecast, scenarios or " +
         "adjusted.\n\n" +
+        "`xAxis` puts a dimension's values on the X axis instead of dates ('which services cost " +
+        "most'): series points are then keyed by value, ranked by spend with the tail folded " +
+        "into __other__, `groupBy` segments each value (or segmentByDate: true segments by bin), " +
+        "and the response carries `xAxis.values` with labels in order. comparePreviousPeriod " +
+        "then compares each value with itself. Not combinable with forecast, cumulative or " +
+        "count.\n\n" +
         "costBasis picks the money: 'cash' (default) is what the provider charged on the day it " +
         "charged it; 'amortized' spreads a commitment's up-front fee across the term it buys, " +
         "which is the right number for an org holding reservations or savings plans. Providers " +
