@@ -431,6 +431,14 @@ infrawrench k8s-network
 infrawrench k8s-network prod-cluster --last 30d --json
 ```
 
+`network-reports` lists your saved [network flow reports](./network-flow-reports.md), or runs one by name or id: estimated cost and bytes over the window, the group totals and the top talking pairs, with a sampled mark on figures from a sampling flow source. `--format csv` writes the series CSV and `--format pairs-csv` the top-talkers CSV (`--out` to a file). Cloud-only.
+
+```
+infrawrench network-reports
+infrawrench network-reports "Cross-zone traffic by pair" --json
+infrawrench network-reports "Cross-zone traffic by pair" --format pairs-csv --out pairs.csv
+```
+
 `oversized` and `estimate` both carry the carbon figure too: a `co2e/mo` column, and a carbon line under the price.
 
 `estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies. Pass the compound resource id, or a display name / external id scoped with `--account`:

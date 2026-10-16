@@ -1062,3 +1062,33 @@ func (c *Client) UpdateCustomCostSource(ctx context.Context, id string, in Custo
 func (c *Client) DeleteCustomCostSource(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/custom-cost-sources/"+seg(id))
 }
+
+/* --------------------------- network flow reports -------------------------- */
+
+func (c *Client) GetNetworkFlowReport(ctx context.Context, id string) (*NetworkFlowReport, error) {
+	var out NetworkFlowReport
+	if err := c.Get(ctx, "/network-flows/reports/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateNetworkFlowReport(ctx context.Context, in NetworkFlowReportInput) (*NetworkFlowReport, error) {
+	var out NetworkFlowReport
+	if err := c.Post(ctx, "/network-flows/reports", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateNetworkFlowReport(ctx context.Context, id string, in NetworkFlowReportInput) (*NetworkFlowReport, error) {
+	var out NetworkFlowReport
+	if err := c.Put(ctx, "/network-flows/reports/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteNetworkFlowReport(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/network-flows/reports/"+seg(id))
+}

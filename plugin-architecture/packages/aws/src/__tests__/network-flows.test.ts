@@ -22,12 +22,14 @@ const INTERFACES = [
     NetworkInterfaceId: "eni-a",
     PrivateIpAddress: "10.0.1.4",
     AvailabilityZoneId: "use1-az1",
+    VpcId: "vpc-1",
     Attachment: { InstanceId: "i-local" },
   },
   {
     NetworkInterfaceId: "eni-b",
     PrivateIpAddress: "10.0.2.5",
     AvailabilityZoneId: "use1-az2",
+    VpcId: "vpc-1",
     Attachment: { InstanceId: "i-peer" },
   },
 ];
@@ -155,6 +157,9 @@ describe("fetchAwsNetworkFlows — totals against pairs", () => {
       direction: "ingress",
       bytes: 1000,
     });
+    // Both ends carry their interface's VPC, for saved reports' VPC filter.
+    expect(result.flows[0]!.source.network).toBe("vpc-1");
+    expect(result.flows[0]!.destination.network).toBe("vpc-1");
 
     // The bytes moved into the bucket the pair is stored under, so the host's
     // `total − kept` lands on zero instead of leaving a second copy behind.

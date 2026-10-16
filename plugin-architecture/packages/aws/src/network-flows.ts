@@ -196,6 +196,8 @@ interface LocalEndpoint {
   region: string;
   resourceTypeId: string;
   interfaceType: string;
+  /** The interface's VPC id, so saved reports can filter and group by VPC. */
+  network: string;
 }
 
 /**
@@ -250,6 +252,7 @@ function toLocalEndpoint(eni: NetworkInterface, region: string): LocalEndpoint {
   const instanceId = eni.Attachment?.InstanceId;
   const interfaceType = (eni.InterfaceType ?? "").toLowerCase();
   const zone = eni.AvailabilityZoneId ?? "";
+  const network = eni.VpcId ?? "";
   if (instanceId) {
     return {
       ref: instanceId,
@@ -258,6 +261,7 @@ function toLocalEndpoint(eni: NetworkInterface, region: string): LocalEndpoint {
       region,
       resourceTypeId: "ec2-instance",
       interfaceType,
+      network,
     };
   }
   const id = eni.NetworkInterfaceId ?? "";
@@ -268,6 +272,7 @@ function toLocalEndpoint(eni: NetworkInterface, region: string): LocalEndpoint {
     region,
     resourceTypeId: "",
     interfaceType,
+    network,
   };
 }
 
@@ -296,6 +301,7 @@ function toEndpoint(local: LocalEndpoint): NetworkFlowEndpoint {
     ...(local.zone ? { zone: local.zone } : {}),
     ...(local.region ? { region: local.region } : {}),
     ...(local.resourceTypeId ? { resourceTypeId: local.resourceTypeId } : {}),
+    ...(local.network ? { network: local.network } : {}),
   };
 }
 

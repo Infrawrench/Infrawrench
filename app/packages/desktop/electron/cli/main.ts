@@ -72,6 +72,7 @@ import { cmdSeats } from "./commands/seats";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdK8sEfficiency } from "./commands/k8s-efficiency";
+import { cmdNetworkReports } from "./commands/network-reports";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingEmail, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
@@ -329,6 +330,10 @@ COMMANDS
                       a Kubernetes cluster's network costs by traffic class (same zone,
                       cross-zone, cross-region, internet), namespace and workload, top talkers,
                       and its billed data transfer apportioned   [--last 14d] (cloud only)
+  network-reports [name|id]
+                      list saved network flow reports, or run one: bytes and estimated cost
+                      by flow pair, traffic class, zone or VPC over time, and the top talkers
+                      [--format csv|pairs-csv] [--out file.csv] (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
   routing             alert routing rules, in evaluation order
@@ -496,7 +501,8 @@ FLAGS
   --framework <id>    compliance: soc2 (default) or iso27001; see compliance frameworks
   --gaps              compliance: only controls without evidence, with the reasons why
   --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
-                      costs push: json (default), csv or focus
+                      costs push: json (default), csv or focus; network-reports <name|id>: csv
+                      or pairs-csv
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
                       feedback: the reason category (planned_launch, migration, …); leaks
                       dismiss: false-positive, wont-fix or used-in-tests
@@ -1064,6 +1070,12 @@ export async function runCli(): Promise<void> {
         break;
       case "k8s-efficiency":
         await cmdK8sEfficiency(ctx, rest.join(" "), parsed.range, parsed.exportFlags);
+        break;
+      case "network-reports":
+        await cmdNetworkReports(ctx, rest.join(" "), {
+          format: parsed.exportFlags.format,
+          out: parsed.exportFlags.out,
+        });
         break;
       case "alerts":
         if (rest[0] === "events") {

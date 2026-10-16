@@ -64,6 +64,7 @@ const ShareableObjectType = z
     "kubernetes_efficiency_report",
     "savings_view",
     "resource_report",
+    "network_flow_report",
   ])
   .openapi("ShareableObjectType");
 const AccessLevel = z.enum(["owner", "editor", "viewer"]).openapi("ObjectAccessLevel");

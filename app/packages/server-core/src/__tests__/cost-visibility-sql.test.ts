@@ -32,6 +32,7 @@ const readers = await import("../clickhouse/cost-readers");
 const commitmentReaders = await import("../clickhouse/commitment-readers");
 const flowReaders = await import("../clickhouse/network-flow-readers");
 const k8sEfficiencyReaders = await import("../clickhouse/k8s-efficiency-readers");
+const reportReaders = await import("../clickhouse/network-flow-report-readers");
 const ctx = await import("../cost/visibility-context");
 const { expandCentreSubtrees } = ctx;
 
@@ -287,6 +288,48 @@ describe("scope SQL shape", () => {
       flowReaders.readNetworkFlowScopeTotals(ORG, range, {}),
     );
     expect(captured[0]).toMatch(/ 0\)|and 0/i);
+  });
+
+  it("network flow report reads narrow exactly like the feed", async () => {
+    const range = { from: "2026-09-01", to: "2026-09-30" };
+    const calls: Array<() => Promise<unknown>> = [
+      () =>
+        reportReaders.readNetworkFlowReportCells(ORG, {
+          range,
+          bucket: "weekly",
+          split: "pair",
+          filters: {},
+          sampledPluginIds: [],
+          groupKeys: null,
+        }),
+      () =>
+        reportReaders.readNetworkFlowReportGroups(ORG, {
+          range,
+          split: "traffic_class",
+          filters: {},
+          sampledPluginIds: [],
+          orderByBytes: false,
+          limit: 10,
+        }),
+      () =>
+        reportReaders.readNetworkFlowReportTalkers(ORG, {
+          range,
+          filters: {},
+          sampledPluginIds: [],
+          orderByBytes: false,
+          limit: 10,
+        }),
+      () => reportReaders.readNetworkFlowReportDimensionValues(ORG, range),
+    ];
+    for (const call of calls) {
+      captured.length = 0;
+      await ctx.runWithCostVisibility(ACCOUNT_SCOPE, call);
+      expect(captured.length).toBeGreaterThan(0);
+      for (const q of captured) expect(q).toContain("'acct-visible'");
+      captured.length = 0;
+      await ctx.runWithCostVisibility(scoped([{ costCentreIds: ["c"] }]), call);
+      for (const q of captured) expect(q).toMatch(/ 0\)|and 0/i);
+    }
   });
 });
 

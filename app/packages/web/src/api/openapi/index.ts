@@ -90,6 +90,7 @@ import { registerCommitmentPaths } from "./paths/commitments";
 import { registerSavingsPaths } from "./paths/savings";
 import { registerSavingsFindingPaths } from "./paths/savings-findings";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
+import { registerNetworkFlowReportPaths } from "./paths/network-flow-reports";
 import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
 import { registerSloPaths } from "./paths/slos";
@@ -260,6 +261,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSavingsPaths(ctx);
   registerSavingsFindingPaths(ctx);
   registerNetworkFlowPaths(ctx);
+  registerNetworkFlowReportPaths(ctx);
   registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);
   registerSloPaths(ctx);

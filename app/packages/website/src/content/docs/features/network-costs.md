@@ -94,6 +94,8 @@ Below it:
 
 A pair marked **peer not identified** is real traffic to something outside your synced estate. It is ranked and priced like any other row.
 
+To keep a narrower question (one VPC, one traffic class, a month by week, grouped by pair or zone) under a name, save it as a [network flow report](./network-flow-reports.md) further down the same tab.
+
 ## Why it is cheap to keep
 
 Raw flow logs are gigabytes a day per VPC and storing them would make this feature unaffordable. It doesn't store them.
@@ -104,6 +106,7 @@ The consequence to know about: collection is **forward-only**. A day is collecte
 
 ## Related
 
+- [Network flow reports](./network-flow-reports.md): saved, shareable views of this data over a window, with filters, groupings and CSV export
 - [Cost graphs & budgets](./cloud-costs.md) — the collected, invoice-reconciling spend these estimates explain
 - [Commitments](./commitments.md) — the other lever that is invisible in a per-resource cost breakdown
 - [Kubernetes cost allocation](./kubernetes-costs.md) — the other derived, non-collected cost surface

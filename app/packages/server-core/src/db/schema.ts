@@ -5475,6 +5475,46 @@ export const orgSavingsSettings = pgTable("org_savings_settings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+/**
+ * Saved network flow reports: a date range, granularity, filters, grouping
+ * and metric over `network_flow_daily` (see
+ * `client-core/src/network-flow-reports.ts` for the config and every figure).
+ *
+ * The same shape and rules as `cost_reports`: filed in the same report-folder
+ * tree (SET NULL, so deleting a folder never deletes a report), shared through
+ * `object_access_grants` as `network_flow_report` with the creator as implicit
+ * owner, and soft-deleted. `config` is validated by
+ * `normalizeNetworkFlowReportConfig` at every write. Nothing computed is
+ * stored: running a report re-reads the flow store under the caller's cost
+ * visibility scope.
+ */
+export const networkFlowReports = pgTable(
+  "network_flow_reports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    config: jsonb("config").notNull(),
+    folderId: text("folder_id").references(() => costReportFolders.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `cost_reports`: set, never cleared. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("network_flow_reports_org_idx").on(t.organizationId),
+    folderIdx: index("network_flow_reports_folder_idx").on(t.organizationId, t.folderId),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
 export * from "./ssh-recording-schema.js";

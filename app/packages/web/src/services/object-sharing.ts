@@ -1,6 +1,7 @@
 /**
  * Per-object sharing for cost reports, Kubernetes efficiency reports, resource
- * reports, report folders, canvases, dashboards and saved savings views.
+ * reports, network flow reports, report folders, canvases, dashboards and
+ * saved savings views.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -52,6 +53,7 @@ import {
   costReports,
   dashboards,
   kubernetesEfficiencyReports,
+  networkFlowReports,
   objectAccessGrants,
   organizationMembers,
   resourceReports,
@@ -77,14 +79,18 @@ function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
     type === "cost_canvas" ||
     type === "kubernetes_efficiency_report" ||
     type === "savings_view" ||
-    type === "resource_report"
+    type === "resource_report" ||
+    type === "network_flow_report"
   );
 }
 
 /** Report types filed in the report-folder tree (by `folder_id`). */
 function isFiledReport(type: ShareableObjectType): boolean {
   return (
-    type === "cost_report" || type === "kubernetes_efficiency_report" || type === "resource_report"
+    type === "cost_report" ||
+    type === "kubernetes_efficiency_report" ||
+    type === "resource_report" ||
+    type === "network_flow_report"
   );
 }
 
@@ -375,6 +381,26 @@ export async function loadObjectMeta(
       .where(and(eq(costReports.id, objectId), eq(costReports.organizationId, organizationId)))
       .limit(1);
     return row && !row.deletedAt ? row : null;
+  }
+  if (type === "network_flow_report") {
+    const [row] = await db
+      .select({
+        name: networkFlowReports.name,
+        createdByUserId: networkFlowReports.createdByUserId,
+        folderId: networkFlowReports.folderId,
+        deletedAt: networkFlowReports.deletedAt,
+      })
+      .from(networkFlowReports)
+      .where(
+        and(
+          eq(networkFlowReports.id, objectId),
+          eq(networkFlowReports.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    return row && !row.deletedAt
+      ? { name: row.name, createdByUserId: row.createdByUserId, folderId: row.folderId }
+      : null;
   }
   if (type === "resource_report") {
     const [row] = await db

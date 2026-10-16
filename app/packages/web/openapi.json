@@ -43175,7 +43175,8 @@
           "cost_canvas",
           "kubernetes_efficiency_report",
           "savings_view",
-          "resource_report"
+          "resource_report",
+          "network_flow_report"
         ]
       },
       "OrgAccessLevel": {
@@ -46129,6 +46130,884 @@
         "required": [
           "enabled",
           "initialLookbackDays"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowTrafficClass": {
+        "type": "string",
+        "enum": [
+          "intra_zone",
+          "cross_zone",
+          "cross_region",
+          "internet_egress",
+          "internet_ingress",
+          "nat_gateway",
+          "private_interconnect",
+          "provider_service",
+          "unknown"
+        ],
+        "description": "The billing boundary a flow crossed. Intra-region VPC peering is billed, and classified, as `cross_zone`; transit gateway, VPN and interconnect traffic is `private_interconnect`."
+      },
+      "NetworkFlowReportOptions": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "recut": {
+                  "type": "boolean",
+                  "description": "True for a Kubernetes cluster, whose traffic is only read when named."
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "pluginId",
+                "recut"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "source",
+                    "destination",
+                    "both"
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "label",
+                "resourceTypeId",
+                "side"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "trafficClasses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowTrafficClass"
+            }
+          }
+        },
+        "required": [
+          "accounts",
+          "networks",
+          "regions",
+          "zones",
+          "services",
+          "resourceTypes",
+          "endpoints",
+          "trafficClasses"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportGranularity": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ],
+        "description": "Bucket size. No hourly (flows are stored one row per UTC day) and no quarterly (the store keeps 90 days). Weeks start on Monday."
+      },
+      "NetworkFlowReportGroupBy": {
+        "type": "string",
+        "enum": [
+          "none",
+          "pair",
+          "source",
+          "destination",
+          "traffic_class",
+          "service",
+          "zone_pair",
+          "region_pair",
+          "account",
+          "network"
+        ],
+        "description": "Pair-shaped groupings (`pair`, `zone_pair`, `region_pair`) key on source then destination, joined by U+001F. `service` is the peer's provider service (the destination of egress, the source of ingress); `network` is the local side's VPC. Under `pair`, `source` and `destination` the per-day remainder below the stored pair cap is its own group, keyed `infrawrench:truncated`."
+      },
+      "NetworkFlowReportMetric": {
+        "type": "string",
+        "enum": [
+          "cost",
+          "bytes",
+          "both"
+        ],
+        "description": "What the report shows. `bytes` ranks groups and pairs by bytes; `cost` and `both` rank by estimated cost. Every result carries both figures either way."
+      },
+      "NetworkFlowReportPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Observed bytes (decimal: a GB is 10^9 bytes)."
+          },
+          "estimatedCost": {
+            "type": "number",
+            "description": "Bytes priced at the provider's published list rate for the boundary crossed. Always an estimate: free allowances, volume tiers and negotiated rates are not modelled."
+          },
+          "sampledBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those from a flow source that samples. The plugin already scaled them up; they are counted and labelled, never dropped."
+          },
+          "sampledCost": {
+            "type": "number",
+            "description": "Of `estimatedCost`, the part priced from sampled bytes."
+          },
+          "unattributedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those that could not be tied to a workload at one end."
+          },
+          "truncatedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, the per-day remainder below the stored pair cap."
+          }
+        },
+        "required": [
+          "bucket",
+          "bytes",
+          "estimatedCost",
+          "sampledBytes",
+          "sampledCost",
+          "unattributedBytes",
+          "truncatedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportTotals": {
+        "type": "object",
+        "properties": {
+          "bytes": {
+            "type": "number",
+            "description": "Observed bytes (decimal: a GB is 10^9 bytes)."
+          },
+          "estimatedCost": {
+            "type": "number",
+            "description": "Bytes priced at the provider's published list rate for the boundary crossed. Always an estimate: free allowances, volume tiers and negotiated rates are not modelled."
+          },
+          "sampledBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those from a flow source that samples. The plugin already scaled them up; they are counted and labelled, never dropped."
+          },
+          "sampledCost": {
+            "type": "number",
+            "description": "Of `estimatedCost`, the part priced from sampled bytes."
+          },
+          "unattributedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those that could not be tied to a workload at one end."
+          },
+          "truncatedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, the per-day remainder below the stored pair cap."
+          }
+        },
+        "required": [
+          "bytes",
+          "estimatedCost",
+          "sampledBytes",
+          "sampledCost",
+          "unattributedBytes",
+          "truncatedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportSeries": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "groupKey": {
+            "type": "string",
+            "description": "The group's key; `__other__` is everything outside the charted groups."
+          },
+          "label": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportPoint"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/NetworkFlowReportTotals"
+          }
+        },
+        "required": [
+          "id",
+          "groupKey",
+          "label",
+          "currency",
+          "points",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportGroupTotal": {
+        "type": "object",
+        "properties": {
+          "groupKey": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "pairCount": {
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "number",
+            "description": "Observed bytes (decimal: a GB is 10^9 bytes)."
+          },
+          "estimatedCost": {
+            "type": "number",
+            "description": "Bytes priced at the provider's published list rate for the boundary crossed. Always an estimate: free allowances, volume tiers and negotiated rates are not modelled."
+          },
+          "sampledBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those from a flow source that samples. The plugin already scaled them up; they are counted and labelled, never dropped."
+          },
+          "sampledCost": {
+            "type": "number",
+            "description": "Of `estimatedCost`, the part priced from sampled bytes."
+          },
+          "unattributedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, those that could not be tied to a workload at one end."
+          },
+          "truncatedBytes": {
+            "type": "number",
+            "description": "Of `bytes`, the per-day remainder below the stored pair cap."
+          }
+        },
+        "required": [
+          "groupKey",
+          "label",
+          "currency",
+          "pairCount",
+          "bytes",
+          "estimatedCost",
+          "sampledBytes",
+          "sampledCost",
+          "unattributedBytes",
+          "truncatedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportEndpoint": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string",
+            "description": "The endpoint's VPC / network id, when the provider reports it."
+          }
+        },
+        "required": [
+          "ref",
+          "label",
+          "zone",
+          "region",
+          "service",
+          "resourceTypeId",
+          "network"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportTalker": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/NetworkFlowReportEndpoint"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/NetworkFlowReportEndpoint"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/NetworkFlowTrafficClass"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "egress",
+              "ingress"
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unattributed"
+            ]
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "packets": {
+            "type": "number"
+          },
+          "estimatedCost": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "description": "Days in the window the pair appeared on."
+          },
+          "sampled": {
+            "type": "boolean",
+            "description": "True when the pair's bytes came from a sampled flow source."
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "scope",
+          "direction",
+          "attribution",
+          "bytes",
+          "packets",
+          "estimatedCost",
+          "currency",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "days",
+          "sampled"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportNotice": {
+        "type": "string",
+        "enum": [
+          "collection_disabled",
+          "no_flow_accounts",
+          "beyond_retention",
+          "sampled_sources",
+          "recut_excluded",
+          "unattributed_traffic",
+          "truncated_traffic",
+          "multiple_currencies"
+        ]
+      },
+      "NetworkFlowReportResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/NetworkFlowReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/NetworkFlowReportGroupBy"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/NetworkFlowReportMetric"
+          },
+          "estimated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportSeries"
+            },
+            "description": "The chart: the largest groups, then one `__other__` series per currency, so the stack adds up to `overall`. Empty when `groupBy` is `none`."
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportGroupTotal"
+            },
+            "description": "Per-group totals, largest first, up to `topN`."
+          },
+          "groupCount": {
+            "type": "integer",
+            "description": "How many groups there were before the `topN` cut."
+          },
+          "topTalkers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportTalker"
+            }
+          },
+          "sampledPluginIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportNotice"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "metric",
+          "estimated",
+          "buckets",
+          "series",
+          "overall",
+          "groups",
+          "groupCount",
+          "topTalkers",
+          "sampledPluginIds",
+          "notices"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportFilters": {
+        "type": "object",
+        "properties": {
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "maxItems": 200
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "VPC / network ids, matched at either end."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Provider regions, matched at either end."
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Availability zone ids, matched at either end."
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Source endpoint refs, as `report-options` lists them."
+          },
+          "destinationRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Destination endpoint refs, as `report-options` lists them."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "The peer's provider service (`s3`, `dynamodb`)."
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "The peer's resource type id."
+          },
+          "trafficClasses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowTrafficClass"
+            },
+            "maxItems": 200
+          },
+          "directions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "egress",
+                "ingress"
+              ]
+            },
+            "maxItems": 200
+          }
+        },
+        "additionalProperties": false,
+        "description": "Lists AND-compose; values within a list OR. An absent or empty list does not filter. Without `accountIds`, Kubernetes cluster traffic is left out (it re-cuts bytes a cloud flow log already counts); naming a cluster's account includes it."
+      },
+      "NetworkFlowReportConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "dateRange": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              {
+                "description": "A relative preset resolves against today every time the report runs, so a saved report keeps meaning 'the last 30 days'; an absolute range pins it to fixed dates."
+              }
+            ]
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/NetworkFlowReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/NetworkFlowReportGroupBy"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/NetworkFlowReportFilters"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/NetworkFlowReportMetric"
+          },
+          "topN": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Groups and top talkers listed. Absent means 25."
+          }
+        },
+        "required": [
+          "version",
+          "dateRange",
+          "granularity",
+          "groupBy",
+          "filters",
+          "metric"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/NetworkFlowReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "config": {
+            "$ref": "#/components/schemas/NetworkFlowReportConfig"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "A report folder (`/cost-report-folders`, shared with cost reports); null is the top level.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowReportRunResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/NetworkFlowReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/NetworkFlowReportGroupBy"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/NetworkFlowReportMetric"
+          },
+          "estimated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportSeries"
+            },
+            "description": "The chart: the largest groups, then one `__other__` series per currency, so the stack adds up to `overall`. Empty when `groupBy` is `none`."
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportGroupTotal"
+            },
+            "description": "Per-group totals, largest first, up to `topN`."
+          },
+          "groupCount": {
+            "type": "integer",
+            "description": "How many groups there were before the `topN` cut."
+          },
+          "topTalkers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportTalker"
+            }
+          },
+          "sampledPluginIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowReportNotice"
+            }
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "metric",
+          "estimated",
+          "buckets",
+          "series",
+          "overall",
+          "groups",
+          "groupCount",
+          "topTalkers",
+          "sampledPluginIds",
+          "notices",
+          "reportId",
+          "name"
         ],
         "additionalProperties": false
       },
@@ -99029,6 +99908,467 @@
         },
         "operationId": "putOrgOrgIdNetworkFlowsSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/network-flows/report-options": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Picker values for the network flow report editor",
+        "description": "Accounts whose provider can report flows, and every VPC, region, zone, peer service, peer resource type and endpoint seen in the store's 90-day retention. Scoped to what the caller may see.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReportOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsReportOptions",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows/report-query": {
+      "post": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Run an unsaved network flow report config",
+        "description": "Bytes and estimated cost over time, per group, with the top talking pairs. A read despite the method.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkFlowReportConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdNetworkFlowsReportQuery",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows/reports": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "List saved network flow reports",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkFlowReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsReports",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Create a network flow report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkFlowReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdNetworkFlowsReports",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/network-flows/reports/{id}": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Get a network flow report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsReportsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Replace a network flow report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkFlowReportInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdNetworkFlowsReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Delete a network flow report",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdNetworkFlowsReportsId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/network-flows/reports/{id}/run": {
+      "post": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Run a saved network flow report",
+        "description": "A relative date range resolves against today on every run.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowReportRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdNetworkFlowsReportsIdRun",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/ai-attribution/source-kinds": {

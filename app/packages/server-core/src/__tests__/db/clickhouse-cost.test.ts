@@ -137,6 +137,8 @@ const flowRow: NetworkFlowClickHouseRow = {
   rate_per_gb: 0.02,
   estimated_cost: 0.02,
   method: "",
+  src_network: "vpc-a",
+  dst_network: "",
 };
 
 function markup(percent: number, match: BillingRule["match"] = {}): BillingRule {

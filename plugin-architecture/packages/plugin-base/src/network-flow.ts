@@ -136,6 +136,13 @@ export interface NetworkFlowEndpoint {
   service?: string;
   /** Resource type id, when `ref` is a resource the host syncs. */
   resourceTypeId?: string;
+  /**
+   * The private network the endpoint sits in (a VPC id, a VNet, a network
+   * name), when the plugin knows it. Descriptive only: it is stored beside the
+   * pair for filtering and grouping saved reports, never part of the pair's
+   * identity, so leaving it unset changes no row.
+   */
+  network?: string;
 }
 
 /**

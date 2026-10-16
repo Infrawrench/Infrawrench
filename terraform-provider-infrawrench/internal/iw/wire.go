@@ -1455,3 +1455,56 @@ type CustomCostSource struct {
 	CreatedAt       string  `json:"createdAt"`
 	UpdatedAt       string  `json:"updatedAt"`
 }
+
+/* --------------------------- network flow reports -------------------------- */
+
+// NetworkFlowReportFilters narrows a network flow report. Every list is
+// omitempty: the server drops empty lists when it normalizes a config, so an
+// absent list and an empty one mean the same thing (no filter), and sending
+// neither keeps the body identical to what the server echoes back.
+type NetworkFlowReportFilters struct {
+	AccountIDs      []string `json:"accountIds,omitempty"`
+	Networks        []string `json:"networks,omitempty"`
+	Regions         []string `json:"regions,omitempty"`
+	Zones           []string `json:"zones,omitempty"`
+	SourceRefs      []string `json:"sourceRefs,omitempty"`
+	DestinationRefs []string `json:"destinationRefs,omitempty"`
+	Services        []string `json:"services,omitempty"`
+	ResourceTypes   []string `json:"resourceTypes,omitempty"`
+	TrafficClasses  []string `json:"trafficClasses,omitempty"`
+	Directions      []string `json:"directions,omitempty"`
+}
+
+// NetworkFlowReportConfig is the saved query: window, bucket size, grouping,
+// filters, what the report shows and how many rows it lists. TopN is omitted
+// when unset so a config without it round-trips unchanged.
+type NetworkFlowReportConfig struct {
+	Version     int64                    `json:"version"`
+	DateRange   CostDateRange            `json:"dateRange"`
+	Granularity string                   `json:"granularity"`
+	GroupBy     string                   `json:"groupBy"`
+	Filters     NetworkFlowReportFilters `json:"filters"`
+	Metric      string                   `json:"metric"`
+	TopN        *int64                   `json:"topN,omitempty"`
+}
+
+// NetworkFlowReportInput is the POST/PUT body. FolderID is sent as an explicit
+// null to move a report to the top level.
+type NetworkFlowReportInput struct {
+	Name        string                  `json:"name"`
+	Description *string                 `json:"description,omitempty"`
+	Config      NetworkFlowReportConfig `json:"config"`
+	FolderID    *string                 `json:"folderId"`
+}
+
+// NetworkFlowReport is a saved network flow report.
+type NetworkFlowReport struct {
+	ID              string                  `json:"id"`
+	Name            string                  `json:"name"`
+	Description     *string                 `json:"description"`
+	Config          NetworkFlowReportConfig `json:"config"`
+	FolderID        *string                 `json:"folderId"`
+	CreatedByUserID *string                 `json:"createdByUserId"`
+	CreatedAt       string                  `json:"createdAt"`
+	UpdatedAt       string                  `json:"updatedAt"`
+}

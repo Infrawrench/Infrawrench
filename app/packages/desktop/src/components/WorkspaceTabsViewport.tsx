@@ -48,6 +48,8 @@ import {
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
+import { createDesktopNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
+import type { NetworkFlowReportsClient } from "@infrawrench/ui";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
@@ -114,6 +116,14 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let networkFlowReportsClient: NetworkFlowReportsClient | null = null;
+function getNetworkFlowReportsClient(): NetworkFlowReportsClient {
+  if (!networkFlowReportsClient) {
+    networkFlowReportsClient = createDesktopNetworkFlowReportsClient();
+  }
+  return networkFlowReportsClient;
 }
 
 let costReportsClient: CostReportsClient | null = null;
@@ -349,6 +359,8 @@ function renderPanel(
           // previous org's budgets and flagged resources.
           key={activeCloudOrgId ?? "local"}
           client={getCostsClient()}
+          // Cloud-only: reports read the server's network-flow store.
+          networkFlowReports={activeCloudOrgId ? getNetworkFlowReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
           onOpenExternal={(url) => void invoke("open_external_url", { url })}

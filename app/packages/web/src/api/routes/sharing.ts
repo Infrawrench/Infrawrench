@@ -42,6 +42,7 @@ const READ_PERMISSION: Record<ShareableObjectType, string> = {
   cost_canvas: "costs:read",
   kubernetes_efficiency_report: "costs:read",
   resource_report: "resources:read",
+  network_flow_report: "costs:read",
   dashboard: "dashboards:read",
   savings_view: "resources:read",
 };
@@ -51,6 +52,7 @@ const WRITE_PERMISSION: Record<ShareableObjectType, string> = {
   cost_canvas: "costs:write",
   kubernetes_efficiency_report: "costs:write",
   resource_report: "resources:write",
+  network_flow_report: "costs:write",
   dashboard: "dashboards:write",
   savings_view: "resources:write",
 };

@@ -58,7 +58,7 @@ export interface NetworkFlowFilters {
  * grants outright are visible (`strictlyVisibleAccountIds`), and a scope that
  * grants none sees no flows at all rather than all of them.
  */
-function flowOrgCondition(organizationId: string) {
+export function flowOrgCondition(organizationId: string) {
   const orgCond = eq(flow.organization_id, organizationId);
   const visible = strictlyVisibleAccountIds(organizationId);
   if (!visible) return orgCond;
