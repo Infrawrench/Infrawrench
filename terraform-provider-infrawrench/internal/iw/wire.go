@@ -347,6 +347,43 @@ type CostReport struct {
 	Placements      []Placement     `json:"placements,omitempty"`
 }
 
+/* ----------------------- Kubernetes efficiency reports ---------------------- */
+
+// KubernetesEfficiencyConfig is a saved efficiency report's definition. The
+// filter dimensions are narrower than a cost report's (account, region, tag).
+type KubernetesEfficiencyConfig struct {
+	Version         int64         `json:"version"`
+	DateRange       CostDateRange `json:"dateRange"`
+	Granularity     string        `json:"granularity"`
+	Filters         []CostFilter  `json:"filters"`
+	GroupBy         string        `json:"groupBy"`
+	GroupByLabelKey *string       `json:"groupByLabelKey,omitempty"`
+	Categories      []string      `json:"categories,omitempty"`
+	Idle            string        `json:"idle"`
+	Basis           string        `json:"basis"`
+}
+
+// KubernetesEfficiencyReportInput is the POST/PUT body. FolderID is sent as an
+// explicit null to move a report out of its folder.
+type KubernetesEfficiencyReportInput struct {
+	Name        string                     `json:"name"`
+	Description *string                    `json:"description,omitempty"`
+	Config      KubernetesEfficiencyConfig `json:"config"`
+	FolderID    *string                    `json:"folderId"`
+}
+
+// KubernetesEfficiencyReport is a saved report.
+type KubernetesEfficiencyReport struct {
+	ID              string                     `json:"id"`
+	Name            string                     `json:"name"`
+	Description     *string                    `json:"description"`
+	Config          KubernetesEfficiencyConfig `json:"config"`
+	FolderID        *string                    `json:"folderId"`
+	CreatedByUserID *string                    `json:"createdByUserId"`
+	CreatedAt       string                     `json:"createdAt"`
+	UpdatedAt       string                     `json:"updatedAt"`
+}
+
 /* --------------------------- cost report folders --------------------------- */
 
 // CostReportFolderInput is the POST/PUT body.

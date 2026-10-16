@@ -741,6 +741,45 @@ export const costCanvases = pgTable(
 );
 
 /**
+ * Kubernetes efficiency reports: saved views over the Kubernetes plugin's
+ * derived cost rows (see `client-core/src/k8s-efficiency.ts`).
+ *
+ * Filed in the cost-report folder tree (`folder_id`, SET NULL like
+ * `cost_reports`, so deleting a folder never deletes a report) and shared
+ * through `object_access_grants` as `kubernetes_efficiency_report`, with the
+ * creator as implicit owner. `config` is a `KubernetesEfficiencyConfig`,
+ * validated by `kubernetesEfficiencyConfigSchema` at every write. Nothing
+ * computed is stored: running a report re-reads `cost_daily` under the
+ * caller's cost visibility scope.
+ */
+export const kubernetesEfficiencyReports = pgTable(
+  "kubernetes_efficiency_reports",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    config: jsonb("config").notNull(),
+    folderId: text("folder_id").references(() => costReportFolders.id, {
+      onDelete: "set null",
+    }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `cost_reports`. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("kubernetes_efficiency_reports_org_idx").on(t.organizationId),
+    folderIdx: index("kubernetes_efficiency_reports_folder_idx").on(t.organizationId, t.folderId),
+  }),
+);
+
+/**
  * Named sources of spend Infrawrench has no plugin for, filled by file upload
  * (CSV or FOCUS) from Settings or `infrawrench costs push`.
  *

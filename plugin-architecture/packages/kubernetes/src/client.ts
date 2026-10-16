@@ -42,6 +42,7 @@ import type {
   K8sNamespace,
   K8sNode,
   K8sPersistentVolumeClaim,
+  K8sPod,
   ParsedKubeconfig,
 } from "./types.js";
 import { parseKubeconfig } from "./types.js";
@@ -78,6 +79,7 @@ import { parseNodeRates, type NodeRateTable } from "./node-rates.js";
 import { allocationToCostRows } from "./cost-data.js";
 import {
   DEFAULT_NODE_LABEL_KEYS,
+  DEFAULT_POD_LABEL_KEYS,
   DEFAULT_PVC_LABEL_KEYS,
   discoverLabelKeys,
   nodeAttributes,
@@ -113,6 +115,7 @@ export class KubernetesClient implements PluginClient {
   /** Node and PVC label keys written onto cost rows as tags (`cost-labels.ts`). */
   private readonly nodeLabelKeys: string[];
   private readonly pvcLabelKeys: string[];
+  private readonly podLabelKeys: string[];
   /** The raw rates field, for the `network/…` transfer-rate overrides. */
   private readonly ratesField: string | undefined;
   private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
@@ -143,6 +146,11 @@ export class KubernetesClient implements PluginClient {
       DEFAULT_PVC_LABEL_KEYS,
       "pvc",
     );
+    this.podLabelKeys = parseLabelKeySetting(
+      credentials["costPodLabelKeys"],
+      DEFAULT_POD_LABEL_KEYS,
+      "pod",
+    );
     this.ratesField = credentials["nodeHourlyRates"];
     if (services) this.services = services;
     // When the host k8s driver is available it owns all auth via the
@@ -170,11 +178,15 @@ export class KubernetesClient implements PluginClient {
    * Label keys present on the cluster's nodes or PersistentVolumeClaims, for
    * the cost label-key pickers on the account form.
    */
-  async listLabelKeyOptions(kind: "node" | "pvc"): Promise<CredentialFieldOption[]> {
+  async listLabelKeyOptions(kind: "node" | "pvc" | "pod"): Promise<CredentialFieldOption[]> {
     const list =
       kind === "node"
         ? await this.k8sFetch<K8sList<K8sNode>>("/api/v1/nodes")
-        : await this.k8sFetch<K8sList<K8sPersistentVolumeClaim>>("/api/v1/persistentvolumeclaims");
+        : kind === "pod"
+          ? await this.k8sFetch<K8sList<K8sPod>>("/api/v1/pods")
+          : await this.k8sFetch<K8sList<K8sPersistentVolumeClaim>>(
+              "/api/v1/persistentvolumeclaims",
+            );
     return discoverLabelKeys(list.items ?? [], kind);
   }
 
@@ -354,8 +366,10 @@ export class KubernetesClient implements PluginClient {
     return allocationToCostRows(result.allocation, range, {
       nodeLabels: result.nodeLabels,
       claimLabels: result.claimLabels,
+      podLabels: result.podLabels,
       nodeLabelKeys: this.nodeLabelKeys,
       pvcLabelKeys: this.pvcLabelKeys,
+      podLabelKeys: this.podLabelKeys,
     });
   }
 

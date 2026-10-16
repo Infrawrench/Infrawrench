@@ -58,6 +58,7 @@ import { costRoutes } from "./routes/costs";
 import { costAnomalyFeedbackRoutes } from "./routes/cost-anomaly-feedback";
 import { costReportRoutes } from "./routes/cost-reports";
 import { costCanvasRoutes } from "./routes/cost-canvases";
+import { kubernetesEfficiencyReportRoutes } from "./routes/k8s-efficiency-reports";
 import {
   costReportNotificationRoutes,
   orgReportNotificationRoutes,
@@ -439,6 +440,7 @@ orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
 // Natural-language report canvases: CRUD, run, preview, PDF and schedules.
 orgScoped.route("/cost-canvases", costCanvasRoutes);
+orgScoped.route("/k8s-efficiency-reports", kubernetesEfficiencyReportRoutes);
 // Dated notes drawn over cost charts. Its own prefix rather than a child of
 // /cost-reports: an annotation with no report id is org-wide and belongs to
 // every chart, so it is not a sub-resource of any one report.

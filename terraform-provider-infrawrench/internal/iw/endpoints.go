@@ -248,6 +248,36 @@ func (c *Client) DeleteCostReport(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/cost-reports/"+seg(id))
 }
 
+/* ----------------------- Kubernetes efficiency reports ---------------------- */
+
+func (c *Client) GetKubernetesEfficiencyReport(ctx context.Context, id string) (*KubernetesEfficiencyReport, error) {
+	var out KubernetesEfficiencyReport
+	if err := c.Get(ctx, "/k8s-efficiency-reports/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateKubernetesEfficiencyReport(ctx context.Context, in KubernetesEfficiencyReportInput) (*KubernetesEfficiencyReport, error) {
+	var out KubernetesEfficiencyReport
+	if err := c.Post(ctx, "/k8s-efficiency-reports", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateKubernetesEfficiencyReport(ctx context.Context, id string, in KubernetesEfficiencyReportInput) (*KubernetesEfficiencyReport, error) {
+	var out KubernetesEfficiencyReport
+	if err := c.Put(ctx, "/k8s-efficiency-reports/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteKubernetesEfficiencyReport(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/k8s-efficiency-reports/"+seg(id))
+}
+
 /* --------------------------- cost report folders --------------------------- */
 
 func (c *Client) ListCostReportFolders(ctx context.Context) ([]CostReportFolder, error) {

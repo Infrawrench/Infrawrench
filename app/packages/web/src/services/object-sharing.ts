@@ -1,5 +1,6 @@
 /**
- * Per-object sharing for cost reports, report folders and dashboards.
+ * Per-object sharing for cost reports, Kubernetes efficiency reports, report
+ * folders, canvases and dashboards.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -50,6 +51,7 @@ import {
   costReportFolders,
   costReports,
   dashboards,
+  kubernetesEfficiencyReports,
   objectAccessGrants,
   organizationMembers,
   roles,
@@ -68,12 +70,19 @@ const storage = new AsyncLocalStorage<SharingPrincipal>();
 
 /** Types whose creator is their implicit owner (`created_by_user_id`). */
 function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
-  return type === "cost_report" || type === "cost_canvas";
+  return (
+    type === "cost_report" || type === "cost_canvas" || type === "kubernetes_efficiency_report"
+  );
+}
+
+/** Report types filed in the report-folder tree (by `folder_id`). */
+function isFiledReport(type: ShareableObjectType): boolean {
+  return type === "cost_report" || type === "kubernetes_efficiency_report";
 }
 
 /** Types that sit in the report-folder tree and inherit its explicit sharing. */
 function inFolderTree(type: ShareableObjectType): boolean {
-  return type === "cost_report" || type === "cost_report_folder";
+  return isFiledReport(type) || type === "cost_report_folder";
 }
 
 export function runWithSharingPrincipal<T>(principal: SharingPrincipal, fn: () => T): T {
@@ -202,8 +211,7 @@ export async function loadAccessResolver(
   const p = currentPrincipal(organizationId);
   if (!p) return FULL_ACCESS;
 
-  const types: ShareableObjectType[] =
-    type === "cost_report" ? ["cost_report", "cost_report_folder"] : [type];
+  const types: ShareableObjectType[] = isFiledReport(type) ? [type, "cost_report_folder"] : [type];
   const rows = await db
     .select()
     .from(objectAccessGrants)
@@ -249,7 +257,7 @@ export async function loadAccessResolver(
         levels.push("owner");
       }
       if (inFolderTree(type)) {
-        const parent = type === "cost_report" ? meta?.folderId : folderParent.get(objectId);
+        const parent = isFiledReport(type) ? meta?.folderId : folderParent.get(objectId);
         levels.push(...chainLevels(parent));
       }
       return maxAccessLevel(levels);
@@ -359,6 +367,26 @@ export async function loadObjectMeta(
       .where(and(eq(costReports.id, objectId), eq(costReports.organizationId, organizationId)))
       .limit(1);
     return row && !row.deletedAt ? row : null;
+  }
+  if (type === "kubernetes_efficiency_report") {
+    const [row] = await db
+      .select({
+        name: kubernetesEfficiencyReports.name,
+        createdByUserId: kubernetesEfficiencyReports.createdByUserId,
+        folderId: kubernetesEfficiencyReports.folderId,
+        deletedAt: kubernetesEfficiencyReports.deletedAt,
+      })
+      .from(kubernetesEfficiencyReports)
+      .where(
+        and(
+          eq(kubernetesEfficiencyReports.id, objectId),
+          eq(kubernetesEfficiencyReports.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    return row && !row.deletedAt
+      ? { name: row.name, createdByUserId: row.createdByUserId, folderId: row.folderId }
+      : null;
   }
   if (type === "cost_canvas") {
     const [row] = await db

@@ -360,6 +360,7 @@ export async function cmdCostTagKeys(ctx: CliContext): Promise<void> {
     k8s: "Kubernetes",
     k8s_node_label: "Kubernetes node labels",
     k8s_pvc_label: "Kubernetes volume labels",
+    k8s_pod_label: "Kubernetes pod labels",
   };
   for (const g of groups) {
     println(c.bold(headings[g.group] ?? g.group));

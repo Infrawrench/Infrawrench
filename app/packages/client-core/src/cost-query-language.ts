@@ -300,7 +300,7 @@ function suggestDimension(name: string): string | null {
  *   query      := ε | term ( AND term )*
  *   term       := dimension operator value
  *   dimension  := IDENT | ("tag" | "virtual_tag") "[" string "]"
- *              |  ("k8s_node_label" | "k8s_pvc_label") "[" string "]"
+ *              |  ("k8s_node_label" | "k8s_pvc_label" | "k8s_pod_label") "[" string "]"
  *   operator   := "=" | "!=" | IN | NOT IN
  *   value      := string                            (for "=" and "!=")
  *              |  "(" string ( "," string )* ")"    (for IN and NOT IN)
@@ -310,7 +310,7 @@ function suggestDimension(name: string): string | null {
 export const COST_QUERY_GRAMMAR = [
   "query     := ε | term (AND term)*",
   "term      := dimension operator value",
-  "dimension := name | tag['key'] | virtual_tag['key'] | k8s_node_label['key'] | k8s_pvc_label['key']",
+  "dimension := name | tag['key'] | virtual_tag['key'] | k8s_node_label['key'] | k8s_pvc_label['key'] | k8s_pod_label['key']",
   "operator  := = | != | IN | NOT IN",
   "value     := 'text' | ('a', 'b', …)",
 ].join("\n");
@@ -332,10 +332,11 @@ export const COST_QUERY_LANGUAGE_SUMMARY =
   "Supported forms are `dimension = 'value'`, `dimension != 'value'`, " +
   "`dimension IN ('a','b')`, `dimension NOT IN ('a','b')`, `tag['owner'] = 'platform'` and " +
   "`virtual_tag['team'] = 'payments'` (one of the organization's virtual tags, by key), " +
-  "joined by AND. Kubernetes node and PersistentVolumeClaim labels are tags too, with " +
+  "joined by AND. Kubernetes pod, node and PersistentVolumeClaim labels are tags too, with " +
   "shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team']` and " +
   "`k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` means " +
-  "`tag['k8s_pvc_label:app.kubernetes.io/name']`. Keywords are case-insensitive. OR is not supported; the filter is a " +
+  "`tag['k8s_pvc_label:app.kubernetes.io/name']` (and `k8s_pod_label['app']` likewise). " +
+  "Keywords are case-insensitive. OR is not supported; the filter is a " +
   "conjunction, so use IN ('a','b') to accept several values of one dimension.";
 
 class Parser {

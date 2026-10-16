@@ -28,6 +28,7 @@ import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
+import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   DeployIcon,
@@ -588,6 +589,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CostCanvasesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/cost-canvases", params: { orgId: orgId! } }),
+              },
+              {
+                key: "k8s-efficiency",
+                label: gt("Kubernetes efficiency"),
+                icon: <KubernetesEfficiencyIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/k8s-efficiency", params: { orgId: orgId! } }),
               },
               {
                 key: "invoices",

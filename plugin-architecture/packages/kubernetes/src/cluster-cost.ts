@@ -86,6 +86,8 @@ export interface ClusterCostResult {
    */
   nodeLabels: Map<string, Record<string, string>>;
   claimLabels: Map<string, Record<string, string>>;
+  /** Each running pod's labels, by `namespace/name`, for the same reason. */
+  podLabels: Map<string, Record<string, string>>;
 }
 
 /** Optional inputs beyond the API: the text fetcher and account settings. */
@@ -166,6 +168,7 @@ export async function computeClusterCost(
   });
 
   const pods: CostModelPod[] = [];
+  const podLabels = new Map<string, Record<string, string>>();
   const attributable: AttributablePod[] = [];
   for (const pod of podList.items ?? []) {
     // Terminal pods hold no capacity: a Succeeded Job pod is not costing
@@ -175,6 +178,7 @@ export async function computeClusterCost(
     if (phase === "Succeeded" || phase === "Failed") continue;
 
     const namespace = pod.metadata.namespace ?? "default";
+    podLabels.set(namespacedKey(namespace, pod.metadata.name), pod.metadata.labels ?? {});
     const { requests, limits } = effectivePodResources(pod.spec);
     const { workload, workloadKind } = ownerWorkload(
       pod.metadata.ownerReferences,
@@ -260,6 +264,7 @@ export async function computeClusterCost(
     gpuMetrics,
     nodeLabels,
     claimLabels,
+    podLabels,
   };
 }
 

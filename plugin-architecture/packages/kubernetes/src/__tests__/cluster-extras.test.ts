@@ -311,9 +311,12 @@ describe("cost rows", () => {
 
     // The workload row is compute only: adding its disk and its load balancer
     // there as well would count the same money under two service labels.
-    const workloadRow = rows.find((r) => r.service === SERVICE_WORKLOAD)!;
+    // It is written as CPU and memory rows, which together are its compute.
+    const workloadTotal = rows
+      .filter((r) => r.service === SERVICE_WORKLOAD)
+      .reduce((acc, r) => acc + r.amount, 0);
     const web = result.workloads.find((w) => w.workload === "web")!;
-    expect(workloadRow.amount).toBeCloseTo(web.computeDailyCost!, 12);
+    expect(workloadTotal).toBeCloseTo(web.computeDailyCost!, 12);
 
     // And the rows still add up to the cluster total.
     const rowTotal = rows.reduce((acc, r) => acc + r.amount, 0);

@@ -9,6 +9,18 @@
  */
 import { z } from "zod";
 import {
+  K8S_COST_CATEGORIES,
+  K8S_EFFICIENCY_BASES,
+  K8S_EFFICIENCY_FILTER_DIMENSIONS,
+  K8S_EFFICIENCY_GRANULARITIES,
+  K8S_EFFICIENCY_GROUP_BYS,
+  K8S_EFFICIENCY_LIMITS,
+  K8S_IDLE_MODES,
+  kubernetesEfficiencyConfigProblem,
+  type KubernetesEfficiencyConfig,
+  type KubernetesEfficiencyReportInput,
+} from "@infrawrench/client-core";
+import {
   TAG_KEY_SETTINGS_LIMITS,
   tagKeyPatternError,
   type TagKeySettings,
@@ -2173,4 +2185,56 @@ export type SchemasMatchCostCanvasContract = [
   Exact<z.infer<typeof costCanvasSpecSchema>, CostCanvasSpec>,
   Exact<z.infer<typeof costCanvasInputSchema>, CostCanvasInput>,
   Exact<z.infer<typeof costCanvasWidgetConfigSchema>, CostCanvasWidgetConfig>,
+];
+
+/* ------------------------------------------------------------------ *
+ * Kubernetes efficiency reports: POST/PUT /k8s-efficiency-reports.
+ * ------------------------------------------------------------------ */
+
+const k8sEfficiencyFilterSchema = z.object({
+  dimension: z.enum(K8S_EFFICIENCY_FILTER_DIMENSIONS),
+  op: z.enum(["in", "not_in"]),
+  values: z.array(z.string().max(500)).min(1).max(K8S_EFFICIENCY_LIMITS.maxFilterValues),
+  tagKey: z.string().min(1).max(300).optional(),
+});
+
+const k8sEfficiencyConfigObjectSchema = z.object({
+  version: z.literal(1),
+  dateRange: costDateRangeSchema,
+  granularity: z.enum(K8S_EFFICIENCY_GRANULARITIES),
+  filters: z.array(k8sEfficiencyFilterSchema).max(K8S_EFFICIENCY_LIMITS.maxFilters),
+  groupBy: z.enum(K8S_EFFICIENCY_GROUP_BYS),
+  groupByLabelKey: z.string().min(1).max(300).optional(),
+  categories: z.array(z.enum(K8S_COST_CATEGORIES)).max(K8S_COST_CATEGORIES.length).optional(),
+  idle: z.enum(K8S_IDLE_MODES),
+  basis: z.enum(K8S_EFFICIENCY_BASES),
+});
+
+/**
+ * A saved report's config. The cross-field rules (a label key exactly when
+ * grouping by label, the window bound) are `kubernetesEfficiencyConfigProblem`,
+ * the same function both editors and the CLI call.
+ */
+export const kubernetesEfficiencyConfigSchema = k8sEfficiencyConfigObjectSchema.superRefine(
+  (config, ctx) => {
+    const problem = kubernetesEfficiencyConfigProblem(config);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  },
+);
+
+export const kubernetesEfficiencyReportInputSchema = z.object({
+  name: z.string().trim().min(1).max(K8S_EFFICIENCY_LIMITS.maxNameLength),
+  description: z.string().max(K8S_EFFICIENCY_LIMITS.maxDescriptionLength).optional(),
+  config: kubernetesEfficiencyConfigSchema,
+  folderId: z.string().min(1).nullable().optional(),
+});
+
+/** `POST /k8s-efficiency-reports/query`: run an unsaved config. */
+export const kubernetesEfficiencyQuerySchema = z.object({
+  config: kubernetesEfficiencyConfigSchema,
+});
+
+export type SchemasMatchKubernetesEfficiencyContract = [
+  Exact<z.infer<typeof kubernetesEfficiencyConfigSchema>, KubernetesEfficiencyConfig>,
+  Exact<z.infer<typeof kubernetesEfficiencyReportInputSchema>, KubernetesEfficiencyReportInput>,
 ];

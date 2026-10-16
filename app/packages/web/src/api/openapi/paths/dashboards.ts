@@ -195,6 +195,7 @@ const TabTarget = strict({
     "savings",
     "cost-reports",
     "cost-canvases",
+    "k8s-efficiency",
     "invoices",
     "graph",
     "logs",

@@ -27,6 +27,7 @@ import {
   resourceAppsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
   getWorkspaceNavigateArgs,
@@ -923,6 +924,29 @@ describe("canvases tab", () => {
       const path = args.to
         .replace("$orgId", args.params!["orgId"]!)
         .replace("$canvasId", args.params!["canvasId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("Kubernetes efficiency tab", () => {
+  it("navigates to the list path without a report and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget())).toEqual({
+      to: "/org/$orgId/k8s-efficiency",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget("r1"))).toEqual({
+      to: "/org/$orgId/k8s-efficiency/$reportId",
+      params: { orgId: "test-org", reportId: "r1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    for (const target of [k8sEfficiencyTabTarget(), k8sEfficiencyTabTarget("r1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$reportId", args.params!["reportId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
     }
   });

@@ -142,6 +142,11 @@ export default function CostsScreen() {
               subtitle="Reports built from a description, refreshed on open"
               onPress={() => router.push(`/org/${orgId}/cost-canvases`)}
             />
+            <Row
+              title="Kubernetes efficiency"
+              subtitle="Used, unused and idle cluster cost by namespace, workload or label"
+              onPress={() => router.push(`/org/${orgId}/k8s-efficiency`)}
+            />
           </Card>
 
           <SectionTitle>Budgets</SectionTitle>

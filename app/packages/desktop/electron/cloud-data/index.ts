@@ -5,6 +5,7 @@ import "./agents";
 import "./chat";
 import "./costs";
 import "./cost-canvases";
+import "./k8s-efficiency";
 import "./invoices";
 import "./metric-alerts";
 import "./orphans";

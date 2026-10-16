@@ -120,7 +120,9 @@ export function ShareDialog({
         ? gt("folder")
         : target.objectType === "cost_canvas"
           ? gt("canvas")
-          : gt("report");
+          : target.objectType === "kubernetes_efficiency_report"
+            ? gt("efficiency report")
+            : gt("report");
 
   const levelLabel = (level: ObjectAccessLevel) =>
     level === "owner" ? gt("Owner") : level === "editor" ? gt("Can edit") : gt("Can view");

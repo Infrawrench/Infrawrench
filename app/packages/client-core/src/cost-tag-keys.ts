@@ -1,8 +1,8 @@
 /**
  * Tag keys with a meaning beyond "a tag".
  *
- * The Kubernetes plugin writes node and PersistentVolumeClaim labels onto its
- * cost rows as ordinary tags under two reserved prefixes, plus a handful of
+ * The Kubernetes plugin writes pod, node and PersistentVolumeClaim labels onto
+ * its cost rows as ordinary tags under three reserved prefixes, plus a handful of
  * normalised node attributes (`node_pool`, `capacity_type`, …). Everything
  * downstream treats them as tags, which is the point: group-by, filters,
  * saved filters, budgets and allocation rules work on them unchanged. This
@@ -18,6 +18,8 @@
 export const K8S_NODE_LABEL_TAG_PREFIX = "k8s_node_label:";
 /** Tag-key prefix the Kubernetes plugin uses for PersistentVolumeClaim labels. */
 export const K8S_PVC_LABEL_TAG_PREFIX = "k8s_pvc_label:";
+/** Tag-key prefix the Kubernetes plugin uses for pod labels. */
+export const K8S_POD_LABEL_TAG_PREFIX = "k8s_pod_label:";
 
 /**
  * Query-language names that are shorthand for a prefixed tag:
@@ -26,6 +28,7 @@ export const K8S_PVC_LABEL_TAG_PREFIX = "k8s_pvc_label:";
 export const COST_TAG_ALIASES = {
   k8s_node_label: K8S_NODE_LABEL_TAG_PREFIX,
   k8s_pvc_label: K8S_PVC_LABEL_TAG_PREFIX,
+  k8s_pod_label: K8S_POD_LABEL_TAG_PREFIX,
 } as const;
 
 export type CostTagAlias = keyof typeof COST_TAG_ALIASES;
@@ -39,9 +42,18 @@ export const K8S_NODE_ATTRIBUTE_TAG_KEYS = [
 ] as const;
 
 /** Tag keys the Kubernetes plugin writes that are neither labels nor node attributes. */
-const K8S_OTHER_TAG_KEYS = new Set(["namespace", "workload", "workload_kind", "storage_class"]);
+const K8S_OTHER_TAG_KEYS = new Set([
+  "namespace",
+  "workload",
+  "workload_kind",
+  "storage_class",
+  "gpu_model",
+  // What a row's money bought and whether it was used (`k8s-efficiency.ts`).
+  "k8s_resource",
+  "k8s_usage",
+]);
 
-export type CostTagKeyGroup = "tag" | "k8s" | "k8s_node_label" | "k8s_pvc_label";
+export type CostTagKeyGroup = "tag" | "k8s" | "k8s_node_label" | "k8s_pvc_label" | "k8s_pod_label";
 
 export interface CostTagKeyDescription {
   key: string;
@@ -79,7 +91,13 @@ export function describeCostTagKey(key: string): CostTagKeyDescription {
 export function groupCostTagKeys(
   keys: readonly string[],
 ): Array<{ group: CostTagKeyGroup; keys: CostTagKeyDescription[] }> {
-  const order: CostTagKeyGroup[] = ["tag", "k8s", "k8s_node_label", "k8s_pvc_label"];
+  const order: CostTagKeyGroup[] = [
+    "tag",
+    "k8s",
+    "k8s_pod_label",
+    "k8s_node_label",
+    "k8s_pvc_label",
+  ];
   const buckets = new Map<CostTagKeyGroup, CostTagKeyDescription[]>();
   for (const key of keys) {
     const d = describeCostTagKey(key);

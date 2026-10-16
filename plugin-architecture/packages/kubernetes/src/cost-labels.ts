@@ -42,6 +42,8 @@ import type { CredentialFieldOption } from "@infrawrench/plugin-base";
 export const NODE_LABEL_TAG_PREFIX = "k8s_node_label:";
 /** Tag-key prefix for raw PVC labels. Changing it re-keys history: don't. */
 export const PVC_LABEL_TAG_PREFIX = "k8s_pvc_label:";
+/** Tag-key prefix for raw pod labels. Changing it re-keys history: don't. */
+export const POD_LABEL_TAG_PREFIX = "k8s_pod_label:";
 
 /** Most label keys emitted per kind, whatever the setting says. */
 export const MAX_LABEL_KEYS = 20;
@@ -77,6 +79,49 @@ export const DEFAULT_PVC_LABEL_KEYS: readonly string[] = [
 ];
 
 /**
+ * Pod labels emitted when the account has not chosen: the recommended
+ * `app.kubernetes.io` set plus the same ownership conventions as nodes. All of
+ * them are set on a workload's pod template, so every replica carries the
+ * same values and they do not split a workload's rows.
+ */
+export const DEFAULT_POD_LABEL_KEYS: readonly string[] = [
+  "app.kubernetes.io/name",
+  "app.kubernetes.io/instance",
+  "app.kubernetes.io/component",
+  "app.kubernetes.io/part-of",
+  "app",
+  "team",
+  "owner",
+  "environment",
+  "cost-center",
+];
+
+/**
+ * Pod labels the controllers stamp per pod or per revision. Never emitted:
+ * each would split a workload's compute into one row per replica or per
+ * rollout, every day, for a value nobody groups spend by.
+ */
+const PER_POD_LABEL_KEYS = new Set([
+  "pod-template-hash",
+  "controller-revision-hash",
+  "pod-template-generation",
+  "statefulset.kubernetes.io/pod-name",
+  "apps.kubernetes.io/pod-index",
+  "batch.kubernetes.io/job-completion-index",
+  "batch.kubernetes.io/controller-uid",
+  "controller-uid",
+  "job-name",
+  "batch.kubernetes.io/job-name",
+]);
+
+/** True for a label key that names one pod or one revision, never a dimension. */
+export function isPerPodLabelKey(key: string): boolean {
+  return (
+    PER_POD_LABEL_KEYS.has(key) || /(^|[/.-])(pod-name|pod-index|revision-hash|uid)$/i.test(key)
+  );
+}
+
+/**
  * Node labels that identify one node (or one instance) rather than a class
  * of them. Never emitted: each would turn every workload row into one row per
  * node, and the per-node view already exists on the cluster's own surfaces.
@@ -108,7 +153,7 @@ export function isPerNodeLabelKey(key: string): boolean {
 export function parseLabelKeySetting(
   raw: string | undefined,
   defaults: readonly string[],
-  kind: "node" | "pvc",
+  kind: "node" | "pvc" | "pod",
 ): string[] {
   const text = raw?.trim() ?? "";
   if (!text) return [...defaults];
@@ -119,6 +164,7 @@ export function parseLabelKeySetting(
     // `none` beside real keys is a picker leftover, not a key.
     if (!key || seen.has(key) || key.toLowerCase() === "none") continue;
     if (kind === "node" && isPerNodeLabelKey(key)) continue;
+    if (kind === "pod" && isPerPodLabelKey(key)) continue;
     seen.add(key);
     if (seen.size >= MAX_LABEL_KEYS) break;
   }
@@ -247,6 +293,21 @@ export function pvcCostTags(
   return tags;
 }
 
+/** The tags a pod's labels contribute to the rows derived from it. */
+export function podCostTags(
+  labels: Record<string, string>,
+  keys: readonly string[],
+): Record<string, string> {
+  const tags: Record<string, string> = {};
+  for (const key of keys) {
+    // Refused here as well as in the setting parser: a per-revision key that
+    // slipped through would split every workload's rows at each rollout.
+    if (isPerPodLabelKey(key)) continue;
+    putIf(tags, `${POD_LABEL_TAG_PREFIX}${key}`, labels[key]);
+  }
+  return tags;
+}
+
 /**
  * Label keys found on a set of objects, as picker options.
  *
@@ -257,19 +318,20 @@ export function pvcCostTags(
  */
 export function discoverLabelKeys(
   items: Array<{ metadata: { labels?: Record<string, string> } }>,
-  kind: "node" | "pvc",
+  kind: "node" | "pvc" | "pod",
 ): CredentialFieldOption[] {
   const counts = new Map<string, { count: number; values: Set<string> }>();
   for (const item of items) {
     for (const [key, value] of Object.entries(item.metadata.labels ?? {})) {
       if (kind === "node" && isPerNodeLabelKey(key)) continue;
+      if (kind === "pod" && isPerPodLabelKey(key)) continue;
       const entry = counts.get(key) ?? { count: 0, values: new Set<string>() };
       entry.count += 1;
       if (value) entry.values.add(value);
       counts.set(key, entry);
     }
   }
-  const noun = kind === "node" ? "node" : "claim";
+  const noun = kind === "node" ? "node" : kind === "pod" ? "pod" : "claim";
   return [...counts.entries()]
     .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
     .map(([key, { count, values }]) => {

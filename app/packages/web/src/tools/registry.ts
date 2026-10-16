@@ -15,6 +15,7 @@ import { unitCostTools } from "./unit-costs";
 import { virtualTagTools } from "./virtual-tags";
 import { costReportTools } from "./cost-reports";
 import { costCanvasTools } from "./cost-canvases";
+import { kubernetesEfficiencyTools } from "./k8s-efficiency";
 import { costAlertTools } from "./cost-alerts";
 import { invoiceTools } from "./invoices";
 import { scheduleTools } from "./schedules";
@@ -50,6 +51,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...virtualTagTools(),
     ...costReportTools(),
     ...costCanvasTools(),
+    ...kubernetesEfficiencyTools(),
     ...costAlertTools(),
     ...invoiceTools(),
     ...scheduleTools(),

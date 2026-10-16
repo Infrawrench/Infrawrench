@@ -177,7 +177,12 @@ describe("parseCostQuery — errors are useful", () => {
     expect(error.message).toContain('Unknown dimension "provder"');
     expect(error.message).toContain('Did you mean "provider"');
     for (const dimension of COST_DIMENSIONS) expect(error.message).toContain(dimension);
-    expect(error.expected).toEqual([...COST_DIMENSIONS, "k8s_node_label", "k8s_pvc_label"]);
+    expect(error.expected).toEqual([
+      ...COST_DIMENSIONS,
+      "k8s_node_label",
+      "k8s_pvc_label",
+      "k8s_pod_label",
+    ]);
   });
 
   it("still lists the dimensions when nothing is close enough to suggest", () => {

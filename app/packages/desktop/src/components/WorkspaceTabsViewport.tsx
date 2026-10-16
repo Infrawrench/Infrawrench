@@ -11,6 +11,7 @@ import {
   postureTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
   workflowsTabTarget,
@@ -49,6 +50,11 @@ import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
+import {
+  KubernetesEfficiencyPanel,
+  type KubernetesEfficiencyClient,
+} from "@infrawrench/ui/k8s-efficiency";
+import { createDesktopKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
@@ -111,6 +117,16 @@ let costReportsClient: CostReportsClient | null = null;
 function getCostReportsClient(): CostReportsClient {
   if (!costReportsClient) costReportsClient = createDesktopCostReportsClient();
   return costReportsClient;
+}
+
+const k8sEfficiencyClients = new Map<string, KubernetesEfficiencyClient>();
+function getKubernetesEfficiencyClient(orgId: string): KubernetesEfficiencyClient {
+  let client = k8sEfficiencyClients.get(orgId);
+  if (!client) {
+    client = createDesktopKubernetesEfficiencyClient(orgId);
+    k8sEfficiencyClients.set(orgId, client);
+  }
+  return client;
 }
 
 const costCanvasesClients = new Map<string, CostCanvasesClient>();
@@ -416,6 +432,25 @@ function renderPanel(
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
           {gt("Canvases live in Infrawrench Cloud. Sign in and pick an organization to see them.")}
+        </div>
+      );
+    case "k8s-efficiency":
+      // Cloud-only, like Cost reports: the report reads server-collected
+      // Kubernetes cost rows.
+      return activeCloudOrgId ? (
+        <KubernetesEfficiencyPanel
+          key={activeCloudOrgId}
+          client={getKubernetesEfficiencyClient(activeCloudOrgId)}
+          reportId={t.reportId}
+          onSelectReport={(reportId) =>
+            void navigate(getWorkspaceNavigateArgs(k8sEfficiencyTabTarget(reportId)))
+          }
+        />
+      ) : (
+        <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
+          {gt(
+            "Kubernetes efficiency reports live in Infrawrench Cloud. Sign in and pick an organization to see them.",
+          )}
         </div>
       );
     case "invoices":

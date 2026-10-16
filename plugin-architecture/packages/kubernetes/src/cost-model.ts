@@ -251,6 +251,18 @@ export interface PodAllocation {
   /** {@link wasted}, priced through the same pools as {@link hourlyCost}. */
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
+  /**
+   * {@link hourlyCost}'s CPU and memory parts, each from its own pool, and
+   * the share of each that {@link wastedHourlyCost} holds. They sum to the
+   * CPU/memory part of `hourlyCost` and to `wastedHourlyCost` respectively, so
+   * a cost row can carry "CPU, used" and "memory, requested but unused" as
+   * separate money without re-deriving the pools. `null` exactly when their
+   * totals are.
+   */
+  cpuHourlyCost: number | null;
+  memoryHourlyCost: number | null;
+  cpuWastedHourlyCost: number | null;
+  memoryWastedHourlyCost: number | null;
   /** GPU-equivalents the pod is charged for (1.0 = one whole device). */
   gpus: number;
   /**
@@ -466,6 +478,14 @@ interface NodeAllocation {
   /** Unrequested CPU and memory. Unrequested GPUs are in {@link gpu}. */
   hourlyIdleCost: number | null;
   hourlySystemReservedCost: number | null;
+  /**
+   * {@link hourlyIdleCost} and {@link hourlySystemReservedCost} split into
+   * their CPU and memory pools. Each pair sums to its total.
+   */
+  hourlyIdleCpuCost: number | null;
+  hourlyIdleMemoryCost: number | null;
+  hourlySystemReservedCpuCost: number | null;
+  hourlySystemReservedMemoryCost: number | null;
   podCount: number;
   utilization: ResourcePair | null;
   gpu: NodeGpuAllocation | null;
@@ -755,8 +775,10 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       gpuAllocated += podGpus;
       const gpuHourlyCost =
         gpuPool == null || gpuPhysical <= 0 ? null : (gpuPool * podGpus) / gpuPhysical;
+      const cpuHourly = cpuPool == null || memPool == null ? null : cpuPool * cpuShare;
+      const memoryHourly = cpuPool == null || memPool == null ? null : memPool * memoryShare;
       const cpuMemHourly =
-        cpuPool == null || memPool == null ? null : cpuPool * cpuShare + memPool * memoryShare;
+        cpuHourly == null || memoryHourly == null ? null : cpuHourly + memoryHourly;
       const hourlyCost = cpuMemHourly == null ? null : cpuMemHourly + (gpuHourlyCost ?? 0);
       // A shared device's activity cannot be pinned on any one sharer, so a
       // number here would be the device's, not the pod's.
@@ -785,17 +807,24 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       // Priced through the same pools and the same overcommit scaling as the
       // cost above, so waste is always a strict subset of what was charged and
       // can never exceed it.
-      const wastedHourlyCost =
+      const cpuWastedHourly =
         wasted == null || cpuPool == null || memPool == null
           ? null
           : cpuPool *
-              (node.capacity.cpuCores > 0
-                ? (wasted.cpuCores * cpuScale) / node.capacity.cpuCores
-                : 0) +
-            memPool *
-              (node.capacity.memoryBytes > 0
-                ? (wasted.memoryBytes * memScale) / node.capacity.memoryBytes
-                : 0);
+            (node.capacity.cpuCores > 0
+              ? (wasted.cpuCores * cpuScale) / node.capacity.cpuCores
+              : 0);
+      const memoryWastedHourly =
+        wasted == null || cpuPool == null || memPool == null
+          ? null
+          : memPool *
+            (node.capacity.memoryBytes > 0
+              ? (wasted.memoryBytes * memScale) / node.capacity.memoryBytes
+              : 0);
+      const wastedHourlyCost =
+        cpuWastedHourly == null || memoryWastedHourly == null
+          ? null
+          : cpuWastedHourly + memoryWastedHourly;
 
       podAllocations.push({
         name: entry.pod.name,
@@ -815,6 +844,10 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         wasted,
         wastedHourlyCost,
         wastedDailyCost: scaleToDay(wastedHourlyCost),
+        cpuHourlyCost: cpuHourly,
+        memoryHourlyCost: memoryHourly,
+        cpuWastedHourlyCost: cpuWastedHourly,
+        memoryWastedHourlyCost: memoryWastedHourly,
         gpus: podGpus,
         gpuHourlyCost: podGpus > 0 ? gpuHourlyCost : null,
         gpuDailyCost: podGpus > 0 ? scaleToDay(gpuHourlyCost) : null,
@@ -843,15 +876,20 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
       ),
     };
 
-    const poolCost = (pair: ResourcePair): number | null => {
+    const cpuPoolCost = (pair: ResourcePair): number | null => {
       if (cpuPool == null || memPool == null) return null;
-      const cpu =
-        node.capacity.cpuCores > 0 ? (pair.cpuCores / node.capacity.cpuCores) * cpuPool : 0;
-      const mem =
-        node.capacity.memoryBytes > 0
-          ? (pair.memoryBytes / node.capacity.memoryBytes) * memPool
-          : 0;
-      return cpu + mem;
+      return node.capacity.cpuCores > 0 ? (pair.cpuCores / node.capacity.cpuCores) * cpuPool : 0;
+    };
+    const memoryPoolCost = (pair: ResourcePair): number | null => {
+      if (cpuPool == null || memPool == null) return null;
+      return node.capacity.memoryBytes > 0
+        ? (pair.memoryBytes / node.capacity.memoryBytes) * memPool
+        : 0;
+    };
+    const poolCost = (pair: ResourcePair): number | null => {
+      const cpu = cpuPoolCost(pair);
+      const mem = memoryPoolCost(pair);
+      return cpu == null || mem == null ? null : cpu + mem;
     };
 
     const gpuIdle = Math.max(0, gpuPhysical - gpuAllocated);
@@ -887,6 +925,10 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
           : cpuMemAllocated + (gpuAllocation?.hourlyAllocatedCost ?? 0),
       hourlyIdleCost: poolCost(idle),
       hourlySystemReservedCost: poolCost(systemReserved),
+      hourlyIdleCpuCost: cpuPoolCost(idle),
+      hourlyIdleMemoryCost: memoryPoolCost(idle),
+      hourlySystemReservedCpuCost: cpuPoolCost(systemReserved),
+      hourlySystemReservedMemoryCost: memoryPoolCost(systemReserved),
       podCount: pods.length,
       utilization: node.usage ?? null,
       gpu: gpuAllocation,
@@ -924,6 +966,10 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         : null,
       wastedHourlyCost: null,
       wastedDailyCost: null,
+      cpuHourlyCost: null,
+      memoryHourlyCost: null,
+      cpuWastedHourlyCost: null,
+      memoryWastedHourlyCost: null,
       gpus: 0,
       gpuHourlyCost: null,
       gpuDailyCost: null,

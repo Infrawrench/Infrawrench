@@ -251,6 +251,14 @@ export function costCanvasesTabTarget(canvasId?: string): WorkspaceTabTarget {
 }
 
 /**
+ * Kubernetes efficiency reports. With a `reportId` it opens that report;
+ * without one the list. One tab either way, like Cost reports.
+ */
+export function k8sEfficiencyTabTarget(reportId?: string): WorkspaceTabTarget {
+  return { kind: "k8s-efficiency", ...(reportId ? { reportId } : {}) };
+}
+
+/**
  * The Invoices page: managed accounts and the invoices raised against them.
  * With an `invoiceId` it opens that invoice; without one it opens the list.
  * One tab either way, like Cost reports.

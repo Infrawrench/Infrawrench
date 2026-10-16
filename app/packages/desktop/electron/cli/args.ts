@@ -144,7 +144,7 @@ export interface DeployFlags {
 }
 
 /** Flags for `export`, and `--format pdf` on `reports`/`dashboards <name|id>`. */
-interface ExportFlags {
+export interface ExportFlags {
   /**
    * Output format, validated in the command: "terraform" (the default) or
    * "focus" for `export`, "pdf" for `reports`/`dashboards <name|id>` (which

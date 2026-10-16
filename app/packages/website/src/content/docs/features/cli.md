@@ -384,6 +384,15 @@ infrawrench carbon --days 90
 infrawrench carbon --json
 ```
 
+`k8s-efficiency` lists your saved [Kubernetes efficiency reports](./kubernetes-efficiency.md). Name one to run it: totals, efficiency, the split by cost category, and a row per group with used, requested-but-unused, unmeasured, idle and overhead cost. `--group-by` runs an unsaved report over every cluster you can see (`cluster`, `namespace`, `workload`, `node_pool`, `category`, or a label key such as `k8s_pod_label:team`), with `--basis total|allocated`. `--format csv|ndjson` writes a saved report's per-period export, to `--out` or standard output. Cloud-only.
+
+```
+infrawrench k8s-efficiency
+infrawrench k8s-efficiency "Payments efficiency" --json
+infrawrench k8s-efficiency --group-by namespace --last 30d
+infrawrench k8s-efficiency "Payments efficiency" --format csv --out efficiency.csv
+```
+
 `k8s-network` prints one Kubernetes cluster's [network costs](./kubernetes-costs.md#network-costs): bytes and money by traffic class, namespace and workload, the top talkers, and the billed data transfer split across them when a billed source is set. With one cluster it needs no argument; with several, name one. Cloud-only.
 
 ```

@@ -3,9 +3,11 @@ import { describe, it, expect } from "vitest";
 import { computeClusterCost } from "../cluster-cost.js";
 import {
   allocationToCostRows,
+  RESOURCE_TAG,
   SERVICE_IDLE,
   SERVICE_STORAGE,
   SERVICE_WORKLOAD,
+  USAGE_TAG,
 } from "../cost-data.js";
 import {
   DEFAULT_NODE_LABEL_KEYS,
@@ -13,6 +15,7 @@ import {
   MAX_LABEL_KEYS,
   discoverLabelKeys,
   isPerNodeLabelKey,
+  isPerPodLabelKey,
   nodeAttributes,
   nodeCostTags,
   parseLabelKeySetting,
@@ -63,7 +66,7 @@ function mixedCluster() {
   };
   const pod = (name: string, nodeName: string) => ({
     metadata: {
-      ...meta(name, { "pod-template-hash": "abc" }, "app"),
+      ...meta(name, { "pod-template-hash": "abc", "app.kubernetes.io/name": "web" }, "app"),
       ownerReferences: [{ kind: "ReplicaSet", name: "web-abc", controller: true }],
     },
     spec: {
@@ -110,8 +113,10 @@ async function labelledRows() {
     rows: allocationToCostRows(result.allocation, RANGE, {
       nodeLabels: result.nodeLabels,
       claimLabels: result.claimLabels,
+      podLabels: result.podLabels,
       nodeLabelKeys: ["team"],
       pvcLabelKeys: ["app.kubernetes.io/name", "team"],
+      podLabelKeys: ["app.kubernetes.io/name", "pod-template-hash"],
     }),
   };
 }
@@ -178,6 +183,15 @@ describe("parseLabelKeySetting", () => {
     expect(parseLabelKeySetting(many, [], "pvc")).toHaveLength(MAX_LABEL_KEYS);
   });
 
+  it("drops per-pod and per-revision pod labels", () => {
+    expect(
+      parseLabelKeySetting("app, pod-template-hash,controller-revision-hash, team", [], "pod"),
+    ).toEqual(["app", "team"]);
+    expect(isPerPodLabelKey("statefulset.kubernetes.io/pod-name")).toBe(true);
+    expect(isPerPodLabelKey("batch.kubernetes.io/controller-uid")).toBe(true);
+    expect(isPerPodLabelKey("app.kubernetes.io/name")).toBe(false);
+  });
+
   it("recognises per-node identifiers", () => {
     expect(isPerNodeLabelKey("kubernetes.io/hostname")).toBe(true);
     expect(isPerNodeLabelKey("example.com/node-id")).toBe(true);
@@ -222,12 +236,19 @@ describe("allocationToCostRows with labels", () => {
   it("splits a workload's compute by the node it ran on, without changing the total", async () => {
     const { result, rows } = await labelledRows();
     const web = rows.filter((r) => r.service === SERVICE_WORKLOAD);
-    expect(web).toHaveLength(2);
+    // Two nodes, each a CPU and a memory row.
+    expect(web).toHaveLength(4);
     expect(web.every((r) => r.resourceId === "app/Deployment/web")).toBe(true);
-    expect(web.map((r) => r.tags!["capacity_type"]).sort()).toEqual(["on-demand", "spot"]);
-    expect(web.map((r) => r.tags!["node_pool"]).sort()).toEqual(["batch", "general"]);
-    expect(web.map((r) => r.tags!["k8s_node_label:team"]).sort()).toEqual(["data", "platform"]);
+    const cpu = web.filter((r) => r.tags![RESOURCE_TAG] === "cpu");
+    expect(cpu.map((r) => r.tags!["capacity_type"]).sort()).toEqual(["on-demand", "spot"]);
+    expect(cpu.map((r) => r.tags!["node_pool"]).sort()).toEqual(["batch", "general"]);
+    expect(cpu.map((r) => r.tags!["k8s_node_label:team"]).sort()).toEqual(["data", "platform"]);
     expect(web.every((r) => !("k8s_node_label:kubernetes.io/hostname" in r.tags!))).toBe(true);
+    // No metrics-server in this cluster: allocated, never claimed as used.
+    expect(web.every((r) => r.tags![USAGE_TAG] === "unmeasured")).toBe(true);
+    // Pod labels ride along; a per-revision one never does, even when asked for.
+    expect(web.every((r) => r.tags!["k8s_pod_label:app.kubernetes.io/name"] === "web")).toBe(true);
+    expect(web.every((r) => !("k8s_pod_label:pod-template-hash" in r.tags!))).toBe(true);
 
     const unlabelled = allocationToCostRows(result.allocation, RANGE);
     const sum = (rs: typeof rows) => rs.reduce((acc, r) => acc + r.amount, 0);
@@ -238,8 +259,14 @@ describe("allocationToCostRows with labels", () => {
   it("writes idle capacity per node shape", async () => {
     const { rows } = await labelledRows();
     const idle = rows.filter((r) => r.service === SERVICE_IDLE);
-    expect(idle.map((r) => r.tags!["node_pool"]).sort()).toEqual(["batch", "general"]);
+    expect(idle.map((r) => `${r.tags!["node_pool"]}/${r.tags![RESOURCE_TAG]}`).sort()).toEqual([
+      "batch/cpu",
+      "batch/memory",
+      "general/cpu",
+      "general/memory",
+    ]);
     expect(idle.every((r) => r.resourceId === "cluster/idle")).toBe(true);
+    expect(idle.every((r) => r.tags![USAGE_TAG] === "idle")).toBe(true);
   });
 
   it("carries claim labels and storage class on the volume row", async () => {

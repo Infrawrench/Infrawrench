@@ -56,7 +56,13 @@ const CostVisibilityScopeInput = strict({
 }).openapi("CostVisibilityScopeInput");
 
 const ShareableObjectType = z
-  .enum(["cost_report", "cost_report_folder", "dashboard", "cost_canvas"])
+  .enum([
+    "cost_report",
+    "cost_report_folder",
+    "dashboard",
+    "cost_canvas",
+    "kubernetes_efficiency_report",
+  ])
   .openapi("ShareableObjectType");
 const AccessLevel = z.enum(["owner", "editor", "viewer"]).openapi("ObjectAccessLevel");
 const OrgAccess = z.enum(["editor", "viewer", "none"]).openapi("OrgAccessLevel", {

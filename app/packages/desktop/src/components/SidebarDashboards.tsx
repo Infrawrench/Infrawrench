@@ -47,12 +47,14 @@ import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
+import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
   costCanvasesTabTarget,
+  k8sEfficiencyTabTarget,
   invoicesTabTarget,
   environmentsTabTarget,
   graphTabTarget,
@@ -276,6 +278,16 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costCanvasesTabTarget(), {
                 label: gt("Canvases"),
+              }),
+          },
+          // Cloud-only: the report reads server-collected Kubernetes cost.
+          {
+            key: "k8s-efficiency",
+            label: gt("Kubernetes efficiency"),
+            icon: <KubernetesEfficiencyIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, k8sEfficiencyTabTarget(), {
+                label: gt("Kubernetes efficiency"),
               }),
           },
           // Cloud-only for the same reason as Costs: an invoice bills for
