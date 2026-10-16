@@ -23876,6 +23876,14 @@
               "null"
             ]
           },
+          "billingProfileId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
           "costCentreIds": {
             "type": "array",
             "items": {
@@ -23917,6 +23925,7 @@
           "applyBillingRules",
           "pricing",
           "notes",
+          "billingProfileId",
           "costCentreIds",
           "accountIds",
           "invoiceCount",
@@ -23994,6 +24003,15 @@
             ],
             "maxLength": 4000
           },
+          "billingProfileId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The billing profile this customer's invoices are addressed, taxed and numbered by. Absent on update leaves the saved profile; null removes it.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
           "costCentreIds": {
             "type": "array",
             "items": {
@@ -24018,6 +24036,833 @@
         "required": [
           "name",
           "billingCurrency"
+        ],
+        "additionalProperties": false
+      },
+      "UnassignedSpendReport": {
+        "type": "object",
+        "properties": {
+          "periodFrom": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "periodTo": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "cost_centre",
+                    "account",
+                    "unallocated"
+                  ],
+                  "description": "`unallocated` is spend that resolved to no cost centre and no connected account (a disconnected account, an uploaded source); it cannot be assigned."
+                },
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Cost centres carry their full path."
+                },
+                "pluginId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "amounts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "Currency code → amount in the currency's major unit."
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "name",
+                "pluginId",
+                "amounts"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "unassigned": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "description": "Currency code → amount in the currency's major unit."
+              },
+              "assigned": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "description": "Currency code → amount in the currency's major unit."
+              },
+              "all": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "description": "Currency code → amount in the currency's major unit."
+              }
+            },
+            "required": [
+              "unassigned",
+              "assigned",
+              "all"
+            ],
+            "additionalProperties": false
+          },
+          "assignable": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "periodFrom",
+          "periodTo",
+          "rows",
+          "totals",
+          "assignable"
+        ],
+        "additionalProperties": false,
+        "description": "Spend in the period no customer is billed for. Resolved exactly the way an invoice resolves it: allocation rules claim spend for cost centres first, and each account claims only what no rule did. A cost centre is assigned when it or any ancestor is on a customer. Raw spend on the amortized basis, before billing rules."
+      },
+      "ManagedAccountAssignmentPreview": {
+        "type": "object",
+        "properties": {
+          "periodFrom": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "periodTo": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "target": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "cost_centre",
+                    "account"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "fromManagedAccountId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "fromManagedAccountName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "amounts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "Spend that moves with the item: a cost centre's whole subtree, an account's spend no cost centre claimed."
+                },
+                "unchanged": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "name",
+                "fromManagedAccountId",
+                "fromManagedAccountName",
+                "amounts",
+                "unchanged"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fromManagedAccountId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "fromManagedAccountName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "amounts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "description": "Currency code → amount in the currency's major unit."
+                }
+              },
+              "required": [
+                "fromManagedAccountId",
+                "fromManagedAccountName",
+                "amounts"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Currency code → amount in the currency's major unit."
+          },
+          "affectedDrafts": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "periodFrom",
+          "periodTo",
+          "target",
+          "items",
+          "moves",
+          "total",
+          "affectedDrafts",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedAccountAssignment": {
+        "type": "object",
+        "properties": {
+          "managedAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The customer to assign to, or null to take the items off every customer.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 500,
+            "default": []
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 500,
+            "default": []
+          }
+        },
+        "required": [
+          "managedAccountId"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedAccountAssignmentPreviewRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ManagedAccountAssignment"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "periodFrom": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-01-31"
+              },
+              "periodTo": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-01-31"
+              }
+            },
+            "additionalProperties": false
+          }
+        ],
+        "description": "The period whose spend is previewed defaults to the last full calendar month."
+      },
+      "ManagedAccountAssignmentResult": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "object",
+                  "properties": {
+                    "costCentreIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "accountIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "costCentreIds",
+                    "accountIds"
+                  ],
+                  "additionalProperties": false
+                },
+                "after": {
+                  "type": "object",
+                  "properties": {
+                    "costCentreIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "accountIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "costCentreIds",
+                    "accountIds"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedAccount"
+            }
+          }
+        },
+        "required": [
+          "changes",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "BillingProfileTaxRate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "example": "VAT"
+          },
+          "rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Percent.",
+            "example": 20
+          }
+        },
+        "required": [
+          "name",
+          "rate"
+        ],
+        "additionalProperties": false,
+        "description": "A tax applied to the invoice subtotal as its own line. Several rates each apply to the same subtotal; they do not compound."
+      },
+      "BillingProfileBank": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "bankName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "iban": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Checked against its mod-97 digits and stored grouped in fours. Masked to its last four characters in audit entries."
+          },
+          "bic": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 11,
+            "description": "SWIFT / BIC."
+          },
+          "accountNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "For banking systems without IBANs. Masked in audit entries."
+          },
+          "routingNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Sort code, ABA routing number, BSB."
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "description": "Free-text remittance instructions, printed under the bank details."
+          }
+        },
+        "required": [
+          "accountName",
+          "bankName",
+          "iban",
+          "bic",
+          "accountNumber",
+          "routingNumber",
+          "instructions"
+        ],
+        "additionalProperties": false
+      },
+      "BillingProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "legalName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "taxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toEmails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ccEmails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paymentTermsDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "numberPrefix": {
+            "type": "string"
+          },
+          "numberIncludesYear": {
+            "type": "boolean"
+          },
+          "numberStart": {
+            "type": "integer"
+          },
+          "taxRates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingProfileTaxRate"
+            }
+          },
+          "bank": {
+            "$ref": "#/components/schemas/BillingProfileBank"
+          },
+          "footer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "managedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Live customers assigned to this profile."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "legalName",
+          "address",
+          "taxId",
+          "poNumber",
+          "toEmails",
+          "ccEmails",
+          "currency",
+          "paymentTermsDays",
+          "numberPrefix",
+          "numberIncludesYear",
+          "numberStart",
+          "taxRates",
+          "bank",
+          "footer",
+          "logo",
+          "managedAccountIds",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "Reusable invoice settings: addressee, recipients, tax, payment terms, remittance details and numbering, shared by every customer assigned to it. The profile wins where it sets a field and the customer fills the gaps; recipients are the union of both.\n\nDrafts follow a profile edit. **Approved invoices do not**: approval writes a resolved copy onto the invoice (`Invoice.billing`), so a new bank account or tax rate reaches the next invoice and no issued one."
+      },
+      "BillingProfileBankInput": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "bankName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "iban": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "bic": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 11
+          },
+          "accountNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "routingNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillingProfileInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "What the profile is called in pickers. Not printed on the invoice.",
+            "example": "EU customers"
+          },
+          "legalName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "description": "The legal entity invoices are addressed to. Null leaves each customer's name."
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000,
+            "description": "Printed under the legal name. Null leaves each customer's billing address."
+          },
+          "taxId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Tax ID or VAT number."
+          },
+          "poNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Purchase-order reference."
+          },
+          "toEmails": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 254
+            },
+            "maxItems": 20,
+            "description": "Addresses invoices are emailed to, **in addition to** each customer's own contact email."
+          },
+          "ccEmails": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 254
+            },
+            "maxItems": 20,
+            "description": "Addresses that receive a copy. Each address gets its own message."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z]{3}$",
+            "description": "ISO 4217. When set, invoices for every assigned customer are issued in this currency instead of the customer's billing currency."
+          },
+          "paymentTermsDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 365,
+            "description": "Net N days from the issue date. Null prints no due date; 0 is due on receipt."
+          },
+          "numberPrefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16,
+            "description": "Starts with a letter; letters, digits and hyphens. Defaults to `INV`. Profiles sharing a prefix share a sequence.",
+            "example": "INV"
+          },
+          "numberIncludesYear": {
+            "type": "boolean",
+            "description": "Defaults to true: `INV-2026-0001`, with the sequence restarting each year of the period end. False gives `INV-0001` and one sequence for ever."
+          },
+          "numberStart": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999999999,
+            "description": "The lowest sequence number issued, for continuing a sequence from another system."
+          },
+          "taxRates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingProfileTaxRate"
+            },
+            "maxItems": 5
+          },
+          "bank": {
+            "$ref": "#/components/schemas/BillingProfileBankInput"
+          },
+          "footer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "description": "Printed at the bottom of every page of the PDF."
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A PNG or JPEG `data:` URL of at most 100 KB, printed at the top of the PDF. Interlaced and 16-bit PNGs and CMYK JPEGs are refused. Absent on update leaves the saved logo; null removes it."
+          }
+        },
+        "required": [
+          "name"
         ],
         "additionalProperties": false
       },
@@ -24267,15 +25112,17 @@
             "enum": [
               "cost_centre",
               "account",
-              "fixed"
-            ]
+              "fixed",
+              "tax"
+            ],
+            "description": "`tax` lines come from the customer's billing profile: one per tax rate, on the converted subtotal of every other line, always last."
           },
           "refId": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Cost-centre id, account id, or null for an org-level fixed charge."
+            "description": "Cost-centre id, account id, or null for an org-level fixed charge or a tax."
           },
           "label": {
             "type": "string",
@@ -24545,6 +25392,138 @@
         "additionalProperties": false,
         "description": "Everything needed to re-derive the invoice by hand. Not decoration: an invoice a customer cannot reconcile is an invoice a customer does not pay."
       },
+      "InvoiceBilling": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "profileId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "profileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "legalName": {
+            "type": "string"
+          },
+          "attention": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "taxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paymentTermsDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "issueDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "dueDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-01-31"
+          },
+          "taxRates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingProfileTaxRate"
+            }
+          },
+          "bank": {
+            "$ref": "#/components/schemas/BillingProfileBank"
+          },
+          "footer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 of the logo printed on the PDF, frozen with the invoice."
+          },
+          "numberPrefix": {
+            "type": "string"
+          },
+          "numberIncludesYear": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "profileId",
+          "profileName",
+          "legalName",
+          "attention",
+          "address",
+          "taxId",
+          "poNumber",
+          "to",
+          "cc",
+          "paymentTermsDays",
+          "issueDate",
+          "dueDate",
+          "taxRates",
+          "bank",
+          "footer",
+          "logoId",
+          "numberPrefix",
+          "numberIncludesYear"
+        ],
+        "additionalProperties": false,
+        "description": "Addressee, recipients, terms and remittance details. Null on invoices approved before billing profiles existed."
+      },
       "Invoice": {
         "allOf": [
           {
@@ -24578,6 +25557,9 @@
               },
               "derivation": {
                 "$ref": "#/components/schemas/InvoiceDerivation"
+              },
+              "billing": {
+                "$ref": "#/components/schemas/InvoiceBilling"
               },
               "live": {
                 "type": "boolean",
@@ -24616,6 +25598,7 @@
               "notes",
               "lines",
               "derivation",
+              "billing",
               "live",
               "computedAt",
               "approvedByUserId",
@@ -24760,6 +25743,9 @@
                       "derivation": {
                         "$ref": "#/components/schemas/InvoiceDerivation"
                       },
+                      "billing": {
+                        "$ref": "#/components/schemas/InvoiceBilling"
+                      },
                       "live": {
                         "type": "boolean",
                         "description": "True when the figures in this response were recomputed for it; true for a draft, false for everything else. Say so: “these numbers will move” and “these numbers are what we sent” are different claims about the same fields."
@@ -24797,6 +25783,7 @@
                       "notes",
                       "lines",
                       "derivation",
+                      "billing",
                       "live",
                       "computedAt",
                       "approvedByUserId",
@@ -80447,6 +81434,551 @@
         "x-required-permission": "invoices:write"
       }
     },
+    "/api/org/{orgId}/managed-accounts/unassigned": {
+      "get": {
+        "tags": [
+          "Managed Accounts"
+        ],
+        "summary": "Find spend no customer is billed for",
+        "description": "Spend in the period, by cost centre and account, that no managed account's scope covers. Requires `costs:read` as well as `invoices:read`: it is a cost breakdown of the whole organisation.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Defaults, with `to`, to the last full calendar month.",
+              "example": "2026-01-31"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "example": "2026-01-31"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unassigned spend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnassignedSpendReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdManagedAccountsUnassigned",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/managed-accounts/assignments/preview": {
+      "post": {
+        "tags": [
+          "Managed Accounts"
+        ],
+        "summary": "Preview a bulk assignment",
+        "description": "What moving these cost centres and accounts would do: who holds each one today, the spend that moves with it in the period, the totals leaving each customer, and how many draft invoices will change. Nothing is written.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedAccountAssignmentPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAccountAssignmentPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdManagedAccountsAssignmentsPreview",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/managed-accounts/assignments": {
+      "post": {
+        "tags": [
+          "Managed Accounts"
+        ],
+        "summary": "Assign cost centres and accounts to a customer in bulk",
+        "description": "Takes each item off whichever customer holds it and gives it to `managedAccountId`, or to nobody when that is null, in one transaction. Only drafts change: an approved invoice carries its own copy of its scope.\n\n_Requires permission: `invoices:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedAccountAssignment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The customers whose scope changed, and the full list after",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAccountAssignmentResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdManagedAccountsAssignments",
+        "x-required-permission": "invoices:write"
+      }
+    },
+    "/api/org/{orgId}/billing-profiles": {
+      "get": {
+        "tags": [
+          "Billing Profiles"
+        ],
+        "summary": "List billing profiles",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profiles, name-sorted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingProfile"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBillingProfiles",
+        "x-required-permission": "invoices:read",
+        "description": "_Requires permission: `invoices:read`._"
+      },
+      "post": {
+        "tags": [
+          "Billing Profiles"
+        ],
+        "summary": "Create a billing profile",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBillingProfiles",
+        "x-required-permission": "invoices:write",
+        "description": "_Requires permission: `invoices:write`._"
+      }
+    },
+    "/api/org/{orgId}/billing-profiles/{id}": {
+      "get": {
+        "tags": [
+          "Billing Profiles"
+        ],
+        "summary": "Get a billing profile",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingProfile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBillingProfilesId",
+        "x-required-permission": "invoices:read",
+        "description": "_Requires permission: `invoices:read`._"
+      },
+      "put": {
+        "tags": [
+          "Billing Profiles"
+        ],
+        "summary": "Update a billing profile",
+        "description": "A full replace, except `logo`, which is left as saved when absent. Draft invoices of the assigned customers follow the change; approved invoices keep the copy frozen onto them.\n\n_Requires permission: `invoices:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdBillingProfilesId",
+        "x-required-permission": "invoices:write"
+      },
+      "delete": {
+        "tags": [
+          "Billing Profiles"
+        ],
+        "summary": "Delete a billing profile",
+        "description": "Refused with 409, naming them, while live customers are assigned: removing a profile out from under a customer would change the address, tax and numbering of its next invoice.\n\n_Requires permission: `invoices:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBillingProfilesId",
+        "x-required-permission": "invoices:write"
+      }
+    },
+    "/api/org/{orgId}/invoices/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Download an invoice as PDF",
+        "description": "The document a customer files: addressee, lines, tax, total, due date and remittance details, from the billing block frozen at approval. A draft is watermarked. The collected-versus-adjusted derivation stays in the CSV.\n\n_Requires permission: `invoices:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdInvoicesIdPdf",
+        "x-required-permission": "invoices:read"
+      }
+    },
     "/api/org/{orgId}/invoices": {
       "get": {
         "tags": [
@@ -80920,7 +82452,7 @@
           "Invoices"
         ],
         "summary": "Send an invoice to its customer",
-        "description": "Changes no figure; the document was frozen at approval. It records the **release** (this may go to the customer, and this person said so), then emails the invoice to the customer's contact addresses with the CSV attached.\n\n**200 even when delivery failed.** The release happened and is recorded either way; `delivery` says what became of the transport. An error status would leave the caller unable to tell which of the two failed. A failed delivery is visible, and re-sending retries it.\n\nSending again needs `resend: true` only when the last attempt reached somebody, see `InvoiceSendRequest`. The body may be omitted entirely for a first send.\n\n_Requires permission: `invoices:issue`._",
+        "description": "Changes no figure; the document was frozen at approval. It records the **release** (this may go to the customer, and this person said so), then emails the invoice to the customer's contact addresses and its billing profile's To and Cc, as frozen at approval, with the PDF and the CSV attached.\n\n**200 even when delivery failed.** The release happened and is recorded either way; `delivery` says what became of the transport. An error status would leave the caller unable to tell which of the two failed. A failed delivery is visible, and re-sending retries it.\n\nSending again needs `resend: true` only when the last attempt reached somebody, see `InvoiceSendRequest`. The body may be omitted entirely for a first send.\n\n_Requires permission: `invoices:issue`._",
         "parameters": [
           {
             "schema": {

@@ -493,6 +493,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // invoices is monthly operational work that must not require handing someone
   // SSO, seats and the org's whole money story.
   "GET /managed-accounts": "invoices:read",
+  // The finder and the preview are cost breakdowns of the whole org: the
+  // handler checks `invoices:read` too, like `POST /billing-rules/preview`.
+  "GET /managed-accounts/unassigned": "costs:read",
+  "POST /managed-accounts/assignments/preview": "costs:read",
+  "POST /managed-accounts/assignments": "invoices:write",
   "GET /managed-accounts/{id}": "invoices:read",
   "POST /managed-accounts": "invoices:write",
   "PUT /managed-accounts/{id}": "invoices:write",
@@ -500,6 +505,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /invoices": "invoices:read",
   "GET /invoices/{id}": "invoices:read",
   "GET /invoices/{id}/export": "invoices:read",
+  "GET /invoices/{id}/pdf": "invoices:read",
+  "GET /billing-profiles": "invoices:read",
+  "GET /billing-profiles/{id}": "invoices:read",
+  "POST /billing-profiles": "invoices:write",
+  "PUT /billing-profiles/{id}": "invoices:write",
+  "DELETE /billing-profiles/{id}": "invoices:write",
   "POST /invoices": "invoices:write",
   "PUT /invoices/{id}": "invoices:write",
   "DELETE /invoices/{id}": "invoices:write",

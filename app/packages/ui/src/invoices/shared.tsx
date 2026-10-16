@@ -31,6 +31,15 @@ export function money(amount: number, currency: string): string {
   }
 }
 
+/** Amounts in several currencies, biggest first: "£1,200.00 + €80.00". Empty for none. */
+export function amountsText(amounts: Record<string, number>): string {
+  return Object.entries(amounts)
+    .filter(([, v]) => v !== 0)
+    .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+    .map(([currency, amount]) => money(amount, currency))
+    .join(" + ");
+}
+
 /**
  * Add or remove `id`, keeping the list itself as the source of truth: click
  * order is what gets sent and stored, so membership is tested against a set

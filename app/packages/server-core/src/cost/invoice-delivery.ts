@@ -36,6 +36,8 @@
  */
 import {
   describeManagedInvoiceTotal,
+  describePaymentTerms,
+  splitContactEmails,
   type ManagedInvoice,
   type ManagedInvoiceDeliveryStatus,
 } from "@infrawrench/client-core";
@@ -123,6 +125,15 @@ function bodyLines(
     text: `Total due: ${describeManagedInvoiceTotal(invoice.totals, invoice.currency)}`,
     bold: true,
   });
+  const billing = invoice.billing;
+  if (billing?.dueDate) {
+    const terms = describePaymentTerms(billing.paymentTermsDays);
+    lines.push({
+      text: `Payment due by ${billing.dueDate}${terms ? ` (${terms})` : ""}.`,
+      bold: false,
+    });
+  }
+  if (billing?.poNumber) lines.push({ text: `PO number: ${billing.poNumber}`, bold: false });
   if (invoice.derivation.rates.length > 0) {
     lines.push({
       text:
@@ -244,16 +255,48 @@ export async function deliverInvoiceEmail(
   organizationId: string,
   invoice: ManagedInvoice,
   options: {
-    contactEmail: string | null;
+    /** The customer's contact field, comma separated. Used when `to` is absent. */
+    contactEmail?: string | null | undefined;
+    /** Who the invoice is addressed to: the frozen billing block's list. */
+    to?: readonly string[] | undefined;
+    /** Who receives a copy. */
+    cc?: readonly string[] | undefined;
     orgName: string | null;
     csv: string;
+    /** The rendered invoice, attached beside the CSV when there is one. */
+    pdf?: Uint8Array | null | undefined;
     /** Distinguishes the attempts in Mailgun's own logs. A breadcrumb, not a key. */
     attempt: number;
   },
 ): Promise<InvoiceDeliveryOutcome> {
-  const { recipients, rejected } = invoiceRecipients(options.contactEmail);
+  const toList = options.to ?? splitContactEmails(options.contactEmail);
+  const primary = invoiceRecipients(toList.join(","));
+  const copies = invoiceRecipients((options.cc ?? []).join(","));
+  // Each address still gets its own message (see `sendEmails`), so a Cc is a
+  // copy of the same message rather than a header: nobody's address is shown
+  // to anyone else, and one bounce cannot take the rest with it.
+  const recipients = [
+    ...primary.recipients,
+    ...copies.recipients.filter((r) => !primary.recipients.includes(r)),
+  ];
+  const rejected = [...primary.rejected, ...copies.rejected];
   const url = orgAppUrl(organizationId, `invoices/${invoice.id}`);
   const subject = invoiceEmailSubject(invoice, options.orgName);
+
+  const attachments: NonNullable<EmailMessage["attachments"]> = [
+    {
+      filename: invoiceCsvFilename(invoice),
+      content: options.csv,
+      contentType: "text/csv; charset=utf-8",
+    },
+  ];
+  if (options.pdf) {
+    attachments.push({
+      filename: invoiceCsvFilename(invoice).replace(/\.csv$/, ".pdf"),
+      content: options.pdf,
+      contentType: "application/pdf",
+    });
+  }
 
   // Built even when mail is unconfigured, exactly like the report deliveries:
   // `sendEmails` logs the "recipients but no mail provider" line, and
@@ -263,13 +306,7 @@ export async function deliverInvoiceEmail(
     subject,
     text: formatInvoiceEmailText(invoice, options.orgName, url),
     html: formatInvoiceEmailHtml(invoice, options.orgName, url),
-    attachments: [
-      {
-        filename: invoiceCsvFilename(invoice),
-        content: options.csv,
-        contentType: "text/csv; charset=utf-8",
-      },
-    ],
+    attachments,
     traceKey: `invoice:${invoice.id}:${options.attempt}:${to}`,
   }));
 

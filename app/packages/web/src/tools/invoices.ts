@@ -13,7 +13,13 @@
  * needs, and it is the question worth answering here.
  */
 import { z } from "zod";
-import { MANAGED_INVOICE_STATUSES, type ManagedInvoiceStatus } from "@infrawrench/client-core";
+import {
+  MANAGED_INVOICE_STATUSES,
+  maskBillingProfileBank,
+  type ManagedInvoiceStatus,
+} from "@infrawrench/client-core";
+import { listBillingProfiles } from "@infrawrench/server-core/cost/billing-profiles";
+import { findUnassignedSpend } from "@infrawrench/server-core/cost/managed-account-scope";
 import {
   getManagedAccount,
   listManagedAccounts,
@@ -122,6 +128,76 @@ export function invoiceTools(): ToolDefinition[] {
         const invoice = await getInvoice(auth.organizationId, id);
         if (!invoice) return err(`Invoice not found: ${id}`);
         return ok(invoice);
+      },
+    },
+    {
+      name: "list_billing_profiles",
+      title: "List billing profiles",
+      description:
+        "The reusable invoice settings customers are assigned to: the legal entity and address " +
+        "invoices are addressed to, extra To/Cc recipients, an invoice currency override, " +
+        "payment terms (net N days), tax rates added as lines on the subtotal, the invoice " +
+        "number prefix, footer, and remittance details. `managedAccountIds` lists the customers " +
+        "on each profile.\n\n" +
+        "The profile wins where it sets a field and each customer fills the gaps. Drafts follow " +
+        "an edit to a profile; approved invoices carry the copy frozen at approval in " +
+        "`billing`. Account numbers are masked to their last four characters here and the logo " +
+        "is omitted.",
+      inputSchema: {},
+      risk: "read",
+      permission: "invoices:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "invoices:read");
+        if (denied) return denied;
+        const profiles = await listBillingProfiles(auth.organizationId);
+        return ok(
+          profiles.map((p) => ({
+            ...p,
+            bank: maskBillingProfileBank(p.bank),
+            logo: p.logo ? "(image)" : null,
+          })),
+        );
+      },
+    },
+    {
+      name: "find_unassigned_spend",
+      title: "Find spend no customer is billed for",
+      description:
+        "Spend in a period, by cost centre and cloud account, that no managed account's scope " +
+        "covers: money spent that no invoice will ask for. Defaults to the last full calendar " +
+        "month. Amortized, before billing rules.\n\n" +
+        "Resolved the way an invoice resolves spend: allocation rules claim spend for cost " +
+        "centres first, and an account claims only what no rule did. A cost centre counts as " +
+        "assigned when it or any ancestor is on a customer. `unallocated` rows are spend from " +
+        "accounts that are no longer connected or uploaded costs with no account; they cannot " +
+        "be assigned. Suggest assigning rows in the Invoices tab; this tool does not assign.",
+      inputSchema: {
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      },
+      risk: "read",
+      permission: "invoices:read",
+      handler: async (input, auth) => {
+        const denied =
+          (await denyUnlessPermitted(auth, "invoices:read")) ??
+          (await denyUnlessPermitted(auth, "costs:read"));
+        if (denied) return denied;
+        try {
+          return ok(
+            await findUnassignedSpend(auth.organizationId, {
+              from: input["from"] as string | undefined,
+              to: input["to"] as string | undefined,
+            }),
+          );
+        } catch (e) {
+          return err(e instanceof Error ? e.message : String(e));
+        }
       },
     },
   ];

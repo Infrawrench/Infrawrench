@@ -5,6 +5,7 @@ import {
   costCentrePaths,
   describeManagedAccountPricing,
   managedAccountPricingError,
+  type BillingProfile,
   type CostCentre,
   type CostDimensionOption,
   type ManagedAccount,
@@ -25,23 +26,29 @@ import { toggle, lastMonth, BTN, FIELD } from "./shared.js";
 export function CustomerList({
   accounts,
   centres,
+  profiles = [],
   canWrite,
   onNew,
   onEdit,
   onRetire,
   onRaise,
+  onAssign,
 }: {
   accounts: ManagedAccount[] | null;
   centres: CostCentre[];
+  profiles?: BillingProfile[] | undefined;
   canWrite: boolean;
   onNew: () => void;
   onEdit: (account: ManagedAccount) => void;
   onRetire: (account: ManagedAccount) => void;
   onRaise: (account: ManagedAccount) => void;
+  /** Open the bulk assignment; absent without `invoices:write`. */
+  onAssign?: (() => void) | undefined;
 }) {
   const gt = useGT();
   const gtData = useDataString();
   const centreName = useMemo(() => new Map(centres.map((c) => [c.id, c.name])), [centres]);
+  const profileName = useMemo(() => new Map(profiles.map((p) => [p.id, p.name])), [profiles]);
 
   return (
     <section className="flex flex-col gap-3">
@@ -55,9 +62,16 @@ export function CustomerList({
           </p>
         </div>
         {canWrite && (
-          <button type="button" className={BTN} onClick={onNew}>
-            {gt("New customer")}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {onAssign && (
+              <button type="button" className={BTN} onClick={onAssign}>
+                {gt("Assign in bulk")}
+              </button>
+            )}
+            <button type="button" className={BTN} onClick={onNew}>
+              {gt("New customer")}
+            </button>
+          </div>
         )}
       </div>
 
@@ -79,6 +93,11 @@ export function CustomerList({
                   <span className="text-xs text-on-surface-faint">{account.billingCurrency}</span>
                   {!account.applyBillingRules && (
                     <span className="text-xs text-on-surface-faint">{gt("· pass-through")}</span>
+                  )}
+                  {account.billingProfileId && profileName.has(account.billingProfileId) && (
+                    <span className="truncate text-xs text-on-surface-faint">
+                      {gt("· {profile}", { profile: profileName.get(account.billingProfileId)! })}
+                    </span>
                   )}
                 </div>
                 <div className="truncate text-xs text-on-surface-faint">
@@ -129,6 +148,7 @@ export function CustomerModal({
   account,
   centres,
   cloudAccounts,
+  profiles,
   providers = [],
   services = [],
   onPreview,
@@ -138,6 +158,8 @@ export function CustomerModal({
   account: ManagedAccount | null;
   centres: CostCentre[];
   cloudAccounts: InvoiceScopeAccount[];
+  /** Billing profiles to pick from; undefined hides the picker (host without profiles). */
+  profiles?: readonly BillingProfile[] | undefined;
   providers?: readonly CostDimensionOption[] | undefined;
   services?: readonly CostDimensionOption[] | undefined;
   /** Price a month with candidate settings; absent for a customer not yet saved. */
@@ -159,6 +181,8 @@ export function CustomerModal({
   const [pricing, setPricing] = useState<ManagedAccountPricing>(
     account?.pricing ?? DEFAULT_MANAGED_ACCOUNT_PRICING,
   );
+  const [profileId, setProfileId] = useState<string>(account?.billingProfileId ?? "");
+  const chosenProfile = profiles?.find((p) => p.id === profileId) ?? null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +208,9 @@ export function CustomerModal({
         costBasis,
         applyBillingRules: applyRules,
         pricing,
+        // Sent only when the host offers profiles, so a host without them
+        // cannot clear one by saving a customer.
+        ...(profiles ? { billingProfileId: profileId || null } : {}),
         costCentreIds: centreIds,
         accountIds,
       });
@@ -232,6 +259,38 @@ export function CustomerModal({
               onChange={(e) => setBillingAddress(e.target.value)}
             />
           </label>
+          {profiles && (
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Billing profile")}
+              <select
+                className={FIELD}
+                value={profileId}
+                onChange={(e) => setProfileId(e.target.value)}
+              >
+                <option value="">{gt("None: use this customer's details only")}</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {chosenProfile?.currency &&
+                chosenProfile.currency !== currency.trim().toUpperCase() && (
+                  <span className="text-warning">
+                    {gt("Invoices will be issued in {currency}, the profile's currency.", {
+                      currency: chosenProfile.currency,
+                    })}
+                  </span>
+                )}
+              {profiles.length === 0 && (
+                <span>
+                  {gt(
+                    "No billing profiles yet. Create one under Billing profiles to add tax, terms and bank details.",
+                  )}
+                </span>
+              )}
+            </label>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
               {gt("Billing currency")}

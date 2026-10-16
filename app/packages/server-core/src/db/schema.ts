@@ -19,8 +19,11 @@ import type {
   AlertCondition,
   AlertDestination,
   AlertEmailRecipients,
+  BillingProfileBank,
+  BillingProfileTaxRate,
   BillingRuleAdjustment,
   ManagedAccountPricing,
+  ManagedInvoiceBilling,
   BillingRuleMatch,
   CostAnomalyContributor,
   CostExportDestination,
@@ -1371,6 +1374,81 @@ export const virtualTags = pgTable(
 );
 
 /**
+ * Billing profiles: how an invoice is addressed, taxed, numbered and paid,
+ * shared by every customer assigned to one. See `client-core/billing-profiles.ts`
+ * for the precedence between a profile and its customers.
+ *
+ * Hard-deleted, unlike customers: an invoice never points at a profile, it
+ * carries a resolved copy (`managed_invoices.billing`) written at approval, so
+ * a profile can go without any issued document changing. The delete path still
+ * refuses while a live customer is assigned, because a customer silently
+ * losing its tax line would change the next invoice's total.
+ */
+export const billingProfiles = pgTable(
+  "billing_profiles",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    legalName: text("legal_name"),
+    address: text("address"),
+    taxId: text("tax_id"),
+    poNumber: text("po_number"),
+    toEmails: jsonb("to_emails").$type<string[]>().notNull().default([]),
+    ccEmails: jsonb("cc_emails").$type<string[]>().notNull().default([]),
+    /** ISO 4217; null leaves each customer's billing currency. */
+    currency: text("currency"),
+    /** Net N days; null prints no due date. */
+    paymentTermsDays: integer("payment_terms_days"),
+    numberPrefix: text("number_prefix").notNull().default("INV"),
+    numberIncludesYear: boolean("number_includes_year").notNull().default(true),
+    numberStart: integer("number_start").notNull().default(1),
+    taxRates: jsonb("tax_rates").$type<BillingProfileTaxRate[]>().notNull().default([]),
+    bank: jsonb("bank").$type<BillingProfileBank>(),
+    footer: text("footer"),
+    /** PNG or JPEG `data:` URL, at most 100 KB decoded. */
+    logo: text("logo"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("billing_profiles_org_idx").on(t.organizationId),
+    orgNameUnique: uniqueIndex("billing_profiles_org_name_unique").on(t.organizationId, t.name),
+  }),
+);
+
+/**
+ * Logos printed on approved invoices, addressed by the SHA-256 of their bytes.
+ *
+ * A frozen invoice names its logo by hash rather than copying the image onto
+ * every row: a year of monthly invoices for a few hundred customers would
+ * otherwise store the same picture thousands of times. Rows are immutable and
+ * never deleted while the org exists, which is what lets an invoice approved
+ * years ago still print the logo it was issued with after the profile's logo
+ * has been replaced.
+ */
+export const billingLogos = pgTable(
+  "billing_logos",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Hex SHA-256 of the data URL. */
+    id: text("id").notNull(),
+    dataUrl: text("data_url").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.organizationId, t.id] }),
+  }),
+);
+
+/**
  * Managed accounts: the customers a managed service provider bills.
  *
  * Scope is stored as two id arrays rather than a join table for the same reason
@@ -1421,6 +1499,14 @@ export const managedAccounts = pgTable(
      */
     pricing: jsonb("pricing").$type<ManagedAccountPricing>(),
     notes: text("notes"),
+    /**
+     * The profile its invoices are addressed and numbered by. Set null rather
+     * than restrict: the profile delete path already refuses while a live
+     * customer is assigned, and a retired customer must not pin a profile.
+     */
+    billingProfileId: text("billing_profile_id").references(() => billingProfiles.id, {
+      onDelete: "set null",
+    }),
     costCentreIds: jsonb("cost_centre_ids").$type<string[]>().notNull().default([]),
     accountIds: jsonb("account_ids").$type<string[]>().notNull().default([]),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
@@ -1500,6 +1586,13 @@ export const managedInvoices = pgTable(
     lines: jsonb("lines"),
     totals: jsonb("totals"),
     derivation: jsonb("derivation"),
+    /**
+     * Addressee, contacts, terms, bank details and the logo's hash, resolved
+     * from the customer and its billing profile and written once, at approval,
+     * alongside the figures. Null while draft (a draft resolves it live) and
+     * on invoices approved before billing profiles existed.
+     */
+    billing: jsonb("billing").$type<ManagedInvoiceBilling>(),
     /** When the frozen figures were computed: the moment of approval. */
     computedAt: timestamp("computed_at"),
     issuedAt: timestamp("issued_at"),

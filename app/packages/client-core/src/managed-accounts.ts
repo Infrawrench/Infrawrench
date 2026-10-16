@@ -52,6 +52,12 @@ import type {
   RerateCoverage,
 } from "./msp-pricing";
 import type { ExchangeRateSource } from "./currency";
+import type { ManagedInvoiceBilling } from "./billing-profiles";
+import {
+  DEFAULT_INVOICE_NUMBER_FORMAT,
+  formatInvoiceNumber,
+  parseInvoiceNumber,
+} from "./billing-profiles";
 
 /* ------------------------------------------------------------------ *
  * Managed accounts
@@ -104,6 +110,11 @@ export interface ManagedAccountInput {
    */
   pricing?: ManagedAccountPricing | undefined;
   notes?: string | null | undefined;
+  /**
+   * The billing profile this customer's invoices are addressed and numbered
+   * by. Absent on an update leaves it as saved; null removes it.
+   */
+  billingProfileId?: string | null | undefined;
   /** Cost centres whose spend is this customer's. Subtrees are included. */
   costCentreIds: string[];
   /** Cloud accounts whose otherwise-unallocated spend is this customer's. */
@@ -123,6 +134,8 @@ export interface ManagedAccount {
   /** Re-rating and discount treatment; see `msp-pricing.ts`. */
   pricing: ManagedAccountPricing;
   notes: string | null;
+  /** The billing profile assigned, or null. */
+  billingProfileId: string | null;
   costCentreIds: string[];
   accountIds: string[];
   /** Invoices raised for this customer, any status. */
@@ -245,7 +258,7 @@ export function managedInvoiceDeliveryRetryable(
 }
 
 /** What produced one line of an invoice. */
-export type ManagedInvoiceLineKind = "cost_centre" | "account" | "fixed";
+export type ManagedInvoiceLineKind = "cost_centre" | "account" | "fixed" | "tax";
 
 /**
  * One line of an invoice: one scope entry, in one collected currency.
@@ -265,7 +278,7 @@ export type ManagedInvoiceLineKind = "cost_centre" | "account" | "fixed";
  */
 export interface ManagedInvoiceLine {
   kind: ManagedInvoiceLineKind;
-  /** Cost-centre id, account id, or null for an org-level fixed charge. */
+  /** Cost-centre id, account id, or null for an org-level fixed charge or a tax. */
   refId: string | null;
   /**
    * The name at issue time. Frozen with the numbers: renaming a cost centre in
@@ -415,6 +428,12 @@ export interface ManagedInvoice {
   lines: ManagedInvoiceLine[];
   totals: ManagedInvoiceTotals;
   derivation: ManagedInvoiceDerivation;
+  /**
+   * Who the invoice is addressed to and how to pay it: the customer and its
+   * billing profile resolved together. Live on a draft, frozen at approval.
+   * Null on invoices approved before billing profiles existed.
+   */
+  billing: ManagedInvoiceBilling | null;
   /**
    * True when the figures above were recomputed for this response, which is
    * true for a draft and false for everything else. A client should say so:
@@ -704,16 +723,15 @@ export function managedInvoiceReconciles(totals: ManagedInvoiceTotals): boolean 
  * a December number and the year's sequence does not develop a tail.
  */
 export function formatManagedInvoiceNumber(year: number, sequence: number): string {
-  return `INV-${year}-${String(sequence).padStart(4, "0")}`;
+  return formatInvoiceNumber(DEFAULT_INVOICE_NUMBER_FORMAT, year, sequence);
 }
 
 /** Parse the sequence back out of a number; null when it isn't one of ours. */
 export function parseManagedInvoiceNumber(
   value: string,
 ): { year: number; sequence: number } | null {
-  const m = /^INV-(\d{4})-(\d{4,})$/.exec(value);
-  if (!m) return null;
-  return { year: Number(m[1]), sequence: Number(m[2]) };
+  const parsed = parseInvoiceNumber(DEFAULT_INVOICE_NUMBER_FORMAT, value);
+  return parsed && parsed.year !== null ? { year: parsed.year, sequence: parsed.sequence } : null;
 }
 
 /**

@@ -268,3 +268,26 @@ describe("renderReportPdf", () => {
     expect(rects(stacked)).toBeGreaterThan(rects(line));
   });
 });
+
+describe("the euro sign", () => {
+  it("is set as its own run, with what follows placed at the measured width", async () => {
+    const { PdfDocument } = await import("../pdf/writer");
+    const doc = new PdfDocument({ title: "euro" });
+    doc.addPage().text(100, 100, "€18.00", { size: 10 });
+    const content = contentOf(doc.toBytes());
+    // Readers draw the euro wider than they advance it; one run per euro keeps
+    // the digits off the sign.
+    expect(content).toMatch(/ 100 \S+ Td <80> Tj ET/);
+    expect(content).toContain(`${100 + textWidth("€", 10)} `);
+    expect(content).toContain(hex("18.00"));
+    expect(textWidth("€", 10)).toBeGreaterThan(textWidth("8", 10));
+  });
+
+  it("writes the layout's widths into each font", async () => {
+    const { PdfDocument } = await import("../pdf/writer");
+    const doc = new PdfDocument({ title: "widths" });
+    doc.addPage().text(0, 0, "x");
+    const text = decoder.decode(doc.toBytes());
+    expect(text.match(/\/FirstChar 32 \/LastChar 255 \/Widths \[/g)).toHaveLength(2);
+  });
+});

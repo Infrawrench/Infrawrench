@@ -528,6 +528,10 @@ infrawrench invoices                      # every invoice, newest period first
 infrawrench invoices customers            # the managed accounts and their scope
 infrawrench invoices INV-2026-0004        # one invoice, with its full derivation
 infrawrench invoices northwind --json     # by customer name
+infrawrench invoices profiles             # billing profiles: addressee, tax, terms, numbering
+infrawrench invoices profiles "EU"        # one profile in full (account numbers masked; --json has them)
+infrawrench invoices unassigned           # last month's spend no customer is billed for
+infrawrench invoices unassigned --from 2026-01-01 --to 2026-03-31
 ```
 
 The detail view prints what was collected, what your billing rules added, the exchange rate and the day it was read, and the final figure — the whole chain, next to `infrawrench showback` for the same period. A draft says so in the status column and its total prints as `not computed` in the list rather than `0.00`, because a draft's figures are recomputed on read and the list does not recompute.

@@ -12,10 +12,9 @@
  * written down in KNOWLEDGE.md ("Dashboard and report PDFs").
  *
  * Widths are the Adobe Font Metrics advance widths (thousandths of an em) for
- * the printable ASCII range, which is what the layout measures to wrap and
- * truncate. Characters outside it use a per-font average: close enough for
- * the occasional accented letter, and only ever used for layout, never for
- * what the reader draws.
+ * every WinAnsi code, which is what the layout measures to wrap and truncate.
+ * The writer also puts them in each font's `/Widths`, so what the reader draws
+ * advances by exactly what the layout measured.
  */
 
 export type PdfFontName = "regular" | "bold";
@@ -47,23 +46,36 @@ const HELVETICA_BOLD_WIDTHS = [
   611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
 ];
 
-/** Widths for the WinAnsi extras the layout is most likely to meet. */
-const EXTRA_WIDTHS: Record<number, number> = {
-  0x80: 556, // €
-  0x85: 1000, // …
-  0x91: 222, // ‘
-  0x92: 222, // ’
-  0x93: 333, // “
-  0x94: 333, // ”
-  0x95: 350, // •
-  0x96: 556, // –
-  0x97: 1000, // —
-  0xa0: 278, // nbsp
-  0xa3: 556, // £
-  0xa5: 556, // ¥
-  0xb7: 278, // ·
-  0xd7: 584, // ×
-};
+// Advance widths for WinAnsi codes 128..255, in order, from the same AFM
+// files, except the euro (0x80). Its AFM width is 556 with no side bearings,
+// and readers without the real Helvetica (pdfium, poppler) draw it from a
+// fallback whose ink runs to 0.70 em, so "€18" printed the 1 over the sign.
+// The writer sets a euro as its own run and starts what follows 0.74 em on;
+// with the real font that reads as a thin space after the sign.
+// The five codes WinAnsi leaves undefined (0x81, 0x8D, 0x8F, 0x90, 0x9D)
+// are never produced by `toWinAnsi`; they carry the space width.
+// prettier-ignore
+const HELVETICA_HIGH_WIDTHS = [
+  740, 278, 222, 556, 333, 1000, 556, 556, 333, 1000, 667, 333, 1000, 278, 611, 278,
+  278, 222, 222, 333, 333, 350, 556, 1000, 333, 1000, 500, 333, 944, 278, 500, 667,
+  278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333,
+  400, 584, 333, 333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611,
+  667, 667, 667, 667, 667, 667, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278,
+  722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611,
+  556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500,
+];
+// prettier-ignore
+const HELVETICA_BOLD_HIGH_WIDTHS = [
+  740, 278, 278, 556, 500, 1000, 556, 556, 333, 1000, 667, 333, 1000, 278, 611, 278,
+  278, 278, 278, 500, 500, 350, 556, 1000, 333, 1000, 556, 333, 944, 278, 500, 667,
+  278, 333, 556, 556, 556, 556, 280, 556, 333, 737, 370, 556, 584, 333, 737, 333,
+  400, 584, 333, 333, 333, 611, 556, 278, 333, 333, 365, 556, 834, 834, 834, 611,
+  722, 722, 722, 722, 722, 722, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278,
+  722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611,
+  556, 556, 556, 556, 556, 556, 889, 556, 556, 556, 556, 556, 278, 278, 278, 278,
+  611, 611, 611, 611, 611, 611, 611, 584, 611, 611, 611, 611, 611, 556, 611, 556,
+];
 
 /** Unicode code points that WinAnsi places in 0x80–0x9F. */
 const WIN_ANSI_HIGH: Record<number, number> = {
@@ -142,9 +154,26 @@ export function toWinAnsi(text: string): number[] {
 
 /** Advance width of one WinAnsi byte, in thousandths of an em. */
 function byteWidth(code: number, font: PdfFontName): number {
-  const table = font === "bold" ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS;
-  if (code >= 32 && code <= 126) return table[code - 32] ?? 556;
-  return EXTRA_WIDTHS[code] ?? (font === "bold" ? 611 : 556);
+  const bold = font === "bold";
+  if (code >= 32 && code <= 126)
+    return (bold ? HELVETICA_BOLD_WIDTHS : HELVETICA_WIDTHS)[code - 32] ?? 556;
+  if (code >= 128 && code <= 255) {
+    return (bold ? HELVETICA_BOLD_HIGH_WIDTHS : HELVETICA_HIGH_WIDTHS)[code - 128] ?? 556;
+  }
+  return 278;
+}
+
+/**
+ * The `/Widths` array for a font dictionary, codes 32..255. Written into every
+ * PDF so readers advance by the same widths the layout measured: without it a
+ * reader falls back to its own metrics for the standard fonts, and some (pdfium
+ * and poppler among them) have no width for the euro at 0x80, so "€18" drew
+ * the digit on top of the sign.
+ */
+export function pdfFontWidths(font: PdfFontName): number[] {
+  const out: number[] = [];
+  for (let code = 32; code <= 255; code++) out.push(byteWidth(code, font));
+  return out;
 }
 
 /** Width of `text` set at `size` points, in points. */

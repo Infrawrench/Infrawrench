@@ -689,6 +689,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_business_metric`           | by id     | Definition only; values are a pushed time series     |
 | `infrawrench_business_metric_importer`  | by metric | Scheduled pull; destroy stops it, values stay        |
 | `infrawrench_managed_account`           | by id     | A centre or account belongs to at most one           |
+| `infrawrench_billing_profile`           | by id     | Drafts follow edits; approved invoices keep a copy   |
 | `infrawrench_currency_settings`         | by org id | Org singleton; destroy clears, rates survive         |
 | `infrawrench_exchange_rate`             | by id     | Upsert keyed on (from, to, effective_from)           |
 | `infrawrench_anomaly_settings`          | by org id | Org singleton; destroy restores the defaults         |

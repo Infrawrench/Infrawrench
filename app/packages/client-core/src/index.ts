@@ -944,6 +944,8 @@ export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
 export * from "./pricing-expression";
 export * from "./msp-pricing";
+export * from "./billing-profiles";
+export * from "./managed-account-scope";
 export * from "./cost-anomaly-feedback";
 export * from "./cost-anomaly-contributors";
 export * from "./orphans";

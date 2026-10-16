@@ -157,6 +157,7 @@ import {
   type VirtualTagSource,
 } from "@infrawrench/client-core";
 import { FOCUS_VERSIONS } from "@infrawrench/client-core";
+import { BILLING_PROFILE_LIMITS } from "@infrawrench/client-core";
 import {
   COST_ANOMALY_FEEDBACK_LIMITS,
   COST_ANOMALY_FEEDBACK_REASONS,
@@ -2086,6 +2087,7 @@ export const managedAccountInputSchema = z.object({
   applyBillingRules: z.boolean().optional(),
   pricing: managedAccountPricingSchema.optional(),
   notes: z.string().max(MANAGED_ACCOUNT_LIMITS.maxNotesLength).nullish(),
+  billingProfileId: z.string().min(1).nullish(),
   costCentreIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxCostCentres).default([]),
   accountIds: z.array(z.string().min(1)).max(MANAGED_ACCOUNT_LIMITS.maxAccounts).default([]),
 });
@@ -2148,6 +2150,79 @@ export const managedInvoiceSendSchema = z.object({
 export type SchemasMatchManagedAccountContract = [
   Exact<z.infer<typeof managedInvoiceUpdateSchema>, ManagedInvoiceUpdate>,
 ];
+
+/**
+ * A billing profile write. Shape and bounds only: the IBAN checksum, the
+ * prefix rules and the logo's decodability are `normalizeBillingProfileInput`
+ * and the server's, so the editor and the API refuse with the same sentence.
+ */
+export const billingProfileInputSchema = z.object({
+  name: z.string().min(1).max(BILLING_PROFILE_LIMITS.maxNameLength),
+  legalName: z.string().max(BILLING_PROFILE_LIMITS.maxLegalNameLength).nullish(),
+  address: z.string().max(BILLING_PROFILE_LIMITS.maxAddressLength).nullish(),
+  taxId: z.string().max(BILLING_PROFILE_LIMITS.maxTaxIdLength).nullish(),
+  poNumber: z.string().max(BILLING_PROFILE_LIMITS.maxPoNumberLength).nullish(),
+  toEmails: z
+    .array(z.string().max(BILLING_PROFILE_LIMITS.maxEmailLength))
+    .max(BILLING_PROFILE_LIMITS.maxEmails)
+    .optional(),
+  ccEmails: z
+    .array(z.string().max(BILLING_PROFILE_LIMITS.maxEmailLength))
+    .max(BILLING_PROFILE_LIMITS.maxEmails)
+    .optional(),
+  currency: z.string().regex(CURRENCY_CODE_PATTERN).nullish(),
+  paymentTermsDays: z
+    .number()
+    .int()
+    .min(0)
+    .max(BILLING_PROFILE_LIMITS.maxPaymentTermsDays)
+    .nullish(),
+  numberPrefix: z.string().min(1).max(BILLING_PROFILE_LIMITS.maxPrefixLength).optional(),
+  numberIncludesYear: z.boolean().optional(),
+  numberStart: z.number().int().min(1).max(BILLING_PROFILE_LIMITS.maxNumberStart).optional(),
+  taxRates: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(BILLING_PROFILE_LIMITS.maxTaxNameLength),
+        rate: z.number().min(0).max(100),
+      }),
+    )
+    .max(BILLING_PROFILE_LIMITS.maxTaxRates)
+    .optional(),
+  bank: z
+    .object({
+      accountName: z.string().max(BILLING_PROFILE_LIMITS.maxBankFieldLength).nullish(),
+      bankName: z.string().max(BILLING_PROFILE_LIMITS.maxBankFieldLength).nullish(),
+      iban: z.string().max(64).nullish(),
+      bic: z.string().max(11).nullish(),
+      accountNumber: z.string().max(64).nullish(),
+      routingNumber: z.string().max(64).nullish(),
+      instructions: z.string().max(BILLING_PROFILE_LIMITS.maxInstructionsLength).nullish(),
+    })
+    .nullish(),
+  footer: z.string().max(BILLING_PROFILE_LIMITS.maxFooterLength).nullish(),
+  // A data URL: base64 of at most `maxLogoBytes`, plus the prefix.
+  logo: z
+    .string()
+    .max(Math.ceil((BILLING_PROFILE_LIMITS.maxLogoBytes * 4) / 3) + 64)
+    .nullish(),
+});
+
+/**
+ * Moving cost centres and accounts onto one customer, or off every customer
+ * with a null `managedAccountId`. The preview takes the same body plus an
+ * optional period.
+ */
+export const managedAccountAssignmentSchema = z.object({
+  managedAccountId: z.string().min(1).nullable(),
+  costCentreIds: z.array(z.string().min(1)).max(500).default([]),
+  accountIds: z.array(z.string().min(1)).max(500).default([]),
+});
+
+export const managedAccountAssignmentPreviewSchema = managedAccountAssignmentSchema.extend({
+  periodFrom: isoDate.optional(),
+  periodTo: isoDate.optional(),
+});
 
 /* ------------------------------------------------------------------ *
  * Cost canvases: POST/PUT /cost-canvases, and the spec the chat agent writes.

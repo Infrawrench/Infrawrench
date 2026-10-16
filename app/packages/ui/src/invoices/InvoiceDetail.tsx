@@ -8,6 +8,7 @@ import {
   managedInvoiceBlocker,
   managedInvoiceDeliveryRetryable,
   type ManagedInvoice,
+  type ManagedInvoiceBilling,
   type ManagedInvoiceDelivery,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
@@ -162,6 +163,14 @@ export function InvoiceDetail({
   const voidBlocker = managedInvoiceBlocker(invoice, "void");
   const deleteBlocker = managedInvoiceBlocker(invoice, "delete");
   const exportUrl = client.invoiceExportUrl?.(invoice.id);
+  const pdfUrl = client.invoicePdfUrl?.(invoice.id);
+  const download = (format: "csv" | "pdf") => {
+    setBusy(true);
+    setError(null);
+    client.downloadInvoiceFile!(invoice, format)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -293,10 +302,27 @@ export function InvoiceDetail({
             {gt("Delete draft")}
           </button>
         )}
-        {exportUrl && (
+        {pdfUrl ? (
+          <a className={BTN} href={pdfUrl} download>
+            {gt("Download PDF")}
+          </a>
+        ) : (
+          client.downloadInvoiceFile && (
+            <button type="button" className={BTN} disabled={busy} onClick={() => download("pdf")}>
+              {gt("Download PDF")}
+            </button>
+          )
+        )}
+        {exportUrl ? (
           <a className={BTN} href={exportUrl} download>
             {gt("Download CSV")}
           </a>
+        ) : (
+          client.downloadInvoiceFile && (
+            <button type="button" className={BTN} disabled={busy} onClick={() => download("csv")}>
+              {gt("Download CSV")}
+            </button>
+          )
         )}
       </div>
 
@@ -313,6 +339,7 @@ export function InvoiceDetail({
         </p>
       )}
 
+      {invoice.billing && <BillingBlock billing={invoice.billing} live={invoice.live} />}
       <LineTable invoice={invoice} />
       <Derivation invoice={invoice} />
 
@@ -329,6 +356,101 @@ export function InvoiceDetail({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Who the invoice is addressed to and how it gets paid: the customer and its
+ * billing profile, resolved. On a draft it follows the profile; once approved
+ * it is the copy frozen onto the invoice, and says so.
+ */
+function BillingBlock({ billing, live }: { billing: ManagedInvoiceBilling; live: boolean }) {
+  const gt = useGT();
+  const bank = billing.bank;
+  const bankLines = bank
+    ? [
+        bank.accountName && gt("Account name: {value}", { value: bank.accountName }),
+        bank.bankName && gt("Bank: {value}", { value: bank.bankName }),
+        bank.iban && `IBAN: ${bank.iban}`,
+        bank.bic && `SWIFT/BIC: ${bank.bic}`,
+        bank.accountNumber && gt("Account number: {value}", { value: bank.accountNumber }),
+        bank.routingNumber && gt("Routing number: {value}", { value: bank.routingNumber }),
+        bank.instructions,
+      ].filter((l): l is string => Boolean(l))
+    : [];
+  const terms =
+    billing.paymentTermsDays === null
+      ? null
+      : billing.paymentTermsDays === 0
+        ? gt("Due on receipt")
+        : gt("Net {days}", { days: billing.paymentTermsDays });
+  return (
+    <section className="grid gap-4 rounded-lg border border-border p-3 text-sm sm:grid-cols-2">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs uppercase tracking-wide text-on-surface-faint">
+          {gt("Bill to")}
+        </span>
+        <span className="font-medium text-on-surface">{billing.legalName}</span>
+        {billing.attention && (
+          <span className="text-on-surface-secondary">
+            {gt("Attn: {name}", { name: billing.attention })}
+          </span>
+        )}
+        {billing.address && (
+          <span className="whitespace-pre-line text-on-surface-secondary">{billing.address}</span>
+        )}
+        {billing.taxId && (
+          <span className="text-on-surface-secondary">
+            {gt("Tax ID: {value}", { value: billing.taxId })}
+          </span>
+        )}
+        {billing.poNumber && (
+          <span className="text-on-surface-secondary">
+            {gt("PO number: {value}", { value: billing.poNumber })}
+          </span>
+        )}
+        <span className="mt-1 text-xs text-on-surface-faint">
+          {billing.to.length === 0
+            ? gt("No recipients: add a contact email or a profile with recipients before sending.")
+            : billing.cc.length === 0
+              ? gt("Emailed to {to}", { to: billing.to.join(", ") })
+              : gt("Emailed to {to}, copy to {cc}", {
+                  to: billing.to.join(", "),
+                  cc: billing.cc.join(", "),
+                })}
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs uppercase tracking-wide text-on-surface-faint">
+          {gt("Payment")}
+        </span>
+        <span className="text-on-surface">
+          {billing.dueDate
+            ? gt("Issued {issued}, due {due} ({terms})", {
+                issued: billing.issueDate,
+                due: billing.dueDate,
+                terms: terms ?? "",
+              })
+            : gt("Issued {issued}, no payment terms", { issued: billing.issueDate })}
+        </span>
+        {bankLines.map((line) => (
+          <span key={line} className="text-on-surface-secondary">
+            {line}
+          </span>
+        ))}
+        {billing.profileName && (
+          <span className="mt-1 text-xs text-on-surface-faint">
+            {live
+              ? gt("From the billing profile {name}; follows edits to it until approved.", {
+                  name: billing.profileName,
+                })
+              : gt("From the billing profile {name}, as it was when this invoice was approved.", {
+                  name: billing.profileName,
+                })}
+          </span>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -417,7 +539,9 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
                           ? gt("cost centre")
                           : line.kind === "account"
                             ? gt("account")
-                            : gt("fixed charge")}
+                            : line.kind === "tax"
+                              ? gt("tax")
+                              : gt("fixed charge")}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">

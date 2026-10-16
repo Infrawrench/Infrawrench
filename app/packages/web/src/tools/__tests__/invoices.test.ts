@@ -19,6 +19,15 @@ vi.mock("@infrawrench/server-core/cost/invoices", () => ({
   getInvoice: (...a: unknown[]) => mockGetInvoice(...a),
 }));
 
+const mockListBillingProfiles = vi.fn();
+vi.mock("@infrawrench/server-core/cost/billing-profiles", () => ({
+  listBillingProfiles: (...a: unknown[]) => mockListBillingProfiles(...a),
+}));
+const mockFindUnassignedSpend = vi.fn();
+vi.mock("@infrawrench/server-core/cost/managed-account-scope", () => ({
+  findUnassignedSpend: (...a: unknown[]) => mockFindUnassignedSpend(...a),
+}));
+
 const mockResolvePerms = vi.fn();
 vi.mock("@infrawrench/server-core/permissions", () => ({
   resolveEffectivePermissions: (...a: unknown[]) => mockResolvePerms(...a),
@@ -45,11 +54,56 @@ describe("invoiceTools", () => {
     // tool call cannot provide.
     expect(tools.every((t) => t.risk === "read")).toBe(true);
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "find_unassigned_spend",
       "get_invoice",
       "get_managed_account",
+      "list_billing_profiles",
       "list_invoices",
       "list_managed_accounts",
     ]);
+  });
+
+  it("masks account numbers and drops the logo from billing profiles", async () => {
+    mockListBillingProfiles.mockResolvedValue([
+      {
+        id: "bp-1",
+        name: "EU",
+        logo: "data:image/png;base64,AAAA",
+        bank: {
+          accountName: "Fabrikam",
+          bankName: null,
+          iban: "GB82 WEST 1234 5698 7654 32",
+          bic: "WESTGB2L",
+          accountNumber: null,
+          routingNumber: null,
+          instructions: null,
+        },
+      },
+    ]);
+    const result = await tool("list_billing_profiles").handler({}, auth);
+    const text = result.content[0]!.text;
+    expect(text).not.toContain("1234 5698");
+    expect(text).toContain("5432");
+    expect(text).not.toContain("base64");
+  });
+
+  it("needs costs:read as well to find unassigned spend", async () => {
+    const denied = await tool("find_unassigned_spend").handler({}, auth);
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0]!.text).toContain("costs:read");
+    expect(mockFindUnassignedSpend).not.toHaveBeenCalled();
+
+    grant("invoices:read", "costs:read");
+    mockFindUnassignedSpend.mockResolvedValue({ rows: [], assignable: 0 });
+    const allowed = await tool("find_unassigned_spend").handler(
+      { from: "2026-01-01", to: "2026-01-31" },
+      auth,
+    );
+    expect(allowed.isError).toBeFalsy();
+    expect(mockFindUnassignedSpend).toHaveBeenCalledWith("o1", {
+      from: "2026-01-01",
+      to: "2026-01-31",
+    });
   });
 
   it("gates every tool behind invoices:read, not costs:read", async () => {

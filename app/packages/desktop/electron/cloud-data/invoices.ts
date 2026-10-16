@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { cloudFetch } from "./shared";
+import { cloudFetch, cloudFetchBytes } from "./shared";
 
 // Managed accounts and invoices; cloud-mode only, for the same reason as
 // everything in `costs.ts`: the spend an invoice bills for is collected
@@ -131,6 +131,81 @@ ipcMain.handle(
     return cloudFetch(orgId, "/billing-rules/preview", {
       method: "POST",
       body: JSON.stringify(request),
+    });
+  },
+);
+
+// The invoice as a file. Bytes over IPC, saved by the renderer: the cloud
+// endpoints need a Bearer header an `<a download>` cannot carry.
+ipcMain.handle(
+  "cloud_invoice_file",
+  async (
+    _e,
+    { orgId, invoiceId, format }: { orgId: string; invoiceId: string; format: "csv" | "pdf" },
+  ) => {
+    const suffix = format === "pdf" ? "pdf" : "export";
+    return cloudFetchBytes(orgId, `/invoices/${encodeURIComponent(invoiceId)}/${suffix}`);
+  },
+);
+
+// Billing profiles: reads ride `invoices:read`, writes `invoices:write`.
+ipcMain.handle("cloud_list_billing_profiles", async (_e, { orgId }: { orgId: string }) => {
+  return (await cloudFetch(orgId, "/billing-profiles")) ?? [];
+});
+
+ipcMain.handle(
+  "cloud_create_billing_profile",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/billing-profiles", { method: "POST", body: JSON.stringify(input) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_billing_profile",
+  async (_e, { orgId, id, input }: { orgId: string; id: string; input: unknown }) => {
+    return cloudFetch(orgId, `/billing-profiles/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_billing_profile",
+  async (_e, { orgId, id }: { orgId: string; id: string }) => {
+    return cloudFetch(orgId, `/billing-profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+);
+
+// The unassigned-spend finder and bulk assignment. The two reads need
+// `costs:read` as well as `invoices:read` on the cloud; assigning needs
+// `invoices:write`.
+ipcMain.handle(
+  "cloud_unassigned_spend",
+  async (_e, { orgId, period }: { orgId: string; period?: { from: string; to: string } }) => {
+    const query = period
+      ? `?from=${encodeURIComponent(period.from)}&to=${encodeURIComponent(period.to)}`
+      : "";
+    return cloudFetch(orgId, `/managed-accounts/unassigned${query}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_preview_managed_account_assignment",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/managed-accounts/assignments/preview", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_assign_managed_account_scope",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/managed-accounts/assignments", {
+      method: "POST",
+      body: JSON.stringify(input),
     });
   },
 );

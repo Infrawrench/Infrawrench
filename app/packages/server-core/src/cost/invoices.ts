@@ -91,15 +91,38 @@ import {
   type ManagedInvoiceSummary,
   type ManagedInvoiceTotals,
   type ManagedInvoiceUpdate,
+  describePaymentTerms,
+  invoiceCurrencyFor,
+  managedInvoiceTaxLines,
+  nextInvoiceNumber as nextNumberInSequence,
+  resolveInvoiceBilling,
+  splitContactEmails,
+  type BillingProfileFields,
+  type ManagedInvoiceBilling,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { accounts, managedAccounts, managedInvoices, organizations } from "../db/schema";
+import {
+  accounts,
+  billingProfiles,
+  managedAccounts,
+  managedInvoices,
+  organizations,
+} from "../db/schema";
 import { getPricingLines, getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
 import { csvCell } from "../cost-exports/serialize";
 import { listAllocationRules, listCostCentres } from "./allocation";
+import {
+  billingLogoId,
+  billingProfileFields,
+  getBillingLogo,
+  getBillingProfileRow,
+  storeBillingLogo,
+  type BillingProfileRow,
+} from "./billing-profiles";
 import { listBillingRules, resolveBillingAdjustments } from "./billing-rules";
 import { loadOrgRateBook } from "./currency-settings";
 import { deliverInvoiceEmail } from "./invoice-delivery";
+import { renderInvoicePdf } from "./invoice-pdf";
 import { getManagedAccountRow } from "./managed-accounts";
 
 export type { ManagedInvoice, ManagedInvoiceSummary };
@@ -170,6 +193,11 @@ export async function computeInvoiceFigures(
   account: ManagedAccountRow,
   periodFrom: string,
   periodTo: string,
+  /**
+   * The customer's billing profile: its currency, when set, is the invoice
+   * currency, and its tax rates become tax lines on the subtotal.
+   */
+  profile: Pick<BillingProfileFields, "currency" | "taxRates"> | null = null,
 ): Promise<InvoiceFigures> {
   const costBasis = account.costBasis as CostBasis;
   const scopeCentreIds = Array.isArray(account.costCentreIds) ? account.costCentreIds : [];
@@ -453,7 +481,7 @@ export async function computeInvoiceFigures(
 
   /* -- conversion into the customer's currency -- */
 
-  const invoiceCurrency = account.billingCurrency;
+  const invoiceCurrency = invoiceCurrencyFor(account, profile);
   // One rate for the period, read off its last day. Unlike a graph these are
   // period totals with no day to convert against, and "January, at the
   // 31 January rate" is a sentence a finance team can defend and reproduce.
@@ -492,6 +520,10 @@ export async function computeInvoiceFigures(
   lines.sort(
     (a, b) => (b.billed ?? b.adjusted) - (a.billed ?? a.adjusted) || a.label.localeCompare(b.label),
   );
+
+  // Tax last, on the converted subtotal: a tax is charged on the price, after
+  // every rule and conversion, and printed under the lines it is charged on.
+  lines.push(...managedInvoiceTaxLines(lines, invoiceCurrency, profile?.taxRates ?? []));
 
   // The rules in force *for this customer*: the graph caption's list plus the
   // invoice-only kinds that apply here, in evaluation order.
@@ -600,13 +632,23 @@ function toSummary(row: InvoiceRow): ManagedInvoiceSummary {
   };
 }
 
-function toWire(row: InvoiceRow, figures: InvoiceFigures, live: boolean): ManagedInvoice {
+/**
+ * `billing` is the live resolution for a draft; a frozen invoice always reads
+ * the copy written at approval, whatever the caller passes.
+ */
+function toWire(
+  row: InvoiceRow,
+  figures: InvoiceFigures,
+  live: boolean,
+  billing: ManagedInvoiceBilling | null = null,
+): ManagedInvoice {
   return {
     ...toSummary(row),
     notes: row.notes,
     lines: figures.lines,
     totals: figures.totals,
     derivation: figures.derivation,
+    billing: row.status === "draft" ? billing : (row.billing ?? null),
     live,
     computedAt: live
       ? new Date().toISOString()
@@ -616,6 +658,35 @@ function toWire(row: InvoiceRow, figures: InvoiceFigures, live: boolean): Manage
     voidedByUserId: row.voidedByUserId,
     createdByUserId: row.createdByUserId,
   };
+}
+
+/** The customer's billing profile row, or null when it has none. */
+async function profileFor(
+  organizationId: string,
+  account: ManagedAccountRow,
+): Promise<BillingProfileRow | null> {
+  return account.billingProfileId
+    ? getBillingProfileRow(organizationId, account.billingProfileId)
+    : null;
+}
+
+/** Today, as the YYYY-MM-DD an invoice is dated. UTC, like every period. */
+function today(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** What an invoice for this customer says about addressee and terms, today. */
+function billingOf(
+  account: ManagedAccountRow,
+  profile: BillingProfileRow | null,
+  issueDate: string,
+): ManagedInvoiceBilling {
+  return resolveInvoiceBilling(
+    account,
+    profile ? billingProfileFields(profile) : null,
+    issueDate,
+    profile?.logo ? billingLogoId(profile.logo) : null,
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -680,13 +751,70 @@ export async function getInvoice(
     // their customer, so this is a torn read rather than a state to represent.
     throw new InvoiceError("The customer this draft belongs to no longer exists", 404);
   }
+  const profile = await profileFor(organizationId, account);
   const figures = await computeInvoiceFigures(
     organizationId,
     account,
     String(row.periodFrom),
     String(row.periodTo),
+    profile ? billingProfileFields(profile) : null,
   );
-  return toWire(row, figures, true);
+  return toWire(row, figures, true, billingOf(account, profile, today()));
+}
+
+/**
+ * The invoice as a PDF, with the logo its billing snapshot names.
+ *
+ * A draft prints its live billing block and is watermarked; a frozen invoice
+ * prints the copy written at approval, and its logo by the hash frozen with
+ * it, so replacing a profile's logo never reprints an issued invoice.
+ */
+export async function renderInvoicePdfFor(
+  organizationId: string,
+  invoice: ManagedInvoice,
+): Promise<Uint8Array> {
+  const [org, logo, fallback] = await Promise.all([
+    db
+      .select({ displayName: organizations.displayName })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    invoice.billing?.logoId
+      ? invoice.status === "draft"
+        ? liveLogo(organizationId, invoice)
+        : getBillingLogo(organizationId, invoice.billing.logoId)
+      : Promise.resolve(null),
+    // An invoice frozen before billing existed still prints an addressee:
+    // the customer's details as they stand, which is all there ever was.
+    invoice.billing ? Promise.resolve(null) : legacyBilling(organizationId, invoice),
+  ]);
+  return renderInvoicePdf(invoice, {
+    issuerName: org?.displayName ?? null,
+    logo,
+    fallbackBilling: fallback,
+  });
+}
+
+/** A draft's logo comes straight off its profile. */
+async function liveLogo(organizationId: string, invoice: ManagedInvoice): Promise<string | null> {
+  const profileId = invoice.billing?.profileId;
+  if (!profileId) return null;
+  return (await getBillingProfileRow(organizationId, profileId))?.logo ?? null;
+}
+
+async function legacyBilling(
+  organizationId: string,
+  invoice: ManagedInvoice,
+): Promise<ManagedInvoiceBilling | null> {
+  const account = await getManagedAccountRow(organizationId, invoice.managedAccountId);
+  if (!account) return null;
+  const billing = billingOf(
+    { ...account, name: invoice.managedAccountName },
+    null,
+    (invoice.issuedAt ?? invoice.createdAt).slice(0, 10),
+  );
+  return { ...billing, dueDate: null, paymentTermsDays: null };
 }
 
 /* ------------------------------------------------------------------ *
@@ -735,6 +863,21 @@ async function lockManagedAccount(
   return row ?? null;
 }
 
+/** Read and row-lock one billing profile inside a transaction. */
+async function lockBillingProfile(
+  tx: Tx,
+  organizationId: string,
+  id: string,
+): Promise<BillingProfileRow | null> {
+  const [row] = await tx
+    .select()
+    .from(billingProfiles)
+    .where(and(eq(billingProfiles.id, id), eq(billingProfiles.organizationId, organizationId)))
+    .limit(1)
+    .for("update");
+  return row ?? null;
+}
+
 /**
  * Every input that decides what an invoice's figures say.
  *
@@ -771,15 +914,30 @@ interface FigureInputs {
   pricing: string;
   costCentreIds: string[];
   accountIds: string[];
+  /**
+   * The billing profile's id and the two of its fields that change figures
+   * (currency and tax rates), canonically serialized; empty without one. The
+   * rest of the profile is resolved from the locked rows at the moment of
+   * writing, so it needs no comparison.
+   */
+  profile: string;
 }
 
-function figureInputsOf(row: InvoiceRow, account: ManagedAccountRow): FigureInputs {
+function figureInputsOf(
+  row: InvoiceRow,
+  account: ManagedAccountRow,
+  profile: BillingProfileRow | null,
+): FigureInputs {
   return {
     managedAccountId: row.managedAccountId,
     periodFrom: String(row.periodFrom),
     periodTo: String(row.periodTo),
     accountName: account.name,
-    billingCurrency: account.billingCurrency,
+    // The effective currency: a profile's currency overrides the customer's.
+    billingCurrency: invoiceCurrencyFor(account, profile),
+    profile: profile
+      ? JSON.stringify({ id: profile.id, currency: profile.currency, taxRates: profile.taxRates })
+      : "",
     costBasis: String(account.costBasis),
     applyBillingRules: account.applyBillingRules,
     pricing: JSON.stringify(normalizeManagedAccountPricing(account.pricing)),
@@ -805,6 +963,7 @@ function figureInputsChanged(before: FigureInputs, after: FigureInputs): string[
     changed.push("whether the billing rules apply");
   }
   if (before.pricing !== after.pricing) changed.push("the customer's pricing settings");
+  if (before.profile !== after.profile) changed.push("the billing profile's currency or taxes");
   if (!sameList(before.costCentreIds, after.costCentreIds)) {
     changed.push("the cost centres in scope");
   }
@@ -851,7 +1010,7 @@ async function insertDraftTx(
   tx: Tx,
   organizationId: string,
   account: ManagedAccountRow,
-  draft: { periodFrom: string; periodTo: string; notes: string | null },
+  draft: { periodFrom: string; periodTo: string; notes: string | null; currency: string },
   supersedesInvoiceId: string | null,
   createdByUserId: string | null,
 ): Promise<InvoiceRow> {
@@ -867,7 +1026,7 @@ async function insertDraftTx(
       status: "draft",
       periodFrom: draft.periodFrom,
       periodTo: draft.periodTo,
-      currency: account.billingCurrency,
+      currency: draft.currency,
       notes: draft.notes,
       supersedesInvoiceId,
       createdByUserId,
@@ -923,6 +1082,7 @@ export async function createInvoice(
 
   const account = await getManagedAccountRow(organizationId, input.managedAccountId);
   if (!account) throw new InvoiceError("Managed account not found", 404);
+  const profile = await profileFor(organizationId, account);
 
   const row = await db.transaction(async (tx) => {
     let supersedesInvoiceId: string | null = null;
@@ -935,7 +1095,12 @@ export async function createInvoice(
       tx,
       organizationId,
       account,
-      { periodFrom: input.periodFrom, periodTo: input.periodTo, notes },
+      {
+        periodFrom: input.periodFrom,
+        periodTo: input.periodTo,
+        notes,
+        currency: invoiceCurrencyFor(account, profile),
+      },
       supersedesInvoiceId,
       createdByUserId,
     );
@@ -946,8 +1111,9 @@ export async function createInvoice(
     account,
     input.periodFrom,
     input.periodTo,
+    profile ? billingProfileFields(profile) : null,
   );
-  return toWire(row, figures, true);
+  return toWire(row, figures, true, billingOf(account, profile, today()));
 }
 
 /** Throw when `action` is not allowed in the row's current state. */
@@ -985,13 +1151,15 @@ export async function updateInvoice(
 
   const account = await getManagedAccountRow(organizationId, updated.managedAccountId);
   if (!account) throw new InvoiceError("Managed account not found", 404);
+  const profile = await profileFor(organizationId, account);
   const figures = await computeInvoiceFigures(
     organizationId,
     account,
     update.periodFrom,
     update.periodTo,
+    profile ? billingProfileFields(profile) : null,
   );
-  return toWire(updated, figures, true);
+  return toWire(updated, figures, true, billingOf(account, profile, today()));
 }
 
 /** Delete a draft. Refused on anything issued: that is what void is for. */
@@ -1018,23 +1186,32 @@ async function nextInvoiceNumber(
   tx: Tx,
   organizationId: string,
   periodTo: string,
+  format: { prefix: string; includeYear: boolean; start: number } = {
+    prefix: "INV",
+    includeYear: true,
+    start: 1,
+  },
 ): Promise<string> {
   const year = Number(periodTo.slice(0, 4));
+  // Every number with this prefix: the sequence is per prefix (and per year
+  // when the year is in the number), so two profiles sharing a prefix share a
+  // sequence rather than colliding on the unique index.
+  const escaped = format.prefix.replace(/[\\%_]/g, (c) => `\\${c}`);
   const rows = await tx
     .select({ number: managedInvoices.number })
     .from(managedInvoices)
     .where(
       and(
         eq(managedInvoices.organizationId, organizationId),
-        sql`${managedInvoices.number} like ${`INV-${year}-%`}`,
+        sql`${managedInvoices.number} like ${`${escaped}-%`}`,
       ),
     );
-  let highest = 0;
-  for (const row of rows) {
-    const parsed = row.number ? parseManagedInvoiceNumber(row.number) : null;
-    if (parsed && parsed.year === year && parsed.sequence > highest) highest = parsed.sequence;
-  }
-  return formatManagedInvoiceNumber(year, highest + 1);
+  return nextNumberInSequence(
+    { prefix: format.prefix, includeYear: format.includeYear },
+    year,
+    format.start,
+    rows.flatMap((r) => (r.number ? [r.number] : [])),
+  );
 }
 
 /**
@@ -1090,13 +1267,15 @@ export async function approveInvoice(
 
   const account = await getManagedAccountRow(organizationId, row.managedAccountId);
   if (!account) throw new InvoiceError("Managed account not found", 404);
+  const profile = await profileFor(organizationId, account);
 
-  const inputs = figureInputsOf(row, account);
+  const inputs = figureInputsOf(row, account, profile);
   const figures = await computeInvoiceFigures(
     organizationId,
     account,
     inputs.periodFrom,
     inputs.periodTo,
+    profile ? billingProfileFields(profile) : null,
   );
 
   const blocker = managedInvoiceBlocker(
@@ -1142,7 +1321,16 @@ export async function approveInvoice(
           );
         }
 
-        const changed = figureInputsChanged(inputs, figureInputsOf(current, currentAccount));
+        // The profile is locked too: its currency and taxes are figures, and
+        // the rest of it is about to be copied onto the invoice.
+        const currentProfile = currentAccount.billingProfileId
+          ? await lockBillingProfile(tx, organizationId, currentAccount.billingProfileId)
+          : null;
+
+        const changed = figureInputsChanged(
+          inputs,
+          figureInputsOf(current, currentAccount, currentProfile),
+        );
         if (changed.length > 0) {
           throw new InvoiceError(
             `This invoice changed while it was being approved: ${changed.join(", ")} ` +
@@ -1152,7 +1340,19 @@ export async function approveInvoice(
           );
         }
 
-        const number = await nextInvoiceNumber(tx, organizationId, inputs.periodTo);
+        // The billing block is resolved from the rows locked above, so what
+        // is frozen is exactly what the customer and profile say right now.
+        // The logo is stored by hash in the same transaction, so a frozen
+        // invoice can never name a logo that was not written.
+        const billing = billingOf(currentAccount, currentProfile, today(now));
+        if (currentProfile?.logo) {
+          billing.logoId = await storeBillingLogo(tx, organizationId, currentProfile.logo);
+        }
+        const number = await nextInvoiceNumber(tx, organizationId, inputs.periodTo, {
+          prefix: billing.numberPrefix,
+          includeYear: billing.numberIncludesYear,
+          start: currentProfile?.numberStart ?? 1,
+        });
         const [updated] = await tx
           .update(managedInvoices)
           .set({
@@ -1166,6 +1366,7 @@ export async function approveInvoice(
             lines: figures.lines,
             totals: figures.totals,
             derivation: figures.derivation,
+            billing,
             computedAt: now,
             issuedAt: now,
             approvedByUserId: userId,
@@ -1282,21 +1483,38 @@ export async function sendInvoice(
       .then((rows) => rows[0] ?? null),
   ]);
 
-  const outcome = account
-    ? await deliverInvoiceEmail(organizationId, invoice, {
-        contactEmail: account.contactEmail,
-        orgName: org?.displayName ?? null,
-        csv: renderInvoiceCsv(invoice),
-        attempt,
-      })
-    : {
-        status: "no_targets" as const,
-        recipients: [],
-        delivered: 0,
-        error:
-          "The customer this invoice bills has been retired, so it has no contact address to " +
-          "send to. The invoice is still recorded as issued.",
-      };
+  // The frozen billing block names the recipients: the customer's contact
+  // plus the profile's To and Cc, as they stood at approval. An invoice
+  // approved before profiles existed falls back to the customer's contact
+  // email as it stands now, which is what every send did before.
+  const to = invoice.billing ? invoice.billing.to : splitContactEmails(account?.contactEmail);
+  const cc = invoice.billing ? invoice.billing.cc : [];
+  let pdf: Uint8Array | null = null;
+  try {
+    pdf = await renderInvoicePdfFor(organizationId, invoice);
+  } catch (e) {
+    // The PDF is a courtesy beside the CSV, which carries every figure; a
+    // rendering failure must not cost the customer their invoice.
+    console.warn(`[invoice-delivery] ${invoice.number ?? id}: PDF not attached:`, e);
+  }
+  const outcome =
+    invoice.billing || account
+      ? await deliverInvoiceEmail(organizationId, invoice, {
+          to,
+          cc,
+          orgName: org?.displayName ?? null,
+          csv: renderInvoiceCsv(invoice),
+          pdf,
+          attempt,
+        })
+      : {
+          status: "no_targets" as const,
+          recipients: [],
+          delivered: 0,
+          error:
+            "The customer this invoice bills has been retired, so it has no contact address to " +
+            "send to. The invoice is still recorded as issued.",
+        };
 
   const recordedAt = new Date();
   const [recorded] = await db
@@ -1375,7 +1593,7 @@ export async function voidInvoice(
   assertAllowed(row, "void");
 
   const now = new Date();
-  const { voided, replacement, account } = await db.transaction(async (tx) => {
+  const { voided, replacement, account, profile } = await db.transaction(async (tx) => {
     const current = await lockInvoice(tx, organizationId, id);
     if (!current) throw new InvoiceError("Invoice not found", 404);
     assertAllowed(current, "void");
@@ -1394,7 +1612,12 @@ export async function voidInvoice(
     if (!updated) throw new InvoiceError("This invoice is no longer issued", 409);
 
     if (!supersede) {
-      return { voided: updated, replacement: null, account: null as ManagedAccountRow | null };
+      return {
+        voided: updated,
+        replacement: null,
+        account: null as ManagedAccountRow | null,
+        profile: null as BillingProfileRow | null,
+      };
     }
 
     const customer = await lockManagedAccount(tx, organizationId, updated.managedAccountId);
@@ -1409,6 +1632,9 @@ export async function voidInvoice(
       );
     }
 
+    const customerProfile = customer.billingProfileId
+      ? await lockBillingProfile(tx, organizationId, customer.billingProfileId)
+      : null;
     const draft = await insertDraftTx(
       tx,
       organizationId,
@@ -1417,6 +1643,7 @@ export async function voidInvoice(
         periodFrom: String(updated.periodFrom),
         periodTo: String(updated.periodTo),
         notes: updated.notes,
+        currency: invoiceCurrencyFor(customer, customerProfile),
       },
       updated.id,
       userId,
@@ -1427,6 +1654,7 @@ export async function voidInvoice(
       voided: { ...updated, supersededByInvoiceId: draft.id },
       replacement: draft,
       account: customer,
+      profile: customerProfile,
     };
   });
 
@@ -1443,6 +1671,7 @@ export async function voidInvoice(
       account,
       String(replacement.periodFrom),
       String(replacement.periodTo),
+      profile ? billingProfileFields(profile) : null,
     );
   } catch (e) {
     throw new InvoiceError(
@@ -1452,7 +1681,10 @@ export async function voidInvoice(
       409,
     );
   }
-  return { invoice, replacement: toWire(replacement, figures, true) };
+  return {
+    invoice,
+    replacement: toWire(replacement, figures, true, billingOf(account, profile, today())),
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1464,9 +1696,9 @@ export async function voidInvoice(
  *
  * Every column an accounts-payable clerk needs to check the arithmetic is here:
  * what was collected, what the rules added, what that came to, the rate and the
- * date it was read, and the final figure. Deliberately not a PDF: a PDF is a
- * layout decision plus a rendering dependency, and it is the *numbers* that
- * have to survive being argued with.
+ * date it was read, and the final figure. The PDF (`invoice-pdf.ts`) is the
+ * document a customer files and shows only the price; this file is the one
+ * whose *numbers* have to survive being argued with.
  *
  * Uses the same RFC 4180 quoting as the scheduled cost exports, so a customer
  * who already ingests those needs no second parser.
@@ -1489,6 +1721,23 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
     "rate_effective_from",
     "invoice_currency",
     "billed",
+    // Appended, never inserted: a reader that addresses columns by position
+    // keeps working. Repeated on every row so each one stands alone.
+    "bill_to",
+    "tax_id",
+    "po_number",
+    "issue_date",
+    "due_date",
+    "payment_terms",
+  ];
+  const b = invoice.billing;
+  const billingCells = [
+    b?.legalName ?? invoice.managedAccountName,
+    b?.taxId ?? "",
+    b?.poNumber ?? "",
+    b?.issueDate ?? invoice.issuedAt?.slice(0, 10) ?? "",
+    b?.dueDate ?? "",
+    (b ? describePaymentTerms(b.paymentTermsDays) : null) ?? "",
   ];
   const appliedByCurrency = new Map(invoice.derivation.rates.map((r) => [r.currency, r]));
   const rows = invoice.lines.map((line) => {
@@ -1515,6 +1764,7 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
       applied?.effectiveFrom ?? "",
       invoice.currency,
       line.billed ?? "",
+      ...billingCells,
     ]
       .map(csvCell)
       .join(",");
@@ -1541,6 +1791,7 @@ export function renderInvoiceCsv(invoice: ManagedInvoice): string {
       "",
       currency,
       amount,
+      ...billingCells,
     ]
       .map(csvCell)
       .join(","),

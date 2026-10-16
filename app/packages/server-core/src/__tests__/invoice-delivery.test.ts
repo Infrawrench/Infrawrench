@@ -56,6 +56,7 @@ function invoice(overrides: Partial<ManagedInvoice> = {}): ManagedInvoice {
       scope: { costCentres: [], accounts: [] },
       missingScope: [],
     },
+    billing: null,
     live: false,
     computedAt: "2026-02-01T10:00:00.000Z",
     issuedAt: "2026-02-01T10:00:00.000Z",

@@ -60,7 +60,13 @@ import {
   type TagKeysAction,
 } from "./commands/tag-keys";
 import { cmdCurrency, cmdCurrencyFeed, cmdCurrencyRate } from "./commands/currency";
-import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
+import {
+  cmdInvoice,
+  cmdInvoiceCustomers,
+  cmdInvoiceProfiles,
+  cmdInvoiceUnassigned,
+  cmdInvoices,
+} from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdIdleRules } from "./commands/idle-rules";
 import { cmdOversized } from "./commands/oversized";
@@ -259,6 +265,11 @@ COMMANDS
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
                       cost centres whose spend is theirs
+  invoices profiles [n]
+                      billing profiles: addressee, tax, terms, numbering and the customers on
+                      each; with a name, one in full (account numbers masked; --json has them)
+  invoices unassigned spend no customer is billed for, by cost centre and account
+                      [--from YYYY-MM-DD --to YYYY-MM-DD; default the last full month]
   invoices <n|id>     one invoice in full, by number, id or customer: lines, the adjustments
                       applied, the rate used and the day it was read
   unit-costs          the org's business metrics (the denominators unit costs divide by) and
@@ -984,6 +995,14 @@ export async function runCli(): Promise<void> {
       case "invoices":
         if (rest[0] === "customers") {
           await cmdInvoiceCustomers(ctx);
+          break;
+        }
+        if (rest[0] === "profiles") {
+          await cmdInvoiceProfiles(ctx, rest.slice(1).join(" ") || undefined);
+          break;
+        }
+        if (rest[0] === "unassigned" && rest.length === 1) {
+          await cmdInvoiceUnassigned(ctx, parsed.range);
           break;
         }
         if (rest.length > 0) {
