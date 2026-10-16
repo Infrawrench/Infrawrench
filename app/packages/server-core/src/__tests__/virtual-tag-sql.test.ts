@@ -267,3 +267,112 @@ describe("unresolved keys", () => {
     expect(captured).toHaveLength(0);
   });
 });
+
+describe("tags built on tags", () => {
+  /** `owner`: payments on GCP. A scalar tag other tags can filter on. */
+  const owner: CompiledVirtualTag = {
+    ...env,
+    key: "owner",
+    defaultValue: null,
+    rules: [
+      {
+        ...env.rules[1]!,
+        filters: [{ dimension: "provider", op: "in", values: ["gcp"] }],
+        value: "payments",
+      },
+    ],
+  };
+  /** `unit`: commerce when the owner is payments or search. */
+  const unit = (dependencies?: Map<string, CompiledVirtualTag>): CompiledVirtualTag => ({
+    key: "unit",
+    defaultValue: "other",
+    split: false,
+    rules: [
+      {
+        ...env.rules[1]!,
+        filters: [
+          { dimension: "virtual_tag", op: "in", values: ["payments", "search"], tagKey: "owner" },
+        ],
+        value: "commerce",
+      },
+    ],
+    dependencies,
+  });
+
+  it("nest the referenced tag's multiIf inside the rule condition, with no join", async () => {
+    await queryCosts("org", {
+      ...baseQuery,
+      groupBy: "virtual_tag",
+      groupByTagKey: "unit",
+      virtualTags: new Map([["unit", unit(new Map([["owner", owner]]))]]),
+    });
+    const sql = captured[0]!;
+    expect(sql).not.toContain("array join");
+    // The inner tag's expression is the subject of the outer rule's IN.
+    expect(sql).toContain(
+      "multiIf(multiIf(`cost_daily`.`plugin_id` in ('gcp'), 'payments', '') in ('payments', 'search'), 'commerce', 'other')",
+    );
+  });
+
+  it("apply the new operators to a referenced tag", async () => {
+    const owned: CompiledVirtualTag = {
+      ...unit(new Map([["owner", owner]])),
+      rules: [
+        {
+          ...env.rules[1]!,
+          filters: [{ dimension: "virtual_tag", op: "is_set", values: [], tagKey: "owner" }],
+          value: "owned",
+        },
+      ],
+    };
+    await queryCosts("org", {
+      ...baseQuery,
+      groupBy: "virtual_tag",
+      groupByTagKey: "unit",
+      virtualTags: new Map([["unit", owned]]),
+    });
+    expect(captured[0]).toContain("'payments', '') != '', 'owned'");
+  });
+
+  it("throw for a reference that was not resolved, rather than matching nothing", async () => {
+    await expect(
+      queryCosts("org", {
+        ...baseQuery,
+        groupBy: "virtual_tag",
+        groupByTagKey: "unit",
+        virtualTags: new Map([["unit", unit()]]),
+      }),
+    ).rejects.toBeInstanceOf(VirtualTagUnresolvedError);
+  });
+
+  it("refuse to filter on a split tag even if a stored row says to", async () => {
+    await expect(
+      queryCosts("org", {
+        ...baseQuery,
+        groupBy: "virtual_tag",
+        groupByTagKey: "unit",
+        virtualTags: new Map([["unit", unit(new Map([["owner", { ...team, key: "owner" }]]))]]),
+      }),
+    ).rejects.toThrow(/splits rows between values/);
+  });
+
+  it("stop at a stored cycle instead of recursing forever", async () => {
+    // owner filters on owner itself: a row the save check never lets through.
+    const loop: CompiledVirtualTag = { ...owner, rules: unit().rules };
+    loop.dependencies = new Map([["owner", loop]]);
+    await expect(
+      queryCosts("org", {
+        ...baseQuery,
+        groupBy: "virtual_tag",
+        groupByTagKey: "unit",
+        virtualTags: new Map([["unit", unit(new Map([["owner", loop]]))]]),
+      }),
+    ).rejects.toThrow(/nest deeper than/);
+  });
+
+  it("count per-rule spend through the nested expression in the processing pass", async () => {
+    await getVirtualTagStats("org", unit(new Map([["owner", owner]])), "2026-08-01", "2026-08-31");
+    expect(captured[0]).toContain("'gcp'");
+    expect(captured[0]).toContain("toUInt16(1)");
+  });
+});

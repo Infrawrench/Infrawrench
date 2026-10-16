@@ -18,7 +18,7 @@ Every cost row is checked against the rules **top to bottom**. The first rule th
 
 Each rule has:
 
-- **Applies to**: a cost filter, built with the same filter rows (or [cost query language](./cloud-costs.md) text) used everywhere else, for example `provider = 'aws' AND service = 'AmazonRDS'`. Empty matches all spend. A rule cannot filter on another virtual tag.
+- **Applies to**: a cost filter, built with the same filter rows (or [cost query language](./cloud-costs.md) text) used everywhere else, for example `provider = 'aws' AND service = 'AmazonRDS'`. Empty matches all spend. The filter can test another virtual tag too; see [Building on other virtual tags](#building-on-other-virtual-tags).
 - **From / Until** (optional): inclusive dates. Use them to record a reorganisation: "until March this was team A, from April it is team B", without rewriting history.
 - **A kind**, which says what the value is.
 
@@ -32,6 +32,28 @@ Each rule has:
 ### Merging tag keys
 
 To collapse `env`, `Environment` and `ENV` into one `env`, add a single **Copy from tag keys** rule listing all three keys and choose **lowercase**. Give a key a prefix (`az-`) or an "only where" filter (`provider = 'azure'`) when the same value means different things in different places.
+
+### Building on other virtual tags
+
+A rule can filter on another virtual tag, so one tag can be defined in terms of another. Define `team` once, then build `business_unit` on top of it:
+
+| Rule | Applies to                                        | Value      |
+| ---- | ------------------------------------------------- | ---------- |
+| 1    | `virtual_tag['team'] IN ('payments', 'checkout')` | `commerce` |
+| 2    | `virtual_tag['team'] ~= 'data-platform'`          | `data`     |
+| 3    | `virtual_tag['team'] IS NOT SET`                  | `unowned`  |
+
+When `team` changes, `business_unit` follows on the next query, and its processing status goes back to **Queued** so its coverage numbers are recomputed after `team`'s.
+
+A few rules keep this predictable, and saving a tag that breaks one is refused with a message naming the problem:
+
+- **The referenced tag must exist.** Deleting a tag that another tag's rules filter on is refused too, and the message names the tags that use it.
+- **The referenced tag must give each row one value.** A rule's filter asks a yes-or-no question about a row, and a row split 60/40 between two teams has no single answer. So a tag with a **Split by percentage** or **Split by business metric** rule cannot be filtered on by another tag, and a tag another tag filters on cannot gain a split rule.
+- **No loops.** `business_unit` filtering on `team` while `team` filters on `business_unit` would never settle on a value. The error spells the loop out, for example `team → business_unit → team`.
+- **At most five deep.** A chain of tags building on each other, counting both ends, can be at most five long (`division → business_unit → team → owner → env` is five). Each level is evaluated inside the one above it in every query, so deeper chains slow every report that uses the outermost tag. Filter on the provider tags a deep tag is built from instead.
+- A tag's rules can never filter on the tag itself; the editor leaves it out of the virtual tag picker.
+
+<insert [Virtual tag editor for business_unit with a rule whose filter row reads Virtual tag team is payments, checkout] here>
 
 ### Splits never change a total
 

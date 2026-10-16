@@ -18,6 +18,12 @@
  *   zip) and the money is multiplied by both weights, which conserves totals
  *   for the same reason.
  *
+ * - **A tag built on tags** (a rule filtering on `virtual_tag['team']`) nests
+ *   the referenced tag's scalar `multiIf` inside its own rule condition, from
+ *   {@link CompiledVirtualTag.dependencies}. Only scalar tags can be
+ *   referenced, so nesting never adds a join, and the depth is bounded by
+ *   `VIRTUAL_TAG_LIMITS.maxReferenceDepth`.
+ *
  * {@link VirtualTagScope} is the bookkeeping: a reader asks it for a tag's
  * value wherever it needs one (group, filter, allocation match, export
  * column), then asks it for the joins and the weight it accumulated. A query
@@ -28,7 +34,11 @@
  * rendered raw are weights this module derived (finite-guarded), the stance
  * `adjustedAmountExpr` takes for billing-rule factors.
  */
-import type { CostFilter, VirtualTagValueTransform } from "@infrawrench/client-core";
+import {
+  VIRTUAL_TAG_LIMITS,
+  type CostFilter,
+  type VirtualTagValueTransform,
+} from "@infrawrench/client-core";
 import { and, gte, lte, sql, type SQL } from "drizzle-orm";
 import { membershipCondition, physicalDimensionExpr, type PhysicalCostDimension } from "./cost-sql";
 import { costDaily } from "./schema";
@@ -70,6 +80,15 @@ export interface CompiledVirtualTag {
   /** Whether any rule divides rows: decides scalar vs. joined compilation. */
   split: boolean;
   rules: CompiledVirtualTagRule[];
+  /**
+   * The compiled tags this tag's rule (and source) filters test, by key, each
+   * carrying its own `dependencies` in turn. A `virtual_tag` term inside a
+   * rule compiles to the referenced tag's scalar `multiIf`, nested in place,
+   * so a tag built on tags is still one expression in the one scan. Absent
+   * (or missing a key) when nothing was resolved: such a term throws
+   * {@link VirtualTagUnresolvedError} rather than matching nothing.
+   */
+  dependencies?: VirtualTagDefinitions | undefined;
 }
 
 /** The org's virtual tags a query needs, by key. */
@@ -105,23 +124,67 @@ function weightLiteral(weight: number): SQL {
   return sql.raw(`toFloat64(${String(w)})`);
 }
 
-/** An AND of physical filters, or `1` when there are none. */
-function filtersCondition(filters: readonly CostFilter[]): SQL[] {
-  return filters.map((f) => {
-    if (f.dimension === "virtual_tag") {
-      // Refused at validation; guarded here so a hand-edited row cannot recurse.
-      throw new Error("A virtual tag rule cannot filter on another virtual tag.");
-    }
-    return membershipCondition(
-      physicalDimensionExpr(f.dimension as PhysicalCostDimension, f.tagKey),
-      f.op,
-      f.values,
+/**
+ * How deep a `virtual_tag` term may nest a referenced tag's expression before
+ * compilation gives up: the save-time limit, plus the tag itself. Stored rows
+ * the save check never let through (a hand-edited cycle) stop here instead of
+ * recursing forever.
+ */
+const MAX_COMPILE_DEPTH = VIRTUAL_TAG_LIMITS.maxReferenceDepth + 1;
+
+/**
+ * The compilation context for one tag's rules: the tags its filters may
+ * reference, and how many tags deep this expression already is.
+ */
+interface RuleScope {
+  dependencies: VirtualTagDefinitions | undefined;
+  depth: number;
+}
+
+function scopeOf(tag: CompiledVirtualTag, depth = 1): RuleScope {
+  return { dependencies: tag.dependencies, depth };
+}
+
+/**
+ * A referenced tag's single value per row, nested in place. Only a scalar tag
+ * can be one: a split tag gives a row several values, and a rule's filter is
+ * a yes/no question about the row. The save check refuses both a reference to
+ * a split tag and a split on a referenced tag; this guards stored rows.
+ */
+function referencedTagExpr(key: string, scope: RuleScope): SQL {
+  const def = scope.dependencies?.get(key);
+  if (!def) throw new VirtualTagUnresolvedError(key);
+  if (def.split) {
+    throw new Error(
+      `The virtual tag "${key}" splits rows between values, so another tag's rule cannot ` +
+        "filter on it. Edit the rule that references it.",
     );
+  }
+  if (scope.depth >= MAX_COMPILE_DEPTH) {
+    throw new Error(
+      `Virtual tags filtering on "${key}" nest deeper than ` +
+        `${VIRTUAL_TAG_LIMITS.maxReferenceDepth} tags, or in a loop. Edit the rules that reference it.`,
+    );
+  }
+  return scalarExpr(def, scope.depth + 1);
+}
+
+/** One predicate per filter term (physical columns, or nested virtual tags). */
+function filtersCondition(filters: readonly CostFilter[], scope: RuleScope): SQL[] {
+  return filters.map((f) => {
+    const expr =
+      f.dimension === "virtual_tag"
+        ? referencedTagExpr(f.tagKey ?? "", scope)
+        : physicalDimensionExpr(f.dimension as PhysicalCostDimension, f.tagKey);
+    return membershipCondition(expr, f.op, f.values);
   });
 }
 
-function sourceCondition(source: CompiledVirtualTagSource): SQL {
-  return and(sql`${costDaily.tags}[${source.tagKey}] != ''`, ...filtersCondition(source.filters))!;
+function sourceCondition(source: CompiledVirtualTagSource, scope: RuleScope): SQL {
+  return and(
+    sql`${costDaily.tags}[${source.tagKey}] != ''`,
+    ...filtersCondition(source.filters, scope),
+  )!;
 }
 
 function foldValue(expr: SQL, transform: VirtualTagValueTransform): SQL {
@@ -131,33 +194,49 @@ function foldValue(expr: SQL, transform: VirtualTagValueTransform): SQL {
 }
 
 /** The copied value of a `tag` rule: the first present source, prefixed and folded. */
-function sourceValue(rule: CompiledVirtualTagRule): SQL {
+function sourceValue(rule: CompiledVirtualTagRule, scope: RuleScope): SQL {
   const branches = rule.sources.map((s) => {
     const raw = foldValue(sql`${costDaily.tags}[${s.tagKey}]`, rule.valueTransform);
     const value = s.valuePrefix ? sql`concat(${s.valuePrefix}, ${raw})` : raw;
-    return sql`${sourceCondition(s)}, ${value}`;
+    return sql`${sourceCondition(s, scope)}, ${value}`;
   });
   return sql`multiIf(${sql.join(branches, sql`, `)}, '')`;
 }
 
-/** The condition under which a rule claims a row. */
-export function virtualTagRuleCondition(rule: CompiledVirtualTagRule): SQL {
-  const conds: SQL[] = [...filtersCondition(rule.filters)];
+/**
+ * The condition under which a rule claims a row. `dependencies` resolves the
+ * rule's `virtual_tag` terms (the owning tag's {@link CompiledVirtualTag.dependencies}).
+ */
+export function virtualTagRuleCondition(
+  rule: CompiledVirtualTagRule,
+  dependencies?: VirtualTagDefinitions | undefined,
+): SQL {
+  return ruleCondition(rule, { dependencies, depth: 1 });
+}
+
+function ruleCondition(rule: CompiledVirtualTagRule, scope: RuleScope): SQL {
+  const conds: SQL[] = [...filtersCondition(rule.filters, scope)];
   if (rule.startsOn) conds.push(gte(costDaily.day, rule.startsOn));
   if (rule.endsOn) conds.push(lte(costDaily.day, rule.endsOn));
   if (rule.kind === "tag") {
-    conds.push(sql`(${sql.join(rule.sources.map(sourceCondition), sql` OR `)})`);
+    conds.push(
+      sql`(${sql.join(
+        rule.sources.map((s) => sourceCondition(s, scope)),
+        sql` OR `,
+      )})`,
+    );
   }
   return conds.length > 0 ? and(...conds)! : sql`1`;
 }
 
 /** A scalar tag's value expression: `multiIf(c1, v1, …, default)`. */
-function scalarExpr(tag: CompiledVirtualTag): SQL {
+function scalarExpr(tag: CompiledVirtualTag, depth = 1): SQL {
+  const scope = scopeOf(tag, depth);
   const fallback = sql`${tag.defaultValue ?? ""}`;
   if (tag.rules.length === 0) return fallback;
   const branches = tag.rules.map((rule) => {
-    const value = rule.kind === "tag" ? sourceValue(rule) : sql`${rule.value ?? ""}`;
-    return sql`${virtualTagRuleCondition(rule)}, ${value}`;
+    const value = rule.kind === "tag" ? sourceValue(rule, scope) : sql`${rule.value ?? ""}`;
+    return sql`${ruleCondition(rule, scope)}, ${value}`;
   });
   return sql`multiIf(${sql.join(branches, sql`, `)}, ${fallback})`;
 }
@@ -189,6 +268,7 @@ function metricWeightExpr(
 
 /** A split tag's `Array(Tuple(value, weight))` expression. */
 function pairsExpr(tag: CompiledVirtualTag): SQL {
+  const scope = scopeOf(tag);
   const one = weightLiteral(1);
   const fallback = pairs([{ value: sql`${tag.defaultValue ?? ""}`, weight: one }]);
   if (tag.rules.length === 0) return fallback;
@@ -199,7 +279,7 @@ function pairsExpr(tag: CompiledVirtualTag): SQL {
         output = pairs([{ value: sql`${rule.value ?? ""}`, weight: one }]);
         break;
       case "tag":
-        output = pairs([{ value: sourceValue(rule), weight: one }]);
+        output = pairs([{ value: sourceValue(rule, scope), weight: one }]);
         break;
       case "split":
         output = pairs(
@@ -217,7 +297,7 @@ function pairsExpr(tag: CompiledVirtualTag): SQL {
         break;
       }
     }
-    return sql`${virtualTagRuleCondition(rule)}, ${output}`;
+    return sql`${ruleCondition(rule, scope)}, ${output}`;
   });
   return sql`multiIf(${sql.join(branches, sql`, `)}, ${fallback})`;
 }
@@ -229,8 +309,9 @@ function pairsExpr(tag: CompiledVirtualTag): SQL {
  */
 export function virtualTagRuleIndexExpr(tag: CompiledVirtualTag): SQL {
   if (tag.rules.length === 0) return sql`toUInt16(0)`;
+  const scope = scopeOf(tag);
   const branches = tag.rules.map(
-    (rule, i) => sql`${virtualTagRuleCondition(rule)}, ${sql.raw(`toUInt16(${i + 1})`)}`,
+    (rule, i) => sql`${ruleCondition(rule, scope)}, ${sql.raw(`toUInt16(${i + 1})`)}`,
   );
   return sql`multiIf(${sql.join(branches, sql`, `)}, toUInt16(0))`;
 }

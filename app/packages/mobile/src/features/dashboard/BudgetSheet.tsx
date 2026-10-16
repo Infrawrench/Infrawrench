@@ -9,6 +9,7 @@ import {
   budgetInputError,
   budgetSubtreeHeight,
   formatBudgetPeriodWindow,
+  isCompleteCostFilter,
   type BudgetInput,
   type BudgetPeriodUnit,
   type BudgetThreshold,
@@ -124,7 +125,7 @@ export function BudgetSheet({
       name: input.name.trim(),
       amountCents,
       currency: input.currency.trim().toUpperCase(),
-      filters: input.filters.filter((f) => f.values.length > 0),
+      filters: input.filters.filter(isCompleteCostFilter),
     };
     // Fields of the other measure are dropped, so switching never saves a
     // combination the API refuses.

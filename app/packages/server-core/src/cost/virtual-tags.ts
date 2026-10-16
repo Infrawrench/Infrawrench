@@ -18,8 +18,11 @@ import {
   compileVirtualTagQuery,
   computeMetricSplitWeights,
   normalizeVirtualTagInput,
+  virtualTagDependencies,
+  virtualTagDependents,
   virtualTagInputError,
   virtualTagMetricIds,
+  virtualTagReferenceError,
   virtualTagSplits,
   type CostFilter,
   type VirtualTag,
@@ -90,6 +93,7 @@ export class VirtualTagInUseError extends Error {
 /** Something that stores a reference to a virtual tag key. */
 export interface VirtualTagReference {
   kind:
+    | "virtual tag"
     | "saved filter"
     | "budget"
     | "cost report"
@@ -170,6 +174,62 @@ function prepare(input: VirtualTagInput): VirtualTagInput {
 }
 
 /**
+ * The references a tag's rules make to other virtual tags must keep the org's
+ * graph sound: every referenced tag exists and gives one value per row, no
+ * tag a rule filters on gains a split, there is no cycle, and no chain is
+ * deeper than `VIRTUAL_TAG_LIMITS.maxReferenceDepth`. The candidate replaces
+ * its own stored row, so an edit that removes a reference is judged on the
+ * graph it leaves behind.
+ */
+export async function assertVirtualTagReferencesSound(
+  organizationId: string,
+  candidate: Pick<VirtualTagInput, "key" | "rules">,
+): Promise<void> {
+  // Without references or a split, the candidate can neither close a cycle,
+  // lengthen a chain, nor break a tag that filters on it.
+  if (virtualTagDependencies(candidate.rules).length === 0 && !virtualTagSplits(candidate.rules)) {
+    return;
+  }
+  const others = await db
+    .select({ key: virtualTags.key, rules: virtualTags.rules })
+    .from(virtualTags)
+    .where(eq(virtualTags.organizationId, organizationId));
+  const error = virtualTagReferenceError(
+    candidate,
+    others.map((o) => ({ key: o.key, rules: (o.rules ?? []) as VirtualTagRule[] })),
+  );
+  if (error) throw new VirtualTagError(error);
+}
+
+/**
+ * Re-queue every tag that filters on `key`, directly or through another tag:
+ * their values (and so their stats) are computed from `key`'s rules, which
+ * just changed. Each is due one second per reference away, so the claim's
+ * `ORDER BY next_process_at` evaluates them nearest first.
+ */
+async function requeueDependents(organizationId: string, key: string): Promise<void> {
+  const rows = await db
+    .select({ id: virtualTags.id, key: virtualTags.key, rules: virtualTags.rules })
+    .from(virtualTags)
+    .where(eq(virtualTags.organizationId, organizationId));
+  const nodes = rows.map((r) => ({ key: r.key, rules: (r.rules ?? []) as VirtualTagRule[] }));
+  const dependents = virtualTagDependents(key, nodes);
+  if (dependents.length === 0) return;
+  const idByKey = new Map(rows.map((r) => [r.key, r.id]));
+  const now = Date.now();
+  for (const distance of new Set(dependents.map((d) => d.distance))) {
+    const ids = dependents
+      .filter((d) => d.distance === distance)
+      .map((d) => idByKey.get(d.key))
+      .filter((id): id is string => Boolean(id));
+    await db
+      .update(virtualTags)
+      .set({ processingState: "pending", nextProcessAt: new Date(now + distance * 1000) })
+      .where(and(eq(virtualTags.organizationId, organizationId), inArray(virtualTags.id, ids)));
+  }
+}
+
+/**
  * Every metric a rule names must be a live metric of this org: a metric id from
  * another org would otherwise weight a split by somebody else's numbers.
  */
@@ -205,6 +265,7 @@ export async function createVirtualTag(
 ): Promise<VirtualTag> {
   const data = prepare(input);
   await assertMetricsBelongToOrg(organizationId, data.rules);
+  await assertVirtualTagReferencesSound(organizationId, data);
 
   const existing = await db
     .select({ id: virtualTags.id })
@@ -263,6 +324,7 @@ export async function updateVirtualTag(
     );
   }
   await assertMetricsBelongToOrg(organizationId, data.rules);
+  await assertVirtualTagReferencesSound(organizationId, data);
 
   const [row] = await db
     .update(virtualTags)
@@ -278,7 +340,11 @@ export async function updateVirtualTag(
     })
     .where(and(eq(virtualTags.id, id), eq(virtualTags.organizationId, organizationId)))
     .returning();
-  return row ? toWire(row) : null;
+  if (!row) return null;
+  // Tags built on this one read its rules at query time, so their stats are
+  // now stale too.
+  await requeueDependents(organizationId, data.key);
+  return toWire(row);
 }
 
 /** Queue a re-evaluation now, without changing the rules. Null when not found. */
@@ -322,8 +388,12 @@ export async function findVirtualTagReferences(
     return mentions(c.filters) || (c.groupBy === "virtual_tag" && c.groupByTagKey === key);
   };
 
-  const [filters, budgetRows, reports, widgets, alerts, rules, exportsRows, metrics] =
+  const [tags, filters, budgetRows, reports, widgets, alerts, rules, exportsRows, metrics] =
     await Promise.all([
+      db
+        .select({ id: virtualTags.id, key: virtualTags.key, rules: virtualTags.rules })
+        .from(virtualTags)
+        .where(eq(virtualTags.organizationId, organizationId)),
       db
         .select({
           id: savedCostFilters.id,
@@ -393,6 +463,12 @@ export async function findVirtualTagReferences(
     ]);
 
   const refs: VirtualTagReference[] = [];
+  for (const t of tags) {
+    if (t.key === key) continue;
+    if (virtualTagDependencies((t.rules ?? []) as VirtualTagRule[]).includes(key)) {
+      refs.push({ kind: "virtual tag", id: t.id, name: t.key });
+    }
+  }
   for (const r of filters)
     if (mentions(r.filters)) refs.push({ kind: "saved filter", id: r.id, name: r.name });
   for (const r of budgetRows)
@@ -574,21 +650,64 @@ export async function loadVirtualTagDefinitions(
 ): Promise<VirtualTagDefinitions> {
   const result = new Map<string, CompiledVirtualTag>();
   if (keys.length === 0) return result;
-  const rows = await db
-    .select()
-    .from(virtualTags)
-    .where(
-      and(eq(virtualTags.organizationId, organizationId), inArray(virtualTags.key, [...keys])),
+
+  // The requested tags, then the tags their rules filter on, level by level:
+  // one extra round trip per level of nesting, none when nothing nests. The
+  // level cap is the save-time depth limit, so a hand-edited cycle stops.
+  const tags = new Map<string, VirtualTag>();
+  let wanted = [...new Set(keys)];
+  for (
+    let level = 0;
+    wanted.length > 0 && level <= VIRTUAL_TAG_LIMITS.maxReferenceDepth;
+    level += 1
+  ) {
+    const rows = await db
+      .select()
+      .from(virtualTags)
+      .where(and(eq(virtualTags.organizationId, organizationId), inArray(virtualTags.key, wanted)));
+    const found = rows.map(toWire);
+    for (const tag of found) tags.set(tag.key, tag);
+    wanted = [...new Set(found.flatMap((t) => virtualTagDependencies(t.rules)))].filter(
+      (k) => !tags.has(k),
     );
-  const tags = rows.map(toWire);
+  }
+
   const metricValues = await loadMetricValues(
     organizationId,
-    [...new Set(tags.flatMap((t) => virtualTagMetricIds(t.rules)))],
+    [...new Set([...tags.values()].flatMap((t) => virtualTagMetricIds(t.rules)))],
     from,
     to,
   );
-  for (const tag of tags) {
-    result.set(tag.key, compileVirtualTagForRange(tag, metricValues, from, to).compiled);
+  const compiled = compileVirtualTagGraph([...tags.values()], metricValues, from, to);
+  for (const key of keys) {
+    const tag = compiled.get(key);
+    if (tag) result.set(key, tag);
   }
   return result;
+}
+
+/**
+ * Compile a set of tags and wire each one's `dependencies` to the compiled
+ * tags its rules filter on. A referenced key absent from `tags` is simply
+ * missing from the map, which the SQL compiler reports as an unresolved tag.
+ */
+export function compileVirtualTagGraph(
+  tags: ReadonlyArray<Pick<VirtualTag, "key" | "defaultValue" | "rules">>,
+  metricValues: MetricValueLookup,
+  from: string,
+  to: string,
+): Map<string, CompiledVirtualTag> {
+  const compiled = new Map<string, CompiledVirtualTag>();
+  for (const tag of tags) {
+    compiled.set(tag.key, compileVirtualTagForRange(tag, metricValues, from, to).compiled);
+  }
+  for (const tag of tags) {
+    const dependencies = new Map<string, CompiledVirtualTag>();
+    for (const key of virtualTagDependencies(tag.rules)) {
+      const dep = compiled.get(key);
+      if (dep) dependencies.set(key, dep);
+    }
+    if (dependencies.size > 0) compiled.get(tag.key)!.dependencies = dependencies;
+  }
+  return compiled;
 }

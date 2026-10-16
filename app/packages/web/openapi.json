@@ -8634,6 +8634,20 @@
           "virtual_tag"
         ]
       },
+      "CostFilterOperator": {
+        "type": "string",
+        "enum": [
+          "in",
+          "not_in",
+          "flexible_match",
+          "contains",
+          "not_contains",
+          "starts_with",
+          "is_set",
+          "is_not_set"
+        ],
+        "description": "`in` / `not_in` compare exactly. `flexible_match` compares after ignoring letter case, whitespace, `_` and `-` (so `Prod_Env` matches `prod-env`). `contains`, `not_contains` and `starts_with` are substring and prefix tests, ignoring letter case. Each matches when any listed value does (`not_in` and `not_contains`: when none does). `is_set` / `is_not_set` test whether a `tag` or `virtual_tag` has a value, and take an empty `values`."
+      },
       "CostFilter": {
         "type": "object",
         "properties": {
@@ -8641,18 +8655,14 @@
             "$ref": "#/components/schemas/CostDimension"
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -10181,18 +10191,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -13849,18 +13855,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -14539,18 +14541,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -14878,18 +14876,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -15045,18 +15039,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -15309,18 +15299,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -18391,18 +18377,14 @@
             ]
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -22230,7 +22212,7 @@
             "type": "string",
             "maxLength": 4000,
             "default": "",
-            "description": "Cost-query-language filter a row must match, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty matches every row. May not reference another virtual tag."
+            "description": "Cost-query-language filter a row must match, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty matches every row. May filter on another virtual tag (`virtual_tag['team'] = 'payments'`) that gives each row one value (no split rules), as long as the references form no cycle and no chain is more than five tags deep."
           },
           "description": {
             "type": [
@@ -23890,18 +23872,14 @@
             "type": "string"
           },
           "op": {
-            "type": "string",
-            "enum": [
-              "in",
-              "not_in"
-            ]
+            "$ref": "#/components/schemas/CostFilterOperator"
           },
           "values": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "minItems": 1
+            "description": "Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list. The text operators refuse an empty string."
           },
           "tagKey": {
             "type": "string"
@@ -76993,7 +76971,7 @@
           "Virtual Tags"
         ],
         "summary": "Delete a virtual tag",
-        "description": "Refused with a 409 that names every saved filter, budget, report, dashboard card, change alert, allocation rule, cost export or business metric still referencing the key: deleting it would make those fail rather than quietly widen to all spend.\n\n_Requires permission: `costs:write`._",
+        "description": "Refused with a 409 that names every other virtual tag, saved filter, budget, report, dashboard card, change alert, allocation rule, cost export or business metric still referencing the key: deleting it would make those fail rather than quietly widen to all spend.\n\n_Requires permission: `costs:write`._",
         "parameters": [
           {
             "schema": {

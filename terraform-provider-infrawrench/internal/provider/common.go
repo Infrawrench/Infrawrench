@@ -434,6 +434,13 @@ var costDimensions = []string{
 	"virtual_tag",
 }
 
+// costFilterOps is the closed set of filter operators (`COST_FILTER_OPS` in
+// client-core).
+var costFilterOps = []string{
+	"in", "not_in", "flexible_match", "contains", "not_contains", "starts_with", "is_set",
+	"is_not_set",
+}
+
 // costFilterBlockSchema is the shared `filter` nested block. Every object that
 // filters spend uses this exact shape, so a practitioner learns it once.
 func costFilterBlockSchema(description string) schema.ListNestedBlock {
@@ -447,14 +454,22 @@ func costFilterBlockSchema(description string) schema.ListNestedBlock {
 					Validators:          []validator.String{oneOfValidator(costDimensions...)},
 				},
 				"op": schema.StringAttribute{
-					Required:            true,
-					MarkdownDescription: "`in` to keep matching rows, `not_in` to exclude them.",
-					Validators:          []validator.String{oneOfValidator("in", "not_in")},
+					Required: true,
+					MarkdownDescription: "How the dimension is compared with `values`. `in` keeps rows equal to " +
+						"a value and `not_in` excludes them. `flexible_match` compares after ignoring letter case, " +
+						"whitespace, `_` and `-`, so `Prod_Env` matches `prod-env`. `contains`, `not_contains` and " +
+						"`starts_with` are substring and prefix tests that ignore letter case. Each matches when " +
+						"any value does (`not_in` and `not_contains`: when none does). `is_set` and `is_not_set` " +
+						"test whether a `tag` or `virtual_tag` has a value at all. One of `" +
+						joinBackticked(costFilterOps) + "`.",
+					Validators: []validator.String{oneOfValidator(costFilterOps...)},
 				},
 				"values": schema.ListAttribute{
-					Required:            true,
-					ElementType:         types.StringType,
-					MarkdownDescription: "Values to match. Must not be empty.",
+					Required:    true,
+					ElementType: types.StringType,
+					MarkdownDescription: "Values to compare with. At least one, except for `is_set` and " +
+						"`is_not_set`, which take an empty list (`values = []`). The text operators refuse an " +
+						"empty string.",
 				},
 				"tag_key": schema.StringAttribute{
 					Optional: true,

@@ -1,12 +1,19 @@
+import { useState } from "react";
 import { View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
   COST_DIMENSION_LABELS,
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  COST_FILTER_OP_LABELS,
+  costFilterMatches,
   isKeyedCostDimension,
+  isPatternCostFilterOp,
+  isValuelessCostFilterOp,
   type CostDimensionId,
   type CostDimensionOption,
   type CostFilter,
+  type CostFilterOp,
 } from "@infrawrench/client-core";
 import { BareInput, Chip, ChipMultiSelect, ChipRow, Field, FormHint } from "@/components/form";
 import { Button, Separator } from "@/components/ui";
@@ -27,6 +34,13 @@ const DIMENSION_OPTIONS = COST_DIMENSIONS.map((d) => ({
   value: d,
   label: COST_DIMENSION_LABELS[d],
 }));
+
+/** The operators a row may use: IS SET / IS NOT SET only for tags. */
+function opsFor(dimension: CostDimensionId): readonly CostFilterOp[] {
+  return isKeyedCostDimension(dimension)
+    ? COST_FILTER_OPS
+    : COST_FILTER_OPS.filter((op) => !isValuelessCostFilterOp(op));
+}
 
 /**
  * Options plus any selected value the load didn't return, so a filter saved
@@ -93,6 +107,8 @@ export function CostFilterEditor({
                 onPress={() =>
                   update(i, {
                     dimension: o.value as CostDimensionId,
+                    // IS SET / IS NOT SET only exist for tags.
+                    op: opsFor(o.value as CostDimensionId).includes(filter.op) ? filter.op : "in",
                     // A dimension change invalidates the chosen values and
                     // the key: a provider tag key means nothing to a virtual
                     // tag, and the other dimensions carry none.
@@ -124,18 +140,20 @@ export function CostFilterEditor({
             />
           ) : null}
           <ChipRow>
-            <Chip
-              label="is"
-              selected={filter.op === "in"}
-              onPress={() => update(i, { op: "in" })}
-            />
-            <Chip
-              label="is not"
-              selected={filter.op === "not_in"}
-              onPress={() => update(i, { op: "not_in" })}
-            />
+            {opsFor(filter.dimension).map((op) => (
+              <Chip
+                key={op}
+                label={COST_FILTER_OP_LABELS[op]}
+                selected={filter.op === op}
+                onPress={() => update(i, isValuelessCostFilterOp(op) ? { op, values: [] } : { op })}
+              />
+            ))}
           </ChipRow>
-          <FilterValues filter={filter} onChange={(values) => update(i, { values })} />
+          {isValuelessCostFilterOp(filter.op) ? null : isPatternCostFilterOp(filter.op) ? (
+            <TextFilterValues filter={filter} onChange={(values) => update(i, { values })} />
+          ) : (
+            <FilterValues filter={filter} onChange={(values) => update(i, { values })} />
+          )}
           <Button
             label="Remove filter"
             variant="secondary"
@@ -195,6 +213,59 @@ function FilterValues({
       onChange={onChange}
       emptyMessage="No values in cost data yet"
     />
+  );
+}
+
+/**
+ * Typed values for the text operators (is like, contains, starts with): the
+ * point is matching spellings the value list does not contain, so they are
+ * typed rather than picked. Tap a chip to remove it. The hint counts which
+ * known values match, with the same matcher the server's SQL mirrors.
+ */
+function TextFilterValues({
+  filter,
+  onChange,
+}: {
+  filter: CostFilter;
+  onChange: (values: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const known = useDimensionValues(filter.dimension, filter.tagKey);
+  const add = () => {
+    const value = draft.trim();
+    setDraft("");
+    if (value && !filter.values.includes(value)) onChange([...filter.values, value]);
+  };
+  const matched =
+    filter.values.length > 0
+      ? (known.data ?? []).filter((o) => costFilterMatches(filter, o.value)).length
+      : 0;
+  return (
+    <>
+      <View style={{ flexDirection: "row", gap: 6 }}>
+        <BareInput
+          accessibilityLabel="Filter text"
+          placeholder="text to match"
+          value={draft}
+          onChangeText={setDraft}
+        />
+        <Button label="Add" variant="secondary" onPress={add} />
+      </View>
+      {filter.values.length > 0 ? (
+        <ChipMultiSelect
+          options={filter.values.map((v) => ({ value: v, label: `${v}  ✕` }))}
+          value={filter.values}
+          onChange={onChange}
+        />
+      ) : null}
+      {filter.values.length > 0 && known.data && known.data.length > 0 ? (
+        <FormHint>
+          {matched === 0
+            ? "Matches none of the values seen in cost data yet."
+            : `Matches ${matched} known value${matched === 1 ? "" : "s"}.`}
+        </FormHint>
+      ) : null}
+    </>
   );
 }
 

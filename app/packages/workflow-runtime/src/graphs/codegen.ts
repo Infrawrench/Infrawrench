@@ -79,7 +79,20 @@ interface GraphCostQueryOptions {
   groupByTagKey?: string;
   filters?: Array<{
     dimension: "provider" | "account" | "service" | "region" | "resource" | "tag";
-    op?: "in" | "not_in";
+    /**
+     * Default "in". "flexible_match" ignores case, spaces, _ and -; "contains",
+     * "not_contains" and "starts_with" ignore case; "is_set" / "is_not_set"
+     * (tags only) take an empty values list.
+     */
+    op?:
+      | "in"
+      | "not_in"
+      | "flexible_match"
+      | "contains"
+      | "not_contains"
+      | "starts_with"
+      | "is_set"
+      | "is_not_set";
     values: string[];
     /** Required when dimension is "tag". */
     tagKey?: string;

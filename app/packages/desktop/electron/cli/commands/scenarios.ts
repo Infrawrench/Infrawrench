@@ -22,6 +22,18 @@ import type {
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
 import { resolveDateRange } from "../args";
+
+/** How a scope term's operator reads in the table (client-core is type-only here). */
+const SCOPE_OP: Record<CostScenarioAdjustment["scope"][number]["op"], string> = {
+  in: " ∈ ",
+  not_in: " ∌ ",
+  flexible_match: " ~ ",
+  contains: " contains ",
+  not_contains: " lacks ",
+  starts_with: " starts ",
+  is_set: " is set",
+  is_not_set: " is not set",
+};
 import { c, printJson, println, printTable, formatMoney } from "../output";
 import { lineChart, resample, timeAxis } from "../charts";
 
@@ -109,11 +121,7 @@ export async function cmdScenarios(ctx: CliContext): Promise<void> {
         value: (a) =>
           a.scope.length === 0
             ? c.dim("whole org")
-            : a.scope
-                .map(
-                  (f) => `${f.dimension}${f.op === "not_in" ? " ∌ " : " ∈ "}${f.values.join("|")}`,
-                )
-                .join(", "),
+            : a.scope.map((f) => `${f.dimension}${SCOPE_OP[f.op]}${f.values.join("|")}`).join(", "),
       },
     ]);
     println();

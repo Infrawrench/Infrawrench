@@ -1,5 +1,14 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
+import {
+  strict,
+  ErrorResponses,
+  Ok,
+  OrgIdParam,
+  Uuid,
+  IsoDateTime,
+  CostFilterOperator,
+  CostFilterValues,
+} from "../common";
 import type { BuildContext } from "../context";
 
 const BusinessMetricScopeTerm = strict({
@@ -14,8 +23,8 @@ const BusinessMetricScopeTerm = strict({
     "commitment",
     "virtual_tag",
   ]),
-  op: z.enum(["in", "not_in"]),
-  values: z.array(z.string()).min(1),
+  op: CostFilterOperator,
+  values: CostFilterValues,
   tagKey: z.string().optional(),
 }).openapi("BusinessMetricScopeTerm");
 

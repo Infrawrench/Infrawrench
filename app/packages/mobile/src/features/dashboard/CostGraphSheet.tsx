@@ -16,6 +16,7 @@ import {
   COST_RANGE_PRESETS,
   DEFAULT_COST_GRAPH_CONFIG,
   describeCostTagKey,
+  isCompleteCostFilter,
   type CostGraphConfig,
 } from "@infrawrench/client-core";
 
@@ -144,7 +145,7 @@ export function CostGraphSheet({
       topN,
       // An empty rule matches everything, which is not what an operator who
       // added a row and picked nothing meant: drop it rather than save it.
-      filters: config.filters.filter((f) => f.values.length > 0),
+      filters: config.filters.filter(isCompleteCostFilter),
       ...(config.cumulative ? { cumulative: true } : { cumulative: undefined }),
     };
     if (cleaned.groupBy === "tag" && !cleaned.groupByTagKey) {

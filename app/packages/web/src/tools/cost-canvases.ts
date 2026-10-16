@@ -40,7 +40,7 @@ const SPEC_GUIDE =
   "- `chart`: `title` + `config`, the same cost graph config a dashboard card holds (chartType, binning, dateRange, groupBy, filters, topN, comparePreviousPeriod, showForecast, unitCostMetricId for cost per unit).\n" +
   "- `table`: `title` + `query` (dateRange, binning none|daily|weekly|monthly, groupBy, filters, topN): one row per group, one column per bucket.\n" +
   "- `budgets` (optional budgetIds), `anomalies` (days, limit), `cost_report` (reportId), `custom_graph` (graphId: data from other connected tools).\n" +
-  "Filters are `{dimension, op: in|not_in, values, tagKey?}` with dimension provider|account|service|region|resource|tag|charge_type|commitment; resolve values with list_cost_dimension_values. Date ranges: `{kind:'relative', preset: 7d|30d|90d|mtd|last_month|qtd|ytd|6m|12m}` (prefer these) or `{kind:'absolute', from, to}`.";
+  "Filters are `{dimension, op, values, tagKey?}` with dimension provider|account|service|region|resource|tag|charge_type|commitment|virtual_tag and op in|not_in|flexible_match|contains|not_contains|starts_with|is_set|is_not_set (is_set/is_not_set take `values: []` and apply to tag and virtual_tag only); resolve values with list_cost_dimension_values. Date ranges: `{kind:'relative', preset: 7d|30d|90d|mtd|last_month|qtd|ytd|6m|12m}` (prefer these) or `{kind:'absolute', from, to}`.";
 
 export function costCanvasTools(): ToolDefinition[] {
   return [

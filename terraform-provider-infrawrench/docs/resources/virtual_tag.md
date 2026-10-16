@@ -105,7 +105,7 @@ Optional:
 - `allocations` (Attributes List) The shares a split divides a row into, 2-20 of them. Required for `split` and `metric_split` and rejected otherwise. A split shares the money rather than copying it, so totals never change. (see [below for nested schema](#nestedatt--rules--allocations))
 - `description` (String) Why the rule exists, 1-2000 characters when set.
 - `ends_on` (String) Inclusive UTC day (`YYYY-MM-DD`) the rule stops applying. Leave unset for no end.
-- `query` (String) Cost query language filter a row must match, up to 4000 characters, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty (the default) matches every row. It may not reference another virtual tag.
+- `query` (String) Cost query language filter a row must match, up to 4000 characters, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty (the default) matches every row. It may filter on another virtual tag (`virtual_tag['team'] = 'payments'`, e.g. a business unit built from teams) as long as that tag has no split rules, the references form no cycle and no chain is more than five tags deep; the API refuses the rest and names the problem.
 - `sources` (Attributes List) Provider tag keys to copy the value from, at most 10, in order: the first key the row carries wins. Required (at least one) for `kind = "tag"` and rejected otherwise. (see [below for nested schema](#nestedatt--rules--sources))
 - `starts_on` (String) Inclusive UTC day (`YYYY-MM-DD`) the rule starts applying. Leave unset for no start. Together with `ends_on` this records a reorganisation ("team A until March, team B from April") without rewriting history.
 - `value` (String) The fixed value, 1-256 characters. Required for `kind = "value"` and rejected otherwise.

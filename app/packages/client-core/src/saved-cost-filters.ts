@@ -30,6 +30,7 @@
  */
 
 import { CostQueryFormatError, formatCostQuery, parseCostQuery } from "./cost-query-language";
+import { isCompleteCostFilter } from "./cost-filter-match";
 import type { CostFilter } from "./costs";
 import { CloudApiError, type CloudFetch } from "./fetch";
 
@@ -128,8 +129,9 @@ export function resolveSavedCostFilterInput(input: SavedCostFilterInput): CostFi
     filters = parseCostQuery(text);
   } else {
     // Rows with no values are what a half-finished editor row looks like; the
-    // editors drop them before saving, and so does the API.
-    filters = input.filters.filter((f) => f.values.length > 0);
+    // editors drop them before saving, and so does the API. IS SET / IS NOT
+    // SET rows have no values and are complete.
+    filters = input.filters.filter(isCompleteCostFilter);
   }
   if (filters.length === 0) {
     throw new Error(

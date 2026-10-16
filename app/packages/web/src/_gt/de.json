@@ -22055,5 +22055,104 @@
   "6d43d6457d218f65": "{count} von {max} Zeichen",
   "b81d0292464a933c": "Karte konnte nicht skaliert werden",
   "7f2382f0786bfd3a": "Karte konnte nicht dupliziert werden",
-  "74ae0ef3da35cadf": "Karte"
+  "74ae0ef3da35cadf": "Karte",
+  "9afc8df1ce1206ea": "{value} entfernen",
+  "646570b262206f6d": "Filtertext",
+  "c8c97f6abc0f3cc7": "Wert eingeben, dann Enter",
+  "f7b59cef7caa32a3": "Passt bisher zu keinem der Werte in den Kostendaten.",
+  "9aa6ce31e543c579": "Passt zu {count} bekannten Werten, z. B. {examples}",
+  "d4aa14011972b4f6": "Gleich einem der Werte.",
+  "a9c8f2bd3591ef0b": "Gleich keinem der Werte.",
+  "a89f77eba1b750c6": "Gleich einem der Werte, wenn Groß- und Kleinschreibung, Leerzeichen, Unterstriche und Bindestriche ignoriert werden, sodass Prod_Env zu prod-env passt.",
+  "15b3a24bf7808dc3": "Enthält einen der Werte, ohne Beachtung der Groß- und Kleinschreibung.",
+  "33aba61affacaaed": "Enthält keinen der Werte, ohne Beachtung der Groß- und Kleinschreibung.",
+  "bb09d391fa54061c": "Beginnt mit einem der Werte, ohne Beachtung der Groß- und Kleinschreibung.",
+  "4280406a817a0414": "Das Tag hat einen Wert.",
+  "1a59cad8a33b665b": "Das Tag fehlt oder ist leer.",
+  "33cd2a348a03ed5b": "ähnelt",
+  "05ca8007a6b0c810": "beginnt mit",
+  "b21b6e175b47ad04": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Begriffe verbunden durch UND: ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "= 'value'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "!= 'value'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 4,
+        "c": "IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 5,
+        "c": "NOT IN ('a', 'b')"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 6,
+        "c": "tag['owner'] = 'platform'"
+      },
+      ". Textvergleiche ignorieren Groß- und Kleinschreibung: ",
+      {
+        "t": "code",
+        "i": 7,
+        "c": "~= 'prod-env'"
+      },
+      " (ignoriert auch Leerzeichen, _ und -),",
+      " ",
+      {
+        "t": "code",
+        "i": 8,
+        "c": "CONTAINS 'x'"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 9,
+        "c": "NOT CONTAINS 'x'"
+      },
+      ",",
+      " ",
+      {
+        "t": "code",
+        "i": 10,
+        "c": "STARTS WITH 'x'"
+      },
+      ". Für Tags:",
+      " ",
+      {
+        "t": "code",
+        "i": 11,
+        "c": "tag['owner'] IS SET"
+      },
+      ", ",
+      {
+        "t": "code",
+        "i": 12,
+        "c": "IS NOT SET"
+      },
+      "."
+    ]
+  },
+  "684bfde73a875db8": {
+    "t": "p",
+    "i": 1,
+    "c": "Verwenden Sie ein virtuelles Tag überall, wo ein Tag funktioniert, auch in den Regeln eines anderen virtuellen Tags (zum Beispiel ein Geschäftsbereich, der aus dem Team abgeleitet wird). Es wird zur Berichtszeit berechnet und ändert nie die erfassten Ausgaben oder Summen."
+  }
 }

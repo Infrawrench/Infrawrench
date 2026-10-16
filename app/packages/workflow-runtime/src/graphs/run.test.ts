@@ -110,6 +110,41 @@ describe("runGraph", () => {
     expect(chart && "series" in chart ? chart.series[0]?.key : undefined).toBe("aws");
   });
 
+  it("passes the text and IS SET filter operators through, and refuses an unknown one", async () => {
+    let seen: { filters?: unknown } | undefined;
+    const ok = await runGraph({
+      source: [
+        "await graph.costs.query({ days: 7, filters: [",
+        '  { dimension: "service", op: "contains", values: ["compute"] },',
+        '  { dimension: "tag", tagKey: "owner", op: "is_not_set", values: [] },',
+        "] });",
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor({
+        queryCosts: async (q) => {
+          seen = q;
+          return { series: [], totals: {}, currencies: [] };
+        },
+      }),
+    });
+    expect(ok.status).toBe("success");
+    expect(seen?.filters).toEqual([
+      { dimension: "service", op: "contains", values: ["compute"] },
+      { dimension: "tag", tagKey: "owner", op: "is_not_set", values: [] },
+    ]);
+
+    // An unknown op used to read as "in"; it must fail instead.
+    const bad = await runGraph({
+      source: [
+        'await graph.costs.query({ days: 7, filters: [{ dimension: "service", op: "like", values: ["x"] }] });',
+        'graph.render({ chart: { type: "stat", value: 1 } });',
+      ].join("\n"),
+      host: hostFor(),
+    });
+    expect(bad.status).toBe("failure");
+    expect(bad.error?.message).toContain("unknown filter op");
+  });
+
   it("round-trips the data store — the guest reads the VALUE back, not an envelope", async () => {
     // Pre-seeded, so the second-run path is exercised: a wrapped {value: 1}
     // would read as non-number and reset the counter to 1 forever.

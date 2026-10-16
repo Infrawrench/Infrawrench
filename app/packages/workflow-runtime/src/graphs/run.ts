@@ -22,6 +22,10 @@ import type {
 import {
   COST_BINNINGS,
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  costFilterOpError,
+  isCostFilterOp,
+  type CostFilterOp,
   CUSTOM_GRAPH_MAX_REFRESH_SECONDS,
   CUSTOM_GRAPH_MIN_REFRESH_SECONDS,
   isKeyedCostDimension,
@@ -195,21 +199,33 @@ function costQuery(raw: unknown): GraphCostQuery {
     if (!COST_DIMENSION_SET.has(dimension)) {
       fail(`graph.costs.query: unknown filter dimension ${JSON.stringify(dimension)}.`);
     }
-    const op = spec["op"] === "not_in" ? "not_in" : "in";
+    // Absent means "in", the original default; anything else must be a real
+    // operator. Coercing an unknown one to "in" would silently answer a
+    // different question than the graph asked.
+    const op = spec["op"] === undefined ? "in" : spec["op"];
+    if (!isCostFilterOp(op)) {
+      fail(
+        `graph.costs.query: unknown filter op ${JSON.stringify(op)}; use one of ` +
+          `${COST_FILTER_OPS.join(", ")}.`,
+      );
+    }
     const values = Array.isArray(spec["values"]) ? spec["values"] : [];
-    if (values.length === 0 || values.length > GRAPH_MAX_FILTER_VALUES) {
-      fail(`graph.costs.query: filters need 1–${GRAPH_MAX_FILTER_VALUES} values.`);
+    if (values.length > GRAPH_MAX_FILTER_VALUES) {
+      fail(`graph.costs.query: filters take at most ${GRAPH_MAX_FILTER_VALUES} values.`);
     }
     const tagKey = optionalText(spec["tagKey"], "graph.costs.query: filter tagKey", 256);
     if (isKeyedCostDimension(dimension) && !tagKey) {
       fail(`graph.costs.query: a ${JSON.stringify(dimension)} filter needs tagKey.`);
     }
-    return {
+    const filter = {
       dimension: dimension as GraphCostQuery["filters"][number]["dimension"],
-      op: op as "in" | "not_in",
+      op: op as CostFilterOp,
       values: values.map((v) => asText(v, "graph.costs.query: filter value", 256)),
       ...(tagKey ? { tagKey } : {}),
     };
+    const problem = costFilterOpError(filter);
+    if (problem) fail(`graph.costs.query: ${problem}`);
+    return filter;
   });
 
   const topN = Number(q["topN"] ?? 10);

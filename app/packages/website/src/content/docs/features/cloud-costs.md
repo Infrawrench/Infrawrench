@@ -87,19 +87,41 @@ The **Query** toggle above the filter rows switches between the two. They are tw
 
 ```
 query     := (nothing) | term (AND term)*
-term      := dimension operator value
+term      := dimension operator value | dimension IS [NOT] SET
 dimension := provider | account | service | region | resource | tag['key'] | charge_type | commitment | virtual_tag['key']
-operator  := = | != | IN | NOT IN
+operator  := = | != | IN | NOT IN | ~= | CONTAINS | NOT CONTAINS | STARTS WITH
 value     := 'text'            for = and !=
            | ('a', 'b', …)     for IN and NOT IN
+           | 'text' | ('a', 'b', …)   for ~=, CONTAINS, NOT CONTAINS and STARTS WITH
 ```
 
-- Keywords (`AND`, `IN`, `NOT`) and dimension names are case-insensitive.
+- Keywords (`AND`, `IN`, `NOT`, `CONTAINS`, `STARTS WITH`, `IS SET`) and dimension names are case-insensitive.
 - Values are quoted, with single or double quotes. A quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\'s'`); `\\`, `\n` and `\t` also work, and an escape that isn't one of those is an error rather than a silently dropped backslash.
 - The `tag` dimension takes its key in brackets, because a tag filter needs a key as well as a value: `tag['owner'] = 'platform'`.
 - The `virtual_tag` dimension works the same way, with the key of one of your [virtual tags](./virtual-tags.md): `virtual_tag['team'] = 'payments'`.
 - Kubernetes node and volume labels have shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['…']` the same for PersistentVolumeClaim labels. See [Kubernetes node and volume labels](./kubernetes-costs.md#node-and-volume-labels).
 - An empty query means no filter, the same as no rows.
+
+### Matching text instead of exact values
+
+`=` and `IN` match a value exactly, which is what you want when the value comes from the picker. Tag values are typed by people, though, and the same environment turns up as `Prod_Env`, `prod-env` and `PROD ENV`. Four operators match text more loosely, and one pair asks whether a tag is there at all:
+
+| Operator       | In the rows editor | Matches                                                                                                                                      |
+| -------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~=`           | is like            | equal once letter case, spaces, underscores and hyphens are ignored: `tag['env'] ~= 'prod-env'` matches `Prod_Env`, `PROD ENV` and `prodenv` |
+| `CONTAINS`     | contains           | the value appears anywhere, ignoring letter case: `service CONTAINS 'compute'`                                                               |
+| `NOT CONTAINS` | does not contain   | the value appears nowhere, ignoring letter case                                                                                              |
+| `STARTS WITH`  | starts with        | the value is a prefix, ignoring letter case: `resource STARTS WITH 'arn:aws:rds'`                                                            |
+| `IS SET`       | is set             | the tag or virtual tag has a value: `tag['owner'] IS SET`                                                                                    |
+| `IS NOT SET`   | is not set         | the tag or virtual tag is missing or empty: `tag['owner'] IS NOT SET`                                                                        |
+
+- The four text operators take one value or a list, and a list matches when any value does (`NOT CONTAINS`: when none does): `tag['env'] ~= ('prod', 'production')`.
+- Letter case means the English letters A to Z. Accented letters and other scripts are compared as written.
+- `IS SET` and `IS NOT SET` take no value and work on `tag[…]` and `virtual_tag[…]` only. A tag that is present but empty counts as not set.
+- In the rows editor, a text operator swaps the value picker for a box you type into (press Enter after each value). Values seen in your spend are suggested as you type, and the row says how many of them the text matches.
+- An empty text value is refused, because it would match everything. So is a `~=` value made only of spaces, underscores and hyphens: use `IS NOT SET` for "has no value".
+
+<insert [Cost graph filter rows with one row set to tag env "is like" Prod_Env, showing the typed value chip and the "Matches 3 known values" hint underneath] here>
 
 ### Worked examples
 
@@ -112,6 +134,9 @@ value     := 'text'            for = and !=
 | `tag['env'] = 'prod'`                                | resources tagged `env=prod`                  |
 | `provider = 'aws' AND tag['team'] IN ('core', 'ml')` | AWS spend owned by either of two teams       |
 | `commitment != '' AND charge_type = 'usage'`         | usage covered by a commitment                |
+| `tag['env'] ~= 'prod'`                               | `prod`, `Prod` and `PROD` alike              |
+| `service NOT CONTAINS 'support'`                     | everything but the support plans             |
+| `tag['owner'] IS NOT SET`                            | spend nobody has tagged with an owner        |
 
 ### There is no OR
 
@@ -124,7 +149,7 @@ provider = 'aws' OR provider = 'gcp'      ✗ rejected
 provider IN ('aws', 'gcp')                ✓ the same question
 ```
 
-Genuinely unrelated alternatives — "AWS in Europe, or GCP anywhere" — need two graphs. The same is true of anything else the filter cannot express: `LIKE`, `>`, and grouped parentheses are all parse errors, because a query language that quietly means something other than what it says is worse than one that refuses.
+Genuinely unrelated alternatives ("AWS in Europe, or GCP anywhere") need two graphs. The same is true of anything else the filter cannot express: `LIKE` patterns, regular expressions, `>`, and grouped parentheses are all parse errors (the error points you at `~=`, `CONTAINS` and `STARTS WITH`), because a query language that quietly means something other than what it says is worse than one that refuses.
 
 ### When a query doesn't parse
 

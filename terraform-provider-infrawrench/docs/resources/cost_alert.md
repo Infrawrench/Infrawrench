@@ -52,8 +52,8 @@ Optional and computed: leave it out and the list is managed elsewhere (removing 
 Required:
 
 - `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
-- `op` (String) `in` to keep matching rows, `not_in` to exclude them.
-- `values` (List of String) Values to match. Must not be empty.
+- `op` (String) How the dimension is compared with `values`. `in` keeps rows equal to a value and `not_in` excludes them. `flexible_match` compares after ignoring letter case, whitespace, `_` and `-`, so `Prod_Env` matches `prod-env`. `contains`, `not_contains` and `starts_with` are substring and prefix tests that ignore letter case. Each matches when any value does (`not_in` and `not_contains`: when none does). `is_set` and `is_not_set` test whether a `tag` or `virtual_tag` has a value at all. One of `in`, `not_in`, `flexible_match`, `contains`, `not_contains`, `starts_with`, `is_set`, `is_not_set`.
+- `values` (List of String) Values to compare with. At least one, except for `is_set` and `is_not_set`, which take an empty list (`values = []`). The text operators refuse an empty string.
 
 Optional:
 

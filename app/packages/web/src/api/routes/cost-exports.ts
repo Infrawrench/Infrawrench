@@ -39,6 +39,8 @@ import {
   COST_EXPORT_FORMATS,
   COST_EXPORT_SCHEMAS,
   COST_DIMENSIONS,
+  COST_FILTER_OPS,
+  costFilterOpError,
   COST_CHARGE_TYPES,
   type CostExportInput,
 } from "@infrawrench/client-core";
@@ -69,12 +71,17 @@ declare module "hono" {
 
 const app = new Hono();
 
-const filterSchema = z.object({
-  dimension: z.enum(COST_DIMENSIONS),
-  op: z.enum(["in", "not_in"]),
-  values: z.array(z.string().max(512)).min(1).max(500),
-  tagKey: z.string().max(255).optional(),
-});
+const filterSchema = z
+  .object({
+    dimension: z.enum(COST_DIMENSIONS),
+    op: z.enum(COST_FILTER_OPS),
+    values: z.array(z.string().max(512)).max(500),
+    tagKey: z.string().max(255).optional(),
+  })
+  .superRefine((f, ctx) => {
+    const problem = costFilterOpError(f);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem, path: ["values"] });
+  });
 
 const querySchema = z.object({
   version: z.literal(1),

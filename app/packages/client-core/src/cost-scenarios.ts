@@ -469,10 +469,15 @@ export function scenarioScopeExcluded(scope: CostFilter[], chartFilters: CostFil
       if (chartTerm.op === "in") {
         // Disjoint `in` sets: nothing can satisfy both.
         if (!chartTerm.values.some((v) => values.has(v))) return true;
-      } else if (term.values.every((v) => chartTerm.values.includes(v))) {
+      } else if (
+        chartTerm.op === "not_in" &&
+        term.values.every((v) => chartTerm.values.includes(v))
+      ) {
         // The chart excludes every value the adjustment includes.
         return true;
       }
+      // The text operators (contains, flexible match, IS SET…) are never
+      // provably disjoint by this syntactic check, so they read as in scope.
     }
   }
   return false;

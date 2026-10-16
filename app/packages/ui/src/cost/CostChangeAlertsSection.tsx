@@ -1,3 +1,4 @@
+import { isCompleteCostFilter } from "@infrawrench/client-core";
 import {
   COST_ALERT_LIMITS,
   COST_CHANGE_CADENCES,
@@ -430,7 +431,7 @@ export function CostChangeAlertConfigModal({
       ...input,
       thresholdPercent: percent === null ? null : Math.round(percent),
       thresholdAmountCents: amount === null ? null : Math.round(amount * 100),
-      filters: input.filters.filter((f) => f.values.length > 0),
+      filters: input.filters.filter(isCompleteCostFilter),
     };
     const parsed = costAlertInputSchema.safeParse(cleaned);
     if (!parsed.success) {

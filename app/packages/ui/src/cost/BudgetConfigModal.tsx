@@ -1,3 +1,4 @@
+import { isCompleteCostFilter } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
 import { T, Var, useGT, useMessages } from "gt-react";
 import {
@@ -136,7 +137,7 @@ export function BudgetConfigModal({
     const cleaned: BudgetInput = {
       ...rest,
       amountCents,
-      filters: input.filters.filter((f) => f.values.length > 0),
+      filters: input.filters.filter(isCompleteCostFilter),
       // Usage-only and spend-only fields are dropped on the other measure, so
       // switching a budget's measure never saves a combination the API refuses.
       ...(usage
