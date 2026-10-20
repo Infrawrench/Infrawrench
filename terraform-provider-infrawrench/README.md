@@ -181,7 +181,7 @@ passing in silence.
 
 ## Install
 
-Requires Go 1.25 or newer to build. This module is deliberately **not** part of
+Requires Go 1.27.3 or newer to build. This module is deliberately **not** part of
 the pnpm workspace or the Turbo build graph — it is a standalone Go module with
 its own toolchain.
 

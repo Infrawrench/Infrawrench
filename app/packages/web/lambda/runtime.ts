@@ -5,6 +5,8 @@
  *
  * Kept free of the server code: it must run before any of it is loaded.
  */
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import { startLambdaRuntime } from "@infrawrench/server-core/runtime/lambda-runtime";
 
 await startLambdaRuntime();

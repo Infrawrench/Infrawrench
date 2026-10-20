@@ -198,7 +198,8 @@
     "clean": "rm -rf dist out"
   },
   "dependencies": {
-    "@infrawrench/client-core": "workspace:*"
+    "@infrawrench/client-core": "workspace:*",
+    "kill-emudhra": "^0.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

@@ -71,3 +71,9 @@ allowBuilds:
   # Packaging the VS Code extension (`vsce package`) never signs; publishing
   # to the Marketplace would, and is not done from this repository.
   "@vscode/vsce-sign": false
+
+# Exempt from pnpm's minimum release age: the stopgap that distrusts the
+# compromised eMudhra intermediate CAs, published the day it was needed.
+# Drop the entry once it has aged past the window.
+minimumReleaseAgeExclude:
+  - kill-emudhra@0.1.1

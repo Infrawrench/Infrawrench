@@ -1,6 +1,6 @@
 module github.com/Infrawrench/terraform-provider-infrawrench
 
-go 1.25.8
+go 1.27.3
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
