@@ -18,6 +18,7 @@
     "cloudflare": "~6.4.0",
     "dockerode": "^5.0.1",
     "drizzle-orm": "^0.45.2",
+    "kill-emudhra": "^0.1.1",
     "postgres": "^3.4.9",
     "ssh2": "^1.17.0"
   },

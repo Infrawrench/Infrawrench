@@ -1,3 +1,5 @@
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import * as vscode from "vscode";
 import { estimateWorkingTree } from "./diff-estimate";
 import { IacIndexService } from "./iac-index";

@@ -1,3 +1,5 @@
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { isGithubAppConfigured } from "@infrawrench/server-core/github/app";
 import { installShutdownHandlers, runService } from "@infrawrench/server-core/tick-loop";

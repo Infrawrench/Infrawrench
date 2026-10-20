@@ -1,3 +1,5 @@
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import { getPreferenceValues } from "@raycast/api";
 import {
   createCloudFetch,

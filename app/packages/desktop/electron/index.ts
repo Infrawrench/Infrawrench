@@ -3,6 +3,9 @@
 // Both paths are dynamically imported so a CLI invocation never executes the
 // GUI's import-time side effects (protocol registration, single-instance
 // lock, IPC handler setup) and the GUI never pulls in the CLI.
+
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 if (process.argv.includes("--cli")) {
   // Dependency deprecation warnings (e.g. the mongodb driver's tr46 requiring
   // node's deprecated `punycode`) would print into the user's terminal before

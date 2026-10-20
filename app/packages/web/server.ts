@@ -2,6 +2,8 @@
  * Hono API server + Vite SPA dev middleware + WebSocket support
  * for SSH terminals, SQL query proxy, and K8s exec sessions.
  */
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import { createServer as createHttpServer, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { getRequestListener } from "@hono/node-server";

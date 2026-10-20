@@ -1,3 +1,5 @@
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import { hostname } from "node:os";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { installShutdownHandlers, runService } from "@infrawrench/server-core/tick-loop";

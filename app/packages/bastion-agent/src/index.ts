@@ -16,6 +16,8 @@
  *   - VERBOSE               Set to `1` for per-stream open/close logging.
  */
 
+// First, so tls distrusts the compromised eMudhra intermediates before anything connects.
+import "kill-emudhra";
 import * as net from "node:net";
 import { WebSocket } from "ws";
 
