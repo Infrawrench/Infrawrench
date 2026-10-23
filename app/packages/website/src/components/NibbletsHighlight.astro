@@ -1,0 +1,60 @@
+---
+import { KeyRound, ListChecks, House } from 'lucide-astro';
+
+const points = [
+  {
+    icon: KeyRound,
+    title: 'A key of its own',
+    body: 'Link a Nibblets server to your organization once, and each nibblet you switch on gets its own Infrawrench agent and credential. What it does shows under its name in the audit log, and revoking one leaves the rest alone.',
+  },
+  {
+    icon: ListChecks,
+    title: 'Only the scopes you tick',
+    body: 'Choose what each nibblet may do, from reading resources to running commands or managing budgets, and which providers it may touch. It can never do more than the person who linked it.',
+  },
+  {
+    icon: House,
+    title: 'Runs on your own machine',
+    body: 'Nibblets are open source and self-hosted. Each one lives in its own container, keeps its memory between conversations, wakes on schedules and heartbeats, and messages you when it has something to say.',
+  },
+];
+---
+
+<div class="cloud-panel nibblets-panel" id="nibblets">
+  <div style="max-width: 1000px; margin: 0 auto;">
+    <div class="section-header" style="margin-bottom: 40px;">
+      <img class="nibblets-logo" src="/nibblets.svg" width="72" height="72" alt="" />
+      <p class="section-eyebrow">Also from Infrawrench</p>
+      <h2 class="section-title" style="font-size: 34px;">
+        Nibblets: always-on agents for your infrastructure
+      </h2>
+      <p class="section-subtitle">
+        Nibblets are AI agents that keep working between messages, each drawn as a hamster you can
+        dress up. Give one a scoped identity in Infrawrench and it can look after your clouds while
+        you are away.
+      </p>
+    </div>
+
+    <div class="benefit-grid">
+      {
+        points.map((p) => {
+          const Icon = p.icon;
+          return (
+            <div class="benefit-card">
+              <span class="benefit-icon nibblets-icon">
+                <Icon size={16} />
+              </span>
+              <p class="benefit-title">{p.title}</p>
+              <p class="benefit-body">{p.body}</p>
+            </div>
+          );
+        })
+      }
+    </div>
+
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 36px;">
+      <a class="btn-primary" href="https://nibblets.dev">Meet the nibblets</a>
+      <a class="btn-secondary" href="https://github.com/Infrawrench/nibblets">View on GitHub</a>
+    </div>
+  </div>
+</div>

@@ -713,6 +713,28 @@ main:focus {
   margin: 0;
 }
 
+/* ── Nibblets panel ─────────────────────────────────────── */
+/* Same panel as the cloud one, in the hamsters' warmer colour so it reads as
+   a sister product rather than another Infrawrench feature. */
+.nibblets-panel {
+  border-top: none;
+}
+
+.nibblets-logo {
+  display: block;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+}
+
+.nibblets-panel .section-eyebrow {
+  color: #fbbf24;
+}
+
+.nibblets-icon {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+}
+
 /* ── Inputs/Outputs ─────────────────────────────────────── */
 .io-grid {
   display: grid;
