@@ -22582,5 +22582,22 @@
       " ",
       "setzen."
     ]
-  }
+  },
+  "2095073d24edf1b1": "Hier gibt es nichts, was Sie gewähren können.",
+  "742f78c764851b10": "Agenten, die sich selbst registriert haben und in diese Organisation übernommen wurden, sowie Agenten, die von verbundenen Plattformen erstellt wurden. Ein Agent kann niemals die Abrechnung verwalten, API-Schlüssel erstellen, Personen einladen oder einen anderen Agenten widerrufen.",
+  "d79270232a34da4e": "Übernommene Agenten",
+  "6ea635ec2610772a": "Verbundene Plattformen",
+  "2ede377a07016c0c": "Es sind keine Plattformen verbunden. Eine Plattform wie Nibblets bittet um eine Verbindung, indem sie Ihnen einen Code zur Bestätigung anzeigt.",
+  "9f3c902a3dda80af": "Diese Plattform konnte nicht widerrufen werden",
+  "8b7656510fbcf870": "Genehmigt von {email}",
+  "15ff6743f035eadc": "Die Person, die dies genehmigt hat, existiert nicht mehr",
+  "c729a03ec0ceaecd": "verbunden {when}",
+  "071b2953b8467cac": "Darf gewähren: {scopes}",
+  "23b55549b98233d8": "Diese Plattform hat noch keine Agenten erstellt.",
+  "a759d9077731be8b": "Keine Berechtigungen",
+  "4ff895fc665961b5": "Nur: {providers}",
+  "a3b2b5b49c3dca92": "Berechtigungen bearbeiten",
+  "499cd09212027e23": "Diese Berechtigungen konnten nicht gespeichert werden",
+  "3cc65c2b38414817": "Berechtigungen für {name}",
+  "300a3feba42a3262": "Nur diese Anbieter (alle leer lassen für jeden Anbieter)"
 }

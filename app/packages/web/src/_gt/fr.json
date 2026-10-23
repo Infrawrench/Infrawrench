@@ -22760,5 +22760,32 @@
       },
       "."
     ]
-  }
+  },
+  "2095073d24edf1b1": "Il n'y a rien ici que vous puissiez accorder.",
+  "742f78c764851b10": "Les agents qui se sont enregistrés eux-mêmes et ont été revendiqués dans cette organisation, ainsi que les agents créés par les plateformes que vous avez connectées. Un agent ne peut jamais gérer la facturation, créer des clés API, inviter des personnes ni révoquer un autre agent.",
+  "d79270232a34da4e": "Agents revendiqués",
+  "6ea635ec2610772a": "Plateformes connectées",
+  "2ede377a07016c0c": "Aucune plateforme n'est connectée. Une plateforme comme Nibblets demande à se connecter en vous montrant un code à approuver.",
+  "9f3c902a3dda80af": "Impossible de révoquer cette plateforme",
+  "8b7656510fbcf870": "Approuvé par {email}",
+  "15ff6743f035eadc": "La personne qui a approuvé ceci n'existe plus",
+  "c729a03ec0ceaecd": "connectée {when}",
+  "071b2953b8467cac": "Peut accorder : {scopes}",
+  "23b55549b98233d8": "Cette plateforme n'a encore créé aucun agent.",
+  "a759d9077731be8b": "Aucune autorisation",
+  "4ff895fc665961b5": "Uniquement : {providers}",
+  "a3b2b5b49c3dca92": "Modifier les autorisations",
+  "499cd09212027e23": "Impossible d'enregistrer ces autorisations",
+  "3cc65c2b38414817": "Autorisations de {name}",
+  "300a3feba42a3262": "Uniquement ces fournisseurs (ne cochez rien pour tous les fournisseurs)",
+  "defbf582ad4bc2e4": "Impossible d'enregistrer votre décision.",
+  "3fa1a5eaf1f5df78": "Plateforme connectée",
+  "a6796336e43d46dc": "Demande refusée",
+  "061047ebbab1f865": "Vous pouvez fermer cet onglet. Les agents qu'elle crée apparaissent dans Paramètres → Agents, où vous pouvez les modifier ou les révoquer.",
+  "ae77b57d46489b98": "Rien n'a été connecté. Vous pouvez fermer cet onglet.",
+  "2e17d3aac86d6ba6": "Connecter une plateforme",
+  "55b0934ee303b422": "Une plateforme comme Nibblets souhaite créer des agents dans votre organisation. Saisissez le code qu'elle vous a montré.",
+  "c570e5149e246913": "N'approuvez qu'un code que vous venez de demander vous-même. Si quelqu'un vous a envoyé ce lien, refusez-le.",
+  "b52284abefdb4429": "Vous devez avoir l'autorisation d'inviter des personnes dans une organisation pour y connecter une plateforme. Demandez à un administrateur.",
+  "1895f4c0043ee068": "Le maximum que cette plateforme pourra jamais accorder à ses agents"
 }
