@@ -173,3 +173,39 @@ export const API_KEY_UNOFFERED_SCOPES: Readonly<Record<string, string>> = {
  * `resources:*` pair they turn into.
  */
 export const DEPRECATED_API_KEY_SCOPES: readonly string[] = ["sync:read", "sync:write"];
+
+/**
+ * Offered scopes that no agent credential can ever hold, whoever grants them:
+ * the browser-safe mirror of `AGENT_DENIED_PERMISSIONS` in
+ * `server-core/src/trials/principal.ts` (a test in `web` keeps the two equal).
+ * The agent link pickers (the approval page's ceiling, Settings → Agents'
+ * Edit scopes) leave them out so they never offer a box the server ignores.
+ */
+export const AGENT_DENIED_SCOPES: readonly string[] = [
+  "apikeys:read",
+  "apikeys:write",
+  "billing:read",
+  "billing:write",
+  "org:settings:write",
+];
+
+/**
+ * {@link API_KEY_SCOPE_GROUPS} as an agent may hold them, optionally narrowed
+ * to `within` (a link's ceiling, or what the approving person holds). Groups
+ * left empty are dropped. Also the server's `LinkInfo.scopeGroups`.
+ */
+export function agentScopeGroups(within?: readonly string[]): ApiKeyScopeGroup[] {
+  const out: ApiKeyScopeGroup[] = [];
+  for (const group of API_KEY_SCOPE_GROUPS) {
+    const scopes = group.scopes.filter(
+      (s) => !AGENT_DENIED_SCOPES.includes(s.value) && (!within || within.includes(s.value)),
+    );
+    if (scopes.length > 0) out.push({ title: group.title, scopes });
+  }
+  return out;
+}
+
+/** Every scope an agent may be offered, flattened. */
+export const AGENT_SCOPES: readonly string[] = agentScopeGroups().flatMap((g) =>
+  g.scopes.map((s) => s.value),
+);

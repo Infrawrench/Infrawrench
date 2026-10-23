@@ -2571,7 +2571,10 @@ export const agentAuthRegistrations = pgTable(
       onDelete: "set null",
     }),
     claimedAt: timestamp("claimed_at"),
-    /** "anonymous" | "service_auth": how the registration was opened. */
+    /**
+     * "anonymous" | "service_auth" | "platform": how the registration was
+     * opened. "platform" rows are made through an agent link (`linkId`).
+     */
     kind: text("kind").notNull().default("anonymous"),
     /** Free-text label the agent supplied at registration, for the settings list. */
     label: text("label"),
@@ -2599,6 +2602,28 @@ export const agentAuthRegistrations = pgTable(
      * are the same record: "who opened 40 trials this hour" is answerable.
      */
     createdFromIp: text("created_from_ip"),
+    /**
+     * Set for `kind: "platform"` rows: the agent link that made this agent.
+     * Its authority is then the link's ceiling as well as the approver's role
+     * (see `trials/principal.ts`), and revoking the link revokes this row.
+     */
+    linkId: text("link_id").references((): AnyPgColumn => agentLinks.id, {
+      onDelete: "cascade",
+    }),
+    /** The platform's own id for this agent (a Nibblets nibblet id). Platform rows only. */
+    externalId: text("external_id"),
+    /**
+     * Platform rows only: the permission strings this agent was granted, plain
+     * catalog entries with no plugin segment. Narrowed to {@link providers} and
+     * intersected with the link ceiling and the approver's role on every request.
+     */
+    scopes: jsonb("scopes").$type<string[]>(),
+    /**
+     * Platform rows only: plugin ids every plugin-scoped permission is narrowed
+     * to (`resources:read` becomes `resources:<plugin>:read`). Null or empty
+     * means every provider.
+     */
+    providers: jsonb("providers").$type<string[]>(),
     lastSeenAt: timestamp("last_seen_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2609,6 +2634,108 @@ export const agentAuthRegistrations = pgTable(
     credentialIdx: uniqueIndex("agent_auth_registrations_credential_unique").on(t.hashedCredential),
     // The rate limiter's only query: registrations from one IP since a cutoff.
     ipCreatedIdx: index("agent_auth_registrations_ip_created_idx").on(t.createdFromIp, t.createdAt),
+    // One live agent per platform id per link: the 409 `exists` answer, held
+    // by the database so two concurrent creates cannot both win.
+    linkExternalLiveIdx: uniqueIndex("agent_auth_registrations_link_external_live_unique")
+      .on(t.linkId, t.externalId)
+      .where(sql`${t.revokedAt} is null and ${t.linkId} is not null`),
+  }),
+);
+
+/**
+ * An agent link: a platform (Nibblets, ...) that a person approved to mint
+ * agents in one organization, up to a ceiling of permissions.
+ *
+ * The link itself never acts. Its `iwl_` credential only reaches the
+ * `/api/agent-link` routes, which create, edit and revoke the
+ * `agent_auth_registrations` rows (`kind: "platform"`) that do. Revoked, never
+ * deleted, for the same audit reason registrations are.
+ */
+export const agentLinks = pgTable(
+  "agent_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Slug the platform named itself with, `[a-z0-9-]{1,40}`. */
+    platform: text("platform").notNull(),
+    /** Free-text label from the request ("Nibblets on PogAir-4"). */
+    label: text("label").notNull(),
+    /** The ceiling as approved: plain catalog permissions. */
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    /**
+     * The person who approved the link. Every agent it makes is accountable to
+     * them (`claimedByUserId`) and can never exceed their current role. Set
+     * null if they are deleted, which leaves the link with no authority at all.
+     */
+    approvedByUserId: text("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * HMAC of the `iwl_` credential. Null between approval and the platform's
+     * first successful poll, which is when the credential is minted: the only
+     * way to hand a secret out exactly once without ever storing it.
+     */
+    hashedCredential: text("hashed_credential"),
+    credentialPrefix: text("credential_prefix"),
+    lastSeenAt: timestamp("last_seen_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("agent_links_org_idx").on(t.organizationId),
+    credentialIdx: uniqueIndex("agent_links_credential_unique").on(t.hashedCredential),
+  }),
+);
+
+/**
+ * An in-flight agent link request: the RFC 8628 device flow a platform starts
+ * and a person approves on `/link-agents`.
+ *
+ * Both codes are stored only as HMACs. The device code is the platform's
+ * secret for polling; the user code is what the person types, and is a bearer
+ * secret for the life of the request, so it is looked up globally and only
+ * behind a session and a per-user attempt limit.
+ */
+export const agentLinkRequests = pgTable(
+  "agent_link_requests",
+  {
+    id: text("id").primaryKey(),
+    platform: text("platform").notNull(),
+    label: text("label").notNull(),
+    requestedScopes: jsonb("requested_scopes").$type<string[]>().notNull(),
+    hashedDeviceCode: text("hashed_device_code").notNull(),
+    hashedUserCode: text("hashed_user_code").notNull(),
+    /** "pending" | "approved" | "denied" | "consumed" */
+    status: text("status").notNull().default("pending"),
+    /** Set on approval: the org the link will act in. */
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
+    /** Set on approval: the ceiling the person chose. */
+    approvedScopes: jsonb("approved_scopes").$type<string[]>(),
+    /**
+     * Set when the platform collects its credential: the link created then.
+     * The link is made at collection rather than approval so an approval the
+     * platform never collects leaves nothing behind in Settings.
+     */
+    linkId: text("link_id").references(() => agentLinks.id, { onDelete: "cascade" }),
+    /** Who approved or denied, for the audit trail. */
+    decidedByUserId: text("decided_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** For the `slow_down` answer: the platform's previous poll. */
+    lastPolledAt: timestamp("last_polled_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    /** Source address, for the per-IP request limit. */
+    createdFromIp: text("created_from_ip"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    deviceCodeIdx: uniqueIndex("agent_link_requests_device_code_unique").on(t.hashedDeviceCode),
+    userCodeIdx: uniqueIndex("agent_link_requests_user_code_unique").on(t.hashedUserCode),
+    ipCreatedIdx: index("agent_link_requests_ip_created_idx").on(t.createdFromIp, t.createdAt),
   }),
 );
 

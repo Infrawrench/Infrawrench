@@ -92,6 +92,7 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
         inputSchema: inputSchemaForType(type),
         risk: "write",
         permission: "resources:write",
+        pluginId,
         handler: async (input, auth) => {
           const { accountId, parentResourceId, ...rest } = input as Record<string, unknown> & {
             accountId: string;

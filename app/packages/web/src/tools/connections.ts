@@ -412,6 +412,9 @@ export function connectionTools(): ToolDefinition[] {
       },
       risk: "destructive",
       permission: "resources:execute",
+      // `sshHost` is whatever the caller types, so pinning the account to one
+      // provider does not pin where the command runs.
+      spansProviders: true,
       handler: async (input, auth) => {
         const { accountId, command, sshKeyId, sshHost, sshUsername } = input as {
           accountId: string;

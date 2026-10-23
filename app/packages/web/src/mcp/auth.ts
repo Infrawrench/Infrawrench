@@ -22,6 +22,8 @@ export interface McpAuthContext {
   agent?: {
     registrationId: string;
     claimed: boolean;
+    /** The agent link that made this agent, or null for a trial/service agent. */
+    linkId: string | null;
     permissions: readonly string[];
     /** Milliseconds until the trial org is destroyed; null once claimed. */
     trialExpiresInMs: number | null;
@@ -137,6 +139,7 @@ function agentMcpContext(agent: AgentPrincipal): McpAuthContext {
     agent: {
       registrationId: agent.registrationId,
       claimed: agent.claimed,
+      linkId: agent.linkId,
       permissions: agent.permissions,
       trialExpiresInMs: agent.trialExpiresInMs,
     },

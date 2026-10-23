@@ -17,7 +17,8 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { agentAuthRegistrations, organizations } from "../db/schema.js";
+import { agentAuthRegistrations, agentLinks, organizations } from "../db/schema.js";
+import { narrowToProviders } from "../agent-links/scopes.js";
 import { ALL_PERMISSIONS, intersectPermissions } from "../permissions/catalog.js";
 import { resolveEffectivePermissions } from "../permissions/resolver.js";
 import { agentUserId } from "./identity.js";
@@ -74,6 +75,11 @@ export interface AgentPrincipal {
   /** The human who claimed this registration, or null while unclaimed. */
   claimedByUserId: string | null;
   claimed: boolean;
+  /**
+   * The agent link that made this agent, for `kind: "platform"` rows; null for
+   * trial and service registrations.
+   */
+  linkId: string | null;
   /** Fully resolved, already intersected. Hand straight to the tool layer. */
   permissions: readonly string[];
   /** Milliseconds until the trial org is destroyed; null once claimed. */
@@ -107,14 +113,67 @@ export async function resolveAgentPrincipal(
       claimedAt: agentAuthRegistrations.claimedAt,
       revokedAt: agentAuthRegistrations.revokedAt,
       trialExpiresAt: organizations.trialExpiresAt,
+      kind: agentAuthRegistrations.kind,
+      linkId: agentAuthRegistrations.linkId,
+      scopes: agentAuthRegistrations.scopes,
+      providers: agentAuthRegistrations.providers,
+      linkOrganizationId: agentLinks.organizationId,
+      linkScopes: agentLinks.scopes,
+      linkRevokedAt: agentLinks.revokedAt,
     })
     .from(agentAuthRegistrations)
     .innerJoin(organizations, eq(organizations.id, agentAuthRegistrations.organizationId))
+    .leftJoin(agentLinks, eq(agentLinks.id, agentAuthRegistrations.linkId))
     .where(eq(agentAuthRegistrations.id, registrationId))
     .limit(1);
 
   if (!row) return null;
   if (row.revokedAt) return null;
+
+  // A platform agent made through an agent link. Its own branch rather than a
+  // tweak to the claimed one below, because every input is different: the
+  // ceiling is the link's, the scopes are the agent's own, and there is no
+  // trial clock. Everything that can be wrong about the link fails closed.
+  if (row.kind === "platform" || row.linkId) {
+    if (!row.linkId || row.linkRevokedAt || row.linkScopes === null) return null;
+    // The link and its agent must name the same tenant. They always do when
+    // written by `agent-links/links.ts`; checked so a hand edit or a future
+    // move cannot turn a link into a door into another org.
+    if (row.linkOrganizationId !== row.organizationId) return null;
+
+    let permissions: readonly string[] = [];
+    if (row.claimedByUserId) {
+      // scopes ∩ link ceiling ∩ approver's current role − agent denials, then
+      // the provider narrowing. Narrowing is last on purpose: the
+      // intersections expand against the catalog, which has no
+      // plugin-segmented entries, so a narrowed string would not survive them.
+      const access = await resolveEffectivePermissions(
+        row.organizationId,
+        { kind: "user", userId: row.claimedByUserId },
+        { includeElevation: false },
+      );
+      const ceiling = intersectPermissions(
+        intersectPermissions(
+          access.permissions,
+          withoutDenied(ALL_PERMISSIONS, AGENT_DENIED_PERMISSIONS),
+        ),
+        row.linkScopes,
+      );
+      const granted = intersectPermissions(ceiling, row.scopes ?? []);
+      permissions = narrowToProviders(granted, row.providers);
+    }
+
+    return {
+      registrationId,
+      organizationId: row.organizationId,
+      userId: agentUserId(registrationId),
+      claimedByUserId: row.claimedByUserId,
+      claimed: true,
+      linkId: row.linkId,
+      permissions,
+      trialExpiresInMs: null,
+    };
+  }
 
   const claimed = row.claimedAt !== null;
 
@@ -159,6 +218,7 @@ export async function resolveAgentPrincipal(
     userId: agentUserId(registrationId),
     claimedByUserId: row.claimedByUserId,
     claimed,
+    linkId: null,
     permissions,
     trialExpiresInMs: row.trialExpiresAt
       ? Math.max(0, row.trialExpiresAt.getTime() - now.getTime())
