@@ -70,6 +70,8 @@ Revoking keeps the row, so audit entries naming that agent stay readable. "What 
 
 <insert The Agent Credentials settings page listing two agents, one claimed and one revoked here>
 
+Agents made by a connected platform such as Nibblets are listed separately on the same page, under **Connected platforms**; see [agent links](./agent-links.md).
+
 Note this is a different thing from the **Agents** tab in the sidebar, which is coding-agent VM sessions and has nothing to do with authentication.
 
 ## Rate limits
@@ -108,5 +110,6 @@ Over MCP, the `trial_workspace_status` tool answers the same question.
 ## See also
 
 - [MCP server](./mcp.md) — the endpoint an agent connects to
+- [Agent links](./agent-links.md): scoped agents created by a platform you connected
 - [API keys](../team-and-billing/api-keys.md) — long-lived credentials a person mints
 - [Billing and plans](../team-and-billing/billing-and-plans.md) — what the paid plan includes
