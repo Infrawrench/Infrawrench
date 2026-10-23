@@ -22782,11 +22782,11 @@
   "defbf582ad4bc2e4": "No se pudo registrar tu decisión.",
   "3fa1a5eaf1f5df78": "Plataforma conectada",
   "a6796336e43d46dc": "Solicitud denegada",
-  "061047ebbab1f865": "Puedes cerrar esta pestaña. Los agentes que cree aparecen en Configuración → Agentes, donde puedes editarlos o revocarlos.",
   "ae77b57d46489b98": "No se conectó nada. Puedes cerrar esta pestaña.",
   "2e17d3aac86d6ba6": "Conectar una plataforma",
   "55b0934ee303b422": "Una plataforma como Nibblets quiere crear agentes en tu organización. Introduce el código que te mostró.",
   "c570e5149e246913": "Aprueba solo un código que acabes de solicitar tú mismo. Si alguien te envió este enlace, recházalo.",
   "b52284abefdb4429": "Necesitas permiso para invitar a personas a una organización para conectarle una plataforma. Pide ayuda a un administrador.",
-  "1895f4c0043ee068": "Lo máximo que esta plataforma podrá conceder nunca a sus agentes"
+  "1895f4c0043ee068": "Lo máximo que esta plataforma podrá conceder nunca a sus agentes",
+  "a81beb91c49efc04": "Puedes cerrar esta pestaña. Los agentes que cree aparecen en Configuración → Credenciales de agente, donde puedes editarlos o revocarlos."
 }
