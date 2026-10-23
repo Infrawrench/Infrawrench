@@ -22788,5 +22788,19 @@
   "c570e5149e246913": "Aprueba solo un código que acabes de solicitar tú mismo. Si alguien te envió este enlace, recházalo.",
   "b52284abefdb4429": "Necesitas permiso para invitar a personas a una organización para conectarle una plataforma. Pide ayuda a un administrador.",
   "1895f4c0043ee068": "Lo máximo que esta plataforma podrá conceder nunca a sus agentes",
-  "a81beb91c49efc04": "Puedes cerrar esta pestaña. Los agentes que cree aparecen en Configuración → Credenciales de agente, donde puedes editarlos o revocarlos."
+  "a81beb91c49efc04": "Puedes cerrar esta pestaña. Los agentes que cree aparecen en Configuración → Credenciales de agente, donde puedes editarlos o revocarlos.",
+  "4cdcb0959bd1e250": "Inicio de sesión de Nibblets · {name}",
+  "b32bccf01bf37ad2": "¿Eliminar «{name}»? Esto destruye su VM y revoca su vínculo con esta organización, junto con todos los agentes que creó.",
+  "b0fcfcae67e8be2b": "Nibblets se ejecuta como servidor en la VM y aloja tus nibblets. «Autorizar servidor» inicia sesión en sus agentes y vincula Nibblets Connect, desde donde luego lo usas.",
+  "d21143f5bee0b758": "Iniciar sesión en los agentes y vincular Nibblets Connect por SSH",
+  "1ad80fb587210600": "Los agentes locales no pertenecen a ninguna organización, así que este servidor empieza sin vincular. Vincula apps desde la Configuración de Nibblets.",
+  "4eec87a9a6d1ffac": "Necesitas permiso para invitar a personas para vincular este servidor a la organización, así que empieza sin vincular.",
+  "e647d03ca0296526": "Vincular a esta organización",
+  "916292c31bea5f06": "Lo máximo que este servidor podrá dar nunca a sus nibblets. Eliges los permisos de cada nibblet en Nibblets.",
+  "5b5cb06653f8beb5": "Ver este vínculo y sus agentes en Configuración → Credenciales de agente",
+  "85e28ff0d943967c": "Vinculado a esta organización",
+  "d65819a7497afa35": "No vinculado a esta organización",
+  "b1da9a7d66813eed": "Funciona cuando «Autorizar servidor» lo haya vinculado a Nibblets Connect",
+  "06738ffd1654415e": "Abrir Nibblets",
+  "494ada16a0794d09": "Servidor de Nibblets · agentes y sus apps gestionados en Nibblets"
 }

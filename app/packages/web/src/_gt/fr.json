@@ -22787,5 +22787,19 @@
   "c570e5149e246913": "N'approuvez qu'un code que vous venez de demander vous-même. Si quelqu'un vous a envoyé ce lien, refusez-le.",
   "b52284abefdb4429": "Vous devez avoir l'autorisation d'inviter des personnes dans une organisation pour y connecter une plateforme. Demandez à un administrateur.",
   "1895f4c0043ee068": "Le maximum que cette plateforme pourra jamais accorder à ses agents",
-  "a81beb91c49efc04": "Vous pouvez fermer cet onglet. Les agents qu'elle crée apparaissent dans Paramètres → Identifiants d'agent, où vous pouvez les modifier ou les révoquer."
+  "a81beb91c49efc04": "Vous pouvez fermer cet onglet. Les agents qu'elle crée apparaissent dans Paramètres → Identifiants d'agent, où vous pouvez les modifier ou les révoquer.",
+  "4cdcb0959bd1e250": "Connexion Nibblets · {name}",
+  "b32bccf01bf37ad2": "Supprimer « {name} » ? Cela détruit sa VM et révoque son lien avec cette organisation, ainsi que tous les agents qu'il a créés.",
+  "b0fcfcae67e8be2b": "Nibblets s'exécute comme serveur sur la VM et héberge vos nibblets. « Autoriser le serveur » connecte leurs agents et relie Nibblets Connect, d'où vous l'utilisez ensuite.",
+  "d21143f5bee0b758": "Connecter les agents et relier Nibblets Connect via SSH",
+  "1ad80fb587210600": "Les agents locaux n'appartiennent à aucune organisation : ce serveur démarre donc sans lien. Reliez des applications depuis les Paramètres de Nibblets.",
+  "4eec87a9a6d1ffac": "Vous devez avoir l'autorisation d'inviter des personnes pour relier ce serveur à l'organisation : il démarre donc sans lien.",
+  "e647d03ca0296526": "Relier à cette organisation",
+  "916292c31bea5f06": "Le maximum que ce serveur pourra jamais accorder à ses nibblets. Vous choisissez les autorisations de chaque nibblet dans Nibblets.",
+  "5b5cb06653f8beb5": "Voir ce lien et ses agents dans Paramètres → Identifiants d'agent",
+  "85e28ff0d943967c": "Relié à cette organisation",
+  "d65819a7497afa35": "Non relié à cette organisation",
+  "b1da9a7d66813eed": "Fonctionne une fois que « Autoriser le serveur » l'a relié à Nibblets Connect",
+  "06738ffd1654415e": "Ouvrir Nibblets",
+  "494ada16a0794d09": "Serveur Nibblets · agents et leurs applications gérés dans Nibblets"
 }

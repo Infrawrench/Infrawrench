@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { T, useGT } from "gt-react";
+import { useGT } from "gt-react";
 import { AgentScopePicker } from "../settings/AgentScopePicker.js";
 import { agentScopeGroups } from "../settings/api-key-scopes.js";
 import { NIBBLETS_CONNECT_URL } from "./nibblets.js";
@@ -97,11 +97,9 @@ export function NibbletsSessionDetails({
   const gt = useGT();
   return (
     <>
-      <T>
-        <div className="mt-1 text-xs text-on-surface-muted">
-          Nibblets server · agents and their apps managed in Nibblets
-        </div>
-      </T>
+      <div className="mt-1 text-xs text-on-surface-muted">
+        {gt("Nibblets server · agents and their apps managed in Nibblets")}
+      </div>
       <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
         {session.agentLinkId ? (
           onOpenLink ? (

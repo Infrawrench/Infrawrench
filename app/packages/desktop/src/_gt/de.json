@@ -22599,5 +22599,19 @@
   "a3b2b5b49c3dca92": "Berechtigungen bearbeiten",
   "499cd09212027e23": "Diese Berechtigungen konnten nicht gespeichert werden",
   "3cc65c2b38414817": "Berechtigungen für {name}",
-  "300a3feba42a3262": "Nur diese Anbieter (alle leer lassen für jeden Anbieter)"
+  "300a3feba42a3262": "Nur diese Anbieter (alle leer lassen für jeden Anbieter)",
+  "4cdcb0959bd1e250": "Nibblets-Anmeldung · {name}",
+  "b32bccf01bf37ad2": "„{name}“ löschen? Dadurch werden die VM gelöscht und ihre Verknüpfung mit dieser Organisation samt aller von ihr erstellten Agenten widerrufen.",
+  "b0fcfcae67e8be2b": "Nibblets läuft als Server auf der VM und beherbergt Ihre Nibblets. „Server autorisieren“ meldet deren Agenten an und verknüpft Nibblets Connect, über das Sie es dann verwenden.",
+  "d21143f5bee0b758": "Über SSH bei Agenten anmelden und Nibblets Connect verknüpfen",
+  "1ad80fb587210600": "Lokale Agenten gehören zu keiner Organisation, daher startet dieser Server unverknüpft. Verknüpfen Sie Apps in den Einstellungen von Nibblets.",
+  "4eec87a9a6d1ffac": "Sie benötigen die Berechtigung, Personen einzuladen, um diesen Server mit der Organisation zu verknüpfen. Er startet daher unverknüpft.",
+  "e647d03ca0296526": "Mit dieser Organisation verknüpfen",
+  "916292c31bea5f06": "Das Maximum, das dieser Server seinen Nibblets jemals geben darf. Die Berechtigungen jedes einzelnen Nibblets wählen Sie in Nibblets.",
+  "5b5cb06653f8beb5": "Diese Verknüpfung und ihre Agenten unter Einstellungen → Agent-Anmeldedaten ansehen",
+  "85e28ff0d943967c": "Mit dieser Organisation verknüpft",
+  "d65819a7497afa35": "Nicht mit dieser Organisation verknüpft",
+  "b1da9a7d66813eed": "Funktioniert, sobald „Server autorisieren“ ihn mit Nibblets Connect verknüpft hat",
+  "06738ffd1654415e": "Nibblets öffnen",
+  "494ada16a0794d09": "Nibblets-Server · Agenten und ihre Apps werden in Nibblets verwaltet"
 }
