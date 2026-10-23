@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ClaimRouteImport } from './routes/claim'
+import { Route as LinkAgentsRouteImport } from './routes/link-agents'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -117,6 +118,11 @@ const AdminRoute = AdminRouteImport.update({
 const ClaimRoute = ClaimRouteImport.update({
   id: '/claim',
   path: '/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LinkAgentsRoute = LinkAgentsRouteImport.update({
+  id: '/link-agents',
+  path: '/link-agents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -641,6 +647,7 @@ const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/claim': typeof ClaimRoute
+  '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -742,6 +749,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/claim': typeof ClaimRoute
+  '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -841,6 +849,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/admin': typeof AdminRoute
   '/claim': typeof ClaimRoute
+  '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -944,6 +953,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/admin'
     | '/claim'
+    | '/link-agents'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -1045,6 +1055,7 @@ export interface FileRouteTypes {
   to:
     | '/admin'
     | '/claim'
+    | '/link-agents'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -1143,6 +1154,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/admin'
     | '/claim'
+    | '/link-agents'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -1245,6 +1257,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   ClaimRoute: typeof ClaimRoute
+  LinkAgentsRoute: typeof LinkAgentsRoute
   OnboardingRoute: typeof OnboardingRoute
   DeploySplatRoute: typeof DeploySplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -1267,6 +1280,13 @@ declare module '@tanstack/react-router' {
       path: '/claim'
       fullPath: '/claim'
       preLoaderRoute: typeof ClaimRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/link-agents': {
+      id: '/link-agents'
+      path: '/link-agents'
+      fullPath: '/link-agents'
+      preLoaderRoute: typeof LinkAgentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -2265,6 +2285,7 @@ const OrgOrgIdRouteWithChildren = OrgOrgIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   ClaimRoute: ClaimRoute,
+  LinkAgentsRoute: LinkAgentsRoute,
   OnboardingRoute: OnboardingRoute,
   DeploySplatRoute: DeploySplatRoute,
   InviteTokenRoute: InviteTokenRoute,

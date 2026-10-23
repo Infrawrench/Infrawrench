@@ -510,6 +510,8 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       // Mirrors `GET /blast-radius`.
       permission: "resources:read",
+      // The graph walks into whatever depends on the resource, in any cloud.
+      spansProviders: true,
       handler: async (input, auth) => {
         const resourceId = (input["resourceId"] as string).trim();
         if (!resourceId) return err("resourceId is required");

@@ -29,6 +29,11 @@ ipcMain.handle("cloud_agents_accounts", async (_e, { orgId }: OrgArgs) =>
   cloudFetch(orgId, "/agents/accounts"),
 );
 
+// What the signed-in person could give a Nibblets session's agent link.
+ipcMain.handle("cloud_agents_link_scopes", async (_e, { orgId }: OrgArgs) =>
+  cloudFetch(orgId, "/agents/link-scopes"),
+);
+
 ipcMain.handle("cloud_agents_get_settings", async (_e, { orgId }: OrgArgs) =>
   cloudFetch(orgId, "/agents/settings"),
 );

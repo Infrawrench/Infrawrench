@@ -23,6 +23,20 @@ import {
   T3_CODE_PROJECTS_DIR,
 } from "@infrawrench/ui/agents/t3-code";
 
+import {
+  buildNibbletsSignInCommand,
+  createNibbletsSetupPlan,
+  isNibbletsSurface,
+  NIBBLETS_DIR,
+  NIBBLETS_PLATFORM,
+} from "@infrawrench/ui/agents/nibblets";
+import { AGENT_SCOPES } from "@infrawrench/ui/settings/api-key-scopes";
+import {
+  createApprovedLink,
+  grantablePermissions,
+  revokeLink,
+} from "@infrawrench/server-core/agent-links/links";
+import { logAudit } from "../../services/audit";
 import { db } from "../../db/client";
 import { accounts, agentSessions, agentSettings, resources, sshKeys } from "../../db/schema";
 import { loadPlugins } from "../../plugins/loader";
@@ -187,6 +201,45 @@ app.put("/settings", async (c) => {
   return c.json({ ...body, surface, serviceAccountIds: services.accountIds, t3Access });
 });
 
+/**
+ * What the caller could give a Nibblets session's agent link: the same answer
+ * the link approval page computes (their role without break-glass elevation,
+ * minus what no agent may hold, within the offered scopes), or `null` when
+ * they lack `team:invite` and so cannot approve a link at all. Keys and
+ * agents get `null`: approving a link is a person's act.
+ */
+app.get("/link-scopes", async (c) => {
+  requirePermission(c, "resources:write");
+  if (c.get("apiKey")) return c.json({ scopes: null });
+  const grantable = await grantablePermissions(orgId(c), c.get("session").userId);
+  if (!grantable.includes("team:invite")) return c.json({ scopes: null });
+  return c.json({ scopes: AGENT_SCOPES.filter((s) => grantable.includes(s)) });
+});
+
+/** Best effort: a session that is going away takes its agent link with it. */
+async function revokeSessionLink(
+  row: typeof agentSessions.$inferSelect,
+  organizationId: string,
+  userId?: string,
+): Promise<void> {
+  if (!row.agentLinkId) return;
+  try {
+    const revoked = await revokeLink(row.agentLinkId);
+    if (revoked) {
+      void logAudit({
+        organizationId,
+        ...(userId ? { userId } : {}),
+        action: "agent_link.revoke",
+        entityType: "agent_link",
+        entityId: row.agentLinkId,
+        metadata: { platform: NIBBLETS_PLATFORM, by: "agent_session", sessionId: row.id },
+      });
+    }
+  } catch (error) {
+    console.warn(`[agents] could not revoke the agent link of session ${row.id}`, error);
+  }
+}
+
 app.get("/sessions", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = orgId(c);
@@ -202,6 +255,7 @@ app.get("/sessions", async (c) => {
       out.push(refreshed);
       maybeAutoResumeAgentSetup(row, organizationId);
     } else {
+      await revokeSessionLink(row, organizationId);
       await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
     }
   }
@@ -226,6 +280,7 @@ app.post("/sessions", async (c) => {
       serviceAccountIds?: string[];
       t3Access?: string;
     };
+    nibbletsLink?: { scopes?: unknown };
   }>();
   const tool: AgentTool = body.settings.tool === "claude-code" ? "claude-code" : "codex";
   const surface: AgentSurface = agentSurfaceOrDefault(body.settings.surface);
@@ -261,16 +316,68 @@ app.post("/sessions", async (c) => {
   }
   const id = randomUUID();
   const isT3Code = isT3CodeSurface(surface);
+  const isNibblets = isNibbletsSurface(surface);
   const projectName =
-    body.projectName?.trim() || (repo ? projectNameFromRepo(repo) : "") || "t3-code";
+    body.projectName?.trim() ||
+    (repo ? projectNameFromRepo(repo) : "") ||
+    (isNibblets ? "nibblets" : "t3-code");
+
+  // Nibblets can start linked to the org: an agent link approved by the
+  // creator, exactly as if they had approved a device-flow request, so the
+  // same rules hold (`team:invite`, a ceiling within their own role without
+  // elevation, minus what no agent may hold). Checked before the VM is
+  // created, so a refused link costs nothing.
+  let linkScopes: string[] | null = null;
+  if (isNibblets && body.nibbletsLink) {
+    if (c.get("apiKey")) {
+      return c.json({ error: "Only a person can link a Nibblets server to the organization" }, 403);
+    }
+    const requested = body.nibbletsLink.scopes;
+    if (
+      !Array.isArray(requested) ||
+      requested.length === 0 ||
+      requested.some((s) => typeof s !== "string")
+    ) {
+      return c.json({ error: "Choose at least one permission for the link" }, 400);
+    }
+    const grantable = await grantablePermissions(organizationId, userId);
+    if (!grantable.includes("team:invite")) {
+      return c.json(
+        { error: "You need permission to invite people to link a server to this organization" },
+        403,
+      );
+    }
+    const unique = [...new Set(requested as string[])];
+    const notAllowed = unique.filter((s) => !AGENT_SCOPES.includes(s) || !grantable.includes(s));
+    if (notAllowed.length > 0) {
+      return c.json(
+        {
+          error: `You cannot grant: ${notAllowed.join(", ")}`,
+          code: "scope_not_allowed",
+          scopes: notAllowed,
+        },
+        400,
+      );
+    }
+    linkScopes = unique;
+  }
+
   const workspaceName = isT3Code
     ? T3_CODE_PROJECTS_DIR
-    : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
-  const setupPlan = isT3Code
-    ? createT3CodeSetupPlan(tool, t3Access)
-    : createAgentSetupPlanForRepo(repo, tool, workspaceName);
+    : isNibblets
+      ? NIBBLETS_DIR
+      : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
+  const setupPlan = isNibblets
+    ? createNibbletsSetupPlan(linkScopes !== null)
+    : isT3Code
+      ? createT3CodeSetupPlan(tool, t3Access)
+      : createAgentSetupPlanForRepo(repo, tool, workspaceName);
   const logs = [
-    isT3Code ? "T3 Code server session created." : "Agent session created.",
+    isNibblets
+      ? "Nibblets server session created."
+      : isT3Code
+        ? "T3 Code server session created."
+        : "Agent session created.",
     "Setup policy: conservative detection.",
     ...setupPlanLogLines(setupPlan),
     "Provisioning VM with selected provider defaults.",
@@ -322,6 +429,33 @@ app.post("/sessions", async (c) => {
     ...warnings.map((warning) => `Warning: ${warning.message}`),
     "Waiting for VM to report ready.",
   ];
+  // Created once the VM exists, so a failed provision leaves no link behind.
+  // No credential yet: setup mints it right before handing it to the VM.
+  let agentLinkId: string | null = null;
+  if (linkScopes) {
+    const link = await createApprovedLink({
+      organizationId,
+      platform: NIBBLETS_PLATFORM,
+      label: projectName.slice(0, 80),
+      scopes: linkScopes,
+      approvedByUserId: userId,
+    });
+    agentLinkId = link.id;
+    updatedLogs.push("Linked to this organization; setup hands the server its link.");
+    void logAudit({
+      organizationId,
+      userId,
+      action: "agent_link.create",
+      entityType: "agent_link",
+      entityId: link.id,
+      metadata: {
+        platform: NIBBLETS_PLATFORM,
+        label: link.label,
+        scopes: linkScopes,
+        sessionId: id,
+      },
+    });
+  }
   const initialStatus = setupAwareAgentStatus(
     updatedLogs,
     agentVmStatus(plugin, body.settings.resourceTypeId, resource),
@@ -339,6 +473,7 @@ app.post("/sessions", async (c) => {
     surface,
     serviceAccountIds: services.accountIds,
     t3Access,
+    agentLinkId,
     // Kept non-empty for T3 Code servers too: nothing checks it out, but a
     // blank branch reads as data loss in the session row.
     branchName: branchName(id),
@@ -361,6 +496,7 @@ app.post("/sessions/:id/open", async (c) => {
   const row = await loadSession(c.req.param("id"), organizationId);
   if (!row) return c.json({ error: "Not found" }, 404);
   if (!(await refreshAgentSession(row, organizationId))) {
+    await revokeSessionLink(row, organizationId, c.get("session").userId);
     await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
     return c.json({ error: "Agent VM no longer exists" }, 404);
   }
@@ -382,6 +518,16 @@ app.post("/sessions/:id/open", async (c) => {
   // attached agent: T3 Code itself runs the agent, and its own tab is the
   // session's main surface. There is no launch-ready marker to wait on
   // because nothing is being attached.
+  // Nibblets: the installer's own sign-in menu and Nibblets Connect, run in
+  // the session's Authorize terminal (`install.sh --sign-in`).
+  if (isNibbletsSurface(row.surface)) {
+    return c.json({
+      command: buildNibbletsSignInCommand(),
+      cwd: `~/${row.workspaceName}`,
+      sshKeyId: agentKey.id,
+      sshKeyName: agentKey.name,
+    });
+  }
   if (isT3CodeSurface(row.surface)) {
     return c.json({
       command: buildT3CodeConnectCommand({ tool, access: t3CodeAccessOrDefault(row.t3Access) }),
@@ -449,6 +595,8 @@ app.delete("/sessions/:id", async (c) => {
   // The VM is gone; let attached services forget it too (e.g. remove the
   // tailnet device, which would otherwise linger offline).
   await releaseAgentServices(row, organizationId);
+  // And a Nibblets server's link to the org, with every agent it made.
+  await revokeSessionLink(row, organizationId, c.get("session").userId);
   await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
   agentVmVerifyBackoff.delete(row.id);
   agentSessionNotFoundStreak.delete(row.id);
@@ -461,8 +609,16 @@ app.post("/sessions/:id/reconcile", async (c) => {
   const row = await loadSession(c.req.param("id"), organizationId);
   if (!row) return c.json({ error: "Not found" }, 404);
   if (!(await refreshAgentSession(row, organizationId))) {
+    await revokeSessionLink(row, organizationId, c.get("session").userId);
     await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
     return c.json({ error: "Agent VM no longer exists" }, 404);
+  }
+  if (isNibbletsSurface(row.surface)) {
+    return c.json({
+      branchName: row.branchName,
+      message:
+        "A Nibblets server has no Infrawrench-managed checkout. Infrawrench has nothing to reconcile.",
+    });
   }
   if (isT3CodeSurface(row.surface)) {
     return c.json({
@@ -501,6 +657,7 @@ function rowToSession(row: typeof agentSessions.$inferSelect) {
     surface: agentSurfaceOrDefault(row.surface),
     serviceAccountIds: row.serviceAccountIds ?? [],
     t3Access: t3CodeAccessOrDefault(row.t3Access),
+    agentLinkId: row.agentLinkId ?? null,
     serviceInstalls: publicServiceInstalls(row.serviceInstallsJson),
     branchName: row.branchName,
     status: row.status,

@@ -1,0 +1,2 @@
+CREATE INDEX "agent_link_requests_created_idx" ON "agent_link_requests" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "agent_link_requests_expires_idx" ON "agent_link_requests" USING btree ("expires_at");

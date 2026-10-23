@@ -159,6 +159,8 @@
     "./trials/ceremony": "./src/trials/ceremony.ts",
     "./trials/destroy": "./src/trials/destroy.ts",
     "./trials/pass": "./src/trials/pass.ts",
+    "./agent-links/links": "./src/agent-links/links.ts",
+    "./agent-links/scopes": "./src/agent-links/scopes.ts",
     "./network-flow/pass": "./src/network-flow/pass.ts",
     "./ai-attribution/store": "./src/ai-attribution/store.ts",
     "./ai-attribution/run": "./src/ai-attribution/run.ts",

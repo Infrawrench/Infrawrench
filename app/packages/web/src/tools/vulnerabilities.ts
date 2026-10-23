@@ -14,6 +14,8 @@ import {
   filterVulnerabilityFindings,
   type VulnerabilityFilter,
   type VulnerabilitySeverity,
+  emptyVulnerabilityCounts,
+  type VulnerabilityListResponse,
 } from "@infrawrench/client-core";
 import { listVulnerabilities } from "@infrawrench/server-core/vulnerabilities/feed";
 import {
@@ -21,7 +23,10 @@ import {
   MAX_VULNERABILITY_DISMISSAL_REASON_LENGTH,
   restoreVulnerability,
 } from "@infrawrench/server-core/vulnerabilities/dismissals";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { pluginsAllowedFor } from "@infrawrench/server-core/agent-links/scopes";
 import { logAudit } from "../services/audit";
+import { effectiveToolPermissions } from "./permissions";
 import { err, ok, type ToolDefinition } from "./types";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
@@ -128,10 +133,22 @@ export function vulnerabilityTools(): ToolDefinition[] {
         const includeDismissed = input["includeDismissed"] === true;
         const limit = (input["limit"] as number | undefined) ?? DEFAULT_LIMIT;
 
-        const feed = await listVulnerabilities(auth.organizationId, { withServices: true });
+        const fullFeed = await listVulnerabilities(auth.organizationId, { withServices: true });
+        // A provider-narrowed principal (an agent limited to some providers)
+        // may see only those providers' findings, and the org-wide counts,
+        // totals and scanner list would describe the rest. The gate already
+        // pinned the call to allowed providers; this narrows the whole feed
+        // to them as well, so every number below describes only what it may
+        // read.
+        const granted = await effectiveToolPermissions(auth);
+        const allowedPlugins = hasPermission(granted, "resources:read")
+          ? null
+          : (pluginsAllowedFor(granted, "resources:read") ?? []);
+        const feed = allowedPlugins ? narrowFeedToPlugins(fullFeed, allowedPlugins) : fullFeed;
         const matched = filterVulnerabilityFindings(feed.findings, filter);
-        // Counts always describe the whole feed so a filtered view still shows
-        // the overall picture; matchedCount is the filtered length, before the cap.
+        // Counts always describe the whole (readable) feed so a filtered view
+        // still shows the overall picture; matchedCount is the filtered
+        // length, before the cap.
         return ok({
           findings: matched.slice(0, limit),
           matchedCount: matched.length,
@@ -253,4 +270,35 @@ export function vulnerabilityTools(): ToolDefinition[] {
       },
     },
   ];
+}
+
+/**
+ * The feed with everything outside `plugins` removed and its counts
+ * recomputed, for a provider-narrowed caller. A plugin id of `*` (a wildcard
+ * grant) keeps everything.
+ */
+function narrowFeedToPlugins(
+  feed: VulnerabilityListResponse,
+  plugins: readonly string[],
+): VulnerabilityListResponse {
+  if (plugins.includes("*")) return feed;
+  const keep = (pluginId: string) => plugins.includes(pluginId);
+  const findings = feed.findings.filter((f) => keep(f.pluginId));
+  const dismissed = feed.dismissed.filter((f) => keep(f.pluginId));
+  const counts = emptyVulnerabilityCounts();
+  const runningCounts = emptyVulnerabilityCounts();
+  for (const f of findings) {
+    counts[f.severity] += 1;
+    if (f.running.length > 0) runningCounts[f.severity] += 1;
+  }
+  return {
+    ...feed,
+    findings,
+    totalCount: findings.length,
+    counts,
+    runningCounts,
+    dismissed,
+    dismissedCount: dismissed.length,
+    sources: feed.sources.filter((source) => keep(source.pluginId)),
+  };
 }

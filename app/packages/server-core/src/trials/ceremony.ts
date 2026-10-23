@@ -126,13 +126,28 @@ function mintCredential(): { token: string; prefix: string } {
 }
 
 /**
+ * Mint an `iwa_` credential and its stored hash, for registrations created
+ * outside {@link registerAnonymousAgent} (platform agents made through an agent
+ * link). Same token shape and the same hash domain, so
+ * {@link resolveAgentCredential} accepts it with no special case.
+ */
+export async function mintAgentCredential(): Promise<{
+  token: string;
+  prefix: string;
+  hashed: string;
+}> {
+  const { token, prefix } = mintCredential();
+  return { token, prefix, hashed: await keyedHash(token, AGENT_CREDENTIAL_HASH_DOMAIN) };
+}
+
+/**
  * Mint a `user_code`.
  *
  * `randomInt` rather than `Math.random`: this is a bearer secret for the length
  * of the ceremony, and a predictable one is the same as no ceremony at all.
  * Rejection-free because the alphabet is exactly 32 symbols.
  */
-function mintClaimCode(): string {
+export function mintClaimCode(): string {
   let out = "";
   for (let i = 0; i < CLAIM_CODE_LENGTH; i++) {
     out += CLAIM_CODE_ALPHABET[randomInt(0, CLAIM_CODE_ALPHABET.length)];

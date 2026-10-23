@@ -104,6 +104,19 @@ export interface ToolDefinition {
    * ungated.
    */
   permission: Permission | null;
+  /**
+   * Set when every call of this tool acts on one plugin's objects, whatever
+   * its input says (the generated `<plugin>_create_<type>` tools). Lets the
+   * permission gate bind a provider-narrowed grant (`resources:aws:write`) to
+   * it; see `./plugin-scope`.
+   */
+  pluginId?: string;
+  /**
+   * True when a call reaches beyond the providers its input names even once
+   * pinned (a dependency graph that walks into other clouds, an SSH to any
+   * host the caller types). A provider-narrowed principal can never use it.
+   */
+  spansProviders?: boolean;
   handler(input: Record<string, unknown>, auth: ToolAuthContext): Promise<ToolResult>;
 }
 
