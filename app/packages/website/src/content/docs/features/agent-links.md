@@ -21,6 +21,8 @@ You approve a link once. After that the platform creates, edits and removes its 
 
 The code expires after 15 minutes and works once.
 
+Infrawrench can also make the link itself: when you create a [Nibblets server](./nibblets.md) from the **Agents** tab with **Link to this organization** ticked, you are the approver and the permissions you tick there are the ceiling. Deleting that server revokes the link.
+
 ## What its agents can do
 
 Every agent a platform makes is limited by four things at once, checked again on every request:
@@ -78,4 +80,5 @@ Agents can be edited (`PATCH /api/agent-link/agents/{id}`), have their credentia
 
 - [Agent authentication](./agent-auth.md): agents that register themselves and are claimed later
 - [MCP server](./mcp.md): the endpoint linked agents use
+- [Nibblets servers](./nibblets.md): a Nibblets server set up and linked from the Agents tab
 - [Roles and permissions](../team-and-billing/roles-and-permissions.md): the permission strings scopes are made of
