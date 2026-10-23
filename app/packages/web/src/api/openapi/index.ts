@@ -121,6 +121,7 @@ import { registerBillingPaths } from "./paths/billing";
 import { registerAuditPaths } from "./paths/audit";
 import { registerApiKeyPaths } from "./paths/api-keys";
 import { registerAgentAuthPaths } from "./paths/agent-auth";
+import { registerAgentLinkPaths } from "./paths/agent-links";
 import { registerWsTokenPaths } from "./paths/ws-token";
 import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
@@ -294,6 +295,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAuditPaths(ctx);
   registerApiKeyPaths(ctx);
   registerAgentAuthPaths(ctx);
+  registerAgentLinkPaths(ctx);
   registerWsTokenPaths(ctx);
   registerSyncPaths(ctx);
   registerWebhookPaths(ctx);
@@ -638,6 +640,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Anonymous agent registration, the 24-hour trial workspace it opens, and the claim " +
           "ceremony that binds it to a person. See /auth.md for the agent-facing guide.",
+      },
+      {
+        name: "Agent links",
+        description:
+          "Linking a platform (such as Nibblets) to an organization with a device flow, and the " +
+          "scoped agents the linked platform creates, edits and revokes with its `iwl_` credential.",
       },
       { name: "WebSocket", description: "Auth tokens for the WebSocket gateway." },
       { name: "Sync", description: "Bi-directional resource sync (used by the desktop app)." },

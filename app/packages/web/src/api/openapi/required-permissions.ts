@@ -947,6 +947,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /change-freezes/{id}/end": "freezes:write",
   "DELETE /change-freezes/{id}": "freezes:write",
   // api keys
+  // agent registrations and platform links (Settings → Agents)
+  "GET /agent-registrations": "team:read",
+  "PATCH /agent-registrations/{id}": "team:invite",
+  "DELETE /agent-registrations/{id}": "team:invite",
+  "GET /agent-links": "team:read",
+  "DELETE /agent-links/{id}": "team:invite",
   "POST /api-keys": "apikeys:write",
   "GET /api-keys": "apikeys:read",
   "POST /api-keys/{id}/revoke": "apikeys:write",

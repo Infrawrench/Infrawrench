@@ -1,6 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import { AgentEnvelope, PatchAgent } from "./agent-links";
 
 /**
  * Agent registration and the claim ceremony.
@@ -131,7 +132,7 @@ const AgentRevoked = strict({
 const AgentRegistration = strict({
   id: Uuid,
   label: z.string().nullable(),
-  kind: z.enum(["anonymous", "service_auth"]),
+  kind: z.enum(["anonymous", "service_auth", "platform"]),
   prefix: z.string().nullable().openapi({ description: "First 8 characters of the credential." }),
   claimedAt: IsoDateTime.nullable(),
   claimedByUserId: z.string().nullable(),
@@ -139,6 +140,16 @@ const AgentRegistration = strict({
   lastSeenAt: IsoDateTime.nullable(),
   revokedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
+  linkId: Uuid.nullable().openapi({
+    description: "The platform link that made this agent (`kind: platform`), else null.",
+  }),
+  externalId: z.string().nullable().openapi({ description: "The platform's own id for it." }),
+  scopes: z.array(z.string()).nullable().openapi({
+    description: "Platform agents only: the scopes granted, before provider narrowing.",
+  }),
+  providers: z.array(z.string()).nullable().openapi({
+    description: "Platform agents only: plugin ids its scopes are narrowed to. Empty means all.",
+  }),
 }).openapi("AgentRegistration");
 
 export function registerAgentAuthPaths(ctx: BuildContext) {
@@ -261,6 +272,25 @@ export function registerAgentAuthPaths(ctx: BuildContext) {
         content: { "application/json": { schema: z.array(AgentRegistration) } },
       },
       ...ErrorResponses,
+    },
+  });
+
+  registry.registerPath({
+    method: "patch",
+    path: "/api/org/{orgId}/agent-registrations/{id}",
+    tags: ["Agent auth"],
+    summary: "Edit a platform agent's label, scopes or providers",
+    description:
+      "Platform agents only (`kind: platform`). Scopes must be within the link's current " +
+      "ceiling, and you may only add scopes you hold yourself. Closed to agent credentials.",
+    request: {
+      params: idParams,
+      body: { content: { "application/json": { schema: PatchAgent } } },
+    },
+    responses: {
+      200: { description: "Updated", content: { "application/json": { schema: AgentEnvelope } } },
+      ...ErrorResponses,
+      409: { description: "The agent or its link has been revoked" },
     },
   });
 
