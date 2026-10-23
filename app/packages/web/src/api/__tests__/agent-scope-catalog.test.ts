@@ -13,12 +13,26 @@ process.env["DATABASE_URL"] ??= "postgres://test:test@localhost:5432/test";
 vi.mock("@infrawrench/server-core/db/client", () => ({ db: {} }));
 
 const { AGENT_DENIED_PERMISSIONS } = await import("@infrawrench/server-core/trials/principal");
-const { AGENT_DENIED_SCOPES, AGENT_SCOPES, agentScopeGroups } =
-  await import("@infrawrench/ui/settings/api-key-scopes");
+const { PROVIDER_SCOPED_FAMILIES, isProviderScoped } =
+  await import("@infrawrench/server-core/agent-links/scopes");
+const {
+  AGENT_DENIED_SCOPES,
+  AGENT_SCOPES,
+  agentScopeGroups,
+  PROVIDER_NARROWABLE_FAMILIES,
+  isProviderNarrowableScope,
+} = await import("@infrawrench/ui/settings/api-key-scopes");
 
 describe("agent scope pickers", () => {
   it("deny exactly what the server denies", () => {
     expect([...AGENT_DENIED_SCOPES].sort()).toEqual([...AGENT_DENIED_PERMISSIONS].sort());
+  });
+
+  it("agree with the server on which scopes providers can limit", () => {
+    expect([...PROVIDER_NARROWABLE_FAMILIES].sort()).toEqual([...PROVIDER_SCOPED_FAMILIES].sort());
+    for (const scope of AGENT_SCOPES) {
+      expect(isProviderNarrowableScope(scope), scope).toBe(isProviderScoped(scope));
+    }
   });
 
   it("never offer a denied scope", () => {

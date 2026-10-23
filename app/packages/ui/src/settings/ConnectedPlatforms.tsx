@@ -3,7 +3,7 @@ import { useGT } from "gt-react";
 import type { AgentLinkSummary, AgentRegistration } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
-import { agentScopeGroups } from "./api-key-scopes.js";
+import { agentScopeGroups, isProviderNarrowableScope } from "./api-key-scopes.js";
 import { AgentScopePicker } from "./AgentScopePicker.js";
 import { CARD, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
@@ -238,14 +238,24 @@ function EditAgentScopes({
   const [providers, setProviders] = useState<Set<string>>(new Set(agent.providers ?? []));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const groups = useMemo(() => agentScopeGroups(link.effectiveScopes), [link.effectiveScopes]);
+  // With providers chosen only resource, secret and storage permissions can
+  // be limited to them; anything else would stay organization-wide, so the
+  // server refuses it and the picker stops offering it.
+  const limited = providers.size > 0;
+  const groups = useMemo(
+    () =>
+      agentScopeGroups(
+        limited ? link.effectiveScopes.filter(isProviderNarrowableScope) : link.effectiveScopes,
+      ),
+    [link.effectiveScopes, limited],
+  );
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
       await api.patch(`/api/org/${orgId}/agent-registrations/${agent.id}`, {
-        scopes: [...scopes],
+        scopes: limited ? [...scopes].filter(isProviderNarrowableScope) : [...scopes],
         providers: [...providers],
       });
       await onSaved();
@@ -266,6 +276,11 @@ function EditAgentScopes({
           <legend className="text-xs font-medium text-on-surface-secondary mb-1">
             {gt("Only these providers (leave all unticked for every provider)")}
           </legend>
+          <p className="text-xs text-on-surface-tertiary mb-1">
+            {gt(
+              "Limiting to providers applies to resource, secret and object storage permissions only, so with providers chosen those are the only ones offered.",
+            )}
+          </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {link.providers.map((p) => (
               <label key={p.id} className="flex items-center gap-2 text-xs">

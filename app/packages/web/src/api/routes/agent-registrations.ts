@@ -20,6 +20,7 @@ import {
   LABEL_MAX,
   getLink,
   getLinkAgent,
+  grantablePermissions,
   linkEffectiveScopes,
   updatePlatformAgent,
   validateAgentGrant,
@@ -170,8 +171,20 @@ app.patch("/:id", async (c) => {
           400,
         );
       }
-      const granted = c.get("permissions") ?? [];
-      const added = grant.scopes.filter((s) => !(existing.scopes ?? []).includes(s));
+      // The editor's own role, without break-glass elevation: an elevation is
+      // authority for a bounded window and must not become a standing grant
+      // on an agent.
+      const granted = await grantablePermissions(organizationId, session.userId);
+      const before = existing.scopes ?? [];
+      const beforeProviders = existing.providers ?? [];
+      // Widening the providers widens every scope it applies to, so it counts
+      // as adding them: clearing the list (every provider) or naming a new one.
+      const providersWidened =
+        beforeProviders.length > 0 &&
+        (grant.providers.length === 0 || grant.providers.some((p) => !beforeProviders.includes(p)));
+      const added = providersWidened
+        ? grant.scopes
+        : grant.scopes.filter((s) => !before.includes(s));
       const beyondEditor = added.filter((s) => !hasPermission(granted, s));
       if (beyondEditor.length > 0) {
         return c.json(

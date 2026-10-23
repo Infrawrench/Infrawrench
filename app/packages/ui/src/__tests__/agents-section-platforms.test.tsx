@@ -17,6 +17,7 @@ const link: AgentLinkSummary = {
   label: "Nibblets on PogAir-4",
   scopes: ["resources:read", "costs:read"],
   effectiveScopes: ["resources:read", "costs:read"],
+  narrowableScopes: ["resources:read"],
   scopeGroups: [],
   providers: [{ id: "aws", displayName: "AWS" }],
   approvedBy: { email: "astrid@example.com" },
@@ -127,13 +128,30 @@ describe("Settings → Agents connected platforms", () => {
     expect(screen.getByLabelText("Costs (read)")).toBeTruthy();
     expect(screen.queryByLabelText("Resources (write)")).toBeNull();
     fireEvent.click(screen.getByLabelText("Costs (read)"));
-    fireEvent.click(screen.getByLabelText("AWS"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(calls).toContainEqual({
         method: "PATCH",
         path: "/api/org/org-1/agent-registrations/reg-1",
-        body: { scopes: ["resources:read", "costs:read"], providers: ["aws"] },
+        body: { scopes: ["resources:read", "costs:read"], providers: [] },
+      }),
+    );
+  });
+
+  it("offers only provider-limitable scopes once providers are chosen", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    renderSection(calls);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit scopes" }));
+    fireEvent.click(screen.getByLabelText("Costs (read)"));
+    fireEvent.click(screen.getByLabelText("AWS"));
+    // Costs cannot be limited to AWS, so it is no longer offered or sent.
+    expect(screen.queryByLabelText("Costs (read)")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: "PATCH",
+        path: "/api/org/org-1/agent-registrations/reg-1",
+        body: { scopes: ["resources:read"], providers: ["aws"] },
       }),
     );
   });

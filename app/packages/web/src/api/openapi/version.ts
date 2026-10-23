@@ -367,5 +367,7 @@
 // AgentRegistration. All additive.
 // 1.84.0: Nibblets agent sessions. `nibblets` on the agent Surface enum,
 // `agentLinkId` on AgentSession, `nibbletsLink` on CreateAgentSession, and
-// `GET /agents/link-scopes`. All additive.
+// `GET /agents/link-scopes`; and `narrowableScopes` on AgentLinkInfo (an
+// agent given `providers` may now hold only resource, secret and storage
+// scopes). All additive apart from that last refusal.
 export const API_VERSION = "1.84.0";

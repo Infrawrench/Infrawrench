@@ -22615,5 +22615,6 @@
   "d65819a7497afa35": "No vinculado a esta organización",
   "b1da9a7d66813eed": "Funciona cuando «Autorizar servidor» lo haya vinculado a Nibblets Connect",
   "06738ffd1654415e": "Abrir Nibblets",
-  "494ada16a0794d09": "Servidor de Nibblets · agentes y sus apps gestionados en Nibblets"
+  "494ada16a0794d09": "Servidor de Nibblets · agentes y sus apps gestionados en Nibblets",
+  "d37515eae6f8cac6": "Limitar a proveedores solo se aplica a los permisos de recursos, secretos y almacenamiento de objetos, así que con proveedores elegidos solo se ofrecen esos."
 }

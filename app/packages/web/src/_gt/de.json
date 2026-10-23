@@ -22800,5 +22800,7 @@
   "d65819a7497afa35": "Nicht mit dieser Organisation verknüpft",
   "b1da9a7d66813eed": "Funktioniert, sobald „Server autorisieren“ ihn mit Nibblets Connect verknüpft hat",
   "06738ffd1654415e": "Nibblets öffnen",
-  "494ada16a0794d09": "Nibblets-Server · Agenten und ihre Apps werden in Nibblets verwaltet"
+  "494ada16a0794d09": "Nibblets-Server · Agenten und ihre Apps werden in Nibblets verwaltet",
+  "d37515eae6f8cac6": "Die Beschränkung auf Anbieter gilt nur für Berechtigungen für Ressourcen, Secrets und Objektspeicher. Mit gewählten Anbietern werden daher nur diese angeboten.",
+  "c0086b0381ac874d": "Plattform und Name oben stammen vom Anfragenden. Infrawrench hat sie nicht geprüft."
 }

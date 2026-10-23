@@ -205,6 +205,21 @@ export function agentScopeGroups(within?: readonly string[]): ApiKeyScopeGroup[]
   return out;
 }
 
+/**
+ * Permission families an agent's `providers` can limit (`resources:read` →
+ * `resources:<plugin>:read`): the browser-safe mirror of
+ * `PROVIDER_SCOPED_FAMILIES` in `server-core/src/agent-links/scopes.ts`. Any
+ * other scope stays organization-wide, so the server refuses it on an agent
+ * that has providers.
+ */
+export const PROVIDER_NARROWABLE_FAMILIES: readonly string[] = ["resources", "secrets", "storage"];
+
+/** Whether `providers` can limit this scope. */
+export function isProviderNarrowableScope(scope: string): boolean {
+  const parts = scope.split(":");
+  return parts.length === 2 && PROVIDER_NARROWABLE_FAMILIES.includes(parts[0]!);
+}
+
 /** Every scope an agent may be offered, flattened. */
 export const AGENT_SCOPES: readonly string[] = agentScopeGroups().flatMap((g) =>
   g.scopes.map((s) => s.value),

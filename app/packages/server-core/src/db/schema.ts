@@ -2736,6 +2736,9 @@ export const agentLinkRequests = pgTable(
     deviceCodeIdx: uniqueIndex("agent_link_requests_device_code_unique").on(t.hashedDeviceCode),
     userCodeIdx: uniqueIndex("agent_link_requests_user_code_unique").on(t.hashedUserCode),
     ipCreatedIdx: index("agent_link_requests_ip_created_idx").on(t.createdFromIp, t.createdAt),
+    // The global hourly count, and the prune, under the request lock.
+    createdIdx: index("agent_link_requests_created_idx").on(t.createdAt),
+    expiresIdx: index("agent_link_requests_expires_idx").on(t.expiresAt),
   }),
 );
 

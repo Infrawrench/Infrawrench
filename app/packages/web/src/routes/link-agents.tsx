@@ -177,6 +177,11 @@ function LinkAgentsPage() {
           can never do more than what you allow here, or more than you can do yourself.
         </p>
       </T>
+      <p className="text-xs text-on-surface-tertiary mb-2">
+        {gt(
+          "The platform and name above are what the requester sent. Infrawrench has not checked them.",
+        )}
+      </p>
       <p className="text-sm text-warning mb-6">
         {gt(
           "Only approve a code you started yourself, just now. If someone sent you this link, deny it.",
