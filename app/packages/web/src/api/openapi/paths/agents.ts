@@ -6,8 +6,10 @@ const Tool = z.enum(["codex", "claude-code"]);
 // How the session is driven. "terminal" attaches the tool's CLI in an SSH
 // tab; "t3-code" runs the T3 Code server, which drives that same CLI and is
 // used from T3 Code's own client. Orthogonal to `tool`: T3 Code is a
-// control surface, not an agent. Optional for clients predating it.
-const Surface = z.enum(["terminal", "t3-code"]);
+// control surface, not an agent. "nibblets" installs a Nibblets server (a
+// host for long-running agents) whose installer signs agent CLIs in itself,
+// so `tool` does not apply to it. Optional for clients predating it.
+const Surface = z.enum(["terminal", "t3-code", "nibblets"]);
 // How a T3 Code server is reached: T3's hosted relay ("t3-connect", the
 // default) or Tailscale Serve on the tailnet ("tailscale", which needs an
 // attached Tailscale service account).
@@ -64,6 +66,15 @@ const AgentSession = strict({
   serviceAccountIds: ServiceAccountIds.optional(),
   t3Access: T3Access.optional(),
   serviceInstalls: z.array(AgentServiceInstall).optional(),
+  agentLinkId: z
+    .string()
+    .nullable()
+    .optional()
+    .openapi({
+      description:
+        "Nibblets sessions: the agent link that starts the server linked to this organization " +
+        "(see Agent links). Revoked, with its agents, when the session is deleted.",
+    }),
   branchName: z.string(),
   status: Status,
   vmResourceId: z.string().nullable(),
@@ -79,6 +90,17 @@ const CreateAgentSession = strict({
   projectName: z.string().optional(),
   workspaceName: z.string().optional(),
   settings: AgentSettings,
+  nibbletsLink: strict({
+    scopes: z.array(z.string()).min(1).openapi({ description: "The link's ceiling." }),
+  })
+    .optional()
+    .openapi({
+      description:
+        "Nibblets sessions only: start the server linked to this organization through an agent " +
+        "link you approve, as on the link approval page. Needs `team:invite`; `scopes` must be " +
+        "within what you hold (no break-glass elevation) minus permissions no agent may hold. " +
+        "Refused for API keys and agents.",
+    }),
 }).openapi("CreateAgentSession");
 
 const SessionIdParam = OrgIdParam.extend({
@@ -145,6 +167,27 @@ export function registerAgentPaths(ctx: BuildContext) {
   });
 
   registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/agents/link-scopes",
+    tags: ["Agents"],
+    summary: "What you could give a Nibblets session's agent link",
+    description: "`scopes` is null when you cannot approve links here (no `team:invite`).",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Grantable scopes",
+        content: {
+          "application/json": {
+            schema: strict({ scopes: z.array(z.string()).nullable() }).openapi(
+              "AgentLinkableScopes",
+            ),
+          },
+        },
+      },
+    },
+  });
+
+  registry.registerPath({
     method: "post",
     path: "/api/org/{orgId}/agents/sessions",
     tags: ["Agents"],
@@ -156,6 +199,7 @@ export function registerAgentPaths(ctx: BuildContext) {
     responses: {
       201: { description: "Created", content: { "application/json": { schema: AgentSession } } },
       400: ErrorResponses[400],
+      403: ErrorResponses[403],
     },
   });
 

@@ -230,3 +230,32 @@ describe("revokeLink", () => {
     expect(regUpdate?.sql).toContain('"revoked_at" is null');
   });
 });
+
+describe("links Infrawrench makes itself (Nibblets agent sessions)", () => {
+  it("creates an approved link with no credential yet", async () => {
+    const link = await links.createApprovedLink({
+      organizationId: "org-1",
+      platform: "nibblets",
+      label: "home-server",
+      scopes: ["costs:read"],
+      approvedByUserId: "user-1",
+    });
+    expect(link.credentialPrefix).toBeNull();
+    const insert = pg.queries.find((q) => q.sql.startsWith('insert into "agent_links"'));
+    expect(insert?.params).toContain("user-1");
+  });
+
+  it("mints a credential only while the platform has never used the link", async () => {
+    pg.queueRows([{ id: "link-1" }]);
+    const token = await links.issueLinkCredential("link-1");
+    expect(token?.startsWith("iwl_")).toBe(true);
+    const update = pg.lastQuery();
+    expect(update.sql).toContain('"last_seen_at" is null');
+    expect(update.sql).toContain('"revoked_at" is null');
+    // Stored as a hash, never the token.
+    expect(update.params).not.toContain(token);
+
+    pg.queueRows([]);
+    expect(await links.issueLinkCredential("link-1")).toBeNull();
+  });
+});

@@ -19,6 +19,10 @@ export function createWebAgentClient(orgId: string): AgentClient {
       fetch(`/api/org/${orgId}/resources/ssh-install/accounts`, jsonInit("GET")).then((r) =>
         jsonOrThrow<SshInstallAccount[]>(r),
       ),
+    listLinkableScopes: () =>
+      fetch(`${base}/link-scopes`, jsonInit("GET"))
+        .then((r) => jsonOrThrow<{ scopes: string[] | null }>(r))
+        .then((r) => r.scopes),
     getSettings: () =>
       fetch(`${base}/settings`, jsonInit("GET")).then((r) => jsonOrThrow<AgentSettings | null>(r)),
     saveSettings: (settings) =>

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.83.0",
+    "version": "1.84.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -58490,7 +58490,8 @@
             "type": "string",
             "enum": [
               "terminal",
-              "t3-code"
+              "t3-code",
+              "nibblets"
             ]
           },
           "fields": {
@@ -58581,7 +58582,8 @@
             "type": "string",
             "enum": [
               "terminal",
-              "t3-code"
+              "t3-code",
+              "nibblets"
             ]
           },
           "serviceAccountIds": {
@@ -58603,6 +58605,13 @@
             "items": {
               "$ref": "#/components/schemas/AgentServiceInstall"
             }
+          },
+          "agentLinkId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nibblets sessions: the agent link that starts the server linked to this organization (see Agent links). Revoked, with its agents, when the session is deleted."
           },
           "branchName": {
             "type": "string"
@@ -58657,6 +58666,24 @@
         ],
         "additionalProperties": false
       },
+      "AgentLinkableScopes": {
+        "type": "object",
+        "properties": {
+          "scopes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
       "CreateAgentSession": {
         "type": "object",
         "properties": {
@@ -58678,6 +58705,24 @@
                 "type": "object"
               }
             ]
+          },
+          "nibbletsLink": {
+            "type": "object",
+            "properties": {
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "description": "The link's ceiling."
+              }
+            },
+            "required": [
+              "scopes"
+            ],
+            "additionalProperties": false,
+            "description": "Nibblets sessions only: start the server linked to this organization through an agent link you approve, as on the link approval page. Needs `team:invite`; `scopes` must be within what you hold (no break-glass elevation) minus permissions no agent may hold. Refused for API keys and agents."
           }
         },
         "required": [
@@ -113637,11 +113682,57 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "operationId": "postOrgOrgIdAgentsSessions",
         "x-required-permission": "resources:write",
         "description": "_Requires permission: `resources:write`._"
+      }
+    },
+    "/api/org/{orgId}/agents/link-scopes": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "What you could give a Nibblets session's agent link",
+        "description": "`scopes` is null when you cannot approve links here (no `team:invite`).\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grantable scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkableScopes"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentsLinkScopes",
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/agents/sessions/{id}/open": {

@@ -307,6 +307,7 @@ const INVOKE_CHANNELS = [
   // channels; these drive the org's sessions through the web API instead.
   "cloud_agents_accounts",
   "cloud_agents_get_settings",
+  "cloud_agents_link_scopes",
   "cloud_agents_save_settings",
   "cloud_agents_list_sessions",
   "cloud_agents_create_session",

@@ -115,6 +115,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",
+  "GET /agents/link-scopes": "resources:write",
   "PUT /agents/settings": "accounts:write",
   "GET /agents/sessions": "resources:read",
   "POST /agents/sessions": "resources:write",

@@ -365,4 +365,7 @@
 // /agent-links[/{id}]` and `PATCH /agent-registrations/{id}` on the org tree,
 // and `platform` plus `linkId`/`externalId`/`scopes`/`providers` on
 // AgentRegistration. All additive.
-export const API_VERSION = "1.83.0";
+// 1.84.0: Nibblets agent sessions. `nibblets` on the agent Surface enum,
+// `agentLinkId` on AgentSession, `nibbletsLink` on CreateAgentSession, and
+// `GET /agents/link-scopes`. All additive.
+export const API_VERSION = "1.84.0";

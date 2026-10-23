@@ -30,6 +30,11 @@ import {
   resolveT3CodeAccess,
   t3CodeAccessOrDefault,
   T3_CODE_PROJECTS_DIR,
+  buildNibbletsBootstrapCommand,
+  buildNibbletsSignInCommand,
+  createNibbletsSetupPlan,
+  isNibbletsSurface,
+  NIBBLETS_DIR,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
 import type {
@@ -59,6 +64,7 @@ const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
 const AGENT_SETUP_WAIT_SSH_LOG = "Waiting for VM SSH to become available.";
 const AGENT_SETUP_BOOTSTRAP_LOG = "Installing coding tools and preparing workspace.";
 const AGENT_SETUP_T3_CODE_LOG = "Installing the T3 Code server and its agent CLI.";
+const AGENT_SETUP_NIBBLETS_LOG = "Installing the Nibblets server.";
 const AGENT_SETUP_REFRESH_LOG = "Refreshing agent workspace and tool configuration.";
 const AGENT_SETUP_COMPLETE_LOG = "Agent VM setup complete.";
 // Must exceed the bootstrap's own remote `timeout 420s` so a slow first
@@ -316,12 +322,20 @@ export function createDesktopAgentClient(): AgentClient {
       // A T3 Code session provisions a bare server: T3 Code manages its own
       // projects, so there is no repo to inspect, clone, or plan runtimes from.
       const isT3Code = isT3CodeSurface(surface);
-      const repo = isT3Code ? "" : body.repo.trim();
+      // A Nibblets server likewise has no repo: its installer sets up the
+      // whole stack. Local agents belong to no organization, so it always
+      // starts unlinked (link apps later from Nibblets' Settings).
+      const isNibblets = isNibbletsSurface(surface);
+      const repo = isT3Code || isNibblets ? "" : body.repo.trim();
       const projectName =
-        body.projectName?.trim() || (repo ? projectNameFromRepo(repo) : "") || "t3-code";
+        body.projectName?.trim() ||
+        (repo ? projectNameFromRepo(repo) : "") ||
+        (isNibblets ? "nibblets" : "t3-code");
       const workspaceName = isT3Code
         ? T3_CODE_PROJECTS_DIR
-        : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
+        : isNibblets
+          ? NIBBLETS_DIR
+          : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
       const services = await resolveLocalAgentServiceAccounts(body.settings.serviceAccountIds);
       if (services.accountIds.length !== (body.settings.serviceAccountIds?.length ?? 0)) {
         throw new Error("An attached service account was not found or cannot install over SSH");
@@ -332,13 +346,19 @@ export function createDesktopAgentClient(): AgentClient {
       if (isT3Code && t3CodeAccessOrDefault(body.settings.t3Access) !== t3Access) {
         throw new Error("T3 Code over Tailscale needs a Tailscale account attached");
       }
-      const setupPlan = isT3Code
-        ? createT3CodeSetupPlan(body.settings.tool, t3Access)
-        : await createAgentSetupPlan(repo, body.settings.tool, workspaceName).catch((error) => {
-            throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
-          });
+      const setupPlan = isNibblets
+        ? createNibbletsSetupPlan(false)
+        : isT3Code
+          ? createT3CodeSetupPlan(body.settings.tool, t3Access)
+          : await createAgentSetupPlan(repo, body.settings.tool, workspaceName).catch((error) => {
+              throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
+            });
       const logs = [
-        isT3Code ? "T3 Code server session created." : "Agent session created.",
+        isNibblets
+          ? "Nibblets server session created."
+          : isT3Code
+            ? "T3 Code server session created."
+            : "Agent session created.",
         "Setup policy: conservative detection.",
         ...setupPlanLogLines(setupPlan),
         "Provisioning VM with selected provider defaults.",
@@ -477,6 +497,14 @@ export function createDesktopAgentClient(): AgentClient {
       // an attached agent: T3 Code runs the agent, and its own tab is the
       // session's main surface. Nothing is attached, so no launch-ready
       // marker is waited on.
+      if (isNibbletsSurface(row.surface)) {
+        return {
+          command: buildNibbletsSignInCommand(),
+          cwd: `~/${workspaceNameForRow(row)}`,
+          sshKeyId: agentKey.id,
+          sshKeyName: agentKey.name,
+        };
+      }
       if (isT3CodeSurface(row.surface)) {
         return {
           command: buildT3CodeConnectCommand({
@@ -510,6 +538,13 @@ export function createDesktopAgentClient(): AgentClient {
       if (!(await refreshAgentSession(row))) {
         await db.execute("DELETE FROM agent_sessions WHERE id = $1", [id]);
         throw new Error("Agent VM no longer exists");
+      }
+      if (isNibbletsSurface(row.surface)) {
+        return {
+          branchName: row.branch_name,
+          message:
+            "A Nibblets server has no Infrawrench-managed checkout. Infrawrench has nothing to reconcile.",
+        };
       }
       if (isT3CodeSurface(row.surface)) {
         return {
@@ -784,14 +819,20 @@ async function ensureAgentVmSetup(
   await uploadAgentEnvFile(row, target, privateKey, remoteHome);
 
   const t3Code = isT3CodeSurface(row.surface);
-  // A T3 Code server has no Infrawrench-managed checkout to sync. Its local
+  const nibblets = isNibbletsSurface(row.surface);
+  // A T3 Code server has no Infrawrench-managed checkout to sync, and nor
+  // does a Nibblets server (whose installer can pick up a synced CLI login). Its local
   // *tool config* sync still runs and still pays off: T3 Code drives the same
   // CLI, so a synced credential is one interactive sign-in the user skips.
-  const syncLocalRepo = t3Code ? false : shouldSyncLocalRepo(row, opts);
+  const syncLocalRepo = t3Code || nibblets ? false : shouldSyncLocalRepo(row, opts);
   await appendAgentSessionLog(
     db,
     row.id,
-    t3Code ? AGENT_SETUP_T3_CODE_LOG : AGENT_SETUP_BOOTSTRAP_LOG,
+    nibblets
+      ? AGENT_SETUP_NIBBLETS_LOG
+      : t3Code
+        ? AGENT_SETUP_T3_CODE_LOG
+        : AGENT_SETUP_BOOTSTRAP_LOG,
     "setting-up",
   );
   await appendAgentSessionLog(
@@ -814,18 +855,20 @@ async function ensureAgentVmSetup(
       return await runAgentSetupCommand(
         target,
         privateKey,
-        t3Code
-          ? buildT3CodeBootstrapCommand({
-              tool: row.tool,
-              projectsDir: workspaceNameForRow(row),
-            })
-          : buildAgentBootstrapCommand({
-              tool: row.tool,
-              workspaceName: workspaceNameForRow(row),
-              branchName: row.branch_name,
-              repo: row.repo,
-              setupPlan: setupPlanForRow(row),
-            }),
+        nibblets
+          ? buildNibbletsBootstrapCommand({ withAppLinks: false })
+          : t3Code
+            ? buildT3CodeBootstrapCommand({
+                tool: row.tool,
+                projectsDir: workspaceNameForRow(row),
+              })
+            : buildAgentBootstrapCommand({
+                tool: row.tool,
+                workspaceName: workspaceNameForRow(row),
+                branchName: row.branch_name,
+                repo: row.repo,
+                setupPlan: setupPlanForRow(row),
+              }),
         setupLogger,
       );
     } finally {
@@ -860,7 +903,7 @@ async function ensureAgentVmSetup(
       "setting-up",
     );
   }
-  if (!t3Code && !isCloneableGitRepo(row.repo) && syncResult.repoFiles > 0) {
+  if (!t3Code && !nibblets && !isCloneableGitRepo(row.repo) && syncResult.repoFiles > 0) {
     await checkoutAgentWorkspaceBranch(row, target, privateKey);
   }
   for (const syncWarning of syncResult.warnings.slice(0, 10)) {
@@ -869,7 +912,7 @@ async function ensureAgentVmSetup(
   // Repo-provided setup script: needs the workspace (sync) AND the
   // runtimes (bootstrap), so it runs after both. The bootstrap's own script
   // hook only fires on git-URL clones (web); desktop always runs it here.
-  if (!t3Code) await runAgentRepoSetupScript(db, row, target, privateKey);
+  if (!t3Code && !nibblets) await runAgentRepoSetupScript(db, row, target, privateKey);
   // Attached services (e.g. Tailscale) install after the bootstrap, so a
   // T3 Code server already exists when it is published on the tailnet.
   await installLocalAgentServices(
@@ -1382,7 +1425,8 @@ function setupPlanForRow(row: SessionRow): AgentSetupPlan {
 }
 
 function defaultAgentSetupPlan(row: SessionRow): AgentSetupPlan {
-  // The repo-derived fallback can't describe a T3 Code server: it has no repo.
+  // The repo-derived fallback can't describe a T3 Code or Nibblets server.
+  if (isNibbletsSurface(row.surface)) return createNibbletsSetupPlan(false);
   if (isT3CodeSurface(row.surface))
     return createT3CodeSetupPlan(row.tool, t3CodeAccessOrDefault(row.t3_access));
   return {
@@ -1500,7 +1544,14 @@ function extractBootstrapWarning(stderr: string): string | null {
   const warning = stderr
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line.includes("git clone failed") || line.includes("workspace is not a git"));
+    .find(
+      (line) =>
+        line.includes("git clone failed") ||
+        line.includes("workspace is not a git") ||
+        // The Nibblets bootstrap, when the VM must restart once for the
+        // memory controller (the installer never reboots in YES mode).
+        line.includes("nibblets needs a restart"),
+    );
   return warning ?? null;
 }
 

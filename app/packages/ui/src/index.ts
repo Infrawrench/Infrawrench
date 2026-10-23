@@ -51,6 +51,7 @@ export {
 export {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
+  agentSurfaceUsesTool,
   buildT3CodeBootstrapCommand,
   buildT3CodeConnectCommand,
   buildT3CodeLogoutCommand,
@@ -67,6 +68,22 @@ export {
   T3_CODE_NODE_VERSION,
   T3_CODE_PROJECTS_DIR,
 } from "./agents/t3-code.js";
+export {
+  buildNibbletsAppLinksFile,
+  buildNibbletsAppLinksWriteCommand,
+  buildNibbletsBootstrapCommand,
+  buildNibbletsSignInCommand,
+  createNibbletsSetupPlan,
+  DEFAULT_NIBBLETS_LINK_SCOPES,
+  isNibbletsSurface,
+  NIBBLETS_APP_LINKS_FILE,
+  NIBBLETS_CONNECT_URL,
+  NIBBLETS_DIR,
+  NIBBLETS_INSTALL_URL,
+  NIBBLETS_PLATFORM,
+  NIBBLETS_PORT,
+} from "./agents/nibblets.js";
+export type { NibbletsBootstrapCommandInput } from "./agents/nibblets.js";
 export type {
   T3CodeBootstrapCommandInput,
   T3CodeConnectCommandInput,
