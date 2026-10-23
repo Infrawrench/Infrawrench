@@ -87,7 +87,8 @@ function skipsOrgRedirect(pathname: string): boolean {
     pathname.startsWith("/invite/") ||
     pathname.startsWith("/share/") ||
     pathname.startsWith("/admin") ||
-    pathname === "/claim"
+    pathname === "/claim" ||
+    pathname === "/link-agents"
   );
 }
 
