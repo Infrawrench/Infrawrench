@@ -43,6 +43,9 @@ const SESSION_ROUTES: readonly RegExp[] = [
   /^\/api\/mcp(\/|$)/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
+  // Agent link requests: the approval half throttles code attempts in process
+  // memory (as `/api/agent/claim` does), which must be per pod, not per isolate.
+  /^\/api\/agent-links\/requests(\/|$)/,
   /^\/api\/internal(\/|$)/,
   // SSE whose turns can outlast a Lambda invocation, with tools that drive
   // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in

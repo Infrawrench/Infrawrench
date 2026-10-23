@@ -50,6 +50,8 @@ import { orgManagementRoutes } from "./routes/orgs";
 import { agentAuthRoutes, agentClaimRoutes } from "./routes/agent-auth";
 import relayRoutes from "./routes/internal-relay";
 import { agentRegistrationRoutes } from "./routes/agent-registrations";
+import { agentLinkRequestRoutes, agentLinkRoutes } from "./routes/agent-links";
+import { agentLinkOrgRoutes } from "./routes/agent-links-org";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
 import { adminRoutes } from "./routes/admin";
 
@@ -378,6 +380,11 @@ api.route("/api", publicCalendarRoutes);
 api.route("/api/agent", agentAuthRoutes);
 // The human half of the same ceremony, session-authed on its own router.
 api.route("/api/agent/claim", agentClaimRoutes);
+// Agent links: a platform asks to be linked and polls (no auth, rate limited
+// per address), a person approves (session-only, per path inside the router),
+// and the linked platform manages its agents with its own `iwl_` credential.
+api.route("/api/agent-links/requests", agentLinkRequestRoutes);
+api.route("/api/agent-link", agentLinkRoutes);
 // Pod-to-pod: run an operation on the replica that holds its session. Outside
 // every auth layer because the caller is another replica, not a person: it
 // authenticates with INTERNAL_RELAY_SECRET and forwards work it already
@@ -502,6 +509,7 @@ orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/provider-oauth", providerOAuthRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
 orgScoped.route("/agent-registrations", agentRegistrationRoutes);
+orgScoped.route("/agent-links", agentLinkOrgRoutes);
 orgScoped.route("/team", teamRoutes);
 orgScoped.route("/cost-visibility", costVisibilityRoutes);
 orgScoped.route("/sharing", sharingRoutes);
