@@ -17,6 +17,8 @@ function relative(iso: string | null): string {
 
 function statusCell(row: AgentRegistration): string {
   if (row.revokedAt) return c.red("revoked");
+  // Made by a connected platform (Nibblets, ...) through an agent link.
+  if (row.linkId) return c.cyan("platform");
   if (!row.claimedAt) return c.yellow("unclaimed");
   return c.green("claimed");
 }
