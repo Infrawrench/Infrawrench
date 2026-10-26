@@ -101,6 +101,20 @@ Most resource tools take an optional `parentResourceId` to target a **sidecar** 
 
 The cost, budget, workflow, deployment, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `dashboards:read`, `dashboards:write`, `workflows:read`, `workflows:write`, `secrets:read`, `secrets:write`, `deployments:read`, `deployments:plan`, `deployments:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend or secret metadata in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
 
+## Views in the chat
+
+In clients that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps) (Claude, ChatGPT, VS Code, Nibblets), some tools also show a small interactive view in the chat, beside the text the model reads:
+
+| Tool                                 | View                                                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `query_costs`                        | The period's total against the previous one, and spend over time stacked by group. Regroup by provider, account, service or region. |
+| `get_resource_metrics`               | A chart per metric, with its latest value and peak. Switch between the last hour, day, week and month.                              |
+| `list_resources`, `search_resources` | The resources as a table you can filter and sort, refresh, or ask the model about.                                                  |
+
+A view's buttons call the same tools, with your permissions, so the client's own permission prompts still apply. Views load nothing from outside your MCP client, and clients without MCP Apps support ignore them.
+
+<insert [A query_costs view in Claude, showing spend stacked by provider with the regroup buttons] here>
+
 ## Audit and safety
 
 Every mutating tool call (`create_resource`, `delete_resource`, `invoke_action`, `apply_manifest`, the budget tools, the workflow tools, `plan_deployment` and `rollback_deployment`, the per-plugin create tools) writes a row to the [audit log](../team-and-billing/audit-log.md) with `source: "mcp"`. You can filter the audit log by source to see exactly what the model has done in your org.

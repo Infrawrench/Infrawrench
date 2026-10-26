@@ -39,6 +39,7 @@
         "src/routes/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}",
         "scripts/**/*.ts",
+        "src/mcp/views/{costs,metrics,resources}.ts",
         "scripts/**/*.mjs"
       ],
       "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "scripts/**/*.mjs"],
