@@ -115,7 +115,7 @@ function LinkAgentsPage() {
         <p className="text-sm text-on-surface-tertiary">
           {done === "approved"
             ? gt(
-                "You can close this tab. Agents it creates appear in Settings → Agents, where you " +
+                "You can close this tab. Agents it creates appear in Settings → Agent Credentials, where you " +
                   "can edit or revoke them.",
               )
             : gt("Nothing was connected. You can close this tab.")}

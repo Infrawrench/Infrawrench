@@ -22781,11 +22781,11 @@
   "defbf582ad4bc2e4": "Impossible d'enregistrer votre décision.",
   "3fa1a5eaf1f5df78": "Plateforme connectée",
   "a6796336e43d46dc": "Demande refusée",
-  "061047ebbab1f865": "Vous pouvez fermer cet onglet. Les agents qu'elle crée apparaissent dans Paramètres → Agents, où vous pouvez les modifier ou les révoquer.",
   "ae77b57d46489b98": "Rien n'a été connecté. Vous pouvez fermer cet onglet.",
   "2e17d3aac86d6ba6": "Connecter une plateforme",
   "55b0934ee303b422": "Une plateforme comme Nibblets souhaite créer des agents dans votre organisation. Saisissez le code qu'elle vous a montré.",
   "c570e5149e246913": "N'approuvez qu'un code que vous venez de demander vous-même. Si quelqu'un vous a envoyé ce lien, refusez-le.",
   "b52284abefdb4429": "Vous devez avoir l'autorisation d'inviter des personnes dans une organisation pour y connecter une plateforme. Demandez à un administrateur.",
-  "1895f4c0043ee068": "Le maximum que cette plateforme pourra jamais accorder à ses agents"
+  "1895f4c0043ee068": "Le maximum que cette plateforme pourra jamais accorder à ses agents",
+  "a81beb91c49efc04": "Vous pouvez fermer cet onglet. Les agents qu'elle crée apparaissent dans Paramètres → Identifiants d'agent, où vous pouvez les modifier ou les révoquer."
 }

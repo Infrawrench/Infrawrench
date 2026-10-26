@@ -22780,11 +22780,11 @@
   "defbf582ad4bc2e4": "Ihre Entscheidung konnte nicht gespeichert werden.",
   "3fa1a5eaf1f5df78": "Plattform verbunden",
   "a6796336e43d46dc": "Anfrage abgelehnt",
-  "061047ebbab1f865": "Sie können diesen Tab schließen. Agenten, die sie erstellt, erscheinen unter Einstellungen → Agenten, wo Sie sie bearbeiten oder widerrufen können.",
   "ae77b57d46489b98": "Es wurde nichts verbunden. Sie können diesen Tab schließen.",
   "2e17d3aac86d6ba6": "Eine Plattform verbinden",
   "55b0934ee303b422": "Eine Plattform wie Nibblets möchte Agenten in Ihrer Organisation erstellen. Geben Sie den Code ein, den sie Ihnen angezeigt hat.",
   "c570e5149e246913": "Genehmigen Sie nur einen Code, den Sie gerade selbst angefordert haben. Wenn Ihnen jemand diesen Link geschickt hat, lehnen Sie ab.",
   "b52284abefdb4429": "Sie benötigen die Berechtigung, Personen in eine Organisation einzuladen, um eine Plattform mit ihr zu verbinden. Wenden Sie sich an einen Administrator.",
-  "1895f4c0043ee068": "Das Maximum, das diese Plattform ihren Agenten jemals gewähren darf"
+  "1895f4c0043ee068": "Das Maximum, das diese Plattform ihren Agenten jemals gewähren darf",
+  "a81beb91c49efc04": "Sie können diesen Tab schließen. Agenten, die sie erstellt, erscheinen unter Einstellungen → Agent-Anmeldedaten, wo Sie sie bearbeiten oder widerrufen können."
 }
