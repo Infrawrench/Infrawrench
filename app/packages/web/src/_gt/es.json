@@ -22761,5 +22761,32 @@
       },
       "."
     ]
-  }
+  },
+  "2095073d24edf1b1": "Aquí no hay nada que puedas conceder.",
+  "742f78c764851b10": "Agentes que se registraron por sí mismos y fueron reclamados en esta organización, y agentes creados por plataformas que conectaste. Un agente nunca puede gestionar la facturación, crear claves de API, invitar a personas ni revocar a otro agente.",
+  "d79270232a34da4e": "Agentes reclamados",
+  "6ea635ec2610772a": "Plataformas conectadas",
+  "2ede377a07016c0c": "No hay plataformas conectadas. Una plataforma como Nibblets pide conectarse mostrándote un código para aprobar.",
+  "9f3c902a3dda80af": "No se pudo revocar esa plataforma",
+  "8b7656510fbcf870": "Aprobado por {email}",
+  "15ff6743f035eadc": "La persona que aprobó esto ya no existe",
+  "c729a03ec0ceaecd": "conectada {when}",
+  "071b2953b8467cac": "Puede conceder: {scopes}",
+  "23b55549b98233d8": "Esta plataforma aún no ha creado ningún agente.",
+  "a759d9077731be8b": "Sin permisos",
+  "4ff895fc665961b5": "Solo: {providers}",
+  "a3b2b5b49c3dca92": "Editar permisos",
+  "499cd09212027e23": "No se pudieron guardar estos permisos",
+  "3cc65c2b38414817": "Permisos de {name}",
+  "300a3feba42a3262": "Solo estos proveedores (deja todos sin marcar para cualquier proveedor)",
+  "defbf582ad4bc2e4": "No se pudo registrar tu decisión.",
+  "3fa1a5eaf1f5df78": "Plataforma conectada",
+  "a6796336e43d46dc": "Solicitud denegada",
+  "061047ebbab1f865": "Puedes cerrar esta pestaña. Los agentes que cree aparecen en Configuración → Agentes, donde puedes editarlos o revocarlos.",
+  "ae77b57d46489b98": "No se conectó nada. Puedes cerrar esta pestaña.",
+  "2e17d3aac86d6ba6": "Conectar una plataforma",
+  "55b0934ee303b422": "Una plataforma como Nibblets quiere crear agentes en tu organización. Introduce el código que te mostró.",
+  "c570e5149e246913": "Aprueba solo un código que acabes de solicitar tú mismo. Si alguien te envió este enlace, recházalo.",
+  "b52284abefdb4429": "Necesitas permiso para invitar a personas a una organización para conectarle una plataforma. Pide ayuda a un administrador.",
+  "1895f4c0043ee068": "Lo máximo que esta plataforma podrá conceder nunca a sus agentes"
 }
