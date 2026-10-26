@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.82.0",
+    "version": "1.83.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -317,6 +317,10 @@
       "description": "Anonymous agent registration, the 24-hour trial workspace it opens, and the claim ceremony that binds it to a person. See /auth.md for the agent-facing guide."
     },
     {
+      "name": "Agent links",
+      "description": "Linking a platform (such as Nibblets) to an organization with a device flow, and the scoped agents the linked platform creates, edits and revokes with its `iwl_` credential."
+    },
+    {
       "name": "WebSocket",
       "description": "Auth tokens for the WebSocket gateway."
     },
@@ -386,6 +390,12 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "description": "WorkOS access token (JWT) or Infrawrench API key. Used by programmatic clients."
+      },
+      "agentLinkCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "iwl_",
+        "description": "An agent link credential, collected once from the device flow's token poll."
       }
     },
     "schemas": {
@@ -59840,7 +59850,8 @@
             "type": "string",
             "enum": [
               "anonymous",
-              "service_auth"
+              "service_auth",
+              "platform"
             ]
           },
           "prefix": {
@@ -59886,6 +59897,42 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "linkId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The platform link that made this agent (`kind: platform`), else null.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The platform's own id for it."
+          },
+          "scopes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Platform agents only: the scopes granted, before provider narrowing."
+          },
+          "providers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Platform agents only: plugin ids its scopes are narrowed to. Empty means all."
           }
         },
         "required": [
@@ -59898,8 +59945,112 @@
           "claimedByEmail",
           "lastSeenAt",
           "revokedAt",
+          "createdAt",
+          "linkId",
+          "externalId",
+          "scopes",
+          "providers"
+        ],
+        "additionalProperties": false
+      },
+      "PlatformAgent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Empty means every provider."
+          },
+          "credentialPrefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "externalId",
+          "label",
+          "scopes",
+          "providers",
+          "credentialPrefix",
+          "lastSeenAt",
+          "revokedAt",
           "createdAt"
         ],
+        "additionalProperties": false
+      },
+      "PlatformAgentEnvelope": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/PlatformAgent"
+          }
+        },
+        "required": [
+          "agent"
+        ],
+        "additionalProperties": false
+      },
+      "PatchPlatformAgent": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
         "additionalProperties": false
       },
       "AgentRevoked": {
@@ -59914,6 +60065,561 @@
           "revoked": {
             "type": "boolean",
             "description": "False when the registration was already revoked. The request still succeeds (revocation is idempotent) but nothing changed."
+          }
+        },
+        "required": [
+          "ok",
+          "revoked"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkRequestStarted": {
+        "type": "object",
+        "properties": {
+          "deviceCode": {
+            "type": "string",
+            "description": "Secret to the platform; poll with it."
+          },
+          "userCode": {
+            "type": "string",
+            "description": "`XXXX-XXXX`, shown to the person."
+          },
+          "verificationUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "verificationUrlComplete": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Seconds."
+          },
+          "interval": {
+            "type": "integer",
+            "description": "Minimum seconds between polls."
+          }
+        },
+        "required": [
+          "deviceCode",
+          "userCode",
+          "verificationUrl",
+          "verificationUrlComplete",
+          "expiresIn",
+          "interval"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkRequest": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,40}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "requestedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Pre-ticks the ceiling on the approval page. Unknown strings are ignored."
+          }
+        },
+        "required": [
+          "platform",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkScopeGroup": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "title",
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkProvider": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ceiling as approved."
+          },
+          "effectiveScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ceiling as it stands now: approved ∩ the approver's current role (no elevation) − permissions no agent may hold. Agents can only be granted scopes from here."
+          },
+          "scopeGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLinkScopeGroup"
+            },
+            "description": "`effectiveScopes` grouped and labelled as the Infrawrench pickers show them."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLinkProvider"
+            },
+            "description": "Plugins the organization has at least one connected account for."
+          },
+          "approvedBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "email"
+            ],
+            "additionalProperties": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "organizationName",
+          "platform",
+          "label",
+          "scopes",
+          "effectiveScopes",
+          "scopeGroups",
+          "providers",
+          "approvedBy",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkPoll": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "denied",
+                  "expired"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved"
+                ]
+              },
+              "credential": {
+                "type": "string",
+                "description": "`iwl_` link credential. Returned exactly once; later polls read `expired`."
+              },
+              "link": {
+                "$ref": "#/components/schemas/AgentLinkInfo"
+              }
+            },
+            "required": [
+              "status",
+              "credential",
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "AgentLinkLookupOrganization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "canApprove": {
+            "type": "boolean",
+            "description": "You hold `team:invite` there."
+          },
+          "grantableScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What you could put in the ceiling there; empty when `canApprove` is false."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "canApprove",
+          "grantableScopes"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkLookup": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "requestedScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLinkLookupOrganization"
+            }
+          }
+        },
+        "required": [
+          "platform",
+          "label",
+          "requestedScopes",
+          "expiresAt",
+          "organizations"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkCode": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkApprove": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "The ceiling."
+          }
+        },
+        "required": [
+          "code",
+          "organizationId",
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "PlatformAgentWithCredential": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/PlatformAgent"
+          },
+          "credential": {
+            "type": "string",
+            "description": "`iwa_` credential, shown once."
+          }
+        },
+        "required": [
+          "agent",
+          "credential"
+        ],
+        "additionalProperties": false
+      },
+      "CreatePlatformAgent": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plugin ids. Narrows every `resources:*`, `secrets:*` and `storage:*` scope to these providers (`resources:read` becomes `resources:<plugin>:read`). Omitted or empty means all."
+          }
+        },
+        "required": [
+          "externalId",
+          "label",
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ceiling as approved."
+          },
+          "effectiveScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ceiling as it stands now: approved ∩ the approver's current role (no elevation) − permissions no agent may hold. Agents can only be granted scopes from here."
+          },
+          "scopeGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLinkScopeGroup"
+            },
+            "description": "`effectiveScopes` grouped and labelled as the Infrawrench pickers show them."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentLinkProvider"
+            },
+            "description": "Plugins the organization has at least one connected account for."
+          },
+          "approvedBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "email"
+            ],
+            "additionalProperties": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "credentialPrefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "organizationName",
+          "platform",
+          "label",
+          "scopes",
+          "effectiveScopes",
+          "scopeGroups",
+          "providers",
+          "approvedBy",
+          "createdAt",
+          "credentialPrefix",
+          "lastSeenAt",
+          "revokedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AgentLinkRevoked": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "revoked": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -114602,16 +115308,154 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdAgentRegistrations"
+        "operationId": "getOrgOrgIdAgentRegistrations",
+        "x-required-permission": "team:read",
+        "description": "_Requires permission: `team:read`._"
       }
     },
     "/api/org/{orgId}/agent-registrations/{id}": {
+      "patch": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Edit a platform agent's label, scopes or providers",
+        "description": "Platform agents only (`kind: platform`). Scopes must be within the link's current ceiling, and you may only add scopes you hold yourself. Closed to agent credentials.\n\n_Requires permission: `team:invite`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPlatformAgent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAgentEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent or its link has been revoked"
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdAgentRegistrationsId",
+        "x-required-permission": "team:invite"
+      },
       "delete": {
         "tags": [
           "Agent auth"
         ],
         "summary": "Revoke an agent registration",
-        "description": "The row is kept so audit entries naming this agent stay legible; its credential stops working on the next request. Closed to agent credentials.",
+        "description": "The row is kept so audit entries naming this agent stay legible; its credential stops working on the next request. Closed to agent credentials.\n\n_Requires permission: `team:invite`._",
         "parameters": [
           {
             "schema": {
@@ -114737,7 +115581,940 @@
             }
           }
         },
-        "operationId": "deleteOrgOrgIdAgentRegistrationsId"
+        "operationId": "deleteOrgOrgIdAgentRegistrationsId",
+        "x-required-permission": "team:invite"
+      }
+    },
+    "/api/agent-links/requests": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Start linking a platform (device flow)",
+        "description": "Unauthenticated, rate limited per source address.",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkRequestStarted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed platform, label or scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinksRequests"
+      }
+    },
+    "/api/agent-links/requests/token": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Poll a link request",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceCode": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceCode"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkPoll"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Polling faster than `interval`: `{ error: \"slow_down\" }`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinksRequestsToken"
+      }
+    },
+    "/api/agent-links/requests/lookup": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Resolve a user code for the approval page",
+        "description": "Session only. A POST with the code in the body rather than a query string: the code is a live bearer secret. Rate limited per user.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLinkCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkLookup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, unknown or expired code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinksRequestsLookup"
+      }
+    },
+    "/api/agent-links/requests/approve": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Approve a link request into an organization",
+        "description": "Session only. Needs `team:invite` in the organization; `scopes` (the ceiling) must be within what you hold there, break-glass elevation excluded, minus permissions no agent may hold.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLinkApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad code, or `scope_not_allowed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You lack `team:invite` there",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinksRequestsApprove"
+      }
+    },
+    "/api/agent-links/requests/deny": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Deny a link request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLinkCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinksRequestsDeny"
+      }
+    },
+    "/api/agent-link": {
+      "get": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Describe this link",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getAgentLink"
+      },
+      "delete": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Unlink, revoking every agent this link made",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteAgentLink"
+      }
+    },
+    "/api/agent-link/agents": {
+      "get": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "List the agents this link made, newest first, revoked included",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformAgent"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getAgentLinkAgents"
+      },
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Create an agent with its own `iwa_` credential",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlatformAgent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAgentWithCredential"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`scope_not_allowed` (with `scopes`), `invalid_provider`, or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The approving person no longer exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`exists`: a live agent with this `externalId` (with `agentId`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinkAgents"
+      }
+    },
+    "/api/agent-link/agents/{id}": {
+      "patch": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Edit an agent's label, scopes or providers",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPlatformAgent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAgentEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`scope_not_allowed`, `invalid_provider`, or malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an agent of this link, or revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchAgentLinkAgentsId"
+      },
+      "delete": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Revoke an agent (idempotent; the row is kept for the audit log)",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an agent of this link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteAgentLinkAgentsId"
+      }
+    },
+    "/api/agent-link/agents/{id}/rotate": {
+      "post": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Replace an agent's credential; the old one stops working immediately",
+        "security": [
+          {
+            "agentLinkCredential": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformAgentWithCredential"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked link credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an agent of this link, or revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAgentLinkAgentsIdRotate"
+      }
+    },
+    "/api/org/{orgId}/agent-links": {
+      "get": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "List the platforms linked to this organization",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentLinkSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentLinks",
+        "x-required-permission": "team:read",
+        "description": "_Requires permission: `team:read`._"
+      }
+    },
+    "/api/org/{orgId}/agent-links/{id}": {
+      "delete": {
+        "tags": [
+          "Agent links"
+        ],
+        "summary": "Revoke a platform link and every agent it made",
+        "description": "Closed to agent credentials.\n\n_Requires permission: `team:invite`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLinkRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAgentLinksId",
+        "x-required-permission": "team:invite"
       }
     },
     "/api/org/{orgId}/ws-token": {
