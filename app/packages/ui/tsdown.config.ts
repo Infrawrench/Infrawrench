@@ -9,6 +9,8 @@ export default defineConfig({
     // Same split for the T3 Code session helpers: the web API builds its
     // bootstrap/connect commands and its setup plan server-side.
     "agents/t3-code": "src/agents/t3-code.ts",
+    // Same split for the Nibblets server bootstrap and sign-in scripts.
+    "agents/nibblets": "src/agents/nibblets.ts",
     // React-free cost widget config schemas: imported by the web API for
     // request/config validation as well as by the widget editors.
     "cost/config": "src/cost/config.ts",

@@ -44,6 +44,12 @@ export function createCloudAgentClient(): AgentClient {
     // The same list the resource page's "Install service…" offers.
     listServiceAccounts: async () =>
       invoke<SshInstallAccount[]>("cloud_ssh_install_accounts", { orgId: requireOrg() }),
+    listLinkableScopes: async () =>
+      (
+        await invoke<{ scopes: string[] | null }>("cloud_agents_link_scopes", {
+          orgId: requireOrg(),
+        })
+      ).scopes,
     getSettings: async () =>
       invoke<AgentSettings | null>("cloud_agents_get_settings", { orgId: requireOrg() }),
     saveSettings: async (settings: AgentSettings) =>

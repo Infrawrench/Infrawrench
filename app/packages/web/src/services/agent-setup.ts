@@ -44,6 +44,14 @@ import {
   isT3CodeSurface,
   t3CodeAccessOrDefault,
 } from "@infrawrench/ui/agents/t3-code";
+import {
+  buildNibbletsAppLinksFile,
+  buildNibbletsAppLinksWriteCommand,
+  buildNibbletsBootstrapCommand,
+  createNibbletsSetupPlan,
+  isNibbletsSurface,
+} from "@infrawrench/ui/agents/nibblets";
+import { issueLinkCredential } from "@infrawrench/server-core/agent-links/links";
 
 import {
   getInstallationToken,
@@ -63,6 +71,7 @@ const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
 const AGENT_SETUP_WAIT_SSH_LOG = "Waiting for VM SSH to become available.";
 const AGENT_SETUP_BOOTSTRAP_LOG = "Installing coding tools and preparing workspace.";
 const AGENT_SETUP_T3_CODE_LOG = "Installing the T3 Code server and its agent CLI.";
+const AGENT_SETUP_NIBBLETS_LOG = "Installing the Nibblets server.";
 const AGENT_SETUP_REFRESH_LOG = "Refreshing agent workspace and tool configuration.";
 export const AGENT_SETUP_COMPLETE_LOG = "Agent VM setup complete.";
 // Must exceed the bootstrap's own remote `timeout 420s` so a slow first
@@ -312,11 +321,20 @@ async function runAgentVmSetup(
 
   await appendAgentSessionLog(
     row.id,
-    isT3CodeSurface(row.surface) ? AGENT_SETUP_T3_CODE_LOG : AGENT_SETUP_BOOTSTRAP_LOG,
+    isNibbletsSurface(row.surface)
+      ? AGENT_SETUP_NIBBLETS_LOG
+      : isT3CodeSurface(row.surface)
+        ? AGENT_SETUP_T3_CODE_LOG
+        : AGENT_SETUP_BOOTSTRAP_LOG,
     "setting-up",
   );
+  const nibbletsLinked = isNibbletsSurface(row.surface)
+    ? await deliverNibbletsAppLink(row, target, privateKey)
+    : false;
   const logger = createAgentSetupOutputLogger(row.id);
-  const bootstrapCommand = await buildSetupBootstrapCommand(row, organizationId);
+  const bootstrapCommand = isNibbletsSurface(row.surface)
+    ? buildNibbletsBootstrapCommand({ withAppLinks: nibbletsLinked })
+    : await buildSetupBootstrapCommand(row, organizationId);
   const result = await (async () => {
     try {
       return await runAgentSetupCommandWithRetry(target, privateKey, bootstrapCommand, logger);
@@ -339,6 +357,50 @@ async function runAgentVmSetup(
     await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
   }
   await appendAgentSessionLog(row.id, AGENT_SETUP_COMPLETE_LOG, "up");
+}
+
+/**
+ * The base URL a Nibblets server should link back to: this deployment's
+ * public origin, so a self-hosted Infrawrench is not sent to the hosted one.
+ */
+function infrawrenchPublicUrl(): string {
+  return (
+    process.env["PUBLIC_BASE_URL"] ??
+    process.env["APP_URL"] ??
+    "https://app.infrawrench.com"
+  ).replace(/\/$/, "");
+}
+
+/**
+ * Hand a Nibblets session's agent link to the VM before the installer runs:
+ * mint the `iwl_` credential and write it to the 0600 app-links file the
+ * installer adopts and then deletes. The secret travels on the SSH channel's
+ * stdin, never in a command line, and is never logged. Returns whether a file
+ * was written; a session without a link, a revoked link, or one the server
+ * already uses (a re-run after a successful setup) writes nothing.
+ */
+async function deliverNibbletsAppLink(
+  row: SessionRow,
+  target: AgentSshTarget,
+  privateKey: string,
+): Promise<boolean> {
+  if (!row.agentLinkId) return false;
+  const secret = await issueLinkCredential(row.agentLinkId);
+  if (!secret) return false;
+  const result = await agentSshExec(
+    target,
+    privateKey,
+    buildNibbletsAppLinksWriteCommand(),
+    undefined,
+    buildNibbletsAppLinksFile({ infrawrenchUrl: infrawrenchPublicUrl(), secret }),
+  );
+  if (result.code !== 0) throw new Error(formatCommandFailure(result));
+  await appendAgentSessionLog(
+    row.id,
+    "Handed the server its link to this organization.",
+    "setting-up",
+  );
+  return true;
 }
 
 function sessionTool(row: Pick<SessionRow, "tool">): AgentTool {
@@ -388,7 +450,9 @@ export function setupPlanForRow(
   } catch {
     // fall through to the default plan
   }
-  // The repo-derived fallback can't describe a T3 Code server: it has no repo.
+  // The repo-derived fallback can't describe a T3 Code or Nibblets server:
+  // neither has a repo.
+  if (isNibbletsSurface(row.surface)) return createNibbletsSetupPlan(false);
   if (isT3CodeSurface(row.surface))
     return createT3CodeSetupPlan(sessionTool(row), t3CodeAccessOrDefault(row.t3Access));
   return createAgentSetupPlanForRepo(row.repo, sessionTool(row), row.workspaceName);
@@ -661,6 +725,8 @@ async function agentSshExec(
   privateKey: string,
   command: string,
   onData?: (text: string) => void,
+  /** Written to the command's stdin, then closed: how secrets reach the VM. */
+  stdin?: string,
 ): Promise<AgentSshExecResult> {
   // The VM address comes back from a tenant's provider account; vet it like
   // any other destination this shared server dials.
@@ -690,6 +756,7 @@ async function agentSshExec(
           client.end();
           resolve({ stdout, stderr, code: code ?? 0 });
         });
+        if (stdin !== undefined) stream.end(stdin);
       });
     });
     client.once("error", (err) => {
@@ -789,7 +856,14 @@ export function extractBootstrapWarning(stderr: string): string | null {
   const warning = stderr
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line.includes("git clone failed") || line.includes("workspace is not a git"));
+    .find(
+      (line) =>
+        line.includes("git clone failed") ||
+        line.includes("workspace is not a git") ||
+        // The Nibblets bootstrap, when the VM must restart once for the
+        // memory controller (the installer never reboots in YES mode).
+        line.includes("nibblets needs a restart"),
+    );
   return warning ?? null;
 }
 

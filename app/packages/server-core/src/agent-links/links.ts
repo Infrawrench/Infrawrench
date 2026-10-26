@@ -397,6 +397,66 @@ const linkColumns = {
   createdAt: agentLinks.createdAt,
 };
 
+/**
+ * Create a link directly, as if a device-flow request had been approved: the
+ * path Infrawrench itself takes when it sets up a platform's server (a
+ * Nibblets agent session). The caller has already checked what the approver
+ * may grant. No credential yet; {@link issueLinkCredential} mints it when the
+ * server is ready to receive it.
+ */
+export async function createApprovedLink(options: {
+  organizationId: string;
+  platform: string;
+  label: string;
+  scopes: string[];
+  approvedByUserId: string;
+  now?: Date;
+}): Promise<AgentLinkRow> {
+  const id = randomUUID();
+  const createdAt = options.now ?? new Date();
+  await db.insert(agentLinks).values({
+    id,
+    organizationId: options.organizationId,
+    platform: options.platform,
+    label: options.label,
+    scopes: options.scopes,
+    approvedByUserId: options.approvedByUserId,
+    createdAt,
+  });
+  return {
+    id,
+    organizationId: options.organizationId,
+    platform: options.platform,
+    label: options.label,
+    scopes: options.scopes,
+    approvedByUserId: options.approvedByUserId,
+    credentialPrefix: null,
+    lastSeenAt: null,
+    revokedAt: null,
+    createdAt,
+  };
+}
+
+/**
+ * Mint (or re-mint) a link's `iwl_` credential, for delivery to a server
+ * Infrawrench is setting up. Only while the platform has **never used** the
+ * link: a setup retry may need a fresh secret (the previous one never arrived,
+ * or arrived and was discarded with a failed install), but once the platform
+ * has called in with it, re-minting would cut a working server off. Null when
+ * the link is revoked or already in use.
+ */
+export async function issueLinkCredential(linkId: string): Promise<string | null> {
+  const credential = await mintLinkCredential();
+  const rows = await db
+    .update(agentLinks)
+    .set({ hashedCredential: credential.hashed, credentialPrefix: credential.prefix })
+    .where(
+      and(eq(agentLinks.id, linkId), isNull(agentLinks.revokedAt), isNull(agentLinks.lastSeenAt)),
+    )
+    .returning({ id: agentLinks.id });
+  return rows.length > 0 ? credential.token : null;
+}
+
 /** Resolve an `iwl_` credential to its live link, or null. */
 export async function resolveLinkCredential(token: string): Promise<AgentLinkRow | null> {
   if (!token.startsWith("iwl_")) return null;

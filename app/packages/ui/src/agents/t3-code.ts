@@ -106,17 +106,26 @@ export function isT3CodeSurface(surface: AgentSurface | string | null | undefine
 
 /** Normalizes the column/field default for rows written before T3 Code existed. */
 export function agentSurfaceOrDefault(surface: string | null | undefined): AgentSurface {
-  return surface === "t3-code" ? "t3-code" : "terminal";
+  return surface === "t3-code" || surface === "nibblets" ? surface : "terminal";
 }
 
 /**
- * T3 Code sessions have no repo, so the create form doesn't ask for one and
- * the API doesn't require one.
+ * T3 Code and Nibblets sessions have no repo (both manage their own work), so
+ * the create form doesn't ask for one and the API doesn't require one.
  */
 export function agentSurfaceRequiresRepo(
   surface: AgentSurface | string | null | undefined,
 ): boolean {
-  return !isT3CodeSurface(surface);
+  return !isT3CodeSurface(surface) && surface !== "nibblets";
+}
+
+/**
+ * Whether the session's `tool` means anything. Nibblets signs in whichever
+ * agent CLIs the person picks in its own installer menu, so for that surface
+ * the choice is hidden and the column keeps its default.
+ */
+export function agentSurfaceUsesTool(surface: AgentSurface | string | null | undefined): boolean {
+  return surface !== "nibblets";
 }
 
 /** Setup plan for a T3 Code session: Node only, no clone, no branch. */

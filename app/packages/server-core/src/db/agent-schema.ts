@@ -66,6 +66,10 @@ export const agentSessions = pgTable(
       >()
       .notNull()
       .default([]),
+    // Nibblets sessions only: the agent link (`agent_links.id`) minted so the
+    // server starts linked to the org; revoked when the session is deleted.
+    // Not an FK: `agent_links` lives in schema.ts, which re-exports this file.
+    agentLinkId: text("agent_link_id"),
     branchName: text("branch_name").notNull(),
     status: text("status").notNull().default("pending"),
     vmResourceId: text("vm_resource_id"),

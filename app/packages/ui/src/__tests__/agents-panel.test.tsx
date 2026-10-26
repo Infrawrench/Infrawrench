@@ -984,6 +984,116 @@ describe("AgentsPanel", () => {
       expect(title).toBe("T3 Code setup · team-box");
     });
   });
+  describe("Nibblets surface", () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const settings: AgentSettings = {
+      accountId: "acct-1",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      tool: "codex",
+      surface: "nibblets",
+      fields: {},
+    };
+    const session: AgentSession = {
+      id: "session-1",
+      repo: "",
+      projectName: "home-server",
+      workspaceName: "nibblets",
+      accountId: "acct-1",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      tool: "codex",
+      surface: "nibblets",
+      agentLinkId: "link-1",
+      branchName: "infrawrench/agent-session",
+      status: "up",
+      vmResourceId: "acct-1:droplet:123",
+      logs: [],
+    };
+
+    it("creates a server linked to the organization with the default read-only ceiling", async () => {
+      const client = makeClient(account, settings, {
+        listLinkableScopes: vi.fn(async () => ["resources:read", "costs:read", "resources:write"]),
+      });
+      render(<AgentsPanel client={client} />);
+
+      await screen.findByText("Workspace (DigitalOcean)");
+      // The installer signs agent CLIs in itself, so there is no tool choice.
+      expect(screen.queryByText("Tool")).toBeNull();
+      expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
+      expect(await screen.findByLabelText("Link to this organization")).toBeChecked();
+      fireEvent.change(screen.getByPlaceholderText("Server name"), {
+        target: { value: "home-server" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+      await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
+      expect(client.createSession).toHaveBeenCalledWith({
+        repo: "",
+        projectName: "home-server",
+        workspaceName: "nibblets",
+        settings,
+        nibbletsLink: { scopes: ["resources:read", "costs:read"] },
+      });
+    });
+
+    it("creates an unlinked server when the box is unticked", async () => {
+      const client = makeClient(account, settings, {
+        listLinkableScopes: vi.fn(async () => ["resources:read"]),
+      });
+      render(<AgentsPanel client={client} />);
+      fireEvent.click(await screen.findByLabelText("Link to this organization"));
+      fireEvent.change(screen.getByPlaceholderText("Server name"), {
+        target: { value: "home-server" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+      await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(client.createSession).mock.calls[0]?.[0]).not.toHaveProperty("nibbletsLink");
+    });
+
+    it("says why a server starts unlinked for someone who cannot approve links", async () => {
+      const client = makeClient(account, settings, {
+        listLinkableScopes: vi.fn(async () => null),
+      });
+      render(<AgentsPanel client={client} />);
+      expect(await screen.findByText(/You need permission to invite people/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Link to this organization")).toBeNull();
+    });
+
+    it("shows the link and opens the sign-in terminal", async () => {
+      const client = makeClient(account, settings);
+      vi.mocked(client.listSessions).mockResolvedValue([session]);
+      const openWorkspaceTarget = vi.fn();
+      render(<AgentsPanel client={client} openWorkspaceTarget={openWorkspaceTarget} />);
+
+      await screen.findByText("home-server");
+      expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Open Nibblets" })).toHaveAttribute(
+        "href",
+        "https://app.nibblets.dev",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Linked to this organization" }));
+      expect(openWorkspaceTarget).toHaveBeenCalledWith(
+        { kind: "settings", section: "agents" },
+        "Agent Credentials",
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Authorize server" }));
+      await waitFor(() => expect(client.openSession).toHaveBeenCalledWith("session-1"));
+      await waitFor(() => expect(openWorkspaceTarget).toHaveBeenCalledTimes(2));
+      expect(openWorkspaceTarget.mock.calls[1]?.[1]).toBe("Nibblets sign-in · home-server");
+    });
+  });
   it("attaches a Tailscale service and offers T3 Code over Tailscale only while it is attached", async () => {
     const account: AgentVmAccount = {
       accountId: "acct-1",
