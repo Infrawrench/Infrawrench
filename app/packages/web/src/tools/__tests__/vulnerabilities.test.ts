@@ -13,6 +13,10 @@ vi.mock("@infrawrench/server-core/vulnerabilities/dismissals", () => ({
   dismissVulnerability: (...a: unknown[]) => mockDismiss(...a),
   restoreVulnerability: (...a: unknown[]) => mockRestore(...a),
 }));
+// People resolve through the role resolver (db); these cases are owners.
+vi.mock("@infrawrench/server-core/permissions", () => ({
+  resolveEffectivePermissions: vi.fn(async () => ({ permissions: ["*"], role: null })),
+}));
 const mockLogAudit = vi.fn();
 vi.mock("../../services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
 
@@ -119,6 +123,32 @@ describe("vulnerabilityTools", () => {
     expect(out.dismissedCount).toBe(1);
     expect(out.dismissed).toBeUndefined();
     expect(out.kevUpdatedAt).toBe("2026-10-01T00:00:00.000Z");
+  });
+
+  it("list_vulnerabilities describes only the allowed providers to a narrowed agent", async () => {
+    mockListVulnerabilities.mockResolvedValue({
+      ...feed(),
+      sources: [
+        { accountId: "a1", accountName: "Prod", pluginId: "aws" },
+        { accountId: "a2", accountName: "Code", pluginId: "github" },
+      ],
+    });
+    const agent = {
+      ...auth,
+      source: "mcp" as const,
+      agentRegistrationId: "reg-1",
+      scopes: ["resources:aws:read"],
+    };
+    const out = parse(await tool("list_vulnerabilities").handler({ pluginId: "aws" }, agent));
+    expect(out.findings.map((f: { advisoryId: string }) => f.advisoryId)).toEqual([
+      "CVE-1",
+      "CVE-3",
+    ]);
+    // No trace of the GitHub finding in the totals or the scanner list.
+    expect(out.totalCount).toBe(2);
+    expect(out.counts).toEqual({ critical: 1, high: 0, medium: 1, low: 0, unknown: 0 });
+    expect(out.sources.map((x: { pluginId: string }) => x.pluginId)).toEqual(["aws"]);
+    expect(out.dismissedCount).toBe(1);
   });
 
   it("list_vulnerabilities filters by running, fix, KEV and plugin", async () => {
