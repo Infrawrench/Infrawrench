@@ -127,10 +127,11 @@ describe("resolveAgentPrincipal for a platform agent", () => {
     );
   });
 
-  it("narrows to providers after intersecting", async () => {
+  it("narrows to providers after intersecting, keeping nothing org-wide", async () => {
     pg.queueRows([platformRow({ providers: ["aws"] })]);
     const p = await principal.resolveAgentPrincipal("reg-1");
-    expect(p?.permissions).toEqual(["resources:aws:read", "costs:read"]);
+    // costs:read is in scope, ceiling and role, but cannot be limited to AWS.
+    expect(p?.permissions).toEqual(["resources:aws:read"]);
   });
 
   it("refuses an agent whose link is revoked", async () => {
@@ -167,6 +168,25 @@ describe("validateAgentGrant", () => {
       expect(err.code).toBe("scope_not_allowed");
       expect(err.details).toEqual({ scopes: ["costs:read"] });
     }
+  });
+
+  it("refuses scopes that cannot be limited to providers once providers are chosen", () => {
+    try {
+      links.validateAgentGrant(
+        ["resources:read", "accounts:delete", "costs:read"],
+        ["resources:read", "accounts:delete", "costs:read"],
+        ["aws"],
+      );
+      throw new Error("expected a throw");
+    } catch (e) {
+      const err = e as InstanceType<typeof links.AgentLinkError>;
+      expect(err.code).toBe("scope_not_allowed");
+      expect(err.details).toEqual({ scopes: ["accounts:delete", "costs:read"] });
+    }
+    // Without providers they are fine.
+    expect(links.validateAgentGrant(["accounts:delete"], ["accounts:delete"], []).scopes).toEqual([
+      "accounts:delete",
+    ]);
   });
 
   it("rejects provider ids that could smuggle a segment", () => {
@@ -257,5 +277,61 @@ describe("links Infrawrench makes itself (Nibblets agent sessions)", () => {
 
     pg.queueRows([]);
     expect(await links.issueLinkCredential("link-1")).toBeNull();
+  });
+});
+
+describe("createPlatformAgent", () => {
+  const link = {
+    id: "link-1",
+    organizationId: "org-1",
+    platform: "nibblets",
+    label: "Nibblets",
+    scopes: ["resources:read"],
+    approvedByUserId: "user_approver",
+    credentialPrefix: null,
+    lastSeenAt: null,
+    revokedAt: null,
+    createdAt: new Date(),
+  };
+
+  it("writes the registration, user and membership in one transaction under a per-link lock", async () => {
+    const transaction = vi.spyOn(pg.db, "transaction");
+    pg.queueRows([]); // no live agent with that externalId
+    await links.createPlatformAgent({
+      link,
+      externalId: "nib-1",
+      label: "Pog",
+      scopes: ["resources:read"],
+      providers: [],
+    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    const sqls = pg.queries.map((q) => q.sql);
+    const lock = sqls.findIndex((q) => q.includes("pg_advisory_xact_lock"));
+    const reg = sqls.findIndex((q) => q.startsWith('insert into "agent_auth_registrations"'));
+    const user = sqls.findIndex((q) => q.startsWith('insert into "users"'));
+    const member = sqls.findIndex((q) => q.startsWith('insert into "organization_members"'));
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeLessThan(reg);
+    expect(reg).toBeLessThan(user);
+    expect(user).toBeLessThan(member);
+    transaction.mockRestore();
+  });
+
+  it("refuses past the live-agent cap without writing anything", async () => {
+    pg.queueRows([]); // externalId lookup
+    pg.queueRows([]); // advisory lock
+    pg.queueRows([{ n: links.MAX_LIVE_AGENTS_PER_LINK }]);
+    await expect(
+      links.createPlatformAgent({
+        link,
+        externalId: "nib-2",
+        label: "Pog",
+        scopes: ["resources:read"],
+        providers: [],
+      }),
+    ).rejects.toMatchObject({ code: "too_many_agents", status: 409 });
+    expect(pg.queries.some((q) => q.sql.startsWith('insert into "agent_auth_registrations"'))).toBe(
+      false,
+    );
   });
 });

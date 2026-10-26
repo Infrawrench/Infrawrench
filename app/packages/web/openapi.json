@@ -60296,6 +60296,13 @@
             },
             "description": "The ceiling as it stands now: approved ∩ the approver's current role (no elevation) − permissions no agent may hold. Agents can only be granted scopes from here."
           },
+          "narrowableScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes in `effectiveScopes` that `providers` can limit (resources, secrets, object storage). An agent given `providers` may hold only these; any other scope is a `scope_not_allowed`, because it would stay organization-wide."
+          },
           "scopeGroups": {
             "type": "array",
             "items": {
@@ -60338,6 +60345,7 @@
           "label",
           "scopes",
           "effectiveScopes",
+          "narrowableScopes",
           "scopeGroups",
           "providers",
           "approvedBy",
@@ -60536,7 +60544,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Plugin ids. Narrows every `resources:*`, `secrets:*` and `storage:*` scope to these providers (`resources:read` becomes `resources:<plugin>:read`). Omitted or empty means all."
+            "description": "Plugin ids. Narrows every `resources:*`, `secrets:*` and `storage:*` scope to these providers (`resources:read` becomes `resources:<plugin>:read`). Omitted or empty means all. With providers, every scope must be one of those families (see `narrowableScopes`)."
           }
         },
         "required": [
@@ -60581,6 +60589,13 @@
               "type": "string"
             },
             "description": "The ceiling as it stands now: approved ∩ the approver's current role (no elevation) − permissions no agent may hold. Agents can only be granted scopes from here."
+          },
+          "narrowableScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The scopes in `effectiveScopes` that `providers` can limit (resources, secrets, object storage). An agent given `providers` may hold only these; any other scope is a `scope_not_allowed`, because it would stay organization-wide."
           },
           "scopeGroups": {
             "type": "array",
@@ -60644,6 +60659,7 @@
           "label",
           "scopes",
           "effectiveScopes",
+          "narrowableScopes",
           "scopeGroups",
           "providers",
           "approvedBy",

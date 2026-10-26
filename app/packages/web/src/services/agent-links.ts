@@ -13,6 +13,7 @@ import {
   type AgentLinkRow,
   type PlatformAgentRow,
 } from "@infrawrench/server-core/agent-links/links";
+import { isProviderScoped } from "@infrawrench/server-core/agent-links/scopes";
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { getPlugin, loadPlugins } from "../plugins/loader";
@@ -63,6 +64,9 @@ export async function buildLinkInfo(link: AgentLinkRow) {
     label: link.label,
     scopes: link.scopes,
     effectiveScopes,
+    // The part of the ceiling `providers` can limit. Everything else is
+    // org-wide, so an agent given providers may only hold scopes from here.
+    narrowableScopes: effectiveScopes.filter(isProviderScoped),
     scopeGroups: agentScopeGroups(effectiveScopes).map((group) => ({
       title: group.title,
       scopes: group.scopes.map((s) => ({ value: s.value, label: s.label })),

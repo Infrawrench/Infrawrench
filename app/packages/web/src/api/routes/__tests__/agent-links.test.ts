@@ -30,7 +30,7 @@ const agentRow = {
   externalId: "nib-1",
   label: "Pog",
   scopes: ["resources:read"],
-  providers: [],
+  providers: [] as string[],
   credentialPrefix: "iwa_abcd",
   lastSeenAt: null,
   revokedAt: null,
@@ -350,12 +350,37 @@ describe("PATCH /agent-registrations/:id from Settings", () => {
   });
 
   it("cannot add a scope the editor does not hold", async () => {
-    const res = await buildTestApp(agentRegistrationRoutes, ["team:invite"]).request(
+    // The editor's own role, resolved without elevation (not the request's
+    // permissions, which can carry a break-glass grant).
+    links.grantablePermissions.mockResolvedValueOnce(["team:invite", "resources:read"]);
+    const res = await buildTestApp(agentRegistrationRoutes).request(
       "/reg-1",
       patch({ scopes: ["resources:read", "costs:read"] }),
     );
     expect(res.status).toBe(400);
     expect((await res.json()).scopes).toEqual(["costs:read"]);
+  });
+
+  it("counts widening the providers as adding every scope it widens", async () => {
+    links.getLinkAgent.mockResolvedValueOnce({ ...agentRow, providers: ["aws"] });
+    links.grantablePermissions.mockResolvedValueOnce(["team:invite"]);
+    const res = await buildTestApp(agentRegistrationRoutes).request(
+      "/reg-1",
+      patch({ providers: [] }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).scopes).toEqual(["resources:read"]);
+    expect(links.updatePlatformAgent).not.toHaveBeenCalled();
+  });
+
+  it("lets an editor narrow providers without holding the scopes", async () => {
+    links.getLinkAgent.mockResolvedValueOnce({ ...agentRow, providers: ["aws", "gcp"] });
+    links.grantablePermissions.mockResolvedValueOnce(["team:invite"]);
+    const res = await buildTestApp(agentRegistrationRoutes).request(
+      "/reg-1",
+      patch({ providers: ["aws"] }),
+    );
+    expect(res.status).toBe(200);
   });
 
   it("saves a valid edit", async () => {

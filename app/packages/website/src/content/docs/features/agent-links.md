@@ -32,7 +32,7 @@ Every agent a platform makes is limited by four things at once, checked again on
 - your own current role in the organization (if you are demoted, every agent from links you approved narrows with you on its next call), and
 - the things no agent can ever do: manage billing, read or mint API keys, change organization settings, invite people, or revoke other agents.
 
-A platform can also confine an agent to some providers ("only AWS"). That narrowing applies to resources, secrets and object storage, and is enforced on the [MCP server](./mcp.md), which is how a linked agent works: each call has to name a provider (a plugin, an account or a resource) and every provider it touches must be allowed. Tools that reach beyond the providers they name, such as the blast-radius report or SSH to an arbitrary host, are not available to a provider-limited agent. On the HTTP API, provider-limited permissions are refused rather than widened.
+A platform can also confine an agent to some providers ("only AWS"). That narrowing applies to resources, secrets and object storage, so an agent limited to providers can only be given those permissions (anything else, such as costs or accounts, would apply to every provider, and is refused); it is enforced on the [MCP server](./mcp.md), which is how a linked agent works: each call has to name a provider (a plugin, an account or a resource) and every provider it touches must be allowed. Tools that reach beyond the providers they name, such as the blast-radius report or SSH to an arbitrary host, are not available to a provider-limited agent. On the HTTP API, provider-limited permissions are refused rather than widened.
 
 Over MCP, an agent is only shown the tools it can actually use.
 

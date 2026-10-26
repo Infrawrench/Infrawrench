@@ -24,7 +24,7 @@
  * narrowed to its providers, recomputed per request in `resolveAgentPrincipal`.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import {
@@ -52,7 +52,7 @@ import {
   revokeAgentRegistration,
 } from "../trials/ceremony.js";
 import { agentUserEmail, agentUserId } from "../trials/identity.js";
-import { isValidPluginId } from "./scopes.js";
+import { isProviderScoped, isValidPluginId } from "./scopes.js";
 
 const DEVICE_CODE_HASH_DOMAIN = "agent-link-device-code";
 const USER_CODE_HASH_DOMAIN = "agent-link-user-code";
@@ -80,6 +80,14 @@ export const LINK_REQUESTS_GLOBAL_PER_HOUR = 2000;
 
 export const PLATFORM_SLUG = /^[a-z0-9-]{1,40}$/;
 export const EXTERNAL_ID_MAX = 120;
+/**
+ * Live agents one link may hold. Each is a user row and a membership, so a
+ * leaked `iwl_` must not be a way to mint them without end; a Nibblets server
+ * makes one per nibblet, far below this.
+ */
+export const MAX_LIVE_AGENTS_PER_LINK = 200;
+/** How long a decided or expired link request is kept before it is pruned. */
+export const LINK_REQUEST_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const LABEL_MAX = 80;
 
 export class AgentLinkError extends Error {
@@ -143,6 +151,12 @@ export async function createLinkRequest(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended('infrawrench:agent-link-request'::text, 0))`,
     );
+    // Requests are only ever looked up while live (or briefly after, to be
+    // collected), so anything a day past its expiry is dead weight in the
+    // count below. Pruned here, under the same lock, rather than by a pass.
+    await tx
+      .delete(agentLinkRequests)
+      .where(lt(agentLinkRequests.expiresAt, new Date(now.getTime() - LINK_REQUEST_RETENTION_MS)));
     const since = new Date(now.getTime() - 60 * 60 * 1000);
     const [global] = await tx
       .select({ n: count() })
@@ -658,6 +672,22 @@ export function validateAgentGrant(
       throw new AgentLinkError(`Not plugin ids: ${bad.join(", ")}`, 400, "invalid_provider");
     }
   }
+  // Narrowing only rewrites the provider-scoped families (resources, secrets,
+  // storage). Anything else would stay org-wide under a grant that reads as
+  // "only these providers": an AWS-only agent holding `accounts:delete` could
+  // delete a GCP account. So with providers chosen, those are refused.
+  if (providerList.length > 0) {
+    const notNarrowable = unique.filter((s) => !isProviderScoped(s));
+    if (notNarrowable.length > 0) {
+      throw new AgentLinkError(
+        `These scopes cannot be limited to providers, so they cannot be combined with ` +
+          `\`providers\`: ${notNarrowable.join(", ")}`,
+        400,
+        "scope_not_allowed",
+        { scopes: notNarrowable },
+      );
+    }
+  }
   return { scopes: unique, providers: providerList };
 }
 
@@ -693,21 +723,64 @@ export async function createPlatformAgent(
     });
   }
 
+  // Idempotent per org, and outside the transaction because they run on the
+  // shared handle.
+  await ensureSystemRoles(link.organizationId);
+  const memberRole = await getSystemRole(link.organizationId, "member");
+  const userId = agentUserId(id);
+
   try {
-    await db.insert(agentAuthRegistrations).values({
-      id,
-      organizationId: link.organizationId,
-      kind: "platform",
-      label: options.label,
-      hashedCredential: credential.hashed,
-      credentialPrefix: credential.prefix,
-      claimedByUserId: link.approvedByUserId,
-      claimedAt: now,
-      linkId: link.id,
-      externalId: options.externalId,
-      scopes: options.scopes,
-      providers: options.providers,
-      createdAt: now,
+    // One transaction for the registration, its user and its membership: a
+    // failure part-way must not leave a registration that holds the
+    // externalId (a 409 forever) with no identity to act as.
+    await db.transaction(async (tx) => {
+      // Serialises creates on one link, which is what makes the cap below a
+      // count nobody can race past.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`infrawrench:agent-link:${link.id}`}::text, 0))`,
+      );
+      const [live] = await tx
+        .select({ n: count() })
+        .from(agentAuthRegistrations)
+        .where(
+          and(eq(agentAuthRegistrations.linkId, link.id), isNull(agentAuthRegistrations.revokedAt)),
+        );
+      if ((live?.n ?? 0) >= MAX_LIVE_AGENTS_PER_LINK) {
+        throw new AgentLinkError(
+          `This link already has ${MAX_LIVE_AGENTS_PER_LINK} live agents. Revoke some first.`,
+          409,
+          "too_many_agents",
+        );
+      }
+      await tx.insert(agentAuthRegistrations).values({
+        id,
+        organizationId: link.organizationId,
+        kind: "platform",
+        label: options.label,
+        hashedCredential: credential.hashed,
+        credentialPrefix: credential.prefix,
+        claimedByUserId: link.approvedByUserId,
+        claimedAt: now,
+        linkId: link.id,
+        externalId: options.externalId,
+        scopes: options.scopes,
+        providers: options.providers,
+        createdAt: now,
+      });
+      await tx
+        .insert(users)
+        .values({ id: userId, email: agentUserEmail(id), displayName: options.label })
+        .onConflictDoNothing();
+      await tx
+        .insert(organizationMembers)
+        .values({
+          id: randomUUID(),
+          userId,
+          organizationId: link.organizationId,
+          role: "member",
+          roleId: memberRole.id,
+        })
+        .onConflictDoNothing();
     });
   } catch (e) {
     // The partial unique index on (link_id, external_id) closes the race the
@@ -720,24 +793,6 @@ export async function createPlatformAgent(
     }
     throw e;
   }
-
-  await ensureSystemRoles(link.organizationId);
-  const userId = agentUserId(id);
-  await db
-    .insert(users)
-    .values({ id: userId, email: agentUserEmail(id), displayName: options.label })
-    .onConflictDoNothing();
-  const memberRole = await getSystemRole(link.organizationId, "member");
-  await db
-    .insert(organizationMembers)
-    .values({
-      id: randomUUID(),
-      userId,
-      organizationId: link.organizationId,
-      role: "member",
-      roleId: memberRole.id,
-    })
-    .onConflictDoNothing();
 
   return {
     agent: {

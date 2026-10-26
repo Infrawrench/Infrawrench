@@ -19,7 +19,12 @@ export { BastionsSection } from "./BastionsSection.js";
 export { ApiKeysSection } from "./ApiKeysSection.js";
 export { AgentsSection } from "./AgentsSection.js";
 export { AgentScopePicker } from "./AgentScopePicker.js";
-export { agentScopeGroups, AGENT_SCOPES, AGENT_DENIED_SCOPES } from "./api-key-scopes.js";
+export {
+  agentScopeGroups,
+  AGENT_SCOPES,
+  AGENT_DENIED_SCOPES,
+  isProviderNarrowableScope,
+} from "./api-key-scopes.js";
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";

@@ -314,6 +314,8 @@ export interface AgentLinkSummary {
   scopes: string[];
   /** The ceiling now: approved ∩ the approver's current role − agent denials. */
   effectiveScopes: string[];
+  /** The part of the ceiling `providers` can limit; with providers, only these. */
+  narrowableScopes: string[];
   scopeGroups: Array<{ title: string; scopes: Array<{ value: string; label: string }> }>;
   /** Plugins the org has a connected account for. */
   providers: Array<{ id: string; displayName: string }>;

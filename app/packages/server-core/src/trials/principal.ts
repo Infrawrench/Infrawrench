@@ -18,7 +18,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import { agentAuthRegistrations, agentLinks, organizations } from "../db/schema.js";
-import { narrowToProviders } from "../agent-links/scopes.js";
+import { isProviderScoped, narrowToProviders } from "../agent-links/scopes.js";
 import { ALL_PERMISSIONS, intersectPermissions } from "../permissions/catalog.js";
 import { resolveEffectivePermissions } from "../permissions/resolver.js";
 import { agentUserId } from "./identity.js";
@@ -160,7 +160,12 @@ export async function resolveAgentPrincipal(
         row.linkScopes,
       );
       const granted = intersectPermissions(ceiling, row.scopes ?? []);
-      permissions = narrowToProviders(granted, row.providers);
+      // A provider-limited agent holds nothing org-wide: only the families
+      // narrowing can rewrite survive. `validateAgentGrant` refuses the rest
+      // at grant time; this holds rows written before it did.
+      const limited =
+        row.providers && row.providers.length > 0 ? granted.filter(isProviderScoped) : granted;
+      permissions = narrowToProviders(limited, row.providers);
     }
 
     return {

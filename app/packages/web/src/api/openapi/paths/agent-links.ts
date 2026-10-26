@@ -60,6 +60,12 @@ const linkInfoShape = {
       "The ceiling as it stands now: approved ∩ the approver's current role (no elevation) − " +
       "permissions no agent may hold. Agents can only be granted scopes from here.",
   }),
+  narrowableScopes: z.array(z.string()).openapi({
+    description:
+      "The scopes in `effectiveScopes` that `providers` can limit (resources, secrets, object " +
+      "storage). An agent given `providers` may hold only these; any other scope is a " +
+      "`scope_not_allowed`, because it would stay organization-wide.",
+  }),
   scopeGroups: z.array(ScopeGroup).openapi({
     description: "`effectiveScopes` grouped and labelled as the Infrawrench pickers show them.",
   }),
@@ -138,7 +144,8 @@ const CreateAgent = strict({
     .openapi({
       description:
         "Plugin ids. Narrows every `resources:*`, `secrets:*` and `storage:*` scope to these " +
-        "providers (`resources:read` becomes `resources:<plugin>:read`). Omitted or empty means all.",
+        "providers (`resources:read` becomes `resources:<plugin>:read`). Omitted or empty means " +
+        "all. With providers, every scope must be one of those families (see `narrowableScopes`).",
     }),
 }).openapi("CreatePlatformAgent");
 
