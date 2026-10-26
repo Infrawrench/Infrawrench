@@ -171,6 +171,14 @@ describe("setupPlanForRow", () => {
     expect(plan.workspaceName).toBe(T3_CODE_PROJECTS_DIR);
     expect(plan.runtimes.map((runtime) => runtime.language)).toEqual(["node"]);
   });
+
+  it("falls back to a Nibblets plan for a nibblets session", () => {
+    const row = sessionRow({ surface: "nibblets", repo: "", setupPlanJson: "not-json" });
+    const plan = setupPlanForRow(row);
+    expect(plan.initialCloneUrl).toBeUndefined();
+    expect(plan.workspaceName).toBe("nibblets");
+    expect(plan.runtimes).toEqual([]);
+  });
 });
 
 describe("extractBootstrapWarning / isRetryableSshSetupError", () => {
@@ -181,6 +189,11 @@ describe("extractBootstrapWarning / isRetryableSshSetupError", () => {
     expect(extractBootstrapWarning("workspace is not a git repository: /home/x")).toContain(
       "workspace is not a git",
     );
+    expect(
+      extractBootstrapWarning(
+        "warning: nibblets needs a restart to turn on the memory controller; restart the VM",
+      ),
+    ).toContain("needs a restart");
     expect(extractBootstrapWarning("all good")).toBeNull();
   });
 

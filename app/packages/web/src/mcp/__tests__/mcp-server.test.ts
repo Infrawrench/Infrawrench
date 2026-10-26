@@ -150,6 +150,7 @@ describe("MCP server org scoping", () => {
     expect(mockAuthorizeToolCall).toHaveBeenCalledWith(
       expect.objectContaining({ permission: "resources:read" }),
       expect.objectContaining({ userId: "user_1", organizationId: "org_other" }),
+      expect.anything(),
     );
   });
 

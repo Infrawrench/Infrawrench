@@ -30,6 +30,12 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("PUT", "/api/org/o1/ai-attribution/dimensions/d1")).toBe(true);
   });
 
+  it("allows Settings → Agent Credentials' connected platforms", () => {
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/agent-links")).toBe(true);
+    expect(isAllowedSettingsRequest("DELETE", "/api/org/o1/agent-links/l1")).toBe(true);
+    expect(isAllowedSettingsRequest("PATCH", "/api/org/o1/agent-registrations/r1")).toBe(true);
+  });
+
   it("allows the event subscriptions tab of Notifications", () => {
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/event-subscriptions")).toBe(true);
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/event-subscriptions/catalog")).toBe(true);

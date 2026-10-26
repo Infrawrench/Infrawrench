@@ -6,15 +6,18 @@ import { useDataString } from "../i18n/data-strings.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
 import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-tab.js";
 import { ServiceAccountPicker } from "./ServiceAccountPicker.js";
+import { DEFAULT_NIBBLETS_LINK_SCOPES, isNibbletsSurface, NIBBLETS_DIR } from "./nibblets.js";
+import { NibbletsLinkOption, NibbletsSessionDetails } from "./NibbletsParts.js";
 import {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
+  agentSurfaceUsesTool,
   isT3CodeSurface,
   resolveT3CodeAccess,
   T3_CODE_PROJECTS_DIR,
   T3_CODE_TAILSCALE_PLUGIN_ID,
 } from "./t3-code.js";
-import { resourceSshTabTarget } from "../workspace-tabs.js";
+import { resourceSshTabTarget, settingsTabTarget } from "../workspace-tabs.js";
 import { useUIStore } from "../store/ui.store.js";
 import type { GitIntegration, GitRepoOption } from "../workflows/types.js";
 import type {
@@ -73,6 +76,32 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const [saveNotice, setSaveNotice] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const configRef = useRef<HTMLDivElement>(null);
+  // Nibblets: what the creator could give the server's agent link (null: they
+  // cannot approve links here; undefined: this host has no agent links).
+  const [linkableScopes, setLinkableScopes] = useState<string[] | null | undefined>(undefined);
+  const [linkToOrg, setLinkToOrg] = useState(true);
+  const [linkScopes, setLinkScopes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!client.listLinkableScopes) {
+      setLinkableScopes(undefined);
+      return;
+    }
+    let cancelled = false;
+    client
+      .listLinkableScopes()
+      .then((scopes) => {
+        if (cancelled) return;
+        setLinkableScopes(scopes);
+        setLinkScopes(new Set(DEFAULT_NIBBLETS_LINK_SCOPES.filter((s) => scopes?.includes(s))));
+      })
+      .catch(() => {
+        if (!cancelled) setLinkableScopes(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,9 +191,11 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
 
   const configSummary = useMemo(() => {
     const parts = [
-      isT3CodeSurface(settings?.surface)
-        ? `T3 Code + ${toolLabel(settings?.tool ?? "codex")}`
-        : toolLabel(settings?.tool ?? "codex"),
+      isNibbletsSurface(settings?.surface)
+        ? "Nibblets"
+        : isT3CodeSurface(settings?.surface)
+          ? `T3 Code + ${toolLabel(settings?.tool ?? "codex")}`
+          : toolLabel(settings?.tool ?? "codex"),
       ...attachedServices.map((a) => a.serviceName),
       ...visibleFields
         .slice(0, 3)
@@ -232,6 +263,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
       options: [
         { id: "terminal", label: gt("Terminal (SSH)") },
         { id: "t3-code", label: "T3 Code" },
+        { id: "nibblets", label: "Nibblets" },
       ],
     }),
     [gt],
@@ -274,6 +306,8 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   // T3 Code manages its own projects, so these sessions provision a bare
   // server: no repo field, no clone, no branch.
   const needsRepo = agentSurfaceRequiresRepo(selectedSurface);
+  const nibblets = isNibbletsSurface(selectedSurface);
+  const linkNibblets = nibblets && linkToOrg && Array.isArray(linkableScopes);
 
   async function updateAccount(value: string) {
     const account = accounts.find((a) => accountKey(a) === value);
@@ -327,8 +361,13 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
       const created = await client.createSession({
         repo: needsRepo ? repo.trim() : "",
         projectName: agentName.trim(),
-        workspaceName: needsRepo ? workspaceNameFromRepo(repo.trim()) : T3_CODE_PROJECTS_DIR,
+        workspaceName: needsRepo
+          ? workspaceNameFromRepo(repo.trim())
+          : nibblets
+            ? NIBBLETS_DIR
+            : T3_CODE_PROJECTS_DIR,
         settings,
+        ...(linkNibblets ? { nibbletsLink: { scopes: [...linkScopes] } } : {}),
       });
       if (sessionHasVm(created)) {
         setSessions((prev) => [created, ...prev]);
@@ -363,9 +402,10 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     // failed setup can be retried through the same path.
     if (session.status !== "up" && !sessionSetupFailed(session)) return;
     const t3Code = isT3CodeSurface(session.surface);
+    const nibbletsServer = isNibbletsSurface(session.surface);
     setOpeningSessionId(session.id);
     setMessage(
-      t3Code
+      t3Code || nibbletsServer
         ? gt("Opening the setup terminal for {name}...", { name: session.projectName })
         : gt("Opening {name}... preparing SSH session.", { name: session.projectName }),
     );
@@ -376,12 +416,14 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
       await openAgentSshTerminalTab({
         client,
         session,
-        title: t3Code
-          ? gt("T3 Code setup · {name}", { name: session.projectName })
-          : gt("{tool} · {name}", {
-              tool: toolCommandLabel(session.tool),
-              name: session.projectName,
-            }),
+        title: nibbletsServer
+          ? gt("Nibblets sign-in · {name}", { name: session.projectName })
+          : t3Code
+            ? gt("T3 Code setup · {name}", { name: session.projectName })
+            : gt("{tool} · {name}", {
+                tool: toolCommandLabel(session.tool),
+                name: session.projectName,
+              }),
         ...(openWorkspaceTarget ? { openWorkspaceTarget } : {}),
       });
       const nextSessions = await client.listSessions().catch(() => null);
@@ -408,10 +450,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   async function deleteSession(session: AgentSession) {
     if (deletingSessionId) return;
     const confirmed = window.confirm(
-      gt(
-        'Delete agent "{name}"? This destroys its VM and any work on it that hasn\'t been reconciled.',
-        { name: session.projectName },
-      ),
+      session.agentLinkId
+        ? gt(
+            'Delete "{name}"? This destroys its VM and revokes its link to this organization, with every agent it made.',
+            { name: session.projectName },
+          )
+        : gt(
+            'Delete agent "{name}"? This destroys its VM and any work on it that hasn\'t been reconciled.',
+            { name: session.projectName },
+          ),
     );
     if (!confirmed) return;
     setDeletingSessionId(session.id);
@@ -479,13 +526,17 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                       value={selectedAccount ? accountKey(selectedAccount) : ""}
                       onChange={(value) => void updateAccount(value)}
                     />
-                    <FieldRenderer
-                      field={toolField}
-                      value={settings?.tool ?? "codex"}
-                      onChange={(value) =>
-                        settings && setSettings({ ...settings, tool: value as AgentTool })
-                      }
-                    />
+                    {/* Nibblets signs agent CLIs in from its own installer menu,
+                        so the tool would map to nothing on that surface. */}
+                    {agentSurfaceUsesTool(selectedSurface) && (
+                      <FieldRenderer
+                        field={toolField}
+                        value={settings?.tool ?? "codex"}
+                        onChange={(value) =>
+                          settings && setSettings({ ...settings, tool: value as AgentTool })
+                        }
+                      />
+                    )}
                     <FieldRenderer
                       field={surfaceField}
                       value={selectedSurface}
@@ -501,6 +552,13 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           authorization over SSH, then you work from T3 Code and add projects there.
                         </p>
                       </T>
+                    )}
+                    {nibblets && (
+                      <p className="text-xs text-on-surface-muted">
+                        {gt(
+                          "Nibblets runs as a server on the VM and hosts your nibblets. Authorize server signs in their agents and links Nibblets Connect, where you then use it.",
+                        )}
+                      </p>
                     )}
                     {serviceAccounts.length > 0 && (
                       <div>
@@ -590,13 +648,29 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                   />
                   <button
                     type="button"
-                    disabled={busy || !settings || !agentName.trim() || (needsRepo && !repo.trim())}
+                    disabled={
+                      busy ||
+                      !settings ||
+                      !agentName.trim() ||
+                      (needsRepo && !repo.trim()) ||
+                      (linkNibblets && linkScopes.size === 0)
+                    }
                     onClick={() => void createSession()}
                     className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
                   >
                     {gt("Create")}
                   </button>
                 </div>
+                {nibblets && (
+                  <NibbletsLinkOption
+                    linkableScopes={linkableScopes}
+                    enabled={linkToOrg}
+                    onEnabledChange={setLinkToOrg}
+                    scopes={linkScopes}
+                    onScopesChange={setLinkScopes}
+                    disabled={busy}
+                  />
+                )}
                 {/* A T3 Code server has no Infrawrench-managed checkout, so
                     the repository controls don't apply to it. Left out of the
                     tree rather than hidden with CSS: a hidden-but-focusable
@@ -743,7 +817,20 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               {statusLabel(session.status, gt, gtData)}
                             </span>
                           </div>
-                          {isT3CodeSurface(session.surface) ? (
+                          {isNibbletsSurface(session.surface) ? (
+                            <NibbletsSessionDetails
+                              session={session}
+                              {...(openWorkspaceTarget
+                                ? {
+                                    onOpenLink: () =>
+                                      openWorkspaceTarget(
+                                        settingsTabTarget("agents"),
+                                        gt("Agent Credentials"),
+                                      ),
+                                  }
+                                : {})}
+                            />
+                          ) : isT3CodeSurface(session.surface) ? (
                             <T>
                               <div className="mt-1 text-xs text-on-surface-muted">
                                 T3 Code server driving <Var>{toolLabel(session.tool)}</Var> ·
@@ -789,15 +876,18 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               onClick={() => void openSession(session)}
                               aria-busy={openingSessionId === session.id}
                               title={
-                                isT3CodeSurface(session.surface)
-                                  ? gt("Run the T3 Connect and provider sign-in steps over SSH")
-                                  : undefined
+                                isNibbletsSurface(session.surface)
+                                  ? gt("Sign in to agents and link Nibblets Connect over SSH")
+                                  : isT3CodeSurface(session.surface)
+                                    ? gt("Run the T3 Connect and provider sign-in steps over SSH")
+                                    : undefined
                               }
                               className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
                             >
                               {openingSessionId === session.id
                                 ? gt("Opening...")
-                                : isT3CodeSurface(session.surface)
+                                : isT3CodeSurface(session.surface) ||
+                                    isNibbletsSurface(session.surface)
                                   ? gt("Authorize server")
                                   : gt("Open")}
                             </button>
@@ -818,15 +908,16 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           {/* Reconcile pushes the session branch back; a T3
                               Code server has no Infrawrench-managed checkout
                               to reconcile. */}
-                          {!sessionIsSettingUp(session) && !isT3CodeSurface(session.surface) && (
-                            <button
-                              type="button"
-                              onClick={() => void reconcileSession(session.id)}
-                              className="px-2 py-1 rounded border border-border text-xs"
-                            >
-                              {gt("Reconcile")}
-                            </button>
-                          )}
+                          {!sessionIsSettingUp(session) &&
+                            agentSurfaceRequiresRepo(session.surface) && (
+                              <button
+                                type="button"
+                                onClick={() => void reconcileSession(session.id)}
+                                className="px-2 py-1 rounded border border-border text-xs"
+                              >
+                                {gt("Reconcile")}
+                              </button>
+                            )}
                           <button
                             type="button"
                             disabled={!!deletingSessionId}

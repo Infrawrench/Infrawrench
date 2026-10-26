@@ -105,6 +105,8 @@ The cost, budget, workflow, deployment, and SSH-key tools enforce the same [role
 
 Every mutating tool call (`create_resource`, `delete_resource`, `invoke_action`, `apply_manifest`, the budget tools, the workflow tools, `plan_deployment` and `rollback_deployment`, the per-plugin create tools) writes a row to the [audit log](../team-and-billing/audit-log.md) with `source: "mcp"`. You can filter the audit log by source to see exactly what the model has done in your org.
 
+Agent credentials (`iwa_`) are held to their permissions on every tool, and an agent is only shown the tools it can use. An agent made by a [connected platform](./agent-links.md) may also be limited to some providers; its calls must then name a provider (a plugin, account or resource) it is allowed.
+
 There is no destructive-action confirmation step inside the protocol — that responsibility lives in the client. Claude Desktop and Cursor surface a permission prompt before each tool call by default; we recommend leaving those prompts on for the mutating tools at a minimum.
 
 `write_workflow_secret` is deliberately metadata-only over MCP: its schema has no value argument, so a password cannot leak into model context or client logs. It creates or updates the named slot; set its value through Infrawrench's workflow editor or secure in-chat password prompt, then use the returned id with `write_workflow`.

@@ -692,7 +692,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       // Central permission gate. Runs BEFORE the destructive-approval branch so
       // the user is never prompted to approve an action the caller isn't
       // allowed to take in the first place.
-      const denied = await authorizeToolCall(tool, auth);
+      const denied = await authorizeToolCall(tool, auth, tu.input as Record<string, unknown>);
       if (denied) {
         const text = denied.content.map((c) => c.text).join("\n");
         autoBlocks.push({
@@ -883,7 +883,11 @@ export async function executePendingAction(
     let result: ToolResult;
     // Re-checked at execution time, not just when the action was queued: the
     // caller's role may have been downgraded while the approval sat pending.
-    const denied = await authorizeToolCall(tool, auth);
+    const denied = await authorizeToolCall(
+      tool,
+      auth,
+      pending.toolInput as Record<string, unknown>,
+    );
     if (denied) {
       result = { content: denied.content, isError: true };
     } else {

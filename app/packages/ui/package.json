@@ -29,6 +29,11 @@
       "import": "./dist/agents/t3-code.js",
       "require": "./dist/agents/t3-code.cjs"
     },
+    "./agents/nibblets": {
+      "types": "./dist/agents/nibblets.d.ts",
+      "import": "./dist/agents/nibblets.js",
+      "require": "./dist/agents/nibblets.cjs"
+    },
     "./cost": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

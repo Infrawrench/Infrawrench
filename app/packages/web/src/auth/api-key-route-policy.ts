@@ -189,6 +189,13 @@ export const AGENT_DENY_RULES: readonly DenyRule[] = [
     reason: "Agents cannot revoke agent registrations. Revoke them from Settings → Agents.",
   },
   {
+    // Same reasoning one level further up: revoking a platform link revokes
+    // every agent it made, including the one asking.
+    prefix: "/agent-links",
+    methods: MUTATING,
+    reason: "Agents cannot revoke platform links. Revoke them from Settings → Agents.",
+  },
+  {
     // Inviting people is a person's act, and an agent doing it sends mail from
     // our domain to an address it chose. Unclaimed agents do not hold
     // `team:invite` at all (see `trials/principal.ts`); this closes the same

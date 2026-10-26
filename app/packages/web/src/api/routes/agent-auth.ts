@@ -50,13 +50,13 @@ const app = new Hono();
  * fresh per-IP allowance. A value that is not an IP counts as "unknown", and
  * unknown callers are governed by the global hourly ceiling instead.
  */
-function clientIp(header: string | undefined): string | null {
+export function clientIp(header: string | undefined): string | null {
   const first = header?.split(",")[0]?.trim();
   if (!first) return null;
   return isIP(first) !== 0 ? first : null;
 }
 
-function publicBaseUrl(reqUrl: string, forwardedProto?: string): string {
+export function publicBaseUrl(reqUrl: string, forwardedProto?: string): string {
   const fromEnv = process.env["PUBLIC_BASE_URL"] ?? process.env["APP_URL"];
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   const u = new URL(reqUrl);

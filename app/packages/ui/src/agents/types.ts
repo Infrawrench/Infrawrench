@@ -13,8 +13,12 @@ export type AgentTool = "codex" | "claude-code";
  *   app. T3 Code is a control surface, not an agent: it ships no model access
  *   of its own and still needs `codex` or `claude` installed and signed in
  *   next to it, which is why `tool` still applies. See `t3-code.ts`.
+ * - `nibblets`: a Nibblets server (https://github.com/Infrawrench/nibblets),
+ *   a host for long-running agents. Its installer sets everything up and signs
+ *   agent CLIs in itself, so `tool` does not apply; optionally it starts
+ *   linked to the organization through an agent link. See `nibblets.ts`.
  */
-export type AgentSurface = "terminal" | "t3-code";
+export type AgentSurface = "terminal" | "t3-code" | "nibblets";
 
 /**
  * How a T3 Code server is reached. `t3-connect` (the default) links it to
@@ -138,6 +142,11 @@ export interface AgentSession {
   t3Access?: T3CodeAccess;
   /** Services installed on the VM so far, in attach order. */
   serviceInstalls?: AgentServiceInstall[];
+  /**
+   * Nibblets sessions only: the agent link Infrawrench minted so the server
+   * starts linked to the organization. Revoked when the session is deleted.
+   */
+  agentLinkId?: string | null;
   branchName: string;
   status: AgentStatus;
   vmResourceId?: string | null;
@@ -195,6 +204,11 @@ export interface AgentCreateBody {
   projectName?: string;
   workspaceName?: string;
   settings: AgentSettings;
+  /**
+   * Nibblets sessions only: link the server to this organization, with an
+   * agent link approved by the caller up to `scopes`. Needs `team:invite`.
+   */
+  nibbletsLink?: { scopes: string[] };
 }
 
 export interface AgentClient {
@@ -215,6 +229,13 @@ export interface AgentClient {
   reconcileSession(id: string): Promise<{ branchName: string; message: string }>;
   /** Delete the session and destroy its VM (if it still exists). */
   deleteSession(id: string): Promise<void>;
+  /**
+   * The permissions the caller could give a Nibblets session's agent link
+   * (their own, minus what no agent may hold), or `null` when they cannot
+   * approve links here. Absent where agent links do not exist (the desktop's
+   * local agents, which belong to no organization).
+   */
+  listLinkableScopes?(): Promise<string[] | null>;
 }
 
 /**

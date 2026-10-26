@@ -25,8 +25,10 @@ interface AgentSession {
   projectName: string;
   workspaceName: string;
   tool: string;
-  /** "terminal" (the tool's CLI in a terminal) or "t3-code". */
+  /** "terminal" (the tool's CLI in a terminal), "t3-code" or "nibblets". */
   surface?: string;
+  /** Nibblets only: the agent link that ties the server to this org. */
+  agentLinkId?: string | null;
   /** T3 Code only: "t3-connect" or "tailscale". */
   t3Access?: string;
   /** Services installed on the VM (e.g. Tailscale) and their addresses. */
@@ -54,7 +56,7 @@ function toolLabel(tool: string): string {
 }
 
 /**
- * A T3 Code server has no Infrawrench-managed checkout, so its branch name is
+ * A T3 Code or Nibblets server has no Infrawrench-managed checkout, so its branch name is
  * a placeholder: showing it would read as a branch the user can go find.
  */
 function sessionSubtitle(session: AgentSession): string {
@@ -64,6 +66,10 @@ function sessionSubtitle(session: AgentSession): string {
     .filter(Boolean)
     .join(", ");
   const network = addresses ? ` · ${addresses}` : "";
+  if (session.surface === "nibblets") {
+    const linked = session.agentLinkId ? " · linked to this organization" : "";
+    return `Nibblets server${linked}${network} · ${created}`;
+  }
   if (session.surface === "t3-code") {
     const access = session.t3Access === "tailscale" ? " over Tailscale" : "";
     return `T3 Code + ${toolLabel(session.tool)}${access}${network} · ${created}`;

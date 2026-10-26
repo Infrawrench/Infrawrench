@@ -290,6 +290,40 @@ export interface AgentRegistration {
   lastSeenAt: string | null;
   revokedAt: string | null;
   createdAt: string;
+  /** The platform link that made this agent (`kind: "platform"`), else null. */
+  linkId: string | null;
+  /** The platform's own id for the agent (a Nibblets nibblet id). */
+  externalId: string | null;
+  /** Platform agents: the scopes granted, before provider narrowing. */
+  scopes: string[] | null;
+  /** Platform agents: plugin ids the scopes are narrowed to; empty means all. */
+  providers: string[] | null;
+}
+
+/**
+ * A platform linked to the organization (Nibblets, ...), as
+ * `GET /api/org/:orgId/agent-links` returns it for Settings → Agents.
+ */
+export interface AgentLinkSummary {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  platform: string;
+  label: string;
+  /** The ceiling as approved. */
+  scopes: string[];
+  /** The ceiling now: approved ∩ the approver's current role − agent denials. */
+  effectiveScopes: string[];
+  /** The part of the ceiling `providers` can limit; with providers, only these. */
+  narrowableScopes: string[];
+  scopeGroups: Array<{ title: string; scopes: Array<{ value: string; label: string }> }>;
+  /** Plugins the org has a connected account for. */
+  providers: Array<{ id: string; displayName: string }>;
+  approvedBy: { email: string } | null;
+  createdAt: string;
+  credentialPrefix: string | null;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
 }
 
 /**

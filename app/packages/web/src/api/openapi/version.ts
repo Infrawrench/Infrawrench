@@ -358,4 +358,16 @@
 //   `savings_view`, `resource_report` and `network_flow_report`, and new
 //   workspace `TabTarget` members `k8s-efficiency` and `resource-reports`.
 // All additive apart from the widget span bound.
-export const API_VERSION = "1.82.0";
+// 1.83.0: agent links. The device flow at `/api/agent-links/requests`
+// (`/token`, `/lookup`, `/approve`, `/deny`), the link-authenticated
+// `/api/agent-link` tree (`/agents`, `/agents/{id}`, `/agents/{id}/rotate`)
+// under a new `agentLinkCredential` security scheme, `GET|DELETE
+// /agent-links[/{id}]` and `PATCH /agent-registrations/{id}` on the org tree,
+// and `platform` plus `linkId`/`externalId`/`scopes`/`providers` on
+// AgentRegistration. All additive.
+// 1.84.0: Nibblets agent sessions. `nibblets` on the agent Surface enum,
+// `agentLinkId` on AgentSession, `nibbletsLink` on CreateAgentSession, and
+// `GET /agents/link-scopes`; and `narrowableScopes` on AgentLinkInfo (an
+// agent given `providers` may now hold only resource, secret and storage
+// scopes). All additive apart from that last refusal.
+export const API_VERSION = "1.84.0";

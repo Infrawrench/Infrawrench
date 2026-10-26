@@ -3,7 +3,7 @@ import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import { z, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
-import { authorizeToolCall, runToolHandler } from "../tools/permissions";
+import { authorizeToolCall, runToolHandler, toolUsableWith } from "../tools/permissions";
 import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import type { ToolAuthContext } from "../tools/types";
@@ -137,10 +137,11 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     },
   );
 
-  // Agent-only, and registered only for agents: a human's MCP client has no
-  // trial and no ceremony to run, so offering the tool would be noise on every
-  // ordinary connection.
-  if (auth.agent) {
+  // Trial-agent-only, and registered only for them: a human's MCP client has
+  // no trial and no ceremony to run, and neither does a platform agent made
+  // through an agent link (it is claimed from birth and lives in a real org),
+  // so offering the tool there would be noise.
+  if (auth.agent && !auth.agent.linkId) {
     const agent = auth.agent;
     server.registerTool(
       "trial_workspace_status",
@@ -178,6 +179,12 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
 
   const tools = await getToolRegistry();
   for (const tool of tools) {
+    // An agent's permissions are final and known now, so a tool it can never
+    // call is not offered at all. Listing is a convenience, not the gate: the
+    // call below is still authorized, per call, against permissions re-read
+    // then. People see every tool, as before: their `org_id` can move a call
+    // into an org where they hold more.
+    if (auth.agent && !toolUsableWith(tool, auth.agent.permissions)) continue;
     server.registerTool(
       tool.name,
       {
@@ -201,7 +208,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
         // Central permission gate: MCP clients reach these handlers without
         // passing through the HTTP `requirePermission` middleware, so the
         // tool's declared permission is enforced here instead.
-        const denied = await authorizeToolCall(tool, callAuth);
+        const denied = await authorizeToolCall(tool, callAuth, rest);
         if (denied) return { content: denied.content, isError: true };
 
         const result = await runToolHandler(tool, rest, callAuth);
