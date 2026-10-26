@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 824 824" width="824" height="824">
+  <!-- The Nibblets icon: a hamster at work. One scene in three framings: the desktop app's
+       tile (apps/desktop/assets), the favicon (cropped to the tile), and the PWA icon
+       (full bleed, scene inside the maskable safe zone). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#DCEBFA"/>
+      <stop offset="1" stop-color="#A9CBEE"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3F5F8"/>
+      <stop offset="1" stop-color="#D3DBE4"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <!-- The hamster, at work behind its laptop. -->
+    <g transform="translate(212 96) scale(6)">
+      <circle cx="30" cy="35" r="10" fill="#E9A95E" stroke="#C2803A" stroke-width="2.2"/>
+      <circle cx="70" cy="35" r="10" fill="#E9A95E" stroke="#C2803A" stroke-width="2.2"/>
+      <circle cx="30" cy="35.5" r="5.6" fill="#F4AFB4"/>
+      <circle cx="70" cy="35.5" r="5.6" fill="#F4AFB4"/>
+      <ellipse cx="50" cy="61" rx="33" ry="29" fill="#E9A95E" stroke="#C2803A" stroke-width="2.2"/>
+      <ellipse cx="50" cy="65" rx="12.5" ry="8.5" fill="#FFFDF8"/>
+      <circle cx="39" cy="54" r="4.4" fill="#1E1A19"/>
+      <circle cx="61" cy="54" r="4.4" fill="#1E1A19"/>
+      <circle cx="40.4" cy="52.4" r="1.4" fill="#FFFFFF"/>
+      <circle cx="62.4" cy="52.4" r="1.4" fill="#FFFFFF"/>
+      <ellipse cx="31" cy="65" rx="6" ry="3.8" fill="#E58B95" opacity=".45"/>
+      <ellipse cx="69" cy="65" rx="6" ry="3.8" fill="#E58B95" opacity=".45"/>
+      <path d="M47.2 59.4 Q50 57.8 52.8 59.4 Q51.4 62 50 62.2 Q48.6 62 47.2 59.4 Z" fill="#E58B95"/>
+    </g>
+    <!-- Paws on the keys, just over the lid. -->
+    <ellipse cx="404" cy="566" rx="34" ry="24" fill="#E9A95E" stroke="#C2803A" stroke-width="13"/>
+    <ellipse cx="620" cy="566" rx="34" ry="24" fill="#E9A95E" stroke="#C2803A" stroke-width="13"/>
+    <!-- The back of the laptop's lid, with a paw print, and its base on the desk. -->
+    <rect x="252" y="572" width="520" height="292" rx="34" fill="url(#lid)" stroke="#9AA9BA" stroke-width="12"/>
+    <g fill="#E9A95E">
+      <path d="M512 680 c-22 0 -36 22 -36 40 c0 18 16 30 36 30 c20 0 36 -12 36 -30 c0 -18 -14 -40 -36 -40 Z"/>
+      <circle cx="482" cy="660" r="11"/>
+      <circle cx="512" cy="650" r="11"/>
+      <circle cx="542" cy="660" r="11"/>
+    </g>
+    <rect x="212" y="858" width="600" height="30" rx="15" fill="#8F9EB0"/>
+  </g>
+</svg>

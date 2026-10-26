@@ -114,6 +114,17 @@ ${providers}
 
 ---
 
+## Also from Infrawrench: Nibblets
+
+Nibblets (https://nibblets.dev) are open-source, self-hosted AI agents that keep
+working between messages, each drawn as a hamster. Link a Nibblets server to an
+Infrawrench organization once, and each nibblet you switch on gets its own
+Infrawrench agent and credential, with only the scopes and providers you tick.
+Its actions show under its own name in the audit log, and it can never do more
+than the person who linked it.
+
+---
+
 ## Getting started
 
 - **Web** — ${app}
