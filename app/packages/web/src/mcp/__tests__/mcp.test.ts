@@ -170,6 +170,7 @@ describe("authenticateMcpRequest", () => {
       userId: "agent_reg-1",
       claimedByUserId: null,
       claimed: false,
+      linkId: null,
       permissions: ["resources:read"],
       trialExpiresInMs: 60_000,
     });
@@ -181,6 +182,7 @@ describe("authenticateMcpRequest", () => {
       agent: {
         registrationId: "reg-1",
         claimed: false,
+        linkId: null,
         permissions: ["resources:read"],
         trialExpiresInMs: 60_000,
       },
