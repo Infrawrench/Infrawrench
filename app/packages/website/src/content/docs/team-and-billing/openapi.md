@@ -54,6 +54,8 @@ curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
+Linked platforms authenticate the `/api/agent-link` routes with a link credential (`iwl_`), described as the **`agentLinkCredential`** scheme; it reaches nothing but the link and the agents it made. The device flow that hands it out, `POST /api/agent-links/requests` and `POST /api/agent-links/requests/token`, takes no authentication and is rate limited per source address. See [agent links](../features/agent-links.md).
+
 The three `/api/agent/*` registration routes are the exception to all of this: `POST /api/agent/identity` takes no authentication at all, because it is how a client with no credentials gets one. It is rate limited per source address instead. See [agent authentication](../features/agent-auth.md).
 
 The server also accepts the `wos-session` cookie — that's how the web UI authenticates — but the only way to get one is the browser sign-in redirect, which is [internal](#internal-routes). It's left out of the published spec so generated snippets and Scalar's "try it" panel default to bearer auth.
