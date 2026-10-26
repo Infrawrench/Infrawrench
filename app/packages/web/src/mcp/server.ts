@@ -8,6 +8,7 @@ import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import type { ToolAuthContext } from "../tools/types";
 import type { McpAuthContext } from "./auth";
+import { registerMcpViews, toolViewMeta } from "./app-views";
 
 const SERVER_NAME = "infrawrench";
 const SERVER_VERSION = "0.1.0";
@@ -177,6 +178,9 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     );
   }
 
+  // MCP Apps views for the tools that have one (see ./app-views).
+  registerMcpViews(server);
+
   const tools = await getToolRegistry();
   for (const tool of tools) {
     // An agent's permissions are final and known now, so a tool it can never
@@ -185,12 +189,14 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     // then. People see every tool, as before: their `org_id` can move a call
     // into an org where they hold more.
     if (auth.agent && !toolUsableWith(tool, auth.agent.permissions)) continue;
+    const viewMeta = toolViewMeta(tool.name);
     server.registerTool(
       tool.name,
       {
         title: tool.title,
         description: tool.description,
         inputSchema: toInputSchema({ ...tool.inputSchema, org_id: ORG_ID_PARAM }),
+        ...(viewMeta ? { _meta: viewMeta } : {}),
       },
       async (input) => {
         const { org_id: orgId, ...rest } = input as Record<string, unknown>;

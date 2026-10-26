@@ -169,4 +169,20 @@ describe("MCP server org scoping", () => {
     );
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("names a tool's MCP Apps view, and serves it", async () => {
+    const client = await connect();
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === "list_resources")?._meta).toEqual({
+      ui: { resourceUri: "ui://infrawrench/resources.html" },
+    });
+    expect(tools.find((t) => t.name === "list_organizations")?._meta).toBeUndefined();
+
+    const { contents } = await client.readResource({ uri: "ui://infrawrench/resources.html" });
+    expect(contents[0]).toMatchObject({
+      uri: "ui://infrawrench/resources.html",
+      mimeType: "text/html;profile=mcp-app",
+    });
+    expect("text" in contents[0]! && contents[0].text).toContain("<!doctype html>");
+  });
 });
