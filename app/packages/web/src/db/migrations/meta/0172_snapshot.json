@@ -524,6 +524,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "agent_link_requests_created_idx": {
+          "name": "agent_link_requests_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_link_requests_expires_idx": {
+          "name": "agent_link_requests_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -22457,6 +22487,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "agent_link_id": {
+          "name": "agent_link_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "branch_name": {
           "name": "branch_name",

@@ -45,4 +45,7 @@ CREATE INDEX "agent_link_requests_ip_created_idx" ON "agent_link_requests" USING
 CREATE INDEX "agent_links_org_idx" ON "agent_links" USING btree ("organization_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "agent_links_credential_unique" ON "agent_links" USING btree ("hashed_credential");--> statement-breakpoint
 ALTER TABLE "agent_auth_registrations" ADD CONSTRAINT "agent_auth_registrations_link_id_agent_links_id_fk" FOREIGN KEY ("link_id") REFERENCES "public"."agent_links"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "agent_auth_registrations_link_external_live_unique" ON "agent_auth_registrations" USING btree ("link_id","external_id") WHERE "agent_auth_registrations"."revoked_at" is null and "agent_auth_registrations"."link_id" is not null;
+CREATE UNIQUE INDEX "agent_auth_registrations_link_external_live_unique" ON "agent_auth_registrations" USING btree ("link_id","external_id") WHERE "agent_auth_registrations"."revoked_at" is null and "agent_auth_registrations"."link_id" is not null;--> statement-breakpoint
+ALTER TABLE "agent_sessions" ADD COLUMN "agent_link_id" text;--> statement-breakpoint
+CREATE INDEX "agent_link_requests_created_idx" ON "agent_link_requests" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "agent_link_requests_expires_idx" ON "agent_link_requests" USING btree ("expires_at");
