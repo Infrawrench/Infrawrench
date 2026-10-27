@@ -49,6 +49,11 @@ function LinkAgentsPage() {
 
   const org = lookup?.organizations.find((o) => o.id === organizationId) ?? null;
   const groups = useMemo(() => agentScopeGroups(org?.grantableScopes ?? []), [org]);
+  const allScopes = useMemo(
+    () => groups.flatMap((group) => group.scopes.map((scope) => scope.value)),
+    [groups],
+  );
+  const allSelected = allScopes.length > 0 && allScopes.every((scope) => scopes.has(scope));
 
   function pickOrg(result: LookupResult, id: string) {
     setOrganizationId(id);
@@ -213,9 +218,21 @@ function LinkAgentsPage() {
             ))}
           </select>
 
-          <p className="text-xs text-on-surface-secondary mb-2">
-            {gt("The most this platform may ever grant its agents")}
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-xs text-on-surface-secondary">
+              {gt("The most this platform may ever grant its agents")}
+            </p>
+            {allScopes.length > 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setScopes(allSelected ? new Set() : new Set(allScopes))}
+                className="text-xs text-accent hover:underline whitespace-nowrap disabled:opacity-50"
+              >
+                {allSelected ? gt("Clear all") : gt("Select all")}
+              </button>
+            )}
+          </div>
           <div className="mb-6 max-h-80 overflow-y-auto pr-2">
             <AgentScopePicker
               groups={groups}
