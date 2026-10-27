@@ -16,12 +16,19 @@ import type { CollectionEntry } from "astro:content";
 /** `<insert Some description here>` on its own line: see CLAUDE.md. */
 const SCREENSHOT_PLACEHOLDER = /^[ \t]*<insert\b[^>]*>[ \t]*$\n?/gim;
 
+/** Drop screenshot placeholders from a markdown body, for non-browser readers. */
+export function stripScreenshotPlaceholders(markdown: string): string {
+  return (
+    markdown
+      .replace(SCREENSHOT_PLACEHOLDER, "")
+      // Collapse the blank-line pairs a removed placeholder leaves behind.
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
 export function renderDocMarkdown(entry: CollectionEntry<"docs">): string {
-  const body = (entry.body ?? "")
-    .replace(SCREENSHOT_PLACEHOLDER, "")
-    // Collapse the blank-line pairs a removed placeholder leaves behind.
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const body = stripScreenshotPlaceholders(entry.body ?? "");
 
   const lede = entry.data.description ? `\n${entry.data.description}\n` : "";
   return `# ${entry.data.title}\n${lede}\n${body}\n`;

@@ -1,0 +1,63 @@
+---
+import { render } from "astro:content";
+import BlogLayout from "../../layouts/BlogLayout.astro";
+import {
+  blogPostMarkdownPath,
+  formatPostDate,
+  getBlogPost,
+  isoPostDate,
+} from "../../lib/blog";
+
+// On demand so middleware can negotiate; see src/middleware.ts. An unknown
+// slug (or a draft in production) is turned away here with an inline 404, for
+// the same reasons the docs route gives.
+export const prerender = false;
+
+const { slug } = Astro.params;
+const post = slug ? await getBlogPost(slug) : undefined;
+
+if (!post) {
+  Astro.response.status = 404;
+}
+
+const Content = post ? (await render(post)).Content : null;
+---
+
+{
+  !post && (
+    <BlogLayout title="Post not found" noindex>
+      <header class="docs-article-header">
+        <h1 class="docs-article-title">Post not found</h1>
+        <p class="docs-article-lede">
+          There's no blog post at this address. See <a class="blog-inline-link" href="/blog">all posts</a>.
+        </p>
+      </header>
+    </BlogLayout>
+  )
+}
+
+{post && Content && (
+<BlogLayout
+  title={post.data.title}
+  description={post.data.description}
+  markdownHref={blogPostMarkdownPath(post.id)}
+  publishedAt={post.data.date}
+>
+  <article>
+    <a class="blog-back" href="/blog">← All posts</a>
+    <header class="docs-article-header">
+      <p class="blog-post-meta">
+        <time datetime={isoPostDate(post.data.date)}>{formatPostDate(post.data.date)}</time>
+        {post.data.author && <span> · {post.data.author}</span>}
+        {post.data.draft && <span class="badge badge-gray blog-draft-badge">Draft</span>}
+      </p>
+      <h1 class="docs-article-title">{post.data.title}</h1>
+      <p class="docs-article-lede">{post.data.description}</p>
+    </header>
+
+    <div class="docs-prose">
+      <Content />
+    </div>
+  </article>
+</BlogLayout>
+)}
