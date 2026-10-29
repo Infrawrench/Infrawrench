@@ -1,0 +1,26 @@
+// instances-bundles.infrawrench.com: authenticated, cached reads of the
+// `instances-bundles` R2 bucket. See src/index.ts for the request flow and
+// README.md for deploying.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-instances-bundles",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-31",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+  },
+  "routes": [{ "pattern": "instances-bundles.infrawrench.com", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "BUNDLES", "bucket_name": "instances-bundles" }],
+  // The web Worker answers `GET /api/v1/whoami`; a service binding reaches it
+  // without leaving Cloudflare (a same-zone `fetch` would not run it).
+  "services": [{ "binding": "API", "service": "infrawrench-web" }],
+  // Workers Caching. The default export authenticates every request, so the
+  // cache must not sit in front of it; `Bundles` reads R2 and is what gets
+  // cached. Flip these and anyone could read a cached object without a key.
+  "cache": { "enabled": true },
+  "exports": {
+    "default": { "type": "worker", "cache": { "enabled": false } },
+    "Bundles": { "type": "worker", "cache": { "enabled": true } },
+  },
+}

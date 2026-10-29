@@ -370,4 +370,7 @@
 // `GET /agents/link-scopes`; and `narrowableScopes` on AgentLinkInfo (an
 // agent given `providers` may now hold only resource, secret and storage
 // scopes). All additive apart from that last refusal.
-export const API_VERSION = "1.84.0";
+// 1.85.0: `GET /api/v1/whoami`, which identifies any bearer credential (API
+// key, agent credential or WorkOS token) without an org in the path or a
+// scope. Additive.
+export const API_VERSION = "1.85.0";

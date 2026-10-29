@@ -14,6 +14,20 @@ const OrgMembership = strict({
   role: Role,
 }).openapi("OrgMembership");
 
+const Whoami = strict({
+  userId: z.string().openapi({
+    description:
+      "The user the credential acts as. For an agent this is the agent's own user, not the person who claimed it.",
+  }),
+  organizationId: Uuid.openapi({
+    description: "The organization the credential is pinned to.",
+  }),
+  principal: z.enum(["user", "api_key", "agent"]).openapi({
+    description:
+      "`user` for a person's WorkOS access token, `api_key` for an `iwk_` key, `agent` for an agent credential or agent token.",
+  }),
+}).openapi("Whoami");
+
 export function registerAuthPaths(ctx: BuildContext) {
   const { registry } = ctx;
 
@@ -75,6 +89,23 @@ export function registerAuthPaths(ctx: BuildContext) {
     summary: "Current session + onboarding status",
     responses: {
       200: { description: "Session", content: { "application/json": { schema: SessionResponse } } },
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/v1/whoami",
+    tags: ["Auth"],
+    summary: "Identify a bearer credential",
+    description:
+      "Reports who an `Authorization: Bearer` credential belongs to: an API key, an agent " +
+      "credential, or a WorkOS access token. Needs no scope; a 401 means the credential is " +
+      "unknown, revoked, expired or no longer backed by an organization membership. Use it to " +
+      "check a key before relying on it, or to gate a service of your own on Infrawrench sign-in.",
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: { description: "Credential owner", content: { "application/json": { schema: Whoami } } },
       401: ErrorResponses[401],
     },
   });

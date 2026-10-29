@@ -54,6 +54,13 @@ curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
+To check a credential, or to find out whose it is, call `GET /api/v1/whoami`. It accepts every one of the three, needs no scope and no organization in the path, and answers with `userId`, `organizationId` and `principal` (`user`, `api_key` or `agent`); a `401` means the credential is unknown, revoked, expired or its owner has left the organization.
+
+```sh
+curl https://app.infrawrench.com/api/v1/whoami \
+  -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
+```
+
 Linked platforms authenticate the `/api/agent-link` routes with a link credential (`iwl_`), described as the **`agentLinkCredential`** scheme; it reaches nothing but the link and the agents it made. The device flow that hands it out, `POST /api/agent-links/requests` and `POST /api/agent-links/requests/token`, takes no authentication and is rate limited per source address. See [agent links](../features/agent-links.md).
 
 The three `/api/agent/*` registration routes are the exception to all of this: `POST /api/agent/identity` takes no authentication at all, because it is how a client with no credentials gets one. It is rate limited per source address instead. See [agent authentication](../features/agent-auth.md).

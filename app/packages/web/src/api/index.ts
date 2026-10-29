@@ -195,6 +195,7 @@ import { alertEmailPublicRoutes, alertEmailRoutes } from "./routes/alert-email";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
+import { whoamiRoutes } from "./routes/whoami";
 import { chatRoutes } from "./routes/chat";
 
 import { wellKnownRoutes } from "../mcp/well-known";
@@ -347,6 +348,9 @@ api.get("/api/auth/sign-in", async (c) => {
 });
 
 api.route("/api/v1/sync", syncRoutes);
+// Bearer-only identity check, outside the org tree so a key needs no org in the
+// path; the instances-bundles Worker gates its downloads on it.
+api.route("/api/v1/whoami", whoamiRoutes);
 
 // Chat handles its own auth so it can serve both session-cookie UI clients
 // and `iwk_` API-key holders with the `chat:write` scope.
