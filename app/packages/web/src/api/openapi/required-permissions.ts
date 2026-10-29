@@ -967,6 +967,8 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /v1/sync/pull": "resources:read",
   "POST /v1/sync/push": "resources:write",
   "GET /v1/sync/status": "resources:read",
+  // identity check for any bearer credential; reveals only its own owner
+  "GET /v1/whoami": null,
   // push (device routes are user-scoped; preference/test routes are
   // membership-only self-service: no permission beyond org membership)
   "POST /push/devices": null,
