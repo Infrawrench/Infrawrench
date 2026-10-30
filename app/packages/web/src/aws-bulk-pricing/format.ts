@@ -13,8 +13,10 @@
  * terms it refers to, renumbered to match, then the instance's row. KV holds it
  * gzipped.
  *
- * KV keys: `platform:<platform>` is what was last synced (a {@link PlatformState})
- * and `instance:<platform>:<name>` is one instance.
+ * KV keys: `platform:<platform>` is what was last synced (a {@link PlatformState}),
+ * `instance:<platform>:<name>` is one instance, and `catalog` is every
+ * platform's instance names in one small value (a {@link Catalog}), for
+ * listing pages that would otherwise read every platform's state.
  */
 
 /** Platform name (as in the bundler's `publish-<platform>.sh`) to AWS offer code. */
@@ -49,6 +51,7 @@ export function bucketPrefix(platform: string): string {
 
 export const platformKey = (platform: string) => `platform:${platform}`;
 export const instanceKey = (platform: string, name: string) => `instance:${platform}:${name}`;
+export const CATALOG_KEY = "catalog";
 
 /** What `platform:<platform>` holds. */
 export interface PlatformState {
@@ -64,6 +67,36 @@ export interface PlatformState {
   synced: number;
   /** Instance name to a hash of its value, so a sync rewrites only what changed. */
   instances: Record<string, string>;
+}
+
+/**
+ * What `catalog` holds, rebuilt from the platform states at the end of every
+ * sync and written only when it changes. instances.infrawrench.com's index and
+ * listing pages read it instead of twelve states (EC2's alone carries a hash
+ * per instance and every snapshot).
+ */
+export interface Catalog {
+  /** When it was last written, in Unix milliseconds. */
+  synced: number;
+  platforms: Record<string, CatalogPlatform>;
+}
+
+export interface CatalogPlatform {
+  /** The bundle version the names come from. */
+  version: string;
+  /** Unix seconds of the newest price list in that bundle, or null if it has none. */
+  asOf: number | null;
+  /** Every instance name, sorted; includes instances AWS no longer lists. */
+  instances: string[];
+}
+
+/** The catalog entry for one platform's state. */
+export function catalogPlatform(state: PlatformState): CatalogPlatform {
+  return {
+    version: state.version,
+    asOf: state.snapshots.at(-1) ?? null,
+    instances: Object.keys(state.instances).sort(),
+  };
 }
 
 export interface Tables {

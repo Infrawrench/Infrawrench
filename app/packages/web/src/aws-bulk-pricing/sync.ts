@@ -18,12 +18,15 @@ import xzDecompressModule from "xz-decompress";
 
 import { scanBundle } from "./bundle-stream";
 import {
+  CATALOG_KEY,
   PLATFORMS,
   bucketPrefix,
+  catalogPlatform,
   instanceKey,
   platformKey,
   readTables,
   reduceInstance,
+  type Catalog,
   type PlatformState,
   type Tables,
 } from "./format";
@@ -63,14 +66,20 @@ export async function syncAwsBulkPricing(
 ): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
   const failures: unknown[] = [];
+  // Each platform's state as it stands after this run, for the catalog.
+  const states: Record<string, PlatformState> = {};
   for (const platform of Object.keys(PLATFORMS)) {
+    let previous: PlatformState | null = null;
     try {
-      const previous = await kv.getJson<PlatformState>(platformKey(platform));
+      previous = await kv.getJson<PlatformState>(platformKey(platform));
+      if (previous) states[platform] = previous;
       const result = await syncPlatform(platform, bucket, kv, previous);
       if (!result) {
         log(`${platform}: no new bundle`);
         continue;
       }
+      const current = await kv.getJson<PlatformState>(platformKey(platform));
+      if (current) states[platform] = current;
       results.push(result);
       log(
         `${platform}: now ${result.version} (${result.written} written, ${result.deleted} deleted)`,
@@ -80,10 +89,31 @@ export async function syncAwsBulkPricing(
       failures.push(error);
     }
   }
+  // Even when a platform failed: the others' names are current, and a failed
+  // platform keeps the state (and so the names) it had.
+  await writeCatalog(kv, states, log);
   if (failures.length > 0) {
     throw new AggregateError(failures, `${failures.length} platform(s) failed to sync`);
   }
   return results;
+}
+
+/** Rebuild `catalog` from the platform states; written only when it changed. */
+async function writeCatalog(
+  kv: PricingKv,
+  states: Record<string, PlatformState>,
+  log: (line: string) => void,
+): Promise<void> {
+  const platforms = Object.fromEntries(
+    Object.entries(states).map(([platform, state]) => [platform, catalogPlatform(state)]),
+  );
+  const previous = await kv.getJson<Catalog>(CATALOG_KEY);
+  if (previous && JSON.stringify(previous.platforms) === JSON.stringify(platforms)) return;
+  const catalog: Catalog = { synced: Date.now(), platforms };
+  await kv.putMany([
+    { key: CATALOG_KEY, value: new TextEncoder().encode(JSON.stringify(catalog)) },
+  ]);
+  log(`catalog: ${Object.keys(platforms).length} platform(s)`);
 }
 
 /** Sync one platform; null when its bundle has not moved, or there is none yet. */

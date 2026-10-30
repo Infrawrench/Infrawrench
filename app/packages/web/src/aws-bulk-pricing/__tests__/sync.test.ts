@@ -3,7 +3,14 @@ import { gunzipSync } from "node:zlib";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { instanceKey, platformKey, type InstanceValue, type PlatformState } from "../format";
+import {
+  CATALOG_KEY,
+  instanceKey,
+  platformKey,
+  type Catalog,
+  type InstanceValue,
+  type PlatformState,
+} from "../format";
 import { KvRest, type KvPair } from "../kv-rest";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
 import { RDS_BUNDLE } from "./fixtures/bundles";
@@ -107,9 +114,42 @@ describe("syncAwsBulkPricing", () => {
       platformKey("ec2"),
       instanceKey("rds", 'db.t2."odd"'),
       platformKey("rds"),
+      CATALOG_KEY,
     ]);
     // Platforms with nothing in the bucket yet are skipped, not failed.
     expect(kv.store.has(platformKey("sagemaker"))).toBe(false);
+  });
+
+  it("writes a catalog of every platform's instance names", async () => {
+    const kv = fakeKv();
+    await syncAwsBulkPricing(fakeBucket(BUCKET), kv, quiet);
+    const catalog = JSON.parse(
+      new TextDecoder().decode(kv.store.get(CATALOG_KEY)!.value),
+    ) as Catalog;
+    expect(catalog.platforms).toEqual({
+      ec2: {
+        version: "1790000000",
+        asOf: state(kv, "ec2").snapshots.at(-1) ?? null,
+        instances: ["m5.large"],
+      },
+      rds: {
+        version: "1791000000",
+        asOf: RDS_BUNDLE.snapshots.at(-1),
+        instances: ["db.m5.large", 'db.t2."odd"'],
+      },
+    });
+  });
+
+  it("keeps a failed platform's names in the catalog", async () => {
+    const kv = fakeKv();
+    await syncAwsBulkPricing(fakeBucket(BUCKET), kv, quiet);
+    await expect(
+      syncAwsBulkPricing(fakeBucket({ ...BUCKET, latest: "1799999999" }), kv, quiet),
+    ).rejects.toThrow(AggregateError);
+    const catalog = JSON.parse(
+      new TextDecoder().decode(kv.store.get(CATALOG_KEY)!.value),
+    ) as Catalog;
+    expect(catalog.platforms.ec2?.instances).toEqual(["m5.large"]);
   });
 
   it("reads only `latest` when nothing has moved", async () => {
