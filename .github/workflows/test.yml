@@ -113,11 +113,13 @@ jobs:
 
       # Gate: every user-facing string is marked for translation or carries an
       # `i18n-ignore: <reason>` marker. Fails on unmarked strings, reasonless
-      # markers, and stale markers.
+      # markers, and stale markers. Covers ui, web, desktop and the instances
+      # site (app/packages/instances).
       - run: pnpm --filter @infrawrench/web translations:audit
 
       # Non-gating on catalog lag (missing entries just render English), but
       # fails on gt extraction errors — a broken <T> site is a real bug.
+      # Reports web, desktop and instances, each against its own catalogs.
       - run: pnpm --filter @infrawrench/web translations:status
 
   migrations:
