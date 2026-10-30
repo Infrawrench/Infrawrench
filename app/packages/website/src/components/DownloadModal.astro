@@ -101,6 +101,8 @@ import { Apple, Monitor, Copy, ChevronDown } from 'lucide-astro';
 </div>
 
 <script>
+  import { captureAnalytics } from "@infrawrench/analytics";
+
   type Arch = "arm64" | "x64";
   type Platform = "macos" | "windows" | "appimage";
   type PlatformKey =
@@ -199,7 +201,18 @@ import { Apple, Monitor, Copy, ChevronDown } from 'lucide-astro';
 
   document.querySelectorAll<HTMLAnchorElement>(".download-card-link").forEach((card) => {
     card.addEventListener("click", (e) => {
-      if (card.getAttribute("aria-disabled") === "true") e.preventDefault();
+      if (card.getAttribute("aria-disabled") === "true") {
+        e.preventDefault();
+        return;
+      }
+      const platform = card.dataset.download as Platform | undefined;
+      const arch = card.dataset.arch as Arch | undefined;
+      if (!platform || !arch || !latest?.downloads[PLATFORM_KEYS[platform][arch]]) return;
+      captureAnalytics("desktop_download_clicked", {
+        platform,
+        architecture: arch,
+        version: latest.version,
+      });
     });
 
     card.querySelectorAll<HTMLButtonElement>(".card-arch-toggle button").forEach((btn) => {
