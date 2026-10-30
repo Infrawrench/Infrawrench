@@ -20,6 +20,10 @@ const blog = defineCollection({
     description: z.string(),
     date: z.coerce.date(),
     author: z.string().optional(),
+    // `post` is news and write-ups: top of the index and in the RSS feed.
+    // `guide` is evergreen reference (tutorials, how-tos): listed under Guides
+    // below the posts, kept out of the feed so subscribers only get news.
+    kind: z.enum(["post", "guide"]).default("post"),
     // Drafts render under `astro dev` and are left out of production builds.
     draft: z.boolean().optional(),
   }),

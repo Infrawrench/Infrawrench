@@ -2,7 +2,8 @@ import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 import { appOrigin } from "../lib/markdown/home";
 import { docMarkdownPath } from "../lib/markdown/docs";
-import { blogPostMarkdownPath, getBlogPosts } from "../lib/blog";
+import { getBlogPosts } from "../lib/blog";
+import { renderBlogGuidesMarkdown, renderBlogListMarkdown } from "../lib/markdown/blog";
 
 /**
  * `/llms.txt`: the index an agent reads first.
@@ -34,7 +35,7 @@ export const GET: APIRoute = async ({ site }) => {
   const origin = site?.origin ?? "https://infrawrench.com";
   const app = appOrigin(site);
   const entries = await getCollection("docs");
-  const posts = await getBlogPosts();
+  const [posts, guides] = await Promise.all([getBlogPosts("post"), getBlogPosts("guide")]);
 
   const bySection = new Map<string, typeof entries>();
   for (const entry of entries) {
@@ -66,14 +67,7 @@ export const GET: APIRoute = async ({ site }) => {
     })
     .join("\n\n");
 
-  const blog = posts.length
-    ? posts
-        .map(
-          (p) =>
-            `- [${p.data.title}](${origin}${blogPostMarkdownPath(p.id)}): ${p.data.description}`,
-        )
-        .join("\n")
-    : "No posts yet.";
+  const blog = posts.length ? renderBlogListMarkdown(posts, origin) : "No posts yet.";
 
   const body = `# Infrawrench
 
@@ -113,7 +107,7 @@ ${docs}
 
 Newest first. Feed: ${origin}/blog/rss.xml
 
-${blog}
+${blog}${renderBlogGuidesMarkdown(guides, origin)}
 `;
 
   return new Response(body, {

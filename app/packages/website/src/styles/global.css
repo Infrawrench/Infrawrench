@@ -1717,6 +1717,11 @@ footer {
   vertical-align: middle;
 }
 
+.blog-kind-badge {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
 .blog-back {
   display: inline-block;
   margin-bottom: 28px;
@@ -1737,6 +1742,66 @@ footer {
 .blog-empty {
   color: #6b7280;
   font-size: 15px;
+}
+
+.blog-guides {
+  margin-top: 64px;
+  padding-top: 40px;
+  border-top: 1px solid #161616;
+}
+
+.blog-section-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #f3f4f6;
+  margin: 0 0 6px;
+}
+
+.blog-section-lede {
+  font-size: 14.5px;
+  color: #6b7280;
+  margin: 0 0 20px;
+}
+
+.blog-guide-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.blog-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  border: 1px solid #161616;
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.blog-guide-card:hover {
+  border-color: #2a2a2a;
+  background: #0c0c0c;
+}
+
+.blog-guide-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.blog-guide-desc {
+  font-size: 13.5px;
+  color: #9ca3af;
+  line-height: 1.5;
 }
 
 /* ── Responsive ─────────────────────────────────────────── */
@@ -1827,6 +1892,10 @@ footer {
 @media (max-width: 600px) {
   .blog-shell {
     padding: 28px 16px 64px;
+  }
+
+  .blog-guide-grid {
+    grid-template-columns: 1fr;
   }
 
   .io-grid {

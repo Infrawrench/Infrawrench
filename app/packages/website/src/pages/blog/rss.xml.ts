@@ -5,7 +5,8 @@ import { escapeXml } from "../../lib/xml";
 /**
  * `/blog/rss.xml`: RSS 2.0, hand-rolled for the same reason the sitemap is.
  * Items carry the description rather than the rendered body; a reader that
- * wants the full post follows the link.
+ * wants the full post follows the link. Guides are left out: the feed is for
+ * news, and a reference page is not something to push to subscribers.
  */
 export const prerender = true;
 
@@ -14,7 +15,7 @@ export const GET: APIRoute = async ({ site }) => {
     throw new Error("`site` must be set in astro.config.mjs to build the RSS feed");
   }
 
-  const posts = await getBlogPosts();
+  const posts = await getBlogPosts("post");
   const blogUrl = new URL("/blog", site).href;
   const feedUrl = new URL("/blog/rss.xml", site).href;
 

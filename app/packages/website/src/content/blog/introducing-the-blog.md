@@ -10,7 +10,7 @@ Infrawrench has grown a lot: dozens of provider plugins, a desktop app, a web ap
 ## What to expect
 
 - **Product news.** New features, new providers, and what changed in each release.
-- **How-tos.** Walkthroughs of workflows that span more than one doc page.
+- **Guides.** Walkthroughs of workflows that span more than one doc page. These live in their own [Guides](/blog#guides) section below the posts and stay out of the feed, so subscribing only brings you news.
 - **Engineering write-ups.** The decisions behind how Infrawrench is built, and the occasional thing that went wrong along the way.
 
 ## Following along

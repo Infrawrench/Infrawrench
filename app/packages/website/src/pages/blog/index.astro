@@ -5,7 +5,7 @@ import { blogPostHref, formatPostDate, getBlogPosts, isoPostDate } from "../../l
 // On demand so middleware can negotiate; see src/middleware.ts.
 export const prerender = false;
 
-const posts = await getBlogPosts();
+const [posts, guides] = await Promise.all([getBlogPosts("post"), getBlogPosts("guide")]);
 const description = "Product news, release notes and engineering write-ups from the Infrawrench team.";
 ---
 
@@ -37,6 +37,30 @@ const description = "Product news, release notes and engineering write-ups from 
           </li>
         ))}
       </ul>
+    )
+  }
+
+  {
+    guides.length > 0 && (
+      <section class="blog-guides" id="guides" aria-labelledby="blog-guides-heading">
+        <h2 class="blog-section-title" id="blog-guides-heading">
+          Guides
+        </h2>
+        <p class="blog-section-lede">Tutorials, walkthroughs and reference write-ups.</p>
+        <ul class="blog-guide-grid">
+          {guides.map((guide) => (
+            <li>
+              <a class="blog-guide-card" href={blogPostHref(guide.id)}>
+                <span class="blog-guide-title">
+                  {guide.data.title}
+                  {guide.data.draft && <span class="badge badge-gray blog-draft-badge">Draft</span>}
+                </span>
+                <span class="blog-guide-desc">{guide.data.description}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
     )
   }
 </BlogLayout>

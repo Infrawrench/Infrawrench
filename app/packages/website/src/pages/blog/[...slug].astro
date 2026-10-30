@@ -44,9 +44,14 @@ const Content = post ? (await render(post)).Content : null;
   publishedAt={post.data.date}
 >
   <article>
-    <a class="blog-back" href="/blog">← All posts</a>
+    {post.data.kind === "guide" ? (
+      <a class="blog-back" href="/blog#guides">← All guides</a>
+    ) : (
+      <a class="blog-back" href="/blog">← All posts</a>
+    )}
     <header class="docs-article-header">
       <p class="blog-post-meta">
+        {post.data.kind === "guide" && <span class="badge badge-blue blog-kind-badge">Guide</span>}
         <time datetime={isoPostDate(post.data.date)}>{formatPostDate(post.data.date)}</time>
         {post.data.author && <span> · {post.data.author}</span>}
         {post.data.draft && <span class="badge badge-gray blog-draft-badge">Draft</span>}

@@ -8,14 +8,22 @@
 import { getCollection, getEntry, type CollectionEntry } from "astro:content";
 
 export type BlogPost = CollectionEntry<"blog">;
+export type BlogKind = BlogPost["data"]["kind"];
 
 function isPublished(post: BlogPost): boolean {
   return import.meta.env.DEV || !post.data.draft;
 }
 
-/** Published posts, newest first. Ties fall back to title for a stable order. */
-export async function getBlogPosts(): Promise<BlogPost[]> {
-  const posts = await getCollection("blog", isPublished);
+/**
+ * Published entries, newest first. Ties fall back to title for a stable order.
+ * Pass a kind to get only posts or only guides; omit it for both (the sitemap,
+ * the `.md` twins).
+ */
+export async function getBlogPosts(kind?: BlogKind): Promise<BlogPost[]> {
+  const posts = await getCollection(
+    "blog",
+    (post) => isPublished(post) && (!kind || post.data.kind === kind),
+  );
   return posts.sort(
     (a, b) =>
       b.data.date.getTime() - a.data.date.getTime() || a.data.title.localeCompare(b.data.title),
