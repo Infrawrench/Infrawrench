@@ -4,6 +4,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { t } from "gt-react";
 import { Toaster, toast } from "@infrawrench/ui";
 import { routeTree } from "./routeTree.gen";
+import { AnalyticsConsent } from "./components/AnalyticsConsent";
 import "./globals.css";
 
 window.addEventListener("unhandledrejection", (event) => {
@@ -28,5 +29,6 @@ createRoot(rootEl).render(
   <StrictMode>
     <RouterProvider router={router} />
     <Toaster />
+    <AnalyticsConsent />
   </StrictMode>,
 );

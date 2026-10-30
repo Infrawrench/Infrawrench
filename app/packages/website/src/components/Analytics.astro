@@ -1,0 +1,107 @@
+---
+// PostHog plus its consent prompt, rendered from the Footer so every page
+// gets both. The prompt only appears for visitors in the EEA, UK and
+// Switzerland who have not answered yet; see @infrawrench/analytics.
+---
+
+<section id="analytics-consent" class="analytics-consent" aria-label="Cookie preferences" hidden>
+  <p>
+    May we use cookies to understand how this site is used? This turns on PostHog analytics and
+    session replays, with form inputs masked. <a href="/privacy#telemetry">Privacy policy</a>
+  </p>
+  <div class="analytics-consent-actions">
+    <button type="button" id="analytics-decline">Decline</button>
+    <button type="button" id="analytics-accept">Accept</button>
+  </div>
+</section>
+
+<script>
+  import {
+    acceptAnalytics,
+    analyticsEnabled,
+    consentPromptVisible,
+    declineAnalytics,
+    initAnalytics,
+    openConsentPrompt,
+    subscribeConsentPrompt,
+  } from "@infrawrench/analytics";
+
+  initAnalytics({
+    key: import.meta.env.PUBLIC_POSTHOG_KEY,
+    host: import.meta.env.PUBLIC_POSTHOG_HOST,
+  });
+
+  const prompt = document.getElementById("analytics-consent");
+  const sync = () => {
+    if (prompt) prompt.hidden = !consentPromptVisible();
+  };
+  subscribeConsentPrompt(sync);
+  sync();
+
+  document.getElementById("analytics-accept")?.addEventListener("click", acceptAnalytics);
+  document.getElementById("analytics-decline")?.addEventListener("click", declineAnalytics);
+  for (const link of document.querySelectorAll<HTMLElement>("[data-cookie-preferences]")) {
+    link.hidden = !analyticsEnabled();
+    link.addEventListener("click", openConsentPrompt);
+  }
+</script>
+
+<style>
+  .analytics-consent {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 90;
+    max-width: 380px;
+    padding: 16px;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    background: #0b0b0b;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+    line-height: 1.5;
+    color: #9ca3af;
+  }
+
+  .analytics-consent[hidden] {
+    display: none;
+  }
+
+  .analytics-consent p {
+    margin: 0;
+  }
+
+  .analytics-consent a {
+    color: #c9d1d9;
+  }
+
+  .analytics-consent-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  /* Accept and Decline are deliberately the same weight. */
+  .analytics-consent-actions button {
+    padding: 6px 14px;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    background: #111827;
+    color: #e6edf3;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .analytics-consent-actions button:hover {
+    background: #1f2937;
+  }
+
+  @media (max-width: 480px) {
+    .analytics-consent {
+      right: 16px;
+      max-width: none;
+    }
+  }
+</style>

@@ -189,6 +189,7 @@ infrawrench/
 │   ├── desktop/              # @infrawrench/desktop — Electron app (and the `infrawrench` CLI)
 │   ├── mobile/               # @infrawrench/mobile — Expo (SDK 54) iOS/Android app against the cloud API
 │   ├── ui/                   # @infrawrench/ui — shared React components (incl. Toast feature)
+│   ├── analytics/            # @infrawrench/analytics - PostHog + consent for the browser surfaces (web, website, instances), ships source; see "PostHog analytics"
 │   ├── client-core/          # @infrawrench/client-core — host-agnostic cloud client (tokens, cloudFetch, SSE, chat, WS types, push registration, account-page sections)
 │   ├── server-core/          # @infrawrench/server-core — db client, schema, plugin loader, sync, host services (shared by web + poller)
 │   ├── workflow-runtime/     # @infrawrench/workflow-runtime — QuickJS-WASM sandbox, host bridge, infra.d.ts codegen
@@ -3954,6 +3955,17 @@ Notes on the shape:
 4. **Play listing metadata** — screenshots, description, Data Safety; the Play listing usually also wants a terms page (there is none yet).
 
 **App Store review will also check that the app can delete an account** (guideline 5.1.1(v)) — that is what `DELETE /api/profile` and the delete-account cards on web and mobile are for; see the account-deletion note under `api/routes/profile.ts`.
+
+## PostHog analytics (`@infrawrench/analytics`)
+
+Product analytics, web analytics and session replay on the three browser surfaces: the web SPA, the website and the instances site. One PostHog project serves all three (`POSTHOG_KEY` / `POSTHOG_HOST` repository variables, inlined at build time as `VITE_POSTHOG_*` for web and instances and `PUBLIC_POSTHOG_*` for Astro). Without a key nothing initializes, which is the local default. The desktop and mobile apps are deliberately not covered; the privacy policy describes the desktop as local-first with a single telemetry ping.
+
+- **One package, source-only.** `app/packages/analytics` exports TypeScript like `workflow-runtime`, so the website and instances deploys (which build with `pnpm --filter`, not turbo) need no build step. Each surface renders its own banner in its own design system against the package's headless state (`subscribeConsentPrompt` / `consentPromptVisible`, `acceptAnalytics`, `declineAnalytics`, `openConsentPrompt`). The deploy workflows' path filters include the package.
+- **Consent is EEA/UK/CH-only, decided by Cloudflare.** `region.ts` reads `loc=` from `/cdn-cgi/trace`, which Cloudflare answers on every proxied hostname before the Worker runs, so there is no geo endpoint per site and no per-visitor HTML on the cached instances pages. Any lookup failure (local dev, `XX`, Tor's `T1`) shows the prompt. Elsewhere the visitor is opted in silently and can still opt out from the footer (website, instances) or Settings (web).
+- **PostHog runs in `cookieless_mode: "on_reject"`.** Until an answer, it stores and sends nothing; after Decline, or with DNT/GPC (`respect_dnt`), it counts the visitor through PostHog's server-side hash. That needs "Cookieless server hash mode" on in the project's Web analytics settings, or those events are dropped. Replay and identify only start on Accept. The answer is a cookie (`opt_out_capturing_persistence_type: "cookie"`, cross-subdomain), so one answer covers infrawrench.com, app. and instances.
+- **`posthog.reset()` clears the consent answer too**, so `resetAnalytics()` (web sign-out) re-applies the visitor's previous choice after it. `opt_in_capturing` itself resets the instance when leaving cookieless mode, which is why identify and the `organization` group are held and applied after it.
+- **The web app is `sensitive`.** Replays mask every text node (`maskTextSelector: "*"`) and input, autocapture drops element text and attributes, and network headers and bodies are never recorded. `redactAppUrl` (`web/src/lib/analytics.ts`) strips query strings and fragments and replaces token path segments (share, invite, inbound webhook tokens) on events and in replay URLs; a new route with a secret in its path belongs in `TOKEN_SEGMENT`. Public status pages (`/status/`) never initialize PostHog, since their readers are an org's customers.
+- **Pin `posthog-js` within pnpm's minimum release age.** It publishes several times a day; let the range resolve to an aged version rather than adding a `minimumReleaseAgeExclude` entry. Its `core-js` dependency's postinstall is disallowed in `allowBuilds`.
 
 ## website package — Astro on Cloudflare Workers
 

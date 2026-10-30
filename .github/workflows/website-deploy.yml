@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app/packages/website/**"
+      - "app/packages/analytics/**"
       - "pnpm-lock.yaml"
 
 concurrency:
@@ -35,8 +36,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # PostHog: the public project key (phc_…) and ingestion host, from
+      # repository variables, inlined at build time. Unset builds without analytics.
       - name: Build
         run: pnpm --filter @infrawrench/website build
+        env:
+          PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+          PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
 
       - name: Deploy
         run: pnpm --filter @infrawrench/website exec wrangler deploy -c dist/server/wrangler.json

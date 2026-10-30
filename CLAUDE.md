@@ -24,6 +24,10 @@ TypeScript 7 packages depend on `"typescript": "workspace:@infrawrench/typescrip
 - A new per-resource finding kind (vulnerabilities, leaked secrets, compliance) shows in the VS Code Terraform hover by appending a `ResourceSection` to `RESOURCE_SECTIONS` in `vscode/src/sections.ts`, and in Raycast's resource detail through `raycast/src/lib/insight.ts`.
 - The desktop's `infrawrench://open/…` links are built and parsed by client-core's `desktopDeepLink`/`parseDesktopDeepLink`; a new link kind changes both, plus `DeepLinkHost`.
 
+## Analytics (PostHog)
+
+The web SPA, website and instances site share `@infrawrench/analytics` (source-only; KNOWLEDGE.md "PostHog analytics" has the consent model). A new browser surface uses it rather than calling `posthog-js` directly, and adds the package path to its deploy workflow's `paths`. The privacy policy (`website/src/pages/privacy.astro`, `#posthog`) describes exactly what is collected; a change to what PostHog records (masking, identify properties, a new surface) changes that page in the same commit. A new web route with a secret in its path goes in `TOKEN_SEGMENT` (`web/src/lib/analytics.ts`) so the token never reaches PostHog.
+
 ## Workspace tabs
 
 Org-level pages opened from the sidebar are **workspace-tab kinds, never plain routes**; a page outside the tab system leaves a stale active tab and a stale window title. The only exceptions are Moment and `/admin`, which get their titles from `plainRouteDocumentTitle` instead.

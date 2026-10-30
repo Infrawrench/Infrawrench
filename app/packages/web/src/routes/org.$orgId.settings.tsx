@@ -7,6 +7,7 @@ import {
   settingsTabTarget,
   workspaceTabPanelProps,
 } from "@infrawrench/ui";
+import { analyticsEnabled, openConsentPrompt, resetAnalytics } from "@infrawrench/analytics";
 import { apiPost } from "../lib/api";
 import { usePermissions } from "@/auth/permissions-context";
 import { WebSettingsHost } from "@/lib/settings-host";
@@ -28,6 +29,7 @@ function SettingsLayout() {
 
   async function signOut() {
     setSigningOut(true);
+    resetAnalytics();
     try {
       await apiPost("/api/auth/sign-out");
     } finally {
@@ -80,14 +82,25 @@ function SettingsLayout() {
             );
           })}
         </ul>
-        <button
-          type="button"
-          onClick={signOut}
-          disabled={signingOut}
-          className="mt-auto pt-4 px-3 py-1.5 text-left text-sm text-danger hover:text-danger-strong disabled:opacity-50 transition-colors"
-        >
-          {signingOut ? gt("Signing out…") : gt("Sign out")}
-        </button>
+        <div className="mt-auto pt-4 flex flex-col">
+          {analyticsEnabled() && (
+            <button
+              type="button"
+              onClick={openConsentPrompt}
+              className="px-3 py-1.5 text-left text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
+            >
+              {gt("Cookie preferences")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            className="px-3 py-1.5 text-left text-sm text-danger hover:text-danger-strong disabled:opacity-50 transition-colors"
+          >
+            {signingOut ? gt("Signing out…") : gt("Sign out")}
+          </button>
+        </div>
       </nav>
       <div className="flex-1 overflow-auto p-6">
         <WebSettingsHost orgId={orgId}>

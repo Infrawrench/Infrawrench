@@ -30,6 +30,7 @@
     "@clickhouse/client-web": "^1.23.1",
     "@google/genai": "2.13.0",
     "@hono/node-server": "^2.1.0",
+    "@infrawrench/analytics": "workspace:*",
     "@infrawrench/appstream-core": "workspace:*",
     "@infrawrench/appstream-host": "workspace:*",
     "@infrawrench/client-core": "workspace:*",

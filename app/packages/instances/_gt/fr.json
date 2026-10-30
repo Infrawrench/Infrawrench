@@ -189,5 +189,21 @@
   "b47756dbd92bb760": "Cache en mémoire pour DynamoDB",
   "b30349542c4c2358": "Apprentissage automatique",
   "a2651797d8d6b26b": "Clusters big data",
-  "ea5fd0b9ac963a6a": "Serveurs de jeux"
+  "ea5fd0b9ac963a6a": "Serveurs de jeux",
+  "be5f702b60f5a13b": "Préférences de cookies",
+  "63505f517af0f8f2": "Refuser",
+  "edb4ece52df96685": "Accepter",
+  "1e27e97203271999": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pouvons-nous utiliser des cookies pour comprendre comment ce site est utilisé ? Cela active l'analyse et les replays de session de PostHog, avec les champs de formulaire masqués.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Politique de confidentialité"
+      }
+    ]
+  }
 }

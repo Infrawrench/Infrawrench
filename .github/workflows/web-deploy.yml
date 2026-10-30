@@ -73,6 +73,7 @@ on:
       # so a client-core-only change still alters what ships.
       - "app/packages/client-core/**"
       - "app/packages/workflow-runtime/**"
+      - "app/packages/analytics/**"
       - "plugin-architecture/**"
       - "infra/docker/**"
       - "infra/k8s/**"
@@ -150,6 +151,8 @@ jobs:
           build-args: |
             PACKAGE=${{ matrix.package }}
             APP_DIR=${{ matrix.app_dir }}
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
+            VITE_POSTHOG_HOST=${{ vars.POSTHOG_HOST }}
           cache-from: type=gha,scope=${{ matrix.service }}${{ matrix.tag_suffix }}
           cache-to: type=gha,scope=${{ matrix.service }}${{ matrix.tag_suffix }},mode=max
 
@@ -496,6 +499,11 @@ jobs:
         run: |
           pnpm exec turbo run build --filter="@infrawrench/web^..." --filter="@infrawrench/poller^..."
           pnpm --filter @infrawrench/web build:client
+        # PostHog for the SPA: the public project key (phc_…) and ingestion
+        # host, from repository variables. Unset builds without analytics.
+        env:
+          VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
 
       - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:

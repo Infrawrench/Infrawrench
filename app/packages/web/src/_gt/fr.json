@@ -22803,5 +22803,38 @@
   "06738ffd1654415e": "Ouvrir Nibblets",
   "494ada16a0794d09": "Serveur Nibblets · agents et leurs applications gérés dans Nibblets",
   "d37515eae6f8cac6": "La limitation à des fournisseurs ne s'applique qu'aux autorisations sur les ressources, les secrets et le stockage d'objets : avec des fournisseurs choisis, seules celles-ci sont proposées.",
-  "c0086b0381ac874d": "La plateforme et le nom ci-dessus sont ceux envoyés par le demandeur. Infrawrench ne les a pas vérifiés."
+  "c0086b0381ac874d": "La plateforme et le nom ci-dessus sont ceux envoyés par le demandeur. Infrawrench ne les a pas vérifiés.",
+  "be5f702b60f5a13b": "Préférences de cookies",
+  "63505f517af0f8f2": "Refuser",
+  "edb4ece52df96685": "Accepter",
+  "8896db06e6a970ba": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pouvons-nous utiliser des cookies pour comprendre comment Infrawrench est utilisé ? Cela active l'analyse produit et les replays de session de PostHog, avec le texte à l'écran et les champs de saisie masqués.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Politique de confidentialité"
+      }
+    ]
+  },
+  "259a9df60653b6f2": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "souhaite créer des agents dans l'une de vos organisations. Chaque agent reçoit ses propres identifiants et ne peut jamais faire plus que ce que vous autorisez ici, ni plus que ce que vous pouvez faire vous-même."
+    ]
+  }
 }

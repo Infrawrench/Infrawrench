@@ -1,5 +1,12 @@
 /// <reference types="astro/client" />
 
+interface ImportMetaEnv {
+  /** PostHog project API key (phc_…), inlined at build time. Unset turns analytics off. */
+  readonly PUBLIC_POSTHOG_KEY?: string;
+  /** PostHog ingestion host; defaults to US Cloud. */
+  readonly PUBLIC_POSTHOG_HOST?: string;
+}
+
 declare module "typewriter-effect/dist/core" {
   interface TypewriterOptions {
     strings?: string[];
