@@ -48,8 +48,11 @@ const orgId = `test-org-${randomUUID()}`;
 const accountId = `test-acct-${randomUUID()}`;
 const meta = { organizationId: orgId, accountId, pluginId: "aws" };
 
-const day1 = "2026-08-01";
-const day2 = "2026-08-02";
+// Relative to today: `network_flow_daily` expires rows 90 days after their
+// `day` (clickhouse/schema.ts), so a fixed date stops being insertable.
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+const day1 = daysAgo(8);
+const day2 = daysAgo(7);
 const range = { from: day1, to: day2 };
 
 function costRow(over: Partial<CostDailyRow>): CostDailyRow {
