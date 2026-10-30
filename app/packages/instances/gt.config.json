@@ -1,0 +1,16 @@
+{
+  "defaultLocale": "en",
+  "locales": ["es", "fr", "de", "ja", "zh"],
+  "src": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx}",
+    "!**/*.test.{ts,tsx}",
+    "!**/__tests__/**"
+  ],
+  "files": {
+    "gt": {
+      "output": "_gt/[locale].json"
+    }
+  }
+}

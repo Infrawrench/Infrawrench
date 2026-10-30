@@ -98,6 +98,15 @@
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@kubernetes/client-node", "cloudflare", "dockerode", "ssh2"]
     },
+    "app/packages/instances": {
+      "entry": [
+        "app/**/{page,layout,not-found,route,opengraph-image}.{ts,tsx}",
+        "proxy.ts",
+        "lib/**/*.test.ts"
+      ],
+      "project": ["app/**/*.{ts,tsx}", "components/**/*.tsx", "lib/**/*.ts"],
+      "ignoreDependencies": ["cloudflare", "next", "tailwindcss"]
+    },
     "app/packages/instances-bundles": {
       "entry": ["src/**/*.test.ts"],
       "project": ["src/**/*.ts"],

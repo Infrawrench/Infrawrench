@@ -25,7 +25,8 @@ import { fileURLToPath } from "node:url";
 import { createInlineUpdates } from "gt/react/parse/createInlineUpdates";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const APPS = ["web", "desktop"];
+// Each has its own gt.config.json and catalogs; `files.gt.output` says where.
+const APPS = ["web", "desktop", "instances"];
 const BATCH_SIZE = 470;
 
 /** Extract every marked string for one app, keyed by content hash. */
@@ -64,7 +65,7 @@ for (const app of APPS) {
   report[app] = {};
 
   for (const locale of config.locales) {
-    const catalogPath = resolve(appDir, `src/_gt/${locale}.json`);
+    const catalogPath = resolve(appDir, config.files.gt.output.replace("[locale]", locale));
     const catalog = existsSync(catalogPath) ? JSON.parse(readFileSync(catalogPath, "utf8")) : {};
 
     const missing = [...sources.keys()].filter((h) => !(h in catalog));

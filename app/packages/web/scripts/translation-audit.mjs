@@ -27,6 +27,7 @@
  *   pnpm --filter @infrawrench/web translations:audit
  *   pnpm --filter @infrawrench/web translations:audit --json
  *   pnpm --filter @infrawrench/web translations:audit --dir ui/src/settings
+ *   pnpm --filter @infrawrench/web translations:audit --dir instances
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, dirname, relative } from "node:path";
@@ -35,7 +36,16 @@ import { parse } from "@babel/parser";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGES = resolve(__dirname, "../..");
-const ROOTS = ["ui/src", "web/src", "desktop/src"];
+// The instances site (instances.infrawrench.com) has no src/; its sources are
+// the vinext app directories.
+const ROOTS = [
+  "ui/src",
+  "web/src",
+  "desktop/src",
+  "instances/app",
+  "instances/components",
+  "instances/lib",
+];
 const ATTRS = new Set(["placeholder", "title", "aria-label", "alt", "label", "ariaLabel"]);
 const SKIP_FILES = [/\.test\.[jt]sx?$/, /__tests__/, /\.gen\.ts$/, /routeTree/];
 

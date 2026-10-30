@@ -1,0 +1,30 @@
+// instances.infrawrench.com: one page per AWS instance type, rendered by vinext
+// from the AWS bulk pricing data in Workers KV. See README.md.
+// `vite build` writes the deployable config to dist/server/wrangler.json, adding
+// the Workers Cache entrypoints `workersCacheCdnAdapter()` needs.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "infrawrench-instances",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "instances.infrawrench.com", "custom_domain": true }],
+  "assets": {
+    "directory": "dist/client",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*", "!/_next/static/*", "!/*/_next/static/*"],
+  },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // The namespace the web Worker serves /api/v1/aws-bulk-pricing from, written
+  // by .github/workflows/aws-bulk-pricing-sync.yml. Read-only here. The format
+  // is in app/packages/web/src/aws-bulk-pricing/format.ts. `remote` makes
+  // `vite dev` read the real namespace (it is public data) instead of an empty
+  // local one; deploys ignore it.
+  "kv_namespaces": [
+    { "binding": "AWS_BULK_PRICING", "id": "4baca4fd13ec4d4684d41e761f52af01", "remote": true },
+  ],
+}
