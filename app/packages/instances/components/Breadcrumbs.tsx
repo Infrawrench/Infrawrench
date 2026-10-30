@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGT } from "gt-react";
 
 /** The trail above every page: AWS / EC2 / m5.large. The last item is the current page. */
@@ -17,9 +18,9 @@ export function Breadcrumbs({ items }: { items: { label: string; href?: string }
                   {item.label}
                 </span>
               ) : item.href ? (
-                <a className="hover:text-ink hover:underline" href={item.href}>
+                <Link className="hover:text-ink hover:underline" href={item.href}>
                   {item.label}
-                </a>
+                </Link>
               ) : (
                 item.label
               )}

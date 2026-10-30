@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGT, useLocale } from "gt-react";
 import { useMemo, useState } from "react";
 import { useDataString } from "@/lib/i18n/data-string";
@@ -67,12 +68,15 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
               <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 {f.instances.map((name) => (
                   <li key={name}>
-                    <a
+                    {/* Up to ~2,000 links on a page: no prefetching; clicks still
+                        navigate client-side. */}
+                    <Link
                       className="text-accent hover:text-accent-hover hover:underline"
                       href={localePath(locale, `/aws/${listing.platform}/${name}`)}
+                      prefetch={false}
                     >
                       {name}
-                    </a>
+                    </Link>
                   </li>
                 ))}
               </ul>

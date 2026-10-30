@@ -67,5 +67,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function Page({ params }: { params: Params }) {
   const { model, locale, tr } = await load(params);
-  return <InstanceView model={model} description={describe(model, tr, locale)} />;
+  // Keyed: a client-side navigation to another instance mounts a fresh view
+  // rather than carrying over the last one's region, variant and loaded data.
+  return (
+    <InstanceView
+      key={`${model.platform}/${model.name}`}
+      model={model}
+      description={describe(model, tr, locale)}
+    />
+  );
 }

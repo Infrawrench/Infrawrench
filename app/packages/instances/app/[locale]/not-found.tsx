@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGT, useLocale } from "gt-react";
 import { localePath } from "@/lib/i18n/locales";
 
@@ -13,9 +14,9 @@ export default function NotFound() {
         {gt("There is no such instance type. Pages live at {pattern}, for example", {
           pattern: "/aws/<platform>/<instance>",
         })}{" "}
-        <a className="text-accent hover:text-accent-hover underline" href={example}>
+        <Link className="text-accent hover:text-accent-hover underline" href={example}>
           {example}
-        </a>
+        </Link>
       </p>
     </main>
   );

@@ -60,5 +60,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function Page({ params }: { params: Params }) {
   const { listing } = await load(params);
-  return <PlatformView listing={listing} />;
+  // Keyed so moving between services starts with an empty filter.
+  return <PlatformView key={listing.platform} listing={listing} />;
 }

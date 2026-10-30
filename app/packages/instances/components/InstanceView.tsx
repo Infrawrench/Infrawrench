@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { msg, useGT, useLocale } from "gt-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { attributeLabel, groupAttributes, variantLabel, variantValueLabel } from "@/lib/attributes";
@@ -739,12 +740,12 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
                   {self ? (
                     f.name
                   ) : (
-                    <a
+                    <Link
                       className={linkClass}
                       href={`${localePath(locale, `/aws/${m.platform}/${f.name}`)}${suffix}`}
                     >
                       {f.name}
-                    </a>
+                    </Link>
                   )}
                 </td>
                 <td className="border border-line p-1 pl-2 tabular-nums">{f.vcpu ?? ""}</td>
@@ -769,13 +770,13 @@ function Related({ m, suffix, locale }: { m: InstanceModel; suffix: string; loca
       <ul className="mt-2 flex flex-wrap gap-1.5 text-sm">
         {m.related.map((r) => (
           <li key={r.family}>
-            <a
+            <Link
               className="inline-block rounded border border-line px-2 py-0.5 text-accent hover:border-accent hover:text-accent-hover"
               href={`${localePath(locale, `/aws/${m.platform}/${r.name}`)}${suffix}`}
               title={r.name}
             >
               {r.family}
-            </a>
+            </Link>
           </li>
         ))}
       </ul>

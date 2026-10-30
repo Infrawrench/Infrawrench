@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGT, useLocale } from "gt-react";
 import { useDataString } from "@/lib/i18n/data-string";
 import { localePath } from "@/lib/i18n/locales";
@@ -23,7 +24,7 @@ export function IndexView({ platforms }: { platforms: PlatformSummary[] }) {
       <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {platforms.map((p) => (
           <li key={p.platform}>
-            <a
+            <Link
               href={localePath(locale, `/aws/${p.platform}`)}
               className="group flex h-full flex-col rounded-lg border border-line p-4 transition-colors hover:border-accent hover:bg-surface-2"
             >
@@ -39,7 +40,7 @@ export function IndexView({ platforms }: { platforms: PlatformSummary[] }) {
                 {" · "}
                 {gt("{count, plural, one {# family} other {# families}}", { count: p.families })}
               </span>
-            </a>
+            </Link>
           </li>
         ))}
       </ul>

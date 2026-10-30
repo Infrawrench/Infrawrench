@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useGT, useLocale } from "gt-react";
 import { LOCALES, LOCALE_COOKIE, localePath, splitLocale } from "@/lib/i18n/locales";
 
@@ -54,9 +55,9 @@ export function Nav() {
               <span className="nav-logo-text">Infrawrench</span>
             </a>
             {/* The site's own home: every service. */}
-            <a className="nav-badge" href={localePath(locale, "/")}>
+            <Link className="nav-badge" href={localePath(locale, "/")}>
               {gt("Instances")}
-            </a>
+            </Link>
           </div>
           <div className="nav-links">
             <a className="nav-link" href="https://infrawrench.com/docs">
