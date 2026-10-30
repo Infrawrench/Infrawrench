@@ -7,16 +7,17 @@ import { getDocsNav } from "../lib/docs-nav";
 
 interface Props {
   title: string;
+  documentTitle?: string;
   description?: string;
   activeSlug?: string;
 }
 
-const { title, description, activeSlug } = Astro.props;
+const { title, documentTitle, description, activeSlug } = Astro.props;
 const sections = await getDocsNav();
 // These pages negotiate on `Accept`, but the alternate link is still worth
 // emitting: not every client can set a header, and a URL can be pasted.
 const markdownHref = activeSlug ? `/docs/${activeSlug}.md` : undefined;
-const pageTitle = `${title} · Infrawrench docs`;
+const pageTitle = documentTitle ?? `${title} · Infrawrench docs`;
 ---
 
 <!doctype html>
