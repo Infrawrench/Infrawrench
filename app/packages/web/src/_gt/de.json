@@ -22802,5 +22802,38 @@
   "06738ffd1654415e": "Nibblets öffnen",
   "494ada16a0794d09": "Nibblets-Server · Agenten und ihre Apps werden in Nibblets verwaltet",
   "d37515eae6f8cac6": "Die Beschränkung auf Anbieter gilt nur für Berechtigungen für Ressourcen, Secrets und Objektspeicher. Mit gewählten Anbietern werden daher nur diese angeboten.",
-  "c0086b0381ac874d": "Plattform und Name oben stammen vom Anfragenden. Infrawrench hat sie nicht geprüft."
+  "c0086b0381ac874d": "Plattform und Name oben stammen vom Anfragenden. Infrawrench hat sie nicht geprüft.",
+  "be5f702b60f5a13b": "Cookie-Einstellungen",
+  "63505f517af0f8f2": "Ablehnen",
+  "edb4ece52df96685": "Akzeptieren",
+  "8896db06e6a970ba": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Dürfen wir Cookies verwenden, um zu verstehen, wie Infrawrench genutzt wird? Dadurch werden die Produktanalyse und die Sitzungsaufzeichnungen von PostHog aktiviert, wobei Text und Eingaben auf dem Bildschirm maskiert werden.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Datenschutzerklärung"
+      }
+    ]
+  },
+  "259a9df60653b6f2": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "möchte Agenten in einer Ihrer Organisationen erstellen. Jeder Agent erhält eigene Zugangsdaten und kann nie mehr tun, als Sie hier erlauben, oder mehr, als Sie selbst tun können."
+    ]
+  }
 }

@@ -45,6 +45,11 @@ COPY --from=pruner /repo/out/full/ .
 # turbo prune only carries package dirs; the shared tsconfig every package
 # extends lives at the repo root.
 COPY tsconfig.base.json .
+# The web SPA's PostHog project key and host, inlined by Vite at build time.
+# Public values, not secrets; empty for the other services and for a build
+# that should ship without analytics.
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_HOST=""
 RUN pnpm exec turbo run build --filter="${PACKAGE}"
 
 # Drop devDependencies in place; dist/ and built native artifacts survive.

@@ -14,6 +14,7 @@
   "dependencies": {
     "@astrojs/cloudflare": "^14.2.0",
     "@astrojs/markdown-remark": "^7.2.2",
+    "@infrawrench/analytics": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "~7.2.10",
     "lucide-astro": "^0.556.0",

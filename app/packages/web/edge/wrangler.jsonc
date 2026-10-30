@@ -76,6 +76,9 @@
   "limits": { "cpu_ms": 60000 },
 
   // Postgres, through Hyperdrive's pool (shared with the poller Worker).
+  // AWS bulk pricing data (src/aws-bulk-pricing), one value per instance,
+  // written by .github/workflows/aws-bulk-pricing-sync.yml.
+  "kv_namespaces": [{ "binding": "AWS_BULK_PRICING", "id": "4baca4fd13ec4d4684d41e761f52af01" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
 
   // The realtime relay (edge/realtime.ts, server-core/realtime/protocol.ts):

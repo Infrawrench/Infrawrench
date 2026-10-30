@@ -18,6 +18,7 @@ import {
   type TunnelSshAttachKey,
 } from "@infrawrench/ui";
 import { PromptHost } from "@infrawrench/ui/workflows";
+import { identifyUser, setOrganization } from "@infrawrench/analytics";
 import { WebSidebar } from "@/components/WebSidebar";
 import { ChangeFreezeBanner } from "@/components/ChangeFreezeBanner";
 import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellBanner";
@@ -106,7 +107,10 @@ function RootLayout() {
     if (skipsOrgRedirect(pathname)) {
       // These routes still need an auth check, but we don't redirect them to onboarding.
       apiGet<AuthMe>("/api/auth/me")
-        .then(() => setAuthChecked(true))
+        .then((me) => {
+          identifyUser(me.userId, { email: me.email });
+          setAuthChecked(true);
+        })
         .catch(() => {
           /* apiFetch redirects on 401 */
         });
@@ -115,6 +119,7 @@ function RootLayout() {
 
     apiGet<AuthMe>("/api/auth/me")
       .then(async (me) => {
+        identifyUser(me.userId, { email: me.email });
         if (me.needsOnboarding) {
           void navigate({ to: "/onboarding" });
           return;
@@ -190,6 +195,10 @@ function AuthenticatedShell() {
   const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
   const orgId = orgIdMatch?.[1] ? decodeURIComponent(orgIdMatch[1]) : null;
   const tabsValidated = tabsValidatedForOrg === orgId;
+
+  useEffect(() => {
+    if (orgId) setOrganization(orgId);
+  }, [orgId]);
   // The palette's Recent list: every tab the viewer lands on in this org,
   // once tab restore has settled (so a stale restored tab is not recorded).
   useRecordRecentTabs(tabsValidated ? orgId : null);

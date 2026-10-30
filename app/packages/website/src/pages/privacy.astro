@@ -6,7 +6,7 @@ import Footer from "../components/Footer.astro";
 // On demand so middleware can negotiate; see src/middleware.ts.
 export const prerender = false;
 
-const lastUpdated = "July 27, 2026";
+const lastUpdated = "October 30, 2026";
 const contactEmail = "astrid@infrawrench.com";
 
 const title = "Privacy Policy";
@@ -58,6 +58,12 @@ const subprocessors = [
     name: "Expo",
     purpose: "Push notification delivery to the mobile app",
     data: "Device push tokens and notification contents",
+  },
+  {
+    name: "PostHog",
+    purpose:
+      "Product analytics, web analytics and session replay on the web app, this website and instances.infrawrench.com",
+    data: "Pages viewed, clicks and other interactions, browser and device type, approximate location derived from your IP address, session recordings, and in the web app your account ID, email address and organization ID",
   },
   {
     name: "Anthropic / OpenAI",
@@ -115,10 +121,11 @@ const subprocessors = [
               advertising or allow ad networks anywhere near our apps or this site.
             </li>
             <li>
-              <strong>No third-party analytics today.</strong> There is no analytics SDK, tracking
-              pixel or session recorder in any of our apps or on this site. The desktop app does send
-              one small <a href="#telemetry">telemetry ping</a> when it starts. We may add product
-              analytics in future — if we do, this page will describe it first.
+              <strong>We use PostHog to understand how our sites are used.</strong> The web app, this
+              website and instances.infrawrench.com run <a href="#telemetry">PostHog</a> analytics and
+              session replay. In the EEA, UK and Switzerland we ask first; everywhere else you can turn
+              it off from "Cookie preferences". The desktop and mobile apps do not run it; the desktop
+              app sends one small <a href="#telemetry">telemetry ping</a> when it starts.
             </li>
             <li>
               <strong>The desktop app is local-first.</strong> Used without signing in, it keeps your
@@ -300,40 +307,69 @@ const subprocessors = [
             resets the identifier to a fresh one. We keep these records for as long as they are useful
             for understanding install and version trends.
           </p>
+          <h3 id="posthog">PostHog on the web app and websites</h3>
           <p>
-            Beyond that ping, we do not currently run analytics of any kind. We may in future add
-            product analytics inside the apps, crash and error reporting, or measurement on this
-            website, to understand which features are used and where things break. If we do:
+            The web app at <code>app.infrawrench.com</code>, this website, and
+            <code>instances.infrawrench.com</code> use <a href="https://posthog.com">PostHog</a> for
+            product analytics, web analytics and session replay, to understand which features are
+            used and where people get stuck. It records:
           </p>
           <ul>
             <li>
-              We will update this page to name the tool and describe what it collects, before it is
-              switched on.
+              The pages you view, the links and buttons you click, the page that referred you, and
+              how long you stayed.
             </li>
             <li>
-              We will limit it to product and diagnostic purposes. We will not use it for
-              advertising, will not sell or share what it collects, and will not add third-party ad
-              or cross-site tracking networks.
+              Your browser, operating system, device type and screen size, and an approximate
+              location (country and city) that PostHog derives from your IP address.
             </li>
             <li>
-              We will not feed your infrastructure data, credentials or chat content into it.
+              Session replays: a reconstruction of the page as you used it, including mouse movement
+              and scrolling. Everything you type into a form is masked before it leaves your browser.
+              In the web app, every piece of text on screen is masked as well, so a replay shows the
+              layout and your clicks but not your resources, secrets, query results or other
+              content, and no network request or response is recorded.
             </li>
             <li>
-              Where the law requires your consent — for example analytics cookies or similar
-              on-device storage under EU and UK rules — we will ask for it before collecting
-              anything, and honour a refusal.
+              In the web app, once you are signed in: your account ID, email address and the ID of the
+              organization you are viewing, so we can understand usage per account. Secret tokens in
+              web app addresses, such as share and invite links, are removed before anything is sent.
             </li>
           </ul>
+          <p>
+            <strong>Your choice.</strong> If you are in the EEA, the UK or Switzerland, we ask before
+            PostHog stores anything on your device or records anything, and nothing is recorded until
+            you answer. Elsewhere it is on by default. Either way you can change your answer at any
+            time from "Cookie preferences" in the footer of this website and of
+            instances.infrawrench.com, or in the web app's Settings; your answer is remembered across
+            all three. If you decline, or your browser sends a Do Not Track or Global Privacy Control
+            signal, PostHog stores nothing on your device, never records your session and never
+            links activity to your account; it still counts the page view, using a privacy-preserving
+            hash that PostHog's servers compute from your IP address and browser instead of an
+            identifier stored on your device, so we can see overall traffic.
+          </p>
+          <p>
+            We use PostHog only for product and diagnostic purposes. We do not use it for
+            advertising, do not sell or share what it collects, and do not add third-party ad or
+            cross-site tracking networks. We will not feed your infrastructure data, credentials or
+            chat content into it. Public status pages that organizations publish through Infrawrench
+            do not run PostHog. If we add any other analytics, crash reporting or measurement, we will
+            update this page to name it before it is switched on.
+          </p>
 
           <h2 id="cookies">Cookies</h2>
           <p>
             The web app sets one encrypted session cookie, issued by WorkOS, which keeps you signed
-            in. It is strictly necessary for the app to function. At present that is the only cookie
-            we set anywhere — this marketing site sets none at all. We never set advertising or
-            cross-site tracking cookies. If we later add analytics cookies, we will ask for your
-            consent first where the law requires it, as described under <a href="#telemetry"
-              >Analytics and telemetry</a
-            >.
+            in. It is strictly necessary for the app to function.
+          </p>
+          <p>
+            PostHog (see <a href="#posthog">Analytics and telemetry</a>) sets cookies and uses local
+            storage on <code>infrawrench.com</code> and its subdomains: one remembers your answer to
+            the analytics question, and, only once analytics is on for you, others hold a random
+            identifier and the current session so that visits can be counted and replays stitched
+            together. In the EEA, the UK and Switzerland none of these are set until you answer,
+            except the one remembering that answer. We never set advertising or cross-site tracking
+            cookies.
           </p>
 
           <h2 id="retention">How long we keep it</h2>
@@ -355,6 +391,11 @@ const subprocessors = [
               Desktop telemetry pings are kept for as long as they remain useful for understanding
               install and version trends. They are not tied to your account, so we cannot link them
               back to you on request.
+            </li>
+            <li>
+              PostHog session replays expire automatically under PostHog's retention limits. Other
+              analytics events are kept for as long as they remain useful for understanding how the
+              product is used; ask us and we will delete the events tied to your account.
             </li>
             <li>
               Billing records are retained as long as tax and accounting law requires, independently of

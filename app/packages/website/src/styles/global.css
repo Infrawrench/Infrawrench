@@ -1196,6 +1196,18 @@ footer {
   color: #9ca3af;
 }
 
+.footer-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.footer-button[hidden] {
+  display: none;
+}
+
 /* ── Docs shell ─────────────────────────────────────────── */
 .docs-shell {
   display: grid;

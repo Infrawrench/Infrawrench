@@ -22804,5 +22804,38 @@
   "06738ffd1654415e": "Abrir Nibblets",
   "494ada16a0794d09": "Servidor de Nibblets · agentes y sus apps gestionados en Nibblets",
   "d37515eae6f8cac6": "Limitar a proveedores solo se aplica a los permisos de recursos, secretos y almacenamiento de objetos, así que con proveedores elegidos solo se ofrecen esos.",
-  "c0086b0381ac874d": "La plataforma y el nombre de arriba los envió quien hace la solicitud. Infrawrench no los ha comprobado."
+  "c0086b0381ac874d": "La plataforma y el nombre de arriba los envió quien hace la solicitud. Infrawrench no los ha comprobado.",
+  "be5f702b60f5a13b": "Preferencias de cookies",
+  "63505f517af0f8f2": "Rechazar",
+  "edb4ece52df96685": "Aceptar",
+  "8896db06e6a970ba": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "¿Podemos usar cookies para entender cómo se usa Infrawrench? Esto activa los análisis de producto y las repeticiones de sesión de PostHog, con el texto y los campos de entrada de la pantalla enmascarados.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Política de privacidad"
+      }
+    ]
+  },
+  "259a9df60653b6f2": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "quiere crear agentes en una de tus organizaciones. Cada agente recibe su propia credencial y nunca podrá hacer más de lo que permitas aquí, ni más de lo que tú mismo puedes hacer."
+    ]
+  }
 }

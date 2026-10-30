@@ -1,0 +1,58 @@
+name: Sync AWS bulk pricing data
+
+# Splits each new AWS price list bundle the instances-bundler publishes to R2
+# into one Workers KV value per instance, for `/api/v1/aws-bulk-pricing` (see
+# app/packages/web/src/aws-bulk-pricing). It runs here rather than in a Worker
+# because an EC2 bundle is over 200 MB of JSON. A run where no bundle has moved
+# reads twelve small `latest` objects and twelve KV keys, and writes nothing.
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+
+concurrency:
+  group: aws-bulk-pricing-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync R2 bundles to KV
+    # Ships the AWS CLI the script reads R2 with, as the instances-bundler's
+    # publish runs rely on.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            .turbo
+            node_modules
+          key: ${{ runner.os }}-aws-bulk-pricing-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-aws-bulk-pricing-
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Sync
+        run: pnpm --filter @infrawrench/web sync:aws-bulk-pricing
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          INSTANCES_BUNDLES_BUCKET: instances-bundles
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Infrawrench Production, and the namespace the web Worker binds
+          # (app/packages/web/edge/wrangler.jsonc).
+          CLOUDFLARE_ACCOUNT_ID: 906034adfe1c457d2388331e220efcc7
+          AWS_BULK_PRICING_KV_NAMESPACE_ID: 4baca4fd13ec4d4684d41e761f52af01

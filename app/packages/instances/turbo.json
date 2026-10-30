@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["dist/**"],
+      "inputs": [
+        "app/**",
+        "components/**",
+        "lib/**",
+        "public/**",
+        "*.ts",
+        "*.mjs",
+        "wrangler.jsonc",
+        "tsconfig.json"
+      ]
+    }
+  }
+}
