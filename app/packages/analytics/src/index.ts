@@ -135,6 +135,12 @@ export function initAnalytics(options: AnalyticsOptions): void {
   void settleConsent();
 }
 
+/** Records a product event only after analytics consent has been granted. */
+export function captureAnalytics(event: string, properties: Properties = {}): void {
+  if (!consentGranted()) return;
+  posthog.capture(event, properties);
+}
+
 /** True once `initAnalytics` has run with a key; surfaces hide the preferences link otherwise. */
 export function analyticsEnabled(): boolean {
   return enabled;
