@@ -1,0 +1,53 @@
+---
+import "../styles/global.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import ProvidersModal from "../components/ProvidersModal.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** The page's `.md` twin, advertised the same way the docs advertise theirs. */
+  markdownHref?: string;
+  /** Set on a post page: makes the Open Graph type an article with a date. */
+  publishedAt?: Date;
+  noindex?: boolean;
+}
+
+const { title, description, markdownHref, publishedAt, noindex } = Astro.props;
+const pageTitle = title === "Blog" ? "Blog · Infrawrench" : `${title} · Infrawrench blog`;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{pageTitle}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="icon" href="/icon.png" type="image/png" />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="application/rss+xml" title="Infrawrench blog" href="/blog/rss.xml" />
+    {markdownHref && <link rel="alternate" type="text/markdown" href={markdownHref} />}
+
+    <meta property="og:type" content={publishedAt ? "article" : "website"} />
+    <meta property="og:site_name" content="Infrawrench" />
+    <meta property="og:title" content={title} />
+    <meta property="og:url" content={canonical} />
+    {description && <meta property="og:description" content={description} />}
+    {publishedAt && <meta property="article:published_time" content={publishedAt.toISOString()} />}
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    {description && <meta name="twitter:description" content={description} />}
+  </head>
+  <body>
+    <Nav />
+    <main class="blog-shell" id="main-content" tabindex="-1">
+      <slot />
+    </main>
+    <ProvidersModal />
+    <Footer />
+  </body>
+</html>

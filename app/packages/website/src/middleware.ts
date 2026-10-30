@@ -22,16 +22,19 @@ import { getEntry } from "astro:content";
 import { markdownHeaders, prefersMarkdown } from "./lib/content-negotiation";
 import { renderHomeMarkdown } from "./lib/markdown/home";
 import { renderDocMarkdown } from "./lib/markdown/docs";
+import { renderBlogIndexMarkdown, renderBlogPostMarkdown } from "./lib/markdown/blog";
+import { getBlogPost, getBlogPosts } from "./lib/blog";
 import { PAGE_CACHE_SECONDS, withPageCache } from "./lib/page-cache";
 
 /** Paths that never negotiate: machine endpoints and their own formats. */
 const EXCLUDED_PREFIXES = ["/api/", "/_astro/", "/_image"];
-const EXCLUDED_EXACT = new Set(["/robots.txt", "/sitemap.xml", "/llms.txt"]);
+const EXCLUDED_EXACT = new Set(["/robots.txt", "/sitemap.xml", "/llms.txt", "/blog/rss.xml"]);
 
 /** The markdown URL for a path, for the `Link: rel="alternate"` header. */
 function alternateFor(pathname: string): string | null {
   if (pathname === "/") return "/index.md";
   if (pathname.startsWith("/docs/")) return `${pathname}.md`;
+  if (pathname === "/blog" || pathname.startsWith("/blog/")) return `${pathname}.md`;
   return null;
 }
 
@@ -45,6 +48,14 @@ async function renderMarkdown(pathname: string, site: URL | undefined): Promise<
     // with an empty document.
     const entry = await getEntry("docs", slug);
     return entry ? renderDocMarkdown(entry) : null;
+  }
+  if (pathname === "/blog") {
+    return renderBlogIndexMarkdown(await getBlogPosts(), site?.origin ?? "https://infrawrench.com");
+  }
+  if (pathname.startsWith("/blog/")) {
+    // Drafts are undefined here in production, so they 404 like a typo.
+    const post = await getBlogPost(pathname.slice("/blog/".length));
+    return post ? renderBlogPostMarkdown(post) : null;
   }
   return null;
 }

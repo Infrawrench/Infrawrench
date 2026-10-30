@@ -1,5 +1,7 @@
 import type { APIRoute } from "astro";
 import { getDocsNav } from "../lib/docs-nav";
+import { blogPostHref, getBlogPosts } from "../lib/blog";
+import { escapeXml } from "../lib/xml";
 
 export const prerender = true;
 
@@ -27,22 +29,18 @@ function staticPaths(): string[] {
   return paths.sort();
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
 export const GET: APIRoute = async ({ site }) => {
   if (!site) {
     throw new Error("`site` must be set in astro.config.mjs to build the sitemap");
   }
 
   const sections = await getDocsNav();
-  const paths = [...staticPaths(), ...sections.flatMap((s) => s.pages.map((p) => p.href))];
+  const posts = await getBlogPosts();
+  const paths = [
+    ...staticPaths(),
+    ...sections.flatMap((s) => s.pages.map((p) => p.href)),
+    ...posts.map((post) => blogPostHref(post.id)),
+  ];
 
   const urls = paths
     .map((path) => `  <url><loc>${escapeXml(new URL(path, site).href)}</loc></url>`)

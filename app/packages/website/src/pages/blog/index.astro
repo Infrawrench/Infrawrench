@@ -1,0 +1,66 @@
+---
+import BlogLayout from "../../layouts/BlogLayout.astro";
+import { blogPostHref, formatPostDate, getBlogPosts, isoPostDate } from "../../lib/blog";
+
+// On demand so middleware can negotiate; see src/middleware.ts.
+export const prerender = false;
+
+const [posts, guides] = await Promise.all([getBlogPosts("post"), getBlogPosts("guide")]);
+const description = "Product news, release notes and engineering write-ups from the Infrawrench team.";
+---
+
+<BlogLayout title="Blog" description={description} markdownHref="/blog.md">
+  <header class="docs-article-header">
+    <h1 class="docs-article-title">Blog</h1>
+    <p class="docs-article-lede">
+      {description} Follow along with the <a class="blog-inline-link" href="/blog/rss.xml">RSS feed</a>.
+    </p>
+  </header>
+
+  {
+    posts.length === 0 ? (
+      <p class="blog-empty">No posts yet. Check back soon.</p>
+    ) : (
+      <ul class="blog-list">
+        {posts.map((post) => (
+          <li>
+            <a class="blog-card" href={blogPostHref(post.id)}>
+              <time class="blog-card-date" datetime={isoPostDate(post.data.date)}>
+                {formatPostDate(post.data.date)}
+              </time>
+              <span class="blog-card-title">
+                {post.data.title}
+                {post.data.draft && <span class="badge badge-gray blog-draft-badge">Draft</span>}
+              </span>
+              <span class="blog-card-desc">{post.data.description}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  {
+    guides.length > 0 && (
+      <section class="blog-guides" id="guides" aria-labelledby="blog-guides-heading">
+        <h2 class="blog-section-title" id="blog-guides-heading">
+          Guides
+        </h2>
+        <p class="blog-section-lede">Tutorials, walkthroughs and reference write-ups.</p>
+        <ul class="blog-guide-grid">
+          {guides.map((guide) => (
+            <li>
+              <a class="blog-guide-card" href={blogPostHref(guide.id)}>
+                <span class="blog-guide-title">
+                  {guide.data.title}
+                  {guide.data.draft && <span class="badge badge-gray blog-draft-badge">Draft</span>}
+                </span>
+                <span class="blog-guide-desc">{guide.data.description}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</BlogLayout>

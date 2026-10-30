@@ -10,4 +10,23 @@ const docs = defineCollection({
   }),
 });
 
-export const collections = { docs };
+// Posts are flat files: the filename is the slug (`/blog/<slug>`). `date` is a
+// plain `YYYY-MM-DD`, read as UTC midnight and displayed in UTC so a post never
+// shows the day before it was published to a reader west of Greenwich.
+const blog = defineCollection({
+  loader: glob({ pattern: "*.md", base: "./src/content/blog" }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    date: z.coerce.date(),
+    author: z.string().optional(),
+    // `post` is news and write-ups: top of the index and in the RSS feed.
+    // `guide` is evergreen reference (tutorials, how-tos): listed under Guides
+    // below the posts, kept out of the feed so subscribers only get news.
+    kind: z.enum(["post", "guide"]).default("post"),
+    // Drafts render under `astro dev` and are left out of production builds.
+    draft: z.boolean().optional(),
+  }),
+});
+
+export const collections = { docs, blog };

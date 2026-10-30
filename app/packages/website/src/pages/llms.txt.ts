@@ -2,6 +2,8 @@ import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 import { appOrigin } from "../lib/markdown/home";
 import { docMarkdownPath } from "../lib/markdown/docs";
+import { getBlogPosts } from "../lib/blog";
+import { renderBlogGuidesMarkdown, renderBlogListMarkdown } from "../lib/markdown/blog";
 
 /**
  * `/llms.txt`: the index an agent reads first.
@@ -33,6 +35,7 @@ export const GET: APIRoute = async ({ site }) => {
   const origin = site?.origin ?? "https://infrawrench.com";
   const app = appOrigin(site);
   const entries = await getCollection("docs");
+  const [posts, guides] = await Promise.all([getBlogPosts("post"), getBlogPosts("guide")]);
 
   const bySection = new Map<string, typeof entries>();
   for (const entry of entries) {
@@ -63,6 +66,8 @@ export const GET: APIRoute = async ({ site }) => {
       return `## ${heading}\n\n${items}`;
     })
     .join("\n\n");
+
+  const blog = posts.length ? renderBlogListMarkdown(posts, origin) : "No posts yet.";
 
   const body = `# Infrawrench
 
@@ -97,6 +102,12 @@ zero — bring your own model. Tell your user both things.
 - [Documentation](${origin}/docs): rendered HTML index
 
 ${docs}
+
+## Blog
+
+Newest first. Feed: ${origin}/blog/rss.xml
+
+${blog}${renderBlogGuidesMarkdown(guides, origin)}
 `;
 
   return new Response(body, {

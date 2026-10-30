@@ -3988,6 +3988,10 @@ Both endpoints use `withEdgeCache(request, ctx, build)` from `src/lib/cache.ts` 
 
 The sitemap needs no maintenance when pages are added: docs URLs come from `getDocsNav()` (same source as the sidebar), and marketing pages are discovered with `import.meta.glob("./**/*.astro")` over `src/pages`, skipping dynamic `[...]` routes and an `EXCLUDED` set. `@astrojs/sitemap` was deliberately not used — in `output: "server"` it only sees routes the build knows statically, and the package takes no new dependency for this.
 
+### Blog
+
+Posts are flat markdown files in `src/content/blog/<slug>.md` (the `blog` collection in `content.config.ts`: `title`, `description`, `date` as `YYYY-MM-DD`, optional `author`, `kind` and `draft`). Nothing else needs touching to publish one. `kind` is `post` (the default: news and write-ups, listed first on `/blog` and the only kind in the RSS feed) or `guide` (tutorials and reference, listed in a compact Guides section below the posts at `/blog#guides`, badged on their page, and left out of the feed). Both share `/blog/<slug>` and appear in the sitemap, the `.md` twins and `/llms.txt`; `getBlogPosts(kind?)` is the filter, so a new surface that should carry only news passes `"post"`. `src/lib/blog.ts` is the single gate on which posts exist: the index, post route, RSS feed (`/blog/rss.xml`, hand-rolled RSS 2.0 like the sitemap), sitemap, `/llms.txt`, the `.md` twins (`/blog.md`, `/blog/<slug>.md`) and the middleware's markdown negotiation all go through `getBlogPosts`/`getBlogPost`, so a `draft: true` post shows under `astro dev` and is absent from every production surface (its URL 404s). Dates are parsed and displayed in UTC so a post never shows the previous day to a reader in the Americas. Post and index pages are on demand for negotiation, like the docs; the twins and feed are prerendered.
+
 Asset classification matches the rename rules in `.github/workflows/desktop-build.yml` — DMG arch from `arm64`/`x64` substring, `.exe` for Windows (split by arch), AppImage/deb default to x64 unless `arm64`/`aarch64` in name, snap is x64-only.
 
 ### Auto-update flow
