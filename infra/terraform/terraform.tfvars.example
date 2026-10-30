@@ -446,6 +446,14 @@ app_env = {
   # set it after the Worker, and unset it to roll back.
   # POLLER_SCOPE = "gateway"
 
+  # AWS bulk pricing data (OPTIONAL). The edge Worker reads it from its KV
+  # binding; these let the Node gateway read the same namespace over the
+  # Cloudflare REST API (a token with Workers KV Storage: Read) instead of
+  # answering 503 for `/api/v1/aws-bulk-pricing`.
+  # CLOUDFLARE_ACCOUNT_ID            = "906034adfe1c457d2388331e220efcc7"
+  # AWS_BULK_PRICING_KV_NAMESPACE_ID = "4baca4fd13ec4d4684d41e761f52af01"
+  # AWS_BULK_PRICING_KV_API_TOKEN    = "..."
+
   # AWS Lambda gateway (lambda.tf, infra/README.md "Lambda gateway"). Nothing
   # to set here: LAMBDA_GATEWAY_SECRET (generated) and LAMBDA_GATEWAY_URL (the
   # function URL) are merged into infrawrench-env by terraform for the edge

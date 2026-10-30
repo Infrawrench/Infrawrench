@@ -39,6 +39,7 @@
 import type {
   ExecutionContext,
   ExportedHandler,
+  KVNamespace,
   Request as WorkerRequest,
 } from "@cloudflare/workers-types/index";
 import { securityHeaderEntries } from "../src/api/security-headers";
@@ -101,6 +102,8 @@ export interface Env extends EdgeBindings, RealtimeEnv {
   LAMBDA_GATEWAY_URL?: string;
   /** Shared with the Lambda, which refuses any request that lacks it. */
   LAMBDA_GATEWAY_SECRET?: string;
+  /** Read by `/api/v1/aws-bulk-pricing` through `c.env`. */
+  AWS_BULK_PRICING: KVNamespace;
 }
 
 function withSecurityHeaders(response: Response): Response {

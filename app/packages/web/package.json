@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "sync:aws-bulk-pricing": "tsx scripts/sync-aws-bulk-pricing.ts",
     "generate:openapi": "tsx --import @infrawrench/server-core/env-loader scripts/generate-openapi.ts",
     "generate:sdk": "tsx --import @infrawrench/server-core/env-loader scripts/generate-sdk.ts",
     "test": "vitest run",
