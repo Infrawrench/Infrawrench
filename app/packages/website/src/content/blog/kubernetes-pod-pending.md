@@ -151,7 +151,7 @@ kubectl --context CONTEXT_NAME rollout status deployment/DEPLOYMENT_NAME -n NAME
 kubectl --context CONTEXT_NAME get pods -n NAMESPACE -o wide
 ```
 
-Check that the NODE column now has a node, STATUS reaches Running and READY shows every container ready. If the pod now sits in ContainerCreating or ImagePullBackOff, scheduling is fixed and you have a new, node-side problem. If it starts and then restarts, follow the [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff).
+Check that the NODE column now has a node, STATUS reaches Running and READY shows every container ready. If the pod now sits in ContainerCreating or [ImagePullBackOff](/blog/kubernetes-imagepullbackoff), scheduling is fixed and you have a new, node-side problem. If it starts and then restarts, follow the [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff).
 
 Write down the FailedScheduling message and the change that fixed it. The same message on the next pod will take a minute to resolve.
 
